@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.8.0] — 2026-06-02
+- Collaboration (Phase 6): MembersModal — list workspace members with roles,
+  invite by email (member/admin), remove; opened from a topbar people icon.
+- Activity bell: in-memory feed built from workspace-scoped WebSocket events
+  (task created/updated/moved/assigned, board/project/note created) with an
+  unread badge; "assigned to you" highlighted. Persistent notifications deferred.
+
 ### [0.7.1] — 2026-06-02
 - Replace unicode emoji/symbols with themed ionicons5 icons (sidebar nav,
   hamburger, theme switch sun/moon, task due-date, column grip & menu, deletes).

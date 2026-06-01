@@ -1,10 +1,30 @@
 <script setup>
-import { NButton, NSpace, NText, NDropdown, NPopover, NSwitch, NTooltip, NIcon } from 'naive-ui'
-import { MenuOutline, SunnyOutline, MoonOutline } from '@vicons/ionicons5'
+import { ref } from 'vue'
+import {
+  NButton,
+  NSpace,
+  NText,
+  NDropdown,
+  NPopover,
+  NSwitch,
+  NTooltip,
+  NIcon,
+  NBadge,
+  NEmpty,
+} from 'naive-ui'
+import {
+  MenuOutline,
+  SunnyOutline,
+  MoonOutline,
+  NotificationsOutline,
+  PeopleOutline,
+} from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useActivityStore } from '@/stores/activity'
+import MembersModal from './MembersModal.vue'
 
 defineProps({ mobile: { type: Boolean, default: false } })
 defineEmits(['menu'])
@@ -12,7 +32,10 @@ defineEmits(['menu'])
 const theme = useThemeStore()
 const authStore = useAuthStore()
 const ws = useWorkspacesStore()
+const activity = useActivityStore()
 const router = useRouter()
+
+const showMembers = ref(false)
 
 const userOptions = [{ label: 'Выйти', key: 'logout' }]
 function onUserSelect(key) {
@@ -20,6 +43,10 @@ function onUserSelect(key) {
     authStore.logout()
     router.push('/login')
   }
+}
+
+function fmtTime(d) {
+  return new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
 </script>
 
@@ -33,7 +60,39 @@ function onUserSelect(key) {
     </div>
 
     <n-space align="center" :size="6">
-      <!-- Appearance: color schemes + dark toggle -->
+      <!-- Members -->
+      <n-tooltip>
+        <template #trigger>
+          <n-button quaternary circle aria-label="Участники" @click="showMembers = true">
+            <n-icon :component="PeopleOutline" />
+          </n-button>
+        </template>
+        Участники
+      </n-tooltip>
+
+      <!-- Activity bell -->
+      <n-popover
+        trigger="click"
+        placement="bottom-end"
+        @update:show="(s) => s && activity.markRead()"
+      >
+        <template #trigger>
+          <n-badge :value="activity.unread" :max="9" :show="activity.unread > 0">
+            <n-button quaternary circle aria-label="Активность">
+              <n-icon :component="NotificationsOutline" />
+            </n-button>
+          </n-badge>
+        </template>
+        <div class="feed">
+          <div v-for="it in activity.items" :key="it.id" class="feed-item">
+            <span class="ft">{{ it.text }}</span>
+            <span class="fa">{{ fmtTime(it.at) }}</span>
+          </div>
+          <n-empty v-if="!activity.items.length" description="Пока тихо" size="small" />
+        </div>
+      </n-popover>
+
+      <!-- Appearance -->
       <n-popover trigger="click" placement="bottom-end">
         <template #trigger>
           <n-tooltip>
@@ -71,6 +130,8 @@ function onUserSelect(key) {
         <n-button quaternary>{{ authStore.user?.name || 'Профиль' }}</n-button>
       </n-dropdown>
     </n-space>
+
+    <MembersModal v-model:show="showMembers" :ws-id="ws.currentId" />
   </div>
 </template>
 
@@ -118,5 +179,29 @@ function onUserSelect(key) {
 .swatch-btn.active {
   border-color: var(--t-text1);
   box-shadow: 0 0 0 2px var(--t-surface);
+}
+.feed {
+  width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.feed-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--t-border);
+}
+.feed-item:last-child {
+  border-bottom: none;
+}
+.ft {
+  color: var(--t-text1);
+  font-size: 13px;
+}
+.fa {
+  color: var(--t-text3);
+  font-size: 11px;
+  flex: none;
 }
 </style>

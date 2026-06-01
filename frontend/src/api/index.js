@@ -72,6 +72,7 @@ export const workspaces = {
   create: (data) => api.post('/workspaces', data),
   members: (id) => api.get(`/workspaces/${id}/members`),
   addMember: (id, data) => api.post(`/workspaces/${id}/members`, data),
+  removeMember: (id, userId) => api.delete(`/workspaces/${id}/members/${userId}`),
   groups: (id) => api.get(`/workspaces/${id}/groups`),
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),

@@ -13,12 +13,20 @@ import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
+import { useActivityStore } from '@/stores/activity'
 import { useResponsive } from '@/composables/useResponsive'
+import { useRealtime } from '@/composables/useRealtime'
 
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
+const activity = useActivityStore()
 const { isMobile } = useResponsive()
 const route = useRoute()
+
+// Global realtime feed for the activity bell (scoped to the current workspace).
+useRealtime((ev) => {
+  if (ev.scope === ws.currentId) activity.push(ev, authStore.user?.id)
+})
 
 const drawerOpen = ref(false)
 
