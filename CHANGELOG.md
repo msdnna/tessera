@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.4.0] — 2026-06-02
+- Task modal (Phase 4b): full editing — title, description, priority (colored),
+  due date, completed toggle, tags & assignees (multi-select, applied
+  immediately), subtasks (add + toggle), delete with confirm.
+- Opens on card click inside the board; saves reload the board (suppressed).
+
 ### [0.3.0] — 2026-06-02
 - Kanban board (Phase 4a): drag & drop tasks within/across columns via
   vuedraggable; server recomputes position from before/after neighbours.

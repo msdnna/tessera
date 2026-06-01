@@ -1,14 +1,14 @@
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import draggable from 'vuedraggable'
 import { NSpin, NButton, NInput, NModal, NCard, NText, useMessage } from 'naive-ui'
 import { boards, tasks as tasksApi, workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useRealtime } from '@/composables/useRealtime'
 import TaskCard from './TaskCard.vue'
+import TaskModal from './TaskModal.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
-const emit = defineEmits(['open'])
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
@@ -19,6 +19,19 @@ const columns = ref([])
 const lists = ref({}) // columnId -> task[]
 const tagsMap = reactive({})
 const membersMap = reactive({})
+const tagsList = computed(() => Object.values(tagsMap))
+const membersList = computed(() => Object.values(membersMap))
+
+const selectedTaskId = ref(null)
+const showTaskModal = ref(false)
+function openTask(id) {
+  selectedTaskId.value = id
+  showTaskModal.value = true
+}
+function onTaskChanged() {
+  suppress()
+  load(props.boardId)
+}
 
 let dragging = false
 let suppressReloadUntil = 0
@@ -154,7 +167,7 @@ watch(
                   :task="element"
                   :tags-map="tagsMap"
                   :members-map="membersMap"
-                  @click="emit('open', element.id)"
+                  @click="openTask(element.id)"
                 />
               </div>
             </template>
@@ -176,6 +189,14 @@ watch(
         </template>
       </n-card>
     </n-modal>
+
+    <TaskModal
+      v-model:show="showTaskModal"
+      :task-id="selectedTaskId"
+      :tags="tagsList"
+      :members="membersList"
+      @changed="onTaskChanged"
+    />
   </n-spin>
 </template>
 
