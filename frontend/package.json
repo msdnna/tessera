@@ -14,7 +14,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@vicons/ionicons5": "^0.13.0",
@@ -34,6 +36,7 @@
     "globals": "^17.6.0",
     "prettier": "^3.8.3",
     "vite": "^8.0.12",
+    "vitest": "^4.1.8",
     "vue-eslint-parser": "^10.4.0"
   }
 }

@@ -58,6 +58,20 @@ lint-backend: ## Run golangci-lint
 test-backend: ## Run backend tests
 	cd backend && $(GO) test ./...
 
+.PHONY: lint-frontend
+lint-frontend: ## Lint + format-check frontend
+	cd frontend && corepack yarn lint && corepack yarn format:check
+
+.PHONY: test-frontend
+test-frontend: ## Run frontend tests
+	cd frontend && corepack yarn test
+
+.PHONY: lint
+lint: lint-backend lint-frontend ## Lint everything
+
+.PHONY: test
+test: test-backend test-frontend ## Test everything
+
 # ── Versioning ─────────────────────────────────────────────
 .PHONY: version
 version: ## Show service versions

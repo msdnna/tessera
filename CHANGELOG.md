@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.8.1] — 2026-06-02
+- Tests (Phase 7): Vitest + activity-store spec (event labels, assigned-to-you,
+  noise filtering, cap/markRead). GitHub Actions CI (backend build/vet/test,
+  frontend lint/format/test/build). Makefile lint/test aggregate targets.
+
 ### [0.8.0] — 2026-06-02
 - Collaboration (Phase 6): MembersModal — list workspace members with roles,
   invite by email (member/admin), remove; opened from a topbar people icon.
@@ -75,6 +80,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.5.1] — 2026-06-02
+- Tests (Phase 7): internal/auth (token round-trip, wrong-secret, refresh
+  hashing, bcrypt) and handlers positionBetween (incl. strictly-between).
 
 ### [0.5.0] — 2026-06-02
 - Notes CRUD (workspace-scoped, membership-authorized) — POST/GET
