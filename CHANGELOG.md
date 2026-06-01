@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.3.0] — 2026-06-02
+- CRUD for the full hierarchy: workspaces (+ membership/invite by email),
+  project groups, projects, boards, columns, tasks (+ subtasks), tags.
+- Drag & drop ordering: server-computed float midpoint positions; `PATCH
+  /tasks/:id/move` and `/columns/:id/move` take before_id/after_id.
+- Task tags & assignees (M:N); task detail bundles tags/assignees/subtasks.
+- Workspace-membership authorization on every nested resource (scope resolvers).
+- New users get an auto-created personal workspace; domain events broadcast to
+  the WebSocket hub (workspace-scoped).
+
 ### [0.2.0] — 2026-06-02
 - Full domain schema migration (workspaces, project groups, projects, boards,
   columns, tasks + subtasks, tags, task_tags, assignees, notes, reminders);

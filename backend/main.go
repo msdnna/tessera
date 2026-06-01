@@ -32,6 +32,7 @@ func main() {
 	versionHandler := handlers.NewVersionHandler(appVersion)
 	wsHandler := handlers.NewWSHandler(hub)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret)
+	rh := handlers.NewAPI(queries, hub)
 
 	r := gin.Default()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
@@ -56,6 +57,58 @@ func main() {
 		protected.Use(middleware.Auth(cfg.JWTSecret))
 		{
 			protected.GET("/auth/me", authHandler.Me)
+
+			// Workspaces & membership.
+			protected.POST("/workspaces", rh.CreateWorkspace)
+			protected.GET("/workspaces", rh.ListWorkspaces)
+			protected.GET("/workspaces/:id", rh.GetWorkspace)
+			protected.PATCH("/workspaces/:id", rh.UpdateWorkspace)
+			protected.DELETE("/workspaces/:id", rh.DeleteWorkspace)
+			protected.GET("/workspaces/:id/members", rh.ListMembers)
+			protected.POST("/workspaces/:id/members", rh.AddMember)
+			protected.DELETE("/workspaces/:id/members/:userId", rh.RemoveMember)
+
+			// Project groups & projects (nested under a workspace).
+			protected.POST("/workspaces/:id/groups", rh.CreateProjectGroup)
+			protected.GET("/workspaces/:id/groups", rh.ListProjectGroups)
+			protected.POST("/workspaces/:id/projects", rh.CreateProject)
+			protected.GET("/workspaces/:id/projects", rh.ListProjects)
+
+			// Tags (workspace-scoped).
+			protected.POST("/workspaces/:id/tags", rh.CreateTag)
+			protected.GET("/workspaces/:id/tags", rh.ListTags)
+
+			protected.PATCH("/groups/:id", rh.UpdateProjectGroup)
+			protected.DELETE("/groups/:id", rh.DeleteProjectGroup)
+
+			protected.GET("/projects/:id", rh.GetProject)
+			protected.PATCH("/projects/:id", rh.UpdateProject)
+			protected.DELETE("/projects/:id", rh.DeleteProject)
+			protected.POST("/projects/:id/boards", rh.CreateBoard)
+			protected.GET("/projects/:id/boards", rh.ListBoards)
+
+			protected.GET("/boards/:id", rh.GetBoard)
+			protected.PATCH("/boards/:id", rh.UpdateBoard)
+			protected.DELETE("/boards/:id", rh.DeleteBoard)
+			protected.POST("/boards/:id/columns", rh.CreateColumn)
+			protected.GET("/boards/:id/columns", rh.ListColumns)
+			protected.POST("/boards/:id/tasks", rh.CreateTask)
+			protected.GET("/boards/:id/tasks", rh.ListBoardTasks)
+
+			protected.PATCH("/columns/:id", rh.UpdateColumn)
+			protected.PATCH("/columns/:id/move", rh.MoveColumn)
+			protected.DELETE("/columns/:id", rh.DeleteColumn)
+
+			protected.GET("/tasks/:id", rh.GetTask)
+			protected.PATCH("/tasks/:id", rh.UpdateTask)
+			protected.PATCH("/tasks/:id/move", rh.MoveTask)
+			protected.DELETE("/tasks/:id", rh.DeleteTask)
+			protected.POST("/tasks/:id/tags", rh.AddTaskTag)
+			protected.DELETE("/tasks/:id/tags/:tagId", rh.RemoveTaskTag)
+			protected.POST("/tasks/:id/assignees", rh.AddTaskAssignee)
+			protected.DELETE("/tasks/:id/assignees/:userId", rh.RemoveTaskAssignee)
+
+			protected.DELETE("/tags/:id", rh.DeleteTag)
 		}
 	}
 

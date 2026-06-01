@@ -1,0 +1,409 @@
+package handlers
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
+	"tessera/internal/db"
+	"tessera/middleware"
+)
+
+// taskDetail bundles a task with its tags, assignees and direct subtasks.
+type taskDetail struct {
+	db.Task
+	Tags      []db.Tag                  `json:"tags"`
+	Assignees []db.ListTaskAssigneesRow `json:"assignees"`
+	Subtasks  []db.Task                 `json:"subtasks"`
+}
+
+// CreateTask adds a task (or subtask) to a column on a board.
+func (h *API) CreateTask(c *gin.Context) {
+	boardID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForBoard(c, boardID)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	var req struct {
+		ColumnID    uuid.UUID  `json:"column_id" binding:"required"`
+		ParentID    *uuid.UUID `json:"parent_id"`
+		Title       string     `json:"title" binding:"required"`
+		Description string     `json:"description"`
+		Priority    int32      `json:"priority"`
+		DueDate     *time.Time `json:"due_date"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// The column must belong to this board.
+	col, err := h.q.GetColumn(c, req.ColumnID)
+	if err != nil || col.BoardID != boardID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "column does not belong to this board"})
+		return
+	}
+
+	pos, err := h.nextTaskPosition(c, req.ColumnID, req.ParentID)
+	if err != nil {
+		fail(c)
+		return
+	}
+
+	uid := middleware.CurrentUser(c)
+	t, err := h.q.CreateTask(c, db.CreateTaskParams{
+		BoardID:     boardID,
+		ColumnID:    req.ColumnID,
+		ParentID:    req.ParentID,
+		Title:       req.Title,
+		Description: req.Description,
+		Priority:    req.Priority,
+		DueDate:     req.DueDate,
+		Position:    pos,
+		CreatedBy:   &uid,
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.created", t)
+	c.JSON(http.StatusCreated, t)
+}
+
+// ListBoardTasks returns the top-level tasks of a board.
+func (h *API) ListBoardTasks(c *gin.Context) {
+	boardID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForBoard(c, boardID)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	tasks, err := h.q.ListTasksByBoard(c, boardID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, tasks)
+}
+
+// GetTask returns a task with its tags, assignees and subtasks.
+func (h *API) GetTask(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	t, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	tags, err := h.q.ListTaskTags(c, id)
+	if err != nil {
+		fail(c)
+		return
+	}
+	assignees, err := h.q.ListTaskAssignees(c, id)
+	if err != nil {
+		fail(c)
+		return
+	}
+	subtasks, err := h.q.ListSubtasks(c, &id)
+	if err != nil {
+		fail(c)
+		return
+	}
+	_ = wsID
+	c.JSON(http.StatusOK, taskDetail{
+		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, Subtasks: subtasks,
+	})
+}
+
+// UpdateTask edits a task's fields. `completed` toggles completed_at.
+func (h *API) UpdateTask(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	t, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	var req struct {
+		Title       string     `json:"title" binding:"required"`
+		Description string     `json:"description"`
+		Priority    int32      `json:"priority"`
+		DueDate     *time.Time `json:"due_date"`
+		Completed   bool       `json:"completed"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Preserve the original completion timestamp; set/clear on toggle.
+	completedAt := t.CompletedAt
+	switch {
+	case req.Completed && completedAt == nil:
+		now := time.Now()
+		completedAt = &now
+	case !req.Completed:
+		completedAt = nil
+	}
+
+	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
+		ID: id, Title: req.Title, Description: req.Description,
+		Priority: req.Priority, DueDate: req.DueDate, CompletedAt: completedAt,
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.updated", updated)
+	c.JSON(http.StatusOK, updated)
+}
+
+// MoveTask moves a task to a column and repositions it between neighbours.
+func (h *API) MoveTask(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	t, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	var req struct {
+		ColumnID uuid.UUID  `json:"column_id" binding:"required"`
+		BeforeID *uuid.UUID `json:"before_id"`
+		AfterID  *uuid.UUID `json:"after_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Target column must be on the same board.
+	col, err := h.q.GetColumn(c, req.ColumnID)
+	if err != nil || col.BoardID != t.BoardID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "column does not belong to this board"})
+		return
+	}
+	prev, next, ok := h.neighborTaskPositions(c, req.BeforeID, req.AfterID)
+	if !ok {
+		return
+	}
+	updated, err := h.q.MoveTask(c, db.MoveTaskParams{
+		ID: id, ColumnID: req.ColumnID, Position: positionBetween(prev, next),
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.moved", updated)
+	c.JSON(http.StatusOK, updated)
+}
+
+// DeleteTask removes a task and its subtasks.
+func (h *API) DeleteTask(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	if err := h.q.DeleteTask(c, id); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.deleted", gin.H{"id": id})
+	c.Status(http.StatusNoContent)
+}
+
+// ── Task tags / assignees ──────────────────────────────────
+
+// AddTaskTag attaches a tag to a task.
+func (h *API) AddTaskTag(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	var req struct {
+		TagID uuid.UUID `json:"tag_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.q.AddTaskTag(c, db.AddTaskTagParams{TaskID: id, TagID: req.TagID}); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.tagged", gin.H{"task_id": id, "tag_id": req.TagID})
+	c.Status(http.StatusNoContent)
+}
+
+// RemoveTaskTag detaches a tag from a task.
+func (h *API) RemoveTaskTag(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	tagID, ok := parseID(c, "tagId")
+	if !ok {
+		return
+	}
+	if err := h.q.RemoveTaskTag(c, db.RemoveTaskTagParams{TaskID: id, TagID: tagID}); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.untagged", gin.H{"task_id": id, "tag_id": tagID})
+	c.Status(http.StatusNoContent)
+}
+
+// AddTaskAssignee assigns a user to a task.
+func (h *API) AddTaskAssignee(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	var req struct {
+		UserID uuid.UUID `json:"user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.q.AddTaskAssignee(c, db.AddTaskAssigneeParams{TaskID: id, UserID: req.UserID}); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "user_id": req.UserID})
+	c.Status(http.StatusNoContent)
+}
+
+// RemoveTaskAssignee unassigns a user from a task.
+func (h *API) RemoveTaskAssignee(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	userID, ok := parseID(c, "userId")
+	if !ok {
+		return
+	}
+	if err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: id, UserID: userID}); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "user_id": userID})
+	c.Status(http.StatusNoContent)
+}
+
+// ── helpers ────────────────────────────────────────────────
+
+// loadTask fetches a task and authorizes the caller against its workspace.
+func (h *API) loadTask(c *gin.Context, id uuid.UUID) (db.Task, uuid.UUID, bool) {
+	t, err := h.q.GetTask(c, id)
+	if notFound(c, err) {
+		return db.Task{}, uuid.Nil, false
+	}
+	if err != nil {
+		fail(c)
+		return db.Task{}, uuid.Nil, false
+	}
+	wsID, err := h.q.WorkspaceIDForBoard(c, t.BoardID)
+	if err != nil {
+		fail(c)
+		return db.Task{}, uuid.Nil, false
+	}
+	if !h.requireMember(c, wsID) {
+		return db.Task{}, uuid.Nil, false
+	}
+	return t, wsID, true
+}
+
+// nextTaskPosition appends to the end of a column (top-level) or a parent's
+// subtask list.
+func (h *API) nextTaskPosition(c *gin.Context, columnID uuid.UUID, parentID *uuid.UUID) (float64, error) {
+	if parentID != nil {
+		subs, err := h.q.ListSubtasks(c, parentID)
+		if err != nil {
+			return 0, err
+		}
+		if len(subs) == 0 {
+			return positionGap, nil
+		}
+		last := subs[len(subs)-1].Position
+		return positionBetween(&last, nil), nil
+	}
+	max, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	if err != nil {
+		return 0, err
+	}
+	return positionBetween(&max, nil), nil
+}
+
+// neighborTaskPositions resolves the positions of the before/after tasks.
+func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
+	if beforeID != nil {
+		t, err := h.q.GetTask(c, *beforeID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid before_id"})
+			return nil, nil, false
+		}
+		prev = &t.Position
+	}
+	if afterID != nil {
+		t, err := h.q.GetTask(c, *afterID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid after_id"})
+			return nil, nil, false
+		}
+		next = &t.Position
+	}
+	return prev, next, true
+}
+
+func orEmptyTags(tags []db.Tag) []db.Tag {
+	if tags == nil {
+		return []db.Tag{}
+	}
+	return tags
+}
