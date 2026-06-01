@@ -8,9 +8,13 @@ backend/migrate
 backend/*.out
 backend/cover.html
 
-# Node / frontend (Phase 2)
+# Node / frontend
 node_modules/
 frontend/dist/
+.yarn/*
+!.yarn/patches
+.pnp.*
+yarn-error.log
 
 # Android (Phase 8)
 android/build/

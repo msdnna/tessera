@@ -3,6 +3,18 @@
 All notable changes to Tessera are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/), versions per service.
 
+## frontend
+
+### [0.1.0] — 2026-06-02
+- Vue 3 + Vite 8 + Naive UI + Pinia + Vue Router skeleton (Yarn 4).
+- Auth flow: login/register views, JWT stored in localStorage, axios refresh-on-401
+  (coalesced), route guard, `auth:expired` → /login.
+- App shell (a reference tracker-style): sidebar with workspace switcher + groups/projects tree
+  (lazy-loaded boards), topbar with theme toggle + logout, NConfigProvider (ruRU,
+  light/dark baseline).
+- Board view: columns + tasks read-only skeleton with minimal create modals
+  (full drag & drop kanban lands in Phase 4).
+
 ## backend
 
 ### [0.3.0] — 2026-06-02
