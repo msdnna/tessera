@@ -78,6 +78,10 @@ func main() {
 			protected.POST("/workspaces/:id/tags", rh.CreateTag)
 			protected.GET("/workspaces/:id/tags", rh.ListTags)
 
+			// Notes (workspace-scoped).
+			protected.POST("/workspaces/:id/notes", rh.CreateNote)
+			protected.GET("/workspaces/:id/notes", rh.ListNotes)
+
 			protected.PATCH("/groups/:id", rh.UpdateProjectGroup)
 			protected.DELETE("/groups/:id", rh.DeleteProjectGroup)
 
@@ -109,6 +113,16 @@ func main() {
 			protected.DELETE("/tasks/:id/assignees/:userId", rh.RemoveTaskAssignee)
 
 			protected.DELETE("/tags/:id", rh.DeleteTag)
+
+			protected.GET("/notes/:id", rh.GetNote)
+			protected.PATCH("/notes/:id", rh.UpdateNote)
+			protected.DELETE("/notes/:id", rh.DeleteNote)
+
+			// Reminders (personal).
+			protected.POST("/reminders", rh.CreateReminder)
+			protected.GET("/reminders", rh.ListReminders)
+			protected.PATCH("/reminders/:id", rh.UpdateReminder)
+			protected.DELETE("/reminders/:id", rh.DeleteReminder)
 		}
 	}
 

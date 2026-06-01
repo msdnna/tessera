@@ -105,6 +105,11 @@ function newBoard(project) {
       >
     </div>
 
+    <nav class="nav">
+      <router-link to="/notes" class="nav-link">📝 Заметки</router-link>
+      <router-link to="/reminders" class="nav-link">⏰ Напоминания</router-link>
+    </nav>
+
     <n-scrollbar class="tree">
       <!-- grouped projects -->
       <div v-for="g in store.groups" :key="g.id" class="group">
@@ -214,6 +219,26 @@ function newBoard(project) {
   gap: 6px;
   padding: 12px;
   align-items: center;
+}
+.nav {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px 8px;
+}
+.nav-link {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--t-text2);
+  text-decoration: none;
+}
+.nav-link:hover {
+  background: var(--t-hover);
+}
+.nav-link.router-link-active {
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
+  color: var(--t-primary);
+  font-weight: 600;
 }
 .tree {
   flex: 1;

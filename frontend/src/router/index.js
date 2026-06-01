@@ -13,6 +13,8 @@ const routes = [
     children: [
       { path: '', component: () => import('@/views/HomeView.vue') },
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },
+      { path: 'notes', component: () => import('@/views/NotesView.vue') },
+      { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
     ],
   },
 ]

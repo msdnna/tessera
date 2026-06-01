@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.7.0] — 2026-06-02
+- Notes module (Phase 5b): two-pane NotesView (list + editor), create/edit/delete,
+  workspace-scoped; sidebar nav link.
+- Reminders (Phase 5c): RemindersView — create (message + datetime), mark done,
+  delete, overdue highlight; sidebar nav link.
+
 ### [0.6.0] — 2026-06-02
 - Column customization (Phase 5a): per-column settings modal (rename, accent
   color swatch, delete with confirm) and drag-to-reorder columns (status mode,
@@ -58,6 +64,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.5.0] — 2026-06-02
+- Notes CRUD (workspace-scoped, membership-authorized) — POST/GET
+  /workspaces/:id/notes, GET/PATCH/DELETE /notes/:id.
+- Reminders CRUD (personal, owner-authorized) — POST/GET /reminders,
+  PATCH/DELETE /reminders/:id.
 
 ### [0.4.0] — 2026-06-02
 - `GET /boards/:id/tasks` now returns each task with aggregated `tag_ids` and

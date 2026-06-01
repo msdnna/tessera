@@ -99,6 +99,21 @@ export const boards = {
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
 }
 
+export const notes = {
+  list: (wsId) => api.get(`/workspaces/${wsId}/notes`),
+  create: (wsId, data) => api.post(`/workspaces/${wsId}/notes`, data),
+  get: (id) => api.get(`/notes/${id}`),
+  update: (id, data) => api.patch(`/notes/${id}`, data),
+  remove: (id) => api.delete(`/notes/${id}`),
+}
+
+export const reminders = {
+  list: () => api.get('/reminders'),
+  create: (data) => api.post('/reminders', data),
+  update: (id, data) => api.patch(`/reminders/${id}`, data),
+  remove: (id) => api.delete(`/reminders/${id}`),
+}
+
 export const columns = {
   update: (id, data) => api.patch(`/columns/${id}`, data),
   move: (id, data) => api.patch(`/columns/${id}/move`, data),
