@@ -15,8 +15,10 @@ import {
   NSpace,
   NButtonGroup,
   NPopconfirm,
+  NIcon,
   useMessage,
 } from 'naive-ui'
+import { ReorderThreeOutline, EllipsisHorizontalOutline } from '@vicons/ionicons5'
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useRealtime } from '@/composables/useRealtime'
@@ -381,7 +383,12 @@ watch(
         <template #item="{ element: dcol }">
           <div class="col" :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }">
             <div class="col-head">
-              <span v-if="groupMode === 'status'" class="col-grip" title="Перетащить">⠿</span>
+              <n-icon
+                v-if="groupMode === 'status'"
+                :component="ReorderThreeOutline"
+                class="col-grip"
+                title="Перетащить"
+              />
               <span class="col-title">{{ dcol.name }}</span>
               <span class="count">{{ (lists[dcol.key] || []).length }}</span>
               <n-button
@@ -390,8 +397,9 @@ watch(
                 size="tiny"
                 class="col-menu"
                 @click="openColSettings(dcol)"
-                >⋯</n-button
               >
+                <n-icon :component="EllipsisHorizontalOutline" />
+              </n-button>
             </div>
             <draggable
               :list="lists[dcol.key]"

@@ -1,6 +1,17 @@
 <script setup>
 import { ref } from 'vue'
-import { NModal, NCard, NInput, NButton, NSpace, NText, NPopconfirm, useMessage } from 'naive-ui'
+import {
+  NModal,
+  NCard,
+  NInput,
+  NButton,
+  NSpace,
+  NText,
+  NPopconfirm,
+  NIcon,
+  useMessage,
+} from 'naive-ui'
+import { TrashOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 
 const props = defineProps({
@@ -59,7 +70,9 @@ async function remove(id) {
           </span>
           <n-popconfirm @positive-click="remove(t.id)">
             <template #trigger>
-              <n-button text size="tiny" type="error">✕</n-button>
+              <n-button text size="tiny" type="error">
+                <n-icon :component="TrashOutline" />
+              </n-button>
             </template>
             Удалить тег? Он снимется со всех задач.
           </n-popconfirm>

@@ -1,5 +1,7 @@
 <script setup>
 import { computed } from 'vue'
+import { NIcon } from 'naive-ui'
+import { CalendarClearOutline } from '@vicons/ionicons5'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 
 const props = defineProps({
@@ -46,7 +48,10 @@ function initials(name) {
         }"
         >{{ t.name }}</span
       >
-      <span v-if="due" class="due">📅 {{ due }}</span>
+      <span v-if="due" class="due">
+        <n-icon :component="CalendarClearOutline" :size="13" />
+        {{ due }}
+      </span>
       <span class="spacer" />
       <span v-for="u in assignees" :key="u.user_id" class="avatar" :title="u.name">{{
         initials(u.name)
@@ -101,6 +106,9 @@ function initials(name) {
   border: 1px solid transparent;
 }
 .due {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 11px;
   color: var(--t-text3);
 }

@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.7.1] — 2026-06-02
+- Replace unicode emoji/symbols with themed ionicons5 icons (sidebar nav,
+  hamburger, theme switch sun/moon, task due-date, column grip & menu, deletes).
+
 ### [0.7.0] — 2026-06-02
 - Notes module (Phase 5b): two-pane NotesView (list + editor), create/edit/delete,
   workspace-scoped; sidebar nav link.

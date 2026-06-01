@@ -1,5 +1,6 @@
 <script setup>
-import { NButton, NSpace, NText, NDropdown, NPopover, NSwitch, NTooltip } from 'naive-ui'
+import { NButton, NSpace, NText, NDropdown, NPopover, NSwitch, NTooltip, NIcon } from 'naive-ui'
+import { MenuOutline, SunnyOutline, MoonOutline } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
@@ -25,7 +26,9 @@ function onUserSelect(key) {
 <template>
   <div class="topbar">
     <div class="left">
-      <n-button v-if="mobile" quaternary circle @click="$emit('menu')">☰</n-button>
+      <n-button v-if="mobile" quaternary circle @click="$emit('menu')">
+        <n-icon :component="MenuOutline" />
+      </n-button>
       <n-text strong>{{ ws.current?.name || 'Tessera' }}</n-text>
     </div>
 
@@ -45,7 +48,10 @@ function onUserSelect(key) {
         <div class="appearance">
           <div class="row">
             <n-text depth="2">Тёмная тема</n-text>
-            <n-switch :value="theme.isDark" @update:value="theme.toggle()" />
+            <n-switch :value="theme.isDark" @update:value="theme.toggle()">
+              <template #checked-icon><n-icon :component="MoonOutline" /></template>
+              <template #unchecked-icon><n-icon :component="SunnyOutline" /></template>
+            </n-switch>
           </div>
           <div class="swatches">
             <button

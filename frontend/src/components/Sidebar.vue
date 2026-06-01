@@ -1,7 +1,18 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NSelect, NButton, NInput, NModal, NCard, NScrollbar, NText, useMessage } from 'naive-ui'
+import {
+  NSelect,
+  NButton,
+  NInput,
+  NModal,
+  NCard,
+  NScrollbar,
+  NText,
+  NIcon,
+  useMessage,
+} from 'naive-ui'
+import { DocumentTextOutline, AlarmOutline, AddOutline } from '@vicons/ionicons5'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { workspaces as wsApi, projects as projApi } from '@/api'
 
@@ -100,14 +111,20 @@ function newBoard(project) {
         size="small"
         @update:value="onWorkspaceChange"
       />
-      <n-button quaternary circle size="small" title="Новое пространство" @click="newWorkspace"
-        >＋</n-button
-      >
+      <n-button quaternary circle size="small" title="Новое пространство" @click="newWorkspace">
+        <n-icon :component="AddOutline" />
+      </n-button>
     </div>
 
     <nav class="nav">
-      <router-link to="/notes" class="nav-link">📝 Заметки</router-link>
-      <router-link to="/reminders" class="nav-link">⏰ Напоминания</router-link>
+      <router-link to="/notes" class="nav-link">
+        <n-icon :component="DocumentTextOutline" :size="18" />
+        <span>Заметки</span>
+      </router-link>
+      <router-link to="/reminders" class="nav-link">
+        <n-icon :component="AlarmOutline" :size="18" />
+        <span>Напоминания</span>
+      </router-link>
     </nav>
 
     <n-scrollbar class="tree">
@@ -115,7 +132,9 @@ function newBoard(project) {
       <div v-for="g in store.groups" :key="g.id" class="group">
         <div class="group-head">
           <n-text depth="2" strong>{{ g.name }}</n-text>
-          <n-button text size="tiny" title="Проект в группе" @click="newProject(g.id)">＋</n-button>
+          <n-button text size="tiny" title="Проект в группе" @click="newProject(g.id)">
+            <n-icon :component="AddOutline" />
+          </n-button>
         </div>
         <div v-for="p in projectsInGroup(g.id)" :key="p.id" class="project-block">
           <div class="project-row" @click="toggleProject(p)">
@@ -226,6 +245,9 @@ function newBoard(project) {
   padding: 4px 8px 8px;
 }
 .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 8px;
   border-radius: 6px;
   font-size: 14px;

@@ -9,8 +9,10 @@ import {
   NCard,
   NText,
   NPopconfirm,
+  NIcon,
   useMessage,
 } from 'naive-ui'
+import { TrashOutline } from '@vicons/ionicons5'
 import { reminders as remApi } from '@/api'
 
 const message = useMessage()
@@ -99,7 +101,9 @@ onMounted(load)
         </div>
         <n-popconfirm @positive-click="remove(r)">
           <template #trigger>
-            <n-button text size="tiny" type="error">✕</n-button>
+            <n-button text size="tiny" type="error">
+              <n-icon :component="TrashOutline" />
+            </n-button>
           </template>
           Удалить напоминание?
         </n-popconfirm>
