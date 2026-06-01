@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.2.0] — 2026-06-02
+- Full domain schema migration (workspaces, project groups, projects, boards,
+  columns, tasks + subtasks, tags, task_tags, assignees, notes, reminders);
+  float8 positions for ordering.
+- sqlc pipeline (`pgx/v5`, google/uuid codec registered on each connection).
+- Auth: register/login/refresh/me with JWT access tokens (15 min) + rotating
+  opaque refresh tokens (SHA-256 stored, revoked on use); bcrypt passwords;
+  first registered user becomes admin. `middleware.Auth` Bearer guard.
+
 ### [0.1.0] — 2026-06-02
 - Phase 0 scaffold: gin server with `/api/health`, `/api/version`, `/api/ws`.
 - PostgreSQL connection pool (pgx/v5) with startup retry.
