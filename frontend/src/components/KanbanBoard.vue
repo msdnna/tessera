@@ -14,9 +14,10 @@ import {
   NCheckbox,
   NSpace,
   NButtonGroup,
+  NPopconfirm,
   useMessage,
 } from 'naive-ui'
-import { boards, tasks as tasksApi, workspaces as wsApi } from '@/api'
+import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useRealtime } from '@/composables/useRealtime'
 import { PRIORITY_LABELS } from '@/styles/tokens'
@@ -149,6 +150,69 @@ function rebuildLists() {
   lists.value = map
 }
 watch([filteredTasks, groupMode], rebuildLists)
+
+// Mutable mirror of displayColumns for column drag-reorder (status mode only).
+const colModel = ref([])
+watch(displayColumns, (v) => (colModel.value = [...v]), { immediate: true })
+
+async function onColumnReorder(evt) {
+  if (groupMode.value !== 'status') return
+  const info = evt.moved || evt.added
+  if (!info) return
+  const arr = colModel.value
+  const before = arr[info.newIndex - 1]
+  const after = arr[info.newIndex + 1]
+  suppress()
+  try {
+    await columnsApi.move(info.element.key, {
+      before_id: before ? before.key : null,
+      after_id: after ? after.key : null,
+    })
+    scheduleReload()
+  } catch (e) {
+    message.error(e.message)
+    load(props.boardId)
+  }
+}
+
+// ── column settings (rename / color / delete) ──
+const colSwatches = [
+  '',
+  '#7c5cff',
+  '#2f80ed',
+  '#0eb0a9',
+  '#18a058',
+  '#f0a020',
+  '#e0533d',
+  '#eb2f96',
+]
+const colSettings = ref({ show: false, id: null, name: '', color: '' })
+function openColSettings(dcol) {
+  colSettings.value = { show: true, id: dcol.key, name: dcol.name, color: dcol.color || '' }
+}
+async function saveColSettings() {
+  suppress()
+  try {
+    await columnsApi.update(colSettings.value.id, {
+      name: colSettings.value.name.trim(),
+      color: colSettings.value.color,
+    })
+    colSettings.value.show = false
+    await load(props.boardId)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+async function deleteColumn() {
+  suppress()
+  try {
+    await columnsApi.remove(colSettings.value.id)
+    colSettings.value.show = false
+    await load(props.boardId)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
 
 // Drag persistence: status mode = reposition; tag mode = add/remove tag.
 async function onColChange(evt, dcol) {
@@ -304,51 +368,66 @@ watch(
         </n-space>
       </div>
 
-      <div class="cols">
-        <div
-          v-for="dcol in displayColumns"
-          :key="dcol.key"
-          class="col"
-          :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }"
-        >
-          <div class="col-head">
-            <span class="col-title">{{ dcol.name }}</span>
-            <span class="count">{{ (lists[dcol.key] || []).length }}</span>
+      <draggable
+        :list="colModel"
+        group="columns"
+        item-key="key"
+        handle=".col-grip"
+        :disabled="groupMode !== 'status'"
+        class="cols"
+        :animation="150"
+        @change="onColumnReorder"
+      >
+        <template #item="{ element: dcol }">
+          <div class="col" :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }">
+            <div class="col-head">
+              <span v-if="groupMode === 'status'" class="col-grip" title="Перетащить">⠿</span>
+              <span class="col-title">{{ dcol.name }}</span>
+              <span class="count">{{ (lists[dcol.key] || []).length }}</span>
+              <n-button
+                v-if="groupMode === 'status'"
+                text
+                size="tiny"
+                class="col-menu"
+                @click="openColSettings(dcol)"
+                >⋯</n-button
+              >
+            </div>
+            <draggable
+              :list="lists[dcol.key]"
+              group="tasks"
+              item-key="id"
+              class="drop"
+              ghost-class="ghost"
+              :animation="150"
+              @start="dragging = true"
+              @end="dragging = false"
+              @change="onColChange($event, dcol)"
+            >
+              <template #item="{ element }">
+                <div>
+                  <TaskCard
+                    :task="element"
+                    :tags-map="tagsMap"
+                    :members-map="membersMap"
+                    @click="openTask(element.id)"
+                  />
+                </div>
+              </template>
+            </draggable>
+            <n-button text size="tiny" class="add-task" @click="newTask(dcol)">＋ задача</n-button>
           </div>
-          <draggable
-            :list="lists[dcol.key]"
-            group="tasks"
-            item-key="id"
-            class="drop"
-            ghost-class="ghost"
-            :animation="150"
-            @start="dragging = true"
-            @end="dragging = false"
-            @change="onColChange($event, dcol)"
-          >
-            <template #item="{ element }">
-              <div>
-                <TaskCard
-                  :task="element"
-                  :tags-map="tagsMap"
-                  :members-map="membersMap"
-                  @click="openTask(element.id)"
-                />
-              </div>
-            </template>
-          </draggable>
-          <n-button text size="tiny" class="add-task" @click="newTask(dcol)">＋ задача</n-button>
-        </div>
+        </template>
+      </draggable>
 
-        <div v-if="!displayColumns.length" class="empty-board">
-          <n-text depth="3">
-            {{
-              groupMode === 'status'
-                ? 'Нет колонок — создайте первую.'
-                : 'Нет тегов — добавьте в «Теги».'
-            }}
-          </n-text>
-        </div>
+      <div v-if="!displayColumns.length" class="empty-board">
+        <n-text depth="3">
+          {{
+            groupMode === 'status'
+              ? 'Нет колонок — создайте первую.'
+              : 'Нет тегов — добавьте в «Теги».'
+          }}
+        </n-text>
       </div>
     </div>
 
@@ -357,6 +436,38 @@ watch(
         <n-input v-model:value="modal.value" placeholder="Название" @keyup.enter="confirmCreate" />
         <template #footer>
           <n-button type="primary" @click="confirmCreate">Создать</n-button>
+        </template>
+      </n-card>
+    </n-modal>
+
+    <n-modal v-model:show="colSettings.show">
+      <n-card title="Настройки колонки" style="width: 360px; max-width: 92vw" role="dialog">
+        <n-input
+          v-model:value="colSettings.name"
+          placeholder="Название колонки"
+          @keyup.enter="saveColSettings"
+        />
+        <div class="col-swatches">
+          <button
+            v-for="s in colSwatches"
+            :key="s || 'none'"
+            class="cw"
+            :class="{ active: s === colSettings.color }"
+            :style="{ background: s || 'var(--t-border)' }"
+            :title="s || 'По умолчанию'"
+            @click="colSettings.color = s"
+          />
+        </div>
+        <template #footer>
+          <div class="cs-footer">
+            <n-popconfirm @positive-click="deleteColumn">
+              <template #trigger>
+                <n-button quaternary type="error">Удалить</n-button>
+              </template>
+              Удалить колонку со всеми её задачами?
+            </n-popconfirm>
+            <n-button type="primary" @click="saveColSettings">Сохранить</n-button>
+          </div>
         </template>
       </n-card>
     </n-modal>
@@ -423,9 +534,40 @@ watch(
   margin-bottom: 8px;
   padding: 0 2px;
 }
+.col-grip {
+  cursor: grab;
+  color: var(--t-text3);
+  font-size: 12px;
+  line-height: 1;
+}
 .col-title {
+  flex: 1;
   font-weight: 600;
   color: var(--t-text1);
+}
+.col-menu {
+  font-size: 16px;
+  line-height: 1;
+}
+.col-swatches {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.cw {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.cw.active {
+  border-color: var(--t-text1);
+}
+.cs-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .count {
   font-size: 12px;

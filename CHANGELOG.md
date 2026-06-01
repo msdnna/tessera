@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.6.0] — 2026-06-02
+- Column customization (Phase 5a): per-column settings modal (rename, accent
+  color swatch, delete with confirm) and drag-to-reorder columns (status mode,
+  grip handle) — persisted via column update/move/delete API.
+
 ### [0.5.0] — 2026-06-02
 - Tag grouping (Phase 4c, killer feature): toolbar toggle "Статусы / Теги".
   In tag mode columns = workspace tags (+ "Без тегов"); dragging a card between

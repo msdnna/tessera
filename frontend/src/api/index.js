@@ -99,6 +99,12 @@ export const boards = {
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
 }
 
+export const columns = {
+  update: (id, data) => api.patch(`/columns/${id}`, data),
+  move: (id, data) => api.patch(`/columns/${id}/move`, data),
+  remove: (id) => api.delete(`/columns/${id}`),
+}
+
 export const tasks = {
   get: (id) => api.get(`/tasks/${id}`),
   update: (id, data) => api.patch(`/tasks/${id}`, data),
