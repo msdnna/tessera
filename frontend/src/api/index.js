@@ -78,6 +78,7 @@ export const workspaces = {
   createProject: (id, data) => api.post(`/workspaces/${id}/projects`, data),
   tags: (id) => api.get(`/workspaces/${id}/tags`),
   createTag: (id, data) => api.post(`/workspaces/${id}/tags`, data),
+  deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
 }
 
 export const projects = {

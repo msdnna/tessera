@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.5.0] — 2026-06-02
+- Tag grouping (Phase 4c, killer feature): toolbar toggle "Статусы / Теги".
+  In tag mode columns = workspace tags (+ "Без тегов"); dragging a card between
+  tag columns adds/removes the tag.
+- Filters (priority, assignee, title search) + sorting (manual / priority / due)
+  applied before grouping.
+- Tag manager modal: create (name + color swatch) and delete workspace tags.
+- Task edits and tag changes trigger a full debounced board reload.
+
 ### [0.4.0] — 2026-06-02
 - Task modal (Phase 4b): full editing — title, description, priority (colored),
   due date, completed toggle, tags & assignees (multi-select, applied

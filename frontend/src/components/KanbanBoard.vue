@@ -1,12 +1,28 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import draggable from 'vuedraggable'
-import { NSpin, NButton, NInput, NModal, NCard, NText, useMessage } from 'naive-ui'
+import {
+  NSpin,
+  NButton,
+  NInput,
+  NModal,
+  NCard,
+  NText,
+  NSelect,
+  NPopover,
+  NCheckboxGroup,
+  NCheckbox,
+  NSpace,
+  NButtonGroup,
+  useMessage,
+} from 'naive-ui'
 import { boards, tasks as tasksApi, workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useRealtime } from '@/composables/useRealtime'
+import { PRIORITY_LABELS } from '@/styles/tokens'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
+import TagManager from './TagManager.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -16,27 +32,48 @@ const wsStore = useWorkspacesStore()
 const loading = ref(false)
 const board = ref(null)
 const columns = ref([])
-const lists = ref({}) // columnId -> task[]
+const allTasks = ref([])
+const lists = ref({})
 const tagsMap = reactive({})
 const membersMap = reactive({})
 const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
 
+// view controls
+const groupMode = ref('status') // 'status' | 'tag'
+const sortBy = ref('position') // 'position' | 'priority' | 'due'
+const filters = reactive({ priorities: [], assignees: [], q: '' })
+const sortOptions = [
+  { label: 'Вручную', value: 'position' },
+  { label: 'По приоритету', value: 'priority' },
+  { label: 'По сроку', value: 'due' },
+]
+const priorityFilterOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+const memberFilterOptions = computed(() =>
+  membersList.value.map((m) => ({ label: m.name, value: m.user_id })),
+)
+const activeFilterCount = computed(
+  () => filters.priorities.length + filters.assignees.length + (filters.q.trim() ? 1 : 0),
+)
+
+// modals
 const selectedTaskId = ref(null)
 const showTaskModal = ref(false)
+const showTagManager = ref(false)
 function openTask(id) {
   selectedTaskId.value = id
   showTaskModal.value = true
-}
-function onTaskChanged() {
-  suppress()
-  load(props.boardId)
 }
 
 let dragging = false
 let suppressReloadUntil = 0
 function suppress() {
   suppressReloadUntil = Date.now() + 1500
+}
+let reloadTimer = null
+function scheduleReload() {
+  clearTimeout(reloadTimer)
+  reloadTimer = setTimeout(() => load(props.boardId), 200)
 }
 
 async function load(id) {
@@ -45,11 +82,9 @@ async function load(id) {
     const [b, c, t] = await Promise.all([boards.get(id), boards.columns(id), boards.tasks(id)])
     board.value = b.data
     columns.value = c.data || []
-    const map = {}
-    for (const col of columns.value) map[col.id] = []
-    for (const task of t.data || []) (map[task.column_id] ||= []).push(task)
-    lists.value = map
+    allTasks.value = t.data || []
     await loadWorkspaceMeta()
+    rebuildLists()
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -67,25 +102,78 @@ async function loadWorkspaceMeta() {
   for (const m of mem.data || []) membersMap[m.user_id] = m
 }
 
-// Drag end: the moved task's destination list is already mutated by v-model.
-// Compute its neighbours and persist via the move API (server recomputes pos).
-async function onChange(evt, col) {
-  const info = evt.added || evt.moved
-  if (!info) return // `removed` is handled by the destination column's `added`
-  const arr = lists.value[col.id]
-  const idx = info.newIndex
-  const before = arr[idx - 1]
-  const after = arr[idx + 1]
+// filter + sort applied before grouping
+const filteredTasks = computed(() => {
+  let arr = allTasks.value
+  if (filters.priorities.length) arr = arr.filter((t) => filters.priorities.includes(t.priority))
+  if (filters.assignees.length)
+    arr = arr.filter((t) => (t.assignee_ids || []).some((a) => filters.assignees.includes(a)))
+  const q = filters.q.trim().toLowerCase()
+  if (q) arr = arr.filter((t) => t.title.toLowerCase().includes(q))
+
+  const s = [...arr]
+  if (sortBy.value === 'priority') s.sort((a, b) => (b.priority || 0) - (a.priority || 0))
+  else if (sortBy.value === 'due')
+    s.sort(
+      (a, b) =>
+        (a.due_date ? Date.parse(a.due_date) : Infinity) -
+        (b.due_date ? Date.parse(b.due_date) : Infinity),
+    )
+  return s
+})
+
+const displayColumns = computed(() => {
+  if (groupMode.value === 'status') {
+    return columns.value.map((c) => ({ key: c.id, name: c.name, color: c.color, status: c }))
+  }
+  return [
+    ...tagsList.value.map((t) => ({ key: t.id, name: t.name, color: t.color, tag: t })),
+    { key: '__none__', name: 'Без тегов', color: '', tag: null },
+  ]
+})
+
+function rebuildLists() {
+  const map = {}
+  if (groupMode.value === 'status') {
+    for (const col of columns.value) map[col.id] = []
+    for (const t of filteredTasks.value) (map[t.column_id] ||= []).push(t)
+  } else {
+    for (const tg of tagsList.value) map[tg.id] = []
+    map.__none__ = []
+    for (const t of filteredTasks.value) {
+      const ids = t.tag_ids || []
+      if (!ids.length) map.__none__.push(t)
+      else for (const id of ids) if (map[id]) map[id].push(t)
+    }
+  }
+  lists.value = map
+}
+watch([filteredTasks, groupMode], rebuildLists)
+
+// Drag persistence: status mode = reposition; tag mode = add/remove tag.
+async function onColChange(evt, dcol) {
   suppress()
   try {
-    await tasksApi.move(info.element.id, {
-      column_id: col.id,
-      before_id: before ? before.id : null,
-      after_id: after ? after.id : null,
-    })
+    if (groupMode.value === 'status') {
+      const info = evt.added || evt.moved
+      if (info) {
+        const arr = lists.value[dcol.key]
+        const before = arr[info.newIndex - 1]
+        const after = arr[info.newIndex + 1]
+        await tasksApi.move(info.element.id, {
+          column_id: dcol.key,
+          before_id: before ? before.id : null,
+          after_id: after ? after.id : null,
+        })
+      }
+    } else {
+      if (evt.added && dcol.tag) await tasksApi.addTag(evt.added.element.id, dcol.tag.id)
+      if (evt.removed && dcol.tag) await tasksApi.removeTag(evt.removed.element.id, dcol.tag.id)
+    }
+    scheduleReload()
   } catch (e) {
     message.error(e.message)
-    await load(props.boardId)
+    load(props.boardId)
   }
 }
 
@@ -109,19 +197,31 @@ async function confirmCreate() {
 function newColumn() {
   promptCreate('Новая колонка', (name) => boards.createColumn(board.value.id, { name }))
 }
-function newTask(col) {
-  promptCreate('Новая задача', (title) =>
-    boards.createTask(board.value.id, { column_id: col.id, title }),
-  )
+function newTask(dcol) {
+  // In tag mode there are no status columns to drop into; fall back to the
+  // first board column and pre-tag the task with the column's tag.
+  const columnId = groupMode.value === 'status' ? dcol.key : columns.value[0]?.id
+  if (!columnId) {
+    message.warning('Сначала создайте хотя бы одну колонку-статус')
+    return
+  }
+  promptCreate('Новая задача', async (title) => {
+    const res = await boards.createTask(board.value.id, { column_id: columnId, title })
+    if (groupMode.value === 'tag' && dcol.tag) await tasksApi.addTag(res.data.id, dcol.tag.id)
+  })
 }
 
-// ── realtime ──
-let reloadTimer = null
+// A task edit or tag-list change touches both tasks and workspace meta, so do
+// a full (debounced) board reload.
+function onChanged() {
+  suppress()
+  scheduleReload()
+}
+
 useRealtime((ev) => {
   if (ev.scope !== wsStore.currentId) return
   if (dragging || Date.now() < suppressReloadUntil) return
-  clearTimeout(reloadTimer)
-  reloadTimer = setTimeout(() => load(props.boardId), 400)
+  scheduleReload()
 })
 
 onMounted(() => load(props.boardId))
@@ -134,24 +234,89 @@ watch(
 <template>
   <n-spin :show="loading">
     <div v-if="board" class="board-wrap">
-      <div class="head">
+      <div class="toolbar">
         <n-text strong style="font-size: 18px">{{ board.name }}</n-text>
-        <n-button size="small" @click="newColumn">＋ Колонка</n-button>
+        <n-space align="center" :size="8">
+          <n-button-group size="small">
+            <n-button
+              :type="groupMode === 'status' ? 'primary' : 'default'"
+              @click="groupMode = 'status'"
+            >
+              Статусы
+            </n-button>
+            <n-button
+              :type="groupMode === 'tag' ? 'primary' : 'default'"
+              @click="groupMode = 'tag'"
+            >
+              Теги
+            </n-button>
+          </n-button-group>
+
+          <n-select
+            v-model:value="sortBy"
+            :options="sortOptions"
+            size="small"
+            style="width: 150px"
+          />
+
+          <n-popover trigger="click" placement="bottom-end">
+            <template #trigger>
+              <n-button size="small" :type="activeFilterCount ? 'primary' : 'default'" ghost>
+                Фильтры{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
+              </n-button>
+            </template>
+            <div class="filters">
+              <n-input
+                v-model:value="filters.q"
+                size="small"
+                placeholder="Поиск по названию"
+                clearable
+              />
+              <n-text depth="3" class="flbl">Приоритет</n-text>
+              <n-checkbox-group v-model:value="filters.priorities">
+                <n-space vertical :size="4">
+                  <n-checkbox
+                    v-for="o in priorityFilterOptions"
+                    :key="o.value"
+                    :value="o.value"
+                    :label="o.label"
+                  />
+                </n-space>
+              </n-checkbox-group>
+              <n-text depth="3" class="flbl">Исполнитель</n-text>
+              <n-checkbox-group v-model:value="filters.assignees">
+                <n-space vertical :size="4">
+                  <n-checkbox
+                    v-for="o in memberFilterOptions"
+                    :key="o.value"
+                    :value="o.value"
+                    :label="o.label"
+                  />
+                </n-space>
+              </n-checkbox-group>
+            </div>
+          </n-popover>
+
+          <n-button size="small" @click="showTagManager = true">Теги</n-button>
+          <n-button v-if="groupMode === 'status'" size="small" @click="newColumn"
+            >＋ Колонка</n-button
+          >
+        </n-space>
       </div>
 
       <div class="cols">
         <div
-          v-for="col in columns"
-          :key="col.id"
+          v-for="dcol in displayColumns"
+          :key="dcol.key"
           class="col"
-          :style="{ '--col-accent': col.color || 'var(--t-primary)' }"
+          :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }"
         >
           <div class="col-head">
-            <span class="col-title">{{ col.name }}</span>
-            <span class="count">{{ (lists[col.id] || []).length }}</span>
+            <span class="col-title">{{ dcol.name }}</span>
+            <span class="count">{{ (lists[dcol.key] || []).length }}</span>
           </div>
           <draggable
-            :list="lists[col.id]"
+            :list="lists[dcol.key]"
             group="tasks"
             item-key="id"
             class="drop"
@@ -159,7 +324,7 @@ watch(
             :animation="150"
             @start="dragging = true"
             @end="dragging = false"
-            @change="onChange($event, col)"
+            @change="onColChange($event, dcol)"
           >
             <template #item="{ element }">
               <div>
@@ -172,11 +337,17 @@ watch(
               </div>
             </template>
           </draggable>
-          <n-button text size="tiny" class="add-task" @click="newTask(col)">＋ задача</n-button>
+          <n-button text size="tiny" class="add-task" @click="newTask(dcol)">＋ задача</n-button>
         </div>
 
-        <div v-if="!columns.length" class="empty-board">
-          <n-text depth="3">Нет колонок — создайте первую кнопкой «＋ Колонка».</n-text>
+        <div v-if="!displayColumns.length" class="empty-board">
+          <n-text depth="3">
+            {{
+              groupMode === 'status'
+                ? 'Нет колонок — создайте первую.'
+                : 'Нет тегов — добавьте в «Теги».'
+            }}
+          </n-text>
         </div>
       </div>
     </div>
@@ -195,18 +366,36 @@ watch(
       :task-id="selectedTaskId"
       :tags="tagsList"
       :members="membersList"
-      @changed="onTaskChanged"
+      @changed="onChanged"
+    />
+
+    <TagManager
+      v-model:show="showTagManager"
+      :ws-id="wsStore.currentId"
+      :tags="tagsList"
+      @changed="onChanged"
     />
   </n-spin>
 </template>
 
 <style scoped>
-.head {
+.toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.filters {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.flbl {
+  font-size: 12px;
+  margin-top: 6px;
 }
 .cols {
   display: flex;
@@ -223,7 +412,7 @@ watch(
   border-top: 3px solid var(--col-accent);
   padding: 10px;
   align-self: flex-start;
-  max-height: calc(100vh - 150px);
+  max-height: calc(100vh - 180px);
   display: flex;
   flex-direction: column;
 }
