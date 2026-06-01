@@ -3,6 +3,7 @@ import { ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { NSpin, NCard, NText, NEmpty, NButton, NInput, NModal, useMessage } from 'naive-ui'
 import { boards } from '@/api'
+import { PRIORITY_COLORS } from '@/styles/tokens'
 
 const route = useRoute()
 const message = useMessage()
@@ -69,9 +70,20 @@ watch(
       </div>
 
       <div class="cols">
-        <n-card v-for="col in columns" :key="col.id" :title="col.name" size="small" class="col">
+        <n-card
+          v-for="col in columns"
+          :key="col.id"
+          :title="col.name"
+          size="small"
+          class="col"
+          :style="{ borderTop: '3px solid ' + (col.color || 'var(--t-primary)') }"
+        >
           <div v-for="task in tasksByCol[col.id] || []" :key="task.id" class="task">
-            {{ task.title }}
+            <span
+              class="pr-dot"
+              :style="{ background: PRIORITY_COLORS[task.priority] || PRIORITY_COLORS[0] }"
+            />
+            <span class="t-title">{{ task.title }}</span>
           </div>
           <n-empty v-if="!(tasksByCol[col.id] || []).length" description="Пусто" size="small" />
           <template #action>
@@ -116,10 +128,25 @@ watch(
   flex: none;
 }
 .task {
-  padding: 8px;
-  border: 1px solid rgba(128, 128, 128, 0.25);
-  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--t-surface);
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
   margin-bottom: 8px;
   font-size: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.pr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.t-title {
+  flex: 1;
+  min-width: 0;
 }
 </style>

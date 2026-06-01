@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.2.0] — 2026-06-02
+- Theme system ported from budget-go: 7 accent color schemes + light/dark,
+  WCAG-luminance text-on-primary, full Naive UI `themeOverrides`, CSS custom
+  properties (`--t-*`) so plain components follow the theme.
+- Appearance popover in the topbar (color swatches + dark switch).
+- Adaptive layout: desktop fixed sider; ≤768px collapses to a drawer opened by
+  a hamburger (`useResponsive` matchMedia composable).
+- a reference tracker-style polish: sidebar brand ("mt" monogram), active-board highlight,
+  column accent stripe (column color), priority dots on task cards.
+
 ### [0.1.0] — 2026-06-02
 - Vue 3 + Vite 8 + Naive UI + Pinia + Vue Router skeleton (Yarn 4).
 - Auth flow: login/register views, JWT stored in localStorage, axios refresh-on-401

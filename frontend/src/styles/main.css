@@ -1,3 +1,17 @@
+:root {
+  /* Light defaults; the theme store overrides these on init and on change. */
+  --t-bg: #f6f7f9;
+  --t-surface: #ffffff;
+  --t-surface-alt: #f3f4f6;
+  --t-hover: #eef0f3;
+  --t-border: #e6e8ec;
+  --t-text1: #1f2329;
+  --t-text2: #4a5059;
+  --t-text3: #868d96;
+  --t-primary: #7c5cff;
+  --t-on-primary: #ffffff;
+}
+
 html,
 body,
 #app {
@@ -12,4 +26,6 @@ body {
     'Segoe UI',
     Roboto,
     sans-serif;
+  background: var(--t-bg);
+  color: var(--t-text1);
 }

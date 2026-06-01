@@ -1,13 +1,18 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { NSelect, NButton, NInput, NModal, NCard, NScrollbar, NText, useMessage } from 'naive-ui'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { workspaces as wsApi, projects as projApi } from '@/api'
 
 const store = useWorkspacesStore()
 const router = useRouter()
+const route = useRoute()
 const message = useMessage()
+
+function isActiveBoard(b) {
+  return route.params.id === b.id
+}
 
 const wsOptions = computed(() => store.list.map((w) => ({ label: w.name, value: w.id })))
 const expanded = ref(new Set())
@@ -84,6 +89,10 @@ function newBoard(project) {
 
 <template>
   <div class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">mt</span>
+      <span class="brand-name">Tessera</span>
+    </div>
     <div class="ws-switch">
       <n-select
         :value="store.currentId"
@@ -113,6 +122,7 @@ function newBoard(project) {
               v-for="b in store.boardsByProject[p.id] || []"
               :key="b.id"
               class="board-row"
+              :class="{ active: isActiveBoard(b) }"
               @click="openBoard(b)"
             >
               {{ b.name }}
@@ -137,6 +147,7 @@ function newBoard(project) {
               v-for="b in store.boardsByProject[p.id] || []"
               :key="b.id"
               class="board-row"
+              :class="{ active: isActiveBoard(b) }"
               @click="openBoard(b)"
             >
               {{ b.name }}
@@ -173,6 +184,30 @@ function newBoard(project) {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 4px;
+}
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--t-primary);
+  color: var(--t-on-primary);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -0.5px;
+}
+.brand-name {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--t-text1);
 }
 .ws-switch {
   display: flex;
@@ -219,6 +254,12 @@ function newBoard(project) {
 .board-row {
   font-size: 13px;
   opacity: 0.9;
+}
+.board-row.active {
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
+  color: var(--t-primary);
+  font-weight: 600;
+  opacity: 1;
 }
 .add-board {
   margin: 2px 0 6px 8px;

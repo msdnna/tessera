@@ -23,7 +23,12 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
 </script>
 
 <template>
-  <n-config-provider :theme="theme.naiveTheme" :locale="ruRU" :date-locale="dateRuRU">
+  <n-config-provider
+    :theme="theme.naiveTheme"
+    :theme-overrides="theme.themeOverrides"
+    :locale="ruRU"
+    :date-locale="dateRuRU"
+  >
     <n-global-style />
     <n-message-provider>
       <n-dialog-provider>
