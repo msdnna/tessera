@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.2.1] — 2026-06-02
+- Fix: board columns stretched full-width (one column filled the row). Columns
+  are now fixed 280px flex items so they sit side-by-side with horizontal scroll.
+
 ### [0.2.0] — 2026-06-02
 - Theme system ported from budget-go: 7 accent color schemes + light/dark,
   WCAG-luminance text-on-primary, full Naive UI `themeOverrides`, CSS custom

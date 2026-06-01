@@ -124,8 +124,9 @@ watch(
   overflow-x: auto;
 }
 .col {
-  min-width: 240px;
-  flex: none;
+  width: 280px;
+  flex: 0 0 280px;
+  align-self: flex-start;
 }
 .task {
   display: flex;
