@@ -1,0 +1,24 @@
+# Env / secrets
+.env
+backend/.env
+
+# Go build artifacts
+backend/tessera
+backend/migrate
+backend/*.out
+backend/cover.html
+
+# Node / frontend (Phase 2)
+node_modules/
+frontend/dist/
+
+# Android (Phase 8)
+android/build/
+android/local.properties
+android/local.env
+*.apk
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp

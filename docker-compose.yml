@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tessera-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tessera}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tessera}
+      POSTGRES_DB: ${POSTGRES_DB:-tessera}
+      TZ: ${TZ:-Europe/Moscow}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tessera-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tessera} -d ${POSTGRES_DB:-tessera}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
+        - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+    container_name: tessera-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tessera}:${POSTGRES_PASSWORD:-tessera}@postgres:5432/${POSTGRES_DB:-tessera}?sslmode=disable
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET}
+      - APP_ENV=${APP_ENV:-development}
+      - TZ=${TZ:-Europe/Moscow}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tessera-network
+
+  # frontend service is added in Phase 2.
+
+volumes:
+  postgres_data:
+
+networks:
+  tessera-network:
+    driver: bridge

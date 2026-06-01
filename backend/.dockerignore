@@ -1,0 +1,4 @@
+*_test.go
+*.out
+cover.html
+README.md
