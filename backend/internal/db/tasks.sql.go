@@ -97,6 +97,76 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 	return i, err
 }
 
+const listBoardTasksWithMeta = `-- name: ListBoardTasksWithMeta :many
+SELECT
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at,
+    COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+FROM tasks t
+LEFT JOIN task_tags tt ON tt.task_id = t.id
+LEFT JOIN task_assignees ta ON ta.task_id = t.id
+WHERE t.board_id = $1 AND t.parent_id IS NULL
+GROUP BY t.id
+ORDER BY t.position
+`
+
+type ListBoardTasksWithMetaRow struct {
+	ID          uuid.UUID   `json:"id"`
+	BoardID     uuid.UUID   `json:"board_id"`
+	ColumnID    uuid.UUID   `json:"column_id"`
+	ParentID    *uuid.UUID  `json:"parent_id"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	Priority    int32       `json:"priority"`
+	DueDate     *time.Time  `json:"due_date"`
+	Position    float64     `json:"position"`
+	CreatedBy   *uuid.UUID  `json:"created_by"`
+	CompletedAt *time.Time  `json:"completed_at"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	TagIds      []uuid.UUID `json:"tag_ids"`
+	AssigneeIds []uuid.UUID `json:"assignee_ids"`
+}
+
+// ListBoardTasksWithMeta returns top-level board tasks with their tag and
+// assignee ids aggregated, so the kanban can render chips and group by tag
+// without an extra round-trip per card.
+func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID) ([]ListBoardTasksWithMetaRow, error) {
+	rows, err := q.db.Query(ctx, listBoardTasksWithMeta, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBoardTasksWithMetaRow
+	for rows.Next() {
+		var i ListBoardTasksWithMetaRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.ColumnID,
+			&i.ParentID,
+			&i.Title,
+			&i.Description,
+			&i.Priority,
+			&i.DueDate,
+			&i.Position,
+			&i.CreatedBy,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TagIds,
+			&i.AssigneeIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSubtasks = `-- name: ListSubtasks :many
 SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at FROM tasks WHERE parent_id = $1 ORDER BY position
 `

@@ -99,7 +99,7 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	tasks, err := h.q.ListTasksByBoard(c, boardID)
+	tasks, err := h.q.ListBoardTasksWithMeta(c, boardID)
 	if err != nil {
 		fail(c)
 		return

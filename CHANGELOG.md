@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.3.0] — 2026-06-02
+- Kanban board (Phase 4a): drag & drop tasks within/across columns via
+  vuedraggable; server recomputes position from before/after neighbours.
+- Task cards show priority dot, tag chips, due date, assignee initials.
+- Live updates: WebSocket subscription reloads the board on workspace-scoped
+  events (debounced, suppressed during local drags/actions).
+- Column accent stripe + task counts; inline create column/task.
+
 ### [0.2.1] — 2026-06-02
 - Fix: board columns stretched full-width (one column filled the row). Columns
   are now fixed 280px flex items so they sit side-by-side with horizontal scroll.
@@ -30,6 +38,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.4.0] — 2026-06-02
+- `GET /boards/:id/tasks` now returns each task with aggregated `tag_ids` and
+  `assignee_ids` (ListBoardTasksWithMeta) so the kanban renders chips and groups
+  by tag without per-card round-trips.
 
 ### [0.3.0] — 2026-06-02
 - CRUD for the full hierarchy: workspaces (+ membership/invite by email),
