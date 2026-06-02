@@ -231,6 +231,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.8.0] — 2026-06-02
+- Subtasks on the board: `GET /boards/:id/subtasks` returns subtasks with meta
+  (tag/assignee ids) for nesting under parent cards.
+- `PATCH /tasks/:id/parent` attaches a task to a parent (inheriting its
+  board/column) or detaches it (parent_id null → back as a top-level card);
+  cycle guards.
+- `DELETE /tasks/:id?subtasks=detach` re-parents children to null before
+  deleting (default still cascades).
+
 ### [0.7.0] — 2026-06-02
 - New boards are seeded with default status columns: К работе (grey), В процессе
   (blue), На рассмотрении (purple), Готово (green).

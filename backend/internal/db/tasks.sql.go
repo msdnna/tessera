@@ -72,6 +72,15 @@ func (q *Queries) DeleteTask(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const detachChildren = `-- name: DetachChildren :exec
+UPDATE tasks SET parent_id = NULL, updated_at = now() WHERE parent_id = $1
+`
+
+func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, detachChildren, parentID)
+	return err
+}
+
 const getTask = `-- name: GetTask :one
 SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at FROM tasks WHERE id = $1
 `
@@ -95,6 +104,75 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listBoardSubtasksWithMeta = `-- name: ListBoardSubtasksWithMeta :many
+SELECT
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at,
+    COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+FROM tasks t
+LEFT JOIN task_tags tt ON tt.task_id = t.id
+LEFT JOIN task_assignees ta ON ta.task_id = t.id
+WHERE t.board_id = $1 AND t.parent_id IS NOT NULL
+GROUP BY t.id
+ORDER BY t.position
+`
+
+type ListBoardSubtasksWithMetaRow struct {
+	ID          uuid.UUID   `json:"id"`
+	BoardID     uuid.UUID   `json:"board_id"`
+	ColumnID    uuid.UUID   `json:"column_id"`
+	ParentID    *uuid.UUID  `json:"parent_id"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	Priority    int32       `json:"priority"`
+	DueDate     *time.Time  `json:"due_date"`
+	Position    float64     `json:"position"`
+	CreatedBy   *uuid.UUID  `json:"created_by"`
+	CompletedAt *time.Time  `json:"completed_at"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	TagIds      []uuid.UUID `json:"tag_ids"`
+	AssigneeIds []uuid.UUID `json:"assignee_ids"`
+}
+
+// ListBoardSubtasksWithMeta returns every subtask on a board (parent_id set)
+// with tag/assignee ids, so the kanban can render them under their parents.
+func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UUID) ([]ListBoardSubtasksWithMetaRow, error) {
+	rows, err := q.db.Query(ctx, listBoardSubtasksWithMeta, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBoardSubtasksWithMetaRow
+	for rows.Next() {
+		var i ListBoardSubtasksWithMetaRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.ColumnID,
+			&i.ParentID,
+			&i.Title,
+			&i.Description,
+			&i.Priority,
+			&i.DueDate,
+			&i.Position,
+			&i.CreatedBy,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TagIds,
+			&i.AssigneeIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBoardTasksWithMeta = `-- name: ListBoardTasksWithMeta :many
@@ -270,6 +348,46 @@ type MoveTaskParams struct {
 
 func (q *Queries) MoveTask(ctx context.Context, arg MoveTaskParams) (Task, error) {
 	row := q.db.QueryRow(ctx, moveTask, arg.ID, arg.ColumnID, arg.Position)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.ColumnID,
+		&i.ParentID,
+		&i.Title,
+		&i.Description,
+		&i.Priority,
+		&i.DueDate,
+		&i.Position,
+		&i.CreatedBy,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setTaskParent = `-- name: SetTaskParent :one
+UPDATE tasks
+SET parent_id = $2, board_id = $3, column_id = $4, updated_at = now()
+WHERE id = $1
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at
+`
+
+type SetTaskParentParams struct {
+	ID       uuid.UUID  `json:"id"`
+	ParentID *uuid.UUID `json:"parent_id"`
+	BoardID  uuid.UUID  `json:"board_id"`
+	ColumnID uuid.UUID  `json:"column_id"`
+}
+
+func (q *Queries) SetTaskParent(ctx context.Context, arg SetTaskParentParams) (Task, error) {
+	row := q.db.QueryRow(ctx, setTaskParent,
+		arg.ID,
+		arg.ParentID,
+		arg.BoardID,
+		arg.ColumnID,
+	)
 	var i Task
 	err := row.Scan(
 		&i.ID,

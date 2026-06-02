@@ -29,6 +29,29 @@ ORDER BY t.position;
 -- name: ListSubtasks :many
 SELECT * FROM tasks WHERE parent_id = $1 ORDER BY position;
 
+-- ListBoardSubtasksWithMeta returns every subtask on a board (parent_id set)
+-- with tag/assignee ids, so the kanban can render them under their parents.
+-- name: ListBoardSubtasksWithMeta :many
+SELECT
+    t.*,
+    COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+FROM tasks t
+LEFT JOIN task_tags tt ON tt.task_id = t.id
+LEFT JOIN task_assignees ta ON ta.task_id = t.id
+WHERE t.board_id = $1 AND t.parent_id IS NOT NULL
+GROUP BY t.id
+ORDER BY t.position;
+
+-- name: SetTaskParent :one
+UPDATE tasks
+SET parent_id = $2, board_id = $3, column_id = $4, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: DetachChildren :exec
+UPDATE tasks SET parent_id = NULL, updated_at = now() WHERE parent_id = $1;
+
 -- name: MaxTaskPositionInColumn :one
 SELECT coalesce(max(position), 0)::double precision
 FROM tasks WHERE column_id = $1 AND parent_id IS NULL;

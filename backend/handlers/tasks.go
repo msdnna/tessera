@@ -107,6 +107,80 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 	c.JSON(http.StatusOK, tasks)
 }
 
+// ListBoardSubtasks returns every subtask on a board (with meta) so the kanban
+// can render them under their parent cards.
+func (h *API) ListBoardSubtasks(c *gin.Context) {
+	boardID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForBoard(c, boardID)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	subs, err := h.q.ListBoardSubtasksWithMeta(c, boardID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, subs)
+}
+
+// SetTaskParent attaches a task to a parent (becoming its subtask, inheriting
+// the parent's board/column) or detaches it (parent_id null → back on the board
+// as a top-level task).
+func (h *API) SetTaskParent(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	t, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	var req struct {
+		ParentID *uuid.UUID `json:"parent_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	boardID, columnID := t.BoardID, t.ColumnID
+	if req.ParentID != nil {
+		if *req.ParentID == t.ID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "a task cannot be its own parent"})
+			return
+		}
+		parent, err := h.q.GetTask(c, *req.ParentID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid parent"})
+			return
+		}
+		// The parent must not itself be a child of this task (1-level cycle).
+		if parent.ParentID != nil && *parent.ParentID == t.ID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cyclic parent"})
+			return
+		}
+		boardID, columnID = parent.BoardID, parent.ColumnID
+	}
+	updated, err := h.q.SetTaskParent(c, db.SetTaskParentParams{
+		ID: id, ParentID: req.ParentID, BoardID: boardID, ColumnID: columnID,
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.moved", updated)
+	c.JSON(http.StatusOK, updated)
+}
+
 // GetTask returns a task with its tags, assignees and subtasks.
 func (h *API) GetTask(c *gin.Context) {
 	id, ok := parseID(c, "id")
@@ -243,6 +317,13 @@ func (h *API) DeleteTask(c *gin.Context) {
 	_, wsID, ok := h.loadTask(c, id)
 	if !ok {
 		return
+	}
+	// ?subtasks=detach keeps subtasks (re-parented to null); default cascades.
+	if c.Query("subtasks") == "detach" {
+		if err := h.q.DetachChildren(c, &id); err != nil {
+			fail(c)
+			return
+		}
 	}
 	if err := h.q.DeleteTask(c, id); err != nil {
 		fail(c)
