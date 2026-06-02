@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.5] — 2026-06-02
+- Tags on cards now render as pill-shaped elements (border = tag color) like the
+  other card pills, stacked with a right shadow + "+N" (point 1).
+- Modal plain inputs: transparent background on inner textarea/input elements
+  too, matching the modal background (point 2).
+- Project icon grid re-centered (point 3).
+
 ### [0.13.4] — 2026-06-02
 - Tag stack shadow now offsets only to the right (point 1).
 - Plain modal inputs: force transparent background and hide border elements

@@ -370,7 +370,7 @@ async function addBoard() {
 .icons {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 6px;
 }
 .ic {

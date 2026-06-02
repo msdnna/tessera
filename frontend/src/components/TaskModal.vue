@@ -484,7 +484,10 @@ async function toggleSubtask(sub) {
 }
 /* Plain inputs: look exactly like text. Naive sets bg/border via inline CSS
    vars (which beat stylesheet vars), so override the actual properties. */
-.plain :deep(.n-input) {
+.plain :deep(.n-input),
+.plain :deep(.n-input .n-input-wrapper),
+.plain :deep(.n-input .n-input__textarea-el),
+.plain :deep(.n-input .n-input__input-el) {
   background-color: transparent !important;
 }
 .plain :deep(.n-input__border),

@@ -152,9 +152,9 @@ async function toggleAssignee(uid) {
               </button>
               <button v-else class="tag-stack" @click.stop>
                 <span
-                  class="chip stack-top"
+                  class="pill tag-one"
                   :style="{
-                    background: (taskTags[0].color || '#888') + '22',
+                    borderColor: taskTags[0].color || '#888',
                     color: taskTags[0].color || '#888',
                     boxShadow: stackShadow,
                   }"
@@ -317,8 +317,10 @@ async function toggleAssignee(uid) {
   padding: 0 2px 0 0;
   cursor: pointer;
 }
-.stack-top {
-  max-width: 110px;
+.tag-one {
+  border-style: solid;
+  font-size: 11px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
