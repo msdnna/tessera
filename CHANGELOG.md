@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.12.2] — 2026-06-02
+- Card pills polish (point 3): due-date pill opens the calendar directly; tags
+  render as independent chips with a chip-toggle multi-select picker (no
+  checkboxes); priority now tints the card's left border; assignee picker shows
+  avatar + name with a checkmark; the completed circle is larger.
+
 ### [0.12.1] — 2026-06-02
 - Sidebar review fixes: subtree indentation via nested containers so the drag
   placeholder shows whether an item lands inside a group; empty groups are
