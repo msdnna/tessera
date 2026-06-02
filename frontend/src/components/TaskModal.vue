@@ -739,14 +739,14 @@ async function toggleSubtask(sub) {
   align-items: center;
   justify-content: center;
   margin-left: -9px;
-  border: 2px solid var(--t-surface);
+  box-shadow: 0 0 0 2px var(--t-surface-alt);
 }
 .avatar:first-child {
   margin-left: 0;
 }
 .avatar.sm {
   margin-left: 0;
-  border: none;
+  box-shadow: none;
 }
 .section {
   display: flex;
