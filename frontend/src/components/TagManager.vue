@@ -110,6 +110,7 @@ async function add() {
             class="sw"
             :class="{ active: s === t.color }"
             :style="{ background: s }"
+            @mousedown.prevent
             @click="setColor(t, s)"
           />
         </div>

@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.10] — 2026-06-02
+- Fix: changing a tag's color in the TagManager did nothing — clicking a swatch
+  blurred the name input, which closed the editor (removing the swatch) before
+  the click registered. Swatches now use @mousedown.prevent to keep focus.
+
 ### [0.13.9] — 2026-06-02
 - Modal plain inputs use a transparent background (not the surface token, which
   was lighter than the modal) so they blend into the modal in any theme.
