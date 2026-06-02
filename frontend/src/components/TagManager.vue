@@ -144,6 +144,7 @@ async function add() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
 }
 .chip {
   font-size: 12px;
@@ -151,16 +152,12 @@ async function add() {
   border-radius: 10px;
   cursor: pointer;
 }
-.editor {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 0 8px;
-}
 .swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding-left: 2px;
 }
 .sw {
   width: 20px;

@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.3] — 2026-06-02
+- Card tag stack reworked: the first tag is a normal colored pill, with offset
+  colored shadows behind it (stacked-cards look) + "+N" when there are more; a
+  single tag is just a plain colored pill (point 1).
+- Modal plain inputs now fully borderless/transparent (point 2).
+- Project settings popover centered, action buttons stretch to fit (point 3).
+- Board action menu is a popover with ghost icon buttons like elsewhere (4).
+- Spacing added to the tag editor (color picker / delete) (point 5).
+
 ### [0.13.2] — 2026-06-02
 - Modal: title/description/subtask inputs styled as plain editable text;
   location breadcrumb (group chain → project → board) added to the property

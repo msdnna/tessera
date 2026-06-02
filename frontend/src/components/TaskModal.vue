@@ -482,17 +482,18 @@ async function toggleSubtask(sub) {
 .sep {
   opacity: 0.5;
 }
-/* Plain inputs: look like editable text (no border/bg) until hover/focus. */
+/* Plain inputs: indistinguishable from text until hover/focus. */
 .plain :deep(.n-input) {
-  background: transparent;
+  --n-color: transparent;
+  --n-color-focus: transparent;
   --n-border: 1px solid transparent;
   --n-border-hover: 1px solid var(--t-border);
+  --n-border-focus: 1px solid var(--t-primary);
+  --n-box-shadow-focus: none;
 }
-.plain :deep(.n-input .n-input__border) {
+.plain :deep(.n-input__border),
+.plain :deep(.n-input__state-border) {
   border: none;
-}
-.plain:hover :deep(.n-input) {
-  background: var(--t-hover);
 }
 .props {
   display: flex;

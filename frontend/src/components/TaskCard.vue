@@ -39,6 +39,14 @@ const due = computed(() =>
 const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
 const done = computed(() => !!props.task.completed_at)
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+// Stacked-cards effect: offset colored shadows behind the top tag pill.
+const stackShadow = computed(() => {
+  if (taskTags.value.length < 2) return ''
+  return taskTags.value
+    .slice(1, 3)
+    .map((t, i) => `${(i + 1) * 3}px ${(i + 1) * 3}px 0 -1px ${t.color || '#888'}`)
+    .join(', ')
+})
 const cardStyle = computed(() =>
   props.task.priority
     ? { borderLeftColor: PRIORITY_COLORS[props.task.priority], borderLeftWidth: '3px' }
@@ -139,18 +147,20 @@ async function toggleAssignee(uid) {
         <template #trigger>
           <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
             <template #trigger>
-              <button class="pill tag-pill" :class="{ set: taskTags.length }" @click.stop>
-                <n-icon v-if="!taskTags.length" :component="PricetagOutline" :size="13" />
-                <template v-else>
-                  <span
-                    v-for="(t, i) in taskTags.slice(0, 3)"
-                    :key="t.id"
-                    class="stack-chip"
-                    :style="{ background: t.color || '#888', zIndex: 3 - i }"
-                  />
-                  <span class="stack-label">{{ taskTags[0].name }}</span>
-                  <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
-                </template>
+              <button v-if="!taskTags.length" class="pill" @click.stop>
+                <n-icon :component="PricetagOutline" :size="13" />
+              </button>
+              <button v-else class="tag-stack" @click.stop>
+                <span
+                  class="chip stack-top"
+                  :style="{
+                    background: (taskTags[0].color || '#888') + '22',
+                    color: taskTags[0].color || '#888',
+                    boxShadow: stackShadow,
+                  }"
+                  >{{ taskTags[0].name }}</span
+                >
+                <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
               </button>
             </template>
             <div class="preview">
@@ -298,22 +308,17 @@ async function toggleAssignee(uid) {
   padding: 1px 8px;
   border-radius: 10px;
 }
-.tag-pill {
-  gap: 5px;
+.tag-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0 2px 0 0;
+  cursor: pointer;
 }
-.stack-chip {
-  width: 12px;
-  height: 12px;
-  border-radius: 4px;
-  margin-left: -6px;
-  border: 1px solid var(--t-surface);
-}
-.stack-chip:first-child {
-  margin-left: 0;
-}
-.stack-label {
-  font-size: 11px;
-  max-width: 80px;
+.stack-top {
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

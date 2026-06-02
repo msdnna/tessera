@@ -1,17 +1,7 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import {
-  NIcon,
-  NButton,
-  NInput,
-  NPopover,
-  NPopconfirm,
-  NText,
-  NDropdown,
-  useMessage,
-  useDialog,
-} from 'naive-ui'
+import { NIcon, NButton, NInput, NPopover, NPopconfirm, NText, useMessage } from 'naive-ui'
 import {
   GridOutline,
   EllipsisHorizontalOutline,
@@ -33,7 +23,6 @@ const store = useWorkspacesStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
-const dialog = useDialog()
 
 const expanded = ref(false)
 const addingBoard = ref(false)
@@ -48,10 +37,6 @@ const settingsShow = ref(false)
 const editingBoardId = ref(null)
 const boardNameEdit = ref('')
 const boardEditInput = ref(null)
-const boardMenu = [
-  { label: 'Переименовать', key: 'rename' },
-  { label: 'Удалить', key: 'delete' },
-]
 function startBoardRename(b) {
   editingBoardId.value = b.id
   boardNameEdit.value = b.name
@@ -68,19 +53,12 @@ async function commitBoardRename(b) {
     message.error(e.message)
   }
 }
-function onBoardMenu(key, b) {
-  if (key === 'rename') startBoardRename(b)
-  else if (key === 'delete') {
-    dialog.warning({
-      title: 'Удалить доску',
-      content: `Удалить доску «${b.name}» со всеми задачами?`,
-      positiveText: 'Удалить',
-      negativeText: 'Отмена',
-      onPositiveClick: async () => {
-        await boardsApi.remove(b.id)
-        await store.loadBoards(props.project.id)
-      },
-    })
+async function removeBoard(b) {
+  try {
+    await boardsApi.remove(b.id)
+    await store.loadBoards(props.project.id)
+  } catch (e) {
+    message.error(e.message)
   }
 }
 
@@ -266,11 +244,28 @@ async function addBoard() {
           @blur="commitBoardRename(b)"
         />
         <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
-        <n-dropdown trigger="click" :options="boardMenu" @select="(k) => onBoardMenu(k, b)">
-          <n-button class="hover-btn" text size="tiny" @click.stop>
-            <n-icon :component="EllipsisHorizontalOutline" />
-          </n-button>
-        </n-dropdown>
+        <n-popover trigger="click" placement="right-start">
+          <template #trigger>
+            <n-button class="hover-btn" text size="tiny" @click.stop>
+              <n-icon :component="EllipsisHorizontalOutline" />
+            </n-button>
+          </template>
+          <div class="action-col" @click.stop>
+            <n-button size="small" block @click="startBoardRename(b)">
+              <template #icon><n-icon :component="CreateOutline" /></template>
+              Переименовать
+            </n-button>
+            <n-popconfirm @positive-click="removeBoard(b)">
+              <template #trigger>
+                <n-button type="error" ghost size="small" block>
+                  <template #icon><n-icon :component="TrashOutline" /></template>
+                  Удалить доску
+                </n-button>
+              </template>
+              Удалить доску «{{ b.name }}» со всеми задачами?
+            </n-popconfirm>
+          </div>
+        </n-popover>
       </div>
       <div v-if="addingBoard" class="row">
         <n-input
@@ -354,7 +349,7 @@ async function addBoard() {
   padding: 2px 8px;
 }
 .settings {
-  width: 250px;
+  width: 264px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -362,12 +357,21 @@ async function addBoard() {
 .action-row {
   display: flex;
   gap: 8px;
-  justify-content: space-between;
+}
+.action-row :deep(.n-button) {
+  flex: 1;
+}
+.action-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 190px;
 }
 .icons {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  justify-content: center;
+  gap: 6px;
 }
 .ic {
   width: 28px;
@@ -393,6 +397,7 @@ async function addBoard() {
 .swatches {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 6px;
 }
 .sw {
