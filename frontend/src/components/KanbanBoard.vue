@@ -58,7 +58,6 @@ const activeFilterCount = computed(
 // modals
 const selectedTaskId = ref(null)
 const showTaskModal = ref(false)
-const showTagManager = ref(false)
 function openTask(id) {
   selectedTaskId.value = id
   showTaskModal.value = true
@@ -342,7 +341,12 @@ watch(
             </div>
           </n-popover>
 
-          <n-button size="small" @click="showTagManager = true">Теги</n-button>
+          <n-popover trigger="click" placement="bottom-end">
+            <template #trigger>
+              <n-button size="small">Теги</n-button>
+            </template>
+            <TagManager :ws-id="wsStore.currentId" :tags="tagsList" @changed="onChanged" />
+          </n-popover>
         </n-space>
       </div>
 
@@ -441,13 +445,6 @@ watch(
       :ws-id="wsStore.currentId"
       :tags="tagsList"
       :members="membersList"
-      @changed="onChanged"
-    />
-
-    <TagManager
-      v-model:show="showTagManager"
-      :ws-id="wsStore.currentId"
-      :tags="tagsList"
       @changed="onChanged"
     />
   </n-spin>

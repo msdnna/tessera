@@ -215,3 +215,26 @@ func (q *Queries) RemoveTaskTag(ctx context.Context, arg RemoveTaskTagParams) er
 	_, err := q.db.Exec(ctx, removeTaskTag, arg.TaskID, arg.TagID)
 	return err
 }
+
+const updateTag = `-- name: UpdateTag :one
+UPDATE tags SET name = $2, color = $3 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at
+`
+
+type UpdateTagParams struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Color string    `json:"color"`
+}
+
+func (q *Queries) UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, error) {
+	row := q.db.QueryRow(ctx, updateTag, arg.ID, arg.Name, arg.Color)
+	var i Tag
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Color,
+		&i.CreatedAt,
+	)
+	return i, err
+}

@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.11.2] — 2026-06-02
+- Tag management (point 8): backend UpdateTag (PATCH /tags/:id); TagManager is
+  now a popover (from the board "Теги" button) where clicking a tag edits its
+  name (inline) and color (immediate) or deletes it.
+
 ### [0.11.1] — 2026-06-02
 - Sidebar refinements: project icons from an ionicons5 picker (no emoji, point 5);
   inline rename now focuses and saves-on-blur-if-changed / cancels-if-unchanged
@@ -124,6 +129,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.6.1] — 2026-06-02
+- UpdateTag (PATCH /tags/:id) — edit tag name/color (membership-authorized).
 
 ### [0.6.0] — 2026-06-02
 - Nested project groups: `project_groups.parent_id` (self-ref, cascade) — groups

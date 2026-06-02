@@ -114,6 +114,7 @@ func main() {
 			protected.POST("/tasks/:id/assignees", rh.AddTaskAssignee)
 			protected.DELETE("/tasks/:id/assignees/:userId", rh.RemoveTaskAssignee)
 
+			protected.PATCH("/tags/:id", rh.UpdateTag)
 			protected.DELETE("/tags/:id", rh.DeleteTag)
 
 			protected.GET("/notes/:id", rh.GetNote)

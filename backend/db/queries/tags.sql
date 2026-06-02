@@ -9,6 +9,9 @@ SELECT * FROM tags WHERE workspace_id = $1 ORDER BY name;
 -- name: GetTag :one
 SELECT * FROM tags WHERE id = $1;
 
+-- name: UpdateTag :one
+UPDATE tags SET name = $2, color = $3 WHERE id = $1 RETURNING *;
+
 -- name: DeleteTag :exec
 DELETE FROM tags WHERE id = $1;
 
