@@ -5,11 +5,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-tessera}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tessera}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-tessera}
       TZ: ${TZ:-Europe/Moscow}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -19,11 +17,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # No host port — only reachable inside the compose network.
 
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.prod
       args:
         - HTTP_PROXY=${HTTP_PROXY:-}
         - HTTPS_PROXY=${HTTPS_PROXY:-}
@@ -31,13 +30,13 @@ services:
     container_name: tessera-backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER:-tessera}:${POSTGRES_PASSWORD:-tessera}@postgres:5432/${POSTGRES_DB:-tessera}?sslmode=disable
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tessera}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tessera}?sslmode=disable
       - PORT=8080
-      - JWT_SECRET=${JWT_SECRET}
-      - APP_ENV=${APP_ENV:-development}
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET}
+      - APP_ENV=production
       - TZ=${TZ:-Europe/Moscow}
-    ports:
-      - "8090:8080" # host 8080 is taken by the budget app on this box
+    expose:
+      - "8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,7 +54,7 @@ services:
     container_name: tessera-frontend
     restart: unless-stopped
     ports:
-      - "8083:80"
+      - "${WEB_PORT:-8082}:80"
     depends_on:
       - backend
     networks:

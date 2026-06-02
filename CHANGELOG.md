@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.8.2] — 2026-06-02
+- Deployment (Phase 9): multi-stage Dockerfile (node build → nginx) serving the
+  SPA and proxying /api + WebSocket to the backend; .dockerignore. Added to dev
+  and prod compose.
+
 ### [0.8.1] — 2026-06-02
 - Tests (Phase 7): Vitest + activity-store spec (event labels, assigned-to-you,
   noise filtering, cap/markRead). GitHub Actions CI (backend build/vet/test,
@@ -80,6 +85,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.5.2] — 2026-06-02
+- Deployment (Phase 9): distroless `Dockerfile.prod` (static binary + embedded
+  /migrate), `docker-compose.prod.yml` (no exposed Postgres, APP_ENV=production,
+  required secrets). Dev compose backend remapped to host :8090.
 
 ### [0.5.1] — 2026-06-02
 - Tests (Phase 7): internal/auth (token round-trip, wrong-secret, refresh

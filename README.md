@@ -23,24 +23,41 @@
 
 ```bash
 cp .env.example .env          # при необходимости поправь креды/проксю
-make dev                      # поднимает Postgres в Docker + backend на :8080
+make dev                      # поднимает Postgres в Docker + backend на :8090 (host)
 make migrate                  # применить миграции
+cd frontend && corepack yarn dev   # фронт на :5174, проксирует /api → :8090
 ```
 
 Проверка:
 
 ```bash
-curl localhost:8080/api/health    # {"ok":true,"app":"tessera"}
-curl localhost:8080/api/version   # {"api":"0.1.0"}
+curl localhost:8090/api/health    # {"ok":true,"app":"tessera"}
+curl localhost:8090/api/version
 ```
 
-Всё в Docker:
+Всё в Docker (dev):
 
 ```bash
-make up        # postgres + backend
+make up        # postgres + backend (:8090) + frontend (:8083)
+make migrate   # миграции (с хоста на localhost:5432)
 make logs
 make down
 ```
+
+Открыть приложение: <http://localhost:8083>.
+
+## Production
+
+```bash
+# Обязательно задать в .env: POSTGRES_PASSWORD, JWT_SECRET (openssl rand -hex 32)
+docker compose -f docker-compose.prod.yml up -d --build
+# применить миграции внутри прод-образа (distroless backend несёт бинарь /migrate):
+docker compose -f docker-compose.prod.yml exec backend /migrate
+```
+
+Фронт (nginx) слушает `${WEB_PORT:-8082}` и проксирует `/api` (+ WebSocket) на
+backend; Postgres наружу не публикуется. Backend — distroless, `APP_ENV=production`
+(fail-closed на пустые `JWT_SECRET`/`DATABASE_URL`).
 
 ## Команды
 
