@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.17.0] — 2026-06-02
+- Transfer tasks (feature 3): click the location breadcrumb in the task modal to
+  pick a project → board and move the task there (subtasks follow).
+- Archive (feature 4): the modal's primary destructive action is now "В архив"
+  (with the subtasks cascade/detach choice); a board-toolbar "Архив" button opens
+  a list of archived tasks to restore or delete permanently.
+
 ### [0.16.0] — 2026-06-02
 - Fix: creating a subtask/board with Enter no longer duplicates (clear+close
   before the await so the @blur doesn't re-submit) (issue 1).

@@ -22,6 +22,7 @@ import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
 import TagManager from './TagManager.vue'
 import ColumnHeader from './ColumnHeader.vue'
+import ArchiveModal from './ArchiveModal.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -59,6 +60,7 @@ const activeFilterCount = computed(
 // modals
 const selectedTaskId = ref(null)
 const showTaskModal = ref(false)
+const showArchive = ref(false)
 function openTask(id) {
   selectedTaskId.value = id
   showTaskModal.value = true
@@ -368,6 +370,7 @@ watch(
             </template>
             <TagManager :ws-id="wsStore.currentId" :tags="tagsList" @changed="onChanged" />
           </n-popover>
+          <n-button size="small" @click="showArchive = true">Архив</n-button>
         </n-space>
       </div>
 
@@ -482,6 +485,8 @@ watch(
       @changed="onChanged"
       @open="openTask"
     />
+
+    <ArchiveModal v-model:show="showArchive" :board-id="board?.id" @changed="onChanged" />
   </n-spin>
 </template>
 

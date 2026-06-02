@@ -106,6 +106,7 @@ export const boards = {
   createColumn: (id, data) => api.post(`/boards/${id}/columns`, data),
   tasks: (id) => api.get(`/boards/${id}/tasks`),
   subtasks: (id) => api.get(`/boards/${id}/subtasks`),
+  archive: (id) => api.get(`/boards/${id}/archive`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
 }
 
@@ -135,6 +136,9 @@ export const tasks = {
   update: (id, data) => api.patch(`/tasks/${id}`, data),
   move: (id, data) => api.patch(`/tasks/${id}/move`, data),
   setParent: (id, parentId) => api.patch(`/tasks/${id}/parent`, { parent_id: parentId }),
+  transfer: (id, data) => api.patch(`/tasks/${id}/transfer`, data),
+  archive: (id, opts) => api.patch(`/tasks/${id}/archive`, null, { params: opts }),
+  restore: (id) => api.patch(`/tasks/${id}/restore`),
   remove: (id, opts) => api.delete(`/tasks/${id}`, { params: opts }),
   addTag: (id, tagId) => api.post(`/tasks/${id}/tags`, { tag_id: tagId }),
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),

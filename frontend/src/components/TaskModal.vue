@@ -23,10 +23,15 @@ import {
   CheckmarkOutline,
   CheckmarkCircle,
   EllipseOutline,
-  TrashOutline,
+  ArchiveOutline,
   GitMergeOutline,
 } from '@vicons/ionicons5'
-import { tasks as tasksApi, boards as boardsApi, workspaces as wsApi } from '@/api'
+import {
+  tasks as tasksApi,
+  boards as boardsApi,
+  workspaces as wsApi,
+  projects as projApi,
+} from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 
@@ -180,26 +185,54 @@ async function save() {
     message.error(e.message)
   }
 }
-async function removeTask(detachChildren) {
+// Archive (soft delete). Subtasks go to the archive with the parent unless the
+// user chooses to detach them (keep them on the board).
+async function archiveTask(detachChildren) {
   try {
-    await tasksApi.remove(props.taskId, detachChildren ? { subtasks: 'detach' } : undefined)
+    await tasksApi.archive(props.taskId, detachChildren ? { subtasks: 'detach' } : undefined)
     emit('changed')
     close()
   } catch (e) {
     message.error(e.message)
   }
 }
-// Delete with a children choice when the task has subtasks.
-function onDeleteClick() {
+function onArchiveClick() {
   const hasSubs = (task.value?.subtasks?.length || 0) > 0
   dialog.warning({
-    title: 'Удалить задачу',
-    content: hasSubs ? 'У задачи есть подзадачи — что с ними сделать?' : 'Удалить задачу?',
-    positiveText: hasSubs ? 'Удалить вместе' : 'Удалить',
+    title: 'В архив',
+    content: hasSubs
+      ? 'У задачи есть подзадачи — что с ними сделать?'
+      : 'Перенести задачу в архив?',
+    positiveText: hasSubs ? 'В архив вместе' : 'В архив',
     negativeText: hasSubs ? 'Открепить подзадачи' : 'Отмена',
-    onPositiveClick: () => removeTask(false),
-    onNegativeClick: hasSubs ? () => removeTask(true) : undefined,
+    onPositiveClick: () => archiveTask(false),
+    onNegativeClick: hasSubs ? () => archiveTask(true) : undefined,
   })
+}
+
+// ── transfer to another board (via the breadcrumb) ──
+const moveBoards = ref({}) // projectId -> board[]
+const expandedProj = ref(new Set())
+async function toggleProj(pid) {
+  const s = new Set(expandedProj.value)
+  if (s.has(pid)) s.delete(pid)
+  else {
+    s.add(pid)
+    if (!moveBoards.value[pid]) {
+      const r = await projApi.boards(pid)
+      moveBoards.value = { ...moveBoards.value, [pid]: r.data || [] }
+    }
+  }
+  expandedProj.value = s
+}
+async function transferTo(boardId) {
+  try {
+    await tasksApi.transfer(props.taskId, { board_id: boardId })
+    emit('changed')
+    close()
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 // Detach this task from its parent → becomes a top-level board card.
 async function detachFromParent() {
@@ -306,12 +339,36 @@ async function toggleSubtask(sub) {
     <n-card style="width: 640px; max-width: 94vw" role="dialog" :bordered="false">
       <n-spin :show="loading">
         <div class="form">
-          <div v-if="breadcrumb.length" class="crumbs">
-            <template v-for="(c, i) in breadcrumb" :key="i">
-              <span class="crumb">{{ c }}</span>
-              <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
+          <n-popover trigger="click" placement="bottom-start">
+            <template #trigger>
+              <div v-if="breadcrumb.length" class="crumbs" title="Перенести в другую доску">
+                <template v-for="(c, i) in breadcrumb" :key="i">
+                  <span class="crumb">{{ c }}</span>
+                  <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
+                </template>
+              </div>
             </template>
-          </div>
+            <div class="menu move-menu">
+              <div class="move-hint">Перенести в доску:</div>
+              <div v-for="p in store.projects" :key="p.id" class="move-proj">
+                <div class="menu-item" @click="toggleProj(p.id)">
+                  <span class="grow">{{ p.name }}</span>
+                  <span class="chev">{{ expandedProj.has(p.id) ? '▾' : '▸' }}</span>
+                </div>
+                <div v-if="expandedProj.has(p.id)" class="move-boards">
+                  <div
+                    v-for="bd in moveBoards[p.id] || []"
+                    :key="bd.id"
+                    class="menu-item board"
+                    @click="transferTo(bd.id)"
+                  >
+                    {{ bd.name }}
+                  </div>
+                  <span v-if="!(moveBoards[p.id] || []).length" class="move-hint">нет досок</span>
+                </div>
+              </div>
+            </div>
+          </n-popover>
           <n-input v-model:value="title" placeholder="Название задачи" class="title-input plain" />
 
           <div class="props">
@@ -525,9 +582,9 @@ async function toggleSubtask(sub) {
       <template #footer>
         <div class="footer">
           <n-space>
-            <n-button type="error" ghost @click="onDeleteClick">
-              <template #icon><n-icon :component="TrashOutline" /></template>
-              Удалить
+            <n-button type="error" ghost @click="onArchiveClick">
+              <template #icon><n-icon :component="ArchiveOutline" /></template>
+              В архив
             </n-button>
             <n-button v-if="task?.parent_id" quaternary @click="detachFromParent">
               Открепить от родителя
@@ -554,12 +611,39 @@ async function toggleSubtask(sub) {
   font-weight: 600;
 }
 .crumbs {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   color: var(--t-text3);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.crumbs:hover {
+  background: var(--t-hover);
+  color: var(--t-text2);
+}
+.move-menu {
+  width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.move-hint {
+  font-size: 12px;
+  color: var(--t-text3);
+  padding: 4px 6px;
+}
+.move-boards {
+  padding-left: 12px;
+}
+.menu-item.board {
+  color: var(--t-text2);
+}
+.chev {
+  color: var(--t-text3);
+  font-size: 11px;
 }
 .crumb {
   white-space: nowrap;
