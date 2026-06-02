@@ -47,8 +47,31 @@ func (h *API) CreateBoard(c *gin.Context) {
 		fail(c)
 		return
 	}
+
+	// Seed the board with a default set of status columns.
+	for i, dc := range defaultColumns {
+		pos := float64(i+1) * positionGap
+		if _, err := h.q.CreateColumn(c, db.CreateColumnParams{
+			BoardID: b.ID, Name: dc.name, Color: dc.color, Position: pos,
+		}); err != nil {
+			fail(c)
+			return
+		}
+	}
+
 	h.broadcast(p.WorkspaceID, "board.created", b)
 	c.JSON(http.StatusCreated, b)
+}
+
+// doneColumnName is the column whose tasks are auto-marked completed.
+const doneColumnName = "Готово"
+
+// defaultColumns are created for every new board.
+var defaultColumns = []struct{ name, color string }{
+	{"К работе", "#9aa0aa"},
+	{"В процессе", "#2f80ed"},
+	{"На рассмотрении", "#7c5cff"},
+	{doneColumnName, "#18a058"},
 }
 
 // ListBoards lists a project's boards.

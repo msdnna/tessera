@@ -227,6 +227,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.7.0] — 2026-06-02
+- New boards are seeded with default status columns: К работе (grey), В процессе
+  (blue), На рассмотрении (purple), Готово (green).
+- Moving a task into the "Готово" column auto-marks it completed.
+
 ### [0.6.1] — 2026-06-02
 - UpdateTag (PATCH /tags/:id) — edit tag name/color (membership-authorized).
 

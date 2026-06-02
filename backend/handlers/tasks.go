@@ -218,6 +218,18 @@ func (h *API) MoveTask(c *gin.Context) {
 		fail(c)
 		return
 	}
+
+	// Moving a task into the "Готово" column auto-marks it completed.
+	if col.Name == doneColumnName && updated.CompletedAt == nil {
+		now := time.Now()
+		if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
+			ID: updated.ID, Title: updated.Title, Description: updated.Description,
+			Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
+		}); derr == nil {
+			updated = done
+		}
+	}
+
 	h.broadcast(wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
