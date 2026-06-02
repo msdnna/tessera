@@ -34,9 +34,12 @@ services:
       - PORT=8080
       - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET}
       - APP_ENV=production
+      - UPLOAD_DIR=/data/uploads
       - TZ=${TZ:-Europe/Moscow}
     expose:
       - "8080"
+    volumes:
+      - backend_uploads:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,6 +65,7 @@ services:
 
 volumes:
   postgres_data:
+  backend_uploads:
 
 networks:
   tessera-network:

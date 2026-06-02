@@ -8,6 +8,10 @@ backend/migrate
 backend/*.out
 backend/cover.html
 
+# Attachment storage (dev default UPLOAD_DIR)
+backend/uploads/
+uploads/
+
 # Node / frontend
 node_modules/
 frontend/dist/
