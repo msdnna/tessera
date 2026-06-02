@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.9.2] — 2026-06-02
+- Task modal (Phase 10e): tappable fields (priority, due date, completed) now
+  persist immediately and reflect on the board card; the Save button is only
+  for the text fields (title/description).
+
 ### [0.9.1] — 2026-06-02
 - Sidebar drag & drop (Phase 10b-2): projects between groups/root and groups
   reorder/re-parent via vuedraggable; persisted with projects.move /

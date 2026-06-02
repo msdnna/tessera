@@ -78,15 +78,33 @@ function close() {
   emit('update:show', false)
 }
 
+function buildPayload() {
+  return {
+    title: title.value,
+    description: description.value,
+    priority: priority.value,
+    due_date: dueTs.value ? new Date(dueTs.value).toISOString() : null,
+    completed: completed.value,
+  }
+}
+
+// applyMeta persists a tappable field (priority/due/completed) immediately and
+// reflects it on the board — without requiring the Save button (which is only
+// for the text fields). Sends the full current state.
+async function applyMeta() {
+  try {
+    const res = await tasksApi.update(props.taskId, buildPayload())
+    task.value = res.data
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+// Save persists the text fields (title/description) and closes.
 async function save() {
   try {
-    await tasksApi.update(props.taskId, {
-      title: title.value,
-      description: description.value,
-      priority: priority.value,
-      due_date: dueTs.value ? new Date(dueTs.value).toISOString() : null,
-      completed: completed.value,
-    })
+    await tasksApi.update(props.taskId, buildPayload())
     emit('changed')
     close()
   } catch (e) {
@@ -175,7 +193,17 @@ async function toggleSubtask(sub) {
           <div class="row">
             <div class="field">
               <n-text depth="3" class="lbl">Приоритет</n-text>
-              <n-select v-model:value="priority" :options="priorityOptions" size="small">
+              <n-select
+                :value="priority"
+                :options="priorityOptions"
+                size="small"
+                @update:value="
+                  (v) => {
+                    priority = v
+                    applyMeta()
+                  }
+                "
+              >
                 <template #arrow>
                   <span class="pr-dot" :style="{ background: PRIORITY_COLORS[priority] }" />
                 </template>
@@ -183,11 +211,30 @@ async function toggleSubtask(sub) {
             </div>
             <div class="field">
               <n-text depth="3" class="lbl">Срок</n-text>
-              <n-date-picker v-model:value="dueTs" type="date" clearable size="small" />
+              <n-date-picker
+                :value="dueTs"
+                type="date"
+                clearable
+                size="small"
+                @update:value="
+                  (v) => {
+                    dueTs = v
+                    applyMeta()
+                  }
+                "
+              />
             </div>
             <div class="field done-field">
               <n-text depth="3" class="lbl">Выполнено</n-text>
-              <n-switch v-model:value="completed" />
+              <n-switch
+                :value="completed"
+                @update:value="
+                  (v) => {
+                    completed = v
+                    applyMeta()
+                  }
+                "
+              />
             </div>
           </div>
 
