@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.18.1] — 2026-06-03
+- Assignee avatars now cascade (overlap with a ring in the surface colour) like
+  a reference tracker, instead of sitting side by side.
+
 ### [0.18.0] — 2026-06-03
 - Show the task number (#N) on cards and in the task modal header.
 

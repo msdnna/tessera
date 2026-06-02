@@ -728,8 +728,8 @@ async function toggleSubtask(sub) {
   border-radius: 10px;
 }
 .avatar {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--t-primary);
   color: var(--t-on-primary);
@@ -738,11 +738,15 @@ async function toggleSubtask(sub) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: -5px;
+  margin-left: -9px;
+  border: 2px solid var(--t-surface);
 }
-.avatar:first-child,
+.avatar:first-child {
+  margin-left: 0;
+}
 .avatar.sm {
   margin-left: 0;
+  border: none;
 }
 .section {
   display: flex;
