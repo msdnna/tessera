@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.18.0] — 2026-06-03
+- Show the task number (#N) on cards and in the task modal header.
+
 ### [0.17.1] — 2026-06-02
 - Archive modal: Restore / Delete are now labelled ghost buttons (icon + text).
 

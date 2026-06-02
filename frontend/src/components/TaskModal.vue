@@ -339,36 +339,39 @@ async function toggleSubtask(sub) {
     <n-card style="width: 640px; max-width: 94vw" role="dialog" :bordered="false">
       <n-spin :show="loading">
         <div class="form">
-          <n-popover trigger="click" placement="bottom-start">
-            <template #trigger>
-              <div v-if="breadcrumb.length" class="crumbs" title="Перенести в другую доску">
-                <template v-for="(c, i) in breadcrumb" :key="i">
-                  <span class="crumb">{{ c }}</span>
-                  <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
-                </template>
-              </div>
-            </template>
-            <div class="menu move-menu">
-              <div class="move-hint">Перенести в доску:</div>
-              <div v-for="p in store.projects" :key="p.id" class="move-proj">
-                <div class="menu-item" @click="toggleProj(p.id)">
-                  <span class="grow">{{ p.name }}</span>
-                  <span class="chev">{{ expandedProj.has(p.id) ? '▾' : '▸' }}</span>
+          <div class="modal-head">
+            <n-popover trigger="click" placement="bottom-start">
+              <template #trigger>
+                <div v-if="breadcrumb.length" class="crumbs" title="Перенести в другую доску">
+                  <template v-for="(c, i) in breadcrumb" :key="i">
+                    <span class="crumb">{{ c }}</span>
+                    <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
+                  </template>
                 </div>
-                <div v-if="expandedProj.has(p.id)" class="move-boards">
-                  <div
-                    v-for="bd in moveBoards[p.id] || []"
-                    :key="bd.id"
-                    class="menu-item board"
-                    @click="transferTo(bd.id)"
-                  >
-                    {{ bd.name }}
+              </template>
+              <div class="menu move-menu">
+                <div class="move-hint">Перенести в доску:</div>
+                <div v-for="p in store.projects" :key="p.id" class="move-proj">
+                  <div class="menu-item" @click="toggleProj(p.id)">
+                    <span class="grow">{{ p.name }}</span>
+                    <span class="chev">{{ expandedProj.has(p.id) ? '▾' : '▸' }}</span>
                   </div>
-                  <span v-if="!(moveBoards[p.id] || []).length" class="move-hint">нет досок</span>
+                  <div v-if="expandedProj.has(p.id)" class="move-boards">
+                    <div
+                      v-for="bd in moveBoards[p.id] || []"
+                      :key="bd.id"
+                      class="menu-item board"
+                      @click="transferTo(bd.id)"
+                    >
+                      {{ bd.name }}
+                    </div>
+                    <span v-if="!(moveBoards[p.id] || []).length" class="move-hint">нет досок</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </n-popover>
+            </n-popover>
+            <span v-if="task?.number" class="tnum">#{{ task.number }}</span>
+          </div>
           <n-input v-model:value="title" placeholder="Название задачи" class="title-input plain" />
 
           <div class="props">
@@ -609,6 +612,17 @@ async function toggleSubtask(sub) {
 .title-input :deep(input) {
   font-size: 18px;
   font-weight: 600;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tnum {
+  font-size: 12px;
+  color: var(--t-text3);
+  flex: none;
 }
 .crumbs {
   display: inline-flex;

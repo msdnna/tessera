@@ -214,6 +214,7 @@ async function submitAddSub() {
         @click.stop="startTitleEdit"
         >{{ task.title }}</span
       >
+      <span v-if="task.number" class="tnum">#{{ task.number }}</span>
     </div>
 
     <div class="pills">
@@ -424,6 +425,12 @@ async function submitAddSub() {
   cursor: pointer;
   min-width: 0;
   padding-top: 2px;
+}
+.tnum {
+  flex: none;
+  font-size: 11px;
+  color: var(--t-text3);
+  padding-top: 3px;
 }
 .pills {
   display: flex;
