@@ -52,13 +52,15 @@ watch(
       <div class="list">
         <div v-for="t in list" :key="t.id" class="arow">
           <span class="atitle">{{ t.title }}</span>
-          <n-button text size="tiny" title="Восстановить" @click="restore(t)">
-            <n-icon :component="ArrowUndoOutline" />
+          <n-button type="primary" ghost size="small" @click="restore(t)">
+            <template #icon><n-icon :component="ArrowUndoOutline" /></template>
+            Восстановить
           </n-button>
           <n-popconfirm @positive-click="remove(t)">
             <template #trigger>
-              <n-button text size="tiny" type="error" title="Удалить навсегда">
-                <n-icon :component="TrashOutline" />
+              <n-button type="error" ghost size="small">
+                <template #icon><n-icon :component="TrashOutline" /></template>
+                Удалить
               </n-button>
             </template>
             Удалить навсегда? Действие необратимо.

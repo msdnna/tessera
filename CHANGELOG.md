@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.17.1] — 2026-06-02
+- Archive modal: Restore / Delete are now labelled ghost buttons (icon + text).
+
 ### [0.17.0] — 2026-06-02
 - Transfer tasks (feature 3): click the location breadcrumb in the task modal to
   pick a project → board and move the task there (subtasks follow).
@@ -254,6 +257,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.9.1] — 2026-06-02
+- Fix: archived subtasks now appear in the board archive (and can be restored) —
+  the archive list shows individually-archived subtasks too, hiding only
+  children archived together with their parent. (Query change, no migration.)
 
 ### [0.9.0] — 2026-06-02
 - Transfer tasks between boards/projects: `PATCH /tasks/:id/transfer`

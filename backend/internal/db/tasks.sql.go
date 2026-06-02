@@ -134,7 +134,12 @@ SELECT
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
-WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NOT NULL
+WHERE t.board_id = $1
+  AND t.archived_at IS NOT NULL
+  AND (
+    t.parent_id IS NULL
+    OR NOT EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NOT NULL)
+  )
 GROUP BY t.id
 ORDER BY t.archived_at DESC
 `
@@ -158,7 +163,9 @@ type ListBoardArchivedWithMetaRow struct {
 	AssigneeIds []uuid.UUID `json:"assignee_ids"`
 }
 
-// ListBoardArchivedWithMeta returns archived top-level tasks of a board.
+// ListBoardArchivedWithMeta returns a board's archived tasks: top-level ones
+// and individually-archived subtasks (whose parent is still active). Children
+// archived together with their parent are hidden (they restore with it).
 func (q *Queries) ListBoardArchivedWithMeta(ctx context.Context, boardID uuid.UUID) ([]ListBoardArchivedWithMetaRow, error) {
 	rows, err := q.db.Query(ctx, listBoardArchivedWithMeta, boardID)
 	if err != nil {
