@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.19.1] — 2026-06-03
+- Fix kanban column width overflowing the screen (desktop and mobile): width is
+  now derived from the measured scroll container (ResizeObserver) rather than an
+  estimated viewport calc, with slack so columns always fit; mobile shows one
+  column just under full width.
+- Custom themed scrollbars across the app (page + all scroll areas), adapting to
+  the active light/dark theme.
+
 ### [0.19.0] — 2026-06-03
 - Layout overhaul (feature 7): the top header is now reserved for a single,
   centred search bar (not full width). The user + notifications block moved to

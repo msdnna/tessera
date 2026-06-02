@@ -126,20 +126,32 @@ function restoreView() {
 watch([groupMode, sortBy, filters], persistView, { deep: true })
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
-//    exactly one full-width column on mobile. ──
-const vw = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
-function onResize() {
-  vw.value = window.innerWidth
+//    exactly one full-width column on mobile. We measure the real scroll
+//    container (clientWidth already excludes the sidebar, padding and its own
+//    scrollbar) instead of guessing from window size, so columns never overflow.
+const boardScroll = ref(null)
+const containerWidth = ref(0)
+let ro = null
+function measure() {
+  if (boardScroll.value) containerWidth.value = boardScroll.value.clientWidth
 }
+watch(boardScroll, (el) => {
+  if (!ro || !el) return
+  ro.disconnect()
+  ro.observe(el)
+  measure()
+})
+const GAP = 12
+const ADD_COL_W = 220
 const colWidth = computed(() => {
-  if (isMobile.value) return Math.max(vw.value - 24, 240) // one column, full width
+  const cw = containerWidth.value
+  if (!cw) return 280 // pre-measure fallback
+  if (isMobile.value) return Math.max(cw - 12, 220) // one column, just under full width
   const n = displayColumns.value.length || 1
-  const sidebar = 264
-  const pad = 32 // content padding 16*2
-  const gap = 12
-  const addCol = groupMode.value === 'status' ? 220 + gap : 0 // reserve "+ колонка"
-  const avail = vw.value - sidebar - pad - addCol - (n - 1) * gap
-  const w = Math.floor(avail / n)
+  // reserve the "+ колонка" tile (status mode) + the gap before it, plus a few
+  // px of slack so sub-pixel rounding can't trip the horizontal scrollbar.
+  const reserved = (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 6
+  const w = Math.floor((cw - reserved) / n)
   return Math.min(Math.max(w, 280), 420)
 })
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
@@ -404,12 +416,16 @@ function applyTaskQuery() {
 }
 
 onMounted(async () => {
-  window.addEventListener('resize', onResize)
+  ro = new ResizeObserver(() => measure())
+  if (boardScroll.value) {
+    ro.observe(boardScroll.value)
+    measure()
+  }
   restoreView()
   await load(props.boardId)
   applyTaskQuery()
 })
-onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+onBeforeUnmount(() => ro?.disconnect())
 watch(
   () => props.boardId,
   async (id) => {
@@ -533,7 +549,7 @@ watch(
         </n-space>
       </div>
 
-      <div class="board-scroll" :style="colStyleVars">
+      <div ref="boardScroll" class="board-scroll" :style="colStyleVars">
         <draggable
           :list="colModel"
           group="columns"
