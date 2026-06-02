@@ -83,10 +83,12 @@ func main() {
 			protected.GET("/workspaces/:id/notes", rh.ListNotes)
 
 			protected.PATCH("/groups/:id", rh.UpdateProjectGroup)
+			protected.PATCH("/groups/:id/move", rh.MoveProjectGroup)
 			protected.DELETE("/groups/:id", rh.DeleteProjectGroup)
 
 			protected.GET("/projects/:id", rh.GetProject)
 			protected.PATCH("/projects/:id", rh.UpdateProject)
+			protected.PATCH("/projects/:id/move", rh.MoveProject)
 			protected.DELETE("/projects/:id", rh.DeleteProject)
 			protected.POST("/projects/:id/boards", rh.CreateBoard)
 			protected.GET("/projects/:id/boards", rh.ListBoards)

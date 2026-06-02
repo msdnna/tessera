@@ -12,9 +12,9 @@ import (
 )
 
 const createProject = `-- name: CreateProject :one
-INSERT INTO projects (workspace_id, group_id, name, color, position)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at
+INSERT INTO projects (workspace_id, group_id, name, color, icon, position)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon
 `
 
 type CreateProjectParams struct {
@@ -22,6 +22,7 @@ type CreateProjectParams struct {
 	GroupID     *uuid.UUID `json:"group_id"`
 	Name        string     `json:"name"`
 	Color       string     `json:"color"`
+	Icon        string     `json:"icon"`
 	Position    float64    `json:"position"`
 }
 
@@ -31,6 +32,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		arg.GroupID,
 		arg.Name,
 		arg.Color,
+		arg.Icon,
 		arg.Position,
 	)
 	var i Project
@@ -43,6 +45,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -57,7 +60,7 @@ func (q *Queries) DeleteProject(ctx context.Context, id uuid.UUID) error {
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at FROM projects WHERE id = $1
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon FROM projects WHERE id = $1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error) {
@@ -72,12 +75,13 @@ func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Icon,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at FROM projects WHERE workspace_id = $1 ORDER BY position
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon FROM projects WHERE workspace_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListProjects(ctx context.Context, workspaceID uuid.UUID) ([]Project, error) {
@@ -98,6 +102,7 @@ func (q *Queries) ListProjects(ctx context.Context, workspaceID uuid.UUID) ([]Pr
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Icon,
 		); err != nil {
 			return nil, err
 		}
@@ -120,19 +125,49 @@ func (q *Queries) MaxProjectPosition(ctx context.Context, workspaceID uuid.UUID)
 	return column_1, err
 }
 
+const moveProject = `-- name: MoveProject :one
+UPDATE projects
+SET group_id = $2, position = $3, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon
+`
+
+type MoveProjectParams struct {
+	ID       uuid.UUID  `json:"id"`
+	GroupID  *uuid.UUID `json:"group_id"`
+	Position float64    `json:"position"`
+}
+
+func (q *Queries) MoveProject(ctx context.Context, arg MoveProjectParams) (Project, error) {
+	row := q.db.QueryRow(ctx, moveProject, arg.ID, arg.GroupID, arg.Position)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.GroupID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Icon,
+	)
+	return i, err
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects
-SET name = $2, color = $3, group_id = $4, position = $5, updated_at = now()
+SET name = $2, color = $3, icon = $4, group_id = $5, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon
 `
 
 type UpdateProjectParams struct {
-	ID       uuid.UUID  `json:"id"`
-	Name     string     `json:"name"`
-	Color    string     `json:"color"`
-	GroupID  *uuid.UUID `json:"group_id"`
-	Position float64    `json:"position"`
+	ID      uuid.UUID  `json:"id"`
+	Name    string     `json:"name"`
+	Color   string     `json:"color"`
+	Icon    string     `json:"icon"`
+	GroupID *uuid.UUID `json:"group_id"`
 }
 
 func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
@@ -140,8 +175,8 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		arg.ID,
 		arg.Name,
 		arg.Color,
+		arg.Icon,
 		arg.GroupID,
-		arg.Position,
 	)
 	var i Project
 	err := row.Scan(
@@ -153,6 +188,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Icon,
 	)
 	return i, err
 }

@@ -12,19 +12,25 @@ import (
 )
 
 const createProjectGroup = `-- name: CreateProjectGroup :one
-INSERT INTO project_groups (workspace_id, name, position)
-VALUES ($1, $2, $3)
-RETURNING id, workspace_id, name, position, created_at, updated_at
+INSERT INTO project_groups (workspace_id, parent_id, name, position)
+VALUES ($1, $2, $3, $4)
+RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id
 `
 
 type CreateProjectGroupParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	Name        string    `json:"name"`
-	Position    float64   `json:"position"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	ParentID    *uuid.UUID `json:"parent_id"`
+	Name        string     `json:"name"`
+	Position    float64    `json:"position"`
 }
 
 func (q *Queries) CreateProjectGroup(ctx context.Context, arg CreateProjectGroupParams) (ProjectGroup, error) {
-	row := q.db.QueryRow(ctx, createProjectGroup, arg.WorkspaceID, arg.Name, arg.Position)
+	row := q.db.QueryRow(ctx, createProjectGroup,
+		arg.WorkspaceID,
+		arg.ParentID,
+		arg.Name,
+		arg.Position,
+	)
 	var i ProjectGroup
 	err := row.Scan(
 		&i.ID,
@@ -33,6 +39,7 @@ func (q *Queries) CreateProjectGroup(ctx context.Context, arg CreateProjectGroup
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentID,
 	)
 	return i, err
 }
@@ -47,7 +54,7 @@ func (q *Queries) DeleteProjectGroup(ctx context.Context, id uuid.UUID) error {
 }
 
 const getProjectGroup = `-- name: GetProjectGroup :one
-SELECT id, workspace_id, name, position, created_at, updated_at FROM project_groups WHERE id = $1
+SELECT id, workspace_id, name, position, created_at, updated_at, parent_id FROM project_groups WHERE id = $1
 `
 
 func (q *Queries) GetProjectGroup(ctx context.Context, id uuid.UUID) (ProjectGroup, error) {
@@ -60,12 +67,13 @@ func (q *Queries) GetProjectGroup(ctx context.Context, id uuid.UUID) (ProjectGro
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentID,
 	)
 	return i, err
 }
 
 const listProjectGroups = `-- name: ListProjectGroups :many
-SELECT id, workspace_id, name, position, created_at, updated_at FROM project_groups WHERE workspace_id = $1 ORDER BY position
+SELECT id, workspace_id, name, position, created_at, updated_at, parent_id FROM project_groups WHERE workspace_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListProjectGroups(ctx context.Context, workspaceID uuid.UUID) ([]ProjectGroup, error) {
@@ -84,6 +92,7 @@ func (q *Queries) ListProjectGroups(ctx context.Context, workspaceID uuid.UUID) 
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ParentID,
 		); err != nil {
 			return nil, err
 		}
@@ -106,21 +115,21 @@ func (q *Queries) MaxProjectGroupPosition(ctx context.Context, workspaceID uuid.
 	return column_1, err
 }
 
-const updateProjectGroup = `-- name: UpdateProjectGroup :one
+const moveProjectGroup = `-- name: MoveProjectGroup :one
 UPDATE project_groups
-SET name = $2, position = $3, updated_at = now()
+SET parent_id = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, position, created_at, updated_at
+RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id
 `
 
-type UpdateProjectGroupParams struct {
-	ID       uuid.UUID `json:"id"`
-	Name     string    `json:"name"`
-	Position float64   `json:"position"`
+type MoveProjectGroupParams struct {
+	ID       uuid.UUID  `json:"id"`
+	ParentID *uuid.UUID `json:"parent_id"`
+	Position float64    `json:"position"`
 }
 
-func (q *Queries) UpdateProjectGroup(ctx context.Context, arg UpdateProjectGroupParams) (ProjectGroup, error) {
-	row := q.db.QueryRow(ctx, updateProjectGroup, arg.ID, arg.Name, arg.Position)
+func (q *Queries) MoveProjectGroup(ctx context.Context, arg MoveProjectGroupParams) (ProjectGroup, error) {
+	row := q.db.QueryRow(ctx, moveProjectGroup, arg.ID, arg.ParentID, arg.Position)
 	var i ProjectGroup
 	err := row.Scan(
 		&i.ID,
@@ -129,6 +138,34 @@ func (q *Queries) UpdateProjectGroup(ctx context.Context, arg UpdateProjectGroup
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentID,
+	)
+	return i, err
+}
+
+const updateProjectGroup = `-- name: UpdateProjectGroup :one
+UPDATE project_groups
+SET name = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id
+`
+
+type UpdateProjectGroupParams struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+func (q *Queries) UpdateProjectGroup(ctx context.Context, arg UpdateProjectGroupParams) (ProjectGroup, error) {
+	row := q.db.QueryRow(ctx, updateProjectGroup, arg.ID, arg.Name)
+	var i ProjectGroup
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ParentID,
 	)
 	return i, err
 }

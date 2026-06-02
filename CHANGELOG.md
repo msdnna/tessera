@@ -86,6 +86,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.6.0] — 2026-06-02
+- Nested project groups: `project_groups.parent_id` (self-ref, cascade) — groups
+  can contain subgroups (migration 0003). MoveProjectGroup (re-parent + reorder)
+  with self-parent guard.
+- Project icons: `projects.icon` column; create/update accept it.
+- MoveProject (re-group + reorder) and MoveProjectGroup endpoints compute
+  midpoint position from before/after neighbours.
+
 ### [0.5.2] — 2026-06-02
 - Deployment (Phase 9): distroless `Dockerfile.prod` (static binary + embedded
   /migrate), `docker-compose.prod.yml` (no exposed Postgres, APP_ENV=production,

@@ -1,6 +1,6 @@
 -- name: CreateProject :one
-INSERT INTO projects (workspace_id, group_id, name, color, position)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO projects (workspace_id, group_id, name, color, icon, position)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: ListProjects :many
@@ -14,7 +14,13 @@ SELECT coalesce(max(position), 0)::double precision FROM projects WHERE workspac
 
 -- name: UpdateProject :one
 UPDATE projects
-SET name = $2, color = $3, group_id = $4, position = $5, updated_at = now()
+SET name = $2, color = $3, icon = $4, group_id = $5, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: MoveProject :one
+UPDATE projects
+SET group_id = $2, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
