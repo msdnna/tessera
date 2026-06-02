@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.6] — 2026-06-02
+- Card tag: the pill (button) carries the tint background + tag-color border;
+  the inner span is just text — matching the other card pills (point 1).
+- Modal plain inputs: override Naive's inline `--n-color` (with !important) to
+  the modal background so the field really blends in, dark theme included (2).
+
 ### [0.13.5] — 2026-06-02
 - Tags on cards now render as pill-shaped elements (border = tag color) like the
   other card pills, stacked with a right shadow + "+N" (point 1).

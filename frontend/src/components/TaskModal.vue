@@ -482,13 +482,12 @@ async function toggleSubtask(sub) {
 .sep {
   opacity: 0.5;
 }
-/* Plain inputs: look exactly like text. Naive sets bg/border via inline CSS
-   vars (which beat stylesheet vars), so override the actual properties. */
-.plain :deep(.n-input),
-.plain :deep(.n-input .n-input-wrapper),
-.plain :deep(.n-input .n-input__textarea-el),
-.plain :deep(.n-input .n-input__input-el) {
-  background-color: transparent !important;
+/* Naive sets --n-color inline on .n-input; override it (with !important so it
+   beats the inline custom property) to the modal background so the field blends
+   in like plain text. Border elements hidden so there's no outline/highlight. */
+.plain :deep(.n-input) {
+  --n-color: var(--t-surface) !important;
+  --n-color-focus: var(--t-surface) !important;
 }
 .plain :deep(.n-input__border),
 .plain :deep(.n-input__state-border) {

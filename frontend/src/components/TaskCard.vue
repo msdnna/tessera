@@ -150,16 +150,18 @@ async function toggleAssignee(uid) {
               <button v-if="!taskTags.length" class="pill" @click.stop>
                 <n-icon :component="PricetagOutline" :size="13" />
               </button>
-              <button v-else class="tag-stack" @click.stop>
-                <span
-                  class="pill tag-one"
-                  :style="{
-                    borderColor: taskTags[0].color || '#888',
-                    color: taskTags[0].color || '#888',
-                    boxShadow: stackShadow,
-                  }"
-                  >{{ taskTags[0].name }}</span
-                >
+              <button
+                v-else
+                class="pill tag-pill"
+                :style="{
+                  background: (taskTags[0].color || '#888') + '22',
+                  borderColor: taskTags[0].color || '#888',
+                  color: taskTags[0].color || '#888',
+                  boxShadow: stackShadow,
+                }"
+                @click.stop
+              >
+                <span class="tname">{{ taskTags[0].name }}</span>
                 <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
               </button>
             </template>
@@ -308,17 +310,11 @@ async function toggleAssignee(uid) {
   padding: 1px 8px;
   border-radius: 10px;
 }
-.tag-stack {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: transparent;
-  border: none;
-  padding: 0 2px 0 0;
-  cursor: pointer;
-}
-.tag-one {
+.tag-pill {
   border-style: solid;
+  gap: 5px;
+}
+.tname {
   font-size: 11px;
   max-width: 120px;
   overflow: hidden;
@@ -327,7 +323,7 @@ async function toggleAssignee(uid) {
 }
 .more {
   font-size: 10px;
-  color: var(--t-text3);
+  opacity: 0.8;
 }
 .preview {
   display: flex;
