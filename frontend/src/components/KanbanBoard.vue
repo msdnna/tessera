@@ -5,8 +5,6 @@ import {
   NSpin,
   NButton,
   NInput,
-  NModal,
-  NCard,
   NText,
   NSelect,
   NPopover,
@@ -14,11 +12,8 @@ import {
   NCheckbox,
   NSpace,
   NButtonGroup,
-  NPopconfirm,
-  NIcon,
   useMessage,
 } from 'naive-ui'
-import { ReorderThreeOutline, EllipsisHorizontalOutline } from '@vicons/ionicons5'
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useRealtime } from '@/composables/useRealtime'
@@ -26,6 +21,7 @@ import { PRIORITY_LABELS } from '@/styles/tokens'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
 import TagManager from './TagManager.vue'
+import ColumnHeader from './ColumnHeader.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -177,45 +173,6 @@ async function onColumnReorder(evt) {
   }
 }
 
-// ── column settings (rename / color / delete) ──
-const colSwatches = [
-  '',
-  '#7c5cff',
-  '#2f80ed',
-  '#0eb0a9',
-  '#18a058',
-  '#f0a020',
-  '#e0533d',
-  '#eb2f96',
-]
-const colSettings = ref({ show: false, id: null, name: '', color: '' })
-function openColSettings(dcol) {
-  colSettings.value = { show: true, id: dcol.key, name: dcol.name, color: dcol.color || '' }
-}
-async function saveColSettings() {
-  suppress()
-  try {
-    await columnsApi.update(colSettings.value.id, {
-      name: colSettings.value.name.trim(),
-      color: colSettings.value.color,
-    })
-    colSettings.value.show = false
-    await load(props.boardId)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-async function deleteColumn() {
-  suppress()
-  try {
-    await columnsApi.remove(colSettings.value.id)
-    colSettings.value.show = false
-    await load(props.boardId)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-
 // Drag persistence: status mode = reposition; tag mode = add/remove tag.
 async function onColChange(evt, dcol) {
   suppress()
@@ -243,38 +200,60 @@ async function onColChange(evt, dcol) {
   }
 }
 
-// ── create column / task ──
-const modal = ref({ show: false, title: '', value: '', submit: null })
-function promptCreate(title, submit) {
-  modal.value = { show: true, title, value: '', submit }
+// ── inline task creation (a reference tracker-style "+ New task" at column bottom) ──
+const addingInColumn = ref(null) // dcol.key currently adding into
+const newTaskTitle = ref('')
+function startAddTask(dcol) {
+  addingInColumn.value = dcol.key
+  newTaskTitle.value = ''
 }
-async function confirmCreate() {
-  const name = modal.value.value.trim()
-  if (!name) return
-  suppress()
-  try {
-    await modal.value.submit(name)
-    modal.value.show = false
-    await load(props.boardId)
-  } catch (e) {
-    message.error(e.message)
+function cancelAddTask() {
+  addingInColumn.value = null
+  newTaskTitle.value = ''
+}
+async function submitAddTask(dcol) {
+  const title = newTaskTitle.value.trim()
+  if (!title) {
+    cancelAddTask()
+    return
   }
-}
-function newColumn() {
-  promptCreate('Новая колонка', (name) => boards.createColumn(board.value.id, { name }))
-}
-function newTask(dcol) {
-  // In tag mode there are no status columns to drop into; fall back to the
-  // first board column and pre-tag the task with the column's tag.
+  // Tag mode has no status columns to drop into → use the first board column
+  // and pre-tag with the tag column's tag.
   const columnId = groupMode.value === 'status' ? dcol.key : columns.value[0]?.id
   if (!columnId) {
     message.warning('Сначала создайте хотя бы одну колонку-статус')
     return
   }
-  promptCreate('Новая задача', async (title) => {
+  suppress()
+  newTaskTitle.value = '' // keep the input open for rapid entry
+  try {
     const res = await boards.createTask(board.value.id, { column_id: columnId, title })
     if (groupMode.value === 'tag' && dcol.tag) await tasksApi.addTag(res.data.id, dcol.tag.id)
-  })
+    await load(props.boardId)
+    addingInColumn.value = dcol.key // load() reset refs; re-open
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+// ── inline column creation ("+ New column" to the right) ──
+const addingColumn = ref(false)
+const newColumnName = ref('')
+async function submitAddColumn() {
+  const name = newColumnName.value.trim()
+  if (!name) {
+    addingColumn.value = false
+    return
+  }
+  suppress()
+  try {
+    await boards.createColumn(board.value.id, { name })
+    newColumnName.value = ''
+    addingColumn.value = false
+    await load(props.boardId)
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 
 // A task edit or tag-list change touches both tasks and workspace meta, so do
@@ -364,121 +343,97 @@ watch(
           </n-popover>
 
           <n-button size="small" @click="showTagManager = true">Теги</n-button>
-          <n-button v-if="groupMode === 'status'" size="small" @click="newColumn"
-            >＋ Колонка</n-button
-          >
         </n-space>
       </div>
 
-      <draggable
-        :list="colModel"
-        group="columns"
-        item-key="key"
-        handle=".col-grip"
-        :disabled="groupMode !== 'status'"
-        class="cols"
-        :animation="150"
-        @change="onColumnReorder"
-      >
-        <template #item="{ element: dcol }">
-          <div class="col" :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }">
-            <div class="col-head">
-              <n-icon
-                v-if="groupMode === 'status'"
-                :component="ReorderThreeOutline"
-                class="col-grip"
-                title="Перетащить"
+      <div class="board-scroll">
+        <draggable
+          :list="colModel"
+          group="columns"
+          item-key="key"
+          handle=".col-grip"
+          :disabled="groupMode !== 'status'"
+          class="cols"
+          :animation="150"
+          @change="onColumnReorder"
+        >
+          <template #item="{ element: dcol }">
+            <div class="col" :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }">
+              <ColumnHeader
+                :dcol="dcol"
+                :count="(lists[dcol.key] || []).length"
+                :editable="groupMode === 'status'"
+                @changed="onChanged"
               />
-              <span class="col-title">{{ dcol.name }}</span>
-              <span class="count">{{ (lists[dcol.key] || []).length }}</span>
-              <n-button
-                v-if="groupMode === 'status'"
-                text
-                size="tiny"
-                class="col-menu"
-                @click="openColSettings(dcol)"
+              <draggable
+                :list="lists[dcol.key]"
+                group="tasks"
+                item-key="id"
+                class="drop"
+                ghost-class="ghost"
+                :animation="150"
+                @start="dragging = true"
+                @end="dragging = false"
+                @change="onColChange($event, dcol)"
               >
-                <n-icon :component="EllipsisHorizontalOutline" />
+                <template #item="{ element }">
+                  <div>
+                    <TaskCard
+                      :task="element"
+                      :tags-map="tagsMap"
+                      :members-map="membersMap"
+                      @click="openTask(element.id)"
+                    />
+                  </div>
+                </template>
+              </draggable>
+
+              <div v-if="addingInColumn === dcol.key" class="add-task-input">
+                <n-input
+                  v-model:value="newTaskTitle"
+                  type="textarea"
+                  size="small"
+                  autofocus
+                  :autosize="{ minRows: 1, maxRows: 4 }"
+                  placeholder="Название задачи, Enter — создать"
+                  @keyup.enter.prevent="submitAddTask(dcol)"
+                  @keyup.esc="cancelAddTask"
+                  @blur="submitAddTask(dcol)"
+                />
+              </div>
+              <n-button v-else text size="tiny" class="add-task" @click="startAddTask(dcol)">
+                ＋ задача
               </n-button>
             </div>
-            <draggable
-              :list="lists[dcol.key]"
-              group="tasks"
-              item-key="id"
-              class="drop"
-              ghost-class="ghost"
-              :animation="150"
-              @start="dragging = true"
-              @end="dragging = false"
-              @change="onColChange($event, dcol)"
-            >
-              <template #item="{ element }">
-                <div>
-                  <TaskCard
-                    :task="element"
-                    :tags-map="tagsMap"
-                    :members-map="membersMap"
-                    @click="openTask(element.id)"
-                  />
-                </div>
-              </template>
-            </draggable>
-            <n-button text size="tiny" class="add-task" @click="newTask(dcol)">＋ задача</n-button>
-          </div>
-        </template>
-      </draggable>
+          </template>
+        </draggable>
+
+        <!-- inline new column (status mode) -->
+        <div v-if="groupMode === 'status'" class="add-col">
+          <n-input
+            v-if="addingColumn"
+            v-model:value="newColumnName"
+            size="small"
+            autofocus
+            placeholder="Название колонки"
+            @keyup.enter="submitAddColumn"
+            @keyup.esc="addingColumn = false"
+            @blur="submitAddColumn"
+          />
+          <n-button v-else dashed block @click="addingColumn = true">＋ Колонка</n-button>
+        </div>
+      </div>
 
       <div v-if="!displayColumns.length" class="empty-board">
         <n-text depth="3">
           {{
             groupMode === 'status'
-              ? 'Нет колонок — создайте первую.'
+              ? 'Нет колонок — создайте первую кнопкой «＋ Колонка».'
               : 'Нет тегов — добавьте в «Теги».'
           }}
         </n-text>
       </div>
     </div>
-
-    <n-modal v-model:show="modal.show">
-      <n-card :title="modal.title" style="max-width: 360px" role="dialog">
-        <n-input v-model:value="modal.value" placeholder="Название" @keyup.enter="confirmCreate" />
-        <template #footer>
-          <n-button type="primary" @click="confirmCreate">Создать</n-button>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <n-modal v-model:show="colSettings.show">
-      <n-card title="Настройки колонки" style="width: 360px; max-width: 92vw" role="dialog">
-        <n-input
-          v-model:value="colSettings.name"
-          placeholder="Название колонки"
-          @keyup.enter="saveColSettings"
-        />
-        <div class="col-swatches">
-          <button
-            v-for="s in colSwatches"
-            :key="s || 'none'"
-            class="cw"
-            :class="{ active: s === colSettings.color }"
-            :style="{ background: s || 'var(--t-border)' }"
-            :title="s || 'По умолчанию'"
-            @click="colSettings.color = s"
-          />
-        </div>
-        <template #footer>
-          <div class="cs-footer">
-            <n-popconfirm @positive-click="deleteColumn">
-              <template #trigger>
-                <n-button quaternary type="error">Удалить</n-button>
-              </template>
-              Удалить колонку со всеми её задачами?
-            </n-popconfirm>
-            <n-button type="primary" @click="saveColSettings">Сохранить</n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
 
     <TaskModal
       v-model:show="showTaskModal"
@@ -516,12 +471,23 @@ watch(
   font-size: 12px;
   margin-top: 6px;
 }
-.cols {
+.board-scroll {
   display: flex;
   gap: 12px;
   align-items: flex-start;
   overflow-x: auto;
   padding-bottom: 8px;
+}
+.cols {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.add-col {
+  flex: 0 0 220px;
+}
+.add-task-input {
+  margin-top: 4px;
 }
 .col {
   width: 280px;

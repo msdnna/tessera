@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.10.0] — 2026-06-02
+- Inline board editing (Phase 10c): "+ задача" opens an inline editable card at
+  the column bottom (Enter creates, stays open for rapid entry) instead of a
+  modal; "+ Колонка" inline input to the right of the columns.
+- ColumnHeader component: inline rename (double-click) + settings popover
+  (color swatches + delete) instead of a modal (point 6).
+- Removed the create/column-settings modals.
+
 ### [0.9.2] — 2026-06-02
 - Task modal (Phase 10e): tappable fields (priority, due date, completed) now
   persist immediately and reflect on the board card; the Save button is only
