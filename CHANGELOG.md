@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.21.0] — 2026-06-03
+- Advanced task modal (feature #8): the description is now Markdown — rendered
+  inline, click to edit, blur to save (sanitised via DOMPurify). A tabbed area
+  adds Comments (Markdown, edit/delete your own), Relations (link other tasks by
+  #N with relation kind; click to jump to the related task), Files (upload /
+  download / delete attachments) and History (the task's activity journal with
+  actor and time). Adds `marked` + `dompurify`.
+
 ### [0.20.0] — 2026-06-03
 - Persistent notifications (feature #3): the bell is now backed by the server —
   it loads on startup, receives new notifications live over the socket, shows a

@@ -1,5 +1,6 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   NModal,
   NCard,
@@ -11,6 +12,11 @@ import {
   NPopover,
   NIcon,
   NSpin,
+  NTabs,
+  NTabPane,
+  NSelect,
+  NBadge,
+  NPopconfirm,
   useMessage,
   useDialog,
 } from 'naive-ui'
@@ -25,6 +31,10 @@ import {
   EllipseOutline,
   ArchiveOutline,
   GitMergeOutline,
+  AttachOutline,
+  TrashOutline,
+  DownloadOutline,
+  CloseOutline,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -33,7 +43,9 @@ import {
   projects as projApi,
 } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
+import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -45,12 +57,41 @@ const props = defineProps({
 const emit = defineEmits(['update:show', 'changed', 'open'])
 
 const store = useWorkspacesStore()
+const auth = useAuthStore()
+const router = useRouter()
 const message = useMessage()
 const dialog = useDialog()
 const loading = ref(false)
 const task = ref(null)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 const parentCandidates = ref([]) // top-level tasks on the board (for attach)
+
+// ── rich detail (#8): description preview, comments, relations, files, journal
+const descEditing = ref(false)
+const descInput = ref(null)
+const descHtml = computed(() => renderMarkdown(description.value))
+
+const comments = ref([])
+const newComment = ref('')
+const editingCommentId = ref(null)
+const editingCommentBody = ref('')
+
+const relations = ref([])
+const relNumber = ref(null)
+const relKind = ref('relates')
+const relKindOptions = [
+  { label: 'связана с', value: 'relates' },
+  { label: 'блокирует', value: 'blocks' },
+  { label: 'заблокирована', value: 'blocked_by' },
+  { label: 'дублирует', value: 'duplicates' },
+]
+
+const attachments = ref([])
+const fileInput = ref(null)
+const uploading = ref(false)
+
+const events = ref([])
+const meId = computed(() => auth.user?.id)
 
 const title = ref('')
 const description = ref('')
@@ -119,6 +160,7 @@ async function loadDetail() {
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
     selectedAssignees.value = (t.assignees || []).map((x) => x.id)
+    descEditing.value = false
     try {
       const b = await boardsApi.get(t.board_id)
       boardInfo.value = { name: b.data.name, projectId: b.data.project_id }
@@ -128,11 +170,28 @@ async function loadDetail() {
       boardInfo.value = null
       parentCandidates.value = []
     }
+    loadExtras()
   } catch (e) {
     message.error(e.message)
   } finally {
     loading.value = false
   }
+}
+
+// Comments / relations / attachments / journal load in parallel — none of them
+// should block the modal opening, so failures are swallowed individually.
+async function loadExtras() {
+  const id = props.taskId
+  const [c, r, a, e] = await Promise.allSettled([
+    tasksApi.comments(id),
+    tasksApi.relations(id),
+    tasksApi.attachments(id),
+    tasksApi.events(id),
+  ])
+  comments.value = c.status === 'fulfilled' ? c.value.data || [] : []
+  relations.value = r.status === 'fulfilled' ? r.value.data || [] : []
+  attachments.value = a.status === 'fulfilled' ? a.value.data || [] : []
+  events.value = e.status === 'fulfilled' ? e.value.data || [] : []
 }
 
 watch(
@@ -330,6 +389,188 @@ async function toggleSubtask(sub) {
     emit('changed')
   } catch (e) {
     message.error(e.message)
+  }
+}
+
+// ── rich description (markdown) ──
+function startEditDesc() {
+  descEditing.value = true
+  nextTick(() => descInput.value?.focus?.())
+}
+async function saveDesc() {
+  descEditing.value = false
+  await applyMeta()
+}
+
+// ── comments ──
+function fmtWhen(d) {
+  return new Date(d).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+function commentHtml(body) {
+  return renderMarkdown(body)
+}
+async function postComment() {
+  const body = newComment.value.trim()
+  if (!body) return
+  try {
+    await tasksApi.addComment(props.taskId, body)
+    newComment.value = ''
+    const c = await tasksApi.comments(props.taskId)
+    comments.value = c.data || []
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+function startEditComment(c) {
+  editingCommentId.value = c.id
+  editingCommentBody.value = c.body
+}
+async function saveComment() {
+  const body = editingCommentBody.value.trim()
+  if (!body) return
+  try {
+    await tasksApi.updateComment(editingCommentId.value, body)
+    editingCommentId.value = null
+    const c = await tasksApi.comments(props.taskId)
+    comments.value = c.data || []
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+async function deleteComment(id) {
+  try {
+    await tasksApi.removeComment(id)
+    comments.value = comments.value.filter((x) => x.id !== id)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+// ── relations (by #N) ──
+function relKindLabel(k) {
+  return relKindOptions.find((o) => o.value === k)?.label || k
+}
+async function addRelation() {
+  const n = Number(relNumber.value)
+  if (!n) return
+  try {
+    await tasksApi.addRelation(props.taskId, n, relKind.value)
+    relNumber.value = null
+    const r = await tasksApi.relations(props.taskId)
+    relations.value = r.data || []
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+async function removeRelation(id) {
+  try {
+    await tasksApi.removeRelation(id)
+    relations.value = relations.value.filter((x) => x.id !== id)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+function openRelated(rel) {
+  if (rel.related_board_id) {
+    close()
+    router.push(`/board/${rel.related_board_id}?task=${rel.related_task_id}`)
+  }
+}
+
+// ── attachments ──
+function fmtSize(bytes) {
+  if (bytes < 1024) return `${bytes} Б`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+}
+function pickFile() {
+  fileInput.value?.click?.()
+}
+async function onFileChosen(ev) {
+  const file = ev.target.files?.[0]
+  if (!file) return
+  uploading.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    await tasksApi.uploadAttachment(props.taskId, fd)
+    const a = await tasksApi.attachments(props.taskId)
+    attachments.value = a.data || []
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    uploading.value = false
+    ev.target.value = ''
+  }
+}
+async function downloadAttachment(att) {
+  try {
+    const res = await tasksApi.downloadAttachment(att.id)
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = att.filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+async function deleteAttachment(id) {
+  try {
+    await tasksApi.removeAttachment(id)
+    attachments.value = attachments.value.filter((x) => x.id !== id)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+// ── journal ──
+function eventText(e) {
+  const d = e.data || {}
+  switch (e.kind) {
+    case 'created':
+      return 'создал(а) задачу'
+    case 'renamed':
+      return `переименовал(а) → «${d.to ?? ''}»`
+    case 'description':
+      return 'изменил(а) описание'
+    case 'priority':
+      return `изменил(а) приоритет → ${PRIORITY_LABELS[d.to] ?? d.to}`
+    case 'due':
+      return d.set ? 'установил(а) срок' : 'убрал(а) срок'
+    case 'completed':
+      return 'отметил(а) выполненной'
+    case 'reopened':
+      return 'вернул(а) в работу'
+    case 'moved':
+      return `переместил(а)${d.to ? ` → «${d.to}»` : ''}`
+    case 'assigned':
+      return 'назначил(а) исполнителя'
+    case 'unassigned':
+      return 'снял(а) исполнителя'
+    case 'archived':
+      return 'отправил(а) в архив'
+    case 'restored':
+      return 'восстановил(а) из архива'
+    case 'comment':
+      return 'оставил(а) комментарий'
+    case 'relation':
+      return `добавил(а) связь с #${d.related ?? ''}`
+    case 'attachment':
+      return `прикрепил(а) файл${d.filename ? ` «${d.filename}»` : ''}`
+    default:
+      return e.kind
   }
 }
 </script>
@@ -540,12 +781,17 @@ async function toggleSubtask(sub) {
           <div class="section">
             <span class="slabel">Описание</span>
             <n-input
+              v-if="descEditing || !description"
+              :ref="(el) => (descInput = el)"
               v-model:value="description"
               type="textarea"
               class="plain"
-              :autosize="{ minRows: 3, maxRows: 12 }"
-              placeholder="Добавьте описание…"
+              :autosize="{ minRows: 3, maxRows: 16 }"
+              placeholder="Добавьте описание… (поддерживается Markdown)"
+              @blur="saveDesc"
             />
+            <!-- eslint-disable-next-line vue/no-v-html -->
+            <div v-else class="md" @click="startEditDesc" v-html="descHtml" />
           </div>
 
           <div class="section">
@@ -579,6 +825,162 @@ async function toggleSubtask(sub) {
               @keyup.enter="addSubtask"
             />
           </div>
+
+          <!-- Comments / relations / files / history (#8) -->
+          <n-tabs type="line" size="small" class="detail-tabs">
+            <n-tab-pane name="comments">
+              <template #tab>
+                Комментарии
+                <n-badge
+                  v-if="comments.length"
+                  :value="comments.length"
+                  :max="99"
+                  class="tab-badge"
+                />
+              </template>
+              <div class="comments">
+                <div v-for="c in comments" :key="c.id" class="comment">
+                  <span class="c-ava">{{ initials(c.author_name) }}</span>
+                  <div class="c-body">
+                    <div class="c-head">
+                      <span class="c-author">{{ c.author_name || 'Кто-то' }}</span>
+                      <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
+                      <template v-if="c.author_id === meId">
+                        <button class="c-act" title="Изменить" @click="startEditComment(c)">
+                          ✎
+                        </button>
+                        <n-popconfirm @positive-click="deleteComment(c.id)">
+                          <template #trigger>
+                            <button class="c-act" title="Удалить">✕</button>
+                          </template>
+                          Удалить комментарий?
+                        </n-popconfirm>
+                      </template>
+                    </div>
+                    <template v-if="editingCommentId === c.id">
+                      <n-input
+                        v-model:value="editingCommentBody"
+                        type="textarea"
+                        size="small"
+                        :autosize="{ minRows: 2, maxRows: 8 }"
+                      />
+                      <n-space :size="6" style="margin-top: 6px">
+                        <n-button size="tiny" type="primary" @click="saveComment">Сохранить</n-button>
+                        <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
+                      </n-space>
+                    </template>
+                    <!-- eslint-disable-next-line vue/no-v-html -->
+                    <div v-else class="md c-text" v-html="commentHtml(c.body)" />
+                  </div>
+                </div>
+                <div v-if="!comments.length" class="empty-hint">Комментариев пока нет</div>
+                <div class="comment-add">
+                  <n-input
+                    v-model:value="newComment"
+                    type="textarea"
+                    size="small"
+                    :autosize="{ minRows: 1, maxRows: 6 }"
+                    placeholder="Написать комментарий… (Markdown, Ctrl+Enter)"
+                    @keydown.ctrl.enter="postComment"
+                  />
+                  <n-button size="small" type="primary" :disabled="!newComment.trim()" @click="postComment">
+                    Отправить
+                  </n-button>
+                </div>
+              </div>
+            </n-tab-pane>
+
+            <n-tab-pane name="relations">
+              <template #tab>
+                Связи
+                <n-badge
+                  v-if="relations.length"
+                  :value="relations.length"
+                  :max="99"
+                  class="tab-badge"
+                />
+              </template>
+              <div class="relations">
+                <div v-for="r in relations" :key="r.id" class="relrow">
+                  <span class="rel-kind">{{ relKindLabel(r.kind) }}</span>
+                  <button
+                    class="rel-link"
+                    :class="{ done: r.related_completed_at }"
+                    @click="openRelated(r)"
+                  >
+                    <span class="rel-num">#{{ r.related_number }}</span>
+                    <span class="rel-title">{{ r.related_title }}</span>
+                  </button>
+                  <button class="c-act" title="Убрать связь" @click="removeRelation(r.id)">
+                    <n-icon :component="CloseOutline" />
+                  </button>
+                </div>
+                <div v-if="!relations.length" class="empty-hint">Связей пока нет</div>
+                <div class="rel-add">
+                  <n-select
+                    v-model:value="relKind"
+                    :options="relKindOptions"
+                    size="small"
+                    style="width: 150px"
+                  />
+                  <n-input
+                    v-model:value="relNumber"
+                    size="small"
+                    placeholder="№ задачи"
+                    style="width: 110px"
+                    @keyup.enter="addRelation"
+                  >
+                    <template #prefix>#</template>
+                  </n-input>
+                  <n-button size="small" @click="addRelation">Связать</n-button>
+                </div>
+              </div>
+            </n-tab-pane>
+
+            <n-tab-pane name="files">
+              <template #tab>
+                Файлы
+                <n-badge
+                  v-if="attachments.length"
+                  :value="attachments.length"
+                  :max="99"
+                  class="tab-badge"
+                />
+              </template>
+              <div class="files">
+                <div v-for="a in attachments" :key="a.id" class="filerow">
+                  <n-icon :component="AttachOutline" class="f-ico" />
+                  <button class="f-name" @click="downloadAttachment(a)">{{ a.filename }}</button>
+                  <span class="f-size">{{ fmtSize(a.size) }}</span>
+                  <button class="c-act" title="Скачать" @click="downloadAttachment(a)">
+                    <n-icon :component="DownloadOutline" />
+                  </button>
+                  <button class="c-act" title="Удалить" @click="deleteAttachment(a.id)">
+                    <n-icon :component="TrashOutline" />
+                  </button>
+                </div>
+                <div v-if="!attachments.length" class="empty-hint">Файлов пока нет</div>
+                <input ref="fileInput" type="file" hidden @change="onFileChosen" />
+                <n-button size="small" :loading="uploading" @click="pickFile">
+                  <template #icon><n-icon :component="AttachOutline" /></template>
+                  Прикрепить файл
+                </n-button>
+              </div>
+            </n-tab-pane>
+
+            <n-tab-pane name="history" tab="История">
+              <div class="history">
+                <div v-for="e in events" :key="e.id" class="histrow">
+                  <span class="h-ava">{{ initials(e.actor_name) }}</span>
+                  <span class="h-text">
+                    <b>{{ e.actor_name || 'Кто-то' }}</b> {{ eventText(e) }}
+                  </span>
+                  <span class="h-when">{{ fmtWhen(e.created_at) }}</span>
+                </div>
+                <div v-if="!events.length" class="empty-hint">История пуста</div>
+              </div>
+            </n-tab-pane>
+          </n-tabs>
         </div>
       </n-spin>
 
@@ -851,5 +1253,260 @@ async function toggleSubtask(sub) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* rendered markdown (description + comments) */
+.md {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--t-text1);
+  word-break: break-word;
+}
+.md:empty::before {
+  content: 'Добавьте описание…';
+  color: var(--t-text3);
+}
+.section > .md {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: text;
+  min-height: 40px;
+}
+.section > .md:hover {
+  background: var(--t-surface-alt);
+}
+.md :deep(p) {
+  margin: 0 0 8px;
+}
+.md :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.md :deep(ul),
+.md :deep(ol) {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.md :deep(code) {
+  background: var(--t-surface-alt);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.md :deep(pre) {
+  background: var(--t-surface-alt);
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.md :deep(a) {
+  color: var(--t-primary);
+}
+.md :deep(blockquote) {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 3px solid var(--t-border);
+  color: var(--t-text2);
+}
+
+.detail-tabs {
+  margin-top: 4px;
+}
+.tab-badge {
+  margin-left: 6px;
+}
+
+/* comments */
+.comments {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.comment {
+  display: flex;
+  gap: 10px;
+}
+.c-ava,
+.h-ava {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--t-primary);
+  color: var(--t-on-primary);
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.c-body {
+  flex: 1;
+  min-width: 0;
+}
+.c-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.c-author {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--t-text1);
+}
+.c-when {
+  font-size: 11px;
+  color: var(--t-text3);
+}
+.c-act {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--t-text3);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+}
+.c-act:hover {
+  color: var(--t-text1);
+}
+.c-text {
+  font-size: 13px;
+}
+.comment-add {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 4px;
+}
+.comment-add .n-input {
+  flex: 1;
+}
+.empty-hint {
+  font-size: 13px;
+  color: var(--t-text3);
+  padding: 4px 0 8px;
+}
+
+/* relations */
+.relations {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.relrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rel-kind {
+  font-size: 12px;
+  color: var(--t-text3);
+  width: 96px;
+  flex: none;
+}
+.rel-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--t-text1);
+  font-size: 13px;
+}
+.rel-link:hover {
+  background: var(--t-hover);
+}
+.rel-link.done .rel-title {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.rel-num {
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.rel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rel-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* files */
+.files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.filerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.f-ico {
+  color: var(--t-text3);
+  flex: none;
+}
+.f-name {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--t-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.f-size {
+  font-size: 11px;
+  color: var(--t-text3);
+  flex: none;
+}
+
+/* history */
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.histrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.h-ava {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+}
+.h-text {
+  flex: 1;
+  color: var(--t-text2);
+}
+.h-text b {
+  color: var(--t-text1);
+}
+.h-when {
+  font-size: 11px;
+  color: var(--t-text3);
+  flex: none;
 }
 </style>
