@@ -1,9 +1,11 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import draggable from 'vuedraggable'
 import { NIcon, NButton, NInput, NDropdown, useMessage, useDialog } from 'naive-ui'
 import { FolderOutline, ChevronForwardOutline, EllipsisHorizontalOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi, groups as groupsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
 import ProjectRow from './ProjectRow.vue'
 
 const props = defineProps({
@@ -21,6 +23,16 @@ const nameEdit = ref('')
 
 const subgroups = computed(() => store.childGroups(props.group.id))
 const childProjects = computed(() => store.projectsInGroup(props.group.id))
+
+// Mutable mirrors for vuedraggable; resynced from the store after any change.
+const grpModel = ref([])
+const projModel = ref([])
+watch(subgroups, (v) => (grpModel.value = [...v]), { immediate: true })
+watch(childProjects, (v) => (projModel.value = [...v]), { immediate: true })
+
+const onGrpChange = (evt) => moveSidebarGroup(evt, grpModel.value, props.group.id, store, message)
+const onProjChange = (evt) =>
+  moveSidebarProject(evt, projModel.value, props.group.id, store, message)
 
 const menuOptions = [
   { label: 'Новый проект', key: 'project' },
@@ -102,8 +114,28 @@ async function commitRename() {
     </div>
 
     <div v-show="expanded" class="children">
-      <SidebarNode v-for="sg in subgroups" :key="sg.id" :group="sg" :depth="depth + 1" />
-      <ProjectRow v-for="p in childProjects" :key="p.id" :project="p" :depth="depth + 1" />
+      <draggable
+        :list="grpModel"
+        group="sidebar-grp"
+        item-key="id"
+        :animation="150"
+        @change="onGrpChange"
+      >
+        <template #item="{ element }">
+          <SidebarNode :group="element" :depth="depth + 1" />
+        </template>
+      </draggable>
+      <draggable
+        :list="projModel"
+        group="sidebar-proj"
+        item-key="id"
+        :animation="150"
+        @change="onProjChange"
+      >
+        <template #item="{ element }">
+          <ProjectRow :project="element" :depth="depth + 1" />
+        </template>
+      </draggable>
     </div>
   </div>
 </template>

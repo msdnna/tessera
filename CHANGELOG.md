@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.9.1] — 2026-06-02
+- Sidebar drag & drop (Phase 10b-2): projects between groups/root and groups
+  reorder/re-parent via vuedraggable; persisted with projects.move /
+  groups.move (midpoint position). Shared useSidebarDnd handlers.
+
 ### [0.9.0] — 2026-06-02
 - Sidebar tree overhaul (Phase 10b): recursive nested groups (folder icon),
   projects with icon/initials square + color, boards with tile icon and tree
