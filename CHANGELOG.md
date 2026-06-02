@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.11.0] — 2026-06-02
+- Create tags on the fly (Phase 10d): the task modal's tag select is now a tag
+  input — typing a new name creates a workspace tag (random palette color) and
+  attaches it. Editing/deleting tags stays in the TagManager.
+
 ### [0.10.0] — 2026-06-02
 - Inline board editing (Phase 10c): "+ задача" opens an inline editable card at
   the column bottom (Enter creates, stays open for rapid entry) instead of a

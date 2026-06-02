@@ -15,12 +15,13 @@ import {
   NSpin,
   useMessage,
 } from 'naive-ui'
-import { tasks as tasksApi, boards as boardsApi } from '@/api'
+import { tasks as tasksApi, boards as boardsApi, workspaces as wsApi } from '@/api'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
   taskId: { type: String, default: null },
+  wsId: { type: String, default: null },
   tags: { type: Array, default: () => [] }, // workspace tags
   members: { type: Array, default: () => [] }, // workspace members
 })
@@ -122,13 +123,28 @@ async function removeTask() {
   }
 }
 
-// Tags / assignees apply immediately (diff against the just-changed selection).
+const tagPalette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
+
+// Tags apply immediately. Values that aren't existing tag ids are treated as
+// new tag names the user typed (tag mode) — create them on the fly.
 async function onTagsChange(next) {
   const prev = selectedTags.value
-  selectedTags.value = next
   try {
-    for (const id of next.filter((x) => !prev.includes(x))) await tasksApi.addTag(props.taskId, id)
-    for (const id of prev.filter((x) => !next.includes(x)))
+    const resolved = []
+    for (const v of next) {
+      if (props.tags.some((t) => t.id === v)) {
+        resolved.push(v)
+        continue
+      }
+      // New tag typed in-place.
+      const color = tagPalette[Math.floor(Math.random() * tagPalette.length)]
+      const res = await wsApi.createTag(props.wsId, { name: v, color })
+      resolved.push(res.data.id)
+    }
+    selectedTags.value = resolved
+    for (const id of resolved.filter((x) => !prev.includes(x)))
+      await tasksApi.addTag(props.taskId, id)
+    for (const id of prev.filter((x) => !resolved.includes(x)))
       await tasksApi.removeTag(props.taskId, id)
     emit('changed')
   } catch (e) {
@@ -245,8 +261,9 @@ async function toggleSubtask(sub) {
               :options="tagOptions"
               multiple
               filterable
+              tag
               size="small"
-              placeholder="Выберите теги"
+              placeholder="Выберите или введите тег"
               @update:value="onTagsChange"
             />
           </div>

@@ -438,6 +438,7 @@ watch(
     <TaskModal
       v-model:show="showTaskModal"
       :task-id="selectedTaskId"
+      :ws-id="wsStore.currentId"
       :tags="tagsList"
       :members="membersList"
       @changed="onChanged"
