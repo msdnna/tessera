@@ -36,8 +36,8 @@ const onRootGrp = (evt) => moveSidebarGroup(evt, rootGrpModel.value, null, store
 const onRootProj = (evt) => moveSidebarProject(evt, rootProjModel.value, null, store, message)
 
 const addOptions = [
-  { label: 'Новый проект', key: 'project' },
-  { label: 'Новая группа', key: 'group' },
+  { label: 'Проект', key: 'project' },
+  { label: 'Группа', key: 'group' },
 ]
 
 async function onWorkspaceChange(id) {
@@ -47,9 +47,9 @@ async function onWorkspaceChange(id) {
 async function addAtRoot(key) {
   try {
     if (key === 'project') {
-      await wsApi.createProject(store.currentId, { name: 'Новый проект' })
+      await wsApi.createProject(store.currentId, { name: 'Проект' })
     } else {
-      await wsApi.createGroup(store.currentId, { name: 'Новая группа' })
+      await wsApi.createGroup(store.currentId, { name: 'Группа' })
     }
     await store.refresh()
   } catch (e) {
@@ -124,6 +124,7 @@ async function createWorkspace() {
         :list="rootGrpModel"
         group="sidebar-grp"
         item-key="id"
+        ghost-class="sb-ghost"
         :animation="150"
         @change="onRootGrp"
       >
@@ -135,6 +136,7 @@ async function createWorkspace() {
         :list="rootProjModel"
         group="sidebar-proj"
         item-key="id"
+        ghost-class="sb-ghost"
         :animation="150"
         @change="onRootProj"
       >

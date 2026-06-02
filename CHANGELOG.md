@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.11.1] — 2026-06-02
+- Sidebar refinements: project icons from an ionicons5 picker (no emoji, point 5);
+  inline rename now focuses and saves-on-blur-if-changed / cancels-if-unchanged
+  (points 3); project/group settings via immediate-apply popovers (point 4);
+  create via "+" dropdowns on each node and header (point 6) — group "+" =
+  Проект/Группа, project "+" = board, removed the "+ доска" text; short menu
+  labels (point 7); drag drop-placeholder highlight (.sb-ghost, point 2).
+
 ### [0.11.0] — 2026-06-02
 - Create tags on the fly (Phase 10d): the task modal's tag select is now a tag
   input — typing a new name creates a workspace tag (random palette color) and

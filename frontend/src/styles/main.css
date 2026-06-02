@@ -29,3 +29,15 @@ body {
   background: var(--t-bg);
   color: var(--t-text1);
 }
+
+/* Sidebar drag-and-drop drop placeholder — shows where the item will land
+   (incl. whether it falls inside a group). */
+.sb-ghost {
+  outline: 2px dashed var(--t-primary);
+  outline-offset: -2px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
+}
+.sb-ghost > * {
+  visibility: hidden;
+}
