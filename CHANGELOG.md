@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.12.0] — 2026-06-02
+- Inline card editing (point 1): task cards are now uniform — every card shows
+  priority / tags / due-date / assignee pills (faint placeholders when unset),
+  each editable inline via its own popover (immediate apply); completed toggled
+  via the leading circle; clicking the title opens the modal for heavy fields.
+  Tags can be created on the fly from the card too.
+
 ### [0.11.2] — 2026-06-02
 - Tag management (point 8): backend UpdateTag (PATCH /tags/:id); TagManager is
   now a popover (from the board "Теги" button) where clicking a tag edits its

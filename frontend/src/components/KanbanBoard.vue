@@ -386,7 +386,11 @@ watch(
                       :task="element"
                       :tags-map="tagsMap"
                       :members-map="membersMap"
-                      @click="openTask(element.id)"
+                      :tags="tagsList"
+                      :members="membersList"
+                      :ws-id="wsStore.currentId"
+                      @open="openTask"
+                      @changed="onChanged"
                     />
                   </div>
                 </template>
