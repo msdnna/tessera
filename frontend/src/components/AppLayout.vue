@@ -46,7 +46,7 @@ watch(
   <!-- Desktop: fixed sider + content -->
   <n-layout v-if="!isMobile" has-sider style="height: 100vh">
     <n-layout-sider bordered :width="264" content-style="padding: 0; height: 100%">
-      <Sidebar />
+      <Sidebar :mobile="false" />
     </n-layout-sider>
     <n-layout>
       <n-layout-header bordered>
@@ -68,7 +68,7 @@ watch(
     </n-layout-content>
     <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
       <n-drawer-content body-content-style="padding: 0">
-        <Sidebar />
+        <Sidebar :mobile="true" />
       </n-drawer-content>
     </n-drawer>
   </n-layout>

@@ -77,6 +77,7 @@ export const workspaces = {
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),
   createProject: (id, data) => api.post(`/workspaces/${id}/projects`, data),
+  search: (id, q) => api.get(`/workspaces/${id}/search`, { params: { q } }),
   tags: (id) => api.get(`/workspaces/${id}/tags`),
   createTag: (id, data) => api.post(`/workspaces/${id}/tags`, data),
   updateTag: (tagId, data) => api.patch(`/tags/${tagId}`, data),

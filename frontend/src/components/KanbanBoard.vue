@@ -1,5 +1,6 @@
 <script setup>
-import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import draggable from 'vuedraggable'
 import {
   NSpin,
@@ -12,11 +13,13 @@ import {
   NCheckbox,
   NSpace,
   NButtonGroup,
+  NDivider,
   useMessage,
 } from 'naive-ui'
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useRealtime } from '@/composables/useRealtime'
+import { useResponsive } from '@/composables/useResponsive'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -28,6 +31,8 @@ const props = defineProps({ boardId: { type: String, required: true } })
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
+const route = useRoute()
+const { isMobile } = useResponsive()
 
 const loading = ref(false)
 const board = ref(null)
@@ -43,19 +48,101 @@ const membersList = computed(() => Object.values(membersMap))
 // view controls
 const groupMode = ref('status') // 'status' | 'tag'
 const sortBy = ref('position') // 'position' | 'priority' | 'due'
-const filters = reactive({ priorities: [], assignees: [], q: '' })
+const filters = reactive({ priorities: [], assignees: [], tags: [], due: '', q: '' })
 const sortOptions = [
   { label: 'Вручную', value: 'position' },
   { label: 'По приоритету', value: 'priority' },
   { label: 'По сроку', value: 'due' },
 ]
+const dueOptions = [
+  { label: 'Все', value: '' },
+  { label: 'Просроченные', value: 'overdue' },
+  { label: 'Сегодня', value: 'today' },
+  { label: 'Ближайшая неделя', value: 'week' },
+  { label: 'Со сроком', value: 'has' },
+  { label: 'Без срока', value: 'none' },
+]
 const priorityFilterOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
 const memberFilterOptions = computed(() =>
   membersList.value.map((m) => ({ label: m.name, value: m.user_id })),
 )
-const activeFilterCount = computed(
-  () => filters.priorities.length + filters.assignees.length + (filters.q.trim() ? 1 : 0),
+const tagFilterOptions = computed(() =>
+  tagsList.value.map((t) => ({ label: t.name, value: t.id })),
 )
+const activeFilterCount = computed(
+  () =>
+    filters.priorities.length +
+    filters.assignees.length +
+    filters.tags.length +
+    (filters.due ? 1 : 0) +
+    (filters.q.trim() ? 1 : 0),
+)
+function resetFilters() {
+  filters.priorities = []
+  filters.assignees = []
+  filters.tags = []
+  filters.due = ''
+  filters.q = ''
+}
+
+// ── per-board view persistence (localStorage, per device) ──
+const viewKey = computed(() => `tessera_view_${props.boardId}`)
+let restoring = false
+function persistView() {
+  if (restoring) return
+  try {
+    localStorage.setItem(
+      viewKey.value,
+      JSON.stringify({ groupMode: groupMode.value, sortBy: sortBy.value, filters }),
+    )
+  } catch {
+    /* storage full / disabled — non-fatal */
+  }
+}
+function restoreView() {
+  restoring = true
+  try {
+    const raw = localStorage.getItem(viewKey.value)
+    if (raw) {
+      const v = JSON.parse(raw)
+      if (v.groupMode) groupMode.value = v.groupMode
+      if (v.sortBy) sortBy.value = v.sortBy
+      if (v.filters) {
+        filters.priorities = v.filters.priorities || []
+        filters.assignees = v.filters.assignees || []
+        filters.tags = v.filters.tags || []
+        filters.due = v.filters.due || ''
+        filters.q = v.filters.q || ''
+      }
+    } else {
+      resetFilters()
+    }
+  } catch {
+    /* corrupt entry — ignore */
+  } finally {
+    nextTick(() => (restoring = false))
+  }
+}
+watch([groupMode, sortBy, filters], persistView, { deep: true })
+
+// ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
+//    exactly one full-width column on mobile. ──
+const vw = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
+function onResize() {
+  vw.value = window.innerWidth
+}
+const colWidth = computed(() => {
+  if (isMobile.value) return Math.max(vw.value - 24, 240) // one column, full width
+  const n = displayColumns.value.length || 1
+  const sidebar = 264
+  const pad = 32 // content padding 16*2
+  const gap = 12
+  const addCol = groupMode.value === 'status' ? 220 + gap : 0 // reserve "+ колонка"
+  const avail = vw.value - sidebar - pad - addCol - (n - 1) * gap
+  const w = Math.floor(avail / n)
+  return Math.min(Math.max(w, 280), 420)
+})
+const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 
 // modals
 const selectedTaskId = ref(null)
@@ -111,12 +198,31 @@ async function loadWorkspaceMeta() {
   for (const m of mem.data || []) membersMap[m.user_id] = m
 }
 
+// Due-date predicate for the "Срок" filter.
+function matchesDue(t, mode) {
+  if (mode === 'none') return !t.due_date
+  if (!t.due_date) return false
+  if (mode === 'has') return true
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const due = new Date(t.due_date)
+  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate())
+  const dayMs = 86400000
+  if (mode === 'overdue') return dueDay < today && !t.completed_at
+  if (mode === 'today') return dueDay.getTime() === today.getTime()
+  if (mode === 'week') return dueDay >= today && dueDay - today <= 7 * dayMs
+  return true
+}
+
 // filter + sort applied before grouping
 const filteredTasks = computed(() => {
   let arr = allTasks.value
   if (filters.priorities.length) arr = arr.filter((t) => filters.priorities.includes(t.priority))
   if (filters.assignees.length)
     arr = arr.filter((t) => (t.assignee_ids || []).some((a) => filters.assignees.includes(a)))
+  if (filters.tags.length)
+    arr = arr.filter((t) => (t.tag_ids || []).some((id) => filters.tags.includes(id)))
+  if (filters.due) arr = arr.filter((t) => matchesDue(t, filters.due))
   const q = filters.q.trim().toLowerCase()
   if (q) arr = arr.filter((t) => t.title.toLowerCase().includes(q))
 
@@ -291,10 +397,31 @@ useRealtime((ev) => {
   scheduleReload()
 })
 
-onMounted(() => load(props.boardId))
+// Open a task when arriving via a search deep-link (?task=<id>).
+function applyTaskQuery() {
+  const id = route.query.task
+  if (id) openTask(String(id))
+}
+
+onMounted(async () => {
+  window.addEventListener('resize', onResize)
+  restoreView()
+  await load(props.boardId)
+  applyTaskQuery()
+})
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
 watch(
   () => props.boardId,
-  (id) => id && load(id),
+  async (id) => {
+    if (!id) return
+    restoreView()
+    await load(id)
+    applyTaskQuery()
+  },
+)
+watch(
+  () => route.query.task,
+  () => applyTaskQuery(),
 )
 </script>
 
@@ -304,41 +431,58 @@ watch(
       <div class="toolbar">
         <n-text strong style="font-size: 18px">{{ board.name }}</n-text>
         <n-space align="center" :size="8">
-          <n-button-group size="small">
-            <n-button
-              :type="groupMode === 'status' ? 'primary' : 'default'"
-              @click="groupMode = 'status'"
-            >
-              Статусы
-            </n-button>
-            <n-button
-              :type="groupMode === 'tag' ? 'primary' : 'default'"
-              @click="groupMode = 'tag'"
-            >
-              Теги
-            </n-button>
-          </n-button-group>
-
-          <n-select
-            v-model:value="sortBy"
-            :options="sortOptions"
-            size="small"
-            style="width: 150px"
-          />
-
+          <!-- Unified view + filters dropdown (#6) -->
           <n-popover trigger="click" placement="bottom-end">
             <template #trigger>
               <n-button size="small" :type="activeFilterCount ? 'primary' : 'default'" ghost>
-                Фильтры{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
+                Вид и фильтры{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
               </n-button>
             </template>
-            <div class="filters">
+            <div class="vp">
+              <n-text depth="3" class="flbl">Группировка</n-text>
+              <n-button-group size="small" class="vp-grp">
+                <n-button
+                  :type="groupMode === 'status' ? 'primary' : 'default'"
+                  @click="groupMode = 'status'"
+                >
+                  По статусам
+                </n-button>
+                <n-button
+                  :type="groupMode === 'tag' ? 'primary' : 'default'"
+                  @click="groupMode = 'tag'"
+                >
+                  По тегам
+                </n-button>
+              </n-button-group>
+
+              <n-text depth="3" class="flbl">Сортировка</n-text>
+              <n-select v-model:value="sortBy" :options="sortOptions" size="small" />
+
+              <n-divider class="vp-div" />
+
+              <div class="vp-fhead">
+                <n-text depth="3" class="flbl flbl-0">Фильтры</n-text>
+                <n-button
+                  v-if="activeFilterCount"
+                  text
+                  size="tiny"
+                  type="primary"
+                  @click="resetFilters"
+                >
+                  Сбросить
+                </n-button>
+              </div>
+
               <n-input
                 v-model:value="filters.q"
                 size="small"
-                placeholder="Поиск по названию"
+                placeholder="Название задачи"
                 clearable
               />
+
+              <n-text depth="3" class="flbl">Срок</n-text>
+              <n-select v-model:value="filters.due" :options="dueOptions" size="small" />
+
               <n-text depth="3" class="flbl">Приоритет</n-text>
               <n-checkbox-group v-model:value="filters.priorities">
                 <n-space vertical :size="4">
@@ -350,6 +494,7 @@ watch(
                   />
                 </n-space>
               </n-checkbox-group>
+
               <n-text depth="3" class="flbl">Исполнитель</n-text>
               <n-checkbox-group v-model:value="filters.assignees">
                 <n-space vertical :size="4">
@@ -361,6 +506,20 @@ watch(
                   />
                 </n-space>
               </n-checkbox-group>
+
+              <template v-if="tagFilterOptions.length">
+                <n-text depth="3" class="flbl">Теги</n-text>
+                <n-checkbox-group v-model:value="filters.tags">
+                  <n-space vertical :size="4">
+                    <n-checkbox
+                      v-for="o in tagFilterOptions"
+                      :key="o.value"
+                      :value="o.value"
+                      :label="o.label"
+                    />
+                  </n-space>
+                </n-checkbox-group>
+              </template>
             </div>
           </n-popover>
 
@@ -374,7 +533,7 @@ watch(
         </n-space>
       </div>
 
-      <div class="board-scroll">
+      <div class="board-scroll" :style="colStyleVars">
         <draggable
           :list="colModel"
           group="columns"
@@ -448,7 +607,7 @@ watch(
         </draggable>
 
         <!-- inline new column (status mode) -->
-        <div v-if="groupMode === 'status'" class="add-col">
+        <div v-if="groupMode === 'status'" class="add-col" :class="{ 'add-col-mobile': isMobile }">
           <n-input
             v-if="addingColumn"
             ref="colInput"
@@ -499,15 +658,34 @@ watch(
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
-.filters {
-  width: 220px;
+.vp {
+  width: 240px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.vp-grp {
+  display: flex;
+}
+.vp-grp .n-button {
+  flex: 1;
+}
+.vp-div {
+  margin: 8px 0 2px;
+}
+.vp-fhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .flbl {
   font-size: 12px;
   margin-top: 6px;
+}
+.flbl-0 {
+  margin-top: 0;
 }
 .board-scroll {
   display: flex;
@@ -524,12 +702,15 @@ watch(
 .add-col {
   flex: 0 0 220px;
 }
+.add-col-mobile {
+  flex: 0 0 var(--col-w, 220px);
+}
 .add-task-input {
   margin-top: 4px;
 }
 .col {
-  width: 280px;
-  flex: 0 0 280px;
+  width: var(--col-w, 280px);
+  flex: 0 0 var(--col-w, 280px);
   background: var(--t-surface-alt);
   border-radius: 10px;
   border-top: 3px solid var(--col-accent);

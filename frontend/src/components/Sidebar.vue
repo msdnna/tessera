@@ -19,6 +19,9 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
 import SidebarNode from './SidebarNode.vue'
 import ProjectRow from './ProjectRow.vue'
+import SidebarFooter from './SidebarFooter.vue'
+
+defineProps({ mobile: { type: Boolean, default: false } })
 
 const store = useWorkspacesStore()
 const message = useMessage()
@@ -156,6 +159,8 @@ async function createWorkspace() {
         Пусто — создайте проект или группу через «+».
       </n-text>
     </n-scrollbar>
+
+    <SidebarFooter :mobile="mobile" />
 
     <n-modal v-model:show="wsModal.show">
       <n-card title="Новое пространство" style="max-width: 360px" role="dialog">

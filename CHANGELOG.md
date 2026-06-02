@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.19.0] — 2026-06-03
+- Layout overhaul (feature 7): the top header is now reserved for a single,
+  centred search bar (not full width). The user + notifications block moved to
+  the bottom of the sidebar — avatar + name + logout on desktop, avatar with a
+  popover (name, email, logout) on mobile — alongside members, the activity
+  bell and the appearance picker. Kanban columns now have adaptive width: they
+  expand to fill the viewport (leaving room for "＋ Создать колонку"), and on
+  mobile exactly one full-width column shows at a time (swipe between them).
+- Global search (feature 2): the header search queries tasks and notes as you
+  type (debounced) and shows a grouped results dropdown; picking a task opens
+  its board with the task modal, picking a note opens it in Notes.
+- Advanced filters + saved views (feature 6): a single "Вид и фильтры" dropdown
+  now holds grouping (statuses/tags), sort, and all filters — including new
+  filters by tag and by due date (overdue / today / this week / has / none) on
+  top of priority, assignee and text. The whole view configuration is saved per
+  board (per device) and restored on return; "Сбросить" clears active filters.
+
+### [0.18.2] — 2026-06-03
+- Task modal: tighter assignee avatar cascade with the ring matching the modal
+  background, so the overlap reads cleanly on the elevated surface.
+
 ### [0.18.1] — 2026-06-03
 - Assignee avatars now cascade (overlap with a ring in the surface colour) like
   a reference tracker, instead of sitting side by side.
@@ -264,6 +285,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.11.0] — 2026-06-03
+- Global search (feature 2): `GET /workspaces/:id/search?q=` returns matching
+  tasks (by title, with board id + number, archived excluded) and notes (title
+  or body), case-insensitive, capped at 25 each. Empty query short-circuits.
 
 ### [0.10.0] — 2026-06-03
 - Per-workspace sequential task numbers (#N): migration 0005 adds

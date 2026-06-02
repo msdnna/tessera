@@ -1,11 +1,13 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { NButton, NInput, NText, NEmpty, NPopconfirm, useMessage } from 'naive-ui'
 import { notes as notesApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
+const route = useRoute()
 
 const list = ref([])
 const selected = ref(null)
@@ -17,6 +19,11 @@ async function loadList() {
   try {
     const res = await notesApi.list(wsStore.currentId)
     list.value = res.data || []
+    const wanted = route.query.note
+    if (wanted) {
+      const found = list.value.find((n) => n.id === String(wanted))
+      if (found) select(found)
+    }
   } catch (e) {
     message.error(e.message)
   }
@@ -69,6 +76,10 @@ watch(
     selected.value = null
     loadList()
   },
+)
+watch(
+  () => route.query.note,
+  () => loadList(),
 )
 </script>
 
