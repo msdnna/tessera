@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.7] — 2026-06-02
+- Stacked tag pill: add margin-right so the next pill clears the box-shadow
+  stack; tag border color is now paler than the text but stronger than the
+  tint background.
+
 ### [0.13.6] — 2026-06-02
 - Card tag: the pill (button) carries the tint background + tag-color border;
   the inner span is just text — matching the other card pills (point 1).
