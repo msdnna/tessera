@@ -40,11 +40,14 @@ const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_da
 const done = computed(() => !!props.task.completed_at)
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
 // Stacked-cards effect: offset colored shadows behind the top tag pill.
+// Stacked-cards: each deeper layer peeks 5px further right and is a little
+// shorter (larger negative spread) so it reads as a stack behind the top pill.
+const stackLayers = computed(() => Math.min(taskTags.value.length - 1, 2))
 const stackShadow = computed(() => {
   if (taskTags.value.length < 2) return ''
   return taskTags.value
     .slice(1, 3)
-    .map((t, i) => `${(i + 1) * 5}px 0 0 -1px ${t.color || '#888'}`)
+    .map((t, i) => `${(i + 1) * 5}px 0 0 ${-(i * 2 + 2)}px ${t.color || '#888'}`)
     .join(', ')
 })
 const cardStyle = computed(() =>
@@ -155,10 +158,10 @@ async function toggleAssignee(uid) {
                 class="pill tag-pill"
                 :style="{
                   background: (taskTags[0].color || '#888') + '22',
-                  borderColor: (taskTags[0].color || '#888') + '88',
+                  borderColor: (taskTags[0].color || '#888') + '55',
                   color: taskTags[0].color || '#888',
                   boxShadow: stackShadow,
-                  marginRight: taskTags.length > 1 ? '5px' : undefined,
+                  marginRight: stackLayers ? stackLayers * 5 + 4 + 'px' : undefined,
                 }"
                 @click.stop
               >

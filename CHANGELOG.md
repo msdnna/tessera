@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.8] — 2026-06-02
+- Tag stack: shadow layers shrink with depth and margin-right scales with the
+  number of layers so the next pill always clears the stack; tag border paler.
+- Fixed modal plain inputs in dark theme: the `plain` class is the NInput root,
+  so `:deep(.n-input)` never matched (modal is teleported) — set --n-color on
+  `.plain` directly, so the field keeps the modal colour on focus too.
+
 ### [0.13.7] — 2026-06-02
 - Stacked tag pill: add margin-right so the next pill clears the box-shadow
   stack; tag border color is now paler than the text but stronger than the

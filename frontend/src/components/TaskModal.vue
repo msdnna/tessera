@@ -482,10 +482,12 @@ async function toggleSubtask(sub) {
 .sep {
   opacity: 0.5;
 }
-/* Naive sets --n-color inline on .n-input; override it (with !important so it
-   beats the inline custom property) to the modal background so the field blends
-   in like plain text. Border elements hidden so there's no outline/highlight. */
-.plain :deep(.n-input) {
+/* The `plain` class lands on the NInput ROOT element (attr fallthrough), which
+   IS `.n-input` — so a `:deep(.n-input)` descendant selector never matched it
+   (and the modal is teleported to <body>). Set Naive's --n-color vars on
+   `.plain` itself (!important beats the inline ones Naive writes); they inherit
+   into the inner elements, so the field keeps the modal colour even on focus. */
+.plain {
   --n-color: var(--t-surface) !important;
   --n-color-focus: var(--t-surface) !important;
 }
