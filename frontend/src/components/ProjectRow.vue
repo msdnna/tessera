@@ -121,11 +121,12 @@ function startAddBoard() {
 }
 async function addBoard() {
   const n = newBoardName.value.trim()
+  // Clear + close before await so the @blur on input removal doesn't duplicate.
+  newBoardName.value = ''
   addingBoard.value = false
   if (!n) return
   try {
     await projApi.createBoard(props.project.id, { name: n })
-    newBoardName.value = ''
     await store.loadBoards(props.project.id)
     expanded.value = true
   } catch (e) {

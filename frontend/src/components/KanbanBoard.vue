@@ -480,6 +480,7 @@ watch(
       :tags="tagsList"
       :members="membersList"
       @changed="onChanged"
+      @open="openTask"
     />
   </n-spin>
 </template>

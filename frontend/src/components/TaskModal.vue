@@ -9,7 +9,6 @@ import {
   NButton,
   NSpace,
   NPopover,
-  NCheckbox,
   NIcon,
   NSpin,
   useMessage,
@@ -22,7 +21,10 @@ import {
   PricetagOutline,
   CheckmarkDoneOutline,
   CheckmarkOutline,
+  CheckmarkCircle,
+  EllipseOutline,
   TrashOutline,
+  GitMergeOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -35,7 +37,7 @@ const props = defineProps({
   tags: { type: Array, default: () => [] },
   members: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['update:show', 'changed'])
+const emit = defineEmits(['update:show', 'changed', 'open'])
 
 const store = useWorkspacesStore()
 const message = useMessage()
@@ -43,6 +45,7 @@ const dialog = useDialog()
 const loading = ref(false)
 const task = ref(null)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
+const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
 const title = ref('')
 const description = ref('')
@@ -93,6 +96,9 @@ const breadcrumb = computed(() => {
 function initials(name) {
   return (name || '?').trim().slice(0, 2).toUpperCase()
 }
+function subDue(d) {
+  return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
+}
 
 async function loadDetail() {
   if (!props.taskId) return
@@ -111,8 +117,11 @@ async function loadDetail() {
     try {
       const b = await boardsApi.get(t.board_id)
       boardInfo.value = { name: b.data.name, projectId: b.data.project_id }
+      const bt = await boardsApi.tasks(t.board_id)
+      parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
     } catch {
       boardInfo.value = null
+      parentCandidates.value = []
     }
   } catch (e) {
     message.error(e.message)
@@ -196,6 +205,16 @@ function onDeleteClick() {
 async function detachFromParent() {
   try {
     await tasksApi.setParent(props.taskId, null)
+    emit('changed')
+    close()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+// Attach this task as a subtask of another (becomes its child).
+async function attachTo(parentId) {
+  try {
+    await tasksApi.setParent(props.taskId, parentId)
     emit('changed')
     close()
   } catch (e) {
@@ -430,6 +449,32 @@ async function toggleSubtask(sub) {
               >
               <n-switch :value="completed" @update:value="setCompleted" />
             </div>
+
+            <!-- parent -->
+            <div class="prow">
+              <span class="plabel"
+                ><n-icon :component="GitMergeOutline" :size="15" /> Родитель</span
+              >
+              <n-button v-if="task?.parent_id" quaternary size="small" @click="detachFromParent">
+                Открепить
+              </n-button>
+              <n-popover v-else trigger="click" placement="bottom-start">
+                <template #trigger>
+                  <button class="val"><span class="muted">Сделать подзадачей…</span></button>
+                </template>
+                <div class="menu pmenu">
+                  <div
+                    v-for="cand in parentCandidates"
+                    :key="cand.id"
+                    class="menu-item"
+                    @click="attachTo(cand.id)"
+                  >
+                    {{ cand.title }}
+                  </div>
+                  <span v-if="!parentCandidates.length" class="muted small">Нет других задач</span>
+                </div>
+              </n-popover>
+            </div>
           </div>
 
           <div class="section">
@@ -445,9 +490,26 @@ async function toggleSubtask(sub) {
 
           <div class="section">
             <span class="slabel">Подзадачи</span>
-            <div v-for="sub in task?.subtasks || []" :key="sub.id" class="subtask">
-              <n-checkbox :checked="!!sub.completed_at" @update:checked="toggleSubtask(sub)" />
-              <span :class="{ done: sub.completed_at }">{{ sub.title }}</span>
+            <div
+              v-for="sub in task?.subtasks || []"
+              :key="sub.id"
+              class="subrow"
+              :class="{ done: sub.completed_at }"
+              @click="emit('open', sub.id)"
+            >
+              <span class="check" @click.stop="toggleSubtask(sub)">
+                <n-icon
+                  :component="sub.completed_at ? CheckmarkCircle : EllipseOutline"
+                  :size="17"
+                />
+              </span>
+              <span
+                v-if="sub.priority"
+                class="pr-dot"
+                :style="{ background: PRIORITY_COLORS[sub.priority] }"
+              />
+              <span class="sub-title">{{ sub.title }}</span>
+              <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
             </div>
             <n-input
               v-model:value="newSubtask"
@@ -593,15 +655,56 @@ async function toggleSubtask(sub) {
   font-size: 12px;
   color: var(--t-text3);
 }
-.subtask {
+.subrow {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--t-surface-alt);
+  margin-bottom: 4px;
+  cursor: pointer;
+  font-size: 13px;
 }
-.subtask .done {
+.subrow:hover {
+  background: var(--t-hover);
+}
+.subrow .check {
+  display: inline-flex;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.subrow.done .check {
+  color: var(--t-primary);
+}
+.subrow.done .sub-title {
   text-decoration: line-through;
   opacity: 0.6;
+}
+.pr-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.sub-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub-due {
+  font-size: 11px;
+  color: var(--t-text3);
+}
+.pmenu {
+  max-height: 240px;
+  overflow-y: auto;
+}
+.small {
+  font-size: 12px;
+  padding: 4px;
 }
 .menu {
   min-width: 200px;

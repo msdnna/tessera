@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.16.0] — 2026-06-02
+- Fix: creating a subtask/board with Enter no longer duplicates (clear+close
+  before the await so the @blur doesn't re-submit) (issue 1).
+- Subtask reorder via drag (hold ~0.3s) within a card (issue 4).
+- Modal subtasks rendered as functional rows (done toggle, priority dot, due)
+  with click-to-open instead of plain checkboxes (issue 3).
+- Reattach: modal "Родитель" row picks a parent task to become its subtask;
+  "Открепить" detaches (issue 2). (Drop-card-onto-card nesting is a follow-up.)
+
 ### [0.15.0] — 2026-06-02
 - Subtasks on the board (Phase: feature 2): parent cards render their subtasks
   as compact sub-rows (done toggle, priority dot, due) — clicking a sub-row

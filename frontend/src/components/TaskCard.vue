@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import draggable from 'vuedraggable'
 import { NIcon, NPopover, NDatePicker, NInput } from 'naive-ui'
 import {
   FlagOutline,
@@ -125,6 +126,31 @@ async function toggleAssignee(uid) {
 const addingSub = ref(false)
 const newSubTitle = ref('')
 const subInput = ref(null)
+// Mutable mirror for drag-reorder of subtasks; resynced from the prop.
+const subModel = ref([])
+watch(
+  () => props.subtasks,
+  (v) => (subModel.value = [...v]),
+  { immediate: true, deep: true },
+)
+async function onSubReorder(evt) {
+  const info = evt.moved || evt.added
+  if (!info) return
+  const arr = subModel.value
+  const before = arr[info.newIndex - 1]
+  const after = arr[info.newIndex + 1]
+  try {
+    await tasksApi.move(info.element.id, {
+      column_id: props.task.column_id,
+      before_id: before ? before.id : null,
+      after_id: after ? after.id : null,
+    })
+    emit('changed')
+  } catch (e) {
+    void e
+    emit('changed')
+  }
+}
 function subDue(s) {
   return s.due_date
     ? new Date(s.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
@@ -147,6 +173,9 @@ function startAddSub() {
 }
 async function submitAddSub() {
   const t = newSubTitle.value.trim()
+  // Clear + close BEFORE awaiting so the @blur that fires when the input is
+  // removed doesn't re-submit the same title (was creating a duplicate).
+  newSubTitle.value = ''
   addingSub.value = false
   if (!t) return
   await boardsApi.createTask(props.task.board_id, {
@@ -154,7 +183,6 @@ async function submitAddSub() {
     parent_id: props.task.id,
     title: t,
   })
-  newSubTitle.value = ''
   emit('changed')
 }
 </script>
@@ -315,27 +343,34 @@ async function submitAddSub() {
       </n-popover>
     </div>
 
-    <!-- subtasks as compact sub-cards -->
-    <div v-if="subtasks.length" class="subs" @click.stop>
-      <div
-        v-for="s in subtasks"
-        :key="s.id"
-        class="subrow"
-        :class="{ done: s.completed_at }"
-        @click="emit('open', s.id)"
-      >
-        <span class="check sm" @click.stop="toggleSubDone(s)">
-          <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
-        </span>
-        <span
-          v-if="s.priority"
-          class="pr-dot"
-          :style="{ background: PRIORITY_COLORS[s.priority] }"
-        />
-        <span class="sub-title">{{ s.title }}</span>
-        <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
-      </div>
-    </div>
+    <!-- subtasks as compact sub-cards (reorderable; hold ~0.3s to drag) -->
+    <draggable
+      v-if="subtasks.length"
+      :list="subModel"
+      :group="'sub-' + task.id"
+      item-key="id"
+      class="subs"
+      :animation="150"
+      :delay="300"
+      :touch-start-threshold="6"
+      @click.stop
+      @change="onSubReorder"
+    >
+      <template #item="{ element: s }">
+        <div class="subrow" :class="{ done: s.completed_at }" @click="emit('open', s.id)">
+          <span class="check sm" @click.stop="toggleSubDone(s)">
+            <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
+          </span>
+          <span
+            v-if="s.priority"
+            class="pr-dot"
+            :style="{ background: PRIORITY_COLORS[s.priority] }"
+          />
+          <span class="sub-title">{{ s.title }}</span>
+          <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+        </div>
+      </template>
+    </draggable>
 
     <div v-if="addingSub" class="sub-add-input" @click.stop>
       <n-input
