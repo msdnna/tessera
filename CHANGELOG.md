@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.4] — 2026-06-02
+- Tag stack shadow now offsets only to the right (point 1).
+- Plain modal inputs: force transparent background and hide border elements
+  (Naive sets them via inline CSS vars) so they read as plain text in dark
+  theme too (point 2).
+- Project icon grid left-aligned while the popover stays centered (point 3).
+
 ### [0.13.3] — 2026-06-02
 - Card tag stack reworked: the first tag is a normal colored pill, with offset
   colored shadows behind it (stacked-cards look) + "+N" when there are more; a

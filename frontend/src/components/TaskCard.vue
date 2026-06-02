@@ -44,7 +44,7 @@ const stackShadow = computed(() => {
   if (taskTags.value.length < 2) return ''
   return taskTags.value
     .slice(1, 3)
-    .map((t, i) => `${(i + 1) * 3}px ${(i + 1) * 3}px 0 -1px ${t.color || '#888'}`)
+    .map((t, i) => `${(i + 1) * 3}px 0 0 -1px ${t.color || '#888'}`)
     .join(', ')
 })
 const cardStyle = computed(() =>

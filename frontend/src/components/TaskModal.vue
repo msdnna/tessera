@@ -482,18 +482,14 @@ async function toggleSubtask(sub) {
 .sep {
   opacity: 0.5;
 }
-/* Plain inputs: indistinguishable from text until hover/focus. */
+/* Plain inputs: look exactly like text. Naive sets bg/border via inline CSS
+   vars (which beat stylesheet vars), so override the actual properties. */
 .plain :deep(.n-input) {
-  --n-color: transparent;
-  --n-color-focus: transparent;
-  --n-border: 1px solid transparent;
-  --n-border-hover: 1px solid var(--t-border);
-  --n-border-focus: 1px solid var(--t-primary);
-  --n-box-shadow-focus: none;
+  background-color: transparent !important;
 }
 .plain :deep(.n-input__border),
 .plain :deep(.n-input__state-border) {
-  border: none;
+  display: none !important;
 }
 .props {
   display: flex;
