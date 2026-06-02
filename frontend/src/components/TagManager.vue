@@ -76,41 +76,42 @@ async function add() {
     <div class="list">
       <div v-for="t in tags" :key="t.id" class="tag-block">
         <div class="tag-row">
-          <span
-            class="chip"
-            :style="{ background: (t.color || '#888') + '22', color: t.color || '#888' }"
-            @click="startEdit(t)"
-          >
-            {{ t.name }}
-          </span>
-          <n-popconfirm @positive-click="remove(t)">
-            <template #trigger>
-              <n-button text size="tiny" type="error"
-                ><n-icon :component="TrashOutline"
-              /></n-button>
-            </template>
-            Удалить тег? Он снимется со всех задач.
-          </n-popconfirm>
-        </div>
-        <div v-if="editingId === t.id" class="editor">
           <n-input
-            ref="nameInput"
+            v-if="editingId === t.id"
+            :ref="(el) => el && (nameInput = el)"
             v-model:value="nameEdit"
             size="tiny"
             placeholder="Имя тега"
             @keyup.enter="saveName(t)"
             @blur="saveName(t)"
           />
-          <div class="swatches">
-            <button
-              v-for="s in swatches"
-              :key="s"
-              class="sw"
-              :class="{ active: s === t.color }"
-              :style="{ background: s }"
-              @click="setColor(t, s)"
-            />
-          </div>
+          <span
+            v-else
+            class="chip"
+            title="Двойной клик — переименовать"
+            :style="{ background: (t.color || '#888') + '22', color: t.color || '#888' }"
+            @dblclick="startEdit(t)"
+          >
+            {{ t.name }}
+          </span>
+          <n-popconfirm @positive-click="remove(t)">
+            <template #trigger>
+              <n-button text size="tiny" type="error">
+                <n-icon :component="TrashOutline" />
+              </n-button>
+            </template>
+            Удалить тег? Он снимется со всех задач.
+          </n-popconfirm>
+        </div>
+        <div v-if="editingId === t.id" class="swatches">
+          <button
+            v-for="s in swatches"
+            :key="s"
+            class="sw"
+            :class="{ active: s === t.color }"
+            :style="{ background: s }"
+            @click="setColor(t, s)"
+          />
         </div>
       </div>
       <n-text v-if="!tags.length" depth="3" class="empty">Тегов пока нет.</n-text>

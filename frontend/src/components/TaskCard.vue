@@ -134,19 +134,35 @@ async function toggleAssignee(uid) {
         </div>
       </n-popover>
 
-      <!-- tags: independent chips + add pill -->
-      <span
-        v-for="t in taskTags"
-        :key="t.id"
-        class="chip"
-        :style="{ background: (t.color || '#888') + '22', color: t.color || '#888' }"
-        >{{ t.name }}</span
-      >
+      <!-- tags: stacked when >1; hover previews full list, click opens picker -->
       <n-popover trigger="click" placement="bottom-start">
         <template #trigger>
-          <button class="pill" @click.stop>
-            <n-icon :component="PricetagOutline" :size="13" />
-          </button>
+          <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
+            <template #trigger>
+              <button class="pill tag-pill" :class="{ set: taskTags.length }" @click.stop>
+                <n-icon v-if="!taskTags.length" :component="PricetagOutline" :size="13" />
+                <template v-else>
+                  <span
+                    v-for="(t, i) in taskTags.slice(0, 3)"
+                    :key="t.id"
+                    class="stack-chip"
+                    :style="{ background: t.color || '#888', zIndex: 3 - i }"
+                  />
+                  <span class="stack-label">{{ taskTags[0].name }}</span>
+                  <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
+                </template>
+              </button>
+            </template>
+            <div class="preview">
+              <span
+                v-for="t in taskTags"
+                :key="t.id"
+                class="chip"
+                :style="{ background: (t.color || '#888') + '22', color: t.color || '#888' }"
+                >{{ t.name }}</span
+              >
+            </div>
+          </n-popover>
         </template>
         <div class="menu tagmenu">
           <div class="chip-grid">
@@ -281,6 +297,36 @@ async function toggleAssignee(uid) {
   font-size: 11px;
   padding: 1px 8px;
   border-radius: 10px;
+}
+.tag-pill {
+  gap: 5px;
+}
+.stack-chip {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  margin-left: -6px;
+  border: 1px solid var(--t-surface);
+}
+.stack-chip:first-child {
+  margin-left: 0;
+}
+.stack-label {
+  font-size: 11px;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.more {
+  font-size: 10px;
+  color: var(--t-text3);
+}
+.preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 220px;
 }
 .spacer {
   flex: 1;

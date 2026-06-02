@@ -25,6 +25,7 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, workspaces as wsApi } from '@/api'
+import { useWorkspacesStore } from '@/stores/workspaces'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 
 const props = defineProps({
@@ -36,9 +37,11 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:show', 'changed'])
 
+const store = useWorkspacesStore()
 const message = useMessage()
 const loading = ref(false)
 const task = ref(null)
+const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 
 const title = ref('')
 const description = ref('')
@@ -67,6 +70,25 @@ const dueLabel = computed(() =>
     : '',
 )
 
+// Location breadcrumb: group chain → project → board (resolved from the store).
+const breadcrumb = computed(() => {
+  const parts = []
+  const proj = store.projects.find((p) => p.id === boardInfo.value?.projectId)
+  if (proj) {
+    const chain = []
+    let gid = proj.group_id
+    while (gid) {
+      const g = store.groups.find((x) => x.id === gid)
+      if (!g) break
+      chain.unshift(g.name)
+      gid = g.parent_id
+    }
+    parts.push(...chain, proj.name)
+  }
+  if (boardInfo.value?.name) parts.push(boardInfo.value.name)
+  return parts
+})
+
 function initials(name) {
   return (name || '?').trim().slice(0, 2).toUpperCase()
 }
@@ -85,6 +107,12 @@ async function loadDetail() {
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
     selectedAssignees.value = (t.assignees || []).map((x) => x.id)
+    try {
+      const b = await boardsApi.get(t.board_id)
+      boardInfo.value = { name: b.data.name, projectId: b.data.project_id }
+    } catch {
+      boardInfo.value = null
+    }
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -236,7 +264,13 @@ async function toggleSubtask(sub) {
     <n-card style="width: 640px; max-width: 94vw" role="dialog" :bordered="false">
       <n-spin :show="loading">
         <div class="form">
-          <n-input v-model:value="title" placeholder="Название задачи" class="title-input" />
+          <div v-if="breadcrumb.length" class="crumbs">
+            <template v-for="(c, i) in breadcrumb" :key="i">
+              <span class="crumb">{{ c }}</span>
+              <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
+            </template>
+          </div>
+          <n-input v-model:value="title" placeholder="Название задачи" class="title-input plain" />
 
           <div class="props">
             <!-- priority -->
@@ -380,6 +414,7 @@ async function toggleSubtask(sub) {
             <n-input
               v-model:value="description"
               type="textarea"
+              class="plain"
               :autosize="{ minRows: 3, maxRows: 12 }"
               placeholder="Добавьте описание…"
             />
@@ -394,6 +429,7 @@ async function toggleSubtask(sub) {
             <n-input
               v-model:value="newSubtask"
               size="small"
+              class="plain"
               placeholder="+ подзадача (Enter)"
               @keyup.enter="addSubtask"
             />
@@ -431,6 +467,32 @@ async function toggleSubtask(sub) {
 .title-input :deep(input) {
   font-size: 18px;
   font-weight: 600;
+}
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.crumb {
+  white-space: nowrap;
+}
+.sep {
+  opacity: 0.5;
+}
+/* Plain inputs: look like editable text (no border/bg) until hover/focus. */
+.plain :deep(.n-input) {
+  background: transparent;
+  --n-border: 1px solid transparent;
+  --n-border-hover: 1px solid var(--t-border);
+}
+.plain :deep(.n-input .n-input__border) {
+  border: none;
+}
+.plain:hover :deep(.n-input) {
+  background: var(--t-hover);
 }
 .props {
   display: flex;

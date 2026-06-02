@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.2] — 2026-06-02
+- Modal: title/description/subtask inputs styled as plain editable text;
+  location breadcrumb (group chain → project → board) added to the property
+  grid (point 2).
+- TagManager: double-click a tag to rename it in place; blur saves/closes
+  (point 4).
+- Task card: when a task has >1 tag they stack (colored squares + first name +
+  "+N"); hovering previews all tags, clicking opens the tag picker (point 5).
+
 ### [0.13.1] — 2026-06-02
 - Review fixes: dark theme for the date picker panel (point 1); delete buttons
   are now outlined (ghost) red with trash icon everywhere (point 3); board
