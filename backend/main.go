@@ -101,6 +101,7 @@ func main() {
 			protected.POST("/boards/:id/tasks", rh.CreateTask)
 			protected.GET("/boards/:id/tasks", rh.ListBoardTasks)
 			protected.GET("/boards/:id/subtasks", rh.ListBoardSubtasks)
+			protected.GET("/boards/:id/archive", rh.ListBoardArchived)
 
 			protected.PATCH("/columns/:id", rh.UpdateColumn)
 			protected.PATCH("/columns/:id/move", rh.MoveColumn)
@@ -110,6 +111,9 @@ func main() {
 			protected.PATCH("/tasks/:id", rh.UpdateTask)
 			protected.PATCH("/tasks/:id/move", rh.MoveTask)
 			protected.PATCH("/tasks/:id/parent", rh.SetTaskParent)
+			protected.PATCH("/tasks/:id/transfer", rh.TransferTask)
+			protected.PATCH("/tasks/:id/archive", rh.ArchiveTask)
+			protected.PATCH("/tasks/:id/restore", rh.RestoreTask)
 			protected.DELETE("/tasks/:id", rh.DeleteTask)
 			protected.POST("/tasks/:id/tags", rh.AddTaskTag)
 			protected.DELETE("/tasks/:id/tags/:tagId", rh.RemoveTaskTag)

@@ -22,7 +22,7 @@ SELECT
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
-WHERE t.board_id = $1 AND t.parent_id IS NULL
+WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
 GROUP BY t.id
 ORDER BY t.position;
 
@@ -39,9 +39,40 @@ SELECT
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
-WHERE t.board_id = $1 AND t.parent_id IS NOT NULL
+WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
 GROUP BY t.id
 ORDER BY t.position;
+
+-- ListBoardArchivedWithMeta returns archived top-level tasks of a board.
+-- name: ListBoardArchivedWithMeta :many
+SELECT
+    t.*,
+    COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+FROM tasks t
+LEFT JOIN task_tags tt ON tt.task_id = t.id
+LEFT JOIN task_assignees ta ON ta.task_id = t.id
+WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NOT NULL
+GROUP BY t.id
+ORDER BY t.archived_at DESC;
+
+-- name: ArchiveTask :exec
+UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1;
+
+-- name: ArchiveTaskCascade :exec
+UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1 OR parent_id = $1;
+
+-- name: RestoreTask :exec
+UPDATE tasks SET archived_at = NULL, updated_at = now() WHERE id = $1 OR parent_id = $1;
+
+-- name: TransferTask :one
+UPDATE tasks
+SET board_id = $2, column_id = $3, parent_id = NULL, position = $4, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: MoveSubtasksToBoard :exec
+UPDATE tasks SET board_id = $2, column_id = $3, updated_at = now() WHERE parent_id = $1;
 
 -- name: SetTaskParent :one
 UPDATE tasks

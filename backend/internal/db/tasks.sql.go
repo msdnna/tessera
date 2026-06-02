@@ -12,12 +12,30 @@ import (
 	"github.com/google/uuid"
 )
 
+const archiveTask = `-- name: ArchiveTask :exec
+UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1
+`
+
+func (q *Queries) ArchiveTask(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, archiveTask, id)
+	return err
+}
+
+const archiveTaskCascade = `-- name: ArchiveTaskCascade :exec
+UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1 OR parent_id = $1
+`
+
+func (q *Queries) ArchiveTaskCascade(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, archiveTaskCascade, id)
+	return err
+}
+
 const createTask = `-- name: CreateTask :one
 INSERT INTO tasks (
     board_id, column_id, parent_id, title, description, priority, due_date, position, created_by
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at
 `
 
 type CreateTaskParams struct {
@@ -59,6 +77,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -82,7 +101,7 @@ func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) error
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at FROM tasks WHERE id = $1
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at FROM tasks WHERE id = $1
 `
 
 func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
@@ -102,19 +121,90 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
-const listBoardSubtasksWithMeta = `-- name: ListBoardSubtasksWithMeta :many
+const listBoardArchivedWithMeta = `-- name: ListBoardArchivedWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
-WHERE t.board_id = $1 AND t.parent_id IS NOT NULL
+WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NOT NULL
+GROUP BY t.id
+ORDER BY t.archived_at DESC
+`
+
+type ListBoardArchivedWithMetaRow struct {
+	ID          uuid.UUID   `json:"id"`
+	BoardID     uuid.UUID   `json:"board_id"`
+	ColumnID    uuid.UUID   `json:"column_id"`
+	ParentID    *uuid.UUID  `json:"parent_id"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	Priority    int32       `json:"priority"`
+	DueDate     *time.Time  `json:"due_date"`
+	Position    float64     `json:"position"`
+	CreatedBy   *uuid.UUID  `json:"created_by"`
+	CompletedAt *time.Time  `json:"completed_at"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	ArchivedAt  *time.Time  `json:"archived_at"`
+	TagIds      []uuid.UUID `json:"tag_ids"`
+	AssigneeIds []uuid.UUID `json:"assignee_ids"`
+}
+
+// ListBoardArchivedWithMeta returns archived top-level tasks of a board.
+func (q *Queries) ListBoardArchivedWithMeta(ctx context.Context, boardID uuid.UUID) ([]ListBoardArchivedWithMetaRow, error) {
+	rows, err := q.db.Query(ctx, listBoardArchivedWithMeta, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBoardArchivedWithMetaRow
+	for rows.Next() {
+		var i ListBoardArchivedWithMetaRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.ColumnID,
+			&i.ParentID,
+			&i.Title,
+			&i.Description,
+			&i.Priority,
+			&i.DueDate,
+			&i.Position,
+			&i.CreatedBy,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ArchivedAt,
+			&i.TagIds,
+			&i.AssigneeIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBoardSubtasksWithMeta = `-- name: ListBoardSubtasksWithMeta :many
+SELECT
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at,
+    COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+FROM tasks t
+LEFT JOIN task_tags tt ON tt.task_id = t.id
+LEFT JOIN task_assignees ta ON ta.task_id = t.id
+WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
 GROUP BY t.id
 ORDER BY t.position
 `
@@ -133,6 +223,7 @@ type ListBoardSubtasksWithMetaRow struct {
 	CompletedAt *time.Time  `json:"completed_at"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
+	ArchivedAt  *time.Time  `json:"archived_at"`
 	TagIds      []uuid.UUID `json:"tag_ids"`
 	AssigneeIds []uuid.UUID `json:"assignee_ids"`
 }
@@ -162,6 +253,7 @@ func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UU
 			&i.CompletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ArchivedAt,
 			&i.TagIds,
 			&i.AssigneeIds,
 		); err != nil {
@@ -177,13 +269,13 @@ func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UU
 
 const listBoardTasksWithMeta = `-- name: ListBoardTasksWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
-WHERE t.board_id = $1 AND t.parent_id IS NULL
+WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
 GROUP BY t.id
 ORDER BY t.position
 `
@@ -202,6 +294,7 @@ type ListBoardTasksWithMetaRow struct {
 	CompletedAt *time.Time  `json:"completed_at"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
+	ArchivedAt  *time.Time  `json:"archived_at"`
 	TagIds      []uuid.UUID `json:"tag_ids"`
 	AssigneeIds []uuid.UUID `json:"assignee_ids"`
 }
@@ -232,6 +325,7 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID)
 			&i.CompletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ArchivedAt,
 			&i.TagIds,
 			&i.AssigneeIds,
 		); err != nil {
@@ -246,7 +340,7 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID)
 }
 
 const listSubtasks = `-- name: ListSubtasks :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at FROM tasks WHERE parent_id = $1 ORDER BY position
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at FROM tasks WHERE parent_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task, error) {
@@ -272,6 +366,7 @@ func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task
 			&i.CompletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -284,7 +379,7 @@ func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task
 }
 
 const listTasksByBoard = `-- name: ListTasksByBoard :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position
 `
 
 func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Task, error) {
@@ -310,6 +405,7 @@ func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Ta
 			&i.CompletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -333,11 +429,26 @@ func (q *Queries) MaxTaskPositionInColumn(ctx context.Context, columnID uuid.UUI
 	return column_1, err
 }
 
+const moveSubtasksToBoard = `-- name: MoveSubtasksToBoard :exec
+UPDATE tasks SET board_id = $2, column_id = $3, updated_at = now() WHERE parent_id = $1
+`
+
+type MoveSubtasksToBoardParams struct {
+	ParentID *uuid.UUID `json:"parent_id"`
+	BoardID  uuid.UUID  `json:"board_id"`
+	ColumnID uuid.UUID  `json:"column_id"`
+}
+
+func (q *Queries) MoveSubtasksToBoard(ctx context.Context, arg MoveSubtasksToBoardParams) error {
+	_, err := q.db.Exec(ctx, moveSubtasksToBoard, arg.ParentID, arg.BoardID, arg.ColumnID)
+	return err
+}
+
 const moveTask = `-- name: MoveTask :one
 UPDATE tasks
 SET column_id = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at
 `
 
 type MoveTaskParams struct {
@@ -363,15 +474,25 @@ func (q *Queries) MoveTask(ctx context.Context, arg MoveTaskParams) (Task, error
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
+}
+
+const restoreTask = `-- name: RestoreTask :exec
+UPDATE tasks SET archived_at = NULL, updated_at = now() WHERE id = $1 OR parent_id = $1
+`
+
+func (q *Queries) RestoreTask(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, restoreTask, id)
+	return err
 }
 
 const setTaskParent = `-- name: SetTaskParent :one
 UPDATE tasks
 SET parent_id = $2, board_id = $3, column_id = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at
 `
 
 type SetTaskParentParams struct {
@@ -403,6 +524,48 @@ func (q *Queries) SetTaskParent(ctx context.Context, arg SetTaskParentParams) (T
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const transferTask = `-- name: TransferTask :one
+UPDATE tasks
+SET board_id = $2, column_id = $3, parent_id = NULL, position = $4, updated_at = now()
+WHERE id = $1
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at
+`
+
+type TransferTaskParams struct {
+	ID       uuid.UUID `json:"id"`
+	BoardID  uuid.UUID `json:"board_id"`
+	ColumnID uuid.UUID `json:"column_id"`
+	Position float64   `json:"position"`
+}
+
+func (q *Queries) TransferTask(ctx context.Context, arg TransferTaskParams) (Task, error) {
+	row := q.db.QueryRow(ctx, transferTask,
+		arg.ID,
+		arg.BoardID,
+		arg.ColumnID,
+		arg.Position,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.ColumnID,
+		&i.ParentID,
+		&i.Title,
+		&i.Description,
+		&i.Priority,
+		&i.DueDate,
+		&i.Position,
+		&i.CreatedBy,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -411,7 +574,7 @@ const updateTask = `-- name: UpdateTask :one
 UPDATE tasks
 SET title = $2, description = $3, priority = $4, due_date = $5, completed_at = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at
 `
 
 type UpdateTaskParams struct {
@@ -447,6 +610,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }

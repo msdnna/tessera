@@ -111,6 +111,7 @@ type Task struct {
 	CompletedAt *time.Time `json:"completed_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	ArchivedAt  *time.Time `json:"archived_at"`
 }
 
 type TaskAssignee struct {

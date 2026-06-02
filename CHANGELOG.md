@@ -248,6 +248,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.9.0] — 2026-06-02
+- Transfer tasks between boards/projects: `PATCH /tasks/:id/transfer`
+  {board_id, column_id?} (same workspace) — becomes top-level on the target
+  board; subtasks follow (board/column updated).
+- Task archive (soft delete, migration 0004 `archived_at`): board lists exclude
+  archived; `PATCH /tasks/:id/archive` (?subtasks=detach keeps them on the
+  board), `PATCH /tasks/:id/restore`, `GET /boards/:id/archive`.
+
 ### [0.8.0] — 2026-06-02
 - Subtasks on the board: `GET /boards/:id/subtasks` returns subtasks with meta
   (tag/assignee ids) for nesting under parent cards.

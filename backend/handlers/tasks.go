@@ -308,6 +308,147 @@ func (h *API) MoveTask(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
+// TransferTask moves a task (and its subtasks) to another board/column within
+// the same workspace; it becomes a top-level card on the target board.
+func (h *API) TransferTask(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	var req struct {
+		BoardID  uuid.UUID  `json:"board_id" binding:"required"`
+		ColumnID *uuid.UUID `json:"column_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	targetWs, err := h.q.WorkspaceIDForBoard(c, req.BoardID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid target board"})
+		return
+	}
+	if targetWs != wsID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "target board is in another workspace"})
+		return
+	}
+	var columnID uuid.UUID
+	if req.ColumnID != nil {
+		col, err := h.q.GetColumn(c, *req.ColumnID)
+		if err != nil || col.BoardID != req.BoardID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "column does not belong to the target board"})
+			return
+		}
+		columnID = *req.ColumnID
+	} else {
+		cols, err := h.q.ListColumns(c, req.BoardID)
+		if err != nil {
+			fail(c)
+			return
+		}
+		if len(cols) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "target board has no columns"})
+			return
+		}
+		columnID = cols[0].ID
+	}
+	max, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	updated, err := h.q.TransferTask(c, db.TransferTaskParams{
+		ID: id, BoardID: req.BoardID, ColumnID: columnID, Position: positionBetween(&max, nil),
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	if err := h.q.MoveSubtasksToBoard(c, db.MoveSubtasksToBoardParams{
+		ParentID: &id, BoardID: req.BoardID, ColumnID: columnID,
+	}); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.moved", updated)
+	c.JSON(http.StatusOK, updated)
+}
+
+// ArchiveTask soft-deletes a task. ?subtasks=detach keeps the subtasks on the
+// board (re-parented to null); otherwise they are archived with the parent.
+func (h *API) ArchiveTask(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	if c.Query("subtasks") == "detach" {
+		if err := h.q.DetachChildren(c, &id); err != nil {
+			fail(c)
+			return
+		}
+		if err := h.q.ArchiveTask(c, id); err != nil {
+			fail(c)
+			return
+		}
+	} else if err := h.q.ArchiveTaskCascade(c, id); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.archived", gin.H{"id": id})
+	c.Status(http.StatusNoContent)
+}
+
+// RestoreTask un-archives a task (and any subtasks archived with it).
+func (h *API) RestoreTask(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	if err := h.q.RestoreTask(c, id); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.restored", gin.H{"id": id})
+	c.Status(http.StatusNoContent)
+}
+
+// ListBoardArchived returns a board's archived (soft-deleted) top-level tasks.
+func (h *API) ListBoardArchived(c *gin.Context) {
+	boardID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForBoard(c, boardID)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	rows, err := h.q.ListBoardArchivedWithMeta(c, boardID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, rows)
+}
+
 // DeleteTask removes a task and its subtasks.
 func (h *API) DeleteTask(c *gin.Context) {
 	id, ok := parseID(c, "id")
