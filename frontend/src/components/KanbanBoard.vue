@@ -143,16 +143,22 @@ watch(boardScroll, (el) => {
 })
 const GAP = 12
 const ADD_COL_W = 220
+const COL_MIN = 220 // narrowest a column may get before we switch to scrolling
+const COL_MAX = 420
 const colWidth = computed(() => {
   const cw = containerWidth.value
   if (!cw) return 280 // pre-measure fallback
-  if (isMobile.value) return Math.max(cw - 12, 220) // one column, just under full width
+  // Mobile: one column a little under full width so the next one peeks and the
+  // swipe (scroll-snap, see CSS) reads as a smooth page-turn.
+  if (isMobile.value) return Math.max(cw - 28, 200)
   const n = displayColumns.value.length || 1
-  // reserve the "+ колонка" tile (status mode) + the gap before it, plus a few
-  // px of slack so sub-pixel rounding can't trip the horizontal scrollbar.
-  const reserved = (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 6
+  // Reserve the "+ колонка" tile (status mode) + the gaps, plus a few px slack
+  // so sub-pixel rounding can't trip the horizontal scrollbar.
+  const reserved = (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 4
   const w = Math.floor((cw - reserved) / n)
-  return Math.min(Math.max(w, 280), 420)
+  // Fill the viewport while comfortable; once columns would get narrower than
+  // COL_MIN, stop shrinking and let the board scroll horizontally instead.
+  return Math.min(Math.max(w, COL_MIN), COL_MAX)
 })
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 
@@ -716,15 +722,29 @@ watch(
   align-items: flex-start;
 }
 .add-col {
+  box-sizing: border-box;
   flex: 0 0 220px;
 }
 .add-col-mobile {
   flex: 0 0 var(--col-w, 220px);
 }
+
+/* Mobile: snap each column to the start for a smooth one-at-a-time swipe. */
+@media (max-width: 768px) {
+  .board-scroll {
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+  }
+  .col,
+  .add-col-mobile {
+    scroll-snap-align: start;
+  }
+}
 .add-task-input {
   margin-top: 4px;
 }
 .col {
+  box-sizing: border-box;
   width: var(--col-w, 280px);
   flex: 0 0 var(--col-w, 280px);
   background: var(--t-surface-alt);

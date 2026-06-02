@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.19.2] — 2026-06-03
+- Kanban columns now reliably fit the screen: columns use `box-sizing:
+  border-box` (their 10px padding no longer added ~20px each to the measured
+  width, which had pushed the "+ колонка" tile off-screen). The minimum column
+  width before horizontal scrolling kicks in dropped to 220px, so the default
+  set of columns plus the reserved add-column tile fill the viewport, and
+  adding a column or two stays on screen — only a genuinely cramped count
+  scrolls.
+- Mobile: a column is now slightly under full width (next one peeks) with
+  CSS scroll-snap, giving a smooth page-turn swipe between columns.
+
 ### [0.19.1] — 2026-06-03
 - Fix kanban column width overflowing the screen (desktop and mobile): width is
   now derived from the measured scroll container (ResizeObserver) rather than an
