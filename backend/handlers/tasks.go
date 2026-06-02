@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -85,6 +86,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		fail(c)
 		return
 	}
+	h.logEvent(c, t.ID, "created", nil)
 	h.broadcast(wsID, "task.created", t)
 	c.JSON(http.StatusCreated, t)
 }
@@ -259,8 +261,38 @@ func (h *API) UpdateTask(c *gin.Context) {
 		fail(c)
 		return
 	}
+	h.journalUpdate(c, t, updated)
 	h.broadcast(wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)
+}
+
+// journalUpdate records the field-level changes of a task edit into its journal.
+func (h *API) journalUpdate(c *gin.Context, before, after db.Task) {
+	if before.Title != after.Title {
+		h.logEvent(c, after.ID, "renamed", map[string]any{"from": before.Title, "to": after.Title})
+	}
+	if before.Description != after.Description {
+		h.logEvent(c, after.ID, "description", nil)
+	}
+	if before.Priority != after.Priority {
+		h.logEvent(c, after.ID, "priority", map[string]any{"from": before.Priority, "to": after.Priority})
+	}
+	if !sameTime(before.DueDate, after.DueDate) {
+		h.logEvent(c, after.ID, "due", map[string]any{"set": after.DueDate != nil})
+	}
+	switch {
+	case before.CompletedAt == nil && after.CompletedAt != nil:
+		h.logEvent(c, after.ID, "completed", nil)
+	case before.CompletedAt != nil && after.CompletedAt == nil:
+		h.logEvent(c, after.ID, "reopened", nil)
+	}
+}
+
+func sameTime(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
 }
 
 // MoveTask moves a task to a column and repositions it between neighbours.
@@ -300,6 +332,10 @@ func (h *API) MoveTask(c *gin.Context) {
 		return
 	}
 
+	if t.ColumnID != req.ColumnID {
+		h.logEvent(c, id, "moved", map[string]any{"to": col.Name})
+	}
+
 	// Moving a task into the "Готово" column auto-marks it completed.
 	if col.Name == doneColumnName && updated.CompletedAt == nil {
 		now := time.Now()
@@ -308,6 +344,7 @@ func (h *API) MoveTask(c *gin.Context) {
 			Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
 		}); derr == nil {
 			updated = done
+			h.logEvent(c, id, "completed", nil)
 		}
 	}
 
@@ -409,6 +446,7 @@ func (h *API) ArchiveTask(c *gin.Context) {
 		fail(c)
 		return
 	}
+	h.logEvent(c, id, "archived", nil)
 	h.broadcast(wsID, "task.archived", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
@@ -427,6 +465,7 @@ func (h *API) RestoreTask(c *gin.Context) {
 		fail(c)
 		return
 	}
+	h.logEvent(c, id, "restored", nil)
 	h.broadcast(wsID, "task.restored", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
@@ -551,6 +590,10 @@ func (h *API) AddTaskAssignee(c *gin.Context) {
 		fail(c)
 		return
 	}
+	t, _, _ := h.loadTask(c, id)
+	h.logEvent(c, id, "assigned", map[string]any{"user_id": req.UserID})
+	h.notify(c, req.UserID, wsID, &id, "assigned",
+		fmt.Sprintf("%s назначил вам задачу #%s «%s»", h.actorName(c), taskRef(t.Number), t.Title))
 	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "user_id": req.UserID})
 	c.Status(http.StatusNoContent)
 }
@@ -573,6 +616,7 @@ func (h *API) RemoveTaskAssignee(c *gin.Context) {
 		fail(c)
 		return
 	}
+	h.logEvent(c, id, "unassigned", map[string]any{"user_id": userID})
 	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "user_id": userID})
 	c.Status(http.StatusNoContent)
 }

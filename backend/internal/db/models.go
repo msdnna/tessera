@@ -48,6 +48,18 @@ type Note struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
+type Notification struct {
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	TaskID      *uuid.UUID `json:"task_id"`
+	ActorID     *uuid.UUID `json:"actor_id"`
+	Kind        string     `json:"kind"`
+	Text        string     `json:"text"`
+	ReadAt      *time.Time `json:"read_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
 type Project struct {
 	ID          uuid.UUID  `json:"id"`
 	WorkspaceID uuid.UUID  `json:"workspace_id"`
@@ -118,6 +130,43 @@ type Task struct {
 type TaskAssignee struct {
 	TaskID uuid.UUID `json:"task_id"`
 	UserID uuid.UUID `json:"user_id"`
+}
+
+type TaskAttachment struct {
+	ID          uuid.UUID  `json:"id"`
+	TaskID      uuid.UUID  `json:"task_id"`
+	UploaderID  *uuid.UUID `json:"uploader_id"`
+	Filename    string     `json:"filename"`
+	ContentType string     `json:"content_type"`
+	Size        int64      `json:"size"`
+	StoragePath string     `json:"storage_path"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type TaskComment struct {
+	ID        uuid.UUID  `json:"id"`
+	TaskID    uuid.UUID  `json:"task_id"`
+	AuthorID  *uuid.UUID `json:"author_id"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+type TaskEvent struct {
+	ID        uuid.UUID  `json:"id"`
+	TaskID    uuid.UUID  `json:"task_id"`
+	ActorID   *uuid.UUID `json:"actor_id"`
+	Kind      string     `json:"kind"`
+	Data      []byte     `json:"data"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+type TaskRelation struct {
+	ID            uuid.UUID `json:"id"`
+	TaskID        uuid.UUID `json:"task_id"`
+	RelatedTaskID uuid.UUID `json:"related_task_id"`
+	Kind          string    `json:"kind"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type TaskTag struct {

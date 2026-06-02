@@ -32,7 +32,7 @@ func main() {
 	versionHandler := handlers.NewVersionHandler(appVersion)
 	wsHandler := handlers.NewWSHandler(hub)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret)
-	rh := handlers.NewAPI(queries, hub)
+	rh := handlers.NewAPI(queries, hub, cfg.UploadDir)
 
 	r := gin.Default()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
@@ -65,6 +65,8 @@ func main() {
 			protected.PATCH("/workspaces/:id", rh.UpdateWorkspace)
 			protected.DELETE("/workspaces/:id", rh.DeleteWorkspace)
 			protected.GET("/workspaces/:id/search", rh.Search)
+			protected.GET("/workspaces/:id/tasks", rh.ListWorkspaceTasks)
+			protected.GET("/workspaces/:id/summary", rh.WorkspaceSummary)
 			protected.GET("/workspaces/:id/members", rh.ListMembers)
 			protected.POST("/workspaces/:id/members", rh.AddMember)
 			protected.DELETE("/workspaces/:id/members/:userId", rh.RemoveMember)
@@ -120,6 +122,26 @@ func main() {
 			protected.DELETE("/tasks/:id/tags/:tagId", rh.RemoveTaskTag)
 			protected.POST("/tasks/:id/assignees", rh.AddTaskAssignee)
 			protected.DELETE("/tasks/:id/assignees/:userId", rh.RemoveTaskAssignee)
+
+			// Rich task detail: journal, comments, relations, attachments (#8).
+			protected.GET("/tasks/:id/events", rh.ListTaskEvents)
+			protected.GET("/tasks/:id/comments", rh.ListComments)
+			protected.POST("/tasks/:id/comments", rh.CreateComment)
+			protected.PATCH("/comments/:id", rh.UpdateComment)
+			protected.DELETE("/comments/:id", rh.DeleteComment)
+			protected.GET("/tasks/:id/relations", rh.ListRelations)
+			protected.POST("/tasks/:id/relations", rh.AddRelation)
+			protected.DELETE("/relations/:id", rh.DeleteRelation)
+			protected.GET("/tasks/:id/attachments", rh.ListAttachments)
+			protected.POST("/tasks/:id/attachments", rh.UploadAttachment)
+			protected.GET("/attachments/:id/download", rh.DownloadAttachment)
+			protected.DELETE("/attachments/:id", rh.DeleteAttachment)
+
+			// Persistent notifications (#3).
+			protected.GET("/notifications", rh.ListNotifications)
+			protected.GET("/notifications/unread-count", rh.UnreadNotificationCount)
+			protected.POST("/notifications/:id/read", rh.MarkNotificationRead)
+			protected.POST("/notifications/read-all", rh.MarkAllNotificationsRead)
 
 			protected.PATCH("/tags/:id", rh.UpdateTag)
 			protected.DELETE("/tags/:id", rh.DeleteTag)

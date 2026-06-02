@@ -16,12 +16,13 @@ import (
 
 // API holds the dependencies shared by all resource handlers.
 type API struct {
-	q   *db.Queries
-	hub *realtime.Hub
+	q         *db.Queries
+	hub       *realtime.Hub
+	uploadDir string
 }
 
-func NewAPI(q *db.Queries, hub *realtime.Hub) *API {
-	return &API{q: q, hub: hub}
+func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir string) *API {
+	return &API{q: q, hub: hub, uploadDir: uploadDir}
 }
 
 // positionGap is the spacing used when appending to the end of a list.

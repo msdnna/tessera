@@ -305,6 +305,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.12.0] — 2026-06-03
+- Migration 0006: task activity journal (`task_events`), comments
+  (`task_comments`), relations (`task_relations`, referenced by #N),
+  attachments (`task_attachments`) and per-user persistent notifications
+  (`notifications`).
+- Rich task endpoints (#8): `GET /tasks/:id/events` (journal);
+  comments `GET/POST /tasks/:id/comments`, `PATCH/DELETE /comments/:id`
+  (author-only); relations `GET/POST /tasks/:id/relations` (link by #N, with
+  404 on unknown number), `DELETE /relations/:id`; attachments
+  `GET/POST /tasks/:id/attachments` (multipart, 25 MiB cap, on-disk under
+  `UPLOAD_DIR`), `GET /attachments/:id/download`, `DELETE /attachments/:id`.
+- Task mutations now write journal entries (created / renamed / description /
+  priority / due / completed / reopened / moved / assigned / unassigned /
+  archived / restored / comment / relation / attachment).
+- Persistent notifications (#3): assigning a task notifies the assignee;
+  commenting notifies the task's assignees and creator. `GET /notifications`,
+  `GET /notifications/unread-count`, `POST /notifications/:id/read`,
+  `POST /notifications/read-all`; new notifications are also pushed live over
+  the workspace socket.
+- Workspace task aggregation (#1): `GET /workspaces/:id/tasks` (all top-level
+  active tasks across boards with location names + tag/assignee ids,
+  `?assignee=me` for "My tasks") and `GET /workspaces/:id/summary` (counts:
+  total / active / completed / assigned-to-me / overdue / due today / due this
+  week / unassigned).
+- `UPLOAD_DIR` config (default `./uploads`) for attachment storage.
+
 ### [0.11.0] — 2026-06-03
 - Global search (feature 2): `GET /workspaces/:id/search?q=` returns matching
   tasks (by title, with board id + number, archived excluded) and notes (title

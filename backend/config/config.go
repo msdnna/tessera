@@ -13,6 +13,7 @@ type Config struct {
 	Port        string
 	JWTSecret   string
 	AppEnv      string
+	UploadDir   string
 }
 
 // New reads configuration from the environment. In production
@@ -59,6 +60,7 @@ func New() *Config {
 		Port:        getEnv("PORT", "8080"),
 		JWTSecret:   jwt,
 		AppEnv:      getEnv("APP_ENV", "development"),
+		UploadDir:   getEnv("UPLOAD_DIR", "./uploads"),
 	}
 }
 
