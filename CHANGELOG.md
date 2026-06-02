@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.14.0] — 2026-06-02
+- Inline title editing on task cards: click the title to edit it in place
+  (save on blur/Enter); clicking the card body opens the modal.
+
 ### [0.13.10] — 2026-06-02
 - Fix: changing a tag's color in the TagManager did nothing — clicking a swatch
   blurred the name input, which closed the editor (removing the swatch) before

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { NIcon, NPopover, NDatePicker, NInput } from 'naive-ui'
 import {
   FlagOutline,
@@ -24,6 +24,20 @@ const props = defineProps({
 const emit = defineEmits(['open', 'changed'])
 
 const newTagName = ref('')
+const editingTitle = ref(false)
+const titleEdit = ref('')
+const titleInput = ref(null)
+function startTitleEdit() {
+  titleEdit.value = props.task.title
+  editingTitle.value = true
+  nextTick(() => titleInput.value?.focus?.())
+}
+async function commitTitle() {
+  editingTitle.value = false
+  const n = titleEdit.value.trim()
+  if (!n || n === props.task.title) return
+  await apply({ title: n })
+}
 
 const taskTags = computed(() =>
   (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
@@ -108,7 +122,7 @@ async function toggleAssignee(uid) {
 </script>
 
 <template>
-  <div class="card" :class="{ done }" :style="cardStyle">
+  <div class="card" :class="{ done }" :style="cardStyle" @click="emit('open', task.id)">
     <div class="card-top">
       <span
         class="check"
@@ -117,7 +131,23 @@ async function toggleAssignee(uid) {
       >
         <n-icon :component="done ? CheckmarkCircle : EllipseOutline" :size="20" />
       </span>
-      <span class="title" @click="emit('open', task.id)">{{ task.title }}</span>
+      <n-input
+        v-if="editingTitle"
+        ref="titleInput"
+        v-model:value="titleEdit"
+        size="small"
+        class="title-edit"
+        @click.stop
+        @keyup.enter="commitTitle"
+        @blur="commitTitle"
+      />
+      <span
+        v-else
+        class="title"
+        title="Клик — изменить; клик по карточке — открыть"
+        @click.stop="startTitleEdit"
+        >{{ task.title }}</span
+      >
     </div>
 
     <div class="pills">
@@ -257,6 +287,10 @@ async function toggleAssignee(uid) {
   padding: 8px 10px;
   margin-bottom: 8px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+}
+.title-edit {
+  flex: 1;
 }
 .card-top {
   display: flex;
