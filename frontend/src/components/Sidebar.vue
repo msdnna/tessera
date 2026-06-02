@@ -13,7 +13,7 @@ import {
   NDropdown,
   useMessage,
 } from 'naive-ui'
-import { DocumentTextOutline, AlarmOutline, AddOutline } from '@vicons/ionicons5'
+import { HomeOutline, DocumentTextOutline, AlarmOutline, AddOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
@@ -103,6 +103,10 @@ async function createWorkspace() {
     </div>
 
     <nav class="nav">
+      <router-link to="/" class="nav-link" active-class="nav-link-home-noop">
+        <n-icon :component="HomeOutline" :size="18" />
+        <span>Главная</span>
+      </router-link>
       <router-link to="/notes" class="nav-link">
         <n-icon :component="DocumentTextOutline" :size="18" />
         <span>Заметки</span>
@@ -231,7 +235,8 @@ async function createWorkspace() {
 .nav-link:hover {
   background: var(--t-hover);
 }
-.nav-link.router-link-active {
+.nav-link.router-link-active,
+.nav-link.router-link-exact-active {
   background: color-mix(in srgb, var(--t-primary) 16%, transparent);
   color: var(--t-primary);
   font-weight: 600;

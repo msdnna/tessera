@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.22.0] — 2026-06-03
+- Home / My work (feature #1): the landing page is now a dashboard — summary
+  cards (my tasks, all active, overdue, due today, due this week, completed)
+  that double as filters, over a cross-board task list (number, priority, title,
+  tags, project/board, column, due, assignees). Rows open the task on its board.
+  "Главная" added to the sidebar nav.
+
 ### [0.21.0] — 2026-06-03
 - Advanced task modal (feature #8): the description is now Markdown — rendered
   inline, click to edit, blur to save (sanitised via DOMPurify). A tabbed area
