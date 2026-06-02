@@ -312,6 +312,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.12.1] — 2026-06-03
+- `GET /tasks/:id/events` now returns the entry `data` as raw JSON instead of a
+  base64 string (the generated row carries it as `[]byte`).
+
 ### [0.12.0] — 2026-06-03
 - Migration 0006: task activity journal (`task_events`), comments
   (`task_comments`), relations (`task_relations`, referenced by #N),

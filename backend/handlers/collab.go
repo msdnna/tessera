@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -82,6 +83,16 @@ func errIsNoRows(err error) bool {
 
 // ── task activity journal ──────────────────────────────────────
 
+// taskEventResp serialises the journal entry with `data` as raw JSON (the
+// generated row carries it as []byte, which would otherwise be base64-encoded).
+type taskEventResp struct {
+	ID        uuid.UUID       `json:"id"`
+	Kind      string          `json:"kind"`
+	Data      json.RawMessage `json:"data"`
+	CreatedAt time.Time       `json:"created_at"`
+	ActorName *string         `json:"actor_name"`
+}
+
 func (h *API) ListTaskEvents(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -95,7 +106,17 @@ func (h *API) ListTaskEvents(c *gin.Context) {
 		fail(c)
 		return
 	}
-	c.JSON(http.StatusOK, orEmpty(events))
+	out := make([]taskEventResp, 0, len(events))
+	for _, e := range events {
+		data := json.RawMessage(e.Data)
+		if len(data) == 0 {
+			data = json.RawMessage("{}")
+		}
+		out = append(out, taskEventResp{
+			ID: e.ID, Kind: e.Kind, Data: data, CreatedAt: e.CreatedAt, ActorName: e.ActorName,
+		})
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // ── comments ───────────────────────────────────────────────────
