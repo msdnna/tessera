@@ -258,6 +258,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.10.0] — 2026-06-03
+- Per-workspace sequential task numbers (#N): migration 0005 adds
+  `workspaces.task_counter` + `tasks.number` (backfilled by creation order);
+  CreateTask assigns the next number atomically. Used by cards, notifications,
+  task relations.
+
 ### [0.9.1] — 2026-06-02
 - Fix: archived subtasks now appear in the board archive (and can be restored) —
   the archive list shows individually-archived subtasks too, hiding only

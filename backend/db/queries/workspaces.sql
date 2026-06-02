@@ -6,6 +6,9 @@ RETURNING *;
 -- name: GetWorkspace :one
 SELECT * FROM workspaces WHERE id = $1;
 
+-- name: NextWorkspaceTaskNumber :one
+UPDATE workspaces SET task_counter = task_counter + 1 WHERE id = $1 RETURNING task_counter;
+
 -- name: ListWorkspacesForUser :many
 SELECT w.*
 FROM workspaces w

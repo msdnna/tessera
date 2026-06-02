@@ -62,6 +62,12 @@ func (h *API) CreateTask(c *gin.Context) {
 		return
 	}
 
+	num, err := h.q.NextWorkspaceTaskNumber(c, wsID)
+	if err != nil {
+		fail(c)
+		return
+	}
+
 	uid := middleware.CurrentUser(c)
 	t, err := h.q.CreateTask(c, db.CreateTaskParams{
 		BoardID:     boardID,
@@ -73,6 +79,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		DueDate:     req.DueDate,
 		Position:    pos,
 		CreatedBy:   &uid,
+		Number:      &num,
 	})
 	if err != nil {
 		fail(c)

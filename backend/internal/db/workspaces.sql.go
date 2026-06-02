@@ -40,7 +40,7 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 const createWorkspace = `-- name: CreateWorkspace :one
 INSERT INTO workspaces (name, owner_id)
 VALUES ($1, $2)
-RETURNING id, name, owner_id, created_at, updated_at
+RETURNING id, name, owner_id, created_at, updated_at, task_counter
 `
 
 type CreateWorkspaceParams struct {
@@ -57,6 +57,7 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 		&i.OwnerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskCounter,
 	)
 	return i, err
 }
@@ -107,7 +108,7 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (M
 }
 
 const getWorkspace = `-- name: GetWorkspace :one
-SELECT id, name, owner_id, created_at, updated_at FROM workspaces WHERE id = $1
+SELECT id, name, owner_id, created_at, updated_at, task_counter FROM workspaces WHERE id = $1
 `
 
 func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, error) {
@@ -119,6 +120,7 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 		&i.OwnerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskCounter,
 	)
 	return i, err
 }
@@ -164,7 +166,7 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 }
 
 const listWorkspacesForUser = `-- name: ListWorkspacesForUser :many
-SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at
+SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter
 FROM workspaces w
 JOIN memberships m ON m.workspace_id = w.id
 WHERE m.user_id = $1
@@ -186,6 +188,7 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 			&i.OwnerID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.TaskCounter,
 		); err != nil {
 			return nil, err
 		}
@@ -197,11 +200,22 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 	return items, nil
 }
 
+const nextWorkspaceTaskNumber = `-- name: NextWorkspaceTaskNumber :one
+UPDATE workspaces SET task_counter = task_counter + 1 WHERE id = $1 RETURNING task_counter
+`
+
+func (q *Queries) NextWorkspaceTaskNumber(ctx context.Context, id uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, nextWorkspaceTaskNumber, id)
+	var task_counter int64
+	err := row.Scan(&task_counter)
+	return task_counter, err
+}
+
 const updateWorkspace = `-- name: UpdateWorkspace :one
 UPDATE workspaces
 SET name = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, name, owner_id, created_at, updated_at
+RETURNING id, name, owner_id, created_at, updated_at, task_counter
 `
 
 type UpdateWorkspaceParams struct {
@@ -218,6 +232,7 @@ func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams
 		&i.OwnerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskCounter,
 	)
 	return i, err
 }
