@@ -41,3 +41,7 @@ body {
 .sb-ghost > * {
   visibility: hidden;
 }
+/* Keep empty group lists droppable (so a project can land in an empty group). */
+.sb-dropzone {
+  min-height: 6px;
+}

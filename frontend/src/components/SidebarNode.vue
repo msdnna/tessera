@@ -1,12 +1,14 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import draggable from 'vuedraggable'
-import { NIcon, NButton, NInput, NDropdown, useMessage, useDialog } from 'naive-ui'
+import { NIcon, NButton, NInput, NDropdown, NPopover, NPopconfirm, useMessage } from 'naive-ui'
 import {
   FolderOutline,
   ChevronForwardOutline,
   EllipsisHorizontalOutline,
   AddOutline,
+  CreateOutline,
+  TrashOutline,
 } from '@vicons/ionicons5'
 import { workspaces as wsApi, groups as groupsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -20,12 +22,12 @@ const props = defineProps({
 
 const store = useWorkspacesStore()
 const message = useMessage()
-const dialog = useDialog()
 
 const expanded = ref(true)
 const renaming = ref(false)
 const nameEdit = ref('')
 const renameInput = ref(null)
+const settingsShow = ref(false)
 
 const subgroups = computed(() => store.childGroups(props.group.id))
 const childProjects = computed(() => store.projectsInGroup(props.group.id))
@@ -41,10 +43,6 @@ const onProjChange = (evt) =>
 const addOptions = [
   { label: 'Проект', key: 'project' },
   { label: 'Группа', key: 'group' },
-]
-const menuOptions = [
-  { label: 'Переименовать', key: 'rename' },
-  { label: 'Удалить', key: 'delete' },
 ]
 
 async function onAdd(key) {
@@ -62,22 +60,18 @@ async function onAdd(key) {
   }
 }
 
-function onMenu(key) {
-  if (key === 'rename') {
-    nameEdit.value = props.group.name
-    renaming.value = true
-    nextTick(() => renameInput.value?.focus())
-  } else if (key === 'delete') {
-    dialog.warning({
-      title: 'Удалить группу',
-      content: 'Подгруппы будут удалены, проекты станут без группы.',
-      positiveText: 'Удалить',
-      negativeText: 'Отмена',
-      onPositiveClick: async () => {
-        await groupsApi.remove(props.group.id)
-        await store.refresh()
-      },
-    })
+function startRename() {
+  settingsShow.value = false
+  nameEdit.value = props.group.name
+  renaming.value = true
+  nextTick(() => renameInput.value?.focus())
+}
+async function remove() {
+  try {
+    await groupsApi.remove(props.group.id)
+    await store.refresh()
+  } catch (e) {
+    message.error(e.message)
   }
 }
 
@@ -97,7 +91,7 @@ async function commitRename() {
 
 <template>
   <div class="group-node">
-    <div class="row group-row" :style="{ paddingLeft: depth * 14 + 8 + 'px' }">
+    <div class="row group-row">
       <n-icon
         class="chev"
         :class="{ open: expanded }"
@@ -113,7 +107,7 @@ async function commitRename() {
         @keyup.enter="commitRename"
         @blur="commitRename"
       />
-      <span v-else class="name" @click="expanded = !expanded" @dblclick="onMenu('rename')">
+      <span v-else class="name" @click="expanded = !expanded" @dblclick="startRename">
         {{ group.name }}
       </span>
       <n-dropdown trigger="click" :options="addOptions" @select="onAdd">
@@ -121,11 +115,28 @@ async function commitRename() {
           <n-icon :component="AddOutline" />
         </n-button>
       </n-dropdown>
-      <n-dropdown trigger="click" :options="menuOptions" @select="onMenu">
-        <n-button class="hover-btn" text size="tiny" @click.stop>
-          <n-icon :component="EllipsisHorizontalOutline" />
-        </n-button>
-      </n-dropdown>
+      <n-popover v-model:show="settingsShow" trigger="click" placement="right-start">
+        <template #trigger>
+          <n-button class="hover-btn" text size="tiny" @click.stop>
+            <n-icon :component="EllipsisHorizontalOutline" />
+          </n-button>
+        </template>
+        <div class="gsettings">
+          <n-button size="small" block @click="startRename">
+            <template #icon><n-icon :component="CreateOutline" /></template>
+            Переименовать
+          </n-button>
+          <n-popconfirm @positive-click="remove">
+            <template #trigger>
+              <n-button type="error" size="small" block>
+                <template #icon><n-icon :component="TrashOutline" /></template>
+                Удалить группу
+              </n-button>
+            </template>
+            Подгруппы удалятся, проекты станут без группы. Удалить?
+          </n-popconfirm>
+        </div>
+      </n-popover>
     </div>
 
     <div v-show="expanded" class="children">
@@ -134,6 +145,7 @@ async function commitRename() {
         group="sidebar-grp"
         item-key="id"
         ghost-class="sb-ghost"
+        class="sb-dropzone"
         :animation="150"
         @change="onGrpChange"
       >
@@ -146,6 +158,7 @@ async function commitRename() {
         group="sidebar-proj"
         item-key="id"
         ghost-class="sb-ghost"
+        class="sb-dropzone"
         :animation="150"
         @change="onProjChange"
       >
@@ -195,5 +208,19 @@ async function commitRename() {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--t-text1);
+}
+/* Nesting is shown by indenting the whole subtree, so the drag placeholder
+   (.sb-ghost) inside a group is visually indented too — making it clear the
+   item will land inside the group. */
+.children {
+  margin-left: 15px;
+  padding-left: 6px;
+  border-left: 1px solid var(--t-border);
+}
+.gsettings {
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>

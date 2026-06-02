@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { NIcon, NButton, NInput, NPopover, NPopconfirm, useMessage } from 'naive-ui'
-import { ReorderThreeOutline, EllipsisHorizontalOutline } from '@vicons/ionicons5'
+import { ReorderThreeOutline, EllipsisHorizontalOutline, TrashOutline } from '@vicons/ionicons5'
 import { columns as columnsApi } from '@/api'
 
 const props = defineProps({
@@ -85,7 +85,10 @@ async function removeCol() {
         </div>
         <n-popconfirm @positive-click="removeCol">
           <template #trigger>
-            <n-button text size="tiny" type="error" block>Удалить колонку</n-button>
+            <n-button type="error" size="small" block>
+              <template #icon><n-icon :component="TrashOutline" /></template>
+              Удалить колонку
+            </n-button>
           </template>
           Удалить колонку со всеми задачами?
         </n-popconfirm>

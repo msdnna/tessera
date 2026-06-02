@@ -1,14 +1,26 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NIcon, NButton, NInput, NPopover, NPopconfirm, NText, useMessage } from 'naive-ui'
+import {
+  NIcon,
+  NButton,
+  NInput,
+  NPopover,
+  NPopconfirm,
+  NText,
+  NDropdown,
+  useMessage,
+  useDialog,
+} from 'naive-ui'
 import {
   GridOutline,
   EllipsisHorizontalOutline,
   ChevronForwardOutline,
   AddOutline,
+  CreateOutline,
+  TrashOutline,
 } from '@vicons/ionicons5'
-import { projects as projApi } from '@/api'
+import { projects as projApi, boards as boardsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PROJECT_ICONS, iconComponent } from '@/utils/projectIcons'
 
@@ -21,6 +33,7 @@ const store = useWorkspacesStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
+const dialog = useDialog()
 
 const expanded = ref(false)
 const addingBoard = ref(false)
@@ -29,6 +42,47 @@ const renaming = ref(false)
 const nameEdit = ref('')
 const renameInput = ref(null)
 const boardInput = ref(null)
+const settingsShow = ref(false)
+
+// board inline edit
+const editingBoardId = ref(null)
+const boardNameEdit = ref('')
+const boardEditInput = ref(null)
+const boardMenu = [
+  { label: 'Переименовать', key: 'rename' },
+  { label: 'Удалить', key: 'delete' },
+]
+function startBoardRename(b) {
+  editingBoardId.value = b.id
+  boardNameEdit.value = b.name
+  nextTick(() => boardEditInput.value?.focus?.())
+}
+async function commitBoardRename(b) {
+  editingBoardId.value = null
+  const n = boardNameEdit.value.trim()
+  if (!n || n === b.name) return
+  try {
+    await boardsApi.update(b.id, { name: n })
+    await store.loadBoards(props.project.id)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+function onBoardMenu(key, b) {
+  if (key === 'rename') startBoardRename(b)
+  else if (key === 'delete') {
+    dialog.warning({
+      title: 'Удалить доску',
+      content: `Удалить доску «${b.name}» со всеми задачами?`,
+      positiveText: 'Удалить',
+      negativeText: 'Отмена',
+      onPositiveClick: async () => {
+        await boardsApi.remove(b.id)
+        await store.loadBoards(props.project.id)
+      },
+    })
+  }
+}
 
 const swatches = ['', '#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
 const boards = computed(() => store.boardsByProject[props.project.id] || [])
@@ -44,6 +98,7 @@ async function toggle() {
 
 // inline rename — click-outside saves if changed, else cancels
 function startRename() {
+  settingsShow.value = false
   nameEdit.value = props.project.name
   renaming.value = true
   nextTick(() => renameInput.value?.focus())
@@ -103,7 +158,7 @@ async function addBoard() {
 
 <template>
   <div class="project-block">
-    <div class="row project-row" :style="{ paddingLeft: depth * 14 + 8 + 'px' }">
+    <div class="row project-row">
       <n-icon
         class="chev"
         :class="{ open: expanded }"
@@ -137,13 +192,17 @@ async function addBoard() {
       >
         <n-icon :component="AddOutline" />
       </n-button>
-      <n-popover trigger="click" placement="right-start">
+      <n-popover v-model:show="settingsShow" trigger="click" placement="right-start">
         <template #trigger>
           <n-button class="hover-btn" text size="tiny" @click.stop>
             <n-icon :component="EllipsisHorizontalOutline" />
           </n-button>
         </template>
         <div class="settings">
+          <n-button size="small" block @click="startRename">
+            <template #icon><n-icon :component="CreateOutline" /></template>
+            Переименовать
+          </n-button>
           <div class="icons">
             <button
               class="ic"
@@ -175,7 +234,10 @@ async function addBoard() {
           </div>
           <n-popconfirm @positive-click="remove">
             <template #trigger>
-              <n-button text size="tiny" type="error" block>Удалить проект</n-button>
+              <n-button type="error" size="small" block>
+                <template #icon><n-icon :component="TrashOutline" /></template>
+                Удалить проект
+              </n-button>
             </template>
             Удалить проект со всеми досками?
           </n-popconfirm>
@@ -183,16 +245,30 @@ async function addBoard() {
       </n-popover>
     </div>
 
-    <div v-if="expanded" class="boards" :style="{ paddingLeft: depth * 14 + 28 + 'px' }">
+    <div v-if="expanded" class="boards">
       <div
         v-for="b in boards"
         :key="b.id"
         class="row board-row"
         :class="{ active: route.params.id === b.id }"
-        @click="router.push(`/board/${b.id}`)"
+        @click="editingBoardId !== b.id && router.push(`/board/${b.id}`)"
       >
         <n-icon :component="GridOutline" :size="14" />
-        <span class="name">{{ b.name }}</span>
+        <n-input
+          v-if="editingBoardId === b.id"
+          ref="boardEditInput"
+          v-model:value="boardNameEdit"
+          size="tiny"
+          @click.stop
+          @keyup.enter="commitBoardRename(b)"
+          @blur="commitBoardRename(b)"
+        />
+        <span v-else class="name">{{ b.name }}</span>
+        <n-dropdown trigger="click" :options="boardMenu" @select="(k) => onBoardMenu(k, b)">
+          <n-button class="hover-btn" text size="tiny" @click.stop>
+            <n-icon :component="EllipsisHorizontalOutline" />
+          </n-button>
+        </n-dropdown>
       </div>
       <div v-if="addingBoard" class="row">
         <n-input
@@ -225,7 +301,8 @@ async function addBoard() {
 .hover-btn {
   opacity: 0;
 }
-.project-row:hover .hover-btn {
+.project-row:hover .hover-btn,
+.board-row:hover .hover-btn {
   opacity: 1;
 }
 .chev {
@@ -244,8 +321,11 @@ async function addBoard() {
   height: 20px;
   border-radius: 5px;
   color: #fff;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
   flex: none;
 }
 .name {
@@ -254,6 +334,9 @@ async function addBoard() {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--t-text1);
+}
+.boards {
+  padding-left: 18px;
 }
 .board-row {
   font-size: 13px;
@@ -291,7 +374,10 @@ async function addBoard() {
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  font-weight: 600;
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .ic.active {
   border-color: var(--t-primary);

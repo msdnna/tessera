@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import draggable from 'vuedraggable'
 import {
   NSpin,
@@ -202,9 +202,14 @@ async function onColChange(evt, dcol) {
 // ── inline task creation (a reference tracker-style "+ New task" at column bottom) ──
 const addingInColumn = ref(null) // dcol.key currently adding into
 const newTaskTitle = ref('')
+const taskInput = ref(null)
+function focusTaskInput() {
+  nextTick(() => taskInput.value?.focus?.())
+}
 function startAddTask(dcol) {
   addingInColumn.value = dcol.key
   newTaskTitle.value = ''
+  focusTaskInput()
 }
 function cancelAddTask() {
   addingInColumn.value = null
@@ -230,6 +235,7 @@ async function submitAddTask(dcol) {
     if (groupMode.value === 'tag' && dcol.tag) await tasksApi.addTag(res.data.id, dcol.tag.id)
     await load(props.boardId)
     addingInColumn.value = dcol.key // load() reset refs; re-open
+    focusTaskInput()
   } catch (e) {
     message.error(e.message)
   }
@@ -238,6 +244,12 @@ async function submitAddTask(dcol) {
 // ── inline column creation ("+ New column" to the right) ──
 const addingColumn = ref(false)
 const newColumnName = ref('')
+const colInput = ref(null)
+function startAddColumn() {
+  addingColumn.value = true
+  newColumnName.value = ''
+  nextTick(() => colInput.value?.focus?.())
+}
 async function submitAddColumn() {
   const name = newColumnName.value.trim()
   if (!name) {
@@ -398,10 +410,10 @@ watch(
 
               <div v-if="addingInColumn === dcol.key" class="add-task-input">
                 <n-input
+                  :ref="(el) => (taskInput = el)"
                   v-model:value="newTaskTitle"
                   type="textarea"
                   size="small"
-                  autofocus
                   :autosize="{ minRows: 1, maxRows: 4 }"
                   placeholder="Название задачи, Enter — создать"
                   @keyup.enter.prevent="submitAddTask(dcol)"
@@ -409,8 +421,8 @@ watch(
                   @blur="submitAddTask(dcol)"
                 />
               </div>
-              <n-button v-else text size="tiny" class="add-task" @click="startAddTask(dcol)">
-                ＋ задача
+              <n-button v-else text size="tiny" class="add-btn" @click="startAddTask(dcol)">
+                ＋ Создать задачу
               </n-button>
             </div>
           </template>
@@ -420,15 +432,17 @@ watch(
         <div v-if="groupMode === 'status'" class="add-col">
           <n-input
             v-if="addingColumn"
+            ref="colInput"
             v-model:value="newColumnName"
             size="small"
-            autofocus
             placeholder="Название колонки"
             @keyup.enter="submitAddColumn"
             @keyup.esc="addingColumn = false"
             @blur="submitAddColumn"
           />
-          <n-button v-else dashed block @click="addingColumn = true">＋ Колонка</n-button>
+          <n-button v-else dashed block class="add-btn" @click="startAddColumn">
+            ＋ Создать колонку
+          </n-button>
         </div>
       </div>
 
@@ -560,9 +574,14 @@ watch(
 .ghost {
   opacity: 0.5;
 }
-.add-task {
+.add-btn {
   margin-top: 6px;
-  align-self: flex-start;
+  width: 100%;
+  justify-content: center;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: var(--t-text3);
 }
 .empty-board {
   padding: 24px;

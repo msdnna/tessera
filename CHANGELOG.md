@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.12.1] — 2026-06-02
+- Sidebar review fixes: subtree indentation via nested containers so the drag
+  placeholder shows whether an item lands inside a group; empty groups are
+  droppable (min-height) — fixes projects not entering nested groups (point 1).
+- Project/group "⋯" is now a popover with a Переименовать button and a red
+  trash Delete; board rows get a "⋯" rename/delete menu; project initials no
+  longer wrap (point 2).
+- Board: column-create input focuses and closes on blur (point 5); column
+  delete is a red trash button (point 6); "+ СОЗДАТЬ ЗАДАЧУ / КОЛОНКУ" buttons
+  unified — uppercase, centered (point 7).
+
 ### [0.12.0] — 2026-06-02
 - Inline card editing (point 1): task cards are now uniform — every card shows
   priority / tags / due-date / assignee pills (faint placeholders when unset),
