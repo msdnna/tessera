@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.15.0] — 2026-06-02
+- Subtasks on the board (Phase: feature 2): parent cards render their subtasks
+  as compact sub-rows (done toggle, priority dot, due) — clicking a sub-row
+  opens its own modal; a hover "＋ Создать подзадачу" button creates one inline.
+- Task modal: "Открепить от родителя" for subtasks; deleting a task with
+  subtasks asks whether to delete them too or detach them.
+- (Subtask drag & drop / reattach-by-drag is a follow-up.)
+
 ### [0.14.0] — 2026-06-02
 - Inline title editing on task cards: click the title to edit it in place
   (save on blur/Enter); clicking the card body opens the modal.

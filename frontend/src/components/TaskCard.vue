@@ -10,11 +10,12 @@ import {
   EllipseOutline,
   CheckmarkOutline,
 } from '@vicons/ionicons5'
-import { tasks as tasksApi, workspaces as wsApi } from '@/api'
+import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 
 const props = defineProps({
   task: { type: Object, required: true },
+  subtasks: { type: Array, default: () => [] },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tags: { type: Array, default: () => [] },
@@ -117,6 +118,43 @@ async function createTag() {
 async function toggleAssignee(uid) {
   if (isAssigned(uid)) await tasksApi.removeAssignee(props.task.id, uid)
   else await tasksApi.addAssignee(props.task.id, uid)
+  emit('changed')
+}
+
+// ── subtasks ──
+const addingSub = ref(false)
+const newSubTitle = ref('')
+const subInput = ref(null)
+function subDue(s) {
+  return s.due_date
+    ? new Date(s.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
+    : ''
+}
+async function toggleSubDone(s) {
+  await tasksApi.update(s.id, {
+    title: s.title,
+    description: s.description || '',
+    priority: s.priority || 0,
+    due_date: s.due_date || null,
+    completed: !s.completed_at,
+  })
+  emit('changed')
+}
+function startAddSub() {
+  addingSub.value = true
+  newSubTitle.value = ''
+  nextTick(() => subInput.value?.focus?.())
+}
+async function submitAddSub() {
+  const t = newSubTitle.value.trim()
+  addingSub.value = false
+  if (!t) return
+  await boardsApi.createTask(props.task.board_id, {
+    column_id: props.task.column_id,
+    parent_id: props.task.id,
+    title: t,
+  })
+  newSubTitle.value = ''
   emit('changed')
 }
 </script>
@@ -276,6 +314,41 @@ async function toggleAssignee(uid) {
         </div>
       </n-popover>
     </div>
+
+    <!-- subtasks as compact sub-cards -->
+    <div v-if="subtasks.length" class="subs" @click.stop>
+      <div
+        v-for="s in subtasks"
+        :key="s.id"
+        class="subrow"
+        :class="{ done: s.completed_at }"
+        @click="emit('open', s.id)"
+      >
+        <span class="check sm" @click.stop="toggleSubDone(s)">
+          <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
+        </span>
+        <span
+          v-if="s.priority"
+          class="pr-dot"
+          :style="{ background: PRIORITY_COLORS[s.priority] }"
+        />
+        <span class="sub-title">{{ s.title }}</span>
+        <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+      </div>
+    </div>
+
+    <div v-if="addingSub" class="sub-add-input" @click.stop>
+      <n-input
+        ref="subInput"
+        v-model:value="newSubTitle"
+        size="tiny"
+        placeholder="Название подзадачи, Enter"
+        @keyup.enter="submitAddSub"
+        @keyup.esc="addingSub = false"
+        @blur="submitAddSub"
+      />
+    </div>
+    <button v-else class="add-sub" @click.stop="startAddSub">＋ Создать подзадачу</button>
   </div>
 </template>
 
@@ -439,5 +512,78 @@ async function toggleAssignee(uid) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+}
+
+/* subtasks (less-accent sub-cards) */
+.subs {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.subrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--t-surface-alt);
+  font-size: 13px;
+  color: var(--t-text2);
+}
+.subrow:hover {
+  background: var(--t-hover);
+}
+.subrow.done .sub-title {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.check.sm {
+  display: inline-flex;
+  color: var(--t-text3);
+}
+.subrow.done .check.sm {
+  color: var(--t-primary);
+}
+.pr-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.sub-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub-due {
+  font-size: 11px;
+  color: var(--t-text3);
+}
+.sub-add-input {
+  margin-top: 6px;
+}
+.add-sub {
+  margin-top: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--t-text3);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.card:hover .add-sub {
+  opacity: 1;
+}
+.add-sub:hover {
+  background: var(--t-hover);
 }
 </style>

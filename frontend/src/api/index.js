@@ -105,6 +105,7 @@ export const boards = {
   columns: (id) => api.get(`/boards/${id}/columns`),
   createColumn: (id, data) => api.post(`/boards/${id}/columns`, data),
   tasks: (id) => api.get(`/boards/${id}/tasks`),
+  subtasks: (id) => api.get(`/boards/${id}/subtasks`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
 }
 
@@ -133,7 +134,8 @@ export const tasks = {
   get: (id) => api.get(`/tasks/${id}`),
   update: (id, data) => api.patch(`/tasks/${id}`, data),
   move: (id, data) => api.patch(`/tasks/${id}/move`, data),
-  remove: (id) => api.delete(`/tasks/${id}`),
+  setParent: (id, parentId) => api.patch(`/tasks/${id}/parent`, { parent_id: parentId }),
+  remove: (id, opts) => api.delete(`/tasks/${id}`, { params: opts }),
   addTag: (id, tagId) => api.post(`/tasks/${id}/tags`, { tag_id: tagId }),
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),

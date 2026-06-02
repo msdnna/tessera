@@ -10,10 +10,10 @@ import {
   NSpace,
   NPopover,
   NCheckbox,
-  NPopconfirm,
   NIcon,
   NSpin,
   useMessage,
+  useDialog,
 } from 'naive-ui'
 import {
   FlagOutline,
@@ -39,6 +39,7 @@ const emit = defineEmits(['update:show', 'changed'])
 
 const store = useWorkspacesStore()
 const message = useMessage()
+const dialog = useDialog()
 const loading = ref(false)
 const task = ref(null)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
@@ -170,9 +171,31 @@ async function save() {
     message.error(e.message)
   }
 }
-async function removeTask() {
+async function removeTask(detachChildren) {
   try {
-    await tasksApi.remove(props.taskId)
+    await tasksApi.remove(props.taskId, detachChildren ? { subtasks: 'detach' } : undefined)
+    emit('changed')
+    close()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+// Delete with a children choice when the task has subtasks.
+function onDeleteClick() {
+  const hasSubs = (task.value?.subtasks?.length || 0) > 0
+  dialog.warning({
+    title: 'Удалить задачу',
+    content: hasSubs ? 'У задачи есть подзадачи — что с ними сделать?' : 'Удалить задачу?',
+    positiveText: hasSubs ? 'Удалить вместе' : 'Удалить',
+    negativeText: hasSubs ? 'Открепить подзадачи' : 'Отмена',
+    onPositiveClick: () => removeTask(false),
+    onNegativeClick: hasSubs ? () => removeTask(true) : undefined,
+  })
+}
+// Detach this task from its parent → becomes a top-level board card.
+async function detachFromParent() {
+  try {
+    await tasksApi.setParent(props.taskId, null)
     emit('changed')
     close()
   } catch (e) {
@@ -439,15 +462,15 @@ async function toggleSubtask(sub) {
 
       <template #footer>
         <div class="footer">
-          <n-popconfirm @positive-click="removeTask">
-            <template #trigger>
-              <n-button type="error" ghost>
-                <template #icon><n-icon :component="TrashOutline" /></template>
-                Удалить
-              </n-button>
-            </template>
-            Удалить задачу?
-          </n-popconfirm>
+          <n-space>
+            <n-button type="error" ghost @click="onDeleteClick">
+              <template #icon><n-icon :component="TrashOutline" /></template>
+              Удалить
+            </n-button>
+            <n-button v-if="task?.parent_id" quaternary @click="detachFromParent">
+              Открепить от родителя
+            </n-button>
+          </n-space>
           <n-space>
             <n-button @click="close">Отмена</n-button>
             <n-button type="primary" @click="save">Сохранить</n-button>

@@ -32,6 +32,7 @@ const loading = ref(false)
 const board = ref(null)
 const columns = ref([])
 const allTasks = ref([])
+const subtasksByParent = ref({})
 const lists = ref({})
 const tagsMap = reactive({})
 const membersMap = reactive({})
@@ -77,10 +78,18 @@ function scheduleReload() {
 async function load(id) {
   loading.value = true
   try {
-    const [b, c, t] = await Promise.all([boards.get(id), boards.columns(id), boards.tasks(id)])
+    const [b, c, t, s] = await Promise.all([
+      boards.get(id),
+      boards.columns(id),
+      boards.tasks(id),
+      boards.subtasks(id),
+    ])
     board.value = b.data
     columns.value = c.data || []
     allTasks.value = t.data || []
+    const byParent = {}
+    for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(sub)
+    subtasksByParent.value = byParent
     await loadWorkspaceMeta()
     rebuildLists()
   } catch (e) {
@@ -402,6 +411,7 @@ watch(
                   <div>
                     <TaskCard
                       :task="element"
+                      :subtasks="subtasksByParent[element.id] || []"
                       :tags-map="tagsMap"
                       :members-map="membersMap"
                       :tags="tagsList"
