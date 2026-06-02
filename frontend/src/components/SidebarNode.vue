@@ -128,7 +128,7 @@ async function commitRename() {
           </n-button>
           <n-popconfirm @positive-click="remove">
             <template #trigger>
-              <n-button type="error" size="small" block>
+              <n-button type="error" ghost size="small" block>
                 <template #icon><n-icon :component="TrashOutline" /></template>
                 Удалить группу
               </n-button>
@@ -147,6 +147,9 @@ async function commitRename() {
         ghost-class="sb-ghost"
         class="sb-dropzone"
         :animation="150"
+        :delay="160"
+        :delay-on-touch-only="true"
+        :touch-start-threshold="6"
         @change="onGrpChange"
       >
         <template #item="{ element }">
@@ -160,6 +163,9 @@ async function commitRename() {
         ghost-class="sb-ghost"
         class="sb-dropzone"
         :animation="150"
+        :delay="160"
+        :delay-on-touch-only="true"
+        :touch-start-threshold="6"
         @change="onProjChange"
       >
         <template #item="{ element }">

@@ -199,10 +199,6 @@ async function addBoard() {
           </n-button>
         </template>
         <div class="settings">
-          <n-button size="small" block @click="startRename">
-            <template #icon><n-icon :component="CreateOutline" /></template>
-            Переименовать
-          </n-button>
           <div class="icons">
             <button
               class="ic"
@@ -232,15 +228,21 @@ async function addBoard() {
               @click="updateField({ color: s })"
             />
           </div>
-          <n-popconfirm @positive-click="remove">
-            <template #trigger>
-              <n-button type="error" size="small" block>
-                <template #icon><n-icon :component="TrashOutline" /></template>
-                Удалить проект
-              </n-button>
-            </template>
-            Удалить проект со всеми досками?
-          </n-popconfirm>
+          <div class="action-row">
+            <n-button size="small" @click="startRename">
+              <template #icon><n-icon :component="CreateOutline" /></template>
+              Переименовать
+            </n-button>
+            <n-popconfirm @positive-click="remove">
+              <template #trigger>
+                <n-button type="error" ghost size="small">
+                  <template #icon><n-icon :component="TrashOutline" /></template>
+                  Удалить
+                </n-button>
+              </template>
+              Удалить проект со всеми досками?
+            </n-popconfirm>
+          </div>
         </div>
       </n-popover>
     </div>
@@ -256,14 +258,14 @@ async function addBoard() {
         <n-icon :component="GridOutline" :size="14" />
         <n-input
           v-if="editingBoardId === b.id"
-          ref="boardEditInput"
+          :ref="(el) => el && (boardEditInput = el)"
           v-model:value="boardNameEdit"
           size="tiny"
           @click.stop
           @keyup.enter="commitBoardRename(b)"
           @blur="commitBoardRename(b)"
         />
-        <span v-else class="name">{{ b.name }}</span>
+        <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
         <n-dropdown trigger="click" :options="boardMenu" @select="(k) => onBoardMenu(k, b)">
           <n-button class="hover-btn" text size="tiny" @click.stop>
             <n-icon :component="EllipsisHorizontalOutline" />
@@ -352,10 +354,15 @@ async function addBoard() {
   padding: 2px 8px;
 }
 .settings {
-  width: 230px;
+  width: 250px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.action-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
 }
 .icons {
   display: flex;

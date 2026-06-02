@@ -85,7 +85,7 @@ async function removeCol() {
         </div>
         <n-popconfirm @positive-click="removeCol">
           <template #trigger>
-            <n-button type="error" size="small" block>
+            <n-button type="error" ghost size="small" block>
               <template #icon><n-icon :component="TrashOutline" /></template>
               Удалить колонку
             </n-button>

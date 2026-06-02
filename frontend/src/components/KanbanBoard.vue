@@ -371,6 +371,9 @@ watch(
           :disabled="groupMode !== 'status'"
           class="cols"
           :animation="150"
+          :delay="160"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="6"
           @change="onColumnReorder"
         >
           <template #item="{ element: dcol }">
@@ -388,6 +391,9 @@ watch(
                 class="drop"
                 ghost-class="ghost"
                 :animation="150"
+                :delay="160"
+                :delay-on-touch-only="true"
+                :touch-start-threshold="6"
                 @start="dragging = true"
                 @end="dragging = false"
                 @change="onColChange($event, dcol)"

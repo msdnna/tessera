@@ -125,7 +125,11 @@ async function createWorkspace() {
         group="sidebar-grp"
         item-key="id"
         ghost-class="sb-ghost"
+        class="sb-dropzone"
         :animation="150"
+        :delay="160"
+        :delay-on-touch-only="true"
+        :touch-start-threshold="6"
         @change="onRootGrp"
       >
         <template #item="{ element }">
@@ -137,7 +141,11 @@ async function createWorkspace() {
         group="sidebar-proj"
         item-key="id"
         ghost-class="sb-ghost"
+        class="sb-dropzone"
         :animation="150"
+        :delay="160"
+        :delay-on-touch-only="true"
+        :touch-start-threshold="6"
         @change="onRootProj"
       >
         <template #item="{ element }">

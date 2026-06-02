@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.1] — 2026-06-02
+- Review fixes: dark theme for the date picker panel (point 1); delete buttons
+  are now outlined (ghost) red with trash icon everywhere (point 3); board
+  rename via double-click + fixed focus/blur (v-for ref) so editing cancels on
+  outside click (point 6); project popover groups Rename + Delete at the bottom
+  (point 7); mobile DnD uses delay+delayOnTouchOnly so a tap opens instead of
+  dragging on touch (point 8).
+
 ### [0.13.0] — 2026-06-02
 - Task modal redesigned a reference tracker-style (point 4): title on top, then a compact
   property grid (Приоритет / Срок / Исполнители / Теги / Выполнено) with inline
