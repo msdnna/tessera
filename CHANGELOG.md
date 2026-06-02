@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.0] — 2026-06-02
+- Task modal redesigned a reference tracker-style (point 4): title on top, then a compact
+  property grid (Приоритет / Срок / Исполнители / Теги / Выполнено) with inline
+  pill controls (popovers, immediate apply) instead of stacked inputs, then
+  Описание and Подзадачи; footer Delete (red) / Отмена / Сохранить.
+
 ### [0.12.2] — 2026-06-02
 - Card pills polish (point 3): due-date pill opens the calendar directly; tags
   render as independent chips with a chip-toggle multi-select picker (no

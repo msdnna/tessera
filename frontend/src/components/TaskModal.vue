@@ -4,17 +4,26 @@ import {
   NModal,
   NCard,
   NInput,
-  NSelect,
   NDatePicker,
   NSwitch,
   NButton,
   NSpace,
-  NText,
+  NPopover,
   NCheckbox,
   NPopconfirm,
+  NIcon,
   NSpin,
   useMessage,
 } from 'naive-ui'
+import {
+  FlagOutline,
+  CalendarClearOutline,
+  PeopleOutline,
+  PricetagOutline,
+  CheckmarkDoneOutline,
+  CheckmarkOutline,
+  TrashOutline,
+} from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, workspaces as wsApi } from '@/api'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 
@@ -22,8 +31,8 @@ const props = defineProps({
   show: { type: Boolean, default: false },
   taskId: { type: String, default: null },
   wsId: { type: String, default: null },
-  tags: { type: Array, default: () => [] }, // workspace tags
-  members: { type: Array, default: () => [] }, // workspace members
+  tags: { type: Array, default: () => [] },
+  members: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:show', 'changed'])
 
@@ -31,7 +40,6 @@ const message = useMessage()
 const loading = ref(false)
 const task = ref(null)
 
-// editable fields
 const title = ref('')
 const description = ref('')
 const priority = ref(0)
@@ -40,12 +48,28 @@ const completed = ref(false)
 const selectedTags = ref([])
 const selectedAssignees = ref([])
 const newSubtask = ref('')
+const newTagName = ref('')
 
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
-const tagOptions = computed(() => props.tags.map((t) => ({ label: t.name, value: t.id })))
-const memberOptions = computed(() =>
-  props.members.map((m) => ({ label: m.name, value: m.user_id })),
+const tagObjs = computed(() =>
+  selectedTags.value.map((id) => props.tags.find((t) => t.id === id)).filter(Boolean),
 )
+const assigneeObjs = computed(() =>
+  selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
+)
+const dueLabel = computed(() =>
+  dueTs.value
+    ? new Date(dueTs.value).toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '',
+)
+
+function initials(name) {
+  return (name || '?').trim().slice(0, 2).toUpperCase()
+}
 
 async function loadDetail() {
   if (!props.taskId) return
@@ -78,7 +102,6 @@ watch(
 function close() {
   emit('update:show', false)
 }
-
 function buildPayload() {
   return {
     title: title.value,
@@ -88,10 +111,7 @@ function buildPayload() {
     completed: completed.value,
   }
 }
-
-// applyMeta persists a tappable field (priority/due/completed) immediately and
-// reflects it on the board — without requiring the Save button (which is only
-// for the text fields). Sends the full current state.
+// Tappable fields persist immediately; Save commits the text fields.
 async function applyMeta() {
   try {
     const res = await tasksApi.update(props.taskId, buildPayload())
@@ -101,8 +121,18 @@ async function applyMeta() {
     message.error(e.message)
   }
 }
-
-// Save persists the text fields (title/description) and closes.
+function setPriority(p) {
+  priority.value = p
+  applyMeta()
+}
+function setDue(ts) {
+  dueTs.value = ts
+  applyMeta()
+}
+function setCompleted(v) {
+  completed.value = v
+  applyMeta()
+}
 async function save() {
   try {
     await tasksApi.update(props.taskId, buildPayload())
@@ -112,7 +142,6 @@ async function save() {
     message.error(e.message)
   }
 }
-
 async function removeTask() {
   try {
     await tasksApi.remove(props.taskId)
@@ -123,49 +152,52 @@ async function removeTask() {
   }
 }
 
-const tagPalette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
-
-// Tags apply immediately. Values that aren't existing tag ids are treated as
-// new tag names the user typed (tag mode) — create them on the fly.
-async function onTagsChange(next) {
-  const prev = selectedTags.value
+async function toggleTag(id) {
   try {
-    const resolved = []
-    for (const v of next) {
-      if (props.tags.some((t) => t.id === v)) {
-        resolved.push(v)
-        continue
-      }
-      // New tag typed in-place.
-      const color = tagPalette[Math.floor(Math.random() * tagPalette.length)]
-      const res = await wsApi.createTag(props.wsId, { name: v, color })
-      resolved.push(res.data.id)
-    }
-    selectedTags.value = resolved
-    for (const id of resolved.filter((x) => !prev.includes(x)))
-      await tasksApi.addTag(props.taskId, id)
-    for (const id of prev.filter((x) => !resolved.includes(x)))
+    if (selectedTags.value.includes(id)) {
       await tasksApi.removeTag(props.taskId, id)
+      selectedTags.value = selectedTags.value.filter((x) => x !== id)
+    } else {
+      await tasksApi.addTag(props.taskId, id)
+      selectedTags.value = [...selectedTags.value, id]
+    }
     emit('changed')
   } catch (e) {
     message.error(e.message)
   }
 }
-async function onAssigneesChange(next) {
-  const prev = selectedAssignees.value
-  selectedAssignees.value = next
+async function createTag() {
+  const n = newTagName.value.trim()
+  if (!n) return
+  const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
   try {
-    for (const id of next.filter((x) => !prev.includes(x)))
-      await tasksApi.addAssignee(props.taskId, id)
-    for (const id of prev.filter((x) => !next.includes(x)))
-      await tasksApi.removeAssignee(props.taskId, id)
+    const res = await wsApi.createTag(props.wsId, {
+      name: n,
+      color: palette[Math.floor(Math.random() * palette.length)],
+    })
+    await tasksApi.addTag(props.taskId, res.data.id)
+    selectedTags.value = [...selectedTags.value, res.data.id]
+    newTagName.value = ''
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+async function toggleAssignee(uid) {
+  try {
+    if (selectedAssignees.value.includes(uid)) {
+      await tasksApi.removeAssignee(props.taskId, uid)
+      selectedAssignees.value = selectedAssignees.value.filter((x) => x !== uid)
+    } else {
+      await tasksApi.addAssignee(props.taskId, uid)
+      selectedAssignees.value = [...selectedAssignees.value, uid]
+    }
     emit('changed')
   } catch (e) {
     message.error(e.message)
   }
 }
 
-// ── subtasks ──
 async function addSubtask() {
   const t = newSubtask.value.trim()
   if (!t || !task.value) return
@@ -201,98 +233,160 @@ async function toggleSubtask(sub) {
 
 <template>
   <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <n-card style="width: 560px; max-width: 92vw" role="dialog" :bordered="false">
+    <n-card style="width: 640px; max-width: 94vw" role="dialog" :bordered="false">
       <n-spin :show="loading">
         <div class="form">
           <n-input v-model:value="title" placeholder="Название задачи" class="title-input" />
 
-          <div class="row">
-            <div class="field">
-              <n-text depth="3" class="lbl">Приоритет</n-text>
-              <n-select
-                :value="priority"
-                :options="priorityOptions"
-                size="small"
-                @update:value="
-                  (v) => {
-                    priority = v
-                    applyMeta()
-                  }
-                "
-              >
-                <template #arrow>
-                  <span class="pr-dot" :style="{ background: PRIORITY_COLORS[priority] }" />
+          <div class="props">
+            <!-- priority -->
+            <div class="prow">
+              <span class="plabel"><n-icon :component="FlagOutline" :size="15" /> Приоритет</span>
+              <n-popover trigger="click" placement="bottom-start">
+                <template #trigger>
+                  <button class="val">
+                    <span class="dot" :style="{ background: PRIORITY_COLORS[priority] }" />
+                    {{ PRIORITY_LABELS[priority] }}
+                  </button>
                 </template>
-              </n-select>
+                <div class="menu">
+                  <div
+                    v-for="o in priorityOptions"
+                    :key="o.value"
+                    class="menu-item"
+                    @click="setPriority(o.value)"
+                  >
+                    <span class="dot" :style="{ background: PRIORITY_COLORS[o.value] }" />
+                    {{ o.label }}
+                  </div>
+                </div>
+              </n-popover>
             </div>
-            <div class="field">
-              <n-text depth="3" class="lbl">Срок</n-text>
-              <n-date-picker
-                :value="dueTs"
-                type="date"
-                clearable
-                size="small"
-                @update:value="
-                  (v) => {
-                    dueTs = v
-                    applyMeta()
-                  }
-                "
-              />
+
+            <!-- due -->
+            <div class="prow">
+              <span class="plabel"
+                ><n-icon :component="CalendarClearOutline" :size="15" /> Срок</span
+              >
+              <n-popover trigger="click" placement="bottom-start">
+                <template #trigger>
+                  <button class="val">{{ dueLabel || 'Не задан' }}</button>
+                </template>
+                <n-date-picker panel type="date" :value="dueTs" @update:value="setDue" />
+              </n-popover>
             </div>
-            <div class="field done-field">
-              <n-text depth="3" class="lbl">Выполнено</n-text>
-              <n-switch
-                :value="completed"
-                @update:value="
-                  (v) => {
-                    completed = v
-                    applyMeta()
-                  }
-                "
-              />
+
+            <!-- assignees -->
+            <div class="prow">
+              <span class="plabel"
+                ><n-icon :component="PeopleOutline" :size="15" /> Исполнители</span
+              >
+              <n-popover trigger="click" placement="bottom-start">
+                <template #trigger>
+                  <button class="val">
+                    <template v-if="assigneeObjs.length">
+                      <span
+                        v-for="u in assigneeObjs"
+                        :key="u.user_id"
+                        class="avatar"
+                        :title="u.name"
+                        >{{ initials(u.name) }}</span
+                      >
+                    </template>
+                    <span v-else class="muted">Никто</span>
+                  </button>
+                </template>
+                <div class="menu">
+                  <div
+                    v-for="m in members"
+                    :key="m.user_id"
+                    class="menu-item"
+                    @click="toggleAssignee(m.user_id)"
+                  >
+                    <span class="avatar sm">{{ initials(m.name) }}</span>
+                    <span class="grow">{{ m.name }}</span>
+                    <n-icon
+                      v-if="selectedAssignees.includes(m.user_id)"
+                      :component="CheckmarkOutline"
+                      class="chk"
+                    />
+                  </div>
+                </div>
+              </n-popover>
+            </div>
+
+            <!-- tags -->
+            <div class="prow">
+              <span class="plabel"><n-icon :component="PricetagOutline" :size="15" /> Теги</span>
+              <n-popover trigger="click" placement="bottom-start">
+                <template #trigger>
+                  <button class="val">
+                    <template v-if="tagObjs.length">
+                      <span
+                        v-for="t in tagObjs"
+                        :key="t.id"
+                        class="chip"
+                        :style="{
+                          background: (t.color || '#888') + '22',
+                          color: t.color || '#888',
+                        }"
+                        >{{ t.name }}</span
+                      >
+                    </template>
+                    <span v-else class="muted">Нет</span>
+                  </button>
+                </template>
+                <div class="menu">
+                  <div class="chip-grid">
+                    <button
+                      v-for="t in tags"
+                      :key="t.id"
+                      class="tagchip"
+                      :style="
+                        selectedTags.includes(t.id)
+                          ? {
+                              background: t.color || '#888',
+                              color: '#fff',
+                              borderColor: t.color || '#888',
+                            }
+                          : { color: t.color || '#888', borderColor: (t.color || '#888') + '88' }
+                      "
+                      @click="toggleTag(t.id)"
+                    >
+                      {{ t.name }}
+                    </button>
+                  </div>
+                  <n-input
+                    v-model:value="newTagName"
+                    size="tiny"
+                    placeholder="Новый тег, Enter"
+                    @keyup.enter="createTag"
+                  />
+                </div>
+              </n-popover>
+            </div>
+
+            <!-- completed -->
+            <div class="prow">
+              <span class="plabel"
+                ><n-icon :component="CheckmarkDoneOutline" :size="15" /> Выполнено</span
+              >
+              <n-switch :value="completed" @update:value="setCompleted" />
             </div>
           </div>
 
-          <div class="field">
-            <n-text depth="3" class="lbl">Теги</n-text>
-            <n-select
-              :value="selectedTags"
-              :options="tagOptions"
-              multiple
-              filterable
-              tag
-              size="small"
-              placeholder="Выберите или введите тег"
-              @update:value="onTagsChange"
-            />
-          </div>
-
-          <div class="field">
-            <n-text depth="3" class="lbl">Исполнители</n-text>
-            <n-select
-              :value="selectedAssignees"
-              :options="memberOptions"
-              multiple
-              filterable
-              size="small"
-              placeholder="Назначьте участников"
-              @update:value="onAssigneesChange"
-            />
-          </div>
-
-          <div class="field">
-            <n-text depth="3" class="lbl">Описание</n-text>
+          <div class="section">
+            <span class="slabel">Описание</span>
             <n-input
               v-model:value="description"
               type="textarea"
-              :autosize="{ minRows: 3, maxRows: 10 }"
+              :autosize="{ minRows: 3, maxRows: 12 }"
               placeholder="Добавьте описание…"
             />
           </div>
 
-          <div class="field">
-            <n-text depth="3" class="lbl">Подзадачи</n-text>
+          <div class="section">
+            <span class="slabel">Подзадачи</span>
             <div v-for="sub in task?.subtasks || []" :key="sub.id" class="subtask">
               <n-checkbox :checked="!!sub.completed_at" @update:checked="toggleSubtask(sub)" />
               <span :class="{ done: sub.completed_at }">{{ sub.title }}</span>
@@ -311,7 +405,10 @@ async function toggleSubtask(sub) {
         <div class="footer">
           <n-popconfirm @positive-click="removeTask">
             <template #trigger>
-              <n-button quaternary type="error">Удалить</n-button>
+              <n-button type="error" ghost>
+                <template #icon><n-icon :component="TrashOutline" /></template>
+                Удалить
+              </n-button>
             </template>
             Удалить задачу?
           </n-popconfirm>
@@ -329,33 +426,86 @@ async function toggleSubtask(sub) {
 .form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 .title-input :deep(input) {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
 }
-.row {
+.props {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.prow {
+  display: flex;
+  align-items: center;
   gap: 12px;
+  min-height: 34px;
 }
-.field {
-  flex: 1;
-  min-width: 0;
+.plabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 140px;
+  flex: none;
+  color: var(--t-text3);
+  font-size: 13px;
 }
-.done-field {
-  flex: 0 0 auto;
+.val {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--t-text1);
+  font-size: 13px;
+  cursor: pointer;
 }
-.lbl {
-  display: block;
-  font-size: 12px;
-  margin-bottom: 4px;
+.val:hover {
+  background: var(--t-hover);
 }
-.pr-dot {
-  width: 10px;
-  height: 10px;
+.muted {
+  color: var(--t-text3);
+}
+.dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  display: inline-block;
+}
+.chip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+.avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--t-primary);
+  color: var(--t-on-primary);
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -5px;
+}
+.avatar:first-child,
+.avatar.sm {
+  margin-left: 0;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.slabel {
+  font-size: 12px;
+  color: var(--t-text3);
 }
 .subtask {
   display: flex;
@@ -366,6 +516,45 @@ async function toggleSubtask(sub) {
 .subtask .done {
   text-decoration: line-through;
   opacity: 0.6;
+}
+.menu {
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.menu-item:hover {
+  background: var(--t-hover);
+}
+.grow {
+  flex: 1;
+}
+.chk {
+  color: var(--t-primary);
+}
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+  max-width: 260px;
+}
+.tagchip {
+  font-size: 12px;
+  padding: 2px 9px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
 }
 .footer {
   display: flex;
