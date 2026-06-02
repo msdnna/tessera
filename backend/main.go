@@ -64,6 +64,7 @@ func main() {
 			protected.GET("/workspaces/:id", rh.GetWorkspace)
 			protected.PATCH("/workspaces/:id", rh.UpdateWorkspace)
 			protected.DELETE("/workspaces/:id", rh.DeleteWorkspace)
+			protected.GET("/workspaces/:id/search", rh.Search)
 			protected.GET("/workspaces/:id/members", rh.ListMembers)
 			protected.POST("/workspaces/:id/members", rh.AddMember)
 			protected.DELETE("/workspaces/:id/members/:userId", rh.RemoveMember)
