@@ -22,7 +22,7 @@ import { useRouter } from 'vue-router'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useActivityStore } from '@/stores/activity'
+import { useNotificationsStore } from '@/stores/notifications'
 import MembersModal from './MembersModal.vue'
 
 defineProps({ mobile: { type: Boolean, default: false } })
@@ -30,10 +30,17 @@ defineProps({ mobile: { type: Boolean, default: false } })
 const theme = useThemeStore()
 const authStore = useAuthStore()
 const ws = useWorkspacesStore()
-const activity = useActivityStore()
+const notes = useNotificationsStore()
 const router = useRouter()
 
 const showMembers = ref(false)
+
+function openNotification(n) {
+  notes.markRead(n.id)
+  if (n.task_id && n.task_board_id) {
+    router.push(`/board/${n.task_board_id}?task=${n.task_id}`)
+  }
+}
 
 const initials = computed(() => {
   const n = (authStore.user?.name || authStore.user?.email || '?').trim()
@@ -65,21 +72,39 @@ function fmtTime(d) {
         Участники
       </n-tooltip>
 
-      <!-- Activity bell -->
-      <n-popover trigger="click" placement="top-start" @update:show="(s) => s && activity.markRead()">
+      <!-- Notifications bell (persistent) -->
+      <n-popover trigger="click" placement="top-start">
         <template #trigger>
-          <n-badge :value="activity.unread" :max="9" :show="activity.unread > 0">
-            <n-button quaternary circle size="small" aria-label="Активность">
+          <n-badge :value="notes.unread" :max="9" :show="notes.unread > 0">
+            <n-button quaternary circle size="small" aria-label="Уведомления">
               <n-icon :component="NotificationsOutline" />
             </n-button>
           </n-badge>
         </template>
         <div class="feed">
-          <div v-for="it in activity.items" :key="it.id" class="feed-item">
-            <span class="ft">{{ it.text }}</span>
-            <span class="fa">{{ fmtTime(it.at) }}</span>
+          <div class="feed-head">
+            <span>Уведомления</span>
+            <n-button
+              v-if="notes.unread"
+              text
+              size="tiny"
+              type="primary"
+              @click="notes.markAllRead()"
+            >
+              Прочитать все
+            </n-button>
           </div>
-          <n-empty v-if="!activity.items.length" description="Пока тихо" size="small" />
+          <button
+            v-for="it in notes.items"
+            :key="it.id"
+            class="feed-item"
+            :class="{ unread: !it.read_at }"
+            @click="openNotification(it)"
+          >
+            <span class="ft">{{ it.text }}</span>
+            <span class="fa">{{ fmtTime(it.created_at) }}</span>
+          </button>
+          <n-empty v-if="!notes.items.length" description="Пока тихо" size="small" />
         </div>
       </n-popover>
 
@@ -216,19 +241,45 @@ function fmtTime(d) {
   box-shadow: 0 0 0 2px var(--t-surface);
 }
 .feed {
-  width: 260px;
-  max-height: 320px;
+  width: 280px;
+  max-height: 360px;
   overflow-y: auto;
+}
+.feed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--t-text3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px 6px;
 }
 .feed-item {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 4px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 8px 6px;
+  border-radius: 6px;
   border-bottom: 1px solid var(--t-border);
+}
+.feed-item:hover {
+  background: var(--t-hover);
 }
 .feed-item:last-child {
   border-bottom: none;
+}
+.feed-item.unread {
+  background: color-mix(in srgb, var(--t-primary) 10%, transparent);
+}
+.feed-item.unread .ft {
+  font-weight: 600;
 }
 .ft {
   color: var(--t-text1);

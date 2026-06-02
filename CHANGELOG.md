@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.20.0] — 2026-06-03
+- Persistent notifications (feature #3): the bell is now backed by the server —
+  it loads on startup, receives new notifications live over the socket, shows a
+  real unread count, marks individual or all as read, and each item is
+  clickable (opens the related task's board + modal via #N). Replaces the old
+  in-memory activity feed.
+
 ### [0.19.2] — 2026-06-03
 - Kanban columns now reliably fit the screen: columns use `box-sizing:
   border-box` (their 10px padding no longer added ~20px each to the measured

@@ -21,6 +21,8 @@
   "dependencies": {
     "@vicons/ionicons5": "^0.13.0",
     "axios": "^1.16.0",
+    "dompurify": "^3.4.7",
+    "marked": "^18.0.4",
     "naive-ui": "^2.44.1",
     "pinia": "^3.0.4",
     "vue": "^3.5.34",

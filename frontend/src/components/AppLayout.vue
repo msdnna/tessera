@@ -13,19 +13,20 @@ import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
-import { useActivityStore } from '@/stores/activity'
+import { useNotificationsStore } from '@/stores/notifications'
 import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
 
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
-const activity = useActivityStore()
+const notes = useNotificationsStore()
 const { isMobile } = useResponsive()
 const route = useRoute()
 
-// Global realtime feed for the activity bell (scoped to the current workspace).
+// Live notifications for the bell (scoped to the current workspace, addressed
+// to the current user).
 useRealtime((ev) => {
-  if (ev.scope === ws.currentId) activity.push(ev, authStore.user?.id)
+  if (ev.scope === ws.currentId) notes.onEvent(ev, authStore.user?.id)
 })
 
 const drawerOpen = ref(false)
@@ -33,6 +34,7 @@ const drawerOpen = ref(false)
 onMounted(async () => {
   await authStore.verify()
   await ws.loadWorkspaces()
+  await notes.load()
 })
 
 // Close the mobile drawer on navigation.

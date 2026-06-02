@@ -78,6 +78,8 @@ export const workspaces = {
   projects: (id) => api.get(`/workspaces/${id}/projects`),
   createProject: (id, data) => api.post(`/workspaces/${id}/projects`, data),
   search: (id, q) => api.get(`/workspaces/${id}/search`, { params: { q } }),
+  tasks: (id, params) => api.get(`/workspaces/${id}/tasks`, { params }),
+  summary: (id) => api.get(`/workspaces/${id}/summary`),
   tags: (id) => api.get(`/workspaces/${id}/tags`),
   createTag: (id, data) => api.post(`/workspaces/${id}/tags`, data),
   updateTag: (tagId, data) => api.patch(`/tags/${tagId}`, data),
@@ -145,6 +147,30 @@ export const tasks = {
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),
   removeAssignee: (id, userId) => api.delete(`/tasks/${id}/assignees/${userId}`),
+  // Rich task detail (#8)
+  events: (id) => api.get(`/tasks/${id}/events`),
+  comments: (id) => api.get(`/tasks/${id}/comments`),
+  addComment: (id, body) => api.post(`/tasks/${id}/comments`, { body }),
+  updateComment: (commentId, body) => api.patch(`/comments/${commentId}`, { body }),
+  removeComment: (commentId) => api.delete(`/comments/${commentId}`),
+  relations: (id) => api.get(`/tasks/${id}/relations`),
+  addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),
+  removeRelation: (relationId) => api.delete(`/relations/${relationId}`),
+  attachments: (id) => api.get(`/tasks/${id}/attachments`),
+  uploadAttachment: (id, formData) =>
+    api.post(`/tasks/${id}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  downloadAttachment: (attachmentId) =>
+    api.get(`/attachments/${attachmentId}/download`, { responseType: 'blob' }),
+  removeAttachment: (attachmentId) => api.delete(`/attachments/${attachmentId}`),
+}
+
+export const notifications = {
+  list: () => api.get('/notifications'),
+  unreadCount: () => api.get('/notifications/unread-count'),
+  markRead: (id) => api.post(`/notifications/${id}/read`),
+  markAllRead: () => api.post('/notifications/read-all'),
 }
 
 export default api

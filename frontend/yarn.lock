@@ -531,6 +531,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/trusted-types@npm:^2.0.7":
+  version: 2.0.7
+  resolution: "@types/trusted-types@npm:2.0.7"
+  checksum: 10c0/4c4855f10de7c6c135e0d32ce462419d8abbbc33713b31d294596c0cc34ae1fa6112a2f9da729c8f7a20707782b0d69da3b1f8df6645b0366d08825ca1522e0c
+  languageName: node
+  linkType: hard
+
 "@vicons/ionicons5@npm:^0.13.0":
   version: 0.13.0
   resolution: "@vicons/ionicons5@npm:0.13.0"
@@ -1117,6 +1124,18 @@ __metadata:
   version: 2.1.2
   resolution: "detect-libc@npm:2.1.2"
   checksum: 10c0/acc675c29a5649fa1fb6e255f993b8ee829e510b6b56b0910666949c80c364738833417d0edb5f90e4e46be17228b0f2b66a010513984e18b15deeeac49369c4
+  languageName: node
+  linkType: hard
+
+"dompurify@npm:^3.4.7":
+  version: 3.4.7
+  resolution: "dompurify@npm:3.4.7"
+  dependencies:
+    "@types/trusted-types": "npm:^2.0.7"
+  dependenciesMeta:
+    "@types/trusted-types":
+      optional: true
+  checksum: 10c0/b39940e95259bfaea658cb2bec819d47f271f9fe47e4e3cfff1fb7876089264d7c21e36ea09dad0d9a0f70add502ce6787ba9e7467f2c7b996382eb1d8daa375
   languageName: node
   linkType: hard
 
@@ -1903,6 +1922,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"marked@npm:^18.0.4":
+  version: 18.0.4
+  resolution: "marked@npm:18.0.4"
+  bin:
+    marked: bin/marked.js
+  checksum: 10c0/f54dcbb39d3acdcd0356f7629b42811eec56db5f6daef7404e582cdf800f5b598b681f9f8a187e7f51262e37c607f5e0cd9880e56b5c8160a49c3f7828e9e459
+  languageName: node
+  linkType: hard
+
 "math-intrinsics@npm:^1.1.0":
   version: 1.1.0
   resolution: "math-intrinsics@npm:1.1.0"
@@ -2441,10 +2469,12 @@ __metadata:
     "@vicons/ionicons5": "npm:^0.13.0"
     "@vitejs/plugin-vue": "npm:^6.0.6"
     axios: "npm:^1.16.0"
+    dompurify: "npm:^3.4.7"
     eslint: "npm:^10.3.0"
     eslint-config-prettier: "npm:^10.1.8"
     eslint-plugin-vue: "npm:^10.9.1"
     globals: "npm:^17.6.0"
+    marked: "npm:^18.0.4"
     naive-ui: "npm:^2.44.1"
     pinia: "npm:^3.0.4"
     prettier: "npm:^3.8.3"
