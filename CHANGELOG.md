@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.9.0] — 2026-06-02
+- Sidebar tree overhaul (Phase 10b): recursive nested groups (folder icon),
+  projects with icon/initials square + color, boards with tile icon and tree
+  indentation. Inline rename (groups). Per-node "⋯" menus (new project / new
+  subgroup / rename / delete) and a "+" popover on the Проекты header (new
+  project / group at root). Project settings popover (name/icon/color/delete).
+  Replaced bottom create buttons and the flat list.
+
 ### [0.8.2] — 2026-06-02
 - Deployment (Phase 9): multi-stage Dockerfile (node build → nginx) serving the
   SPA and proxying /api + WebSocket to the backend; .dockerignore. Added to dev

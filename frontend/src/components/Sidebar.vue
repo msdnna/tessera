@@ -1,6 +1,5 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
 import {
   NSelect,
   NButton,
@@ -10,91 +9,58 @@ import {
   NScrollbar,
   NText,
   NIcon,
+  NDropdown,
   useMessage,
 } from 'naive-ui'
 import { DocumentTextOutline, AlarmOutline, AddOutline } from '@vicons/ionicons5'
+import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { workspaces as wsApi, projects as projApi } from '@/api'
+import SidebarNode from './SidebarNode.vue'
+import ProjectRow from './ProjectRow.vue'
 
 const store = useWorkspacesStore()
-const router = useRouter()
-const route = useRoute()
 const message = useMessage()
 
-function isActiveBoard(b) {
-  return route.params.id === b.id
-}
-
 const wsOptions = computed(() => store.list.map((w) => ({ label: w.name, value: w.id })))
-const expanded = ref(new Set())
+const rootGroups = computed(() => store.childGroups(null))
+const ungrouped = computed(() => store.projectsInGroup(null))
 
-const ungrouped = computed(() => store.projects.filter((p) => !p.group_id))
-function projectsInGroup(gid) {
-  return store.projects.filter((p) => p.group_id === gid)
-}
+const addOptions = [
+  { label: 'Новый проект', key: 'project' },
+  { label: 'Новая группа', key: 'group' },
+]
 
 async function onWorkspaceChange(id) {
   await store.selectWorkspace(id)
-  expanded.value = new Set()
 }
 
-async function toggleProject(p) {
-  const next = new Set(expanded.value)
-  if (next.has(p.id)) {
-    next.delete(p.id)
-  } else {
-    next.add(p.id)
-    if (!store.boardsByProject[p.id]) await store.loadBoards(p.id)
-  }
-  expanded.value = next
-}
-
-function openBoard(b) {
-  router.push(`/board/${b.id}`)
-}
-
-// ── minimal create modal ──
-const modal = ref({ show: false, title: '', value: '', submit: null })
-function promptCreate(title, submit) {
-  modal.value = { show: true, title, value: '', submit }
-}
-async function confirmCreate() {
-  const name = modal.value.value.trim()
-  if (!name) return
+async function addAtRoot(key) {
   try {
-    await modal.value.submit(name)
-    modal.value.show = false
+    if (key === 'project') {
+      await wsApi.createProject(store.currentId, { name: 'Новый проект' })
+    } else {
+      await wsApi.createGroup(store.currentId, { name: 'Новая группа' })
+    }
+    await store.refresh()
   } catch (e) {
     message.error(e.message)
   }
 }
 
-function newWorkspace() {
-  promptCreate('Новое пространство', async (name) => {
-    const res = await wsApi.create({ name })
+// new-workspace modal
+const wsModal = ref({ show: false, value: '' })
+async function createWorkspace() {
+  const n = wsModal.value.value.trim()
+  if (!n) return
+  try {
+    const res = await wsApi.create({ name: n })
+    wsModal.value.show = false
+    wsModal.value.value = ''
     await store.loadWorkspaces()
     await store.selectWorkspace(res.data.id)
-  })
-}
-function newGroup() {
-  promptCreate('Новая группа', async (name) => {
-    await wsApi.createGroup(store.currentId, { name })
-    await store.selectWorkspace(store.currentId)
-  })
-}
-function newProject(groupId = null) {
-  promptCreate('Новый проект', async (name) => {
-    await wsApi.createProject(store.currentId, { name, group_id: groupId })
-    await store.selectWorkspace(store.currentId)
-  })
-}
-function newBoard(project) {
-  promptCreate('Новая доска', async (name) => {
-    await projApi.createBoard(project.id, { name })
-    if (!store.boardsByProject[project.id]) await store.loadBoards(project.id)
-    else await store.loadBoards(project.id)
-    expanded.value = new Set(expanded.value).add(project.id)
-  })
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 </script>
 
@@ -104,6 +70,7 @@ function newBoard(project) {
       <span class="brand-mark">mt</span>
       <span class="brand-name">Tessera</span>
     </div>
+
     <div class="ws-switch">
       <n-select
         :value="store.currentId"
@@ -111,7 +78,13 @@ function newBoard(project) {
         size="small"
         @update:value="onWorkspaceChange"
       />
-      <n-button quaternary circle size="small" title="Новое пространство" @click="newWorkspace">
+      <n-button
+        quaternary
+        circle
+        size="small"
+        title="Новое пространство"
+        @click="wsModal.show = true"
+      >
         <n-icon :component="AddOutline" />
       </n-button>
     </div>
@@ -127,76 +100,32 @@ function newBoard(project) {
       </router-link>
     </nav>
 
-    <n-scrollbar class="tree">
-      <!-- grouped projects -->
-      <div v-for="g in store.groups" :key="g.id" class="group">
-        <div class="group-head">
-          <n-text depth="2" strong>{{ g.name }}</n-text>
-          <n-button text size="tiny" title="Проект в группе" @click="newProject(g.id)">
-            <n-icon :component="AddOutline" />
-          </n-button>
-        </div>
-        <div v-for="p in projectsInGroup(g.id)" :key="p.id" class="project-block">
-          <div class="project-row" @click="toggleProject(p)">
-            <span class="dot" :style="{ background: p.color || '#9ca3af' }" />
-            <span class="name">{{ p.name }}</span>
-          </div>
-          <div v-if="expanded.has(p.id)" class="boards">
-            <div
-              v-for="b in store.boardsByProject[p.id] || []"
-              :key="b.id"
-              class="board-row"
-              :class="{ active: isActiveBoard(b) }"
-              @click="openBoard(b)"
-            >
-              {{ b.name }}
-            </div>
-            <n-button text size="tiny" class="add-board" @click="newBoard(p)">＋ доска</n-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ungrouped projects -->
-      <div class="group">
-        <div class="group-head">
-          <n-text depth="3">Без группы</n-text>
-        </div>
-        <div v-for="p in ungrouped" :key="p.id" class="project-block">
-          <div class="project-row" @click="toggleProject(p)">
-            <span class="dot" :style="{ background: p.color || '#9ca3af' }" />
-            <span class="name">{{ p.name }}</span>
-          </div>
-          <div v-if="expanded.has(p.id)" class="boards">
-            <div
-              v-for="b in store.boardsByProject[p.id] || []"
-              :key="b.id"
-              class="board-row"
-              :class="{ active: isActiveBoard(b) }"
-              @click="openBoard(b)"
-            >
-              {{ b.name }}
-            </div>
-            <n-button text size="tiny" class="add-board" @click="newBoard(p)">＋ доска</n-button>
-          </div>
-        </div>
-      </div>
-    </n-scrollbar>
-
-    <div class="actions">
-      <n-button size="small" block @click="newProject(null)">＋ Проект</n-button>
-      <n-button size="small" block quaternary @click="newGroup">＋ Группа</n-button>
+    <div class="proj-head">
+      <n-text depth="3" strong>Проекты</n-text>
+      <n-dropdown trigger="click" :options="addOptions" @select="addAtRoot">
+        <n-button text size="small" title="Добавить">
+          <n-icon :component="AddOutline" />
+        </n-button>
+      </n-dropdown>
     </div>
 
-    <n-modal v-model:show="modal.show">
-      <n-card :title="modal.title" style="max-width: 360px" role="dialog">
+    <n-scrollbar class="tree">
+      <SidebarNode v-for="g in rootGroups" :key="g.id" :group="g" :depth="0" />
+      <ProjectRow v-for="p in ungrouped" :key="p.id" :project="p" :depth="0" />
+      <n-text v-if="!rootGroups.length && !ungrouped.length" depth="3" class="empty">
+        Пусто — создайте проект или группу через «+».
+      </n-text>
+    </n-scrollbar>
+
+    <n-modal v-model:show="wsModal.show">
+      <n-card title="Новое пространство" style="max-width: 360px" role="dialog">
         <n-input
-          v-model:value="modal.value"
+          v-model:value="wsModal.value"
           placeholder="Название"
-          autofocus
-          @keyup.enter="confirmCreate"
+          @keyup.enter="createWorkspace"
         />
         <template #footer>
-          <n-button type="primary" @click="confirmCreate">Создать</n-button>
+          <n-button type="primary" @click="createWorkspace">Создать</n-button>
         </template>
       </n-card>
     </n-modal>
@@ -242,7 +171,7 @@ function newBoard(project) {
 .nav {
   display: flex;
   flex-direction: column;
-  padding: 4px 8px 8px;
+  padding: 0 8px 8px;
 }
 .nav-link {
   display: flex;
@@ -262,59 +191,19 @@ function newBoard(project) {
   color: var(--t-primary);
   font-weight: 600;
 }
+.proj-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+}
 .tree {
   flex: 1;
-  padding: 0 8px;
+  padding: 0 6px;
 }
-.group {
-  margin-bottom: 12px;
-}
-.group-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 8px;
-}
-.project-row,
-.board-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.project-row:hover,
-.board-row:hover {
-  background: rgba(128, 128, 128, 0.12);
-}
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-}
-.boards {
-  padding-left: 16px;
-}
-.board-row {
-  font-size: 13px;
-  opacity: 0.9;
-}
-.board-row.active {
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-  color: var(--t-primary);
-  font-weight: 600;
-  opacity: 1;
-}
-.add-board {
-  margin: 2px 0 6px 8px;
-}
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
+.empty {
+  display: block;
+  font-size: 12px;
+  padding: 8px;
 }
 </style>

@@ -85,9 +85,16 @@ export const workspaces = {
 export const projects = {
   get: (id) => api.get(`/projects/${id}`),
   update: (id, data) => api.patch(`/projects/${id}`, data),
+  move: (id, data) => api.patch(`/projects/${id}/move`, data),
   remove: (id) => api.delete(`/projects/${id}`),
   boards: (id) => api.get(`/projects/${id}/boards`),
   createBoard: (id, data) => api.post(`/projects/${id}/boards`, data),
+}
+
+export const groups = {
+  update: (id, data) => api.patch(`/groups/${id}`, data),
+  move: (id, data) => api.patch(`/groups/${id}/move`, data),
+  remove: (id) => api.delete(`/groups/${id}`),
 }
 
 export const boards = {
