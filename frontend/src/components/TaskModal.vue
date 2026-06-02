@@ -488,8 +488,8 @@ async function toggleSubtask(sub) {
    `.plain` itself (!important beats the inline ones Naive writes); they inherit
    into the inner elements, so the field keeps the modal colour even on focus. */
 .plain {
-  --n-color: var(--t-surface) !important;
-  --n-color-focus: var(--t-surface) !important;
+  --n-color: transparent !important;
+  --n-color-focus: transparent !important;
 }
 .plain :deep(.n-input__border),
 .plain :deep(.n-input__state-border) {

@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.13.9] — 2026-06-02
+- Modal plain inputs use a transparent background (not the surface token, which
+  was lighter than the modal) so they blend into the modal in any theme.
+
 ### [0.13.8] — 2026-06-02
 - Tag stack: shadow layers shrink with depth and margin-right scales with the
   number of layers so the next pill always clears the stack; tag border paler.
