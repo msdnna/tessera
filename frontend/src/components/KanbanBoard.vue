@@ -13,19 +13,27 @@ import {
   NCheckbox,
   NSpace,
   NButtonGroup,
-  NDivider,
+  NIcon,
+  NTooltip,
   useMessage,
 } from 'naive-ui'
+import {
+  AlbumsOutline,
+  SwapVerticalOutline,
+  FilterOutline,
+  GitBranchOutline,
+  SearchOutline,
+} from '@vicons/ionicons5'
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useBoardViewStore } from '@/stores/boardView'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { PRIORITY_LABELS } from '@/styles/tokens'
+import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
-import TagManager from './TagManager.vue'
 import ColumnHeader from './ColumnHeader.vue'
-import ArchiveModal from './ArchiveModal.vue'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 
@@ -33,6 +41,9 @@ const props = defineProps({ boardId: { type: String, required: true } })
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
+const boardViewStore = useBoardViewStore()
+// `layout` lives in the store so the header switcher and the board stay in sync.
+const { layout } = storeToRefs(boardViewStore)
 const route = useRoute()
 const { isMobile } = useResponsive()
 
@@ -47,8 +58,8 @@ const membersMap = reactive({})
 const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
 
-// view controls
-const layout = ref('board') // 'board' | 'list' | 'calendar'
+// view controls (layout comes from the store, above)
+const subtasksExpanded = ref(false) // full property cards vs compact rows
 const groupMode = ref('status') // 'status' | 'tag'
 const sortBy = ref('position') // 'position' | 'priority' | 'due'
 const filters = reactive({ priorities: [], assignees: [], tags: [], due: '', q: '' })
@@ -100,6 +111,7 @@ function persistView() {
         layout: layout.value,
         groupMode: groupMode.value,
         sortBy: sortBy.value,
+        subtasksExpanded: subtasksExpanded.value,
         filters,
       }),
     )
@@ -115,6 +127,7 @@ function restoreView() {
       const v = JSON.parse(raw)
       if (v.layout) layout.value = v.layout
       if (v.groupMode) groupMode.value = v.groupMode
+      subtasksExpanded.value = !!v.subtasksExpanded
       if (v.sortBy) sortBy.value = v.sortBy
       if (v.filters) {
         filters.priorities = v.filters.priorities || []
@@ -132,7 +145,7 @@ function restoreView() {
     nextTick(() => (restoring = false))
   }
 }
-watch([layout, groupMode, sortBy, filters], persistView, { deep: true })
+watch([layout, groupMode, sortBy, subtasksExpanded, filters], persistView, { deep: true })
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
@@ -174,7 +187,6 @@ const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 // modals
 const selectedTaskId = ref(null)
 const showTaskModal = ref(false)
-const showArchive = ref(false)
 function openTask(id) {
   selectedTaskId.value = id
   showTaskModal.value = true
@@ -223,6 +235,9 @@ async function loadWorkspaceMeta() {
   for (const t of tg.data || []) tagsMap[t.id] = t
   for (const k of Object.keys(membersMap)) delete membersMap[k]
   for (const m of mem.data || []) membersMap[m.user_id] = m
+  // Mirror tags + context to the store so the header Теги manager works.
+  boardViewStore.setTags(tagsList.value)
+  boardViewStore.setContext(props.boardId, wsId)
 }
 
 // Due-date predicate for the "Срок" filter.
@@ -439,6 +454,12 @@ useRealtime((ev) => {
   scheduleReload()
 })
 
+// Header-hosted actions (Теги manager, Архив) ask the board to reload.
+watch(
+  () => boardViewStore.reloadNonce,
+  () => onChanged(),
+)
+
 // Open a task when arriving via a search deep-link (?task=<id>).
 function applyTaskQuery() {
   const id = route.query.task
@@ -455,7 +476,10 @@ onMounted(async () => {
   await load(props.boardId)
   applyTaskQuery()
 })
-onBeforeUnmount(() => ro?.disconnect())
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  boardViewStore.reset()
+})
 watch(
   () => props.boardId,
   async (id) => {
@@ -474,125 +498,134 @@ watch(
 <template>
   <n-spin :show="loading">
     <div v-if="board" class="board-wrap">
-      <div class="toolbar">
-        <n-text strong style="font-size: 18px">{{ board.name }}</n-text>
-        <n-space align="center" :size="8">
-          <!-- Layout switcher (#6): kanban / list / calendar -->
-          <n-button-group size="small">
-            <n-button :type="layout === 'board' ? 'primary' : 'default'" @click="layout = 'board'">
-              Доска
+      <!-- Sub-toolbar under the header: grouping / sort / filters / subtasks +
+           a task-name search on the right. (Layout + Теги/Архив live in the
+           global header now.) -->
+      <div class="subbar">
+        <n-popover trigger="click" placement="bottom-start">
+          <template #trigger>
+            <n-button size="small" quaternary :type="groupMode === 'tag' ? 'primary' : 'default'">
+              <template #icon><n-icon :component="AlbumsOutline" /></template>
+              {{ groupMode === 'tag' ? 'По тегам' : 'По статусам' }}
             </n-button>
-            <n-button :type="layout === 'list' ? 'primary' : 'default'" @click="layout = 'list'">
-              Список
-            </n-button>
-            <n-button
-              :type="layout === 'calendar' ? 'primary' : 'default'"
-              @click="layout = 'calendar'"
-            >
-              Календарь
-            </n-button>
-          </n-button-group>
-
-          <!-- Unified view + filters dropdown (#6) -->
-          <n-popover trigger="click" placement="bottom-end">
-            <template #trigger>
-              <n-button size="small" :type="activeFilterCount ? 'primary' : 'default'" ghost>
-                Вид и фильтры{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
+          </template>
+          <div class="vp">
+            <n-text depth="3" class="flbl flbl-0">Группировка</n-text>
+            <n-button-group size="small" class="vp-grp">
+              <n-button
+                :type="groupMode === 'status' ? 'primary' : 'default'"
+                @click="groupMode = 'status'"
+              >
+                По статусам
               </n-button>
-            </template>
-            <div class="vp">
-              <n-text depth="3" class="flbl">Группировка</n-text>
-              <n-button-group size="small" class="vp-grp">
-                <n-button
-                  :type="groupMode === 'status' ? 'primary' : 'default'"
-                  @click="groupMode = 'status'"
-                >
-                  По статусам
-                </n-button>
-                <n-button
-                  :type="groupMode === 'tag' ? 'primary' : 'default'"
-                  @click="groupMode = 'tag'"
-                >
-                  По тегам
-                </n-button>
-              </n-button-group>
+              <n-button
+                :type="groupMode === 'tag' ? 'primary' : 'default'"
+                @click="groupMode = 'tag'"
+              >
+                По тегам
+              </n-button>
+            </n-button-group>
+          </div>
+        </n-popover>
 
-              <n-text depth="3" class="flbl">Сортировка</n-text>
-              <n-select v-model:value="sortBy" :options="sortOptions" size="small" />
+        <n-popover trigger="click" placement="bottom-start">
+          <template #trigger>
+            <n-button size="small" quaternary>
+              <template #icon><n-icon :component="SwapVerticalOutline" /></template>
+              Сортировка
+            </n-button>
+          </template>
+          <div class="vp">
+            <n-text depth="3" class="flbl flbl-0">Сортировка</n-text>
+            <n-select v-model:value="sortBy" :options="sortOptions" size="small" style="width: 200px" />
+          </div>
+        </n-popover>
 
-              <n-divider class="vp-div" />
-
-              <div class="vp-fhead">
-                <n-text depth="3" class="flbl flbl-0">Фильтры</n-text>
-                <n-button
-                  v-if="activeFilterCount"
-                  text
-                  size="tiny"
-                  type="primary"
-                  @click="resetFilters"
-                >
-                  Сбросить
-                </n-button>
-              </div>
-
-              <n-input
-                v-model:value="filters.q"
-                size="small"
-                placeholder="Название задачи"
-                clearable
-              />
-
-              <n-text depth="3" class="flbl">Срок</n-text>
-              <n-select v-model:value="filters.due" :options="dueOptions" size="small" />
-
-              <n-text depth="3" class="flbl">Приоритет</n-text>
-              <n-checkbox-group v-model:value="filters.priorities">
-                <n-space vertical :size="4">
-                  <n-checkbox
-                    v-for="o in priorityFilterOptions"
-                    :key="o.value"
-                    :value="o.value"
-                    :label="o.label"
-                  />
-                </n-space>
-              </n-checkbox-group>
-
-              <n-text depth="3" class="flbl">Исполнитель</n-text>
-              <n-checkbox-group v-model:value="filters.assignees">
-                <n-space vertical :size="4">
-                  <n-checkbox
-                    v-for="o in memberFilterOptions"
-                    :key="o.value"
-                    :value="o.value"
-                    :label="o.label"
-                  />
-                </n-space>
-              </n-checkbox-group>
-
-              <template v-if="tagFilterOptions.length">
-                <n-text depth="3" class="flbl">Теги</n-text>
-                <n-checkbox-group v-model:value="filters.tags">
-                  <n-space vertical :size="4">
-                    <n-checkbox
-                      v-for="o in tagFilterOptions"
-                      :key="o.value"
-                      :value="o.value"
-                      :label="o.label"
-                    />
-                  </n-space>
-                </n-checkbox-group>
-              </template>
+        <n-popover trigger="click" placement="bottom-start">
+          <template #trigger>
+            <n-button size="small" quaternary :type="activeFilterCount ? 'primary' : 'default'">
+              <template #icon><n-icon :component="FilterOutline" /></template>
+              Фильтры{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
+            </n-button>
+          </template>
+          <div class="vp">
+            <div class="vp-fhead">
+              <n-text depth="3" class="flbl flbl-0">Фильтры</n-text>
+              <n-button
+                v-if="activeFilterCount"
+                text
+                size="tiny"
+                type="primary"
+                @click="resetFilters"
+              >
+                Сбросить
+              </n-button>
             </div>
-          </n-popover>
-
-          <n-popover trigger="click" placement="bottom-end">
-            <template #trigger>
-              <n-button size="small">Теги</n-button>
+            <n-text depth="3" class="flbl">Срок</n-text>
+            <n-select v-model:value="filters.due" :options="dueOptions" size="small" />
+            <n-text depth="3" class="flbl">Приоритет</n-text>
+            <n-checkbox-group v-model:value="filters.priorities">
+              <n-space vertical :size="4">
+                <n-checkbox
+                  v-for="o in priorityFilterOptions"
+                  :key="o.value"
+                  :value="o.value"
+                  :label="o.label"
+                />
+              </n-space>
+            </n-checkbox-group>
+            <n-text depth="3" class="flbl">Исполнитель</n-text>
+            <n-checkbox-group v-model:value="filters.assignees">
+              <n-space vertical :size="4">
+                <n-checkbox
+                  v-for="o in memberFilterOptions"
+                  :key="o.value"
+                  :value="o.value"
+                  :label="o.label"
+                />
+              </n-space>
+            </n-checkbox-group>
+            <template v-if="tagFilterOptions.length">
+              <n-text depth="3" class="flbl">Теги</n-text>
+              <n-checkbox-group v-model:value="filters.tags">
+                <n-space vertical :size="4">
+                  <n-checkbox
+                    v-for="o in tagFilterOptions"
+                    :key="o.value"
+                    :value="o.value"
+                    :label="o.label"
+                  />
+                </n-space>
+              </n-checkbox-group>
             </template>
-            <TagManager :ws-id="wsStore.currentId" :tags="tagsList" @changed="onChanged" />
-          </n-popover>
-          <n-button size="small" @click="showArchive = true">Архив</n-button>
-        </n-space>
+          </div>
+        </n-popover>
+
+        <n-tooltip>
+          <template #trigger>
+            <n-button
+              size="small"
+              quaternary
+              :type="subtasksExpanded ? 'primary' : 'default'"
+              @click="subtasksExpanded = !subtasksExpanded"
+            >
+              <template #icon><n-icon :component="GitBranchOutline" /></template>
+            </n-button>
+          </template>
+          {{ subtasksExpanded ? 'Свернуть подзадачи' : 'Развернуть подзадачи' }}
+        </n-tooltip>
+
+        <div class="subbar-spacer" />
+
+        <n-input
+          v-model:value="filters.q"
+          size="small"
+          placeholder="Поиск по названию"
+          clearable
+          class="task-search"
+        >
+          <template #prefix><n-icon :component="SearchOutline" /></template>
+        </n-input>
       </div>
 
       <BoardListView
@@ -615,7 +648,7 @@ watch(
           :list="colModel"
           group="columns"
           item-key="key"
-          handle=".col-grip"
+          handle=".col-drag"
           :disabled="groupMode !== 'status'"
           class="cols"
           :animation="150"
@@ -631,6 +664,7 @@ watch(
                 :count="(lists[dcol.key] || []).length"
                 :editable="groupMode === 'status'"
                 :is-done="groupMode === 'status' && dcol.key === doneColumnId"
+                :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
                 @changed="onChanged"
                 @set-done="onSetDone"
               />
@@ -653,6 +687,7 @@ watch(
                     <TaskCard
                       :task="element"
                       :subtasks="subtasksByParent[element.id] || []"
+                      :subtasks-expanded="subtasksExpanded"
                       :tags-map="tagsMap"
                       :members-map="membersMap"
                       :tags="tagsList"
@@ -724,18 +759,24 @@ watch(
       @open="openTask"
     />
 
-    <ArchiveModal v-model:show="showArchive" :board-id="board?.id" @changed="onChanged" />
   </n-spin>
 </template>
 
 <style scoped>
-.toolbar {
+.subbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 4px;
   margin-bottom: 12px;
-  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--t-border);
+}
+.subbar-spacer {
+  flex: 1;
+}
+.task-search {
+  width: 220px;
+  max-width: 40%;
 }
 .vp {
   width: 240px;

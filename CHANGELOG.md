@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.31.0] — 2026-06-03
+- a reference tracker-style board chrome overhaul (new `stores/boardView.js` bridges the
+  board and the global header):
+  - Layout switcher (Доска/Список/Календарь) moved into the header as icon
+    buttons, left of the search; the search now centres in the remaining space.
+  - Теги and Архив moved to the header (right). Tag manager and the archive
+    modal now live there and nudge the board to reload on change.
+  - Grouping / sort / filters become a sub-toolbar directly under the header
+    (icon dropdowns), with a new "expand subtasks" toggle and a task-name search
+    pinned to the right.
+- Subtasks on cards can be expanded to full property cards (priority, tags,
+  due, assignees) or kept as compact rows, via the sub-toolbar toggle.
+- Columns show a a reference tracker-style status glyph (open / half / check, tinted with
+  the column colour) instead of the drag grip; drag a column by its header.
+- Right-click context menus: task cards (open, complete, priority, add subtask,
+  archive, delete) and columns (rename, mark done, delete).
+
 ### [0.30.1] — 2026-06-03
 - Fix sidebar overflow at intermediate widths: a new "narrow" state (expanded
   but < ~216px) moves the workspace tools to the header and hides the

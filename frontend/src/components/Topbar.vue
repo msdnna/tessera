@@ -3,12 +3,19 @@ import { NButton, NIcon } from 'naive-ui'
 import { MenuOutline } from '@vicons/ionicons5'
 import SearchBar from './SearchBar.vue'
 import WorkspaceTools from './WorkspaceTools.vue'
+import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
+import BoardActions from './BoardActions.vue'
+import { useBoardViewStore } from '@/stores/boardView'
 
-defineProps({
+const props = defineProps({
   mobile: { type: Boolean, default: false },
   showTools: { type: Boolean, default: false },
 })
 defineEmits(['menu'])
+
+const board = useBoardViewStore()
+// Board layout switcher / actions only make sense on a desktop board view.
+const onBoard = () => board.active && !props.mobile
 </script>
 
 <template>
@@ -16,11 +23,22 @@ defineEmits(['menu'])
     <n-button v-if="mobile" class="menu-btn" quaternary circle @click="$emit('menu')">
       <n-icon :component="MenuOutline" />
     </n-button>
-    <div class="search-wrap">
-      <SearchBar />
+
+    <div class="tb-left">
+      <BoardLayoutSwitch v-if="onBoard()" />
     </div>
-    <!-- When the sidebar is collapsed, its tools slide over here. -->
-    <WorkspaceTools v-if="showTools" class="header-tools" placement="bottom-end" />
+
+    <div class="tb-center">
+      <div class="search-wrap">
+        <SearchBar />
+      </div>
+    </div>
+
+    <div class="tb-right">
+      <BoardActions v-if="onBoard()" />
+      <!-- When the sidebar is collapsed/narrow, its tools slide over here. -->
+      <WorkspaceTools v-if="showTools" placement="bottom-end" />
+    </div>
   </div>
 </template>
 
@@ -29,7 +47,7 @@ defineEmits(['menu'])
   height: 52px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
   padding: 0 16px;
   position: relative;
 }
@@ -40,12 +58,21 @@ defineEmits(['menu'])
   position: absolute;
   left: 10px;
 }
+.tb-left,
+.tb-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.tb-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
 .search-wrap {
   width: 100%;
   max-width: 520px;
-}
-.header-tools {
-  position: absolute;
-  right: 14px;
 }
 </style>

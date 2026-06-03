@@ -1,11 +1,13 @@
 <script setup>
-import { ref } from 'vue'
-import { NIcon, NButton, NInput, NPopover, NPopconfirm, useMessage } from 'naive-ui'
+import { ref, computed, nextTick } from 'vue'
+import { NIcon, NButton, NInput, NPopover, NPopconfirm, NDropdown, useMessage } from 'naive-ui'
 import {
-  ReorderThreeOutline,
   EllipsisHorizontalOutline,
   TrashOutline,
   CheckmarkDoneOutline,
+  CheckmarkCircle,
+  EllipseOutline,
+  ContrastOutline,
 } from '@vicons/ionicons5'
 import { columns as columnsApi } from '@/api'
 
@@ -14,12 +16,45 @@ const props = defineProps({
   count: { type: Number, default: 0 },
   editable: { type: Boolean, default: false }, // status columns only
   isDone: { type: Boolean, default: false }, // task-completing column
+  first: { type: Boolean, default: false }, // leftmost column (To-Do icon)
 })
 const emit = defineEmits(['changed', 'set-done'])
+
+// a reference tracker-style status glyph: done = check, first = empty circle, middle =
+// half (in-progress). Tinted with the column colour.
+const statusIcon = computed(() =>
+  props.isDone ? CheckmarkCircle : props.first ? EllipseOutline : ContrastOutline,
+)
+const statusColor = computed(() => props.dcol.color || 'var(--t-text2)')
 
 function toggleDone() {
   emit('set-done', props.isDone ? null : props.dcol.key)
   settingsOpen.value = false
+}
+
+// ── right-click context menu (status columns only) ──
+const ctxShow = ref(false)
+const ctxX = ref(0)
+const ctxY = ref(0)
+const ctxOptions = computed(() => [
+  { label: 'Переименовать', key: 'rename' },
+  { label: props.isDone ? 'Снять завершение' : 'Сделать завершающей', key: 'done' },
+  { type: 'divider', key: 'd1' },
+  { label: 'Удалить колонку', key: 'delete' },
+])
+function onCtx(e) {
+  if (!props.editable) return
+  e.preventDefault()
+  ctxShow.value = false
+  ctxX.value = e.clientX
+  ctxY.value = e.clientY
+  nextTick(() => (ctxShow.value = true))
+}
+function onCtxSelect(key) {
+  ctxShow.value = false
+  if (key === 'rename') startRename()
+  else if (key === 'done') toggleDone()
+  else if (key === 'delete') removeCol()
 }
 
 const message = useMessage()
@@ -64,8 +99,14 @@ async function removeCol() {
 </script>
 
 <template>
-  <div class="col-head">
-    <n-icon v-if="editable" :component="ReorderThreeOutline" class="col-grip" title="Перетащить" />
+  <div class="col-head" @contextmenu="onCtx">
+    <n-icon
+      v-if="editable"
+      :component="statusIcon"
+      class="col-stat col-drag"
+      :style="{ color: statusColor }"
+      :title="isDone ? 'Завершающая колонка' : 'Перетащите за заголовок'"
+    />
     <n-input
       v-if="renaming"
       v-model:value="nameEdit"
@@ -74,13 +115,7 @@ async function removeCol() {
       @keyup.enter="commitRename"
       @blur="commitRename"
     />
-    <span v-else class="col-title" @dblclick="startRename">{{ dcol.name }}</span>
-    <n-icon
-      v-if="isDone"
-      :component="CheckmarkDoneOutline"
-      class="done-mark"
-      title="Завершающая колонка — задачи здесь отмечаются выполненными"
-    />
+    <span v-else class="col-title col-drag" @dblclick="startRename">{{ dcol.name }}</span>
     <span class="count">{{ count }}</span>
     <n-popover v-if="editable" v-model:show="settingsOpen" trigger="click" placement="bottom-end">
       <template #trigger>
@@ -121,6 +156,17 @@ async function removeCol() {
         </n-popconfirm>
       </div>
     </n-popover>
+
+    <n-dropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="ctxShow"
+      :x="ctxX"
+      :y="ctxY"
+      :options="ctxOptions"
+      @select="onCtxSelect"
+      @clickoutside="ctxShow = false"
+    />
   </div>
 </template>
 
@@ -132,16 +178,16 @@ async function removeCol() {
   margin-bottom: 8px;
   padding: 0 2px;
 }
-.col-grip {
+.col-stat {
+  font-size: 16px;
   cursor: grab;
-  color: var(--t-text3);
-  font-size: 12px;
+  flex: none;
 }
 .col-title {
   flex: 1;
   font-weight: 600;
   color: var(--t-text1);
-  cursor: text;
+  cursor: grab;
 }
 .count {
   font-size: 12px;
@@ -149,10 +195,6 @@ async function removeCol() {
   background: var(--t-hover);
   border-radius: 10px;
   padding: 0 7px;
-}
-.done-mark {
-  color: var(--t-success, #18a058);
-  font-size: 15px;
 }
 .col-menu {
   font-size: 16px;

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import draggable from 'vuedraggable'
-import { NIcon, NPopover, NDatePicker, NInput } from 'naive-ui'
+import { NIcon, NPopover, NDatePicker, NInput, NDropdown } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
@@ -17,6 +17,8 @@ import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 const props = defineProps({
   task: { type: Object, required: true },
   subtasks: { type: Array, default: () => [] },
+  // Render subtasks as full property cards (vs compact name-only rows).
+  subtasksExpanded: { type: Boolean, default: false },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tags: { type: Array, default: () => [] },
@@ -97,6 +99,44 @@ async function apply(patch) {
 }
 const toggleDone = () => apply({ completed: !done.value })
 const setPriority = (p) => apply({ priority: p })
+
+// ── right-click context menu ──
+const ctxShow = ref(false)
+const ctxX = ref(0)
+const ctxY = ref(0)
+const ctxOptions = computed(() => [
+  { label: 'Открыть', key: 'open' },
+  { label: done.value ? 'Снять выполнение' : 'Отметить выполненной', key: 'toggle' },
+  {
+    label: 'Приоритет',
+    key: 'prio',
+    children: PRIORITY_LABELS.map((l, i) => ({ label: l, key: 'prio:' + i })),
+  },
+  { type: 'divider', key: 'd1' },
+  { label: 'Создать подзадачу', key: 'subtask' },
+  { label: 'В архив', key: 'archive' },
+  { label: 'Удалить', key: 'delete' },
+])
+function onCtx(e) {
+  ctxShow.value = false
+  ctxX.value = e.clientX
+  ctxY.value = e.clientY
+  nextTick(() => (ctxShow.value = true))
+}
+async function onCtxSelect(key) {
+  ctxShow.value = false
+  if (key === 'open') return emit('open', props.task.id)
+  if (key === 'toggle') return toggleDone()
+  if (key === 'subtask') return startAddSub()
+  if (key.startsWith('prio:')) return setPriority(Number(key.slice(5)))
+  try {
+    if (key === 'archive') await tasksApi.archive(props.task.id)
+    else if (key === 'delete') await tasksApi.remove(props.task.id)
+    emit('changed')
+  } catch {
+    /* surfaced by the board's reload path */
+  }
+}
 const setDue = (ts) => apply({ due_date: ts ? new Date(ts).toISOString() : null })
 
 async function toggleTag(id) {
@@ -188,7 +228,13 @@ async function submitAddSub() {
 </script>
 
 <template>
-  <div class="card" :class="{ done }" :style="cardStyle" @click="emit('open', task.id)">
+  <div
+    class="card"
+    :class="{ done }"
+    :style="cardStyle"
+    @click="emit('open', task.id)"
+    @contextmenu.prevent.stop="onCtx"
+  >
     <div class="card-top">
       <span
         class="check"
@@ -358,17 +404,35 @@ async function submitAddSub() {
       @change="onSubReorder"
     >
       <template #item="{ element: s }">
-        <div class="subrow" :class="{ done: s.completed_at }" @click="emit('open', s.id)">
-          <span class="check sm" @click.stop="toggleSubDone(s)">
-            <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
-          </span>
-          <span
-            v-if="s.priority"
-            class="pr-dot"
-            :style="{ background: PRIORITY_COLORS[s.priority] }"
+        <div>
+          <!-- Expanded: a full property card (like a top-level task). -->
+          <TaskCard
+            v-if="subtasksExpanded"
+            :task="s"
+            :subtasks="[]"
+            :subtasks-expanded="subtasksExpanded"
+            :tags-map="tagsMap"
+            :members-map="membersMap"
+            :tags="tags"
+            :members="members"
+            :ws-id="wsId"
+            class="sub-card"
+            @open="emit('open', $event)"
+            @changed="emit('changed')"
           />
-          <span class="sub-title">{{ s.title }}</span>
-          <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+          <!-- Collapsed: a compact name-only row. -->
+          <div v-else class="subrow" :class="{ done: s.completed_at }" @click="emit('open', s.id)">
+            <span class="check sm" @click.stop="toggleSubDone(s)">
+              <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
+            </span>
+            <span
+              v-if="s.priority"
+              class="pr-dot"
+              :style="{ background: PRIORITY_COLORS[s.priority] }"
+            />
+            <span class="sub-title">{{ s.title }}</span>
+            <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+          </div>
         </div>
       </template>
     </draggable>
@@ -385,10 +449,25 @@ async function submitAddSub() {
       />
     </div>
     <button v-else class="add-sub" @click.stop="startAddSub">＋ Создать подзадачу</button>
+
+    <n-dropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="ctxShow"
+      :x="ctxX"
+      :y="ctxY"
+      :options="ctxOptions"
+      @select="onCtxSelect"
+      @clickoutside="ctxShow = false"
+    />
   </div>
 </template>
 
 <style scoped>
+.sub-card {
+  margin: 6px 0 6px 12px;
+  border-left: 2px solid var(--t-border);
+}
 .card {
   background: var(--t-surface);
   border: 1px solid var(--t-border);
