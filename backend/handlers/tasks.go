@@ -354,15 +354,30 @@ func (h *API) MoveTask(c *gin.Context) {
 				h.actorName(c), taskRef(updated.Number), col.Name))
 	}
 
-	// Moving a task into the "Готово" column auto-marks it completed.
-	if col.Name == doneColumnName && updated.CompletedAt == nil {
-		now := time.Now()
-		if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
-			ID: updated.ID, Title: updated.Title, Description: updated.Description,
-			Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
-		}); derr == nil {
-			updated = done
-			h.logEvent(c, id, "completed", nil)
+	// Auto-toggle completion based on the board's configured "done" column:
+	// moving in completes the task, moving out reopens it.
+	if board, berr := h.q.GetBoard(c, t.BoardID); berr == nil {
+		doneID := h.doneColumnID(c, board)
+		targetIsDone := doneID != nil && *doneID == req.ColumnID
+		sourceIsDone := doneID != nil && *doneID == t.ColumnID
+		switch {
+		case targetIsDone && updated.CompletedAt == nil:
+			now := time.Now()
+			if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
+				ID: updated.ID, Title: updated.Title, Description: updated.Description,
+				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
+			}); derr == nil {
+				updated = done
+				h.logEvent(c, id, "completed", nil)
+			}
+		case sourceIsDone && !targetIsDone && updated.CompletedAt != nil:
+			if reopened, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
+				ID: updated.ID, Title: updated.Title, Description: updated.Description,
+				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: nil,
+			}); derr == nil {
+				updated = reopened
+				h.logEvent(c, id, "reopened", nil)
+			}
 		}
 	}
 

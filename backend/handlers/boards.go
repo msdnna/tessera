@@ -48,14 +48,27 @@ func (h *API) CreateBoard(c *gin.Context) {
 		return
 	}
 
-	// Seed the board with a default set of status columns.
+	// Seed the board with a default set of status columns, remembering the last
+	// one so it can become the board's "done" column.
+	var lastColID *uuid.UUID
 	for i, dc := range defaultColumns {
 		pos := float64(i+1) * positionGap
-		if _, err := h.q.CreateColumn(c, db.CreateColumnParams{
+		col, err := h.q.CreateColumn(c, db.CreateColumnParams{
 			BoardID: b.ID, Name: dc.name, Color: dc.color, Position: pos,
-		}); err != nil {
+		})
+		if err != nil {
 			fail(c)
 			return
+		}
+		id := col.ID
+		lastColID = &id
+	}
+	// The rightmost seeded column ("Готово") closes tasks by default.
+	if lastColID != nil {
+		if updated, derr := h.q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{
+			ID: b.ID, DoneColumnID: lastColID,
+		}); derr == nil {
+			b = updated
 		}
 	}
 
@@ -63,7 +76,9 @@ func (h *API) CreateBoard(c *gin.Context) {
 	c.JSON(http.StatusCreated, b)
 }
 
-// doneColumnName is the column whose tasks are auto-marked completed.
+// doneColumnName is the default name for the task-completing column (used only
+// when seeding a new board's columns; the live "done" column is tracked
+// per-board via boards.done_column_id, falling back to the rightmost column).
 const doneColumnName = "Готово"
 
 // defaultColumns are created for every new board.
@@ -72,6 +87,20 @@ var defaultColumns = []struct{ name, color string }{
 	{"В процессе", "#2f80ed"},
 	{"На рассмотрении", "#7c5cff"},
 	{doneColumnName, "#18a058"},
+}
+
+// doneColumnID resolves the board's task-completing column: the explicitly
+// configured one if set, otherwise the rightmost column by position. Returns
+// nil only for a board with no columns at all.
+func (h *API) doneColumnID(c *gin.Context, board db.Board) *uuid.UUID {
+	if board.DoneColumnID != nil {
+		return board.DoneColumnID
+	}
+	col, err := h.q.RightmostColumn(c, board.ID)
+	if err != nil {
+		return nil
+	}
+	return &col.ID
 }
 
 // ListBoards lists a project's boards.
@@ -185,6 +214,48 @@ func (h *API) DeleteBoard(c *gin.Context) {
 	}
 	h.broadcast(wsID, "board.deleted", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
+}
+
+// SetDoneColumn configures which column auto-completes tasks (or clears it,
+// reverting to the rightmost-column fallback, when column_id is null).
+func (h *API) SetDoneColumn(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForBoard(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	var req struct {
+		ColumnID *uuid.UUID `json:"column_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// A non-null target must be a column on this board.
+	if req.ColumnID != nil {
+		col, err := h.q.GetColumn(c, *req.ColumnID)
+		if err != nil || col.BoardID != id {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "column does not belong to this board"})
+			return
+		}
+	}
+	updated, err := h.q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: id, DoneColumnID: req.ColumnID})
+	if err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "board.updated", updated)
+	c.JSON(http.StatusOK, updated)
 }
 
 // ── Columns ────────────────────────────────────────────────

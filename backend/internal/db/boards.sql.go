@@ -14,7 +14,7 @@ import (
 const createBoard = `-- name: CreateBoard :one
 INSERT INTO boards (project_id, name, position)
 VALUES ($1, $2, $3)
-RETURNING id, project_id, name, position, created_at, updated_at
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id
 `
 
 type CreateBoardParams struct {
@@ -33,6 +33,7 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DoneColumnID,
 	)
 	return i, err
 }
@@ -89,7 +90,7 @@ func (q *Queries) DeleteColumn(ctx context.Context, id uuid.UUID) error {
 }
 
 const getBoard = `-- name: GetBoard :one
-SELECT id, project_id, name, position, created_at, updated_at FROM boards WHERE id = $1
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id FROM boards WHERE id = $1
 `
 
 func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
@@ -102,6 +103,7 @@ func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DoneColumnID,
 	)
 	return i, err
 }
@@ -126,7 +128,7 @@ func (q *Queries) GetColumn(ctx context.Context, id uuid.UUID) (BoardColumn, err
 }
 
 const listBoards = `-- name: ListBoards :many
-SELECT id, project_id, name, position, created_at, updated_at FROM boards WHERE project_id = $1 ORDER BY position
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id FROM boards WHERE project_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board, error) {
@@ -145,6 +147,7 @@ func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board,
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DoneColumnID,
 		); err != nil {
 			return nil, err
 		}
@@ -210,11 +213,57 @@ func (q *Queries) MaxColumnPosition(ctx context.Context, boardID uuid.UUID) (flo
 	return column_1, err
 }
 
+const rightmostColumn = `-- name: RightmostColumn :one
+SELECT id, board_id, name, color, position, created_at, updated_at FROM board_columns WHERE board_id = $1 ORDER BY position DESC LIMIT 1
+`
+
+func (q *Queries) RightmostColumn(ctx context.Context, boardID uuid.UUID) (BoardColumn, error) {
+	row := q.db.QueryRow(ctx, rightmostColumn, boardID)
+	var i BoardColumn
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setBoardDoneColumn = `-- name: SetBoardDoneColumn :one
+UPDATE boards
+SET done_column_id = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id
+`
+
+type SetBoardDoneColumnParams struct {
+	ID           uuid.UUID  `json:"id"`
+	DoneColumnID *uuid.UUID `json:"done_column_id"`
+}
+
+func (q *Queries) SetBoardDoneColumn(ctx context.Context, arg SetBoardDoneColumnParams) (Board, error) {
+	row := q.db.QueryRow(ctx, setBoardDoneColumn, arg.ID, arg.DoneColumnID)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DoneColumnID,
+	)
+	return i, err
+}
+
 const updateBoard = `-- name: UpdateBoard :one
 UPDATE boards
 SET name = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id
 `
 
 type UpdateBoardParams struct {
@@ -233,6 +282,7 @@ func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DoneColumnID,
 	)
 	return i, err
 }

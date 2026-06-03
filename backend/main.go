@@ -98,6 +98,7 @@ func main() {
 
 			protected.GET("/boards/:id", rh.GetBoard)
 			protected.PATCH("/boards/:id", rh.UpdateBoard)
+			protected.PATCH("/boards/:id/done-column", rh.SetDoneColumn)
 			protected.DELETE("/boards/:id", rh.DeleteBoard)
 			protected.POST("/boards/:id/columns", rh.CreateColumn)
 			protected.GET("/boards/:id/columns", rh.ListColumns)

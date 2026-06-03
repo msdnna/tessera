@@ -26,6 +26,8 @@ import TaskModal from './TaskModal.vue'
 import TagManager from './TagManager.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import ArchiveModal from './ArchiveModal.vue'
+import BoardListView from './BoardListView.vue'
+import BoardCalendarView from './BoardCalendarView.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -46,6 +48,7 @@ const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
 
 // view controls
+const layout = ref('board') // 'board' | 'list' | 'calendar'
 const groupMode = ref('status') // 'status' | 'tag'
 const sortBy = ref('position') // 'position' | 'priority' | 'due'
 const filters = reactive({ priorities: [], assignees: [], tags: [], due: '', q: '' })
@@ -93,7 +96,12 @@ function persistView() {
   try {
     localStorage.setItem(
       viewKey.value,
-      JSON.stringify({ groupMode: groupMode.value, sortBy: sortBy.value, filters }),
+      JSON.stringify({
+        layout: layout.value,
+        groupMode: groupMode.value,
+        sortBy: sortBy.value,
+        filters,
+      }),
     )
   } catch {
     /* storage full / disabled — non-fatal */
@@ -105,6 +113,7 @@ function restoreView() {
     const raw = localStorage.getItem(viewKey.value)
     if (raw) {
       const v = JSON.parse(raw)
+      if (v.layout) layout.value = v.layout
       if (v.groupMode) groupMode.value = v.groupMode
       if (v.sortBy) sortBy.value = v.sortBy
       if (v.filters) {
@@ -123,7 +132,7 @@ function restoreView() {
     nextTick(() => (restoring = false))
   }
 }
-watch([groupMode, sortBy, filters], persistView, { deep: true })
+watch([layout, groupMode, sortBy, filters], persistView, { deep: true })
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
@@ -254,6 +263,21 @@ const filteredTasks = computed(() => {
     )
   return s
 })
+
+// The board's task-completing column: explicit if set, else the rightmost.
+const doneColumnId = computed(() => {
+  if (board.value?.done_column_id) return board.value.done_column_id
+  const cols = columns.value
+  return cols.length ? cols[cols.length - 1].id : null
+})
+async function onSetDone(columnId) {
+  try {
+    const r = await boards.setDoneColumn(props.boardId, columnId)
+    board.value = r.data
+  } catch (e) {
+    message.error(e.message)
+  }
+}
 
 const displayColumns = computed(() => {
   if (groupMode.value === 'status') {
@@ -453,6 +477,22 @@ watch(
       <div class="toolbar">
         <n-text strong style="font-size: 18px">{{ board.name }}</n-text>
         <n-space align="center" :size="8">
+          <!-- Layout switcher (#6): kanban / list / calendar -->
+          <n-button-group size="small">
+            <n-button :type="layout === 'board' ? 'primary' : 'default'" @click="layout = 'board'">
+              Доска
+            </n-button>
+            <n-button :type="layout === 'list' ? 'primary' : 'default'" @click="layout = 'list'">
+              Список
+            </n-button>
+            <n-button
+              :type="layout === 'calendar' ? 'primary' : 'default'"
+              @click="layout = 'calendar'"
+            >
+              Календарь
+            </n-button>
+          </n-button-group>
+
           <!-- Unified view + filters dropdown (#6) -->
           <n-popover trigger="click" placement="bottom-end">
             <template #trigger>
@@ -555,7 +595,22 @@ watch(
         </n-space>
       </div>
 
-      <div ref="boardScroll" class="board-scroll" :style="colStyleVars">
+      <BoardListView
+        v-if="layout === 'list'"
+        :columns="displayColumns"
+        :lists="lists"
+        :tags-map="tagsMap"
+        :members-map="membersMap"
+        @open="openTask"
+      />
+
+      <BoardCalendarView
+        v-else-if="layout === 'calendar'"
+        :tasks="filteredTasks"
+        @open="openTask"
+      />
+
+      <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
         <draggable
           :list="colModel"
           group="columns"
@@ -575,7 +630,9 @@ watch(
                 :dcol="dcol"
                 :count="(lists[dcol.key] || []).length"
                 :editable="groupMode === 'status'"
+                :is-done="groupMode === 'status' && dcol.key === doneColumnId"
                 @changed="onChanged"
+                @set-done="onSetDone"
               />
               <draggable
                 :list="lists[dcol.key]"
@@ -646,7 +703,7 @@ watch(
         </div>
       </div>
 
-      <div v-if="!displayColumns.length" class="empty-board">
+      <div v-if="layout === 'board' && !displayColumns.length" class="empty-board">
         <n-text depth="3">
           {{
             groupMode === 'status'

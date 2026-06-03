@@ -11,12 +11,13 @@ import (
 )
 
 type Board struct {
-	ID        uuid.UUID `json:"id"`
-	ProjectID uuid.UUID `json:"project_id"`
-	Name      string    `json:"name"`
-	Position  float64   `json:"position"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           uuid.UUID  `json:"id"`
+	ProjectID    uuid.UUID  `json:"project_id"`
+	Name         string     `json:"name"`
+	Position     float64    `json:"position"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	DoneColumnID *uuid.UUID `json:"done_column_id"`
 }
 
 type BoardColumn struct {

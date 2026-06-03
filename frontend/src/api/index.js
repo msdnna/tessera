@@ -104,6 +104,7 @@ export const groups = {
 export const boards = {
   get: (id) => api.get(`/boards/${id}`),
   update: (id, data) => api.patch(`/boards/${id}`, data),
+  setDoneColumn: (id, columnId) => api.patch(`/boards/${id}/done-column`, { column_id: columnId }),
   remove: (id) => api.delete(`/boards/${id}`),
   columns: (id) => api.get(`/boards/${id}/columns`),
   createColumn: (id, data) => api.post(`/boards/${id}/columns`, data),
@@ -150,7 +151,7 @@ export const tasks = {
   // Rich task detail (#8)
   events: (id) => api.get(`/tasks/${id}/events`),
   comments: (id) => api.get(`/tasks/${id}/comments`),
-  addComment: (id, body) => api.post(`/tasks/${id}/comments`, { body }),
+  addComment: (id, body, mentions) => api.post(`/tasks/${id}/comments`, { body, mentions }),
   updateComment: (commentId, body) => api.patch(`/comments/${commentId}`, { body }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),

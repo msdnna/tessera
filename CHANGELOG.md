@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.25.0] — 2026-06-03
+- WYSIWYG editor (TipTap) replaces the Markdown textarea for task descriptions
+  and comments. New `RichEditor` component with a formatting toolbar (bold,
+  italic, strike, inline code, heading, bullet/ordered lists, quote, link).
+  Existing Markdown content is converted to HTML on load and still renders
+  correctly (backward-compatible `renderRich`). Adds the `@tiptap/*` packages.
+- @-mentions in comments (feature #3, UI side): type `@` to open a member
+  picker and insert a mention chip; mentioned workspace members are notified.
+  `addComment` now sends the mentioned user ids alongside the body.
+- Board multi-views (feature #6): a Доска / Список / Календарь switcher in the
+  toolbar (persisted per board in localStorage). List view groups tasks by the
+  active grouping with priority, tags, due date and assignees; Calendar view
+  lays tasks out on their due date in a month grid, with a "Без срока" tray.
+- Column header gains a "завершающая колонка" toggle (with a check marker) to
+  choose which status auto-completes tasks — see backend 0.14.0.
+
 ### [0.24.0] — 2026-06-03
 - Collapsed sidebar now shows projects and groups as icons too; hovering one
   opens a flyout (budget-style) with its boards / nested projects to navigate
@@ -349,6 +365,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.14.0] — 2026-06-03
+- Configurable "done" column per board (feature #4): `boards.done_column_id`
+  replaces the hardcoded match on the column name "Готово". The completing
+  column resolves to the explicitly configured one, falling back to the
+  rightmost column by position when unset. New boards seed it to their
+  rightmost default column. `PATCH /boards/:id/done-column` sets it (or clears
+  it with `column_id: null`).
+- Moving a task into the done column still auto-completes it; moving it back
+  out now also reopens it (clears `completed_at`, logs a `reopened` event) —
+  previously completion was one-way.
+- Comment @-mentions (feature #3): `POST /tasks/:id/comments` accepts a
+  `mentions` array of user ids. Each one that is a workspace member gets a
+  `mention` notification; the generic "commented" notice skips already-mentioned
+  users to avoid double-notifying.
 
 ### [0.13.0] — 2026-06-03
 - Notifications now also fire when a task is changed or moved by someone else:

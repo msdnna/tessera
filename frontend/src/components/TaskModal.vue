@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NModal,
@@ -45,7 +45,8 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
-import { renderMarkdown } from '@/utils/markdown'
+import { renderRich, toEditorHtml } from '@/utils/markdown'
+import RichEditor from './RichEditor.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -66,13 +67,15 @@ const task = ref(null)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
-// ── rich detail (#8): description preview, comments, relations, files, journal
-const descEditing = ref(false)
-const descInput = ref(null)
-const descHtml = computed(() => renderMarkdown(description.value))
+// ── rich detail (#8): comments, relations, files, journal
+// Workspace members offered for @-mentions in comments.
+const mentionItems = computed(() =>
+  (props.members || []).map((m) => ({ id: m.user_id, label: m.name })),
+)
 
 const comments = ref([])
 const newComment = ref('')
+const commentEditor = ref(null)
 const editingCommentId = ref(null)
 const editingCommentBody = ref('')
 
@@ -154,13 +157,12 @@ async function loadDetail() {
     const t = res.data
     task.value = t
     title.value = t.title
-    description.value = t.description || ''
+    description.value = toEditorHtml(t.description || '')
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
     selectedAssignees.value = (t.assignees || []).map((x) => x.id)
-    descEditing.value = false
     try {
       const b = await boardsApi.get(t.board_id)
       boardInfo.value = { name: b.data.name, projectId: b.data.project_id }
@@ -392,13 +394,8 @@ async function toggleSubtask(sub) {
   }
 }
 
-// ── rich description (markdown) ──
-function startEditDesc() {
-  descEditing.value = true
-  nextTick(() => descInput.value?.focus?.())
-}
+// ── rich description ──
 async function saveDesc() {
-  descEditing.value = false
   await applyMeta()
 }
 
@@ -412,14 +409,20 @@ function fmtWhen(d) {
   })
 }
 function commentHtml(body) {
-  return renderMarkdown(body)
+  return renderRich(body)
+}
+// A WYSIWYG comment is "empty" when it has no text content (just <p></p>).
+function isBlankHtml(html) {
+  return !html || !html.replace(/<[^>]*>/g, '').trim()
 }
 async function postComment() {
-  const body = newComment.value.trim()
-  if (!body) return
+  const body = newComment.value
+  if (isBlankHtml(body)) return
+  const mentions = commentEditor.value?.getMentions?.() || []
   try {
-    await tasksApi.addComment(props.taskId, body)
+    await tasksApi.addComment(props.taskId, body, mentions)
     newComment.value = ''
+    commentEditor.value?.clear?.()
     const c = await tasksApi.comments(props.taskId)
     comments.value = c.data || []
     emit('changed')
@@ -429,11 +432,11 @@ async function postComment() {
 }
 function startEditComment(c) {
   editingCommentId.value = c.id
-  editingCommentBody.value = c.body
+  editingCommentBody.value = toEditorHtml(c.body)
 }
 async function saveComment() {
-  const body = editingCommentBody.value.trim()
-  if (!body) return
+  const body = editingCommentBody.value
+  if (isBlankHtml(body)) return
   try {
     await tasksApi.updateComment(editingCommentId.value, body)
     editingCommentId.value = null
@@ -780,18 +783,12 @@ function eventText(e) {
 
           <div class="section">
             <span class="slabel">Описание</span>
-            <n-input
-              v-if="descEditing || !description"
-              :ref="(el) => (descInput = el)"
-              v-model:value="description"
-              type="textarea"
-              class="plain"
-              :autosize="{ minRows: 3, maxRows: 16 }"
-              placeholder="Добавьте описание… (поддерживается Markdown)"
+            <RichEditor
+              v-model="description"
+              placeholder="Добавьте описание…"
+              :min-rows="3"
               @blur="saveDesc"
             />
-            <!-- eslint-disable-next-line vue/no-v-html -->
-            <div v-else class="md" @click="startEditDesc" v-html="descHtml" />
           </div>
 
           <div class="section">
@@ -858,11 +855,12 @@ function eventText(e) {
                       </template>
                     </div>
                     <template v-if="editingCommentId === c.id">
-                      <n-input
-                        v-model:value="editingCommentBody"
-                        type="textarea"
-                        size="small"
-                        :autosize="{ minRows: 2, maxRows: 8 }"
+                      <RichEditor
+                        v-model="editingCommentBody"
+                        :mention-items="mentionItems"
+                        :min-rows="2"
+                        placeholder="Комментарий…"
+                        @submit="saveComment"
                       />
                       <n-space :size="6" style="margin-top: 6px">
                         <n-button size="tiny" type="primary" @click="saveComment">Сохранить</n-button>
@@ -875,17 +873,15 @@ function eventText(e) {
                 </div>
                 <div v-if="!comments.length" class="empty-hint">Комментариев пока нет</div>
                 <div class="comment-add">
-                  <n-input
-                    v-model:value="newComment"
-                    type="textarea"
-                    size="small"
-                    :autosize="{ minRows: 1, maxRows: 6 }"
-                    placeholder="Написать комментарий… (Markdown, Ctrl+Enter)"
-                    @keydown.ctrl.enter="postComment"
+                  <RichEditor
+                    ref="commentEditor"
+                    v-model="newComment"
+                    :mention-items="mentionItems"
+                    :min-rows="1"
+                    placeholder="Написать комментарий… (@ — упоминание, Ctrl+Enter — отправить)"
+                    @submit="postComment"
                   />
-                  <n-button size="small" type="primary" :disabled="!newComment.trim()" @click="postComment">
-                    Отправить
-                  </n-button>
+                  <n-button size="small" type="primary" @click="postComment">Отправить</n-button>
                 </div>
               </div>
             </n-tab-pane>

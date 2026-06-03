@@ -1,15 +1,26 @@
 <script setup>
 import { ref } from 'vue'
 import { NIcon, NButton, NInput, NPopover, NPopconfirm, useMessage } from 'naive-ui'
-import { ReorderThreeOutline, EllipsisHorizontalOutline, TrashOutline } from '@vicons/ionicons5'
+import {
+  ReorderThreeOutline,
+  EllipsisHorizontalOutline,
+  TrashOutline,
+  CheckmarkDoneOutline,
+} from '@vicons/ionicons5'
 import { columns as columnsApi } from '@/api'
 
 const props = defineProps({
   dcol: { type: Object, required: true },
   count: { type: Number, default: 0 },
   editable: { type: Boolean, default: false }, // status columns only
+  isDone: { type: Boolean, default: false }, // task-completing column
 })
-const emit = defineEmits(['changed'])
+const emit = defineEmits(['changed', 'set-done'])
+
+function toggleDone() {
+  emit('set-done', props.isDone ? null : props.dcol.key)
+  settingsOpen.value = false
+}
 
 const message = useMessage()
 const renaming = ref(false)
@@ -64,6 +75,12 @@ async function removeCol() {
       @blur="commitRename"
     />
     <span v-else class="col-title" @dblclick="startRename">{{ dcol.name }}</span>
+    <n-icon
+      v-if="isDone"
+      :component="CheckmarkDoneOutline"
+      class="done-mark"
+      title="Завершающая колонка — задачи здесь отмечаются выполненными"
+    />
     <span class="count">{{ count }}</span>
     <n-popover v-if="editable" v-model:show="settingsOpen" trigger="click" placement="bottom-end">
       <template #trigger>
@@ -83,6 +100,16 @@ async function removeCol() {
             @click="setColor(s)"
           />
         </div>
+        <n-button
+          :type="isDone ? 'success' : 'default'"
+          :ghost="isDone"
+          size="small"
+          block
+          @click="toggleDone"
+        >
+          <template #icon><n-icon :component="CheckmarkDoneOutline" /></template>
+          {{ isDone ? 'Снять завершение' : 'Сделать завершающей' }}
+        </n-button>
         <n-popconfirm @positive-click="removeCol">
           <template #trigger>
             <n-button type="error" ghost size="small" block>
@@ -122,6 +149,10 @@ async function removeCol() {
   background: var(--t-hover);
   border-radius: 10px;
   padding: 0 7px;
+}
+.done-mark {
+  color: var(--t-success, #18a058);
+  font-size: 15px;
 }
 .col-menu {
   font-size: 16px;

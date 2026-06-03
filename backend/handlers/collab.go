@@ -66,7 +66,16 @@ func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, 
 // notifyTaskParticipants notifies a task's assignees and creator (minus the
 // actor) — used when something happens that watchers should hear about.
 func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, kind, text string) {
+	h.notifyTaskParticipantsExcept(c, t, wsID, kind, text, nil)
+}
+
+// notifyTaskParticipantsExcept is notifyTaskParticipants with a set of user ids
+// to skip (e.g. users already reached by a more specific mention notification).
+func (h *API) notifyTaskParticipantsExcept(c *gin.Context, t db.Task, wsID uuid.UUID, kind, text string, skip map[uuid.UUID]bool) {
 	seen := map[uuid.UUID]bool{}
+	for id := range skip {
+		seen[id] = true
+	}
 	if assignees, err := h.q.ListTaskAssignees(c, t.ID); err == nil {
 		for _, a := range assignees {
 			if !seen[a.ID] {
@@ -161,7 +170,8 @@ func (h *API) CreateComment(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Body string `json:"body" binding:"required"`
+		Body     string      `json:"body" binding:"required"`
+		Mentions []uuid.UUID `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -175,9 +185,35 @@ func (h *API) CreateComment(c *gin.Context) {
 	}
 	h.logEvent(c, id, "comment", map[string]any{"comment_id": cm.ID})
 	h.broadcast(wsID, "task.commented", gin.H{"task_id": id})
-	h.notifyTaskParticipants(c, t, wsID, "comment",
-		fmt.Sprintf("%s прокомментировал #%s", h.actorName(c), taskRef(t.Number)))
+
+	// @-mentions: notify each mentioned workspace member explicitly, then fall
+	// back to the generic "commented" notice for the remaining participants.
+	mentioned := h.notifyMentions(c, t, wsID, req.Mentions)
+	h.notifyTaskParticipantsExcept(c, t, wsID, "comment",
+		fmt.Sprintf("%s прокомментировал #%s", h.actorName(c), taskRef(t.Number)), mentioned)
 	c.JSON(http.StatusCreated, cm)
+}
+
+// notifyMentions sends a "mention" notification to each id that is a member of
+// the workspace (skipping duplicates and the actor, handled in notify). Returns
+// the set of users actually notified so the caller can avoid double-notifying.
+func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uuid.UUID) map[uuid.UUID]bool {
+	notified := map[uuid.UUID]bool{}
+	if len(ids) == 0 {
+		return notified
+	}
+	text := fmt.Sprintf("%s упомянул(а) вас в #%s", h.actorName(c), taskRef(t.Number))
+	for _, uid := range ids {
+		if notified[uid] {
+			continue
+		}
+		if _, err := h.q.GetMembership(c, db.GetMembershipParams{WorkspaceID: wsID, UserID: uid}); err != nil {
+			continue // not a member of this workspace — ignore
+		}
+		notified[uid] = true
+		h.notify(c, uid, wsID, &t.ID, "mention", text)
+	}
+	return notified
 }
 
 func (h *API) UpdateComment(c *gin.Context) {

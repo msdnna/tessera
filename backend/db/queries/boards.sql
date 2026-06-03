@@ -18,6 +18,12 @@ SET name = $2, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- name: SetBoardDoneColumn :one
+UPDATE boards
+SET done_column_id = $2, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteBoard :exec
 DELETE FROM boards WHERE id = $1;
 
@@ -34,6 +40,9 @@ SELECT * FROM board_columns WHERE id = $1;
 
 -- name: MaxColumnPosition :one
 SELECT coalesce(max(position), 0)::double precision FROM board_columns WHERE board_id = $1;
+
+-- name: RightmostColumn :one
+SELECT * FROM board_columns WHERE board_id = $1 ORDER BY position DESC LIMIT 1;
 
 -- name: UpdateColumn :one
 UPDATE board_columns
