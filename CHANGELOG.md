@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.32.2] — 2026-06-03
+- Revert all the experimental drag-and-drop tweaks (Sortable scroll options,
+  the `dragging`/user-select guard) back to the 0.31.x baseline. The mobile
+  horizontal auto-scroll to an off-screen column remains an open issue, to be
+  tackled with a dedicated approach.
+
 ### [0.32.1] — 2026-06-03
 - Revert `forceFallback` on the task lists — it caused card/column text to get
   selected while dragging on desktop and didn't help touch (Sortable already
