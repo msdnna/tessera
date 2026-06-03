@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.30.0] — 2026-06-03
+- Drag-resizable sidebar replacing the slide-out collapse trigger: grab the
+  divider in the gutter and drag to set the width (persisted, capped at 264px).
+  Drag narrow (below ~170px) and it snaps to the compact icon rail; double-click
+  the divider to toggle the rail. The board/work area reflows to the new width.
+  The divider sits in the gap between sidebar and content and highlights on
+  hover/drag.
+
 ### [0.29.1] — 2026-06-03
 - The detail tab strip no longer slides its active indicator when navigating
   between a task and its subtask/related task (tabs reset cleanly per task).

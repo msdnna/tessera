@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   NLayout,
@@ -16,14 +16,35 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
-import { useSidebarCollapse } from '@/composables/useSidebarCollapse'
+import { useSidebarSize } from '@/composables/useSidebarSize'
 
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const { isMobile } = useResponsive()
-const { collapsed, setCollapsed } = useSidebarCollapse()
+const { collapsed, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
 const route = useRoute()
+
+// ── draggable sidebar divider ──
+const dragging = ref(false)
+function onDragMove(e) {
+  applyDragWidth(e.clientX)
+}
+function stopDrag() {
+  dragging.value = false
+  window.removeEventListener('pointermove', onDragMove)
+  window.removeEventListener('pointerup', stopDrag)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+function startDrag() {
+  dragging.value = true
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('pointermove', onDragMove)
+  window.addEventListener('pointerup', stopDrag)
+}
+onBeforeUnmount(stopDrag)
 
 // Live notifications for the bell (scoped to the current workspace, addressed
 // to the current user).
@@ -48,19 +69,28 @@ watch(
 
 <template>
   <!-- Desktop: fixed sider + content -->
-  <n-layout v-if="!isMobile" has-sider style="height: 100vh">
+  <n-layout v-if="!isMobile" has-sider class="app-layout" :class="{ resizing: dragging }" style="height: 100vh">
     <n-layout-sider
       bordered
-      :width="264"
-      :collapsed-width="60"
-      :collapsed="collapsed"
-      collapse-mode="width"
-      show-trigger="bar"
+      :width="layoutWidth"
+      :show-trigger="false"
       content-style="padding: 0; height: 100%"
-      @update:collapsed="setCollapsed"
     >
       <Sidebar :mobile="false" :collapsed="collapsed" />
     </n-layout-sider>
+
+    <!-- Drag to resize; double-click to toggle the icon rail. -->
+    <div
+      class="sider-resizer"
+      :class="{ active: dragging }"
+      :style="{ left: layoutWidth + 'px' }"
+      title="Потяните, чтобы изменить ширину (двойной клик — свернуть)"
+      @pointerdown.prevent="startDrag"
+      @dblclick="toggle"
+    >
+      <span class="rz-bar" />
+    </div>
+
     <n-layout>
       <n-layout-header bordered>
         <Topbar :show-tools="collapsed" />
@@ -86,3 +116,38 @@ watch(
     </n-drawer>
   </n-layout>
 </template>
+
+<style scoped>
+/* Drag handle sitting in the gutter between the sidebar and the content. */
+.sider-resizer {
+  position: fixed;
+  top: 0;
+  height: 100vh;
+  width: 14px;
+  transform: translateX(-3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  z-index: 6;
+}
+.rz-bar {
+  width: 4px;
+  height: 44px;
+  border-radius: 4px;
+  background: var(--t-border);
+  transition:
+    background 0.15s ease,
+    height 0.15s ease;
+}
+.sider-resizer:hover .rz-bar,
+.sider-resizer.active .rz-bar {
+  background: var(--t-primary);
+  height: 72px;
+}
+/* While dragging, the sider must track the cursor with no width animation. */
+.app-layout.resizing :deep(.n-layout-sider),
+.app-layout.resizing :deep(.n-layout-sider-scroll-container) {
+  transition: none !important;
+}
+</style>
