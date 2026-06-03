@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.26.0] — 2026-06-03
+- Editor rework: replaced TipTap (broke under the dark theme, toolbar/commands
+  unresponsive, heavy bundle) with a theme-native `MarkdownEditor` —
+  «Написать»/«Просмотр» tabs + a Markdown formatting toolbar (bold, italic,
+  strike, code, heading, lists, quote, link) that wraps the textarea selection,
+  plus live preview. Content is stored as Markdown again (no migration, old
+  descriptions/comments render unchanged). Cuts the board bundle ~535→168 kB.
+- @-mentions now render highlighted in posted comments and the preview (not just
+  in the picker); the picker is a theme-native dropdown over the textarea.
+- List view now spans the full working width (was capped at 1100px). Reminders
+  view likewise no longer capped at 720px.
+- Fix: the column "завершающая колонка" toggle no longer overflows its button.
+
 ### [0.25.0] — 2026-06-03
 - WYSIWYG editor (TipTap) replaces the Markdown textarea for task descriptions
   and comments. New `RichEditor` component with a formatting toolbar (bold,

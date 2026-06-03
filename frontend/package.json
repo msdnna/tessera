@@ -19,14 +19,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tiptap/core": "^3.25.0",
-    "@tiptap/extension-mention": "^3.25.0",
-    "@tiptap/extension-placeholder": "^3.25.0",
-    "@tiptap/extensions": "^3.25.0",
-    "@tiptap/pm": "^3.25.0",
-    "@tiptap/starter-kit": "^3.25.0",
-    "@tiptap/suggestion": "^3.25.0",
-    "@tiptap/vue-3": "^3.25.0",
     "@vicons/ionicons5": "^0.13.0",
     "axios": "^1.16.0",
     "dompurify": "^3.4.7",

@@ -119,7 +119,7 @@ onMounted(load)
 
 <style scoped>
 .reminders {
-  max-width: 720px;
+  width: 100%;
 }
 .add-card {
   margin-bottom: 16px;

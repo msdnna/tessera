@@ -90,7 +90,7 @@ function isOverdue(t) {
 <style scoped>
 .list-view {
   padding: 4px 2px 40px;
-  max-width: 1100px;
+  width: 100%;
 }
 .lv-group {
   margin-bottom: 18px;

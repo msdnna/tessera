@@ -158,10 +158,13 @@ async function removeCol() {
   font-size: 16px;
 }
 .settings {
-  width: 180px;
+  width: 220px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.settings :deep(.n-button__content) {
+  white-space: nowrap;
 }
 .swatches {
   display: flex;

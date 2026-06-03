@@ -45,8 +45,8 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
-import { renderRich, toEditorHtml } from '@/utils/markdown'
-import RichEditor from './RichEditor.vue'
+import { renderRich } from '@/utils/markdown'
+import MarkdownEditor from './MarkdownEditor.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -157,7 +157,7 @@ async function loadDetail() {
     const t = res.data
     task.value = t
     title.value = t.title
-    description.value = toEditorHtml(t.description || '')
+    description.value = t.description || ''
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
     completed.value = !!t.completed_at
@@ -409,15 +409,11 @@ function fmtWhen(d) {
   })
 }
 function commentHtml(body) {
-  return renderRich(body)
-}
-// A WYSIWYG comment is "empty" when it has no text content (just <p></p>).
-function isBlankHtml(html) {
-  return !html || !html.replace(/<[^>]*>/g, '').trim()
+  return renderRich(body, mentionItems.value)
 }
 async function postComment() {
-  const body = newComment.value
-  if (isBlankHtml(body)) return
+  const body = newComment.value.trim()
+  if (!body) return
   const mentions = commentEditor.value?.getMentions?.() || []
   try {
     await tasksApi.addComment(props.taskId, body, mentions)
@@ -432,11 +428,11 @@ async function postComment() {
 }
 function startEditComment(c) {
   editingCommentId.value = c.id
-  editingCommentBody.value = toEditorHtml(c.body)
+  editingCommentBody.value = c.body
 }
 async function saveComment() {
-  const body = editingCommentBody.value
-  if (isBlankHtml(body)) return
+  const body = editingCommentBody.value.trim()
+  if (!body) return
   try {
     await tasksApi.updateComment(editingCommentId.value, body)
     editingCommentId.value = null
@@ -783,7 +779,7 @@ function eventText(e) {
 
           <div class="section">
             <span class="slabel">Описание</span>
-            <RichEditor
+            <MarkdownEditor
               v-model="description"
               placeholder="Добавьте описание…"
               :min-rows="3"
@@ -855,7 +851,7 @@ function eventText(e) {
                       </template>
                     </div>
                     <template v-if="editingCommentId === c.id">
-                      <RichEditor
+                      <MarkdownEditor
                         v-model="editingCommentBody"
                         :mention-items="mentionItems"
                         :min-rows="2"
@@ -873,7 +869,7 @@ function eventText(e) {
                 </div>
                 <div v-if="!comments.length" class="empty-hint">Комментариев пока нет</div>
                 <div class="comment-add">
-                  <RichEditor
+                  <MarkdownEditor
                     ref="commentEditor"
                     v-model="newComment"
                     :mention-items="mentionItems"

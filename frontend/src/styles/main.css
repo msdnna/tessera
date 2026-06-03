@@ -71,3 +71,12 @@ body {
 .sb-dropzone {
   min-height: 6px;
 }
+
+/* @-mention chip in rendered task descriptions / comments. */
+.mention {
+  color: var(--t-primary);
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 500;
+}

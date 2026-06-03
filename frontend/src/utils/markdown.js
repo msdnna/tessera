@@ -23,13 +23,33 @@ export function renderMarkdown(src) {
   return DOMPurify.sanitize(html, SANITIZE_OPTS)
 }
 
-// renderRich renders stored task content for display. New content is HTML from
-// the WYSIWYG editor; older content is Markdown — both end up sanitised HTML.
-export function renderRich(src) {
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// highlightMentions wraps "@Name" tokens for known members in a styled span.
+// Operates on rendered HTML; matches only at text boundaries to avoid touching
+// tags/attributes. Longer names first so "@Ann Lee" wins over "@Ann".
+function highlightMentions(html, members) {
+  if (!members || !members.length) return html
+  const labels = members
+    .map((m) => m.label)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRe)
+  if (!labels.length) return html
+  const re = new RegExp(`(^|[\\s>(])@(${labels.join('|')})`, 'g')
+  return html.replace(re, '$1<span class="mention">@$2</span>')
+}
+
+// renderRich renders stored task content for display. Content is Markdown
+// (HTML from the brief TipTap era is passed through too). `members` enables
+// @-mention highlighting in the output.
+export function renderRich(src, members) {
   if (!src) return ''
   const s = String(src)
   const html = looksLikeHtml(s) ? s : marked.parse(s)
-  return DOMPurify.sanitize(html, SANITIZE_OPTS)
+  return DOMPurify.sanitize(highlightMentions(html, members), SANITIZE_OPTS)
 }
 
 // toEditorHtml normalises stored content into HTML for loading into the editor.
