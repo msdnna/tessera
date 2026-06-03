@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.30.1] — 2026-06-03
+- Fix sidebar overflow at intermediate widths: a new "narrow" state (expanded
+  but < ~216px) moves the workspace tools to the header and hides the
+  add-workspace «+», and the sidebar clips instead of showing a horizontal
+  scrollbar — so the logo and buttons no longer get squeezed off-screen.
+- The resize divider now centres in the gutter between the sidebar and the
+  first card, instead of hugging the sidebar edge.
+
 ### [0.30.0] — 2026-06-03
 - Drag-resizable sidebar replacing the slide-out collapse trigger: grab the
   divider in the gutter and drag to set the width (persisted, capped at 264px).

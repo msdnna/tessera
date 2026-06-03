@@ -27,6 +27,8 @@ import SidebarRailNode from './SidebarRailNode.vue'
 defineProps({
   mobile: { type: Boolean, default: false },
   collapsed: { type: Boolean, default: false },
+  // Expanded but too narrow for the brand tools / add-workspace button.
+  narrow: { type: Boolean, default: false },
 })
 
 const store = useWorkspacesStore()
@@ -90,7 +92,11 @@ async function createWorkspace() {
       <span v-if="!collapsed" class="brand-name">Tessera</span>
       <!-- Tools live here (right of the logo) when expanded; when the rail is
            collapsed (desktop) they move to the header instead. -->
-      <WorkspaceTools v-if="mobile || !collapsed" class="brand-tools" placement="bottom-start" />
+      <WorkspaceTools
+        v-if="mobile || (!collapsed && !narrow)"
+        class="brand-tools"
+        placement="bottom-start"
+      />
     </div>
 
     <div v-if="collapsed" class="rail-sep" />
@@ -103,6 +109,7 @@ async function createWorkspace() {
         @update:value="onWorkspaceChange"
       />
       <n-button
+        v-if="!narrow"
         quaternary
         circle
         size="small"
@@ -220,12 +227,24 @@ async function createWorkspace() {
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* Clip rather than scroll when the sidebar is dragged narrow. */
+  overflow-x: hidden;
 }
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 14px 12px 4px;
+  min-width: 0;
+}
+.brand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-switch > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 .brand-tools {
   margin-left: auto;

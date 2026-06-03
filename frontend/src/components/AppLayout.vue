@@ -22,7 +22,7 @@ const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const { isMobile } = useResponsive()
-const { collapsed, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
+const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
 const route = useRoute()
 
 // ── draggable sidebar divider ──
@@ -76,7 +76,7 @@ watch(
       :show-trigger="false"
       content-style="padding: 0; height: 100%"
     >
-      <Sidebar :mobile="false" :collapsed="collapsed" />
+      <Sidebar :mobile="false" :collapsed="collapsed" :narrow="narrow" />
     </n-layout-sider>
 
     <!-- Drag to resize; double-click to toggle the icon rail. -->
@@ -93,7 +93,7 @@ watch(
 
     <n-layout>
       <n-layout-header bordered>
-        <Topbar :show-tools="collapsed" />
+        <Topbar :show-tools="collapsed || narrow" />
       </n-layout-header>
       <n-layout-content content-style="padding: 16px" style="height: calc(100vh - 53px)">
         <router-view />
@@ -123,8 +123,9 @@ watch(
   position: fixed;
   top: 0;
   height: 100vh;
-  width: 14px;
-  transform: translateX(-3px);
+  /* Width matches the content's left padding so the bar centres in the gutter
+     between the sidebar border and the first card. */
+  width: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
