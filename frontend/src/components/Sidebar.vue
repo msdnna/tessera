@@ -11,6 +11,7 @@ import {
   NText,
   NIcon,
   NDropdown,
+  NTooltip,
   useMessage,
 } from 'naive-ui'
 import { HomeOutline, DocumentTextOutline, AlarmOutline, AddOutline } from '@vicons/ionicons5'
@@ -20,8 +21,12 @@ import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDn
 import SidebarNode from './SidebarNode.vue'
 import ProjectRow from './ProjectRow.vue'
 import SidebarFooter from './SidebarFooter.vue'
+import WorkspaceTools from './WorkspaceTools.vue'
 
-defineProps({ mobile: { type: Boolean, default: false } })
+defineProps({
+  mobile: { type: Boolean, default: false },
+  collapsed: { type: Boolean, default: false },
+})
 
 const store = useWorkspacesStore()
 const message = useMessage()
@@ -78,13 +83,16 @@ async function createWorkspace() {
 </script>
 
 <template>
-  <div class="sidebar">
+  <div class="sidebar" :class="{ collapsed }">
     <div class="brand">
       <span class="brand-mark">mt</span>
-      <span class="brand-name">Tessera</span>
+      <span v-if="!collapsed" class="brand-name">Tessera</span>
+      <!-- Tools live here (right of the logo) when expanded; when the rail is
+           collapsed (desktop) they move to the header instead. -->
+      <WorkspaceTools v-if="mobile || !collapsed" class="brand-tools" placement="bottom-start" />
     </div>
 
-    <div class="ws-switch">
+    <div v-if="!collapsed" class="ws-switch">
       <n-select
         :value="store.currentId"
         :options="wsOptions"
@@ -103,21 +111,36 @@ async function createWorkspace() {
     </div>
 
     <nav class="nav">
-      <router-link to="/" class="nav-link" active-class="nav-link-home-noop">
-        <n-icon :component="HomeOutline" :size="18" />
-        <span>Главная</span>
-      </router-link>
-      <router-link to="/notes" class="nav-link">
-        <n-icon :component="DocumentTextOutline" :size="18" />
-        <span>Заметки</span>
-      </router-link>
-      <router-link to="/reminders" class="nav-link">
-        <n-icon :component="AlarmOutline" :size="18" />
-        <span>Напоминания</span>
-      </router-link>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <router-link to="/" class="nav-link" active-class="nav-link-home-noop">
+            <n-icon :component="HomeOutline" :size="18" />
+            <span v-if="!collapsed">Главная</span>
+          </router-link>
+        </template>
+        Главная
+      </n-tooltip>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <router-link to="/notes" class="nav-link">
+            <n-icon :component="DocumentTextOutline" :size="18" />
+            <span v-if="!collapsed">Заметки</span>
+          </router-link>
+        </template>
+        Заметки
+      </n-tooltip>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <router-link to="/reminders" class="nav-link">
+            <n-icon :component="AlarmOutline" :size="18" />
+            <span v-if="!collapsed">Напоминания</span>
+          </router-link>
+        </template>
+        Напоминания
+      </n-tooltip>
     </nav>
 
-    <div class="proj-head">
+    <div v-if="!collapsed" class="proj-head">
       <n-text depth="3" strong>Проекты</n-text>
       <n-dropdown trigger="click" :options="addOptions" @select="addAtRoot">
         <n-button text size="small" title="Добавить">
@@ -126,7 +149,7 @@ async function createWorkspace() {
       </n-dropdown>
     </div>
 
-    <n-scrollbar class="tree">
+    <n-scrollbar v-if="!collapsed" class="tree">
       <draggable
         :list="rootGrpModel"
         group="sidebar-grp"
@@ -163,8 +186,9 @@ async function createWorkspace() {
         Пусто — создайте проект или группу через «+».
       </n-text>
     </n-scrollbar>
+    <div v-else class="tree-spacer" />
 
-    <SidebarFooter :mobile="mobile" />
+    <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
 
     <n-modal v-model:show="wsModal.show">
       <n-card title="Новое пространство" style="max-width: 360px" role="dialog">
@@ -191,7 +215,26 @@ async function createWorkspace() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 14px 4px;
+  padding: 14px 12px 4px;
+}
+.brand-tools {
+  margin-left: auto;
+}
+.sidebar.collapsed .brand {
+  justify-content: center;
+  padding: 14px 0 8px;
+}
+.sidebar.collapsed .nav {
+  padding: 0 8px 8px;
+  align-items: center;
+}
+.sidebar.collapsed .nav-link {
+  justify-content: center;
+  width: 40px;
+  padding: 8px 0;
+}
+.tree-spacer {
+  flex: 1;
 }
 .brand-mark {
   display: inline-flex;

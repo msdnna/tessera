@@ -2,8 +2,12 @@
 import { NButton, NIcon } from 'naive-ui'
 import { MenuOutline } from '@vicons/ionicons5'
 import SearchBar from './SearchBar.vue'
+import WorkspaceTools from './WorkspaceTools.vue'
 
-defineProps({ mobile: { type: Boolean, default: false } })
+defineProps({
+  mobile: { type: Boolean, default: false },
+  showTools: { type: Boolean, default: false },
+})
 defineEmits(['menu'])
 </script>
 
@@ -15,6 +19,8 @@ defineEmits(['menu'])
     <div class="search-wrap">
       <SearchBar />
     </div>
+    <!-- When the sidebar is collapsed, its tools slide over here. -->
+    <WorkspaceTools v-if="showTools" class="header-tools" placement="bottom-end" />
   </div>
 </template>
 
@@ -37,5 +43,9 @@ defineEmits(['menu'])
 .search-wrap {
   width: 100%;
   max-width: 520px;
+}
+.header-tools {
+  position: absolute;
+  right: 14px;
 }
 </style>

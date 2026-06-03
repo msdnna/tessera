@@ -16,11 +16,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
+import { useSidebarCollapse } from '@/composables/useSidebarCollapse'
 
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const { isMobile } = useResponsive()
+const { collapsed, setCollapsed } = useSidebarCollapse()
 const route = useRoute()
 
 // Live notifications for the bell (scoped to the current workspace, addressed
@@ -47,12 +49,21 @@ watch(
 <template>
   <!-- Desktop: fixed sider + content -->
   <n-layout v-if="!isMobile" has-sider style="height: 100vh">
-    <n-layout-sider bordered :width="264" content-style="padding: 0; height: 100%">
-      <Sidebar :mobile="false" />
+    <n-layout-sider
+      bordered
+      :width="264"
+      :collapsed-width="60"
+      :collapsed="collapsed"
+      collapse-mode="width"
+      show-trigger="bar"
+      content-style="padding: 0; height: 100%"
+      @update:collapsed="setCollapsed"
+    >
+      <Sidebar :mobile="false" :collapsed="collapsed" />
     </n-layout-sider>
     <n-layout>
       <n-layout-header bordered>
-        <Topbar />
+        <Topbar :show-tools="collapsed" />
       </n-layout-header>
       <n-layout-content content-style="padding: 16px" style="height: calc(100vh - 53px)">
         <router-view />

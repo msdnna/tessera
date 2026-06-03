@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.23.0] — 2026-06-03
+- Sidebar tools (notifications, members, appearance) moved to the top of the
+  sidebar, right of the logo; the user block stays at the bottom.
+- Appearance trigger is now a palette icon instead of a coloured dot.
+- Smaller notification count badge (no longer rivals the bell icon).
+- Collapsible sidebar (budget-style) with a toggle bar; state persists in
+  localStorage. Collapsed = a 60px icon rail (logo, icon-only nav with
+  tooltips, avatar); the tools slide into the header's right side. The kanban
+  columns re-flow to the reclaimed width automatically.
+
 ### [0.22.1] — 2026-06-03
 - Search hint updated to note that task descriptions are searched too.
 
