@@ -234,7 +234,7 @@ async function submitAddSub() {
   <div class="tw">
     <div
       class="card"
-      :class="{ done, nested }"
+      :class="{ done, nested, 'has-subs': !nested && subtasksExpanded && subtasks.length }"
       :style="cardStyle"
       @click="emit('open', task.id)"
       @contextmenu.prevent.stop="onCtx"
@@ -482,9 +482,21 @@ async function submitAddSub() {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
 }
-/* A first-level subtask card: one shade darker than its parent. */
+/* When expanded subtasks follow, flatten the parent's bottom so the first child
+   attaches seamlessly. */
+.card.has-subs {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+/* First-level subtask card: visually attached to the parent (square top, no
+   own top border, shares the parent's bottom edge). Tweak --sub-bg to taste —
+   alternatives: var(--t-border) (darker/grey) or
+   color-mix(in srgb, var(--t-primary) 8%, var(--t-surface)) (subtle accent). */
 .card.nested {
-  background: var(--t-surface-alt);
+  --sub-bg: var(--t-hover);
+  background: var(--sub-bg);
+  border-radius: 0;
+  border-top: none;
   box-shadow: none;
 }
 .title-edit {
@@ -650,12 +662,20 @@ async function submitAddSub() {
   border-radius: 50%;
 }
 
-/* First-level subtasks, cascading below the parent card with a slight indent. */
+/* First-level subtasks cascade directly below the parent card (no indent).
+   Expanded cards attach with no gap; collapsed text rows get a little spacing. */
 .subs {
-  margin: 6px 0 0 14px;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
+}
+.subs > div:last-child .card.nested {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+.subs .subrow {
+  margin-top: 4px;
 }
 .subrow {
   display: flex;

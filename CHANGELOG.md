@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.31.2] — 2026-06-03
+- Expanded subtask cards now attach to the parent card: the parent's bottom
+  corners flatten, the child has square top corners and no own top border, no
+  left indent, and the last child rounds off the bottom. Child background uses
+  `--t-hover` (distinct from the column) — tweak via the `--sub-bg` custom
+  property on `.card.nested`.
+
 ### [0.31.1] — 2026-06-03
 - Subtasks now cascade *below* the parent card instead of nesting inside it:
   collapsed = indented text rows; expanded = full property cards one shade
