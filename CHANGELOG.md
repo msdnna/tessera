@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.29.0] — 2026-06-03
+- Description opens on the «Просмотр» tab when it already has content (empty
+  descriptions still open on «Написать» for editing).
+- Subtasks moved into their own tab (second, after Комментарии) with a count
+  badge, freeing the main column.
+- Hovering a subtask shows a kanban-style card (title, number, priority, due
+  date, tags, assignees). The same hover-card pattern is intended for user
+  mentions later.
+- Comment edit/delete actions are right-aligned in the comment header.
+- Relations: focusing the task field opens a cross-board task autocomplete
+  (number + title, grouped by project/board, searchable) so tasks from other
+  projects/boards link easily; «Связать» moved to the right.
+
 ### [0.28.0] — 2026-06-03
 - Fix @-mention picker needing the `@` typed twice (it read the lagging
   modelValue prop instead of the live textarea value) — one `@` now opens it and
@@ -401,6 +414,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.15.0] — 2026-06-03
+- Task detail (`GET /tasks/:id`) now returns each subtask with its `tag_ids` and
+  `assignee_ids` (new `ListSubtasksWithMeta` query), so the UI can render a rich
+  hover card per subtask.
 
 ### [0.14.0] — 2026-06-03
 - Configurable "done" column per board (feature #4): `boards.done_column_id`

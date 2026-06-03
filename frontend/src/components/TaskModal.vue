@@ -47,6 +47,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { renderRich } from '@/utils/markdown'
 import MarkdownEditor from './MarkdownEditor.vue'
+import TaskMiniCard from './TaskMiniCard.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -68,9 +69,18 @@ const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
 // ── rich detail (#8): comments, relations, files, journal
+// Open an existing description on the Preview tab; an empty one on Write.
+const descInitialMode = ref('write')
+
 // Workspace members offered for @-mentions in comments.
 const mentionItems = computed(() =>
   (props.members || []).map((m) => ({ id: m.user_id, label: m.name })),
+)
+
+// Lookup maps for subtask hover cards (built from the tags/members props).
+const tagsById = computed(() => Object.fromEntries((props.tags || []).map((t) => [t.id, t])))
+const membersById = computed(() =>
+  Object.fromEntries((props.members || []).map((m) => [m.user_id, m])),
 )
 
 const comments = ref([])
@@ -88,6 +98,49 @@ const relKindOptions = [
   { label: 'заблокирована', value: 'blocked_by' },
   { label: 'дублирует', value: 'duplicates' },
 ]
+// Cross-board task autocomplete for linking relations.
+const relPickerOpen = ref(false)
+const relTasks = ref([]) // workspace tasks, lazily loaded
+async function ensureRelTasks() {
+  if (relTasks.value.length || !props.wsId) return
+  try {
+    const res = await wsApi.tasks(props.wsId)
+    relTasks.value = res.data || []
+  } catch {
+    /* non-fatal — manual number entry still works */
+  }
+}
+function openRelPicker() {
+  relPickerOpen.value = true
+  ensureRelTasks()
+}
+// Filter by typed number/title, drop the current task and numberless ones,
+// then group by project → board so long lists stay navigable.
+const relGroups = computed(() => {
+  const q = String(relNumber.value || '')
+    .trim()
+    .toLowerCase()
+  const out = []
+  const index = {}
+  for (const t of relTasks.value) {
+    if (t.id === props.taskId || t.number == null) continue
+    if (q && !(`#${t.number}`.includes(q) || t.title.toLowerCase().includes(q))) continue
+    const pk = t.project_name || '—'
+    const bk = t.board_name || '—'
+    const key = `${pk} / ${bk}`
+    if (!index[key]) {
+      index[key] = { project: pk, board: bk, tasks: [] }
+      out.push(index[key])
+    }
+    index[key].tasks.push(t)
+  }
+  return out.slice(0, 50)
+})
+async function chooseRelTask(t) {
+  relNumber.value = t.number
+  relPickerOpen.value = false
+  await addRelation()
+}
 
 const attachments = ref([])
 const fileInput = ref(null)
@@ -158,6 +211,7 @@ async function loadDetail() {
     task.value = t
     title.value = t.title
     description.value = t.description || ''
+    descInitialMode.value = t.description ? 'preview' : 'write'
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
     completed.value = !!t.completed_at
@@ -461,6 +515,7 @@ async function addRelation() {
   try {
     await tasksApi.addRelation(props.taskId, n, relKind.value)
     relNumber.value = null
+    relPickerOpen.value = false
     const r = await tasksApi.relations(props.taskId)
     relations.value = r.data || []
     emit('changed')
@@ -780,46 +835,16 @@ function eventText(e) {
           <div class="section">
             <span class="slabel">Описание</span>
             <MarkdownEditor
+              :key="taskId"
               v-model="description"
               placeholder="Добавьте описание…"
               :min-rows="3"
+              :initial-mode="descInitialMode"
               @blur="saveDesc"
             />
           </div>
 
-          <div class="section">
-            <span class="slabel">Подзадачи</span>
-            <div
-              v-for="sub in task?.subtasks || []"
-              :key="sub.id"
-              class="subrow"
-              :class="{ done: sub.completed_at }"
-              @click="emit('open', sub.id)"
-            >
-              <span class="check" @click.stop="toggleSubtask(sub)">
-                <n-icon
-                  :component="sub.completed_at ? CheckmarkCircle : EllipseOutline"
-                  :size="17"
-                />
-              </span>
-              <span
-                v-if="sub.priority"
-                class="pr-dot"
-                :style="{ background: PRIORITY_COLORS[sub.priority] }"
-              />
-              <span class="sub-title">{{ sub.title }}</span>
-              <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
-            </div>
-            <n-input
-              v-model:value="newSubtask"
-              size="small"
-              class="plain"
-              placeholder="+ подзадача (Enter)"
-              @keyup.enter="addSubtask"
-            />
-          </div>
-
-          <!-- Comments / relations / files / history (#8) -->
+          <!-- Subtasks / comments / relations / files / history (#8) -->
           <n-tabs type="line" size="small" class="detail-tabs">
             <n-tab-pane name="comments">
               <template #tab>
@@ -838,7 +863,7 @@ function eventText(e) {
                     <div class="c-head">
                       <span class="c-author">{{ c.author_name || 'Кто-то' }}</span>
                       <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
-                      <template v-if="c.author_id === meId">
+                      <span v-if="c.author_id === meId" class="c-acts">
                         <button class="c-act" title="Изменить" @click="startEditComment(c)">
                           ✎
                         </button>
@@ -848,7 +873,7 @@ function eventText(e) {
                           </template>
                           Удалить комментарий?
                         </n-popconfirm>
-                      </template>
+                      </span>
                     </div>
                     <template v-if="editingCommentId === c.id">
                       <MarkdownEditor
@@ -879,6 +904,54 @@ function eventText(e) {
                   />
                   <n-button size="small" type="primary" @click="postComment">Отправить</n-button>
                 </div>
+              </div>
+            </n-tab-pane>
+
+            <n-tab-pane name="subtasks">
+              <template #tab>
+                Подзадачи
+                <n-badge
+                  v-if="task?.subtasks?.length"
+                  :value="task.subtasks.length"
+                  :max="99"
+                  class="tab-badge"
+                />
+              </template>
+              <div class="subtasks">
+                <n-popover
+                  v-for="sub in task?.subtasks || []"
+                  :key="sub.id"
+                  trigger="hover"
+                  placement="right"
+                  :delay="250"
+                >
+                  <template #trigger>
+                    <div class="subrow" :class="{ done: sub.completed_at }" @click="emit('open', sub.id)">
+                      <span class="check" @click.stop="toggleSubtask(sub)">
+                        <n-icon
+                          :component="sub.completed_at ? CheckmarkCircle : EllipseOutline"
+                          :size="17"
+                        />
+                      </span>
+                      <span
+                        v-if="sub.priority"
+                        class="pr-dot"
+                        :style="{ background: PRIORITY_COLORS[sub.priority] }"
+                      />
+                      <span class="sub-title">{{ sub.title }}</span>
+                      <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
+                    </div>
+                  </template>
+                  <TaskMiniCard :task="sub" :tags-map="tagsById" :members-map="membersById" />
+                </n-popover>
+                <div v-if="!(task?.subtasks || []).length" class="empty-hint">Подзадач пока нет</div>
+                <n-input
+                  v-model:value="newSubtask"
+                  size="small"
+                  class="plain"
+                  placeholder="+ подзадача (Enter)"
+                  @keyup.enter="addSubtask"
+                />
               </div>
             </n-tab-pane>
 
@@ -915,16 +988,43 @@ function eventText(e) {
                     size="small"
                     style="width: 150px"
                   />
-                  <n-input
-                    v-model:value="relNumber"
-                    size="small"
-                    placeholder="№ задачи"
-                    style="width: 110px"
-                    @keyup.enter="addRelation"
+                  <n-popover
+                    trigger="manual"
+                    :show="relPickerOpen"
+                    placement="bottom-start"
+                    :width="320"
+                    @clickoutside="relPickerOpen = false"
                   >
-                    <template #prefix>#</template>
-                  </n-input>
-                  <n-button size="small" @click="addRelation">Связать</n-button>
+                    <template #trigger>
+                      <n-input
+                        v-model:value="relNumber"
+                        size="small"
+                        placeholder="№ или название"
+                        style="width: 240px"
+                        @focus="openRelPicker"
+                        @keyup.enter="addRelation"
+                      >
+                        <template #prefix>#</template>
+                      </n-input>
+                    </template>
+                    <div class="rel-picker">
+                      <div v-if="!relGroups.length" class="empty-hint">Ничего не найдено</div>
+                      <div v-for="g in relGroups" :key="g.project + '/' + g.board" class="rp-group">
+                        <div class="rp-head">{{ g.project }} · {{ g.board }}</div>
+                        <button
+                          v-for="t in g.tasks"
+                          :key="t.id"
+                          type="button"
+                          class="rp-item"
+                          @click="chooseRelTask(t)"
+                        >
+                          <span class="rp-num">#{{ t.number }}</span>
+                          <span class="rp-title">{{ t.title }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </n-popover>
+                  <n-button size="small" class="rel-go" @click="addRelation">Связать</n-button>
                 </div>
               </div>
             </n-tab-pane>
@@ -1350,6 +1450,11 @@ function eventText(e) {
   font-size: 11px;
   color: var(--t-text3);
 }
+.c-acts {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 4px;
+}
 .c-act {
   border: none;
   background: none;
@@ -1434,7 +1539,59 @@ function eventText(e) {
 .rel-add {
   display: flex;
   gap: 8px;
+  align-items: center;
   margin-top: 8px;
+}
+.rel-go {
+  margin-left: auto;
+}
+.rel-picker {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.rp-group {
+  margin-bottom: 8px;
+}
+.rp-head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t-text3);
+  padding: 2px 4px;
+  position: sticky;
+  top: 0;
+  background: var(--t-surface);
+}
+.rp-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.rp-item:hover {
+  background: var(--t-hover);
+}
+.rp-num {
+  flex: none;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.rp-title {
+  color: var(--t-text1);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* files */

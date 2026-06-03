@@ -16,9 +16,9 @@ import (
 // taskDetail bundles a task with its tags, assignees and direct subtasks.
 type taskDetail struct {
 	db.Task
-	Tags      []db.Tag                  `json:"tags"`
-	Assignees []db.ListTaskAssigneesRow `json:"assignees"`
-	Subtasks  []db.Task                 `json:"subtasks"`
+	Tags      []db.Tag                     `json:"tags"`
+	Assignees []db.ListTaskAssigneesRow    `json:"assignees"`
+	Subtasks  []db.ListSubtasksWithMetaRow `json:"subtasks"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -211,12 +211,15 @@ func (h *API) GetTask(c *gin.Context) {
 		fail(c)
 		return
 	}
-	subtasks, err := h.q.ListSubtasks(c, &id)
+	subtasks, err := h.q.ListSubtasksWithMeta(c, &id)
 	if err != nil {
 		fail(c)
 		return
 	}
 	_ = wsID
+	if subtasks == nil {
+		subtasks = []db.ListSubtasksWithMetaRow{}
+	}
 	c.JSON(http.StatusOK, taskDetail{
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, Subtasks: subtasks,
 	})

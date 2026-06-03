@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { NIcon } from 'naive-ui'
 import { LinkOutline } from '@vicons/ionicons5'
 import { renderRich } from '@/utils/markdown'
@@ -10,10 +10,19 @@ const props = defineProps({
   // Workspace members for @-mentions: [{ id, label }]. Empty → mentions off.
   mentionItems: { type: Array, default: () => [] },
   minRows: { type: Number, default: 3 },
+  // 'write' | 'preview' — sets the initial tab (re-applied when it changes,
+  // e.g. when a different task loads). User tab clicks override locally.
+  initialMode: { type: String, default: 'write' },
 })
 const emit = defineEmits(['update:modelValue', 'submit', 'blur'])
 
-const mode = ref('write') // 'write' | 'preview'
+const mode = ref(props.initialMode) // 'write' | 'preview'
+watch(
+  () => props.initialMode,
+  (m) => {
+    mode.value = m
+  },
+)
 const ta = ref(null)
 const previewHtml = computed(() => renderRich(props.modelValue, props.mentionItems))
 
