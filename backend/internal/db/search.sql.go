@@ -58,7 +58,7 @@ JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
 WHERE p.workspace_id = $1
   AND t.archived_at IS NULL
-  AND t.title ILIKE '%' || $2 || '%'
+  AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%')
 ORDER BY t.number DESC
 LIMIT 25
 `

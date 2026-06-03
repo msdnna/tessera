@@ -46,7 +46,21 @@ func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, 
 	if err != nil {
 		return
 	}
-	h.broadcast(wsID, "notification", gin.H{"user_id": userID, "notification": n})
+	// Enrich the live payload with the task's board id + number so a freshly
+	// pushed notification is clickable (the list endpoint joins these in, but
+	// the raw inserted row doesn't carry them).
+	obj := gin.H{
+		"id": n.ID, "user_id": n.UserID, "workspace_id": n.WorkspaceID,
+		"task_id": n.TaskID, "actor_id": n.ActorID, "kind": n.Kind,
+		"text": n.Text, "read_at": n.ReadAt, "created_at": n.CreatedAt,
+	}
+	if taskID != nil {
+		if t, terr := h.q.GetTask(c, *taskID); terr == nil {
+			obj["task_board_id"] = t.BoardID
+			obj["task_number"] = t.Number
+		}
+	}
+	h.broadcast(wsID, "notification", gin.H{"user_id": userID, "notification": obj})
 }
 
 // notifyTaskParticipants notifies a task's assignees and creator (minus the

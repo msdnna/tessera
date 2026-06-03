@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -261,31 +262,45 @@ func (h *API) UpdateTask(c *gin.Context) {
 		fail(c)
 		return
 	}
-	h.journalUpdate(c, t, updated)
+	changes := h.journalUpdate(c, t, updated)
+	if len(changes) > 0 {
+		h.notifyTaskParticipants(c, updated, wsID, "updated",
+			fmt.Sprintf("%s изменил(а) задачу #%s: %s",
+				h.actorName(c), taskRef(updated.Number), strings.Join(changes, ", ")))
+	}
 	h.broadcast(wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
-// journalUpdate records the field-level changes of a task edit into its journal.
-func (h *API) journalUpdate(c *gin.Context, before, after db.Task) {
+// journalUpdate records the field-level changes of a task edit into its journal
+// and returns a short human list of what changed (for a notification summary).
+func (h *API) journalUpdate(c *gin.Context, before, after db.Task) []string {
+	var changed []string
 	if before.Title != after.Title {
 		h.logEvent(c, after.ID, "renamed", map[string]any{"from": before.Title, "to": after.Title})
+		changed = append(changed, "название")
 	}
 	if before.Description != after.Description {
 		h.logEvent(c, after.ID, "description", nil)
+		changed = append(changed, "описание")
 	}
 	if before.Priority != after.Priority {
 		h.logEvent(c, after.ID, "priority", map[string]any{"from": before.Priority, "to": after.Priority})
+		changed = append(changed, "приоритет")
 	}
 	if !sameTime(before.DueDate, after.DueDate) {
 		h.logEvent(c, after.ID, "due", map[string]any{"set": after.DueDate != nil})
+		changed = append(changed, "срок")
 	}
 	switch {
 	case before.CompletedAt == nil && after.CompletedAt != nil:
 		h.logEvent(c, after.ID, "completed", nil)
+		changed = append(changed, "выполнена")
 	case before.CompletedAt != nil && after.CompletedAt == nil:
 		h.logEvent(c, after.ID, "reopened", nil)
+		changed = append(changed, "возвращена в работу")
 	}
+	return changed
 }
 
 func sameTime(a, b *time.Time) bool {
@@ -334,6 +349,9 @@ func (h *API) MoveTask(c *gin.Context) {
 
 	if t.ColumnID != req.ColumnID {
 		h.logEvent(c, id, "moved", map[string]any{"to": col.Name})
+		h.notifyTaskParticipants(c, updated, wsID, "moved",
+			fmt.Sprintf("%s переместил(а) задачу #%s → «%s»",
+				h.actorName(c), taskRef(updated.Number), col.Name))
 	}
 
 	// Moving a task into the "Готово" column auto-marks it completed.

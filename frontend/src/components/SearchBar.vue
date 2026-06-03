@@ -128,7 +128,7 @@ function gotoNote(n) {
         </div>
       </template>
       <div class="hint">
-        <n-text depth="3">Поиск по названию задач, заголовку и тексту заметок</n-text>
+        <n-text depth="3">Поиск по названию и описанию задач, заголовку и тексту заметок</n-text>
       </div>
     </div>
   </div>

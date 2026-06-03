@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.22.1] — 2026-06-03
+- Search hint updated to note that task descriptions are searched too.
+
 ### [0.22.0] — 2026-06-03
 - Home / My work (feature #1): the landing page is now a dashboard — summary
   cards (my tasks, all active, overdue, due today, due this week, completed)
@@ -326,6 +329,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.13.0] — 2026-06-03
+- Notifications now also fire when a task is changed or moved by someone else:
+  its assignees and creator (minus the actor) are notified (`updated` / `moved`
+  kinds, with a short summary of what changed). Previously only assignment and
+  comments generated notifications.
+- Live-pushed notifications now carry `task_board_id` + `task_number`, so a
+  freshly arrived notification is clickable immediately (no reload needed).
+- Global search now matches task descriptions too, not just titles.
 
 ### [0.12.1] — 2026-06-03
 - `GET /tasks/:id/events` now returns the entry `data` as raw JSON instead of a
