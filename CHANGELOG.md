@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.31.4] — 2026-06-03
+- Fix expanded subtask stack clipping the parent's bottom: the first child
+  shared the parent's z-index (tie → child won), so children now sit strictly
+  below the parent (z-index lowered). Parent's rounded bottom + border show again.
+- Softened subtask card / collapsed-list shadows to match the parent card.
+
 ### [0.31.3] — 2026-06-03
 - Reworked the subtask cascade into a fanned card stack: the parent keeps its
   rounded corners and shadow and sits on top; each expanded subtask card peeks

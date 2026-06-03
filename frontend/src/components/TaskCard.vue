@@ -410,7 +410,7 @@ async function submitAddSub() {
       @change="onSubReorder"
     >
       <template #item="{ element: s, index }">
-        <div class="sub-layer" :style="{ zIndex: 50 - index }">
+        <div class="sub-layer" :style="{ zIndex: 40 - index }">
           <TaskCard
             :task="s"
             :subtasks="[]"
@@ -522,7 +522,7 @@ async function submitAddSub() {
   background: var(--sub-bg);
   border-radius: 0 0 8px 8px;
   padding-top: 16px;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 /* Collapsed: a single card emerging from under the parent, holding the list. */
 .sub-list {
@@ -533,7 +533,7 @@ async function submitAddSub() {
   background: var(--sub-bg);
   border: 1px solid var(--t-border);
   border-radius: 0 0 8px 8px;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 .title-edit {
   flex: 1;
