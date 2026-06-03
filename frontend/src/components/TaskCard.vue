@@ -234,7 +234,7 @@ async function submitAddSub() {
   <div class="tw">
     <div
       class="card"
-      :class="{ done, nested, 'has-subs': !nested && subtasksExpanded && subtasks.length }"
+      :class="{ done, nested, 'has-subs': !nested && subtasks.length }"
       :style="cardStyle"
       @click="emit('open', task.id)"
       @contextmenu.prevent.stop="onCtx"
@@ -396,24 +396,22 @@ async function submitAddSub() {
     </div>
     <!-- /.card -->
 
-    <!-- First-level subtasks cascade below the parent card. -->
+    <!-- Expanded: a stack of full subtask cards peeking from under the parent. -->
     <draggable
-      v-if="!nested && subtasks.length"
+      v-if="!nested && subtasksExpanded && subtasks.length"
       :list="subModel"
       :group="'sub-' + task.id"
       item-key="id"
-      class="subs"
+      class="substack"
       :animation="150"
       :delay="300"
       :touch-start-threshold="6"
       @click.stop
       @change="onSubReorder"
     >
-      <template #item="{ element: s }">
-        <div>
-          <!-- Expanded: a full property card, one shade darker for distinction. -->
+      <template #item="{ element: s, index }">
+        <div class="sub-layer" :style="{ zIndex: 50 - index }">
           <TaskCard
-            v-if="subtasksExpanded"
             :task="s"
             :subtasks="[]"
             :nested="true"
@@ -425,8 +423,24 @@ async function submitAddSub() {
             @open="emit('open', $event)"
             @changed="emit('changed')"
           />
-          <!-- Collapsed: a compact name-only row. -->
-          <div v-else class="subrow" :class="{ done: s.completed_at }" @click="emit('open', s.id)">
+        </div>
+      </template>
+    </draggable>
+
+    <!-- Collapsed: one card peeking from under the parent, listing the subtasks. -->
+    <div v-else-if="!nested && subtasks.length" class="sub-list">
+      <draggable
+        :list="subModel"
+        :group="'sub-' + task.id"
+        item-key="id"
+        :animation="150"
+        :delay="300"
+        :touch-start-threshold="6"
+        @click.stop
+        @change="onSubReorder"
+      >
+        <template #item="{ element: s }">
+          <div class="subrow" :class="{ done: s.completed_at }" @click="emit('open', s.id)">
             <span class="check sm" @click.stop="toggleSubDone(s)">
               <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
             </span>
@@ -438,9 +452,9 @@ async function submitAddSub() {
             <span class="sub-title">{{ s.title }}</span>
             <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
           </div>
-        </div>
-      </template>
-    </draggable>
+        </template>
+      </draggable>
+    </div>
 
     <template v-if="!nested">
       <div v-if="addingSub" class="sub-add-input" @click.stop>
@@ -482,22 +496,44 @@ async function submitAddSub() {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
 }
-/* When expanded subtasks follow, flatten the parent's bottom so the first child
-   attaches seamlessly. */
+/* The parent keeps its rounded corners and sits above the subtask stack so the
+   children appear to emerge from under it. */
 .card.has-subs {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+  position: relative;
+  z-index: 50;
 }
-/* First-level subtask card: visually attached to the parent (square top, no
-   own top border, shares the parent's bottom edge). Tweak --sub-bg to taste —
-   alternatives: var(--t-border) (darker/grey) or
-   color-mix(in srgb, var(--t-primary) 8%, var(--t-surface)) (subtle accent). */
+/* Background shared by subtask cards / the collapsed list. Tweak here:
+   alternatives — var(--t-hover), var(--t-border) (greyer),
+   color-mix(in srgb, var(--t-primary) 8%, var(--t-surface)) (accent). */
+.sub-layer,
+.sub-list {
+  --sub-bg: color-mix(in srgb, var(--t-surface) 70%, var(--t-bg));
+}
+/* Each expanded subtask card: rounded bottom only, peeking ~8px from under the
+   card above it, with its own shadow → a fanned-down stack. */
+.sub-layer {
+  position: relative;
+  margin-top: -8px;
+}
+.sub-layer > .tw {
+  margin-bottom: 0;
+}
 .card.nested {
-  --sub-bg: var(--t-hover);
   background: var(--sub-bg);
-  border-radius: 0;
-  border-top: none;
-  box-shadow: none;
+  border-radius: 0 0 8px 8px;
+  padding-top: 16px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+/* Collapsed: a single card emerging from under the parent, holding the list. */
+.sub-list {
+  position: relative;
+  z-index: 1;
+  margin-top: -8px;
+  padding: 14px 8px 6px;
+  background: var(--sub-bg);
+  border: 1px solid var(--t-border);
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
 }
 .title-edit {
   flex: 1;
@@ -664,26 +700,16 @@ async function submitAddSub() {
 
 /* First-level subtasks cascade directly below the parent card (no indent).
    Expanded cards attach with no gap; collapsed text rows get a little spacing. */
-.subs {
-  margin: 0;
+.substack {
   display: flex;
   flex-direction: column;
-  gap: 0;
-}
-.subs > div:last-child .card.nested {
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
-}
-.subs .subrow {
-  margin-top: 4px;
 }
 .subrow {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 4px 8px;
+  padding: 5px 6px;
   border-radius: 6px;
-  background: var(--t-surface-alt);
   font-size: 13px;
   color: var(--t-text2);
 }
@@ -736,7 +762,7 @@ async function submitAddSub() {
   opacity: 0;
   transition: opacity 0.12s;
 }
-.card:hover .add-sub {
+.tw:hover .add-sub {
   opacity: 1;
 }
 .add-sub:hover {

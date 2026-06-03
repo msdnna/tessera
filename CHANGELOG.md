@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.31.3] — 2026-06-03
+- Reworked the subtask cascade into a fanned card stack: the parent keeps its
+  rounded corners and shadow and sits on top; each expanded subtask card peeks
+  ~8px from under the one above with its own shadow and a rounded bottom. Child
+  background is `color-mix(--t-surface 70% / --t-bg)`.
+- Collapsed subtasks now render as a single card emerging from under the parent
+  that lists the subtask rows (instead of loose rows).
+- Fixed the "＋ Создать подзадачу" button being invisible (its hover trigger
+  still pointed at the old card root after the cascade moved out of the card).
+
 ### [0.31.2] — 2026-06-03
 - Expanded subtask cards now attach to the parent card: the parent's bottom
   corners flatten, the child has square top corners and no own top border, no
