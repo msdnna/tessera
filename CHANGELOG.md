@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.24.0] — 2026-06-03
+- Collapsed sidebar now shows projects and groups as icons too; hovering one
+  opens a flyout (budget-style) with its boards / nested projects to navigate
+  from. Small separators now divide the functional groups (logo / nav /
+  projects) in the rail, with a touch more spacing in the expanded sidebar.
+
 ### [0.23.1] — 2026-06-03
 - Fix notification badge shape — it's a clean circle for a single digit again
   (equal min-width/height + pill radius) instead of an oval.

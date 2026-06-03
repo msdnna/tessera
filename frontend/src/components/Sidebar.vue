@@ -22,6 +22,7 @@ import SidebarNode from './SidebarNode.vue'
 import ProjectRow from './ProjectRow.vue'
 import SidebarFooter from './SidebarFooter.vue'
 import WorkspaceTools from './WorkspaceTools.vue'
+import SidebarRailNode from './SidebarRailNode.vue'
 
 defineProps({
   mobile: { type: Boolean, default: false },
@@ -92,6 +93,8 @@ async function createWorkspace() {
       <WorkspaceTools v-if="mobile || !collapsed" class="brand-tools" placement="bottom-start" />
     </div>
 
+    <div v-if="collapsed" class="rail-sep" />
+
     <div v-if="!collapsed" class="ws-switch">
       <n-select
         :value="store.currentId"
@@ -140,6 +143,8 @@ async function createWorkspace() {
       </n-tooltip>
     </nav>
 
+    <div v-if="collapsed" class="rail-sep" />
+
     <div v-if="!collapsed" class="proj-head">
       <n-text depth="3" strong>Проекты</n-text>
       <n-dropdown trigger="click" :options="addOptions" @select="addAtRoot">
@@ -186,7 +191,12 @@ async function createWorkspace() {
         Пусто — создайте проект или группу через «+».
       </n-text>
     </n-scrollbar>
-    <div v-else class="tree-spacer" />
+    <n-scrollbar v-else class="rail-scroll">
+      <div class="rail">
+        <SidebarRailNode v-for="g in rootGroups" :key="g.id" :node="g" kind="group" />
+        <SidebarRailNode v-for="p in ungrouped" :key="p.id" :node="p" kind="project" />
+      </div>
+    </n-scrollbar>
 
     <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
 
@@ -233,8 +243,22 @@ async function createWorkspace() {
   width: 40px;
   padding: 8px 0;
 }
-.tree-spacer {
+/* Thin separators between functional groups (logo / nav / projects) in the
+   collapsed rail. */
+.rail-sep {
+  height: 1px;
+  background: var(--t-border);
+  margin: 6px 12px;
+}
+.rail-scroll {
   flex: 1;
+}
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
 }
 .brand-mark {
   display: inline-flex;
@@ -289,6 +313,10 @@ async function createWorkspace() {
   align-items: center;
   justify-content: space-between;
   padding: 4px 12px;
+  margin-top: 8px;
+}
+.nav {
+  margin-top: 2px;
 }
 .tree {
   flex: 1;
