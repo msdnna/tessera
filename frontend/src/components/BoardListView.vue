@@ -1,5 +1,7 @@
 <script setup>
+import { NDropdown } from 'naive-ui'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
+import { useTaskMenu } from '@/composables/useTaskMenu'
 
 defineProps({
   // Grouped, filtered, sorted columns from KanbanBoard: [{ key, name, color }]
@@ -9,7 +11,12 @@ defineProps({
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
 })
-defineEmits(['open'])
+const emit = defineEmits(['open', 'changed'])
+
+const menu = useTaskMenu({
+  onOpen: (id) => emit('open', id),
+  onChanged: () => emit('changed'),
+})
 
 function initials(name) {
   if (!name) return '?'
@@ -43,6 +50,7 @@ function isOverdue(t) {
         class="lv-row"
         :class="{ done: t.completed_at }"
         @click="$emit('open', t.id)"
+        @contextmenu.prevent.stop="menu.open($event, t)"
       >
         <span
           class="lv-pr"
@@ -84,6 +92,17 @@ function isOverdue(t) {
 
       <div v-if="!(lists[col.key] || []).length" class="lv-empty">— пусто —</div>
     </section>
+
+    <n-dropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="menu.show.value"
+      :x="menu.x.value"
+      :y="menu.y.value"
+      :options="menu.options.value"
+      @select="menu.select"
+      @clickoutside="menu.show.value = false"
+    />
   </div>
 </template>
 

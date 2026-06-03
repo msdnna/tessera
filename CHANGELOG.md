@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.32.0] — 2026-06-03
+- Right-click context menus extended across the app: tasks in the List and
+  Calendar views (new shared `useTaskMenu` composable), collapsed subtasks on
+  cards, and sidebar items — groups (new project/group, rename, delete),
+  projects (new board, rename, delete) and boards (open, rename, delete).
+- Mobile: enable touch drag auto-scroll (`forceFallback` + `scroll`) on the task
+  lists so a card dragged toward the screen edge scrolls the board and can drop
+  on the neighbouring column.
+- Task modal: removed the footer "Открепить от родителя" button (it duplicated
+  the "Открепить" action on the Родитель row).
+
 ### [0.31.4] — 2026-06-03
 - Fix expanded subtask stack clipping the parent's bottom: the first child
   shared the parent's z-index (tie → child won), so children now sit strictly

@@ -1085,9 +1085,6 @@ function eventText(e) {
               <template #icon><n-icon :component="ArchiveOutline" /></template>
               В архив
             </n-button>
-            <n-button v-if="task?.parent_id" quaternary @click="detachFromParent">
-              Открепить от родителя
-            </n-button>
           </n-space>
           <n-space>
             <n-button @click="close">Отмена</n-button>

@@ -29,6 +29,31 @@ const nameEdit = ref('')
 const renameInput = ref(null)
 const settingsShow = ref(false)
 
+// right-click context menu
+const ctxShow = ref(false)
+const ctxX = ref(0)
+const ctxY = ref(0)
+const ctxOptions = [
+  { label: 'Новый проект', key: 'add-project' },
+  { label: 'Новая группа', key: 'add-group' },
+  { type: 'divider', key: 'd1' },
+  { label: 'Переименовать', key: 'rename' },
+  { label: 'Удалить группу', key: 'delete' },
+]
+function onCtx(e) {
+  ctxShow.value = false
+  ctxX.value = e.clientX
+  ctxY.value = e.clientY
+  nextTick(() => (ctxShow.value = true))
+}
+function onCtxSelect(key) {
+  ctxShow.value = false
+  if (key === 'add-project') onAdd('project')
+  else if (key === 'add-group') onAdd('group')
+  else if (key === 'rename') startRename()
+  else if (key === 'delete') remove()
+}
+
 const subgroups = computed(() => store.childGroups(props.group.id))
 const childProjects = computed(() => store.projectsInGroup(props.group.id))
 
@@ -91,7 +116,7 @@ async function commitRename() {
 
 <template>
   <div class="group-node">
-    <div class="row group-row">
+    <div class="row group-row" @contextmenu.prevent.stop="onCtx">
       <n-icon
         class="chev"
         :class="{ open: expanded }"
@@ -173,6 +198,17 @@ async function commitRename() {
         </template>
       </draggable>
     </div>
+
+    <n-dropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="ctxShow"
+      :x="ctxX"
+      :y="ctxY"
+      :options="ctxOptions"
+      @select="onCtxSelect"
+      @clickoutside="ctxShow = false"
+    />
   </div>
 </template>
 

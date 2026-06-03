@@ -103,38 +103,55 @@ async function apply(patch) {
 const toggleDone = () => apply({ completed: !done.value })
 const setPriority = (p) => apply({ priority: p })
 
-// ── right-click context menu ──
+// ── right-click context menu (works for the card and for collapsed subtasks) ──
 const ctxShow = ref(false)
 const ctxX = ref(0)
 const ctxY = ref(0)
-const ctxOptions = computed(() => [
-  { label: 'Открыть', key: 'open' },
-  { label: done.value ? 'Снять выполнение' : 'Отметить выполненной', key: 'toggle' },
-  {
-    label: 'Приоритет',
-    key: 'prio',
-    children: PRIORITY_LABELS.map((l, i) => ({ label: l, key: 'prio:' + i })),
-  },
-  { type: 'divider', key: 'd1' },
-  { label: 'Создать подзадачу', key: 'subtask' },
-  { label: 'В архив', key: 'archive' },
-  { label: 'Удалить', key: 'delete' },
-])
-function onCtx(e) {
+const ctxTarget = ref(null) // task object the menu acts on
+const ctxOptions = computed(() => {
+  const t = ctxTarget.value
+  const isMain = t && t.id === props.task.id
+  return [
+    { label: 'Открыть', key: 'open' },
+    { label: t?.completed_at ? 'Снять выполнение' : 'Отметить выполненной', key: 'toggle' },
+    {
+      label: 'Приоритет',
+      key: 'prio',
+      children: PRIORITY_LABELS.map((l, i) => ({ label: l, key: 'prio:' + i })),
+    },
+    { type: 'divider', key: 'd1' },
+    ...(isMain ? [{ label: 'Создать подзадачу', key: 'subtask' }] : []),
+    { label: 'В архив', key: 'archive' },
+    { label: 'Удалить', key: 'delete' },
+  ]
+})
+function baseOf(t) {
+  return {
+    title: t.title,
+    description: t.description || '',
+    priority: t.priority || 0,
+    due_date: t.due_date || null,
+    completed: !!t.completed_at,
+  }
+}
+function onCtx(e, target) {
+  ctxTarget.value = target || props.task
   ctxShow.value = false
   ctxX.value = e.clientX
   ctxY.value = e.clientY
   nextTick(() => (ctxShow.value = true))
 }
 async function onCtxSelect(key) {
+  const t = ctxTarget.value || props.task
   ctxShow.value = false
-  if (key === 'open') return emit('open', props.task.id)
-  if (key === 'toggle') return toggleDone()
+  if (key === 'open') return emit('open', t.id)
   if (key === 'subtask') return startAddSub()
-  if (key.startsWith('prio:')) return setPriority(Number(key.slice(5)))
   try {
-    if (key === 'archive') await tasksApi.archive(props.task.id)
-    else if (key === 'delete') await tasksApi.remove(props.task.id)
+    if (key === 'toggle') await tasksApi.update(t.id, { ...baseOf(t), completed: !t.completed_at })
+    else if (key.startsWith('prio:'))
+      await tasksApi.update(t.id, { ...baseOf(t), priority: Number(key.slice(5)) })
+    else if (key === 'archive') await tasksApi.archive(t.id)
+    else if (key === 'delete') await tasksApi.remove(t.id)
     emit('changed')
   } catch {
     /* surfaced by the board's reload path */
@@ -440,7 +457,12 @@ async function submitAddSub() {
         @change="onSubReorder"
       >
         <template #item="{ element: s }">
-          <div class="subrow" :class="{ done: s.completed_at }" @click="emit('open', s.id)">
+          <div
+            class="subrow"
+            :class="{ done: s.completed_at }"
+            @click="emit('open', s.id)"
+            @contextmenu.prevent.stop="onCtx($event, s)"
+          >
             <span class="check sm" @click.stop="toggleSubDone(s)">
               <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
             </span>

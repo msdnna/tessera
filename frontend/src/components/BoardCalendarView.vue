@@ -1,12 +1,18 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { NButton, NButtonGroup } from 'naive-ui'
+import { NButton, NButtonGroup, NDropdown } from 'naive-ui'
+import { useTaskMenu } from '@/composables/useTaskMenu'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 
 const props = defineProps({
   tasks: { type: Array, default: () => [] },
 })
-defineEmits(['open'])
+const emit = defineEmits(['open', 'changed'])
+
+const menu = useTaskMenu({
+  onOpen: (id) => emit('open', id),
+  onChanged: () => emit('changed'),
+})
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const MONTHS = [
@@ -106,6 +112,7 @@ function goToday() {
             :style="{ '--chip': PRIORITY_COLORS[t.priority || 0] }"
             :title="t.title"
             @click="$emit('open', t.id)"
+            @contextmenu.prevent.stop="menu.open($event, t)"
           >
             {{ t.title }}
           </button>
@@ -124,10 +131,22 @@ function goToday() {
         :style="{ '--chip': PRIORITY_COLORS[t.priority || 0] }"
         :title="t.title"
         @click="$emit('open', t.id)"
+        @contextmenu.prevent.stop="menu.open($event, t)"
       >
         {{ t.title }}
       </button>
     </div>
+
+    <n-dropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="menu.show.value"
+      :x="menu.x.value"
+      :y="menu.y.value"
+      :options="menu.options.value"
+      @select="menu.select"
+      @clickoutside="menu.show.value = false"
+    />
   </div>
 </template>
 

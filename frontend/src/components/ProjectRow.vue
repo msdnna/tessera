@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NIcon, NButton, NInput, NPopover, NPopconfirm, NText, useMessage } from 'naive-ui'
+import { NIcon, NButton, NInput, NPopover, NPopconfirm, NText, NDropdown, useMessage } from 'naive-ui'
 import {
   GridOutline,
   EllipsisHorizontalOutline,
@@ -112,6 +112,54 @@ async function remove() {
   }
 }
 
+// right-click menus (project row + board rows)
+const pcShow = ref(false)
+const pcX = ref(0)
+const pcY = ref(0)
+const pcOptions = [
+  { label: 'Новая доска', key: 'add-board' },
+  { type: 'divider', key: 'd1' },
+  { label: 'Переименовать', key: 'rename' },
+  { label: 'Удалить проект', key: 'delete' },
+]
+function onProjectCtx(e) {
+  pcShow.value = false
+  pcX.value = e.clientX
+  pcY.value = e.clientY
+  nextTick(() => (pcShow.value = true))
+}
+function onProjectCtxSelect(key) {
+  pcShow.value = false
+  if (key === 'add-board') startAddBoard()
+  else if (key === 'rename') startRename()
+  else if (key === 'delete') remove()
+}
+
+const bcShow = ref(false)
+const bcX = ref(0)
+const bcY = ref(0)
+const bcTarget = ref(null)
+const bcOptions = [
+  { label: 'Открыть', key: 'open' },
+  { label: 'Переименовать', key: 'rename' },
+  { label: 'Удалить доску', key: 'delete' },
+]
+function onBoardCtx(e, b) {
+  bcTarget.value = b
+  bcShow.value = false
+  bcX.value = e.clientX
+  bcY.value = e.clientY
+  nextTick(() => (bcShow.value = true))
+}
+function onBoardCtxSelect(key) {
+  const b = bcTarget.value
+  bcShow.value = false
+  if (!b) return
+  if (key === 'open') router.push(`/board/${b.id}`)
+  else if (key === 'rename') startBoardRename(b)
+  else if (key === 'delete') removeBoard(b)
+}
+
 // inline board creation via the "+" button
 function startAddBoard() {
   expanded.value = true
@@ -137,7 +185,7 @@ async function addBoard() {
 
 <template>
   <div class="project-block">
-    <div class="row project-row">
+    <div class="row project-row" @contextmenu.prevent.stop="onProjectCtx">
       <n-icon
         class="chev"
         :class="{ open: expanded }"
@@ -233,6 +281,7 @@ async function addBoard() {
         class="row board-row"
         :class="{ active: route.params.id === b.id }"
         @click="editingBoardId !== b.id && router.push(`/board/${b.id}`)"
+        @contextmenu.prevent.stop="onBoardCtx($event, b)"
       >
         <n-icon :component="GridOutline" :size="14" />
         <n-input
@@ -280,6 +329,27 @@ async function addBoard() {
       </div>
       <n-text v-if="!boards.length && !addingBoard" depth="3" class="empty">нет досок</n-text>
     </div>
+
+    <n-dropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="pcShow"
+      :x="pcX"
+      :y="pcY"
+      :options="pcOptions"
+      @select="onProjectCtxSelect"
+      @clickoutside="pcShow = false"
+    />
+    <n-dropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="bcShow"
+      :x="bcX"
+      :y="bcY"
+      :options="bcOptions"
+      @select="onBoardCtxSelect"
+      @clickoutside="bcShow = false"
+    />
   </div>
 </template>
 

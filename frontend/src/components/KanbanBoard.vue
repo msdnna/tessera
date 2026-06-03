@@ -635,12 +635,14 @@ watch(
         :tags-map="tagsMap"
         :members-map="membersMap"
         @open="openTask"
+        @changed="onChanged"
       />
 
       <BoardCalendarView
         v-else-if="layout === 'calendar'"
         :tasks="filteredTasks"
         @open="openTask"
+        @changed="onChanged"
       />
 
       <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
@@ -678,6 +680,11 @@ watch(
                 :delay="160"
                 :delay-on-touch-only="true"
                 :touch-start-threshold="6"
+                :force-fallback="true"
+                :scroll="true"
+                :bubble-scroll="true"
+                :scroll-sensitivity="90"
+                :scroll-speed="14"
                 @start="dragging = true"
                 @end="dragging = false"
                 @change="onColChange($event, dcol)"
