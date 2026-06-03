@@ -19,6 +19,9 @@ const props = defineProps({
   subtasks: { type: Array, default: () => [] },
   // Render subtasks as full property cards (vs compact name-only rows).
   subtasksExpanded: { type: Boolean, default: false },
+  // This card is itself a first-level subtask shown below its parent: darker
+  // shade, no nested-subtask cascade, no "create subtask" button.
+  nested: { type: Boolean, default: false },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tags: { type: Array, default: () => [] },
@@ -228,14 +231,15 @@ async function submitAddSub() {
 </script>
 
 <template>
-  <div
-    class="card"
-    :class="{ done }"
-    :style="cardStyle"
-    @click="emit('open', task.id)"
-    @contextmenu.prevent.stop="onCtx"
-  >
-    <div class="card-top">
+  <div class="tw">
+    <div
+      class="card"
+      :class="{ done, nested }"
+      :style="cardStyle"
+      @click="emit('open', task.id)"
+      @contextmenu.prevent.stop="onCtx"
+    >
+      <div class="card-top">
       <span
         class="check"
         :title="done ? 'Выполнено' : 'Отметить выполненной'"
@@ -388,11 +392,13 @@ async function submitAddSub() {
           </div>
         </div>
       </n-popover>
+      </div>
     </div>
+    <!-- /.card -->
 
-    <!-- subtasks as compact sub-cards (reorderable; hold ~0.3s to drag) -->
+    <!-- First-level subtasks cascade below the parent card. -->
     <draggable
-      v-if="subtasks.length"
+      v-if="!nested && subtasks.length"
       :list="subModel"
       :group="'sub-' + task.id"
       item-key="id"
@@ -405,18 +411,17 @@ async function submitAddSub() {
     >
       <template #item="{ element: s }">
         <div>
-          <!-- Expanded: a full property card (like a top-level task). -->
+          <!-- Expanded: a full property card, one shade darker for distinction. -->
           <TaskCard
             v-if="subtasksExpanded"
             :task="s"
             :subtasks="[]"
-            :subtasks-expanded="subtasksExpanded"
+            :nested="true"
             :tags-map="tagsMap"
             :members-map="membersMap"
             :tags="tags"
             :members="members"
             :ws-id="wsId"
-            class="sub-card"
             @open="emit('open', $event)"
             @changed="emit('changed')"
           />
@@ -437,18 +442,20 @@ async function submitAddSub() {
       </template>
     </draggable>
 
-    <div v-if="addingSub" class="sub-add-input" @click.stop>
-      <n-input
-        ref="subInput"
-        v-model:value="newSubTitle"
-        size="tiny"
-        placeholder="Название подзадачи, Enter"
-        @keyup.enter="submitAddSub"
-        @keyup.esc="addingSub = false"
-        @blur="submitAddSub"
-      />
-    </div>
-    <button v-else class="add-sub" @click.stop="startAddSub">＋ Создать подзадачу</button>
+    <template v-if="!nested">
+      <div v-if="addingSub" class="sub-add-input" @click.stop>
+        <n-input
+          ref="subInput"
+          v-model:value="newSubTitle"
+          size="tiny"
+          placeholder="Название подзадачи, Enter"
+          @keyup.enter="submitAddSub"
+          @keyup.esc="addingSub = false"
+          @blur="submitAddSub"
+        />
+      </div>
+      <button v-else class="add-sub" @click.stop="startAddSub">＋ Создать подзадачу</button>
+    </template>
 
     <n-dropdown
       trigger="manual"
@@ -464,18 +471,21 @@ async function submitAddSub() {
 </template>
 
 <style scoped>
-.sub-card {
-  margin: 6px 0 6px 12px;
-  border-left: 2px solid var(--t-border);
+.tw {
+  margin-bottom: 8px;
 }
 .card {
   background: var(--t-surface);
   border: 1px solid var(--t-border);
   border-radius: 8px;
   padding: 8px 10px;
-  margin-bottom: 8px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
+}
+/* A first-level subtask card: one shade darker than its parent. */
+.card.nested {
+  background: var(--t-surface-alt);
+  box-shadow: none;
 }
 .title-edit {
   flex: 1;
@@ -640,12 +650,12 @@ async function submitAddSub() {
   border-radius: 50%;
 }
 
-/* subtasks (less-accent sub-cards) */
+/* First-level subtasks, cascading below the parent card with a slight indent. */
 .subs {
-  margin-top: 8px;
+  margin: 6px 0 0 14px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .subrow {
   display: flex;

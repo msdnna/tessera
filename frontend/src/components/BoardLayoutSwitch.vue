@@ -1,5 +1,5 @@
 <script setup>
-import { NButton, NButtonGroup, NIcon, NTooltip } from 'naive-ui'
+import { NButton, NIcon } from 'naive-ui'
 import { GridOutline, ListOutline, CalendarClearOutline } from '@vicons/ionicons5'
 import { useBoardViewStore } from '@/stores/boardView'
 
@@ -12,17 +12,25 @@ const opts = [
 </script>
 
 <template>
-  <n-button-group size="small">
-    <n-tooltip v-for="o in opts" :key="o.value">
-      <template #trigger>
-        <n-button
-          :type="store.layout === o.value ? 'primary' : 'default'"
-          @click="store.layout = o.value"
-        >
-          <template #icon><n-icon :component="o.icon" /></template>
-        </n-button>
-      </template>
+  <div class="layout-switch">
+    <n-button
+      v-for="o in opts"
+      :key="o.value"
+      text
+      size="small"
+      :type="store.layout === o.value ? 'primary' : 'default'"
+      @click="store.layout = o.value"
+    >
+      <template #icon><n-icon :component="o.icon" /></template>
       {{ o.label }}
-    </n-tooltip>
-  </n-button-group>
+    </n-button>
+  </div>
 </template>
+
+<style scoped>
+.layout-switch {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+</style>

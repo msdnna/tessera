@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.31.1] — 2026-06-03
+- Subtasks now cascade *below* the parent card instead of nesting inside it:
+  collapsed = indented text rows; expanded = full property cards one shade
+  darker than the parent. Subtask cards drop the "create subtask" button (deeper
+  nesting is via the task modal) and don't recurse further on the board.
+- Header layout switcher restyled to icon+text buttons like Теги/Архив, but as
+  flat text buttons (selected one in the primary colour, no hover/active block).
+- Sub-toolbar grouping button is labelled «Группировка» (not the current choice).
+
 ### [0.31.0] — 2026-06-03
 - a reference tracker-style board chrome overhaul (new `stores/boardView.js` bridges the
   board and the global header):

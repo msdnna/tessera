@@ -506,7 +506,7 @@ watch(
           <template #trigger>
             <n-button size="small" quaternary :type="groupMode === 'tag' ? 'primary' : 'default'">
               <template #icon><n-icon :component="AlbumsOutline" /></template>
-              {{ groupMode === 'tag' ? 'По тегам' : 'По статусам' }}
+              Группировка
             </n-button>
           </template>
           <div class="vp">
