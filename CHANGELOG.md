@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.23.1] — 2026-06-03
+- Fix notification badge shape — it's a clean circle for a single digit again
+  (equal min-width/height + pill radius) instead of an oval.
+
 ### [0.23.0] — 2026-06-03
 - Sidebar tools (notifications, members, appearance) moved to the top of the
   sidebar, right of the logo; the user block stays at the bottom.

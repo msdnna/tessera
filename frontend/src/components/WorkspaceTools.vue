@@ -125,13 +125,17 @@ function fmtTime(d) {
   align-items: center;
   gap: 2px;
 }
-/* Smaller notification badge so it doesn't rival the bell icon's size. */
+/* Smaller notification badge so it doesn't rival the bell icon's size.
+   Equal min-width/height + a pill radius keeps it a clean circle for a single
+   digit (and a neat pill for "9+"). */
 .bell-badge :deep(.n-badge-sup) {
-  height: 14px;
-  min-width: 14px;
+  height: 16px;
+  min-width: 16px;
   padding: 0 4px;
-  font-size: 9px;
-  line-height: 14px;
+  box-sizing: border-box;
+  font-size: 10px;
+  line-height: 16px;
+  border-radius: 999px;
 }
 .appearance {
   width: 200px;
