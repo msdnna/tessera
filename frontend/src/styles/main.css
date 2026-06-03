@@ -72,6 +72,15 @@ body {
   min-height: 6px;
 }
 
+/* Links inside rendered Markdown (description preview, comments). */
+.md a {
+  color: var(--t-primary);
+  text-decoration: none;
+}
+.md a:hover {
+  text-decoration: underline;
+}
+
 /* @-mention chip in rendered task descriptions / comments. */
 .mention {
   color: var(--t-primary);

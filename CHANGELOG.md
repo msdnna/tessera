@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.27.0] — 2026-06-03
+- Markdown editor polish: it now shares the modal's background seamlessly (no
+  boxed textarea). Formatting moved to a floating toolbar that appears above the
+  selected text (bold/italic/strike/code/heading/list/quote/link); «Написать» /
+  «Просмотр» stay as flat underline tabs.
+- The link button no longer opens a JS prompt — it inserts a `[text](https://)`
+  skeleton and drops the caret after `https://` to keep typing the address.
+- Comments: the editor is full-width with «Отправить» moved below it (it no
+  longer squeezes the input).
+- Links in the Markdown preview / comments are themed (primary colour, underline
+  on hover) instead of default browser blue.
+
 ### [0.26.0] — 2026-06-03
 - Editor rework: replaced TipTap (broke under the dark theme, toolbar/commands
   unresponsive, heavy bundle) with a theme-native `MarkdownEditor` —

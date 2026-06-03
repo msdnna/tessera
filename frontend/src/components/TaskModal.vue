@@ -1368,12 +1368,13 @@ function eventText(e) {
 }
 .comment-add {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   align-items: flex-end;
   margin-top: 4px;
 }
-.comment-add .n-input {
-  flex: 1;
+.comment-add > :first-child {
+  width: 100%;
 }
 .empty-hint {
   font-size: 13px;
