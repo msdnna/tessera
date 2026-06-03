@@ -197,6 +197,50 @@ let suppressReloadUntil = 0
 function suppress() {
   suppressReloadUntil = Date.now() + 1500
 }
+
+// ── custom edge auto-scroll during drag ──
+// Sortable's built-in auto-scroll doesn't reliably scroll a nested horizontal
+// container on touch, so we drive it ourselves from the pointer's X position.
+const EDGE = 64 // px from a board edge that triggers scrolling
+let edgeRAF = null
+let pointerX = null
+function onDragPointer(e) {
+  pointerX = e.touches ? e.touches[0]?.clientX : e.clientX
+}
+function autoScrollTick() {
+  const el = boardScroll.value
+  if (dragging && el && pointerX != null) {
+    const rect = el.getBoundingClientRect()
+    let dx = 0
+    if (pointerX < rect.left + EDGE) dx = pointerX - (rect.left + EDGE)
+    else if (pointerX > rect.right - EDGE) dx = pointerX - (rect.right - EDGE)
+    if (dx !== 0) {
+      // Scale speed with how far into the edge zone the pointer is (cap 22px).
+      const speed = Math.sign(dx) * Math.min(22, 4 + Math.abs(dx) / 4)
+      el.scrollLeft += speed
+    }
+  }
+  edgeRAF = requestAnimationFrame(autoScrollTick)
+}
+function onDragStart() {
+  dragging = true
+  pointerX = null
+  window.addEventListener('pointermove', onDragPointer, { passive: true })
+  window.addEventListener('touchmove', onDragPointer, { passive: true })
+  window.addEventListener('dragover', onDragPointer, { passive: true })
+  if (!edgeRAF) edgeRAF = requestAnimationFrame(autoScrollTick)
+}
+function onDragEnd() {
+  dragging = false
+  pointerX = null
+  window.removeEventListener('pointermove', onDragPointer)
+  window.removeEventListener('touchmove', onDragPointer)
+  window.removeEventListener('dragover', onDragPointer)
+  if (edgeRAF) {
+    cancelAnimationFrame(edgeRAF)
+    edgeRAF = null
+  }
+}
 let reloadTimer = null
 function scheduleReload() {
   clearTimeout(reloadTimer)
@@ -478,6 +522,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
+  onDragEnd()
   boardViewStore.reset()
 })
 watch(
@@ -631,6 +676,7 @@ watch(
       <BoardListView
         v-if="layout === 'list'"
         :columns="displayColumns"
+        :status-columns="columns"
         :lists="lists"
         :tags-map="tagsMap"
         :members-map="membersMap"
@@ -641,6 +687,7 @@ watch(
       <BoardCalendarView
         v-else-if="layout === 'calendar'"
         :tasks="filteredTasks"
+        :status-columns="columns"
         @open="openTask"
         @changed="onChanged"
       />
@@ -657,6 +704,8 @@ watch(
           :delay="160"
           :delay-on-touch-only="true"
           :touch-start-threshold="6"
+          @start="onDragStart"
+          @end="onDragEnd"
           @change="onColumnReorder"
         >
           <template #item="{ element: dcol }">
@@ -680,8 +729,8 @@ watch(
                 :delay="160"
                 :delay-on-touch-only="true"
                 :touch-start-threshold="6"
-                @start="dragging = true"
-                @end="dragging = false"
+                @start="onDragStart"
+                @end="onDragEnd"
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element }">
@@ -690,6 +739,7 @@ watch(
                       :task="element"
                       :subtasks="subtasksByParent[element.id] || []"
                       :subtasks-expanded="subtasksExpanded"
+                      :columns="columns"
                       :tags-map="tagsMap"
                       :members-map="membersMap"
                       :tags="tagsList"

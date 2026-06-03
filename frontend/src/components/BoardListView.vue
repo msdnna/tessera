@@ -3,9 +3,11 @@ import { NDropdown } from 'naive-ui'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 
-defineProps({
+const props = defineProps({
   // Grouped, filtered, sorted columns from KanbanBoard: [{ key, name, color }]
   columns: { type: Array, default: () => [] },
+  // Real board status columns [{ id, name }] for the "move to column" menu.
+  statusColumns: { type: Array, default: () => [] },
   // Map column/group key -> task[] (already filtered & sorted).
   lists: { type: Object, default: () => ({}) },
   tagsMap: { type: Object, default: () => ({}) },
@@ -16,6 +18,7 @@ const emit = defineEmits(['open', 'changed'])
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
+  columns: () => props.statusColumns,
 })
 
 function initials(name) {

@@ -6,12 +6,15 @@ import { PRIORITY_COLORS } from '@/styles/tokens'
 
 const props = defineProps({
   tasks: { type: Array, default: () => [] },
+  // Real board status columns [{ id, name }] for the "move to column" menu.
+  statusColumns: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['open', 'changed'])
 
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
+  columns: () => props.statusColumns,
 })
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']

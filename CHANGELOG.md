@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.33.0] — 2026-06-03
+- Custom edge auto-scroll while dragging a card or column: the board scrolls
+  horizontally when the pointer nears either edge (speed scales with depth),
+  driven from pointer/touch/dragover coordinates via requestAnimationFrame — so
+  a card can be dragged onto an off-screen column on touch and desktop alike.
+- "Переместить в колонку →" added to the task context menu (cards, list and
+  calendar rows) as a no-drag way to move a task between columns.
+
 ### [0.32.2] — 2026-06-03
 - Revert all the experimental drag-and-drop tweaks (Sortable scroll options,
   the `dragging`/user-select guard) back to the 0.31.x baseline. The mobile

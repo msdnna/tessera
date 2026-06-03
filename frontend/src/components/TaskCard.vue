@@ -22,6 +22,8 @@ const props = defineProps({
   // This card is itself a first-level subtask shown below its parent: darker
   // shade, no nested-subtask cascade, no "create subtask" button.
   nested: { type: Boolean, default: false },
+  // Board status columns [{ id, name }] for the context-menu "move to column".
+  columns: { type: Array, default: () => [] },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tags: { type: Array, default: () => [] },
@@ -111,6 +113,7 @@ const ctxTarget = ref(null) // task object the menu acts on
 const ctxOptions = computed(() => {
   const t = ctxTarget.value
   const isMain = t && t.id === props.task.id
+  const cols = props.columns.filter((c) => c.id !== t?.column_id)
   return [
     { label: 'Открыть', key: 'open' },
     { label: t?.completed_at ? 'Снять выполнение' : 'Отметить выполненной', key: 'toggle' },
@@ -119,6 +122,15 @@ const ctxOptions = computed(() => {
       key: 'prio',
       children: PRIORITY_LABELS.map((l, i) => ({ label: l, key: 'prio:' + i })),
     },
+    ...(cols.length
+      ? [
+          {
+            label: 'Переместить в колонку',
+            key: 'move',
+            children: cols.map((c) => ({ label: c.name, key: 'col:' + c.id })),
+          },
+        ]
+      : []),
     { type: 'divider', key: 'd1' },
     ...(isMain ? [{ label: 'Создать подзадачу', key: 'subtask' }] : []),
     { label: 'В архив', key: 'archive' },
@@ -150,6 +162,8 @@ async function onCtxSelect(key) {
     if (key === 'toggle') await tasksApi.update(t.id, { ...baseOf(t), completed: !t.completed_at })
     else if (key.startsWith('prio:'))
       await tasksApi.update(t.id, { ...baseOf(t), priority: Number(key.slice(5)) })
+    else if (key.startsWith('col:'))
+      await tasksApi.move(t.id, { column_id: key.slice(4), before_id: null, after_id: null })
     else if (key === 'archive') await tasksApi.archive(t.id)
     else if (key === 'delete') await tasksApi.remove(t.id)
     emit('changed')
