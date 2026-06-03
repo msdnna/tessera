@@ -192,7 +192,7 @@ function openTask(id) {
   showTaskModal.value = true
 }
 
-let dragging = false
+const dragging = ref(false)
 let suppressReloadUntil = 0
 function suppress() {
   suppressReloadUntil = Date.now() + 1500
@@ -450,7 +450,7 @@ function onChanged() {
 
 useRealtime((ev) => {
   if (ev.scope !== wsStore.currentId) return
-  if (dragging || Date.now() < suppressReloadUntil) return
+  if (dragging.value || Date.now() < suppressReloadUntil) return
   scheduleReload()
 })
 
@@ -645,7 +645,7 @@ watch(
         @changed="onChanged"
       />
 
-      <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
+      <div v-else ref="boardScroll" class="board-scroll" :class="{ dragging }" :style="colStyleVars">
         <draggable
           :list="colModel"
           group="columns"
@@ -680,13 +680,13 @@ watch(
                 :delay="160"
                 :delay-on-touch-only="true"
                 :touch-start-threshold="6"
-                :force-fallback="true"
                 :scroll="true"
                 :bubble-scroll="true"
-                :scroll-sensitivity="90"
-                :scroll-speed="14"
+                :scroll-sensitivity="100"
+                :scroll-speed="16"
                 @start="dragging = true"
                 @end="dragging = false"
+                @unchoose="dragging = false"
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element }">
@@ -820,6 +820,12 @@ watch(
   align-items: flex-start;
   overflow-x: auto;
   padding-bottom: 8px;
+}
+/* Never let a drag select card/column text. */
+.board-scroll.dragging,
+.board-scroll.dragging * {
+  user-select: none;
+  -webkit-user-select: none;
 }
 .cols {
   display: flex;

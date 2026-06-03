@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.32.1] — 2026-06-03
+- Revert `forceFallback` on the task lists — it caused card/column text to get
+  selected while dragging on desktop and didn't help touch (Sortable already
+  uses fallback on touch). Kept the auto-scroll tuning and, as a guard, disable
+  text selection on the board while a drag is in progress.
+
 ### [0.32.0] — 2026-06-03
 - Right-click context menus extended across the app: tasks in the List and
   Calendar views (new shared `useTaskMenu` composable), collapsed subtasks on
