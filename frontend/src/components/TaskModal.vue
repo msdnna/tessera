@@ -845,7 +845,9 @@ function eventText(e) {
           </div>
 
           <!-- Subtasks / comments / relations / files / history (#8) -->
-          <n-tabs type="line" size="small" class="detail-tabs">
+          <!-- Keyed by task so the line indicator doesn't slide when switching
+               between a task and its subtask / related task. -->
+          <n-tabs :key="taskId" type="line" size="small" class="detail-tabs">
             <n-tab-pane name="comments">
               <template #tab>
                 Комментарии
@@ -1245,7 +1247,7 @@ function eventText(e) {
 .section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 .slabel {
   font-size: 12px;
@@ -1401,7 +1403,12 @@ function eventText(e) {
 }
 
 .detail-tabs {
-  margin-top: 4px;
+  margin-top: 16px;
+  margin-bottom: 12px;
+}
+/* Breathing room between the tab strip and its content. */
+.detail-tabs :deep(.n-tab-pane) {
+  padding-top: 14px;
 }
 .tab-badge {
   margin-left: 6px;

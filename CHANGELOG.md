@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.29.1] — 2026-06-03
+- The detail tab strip no longer slides its active indicator when navigating
+  between a task and its subtask/related task (tabs reset cleanly per task).
+- More breathing room in the task modal: between «Описание» and its tabs,
+  between the tab strip and its content, and before the footer buttons.
+
 ### [0.29.0] — 2026-06-03
 - Description opens on the «Просмотр» tab when it already has content (empty
   descriptions still open on «Написать» for editing).
