@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.28.0] — 2026-06-03
+- Fix @-mention picker needing the `@` typed twice (it read the lagging
+  modelValue prop instead of the live textarea value) — one `@` now opens it and
+  the inserted mention is clean.
+- Selection toolbar fades/slides in, and its link button uses a themed icon
+  (was a coloured emoji).
+- «Написать»/«Просмотр» tabs restyled to match the modal's bottom tabs
+  (Комментарии/Связи…) for a unified look.
+- Comment «Отправить» moved to the left so it no longer sits under the modal's
+  Сохранить/Отмена buttons.
+
 ### [0.27.0] — 2026-06-03
 - Markdown editor polish: it now shares the modal's background seamlessly (no
   boxed textarea). Formatting moved to a floating toolbar that appears above the

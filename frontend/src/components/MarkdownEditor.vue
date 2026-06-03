@@ -1,5 +1,7 @@
 <script setup>
 import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
+import { NIcon } from 'naive-ui'
+import { LinkOutline } from '@vicons/ionicons5'
 import { renderRich } from '@/utils/markdown'
 
 const props = defineProps({
@@ -85,7 +87,7 @@ const tools = [
   { t: 'H', title: 'Заголовок', fn: () => applyLinePrefix('## ') },
   { t: '•', title: 'Список', fn: () => applyLinePrefix('- ') },
   { t: '❝', title: 'Цитата', fn: () => applyLinePrefix('> ') },
-  { t: '🔗', title: 'Ссылка', fn: insertLink },
+  { icon: LinkOutline, title: 'Ссылка', fn: insertLink },
 ]
 
 // ── selection bubble toolbar ──
@@ -168,7 +170,8 @@ const mentionMatches = computed(() => {
 function detectMention() {
   const el = ta.value
   if (!el || !props.mentionItems.length) return (mq.value = null)
-  const upto = props.modelValue.slice(0, el.selectionStart)
+  // Read the live DOM value: the modelValue prop lags one input behind.
+  const upto = el.value.slice(0, el.selectionStart)
   const m = upto.match(/(^|\s)@([^\s@]*)$/)
   if (m) {
     mq.value = { start: el.selectionStart - m[2].length - 1, query: m[2] }
@@ -180,7 +183,7 @@ function detectMention() {
 function pickMention(item) {
   if (!item || !mq.value) return
   const el = ta.value
-  const val = props.modelValue
+  const val = el.value
   const insert = `@${item.label} `
   const next = val.slice(0, mq.value.start) + insert + val.slice(el.selectionStart)
   if (!picked.value.some((p) => p.id === item.id)) picked.value.push({ ...item })
@@ -272,18 +275,21 @@ defineExpose({ getMentions, clear, focus })
         @blur="onBlur"
       />
 
-      <div v-if="bubble" class="md2-bubble" :style="bubble">
-        <button
-          v-for="b in tools"
-          :key="b.t"
-          type="button"
-          :class="b.cls"
-          :title="b.title"
-          @mousedown.prevent="b.fn"
-        >
-          {{ b.t }}
-        </button>
-      </div>
+      <Transition name="bubble">
+        <div v-if="bubble" class="md2-bubble" :style="bubble">
+          <button
+            v-for="b in tools"
+            :key="b.title"
+            type="button"
+            :class="b.cls"
+            :title="b.title"
+            @mousedown.prevent="b.fn"
+          >
+            <n-icon v-if="b.icon" :component="b.icon" :size="15" />
+            <template v-else>{{ b.t }}</template>
+          </button>
+        </div>
+      </Transition>
 
       <ul v-if="mq && mentionMatches.length" class="md2-mentions">
         <li
@@ -307,25 +313,27 @@ defineExpose({ getMentions, clear, focus })
 .md2 {
   width: 100%;
 }
+/* Mirror the modal's bottom n-tabs (line, small) for a unified look. */
 .md2-tabs {
   display: flex;
-  gap: 14px;
-  margin-bottom: 4px;
+  gap: 18px;
+  margin-bottom: 6px;
 }
 .md2-tabs button {
   border: none;
   background: transparent;
-  color: var(--t-text3);
-  font-size: 12px;
-  padding: 2px 0;
+  color: var(--t-text2);
+  font-size: 14px;
+  padding: 0 0 6px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  transition: color 0.2s ease;
 }
 .md2-tabs button:hover {
-  color: var(--t-text2);
+  color: var(--t-text1);
 }
 .md2-tabs button.active {
-  color: var(--t-text1);
+  color: var(--t-primary);
   border-bottom-color: var(--t-primary);
 }
 .md2-write {
@@ -364,6 +372,9 @@ defineExpose({ getMentions, clear, focus })
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
 }
 .md2-bubble button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 26px;
   height: 26px;
   padding: 0 6px;
@@ -377,6 +388,17 @@ defineExpose({ getMentions, clear, focus })
 }
 .md2-bubble button:hover {
   background: var(--t-hover);
+}
+.bubble-enter-active,
+.bubble-leave-active {
+  transition:
+    opacity 0.12s ease,
+    margin-top 0.12s ease;
+}
+.bubble-enter-from,
+.bubble-leave-to {
+  opacity: 0;
+  margin-top: 4px;
 }
 .md2-bubble button.b {
   font-weight: 700;
