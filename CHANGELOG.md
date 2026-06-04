@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.36.1] — 2026-06-04
+- Project colour picker gains a «без фона» (transparent) swatch — the icon tile
+  then renders with no coloured square (glyph/initials use the text colour), so a
+  custom icon shows on its own. Applied in the row, rail and flyout.
+
 ### [0.36.0] — 2026-06-04
 - Project icons: the picker's grid gains a «＋» with a menu to **search the full
   ionicons5 collection** (lazy-loaded on open; the picked icon is stored as its

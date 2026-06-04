@@ -44,7 +44,13 @@ function openBoard(b) {
     <!-- Project: header + its boards -->
     <template v-if="kind === 'project'">
       <div class="fly-head">
-        <span class="picon" :style="{ background: node.color || 'var(--t-primary)' }">
+        <span
+          class="picon"
+          :class="{ 'picon-bare': node.color === 'transparent' }"
+          :style="{
+            background: node.color === 'transparent' ? 'transparent' : node.color || 'var(--t-primary)',
+          }"
+        >
           <ProjectIcon :icon="node.icon" :initials="initials" :size="12" />
         </span>
         <span class="fly-name">{{ node.name }}</span>
@@ -118,6 +124,9 @@ function openBoard(b) {
   font-size: 10px;
   font-weight: 700;
   flex: none;
+}
+.picon-bare {
+  color: var(--t-text1);
 }
 .fly-name {
   white-space: nowrap;

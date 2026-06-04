@@ -76,7 +76,17 @@ async function removeBoard(b) {
   }
 }
 
-const swatches = ['', '#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
+const swatches = [
+  '',
+  'transparent',
+  '#7c5cff',
+  '#2f80ed',
+  '#0eb0a9',
+  '#18a058',
+  '#f0a020',
+  '#e0533d',
+  '#eb2f96',
+]
 const boards = computed(() => store.boardsByProject[props.project.id] || [])
 const initials = computed(() => (props.project.name || '?').trim().slice(0, 2).toUpperCase())
 
@@ -309,7 +319,10 @@ async function addBoard() {
       />
       <span
         class="picon"
-        :style="{ background: project.color || 'var(--t-primary)' }"
+        :class="{ 'picon-bare': project.color === 'transparent' }"
+        :style="{
+          background: project.color === 'transparent' ? 'transparent' : project.color || 'var(--t-primary)',
+        }"
         @click="toggle"
       >
         <ProjectIcon :icon="project.icon" :initials="initials" :size="13" />
@@ -367,8 +380,9 @@ async function addBoard() {
               v-for="s in swatches"
               :key="s || 'none'"
               class="sw"
-              :class="{ active: s === (project.color || '') }"
-              :style="{ background: s || 'var(--t-border)' }"
+              :class="{ active: s === (project.color || ''), 'sw-bare': s === 'transparent' }"
+              :style="s === 'transparent' ? {} : { background: s || 'var(--t-border)' }"
+              :title="s === 'transparent' ? 'Без фона (для кастомной иконки)' : ''"
               @click="updateField({ color: s })"
             />
           </div>
@@ -567,6 +581,11 @@ async function addBoard() {
   overflow: hidden;
   flex: none;
 }
+/* No coloured square — let a custom icon sit on the panel; keep glyph/initials
+   readable. */
+.picon-bare {
+  color: var(--t-text1);
+}
 .name {
   flex: 1;
   white-space: nowrap;
@@ -651,5 +670,16 @@ async function addBoard() {
 }
 .sw.active {
   border-color: var(--t-text1);
+}
+/* "No background" swatch — a checkerboard so it reads as transparent. */
+.sw-bare {
+  background-color: var(--t-surface);
+  background-image:
+    linear-gradient(45deg, var(--t-border) 25%, transparent 25%, transparent 75%, var(--t-border) 75%),
+    linear-gradient(45deg, var(--t-border) 25%, transparent 25%, transparent 75%, var(--t-border) 75%);
+  background-size: 10px 10px;
+  background-position:
+    0 0,
+    5px 5px;
 }
 </style>

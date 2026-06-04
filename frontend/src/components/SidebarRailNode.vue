@@ -30,7 +30,10 @@ const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUp
         <span
           v-if="kind === 'project'"
           class="picon"
-          :style="{ background: node.color || 'var(--t-primary)' }"
+          :class="{ 'picon-bare': node.color === 'transparent' }"
+          :style="{
+            background: node.color === 'transparent' ? 'transparent' : node.color || 'var(--t-primary)',
+          }"
         >
           <ProjectIcon :icon="node.icon" :initials="initials" :size="15" />
         </span>
@@ -72,6 +75,9 @@ const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUp
   font-size: 11px;
   font-weight: 700;
   flex: none;
+}
+.picon-bare {
+  color: var(--t-text1);
 }
 .gicon {
   display: inline-flex;
