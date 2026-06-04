@@ -651,19 +651,10 @@ watch(
             </n-button>
           </template>
           <div class="vp">
-            <div class="vp-fhead">
-              <n-text depth="3" class="flbl flbl-0">Фильтры</n-text>
-              <n-button
-                v-if="activeFilterCount"
-                text
-                size="tiny"
-                type="primary"
-                @click="resetFilters"
-              >
-                Сбросить
-              </n-button>
+            <div v-if="activeFilterCount" class="vp-fhead">
+              <n-button text size="tiny" type="primary" @click="resetFilters">Сбросить</n-button>
             </div>
-            <n-text depth="3" class="flbl">Срок</n-text>
+            <n-text depth="3" class="flbl flbl-0">Срок</n-text>
             <n-select v-model:value="filters.due" :options="dueOptions" size="small" />
             <n-text depth="3" class="flbl">Приоритет</n-text>
             <n-checkbox-group v-model:value="filters.priorities">
@@ -901,7 +892,7 @@ watch(
 .vp-fhead {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 .flbl {
   font-size: 12px;

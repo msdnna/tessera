@@ -5,6 +5,7 @@ import SearchBar from './SearchBar.vue'
 import WorkspaceTools from './WorkspaceTools.vue'
 import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
 import BoardActions from './BoardActions.vue'
+import BoardMobileMenu from './BoardMobileMenu.vue'
 import { useBoardViewStore } from '@/stores/boardView'
 
 const props = defineProps({
@@ -36,6 +37,8 @@ const onBoard = () => board.active && !props.mobile
 
     <div class="tb-right">
       <BoardActions v-if="onBoard()" />
+      <!-- Mobile board controls: layout + tags + archive in one menu. -->
+      <BoardMobileMenu v-if="mobile && board.active" />
       <!-- When the sidebar is collapsed/narrow, its tools slide over here. -->
       <WorkspaceTools v-if="showTools" placement="bottom-end" />
     </div>

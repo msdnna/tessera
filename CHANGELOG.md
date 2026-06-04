@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.35.0] — 2026-06-04
+- Filters popover: removed the redundant «Фильтры» heading (the «Сбросить» link
+  stays, right-aligned, only when filters are active).
+- Mobile board controls: a new menu button right of the search (`BoardMobileMenu`)
+  opens layout selection (Доска/Список/Календарь, active ticked) plus Теги and
+  Архив — which were previously desktop-only in the header.
+
 ### [0.34.3] — 2026-06-04
 - Grouping control is now a dropdown like Sort (opens the option list straight
   from the toolbar button, active option ticked) instead of an in-popover button
