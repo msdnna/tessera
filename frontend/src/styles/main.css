@@ -72,6 +72,74 @@ body {
   min-height: 6px;
 }
 
+/* Code blocks in rendered Markdown. */
+.md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--t-surface-alt);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.md pre {
+  background: var(--t-surface-alt);
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.md pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+/* highlight.js token palette — mid-tone colours that read on light and dark. */
+.hljs-comment,
+.hljs-quote {
+  color: var(--t-text3);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-doctag,
+.hljs-type,
+.hljs-name {
+  color: #c678dd;
+}
+.hljs-string,
+.hljs-meta-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #98c379;
+}
+.hljs-number,
+.hljs-deletion {
+  color: #d19a66;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: #e06c75;
+}
+.hljs-title,
+.hljs-built_in,
+.hljs-function .hljs-title,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: #61afef;
+}
+.hljs-meta,
+.hljs-comment .hljs-doctag {
+  color: var(--t-text3);
+}
+
 /* Images embedded in rendered Markdown (uploaded into descriptions/comments). */
 .md img {
   max-width: 100%;

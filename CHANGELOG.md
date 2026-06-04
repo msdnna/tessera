@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.38.0] — 2026-06-04
+- Syntax highlighting for fenced code blocks (highlight.js + marked-highlight):
+  json, yaml, python, js/ts, bash, go, sql, html/xml, css, markdown, dockerfile,
+  ini and their aliases. A focused language set keeps the bundle lean; `mermaid`
+  blocks stay plain text for diagram rendering. Themed token palette + base
+  code/pre styling that work in both light and dark.
+
 ### [0.37.0] — 2026-06-04
 - Images in descriptions & comments: the Markdown editor gains an image button,
   plus paste-image and drag-and-drop — each uploads via `/uploads` and inserts
