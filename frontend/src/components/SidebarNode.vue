@@ -15,6 +15,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
+import { useTreeExpand } from '@/composables/useTreeExpand'
 import ProjectRow from './ProjectRow.vue'
 import ProjectIcon from './ProjectIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
@@ -26,8 +27,13 @@ const props = defineProps({
 
 const store = useWorkspacesStore()
 const message = useMessage()
+const tree = useTreeExpand()
 
-const expanded = ref(true)
+// Persisted expand state; groups default open.
+const expanded = computed({
+  get: () => tree.isExpanded(props.group.id, true),
+  set: (v) => tree.setExpanded(props.group.id, v),
+})
 const renaming = ref(false)
 const nameEdit = ref('')
 const renameInput = ref(null)
@@ -275,6 +281,11 @@ async function commitRename() {
   opacity: 1;
 }
 .chev {
+  width: 14px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--t-text3);
   font-size: 12px;
   transition: transform 0.15s;

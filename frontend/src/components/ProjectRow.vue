@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   NIcon,
@@ -25,6 +25,7 @@ import ProjectIcon from './ProjectIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
+import { useTreeExpand } from '@/composables/useTreeExpand'
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -35,8 +36,13 @@ const store = useWorkspacesStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
+const tree = useTreeExpand()
 
-const expanded = ref(false)
+// Persisted expand state; projects default closed.
+const expanded = computed({
+  get: () => tree.isExpanded(props.project.id, false),
+  set: (v) => tree.setExpanded(props.project.id, v),
+})
 const addingBoard = ref(false)
 const newBoardName = ref('')
 const renaming = ref(false)
@@ -190,6 +196,13 @@ function bCancel() {
 }
 onBeforeUnmount(bCancel)
 
+// Restore-expanded projects need their boards loaded (toggle() isn't called).
+onMounted(() => {
+  if (expanded.value && !store.boardsByProject[props.project.id]) {
+    store.loadBoards(props.project.id)
+  }
+})
+
 // inline board creation via the "+" button
 function startAddBoard() {
   expanded.value = true
@@ -303,7 +316,8 @@ async function addBoard() {
         @touchend="bCancel"
         @touchcancel="bCancel"
       >
-        <n-icon :component="GridOutline" :size="14" />
+        <span class="chev-spacer" />
+        <span class="bicon"><n-icon :component="GridOutline" :size="15" /></span>
         <n-input
           v-if="editingBoardId === b.id"
           :ref="(el) => el && (boardEditInput = el)"
@@ -394,6 +408,11 @@ async function addBoard() {
   opacity: 1;
 }
 .chev {
+  width: 14px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--t-text3);
   transition: transform 0.15s;
   font-size: 12px;
@@ -401,12 +420,18 @@ async function addBoard() {
 .chev.open {
   transform: rotate(90deg);
 }
+/* Leaf rows (boards) have no chevron — keep the column so their icon/text line
+   up with rows that do. */
+.chev-spacer {
+  width: 14px;
+  flex: none;
+}
 .picon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 5px;
   color: #fff;
   font-size: 10px;
@@ -414,6 +439,16 @@ async function addBoard() {
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
+  flex: none;
+}
+/* Board (leaf) icon box — same footprint as project/group icons. */
+.bicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--t-text3);
   flex: none;
 }
 /* No coloured square — let a custom icon sit on the panel; keep glyph/initials

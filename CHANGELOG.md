@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.40.0] — 2026-06-04
+- Sidebar tree alignment: fixed-width chevron + icon columns so groups, projects
+  and boards line up at a given level regardless of icon (leaf boards get a
+  chevron-width spacer; group/project/board icon boxes share one footprint).
+- The tree's expand/collapse state now persists across reloads (per node id,
+  localStorage) — groups default open, projects default closed; a restored-open
+  project loads its boards on mount.
+
 ### [0.39.0] — 2026-06-04
 - Hard delete now confirms first (it's irreversible — the task doesn't go to the
   archive): context menus (card / list / calendar) and a new red-ghost «Удалить»
