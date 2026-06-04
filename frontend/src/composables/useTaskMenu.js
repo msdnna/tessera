@@ -1,7 +1,7 @@
 import { ref, computed, unref } from 'vue'
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_LABELS } from '@/styles/tokens'
-import { dragActive } from '@/utils/dnd'
+import { pressMoved } from '@/utils/dnd'
 
 // Reusable right-click menu for a task, shared by the list/calendar views (and
 // usable anywhere a task object is on hand). Callbacks: onOpen(id), onChanged().
@@ -39,7 +39,7 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
   })
 
   function open(e, task) {
-    if (dragActive()) return
+    if (pressMoved()) return
     target.value = task
     show.value = false
     x.value = e.clientX

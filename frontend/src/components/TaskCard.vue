@@ -13,7 +13,7 @@ import {
 } from '@vicons/ionicons5'
 import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
-import { dragActive } from '@/utils/dnd'
+import { pressMoved } from '@/utils/dnd'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -148,7 +148,7 @@ function baseOf(t) {
   }
 }
 function onCtx(e, target) {
-  if (dragActive()) return // a touch drag is underway — don't pop the menu
+  if (pressMoved()) return // the finger moved (a drag) — don't pop the menu
   ctxTarget.value = target || props.task
   ctxShow.value = false
   ctxX.value = e.clientX

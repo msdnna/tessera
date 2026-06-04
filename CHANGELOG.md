@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.33.5] — 2026-06-04
+- Fix the touch context menu never opening: Sortable starts a drag ~160ms into
+  any hold (even without movement), so the previous "is a drag active" guard
+  always suppressed it. Now we track actual finger movement instead — a still
+  long-press opens the menu, a press-and-move drags without opening it.
+
 ### [0.33.4] — 2026-06-04
 - Drag auto-scroll no longer skips a column: it tracks an explicit target column
   index (re-synced when the pointer returns to centre) instead of reading the
