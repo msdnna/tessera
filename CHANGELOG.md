@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.33.1] — 2026-06-04
+- Edge auto-scroll now tracks Sortable's moving drag clone (`.sortable-fallback`)
+  each frame instead of relying on touch/pointer move events, which weren't
+  firing reliably during a touch drag — so the board should auto-scroll toward
+  off-screen columns on mobile. Desktop still uses the dragover X.
+
 ### [0.33.0] — 2026-06-03
 - Custom edge auto-scroll while dragging a card or column: the board scrolls
   horizontally when the pointer nears either edge (speed scales with depth),

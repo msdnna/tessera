@@ -200,23 +200,36 @@ function suppress() {
 
 // ── custom edge auto-scroll during drag ──
 // Sortable's built-in auto-scroll doesn't reliably scroll a nested horizontal
-// container on touch, so we drive it ourselves from the pointer's X position.
-const EDGE = 64 // px from a board edge that triggers scrolling
+// container on touch. Rather than chase flaky move events, we read the position
+// of Sortable's own drag image (`.sortable-fallback` on touch, `.sortable-drag`
+// on desktop) each animation frame, with a dragover fallback for desktop.
+const EDGE = 72 // px from a board edge that triggers scrolling
 let edgeRAF = null
-let pointerX = null
-function onDragPointer(e) {
-  pointerX = e.touches ? e.touches[0]?.clientX : e.clientX
+let pointerX = null // last desktop dragover X (touch uses the drag image)
+function onDragOver(e) {
+  pointerX = e.clientX
+}
+function dragX() {
+  // Touch: the moving clone follows the finger. (On desktop `.sortable-drag` is
+  // the static original, so there we fall back to the dragover X instead.)
+  const clone = document.querySelector('.sortable-fallback')
+  if (clone) {
+    const r = clone.getBoundingClientRect()
+    return r.left + r.width / 2
+  }
+  return pointerX
 }
 function autoScrollTick() {
   const el = boardScroll.value
-  if (dragging && el && pointerX != null) {
+  const px = dragX()
+  if (dragging && el && px != null) {
     const rect = el.getBoundingClientRect()
     let dx = 0
-    if (pointerX < rect.left + EDGE) dx = pointerX - (rect.left + EDGE)
-    else if (pointerX > rect.right - EDGE) dx = pointerX - (rect.right - EDGE)
+    if (px < rect.left + EDGE) dx = px - (rect.left + EDGE)
+    else if (px > rect.right - EDGE) dx = px - (rect.right - EDGE)
     if (dx !== 0) {
-      // Scale speed with how far into the edge zone the pointer is (cap 22px).
-      const speed = Math.sign(dx) * Math.min(22, 4 + Math.abs(dx) / 4)
+      // Scale speed with how far into the edge zone the pointer is (cap 24px).
+      const speed = Math.sign(dx) * Math.min(24, 5 + Math.abs(dx) / 4)
       el.scrollLeft += speed
     }
   }
@@ -225,17 +238,13 @@ function autoScrollTick() {
 function onDragStart() {
   dragging = true
   pointerX = null
-  window.addEventListener('pointermove', onDragPointer, { passive: true })
-  window.addEventListener('touchmove', onDragPointer, { passive: true })
-  window.addEventListener('dragover', onDragPointer, { passive: true })
+  window.addEventListener('dragover', onDragOver, { passive: true })
   if (!edgeRAF) edgeRAF = requestAnimationFrame(autoScrollTick)
 }
 function onDragEnd() {
   dragging = false
   pointerX = null
-  window.removeEventListener('pointermove', onDragPointer)
-  window.removeEventListener('touchmove', onDragPointer)
-  window.removeEventListener('dragover', onDragPointer)
+  window.removeEventListener('dragover', onDragOver)
   if (edgeRAF) {
     cancelAnimationFrame(edgeRAF)
     edgeRAF = null
