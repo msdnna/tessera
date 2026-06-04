@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.41.5] — 2026-06-04
+- Centre the icon-only Архив/Удалить buttons in the mobile modal footer (drop
+  the icon margin reserved for the hidden label).
+
 ### [0.41.4] — 2026-06-04
 - Task modal on mobile: footer buttons stay on one row (Архив/Удалить become
   icon-only when space is tight); the detail tab strip no longer shows naive's

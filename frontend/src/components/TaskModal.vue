@@ -1375,6 +1375,11 @@ function eventText(e) {
   .fbtn-label {
     display: none;
   }
+  /* Icon-only: drop the icon's trailing margin (reserved for the hidden label)
+     so it sits centred. */
+  .footer :deep(.n-button__icon) {
+    margin: 0;
+  }
 }
 
 /* rendered markdown (description + comments) */
