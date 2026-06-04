@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { NIcon, NText } from 'naive-ui'
 import { FolderOutline, GridOutline } from '@vicons/ionicons5'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { iconComponent } from '@/utils/projectIcons'
+import ProjectIcon from './ProjectIcon.vue'
 
 // SidebarFlyout — recursive content for the collapsed-rail hover menu. Renders a
 // group (folder + its nested groups/projects) or a project (icon + its boards).
@@ -25,7 +25,6 @@ const childProjects = computed(() =>
 const boards = computed(() =>
   props.kind === 'project' ? store.boardsByProject[props.node.id] || [] : [],
 )
-const iconComp = computed(() => (props.kind === 'project' ? iconComponent(props.node.icon) : null))
 const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUpperCase())
 
 onMounted(() => {
@@ -46,8 +45,7 @@ function openBoard(b) {
     <template v-if="kind === 'project'">
       <div class="fly-head">
         <span class="picon" :style="{ background: node.color || 'var(--t-primary)' }">
-          <n-icon v-if="iconComp" :component="iconComp" :size="12" />
-          <template v-else>{{ initials }}</template>
+          <ProjectIcon :icon="node.icon" :initials="initials" :size="12" />
         </span>
         <span class="fly-name">{{ node.name }}</span>
       </div>

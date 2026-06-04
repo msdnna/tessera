@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.36.0] — 2026-06-04
+- Project icons: the picker's grid gains a «＋» with a menu to **search the full
+  ionicons5 collection** (lazy-loaded on open; the picked icon is stored as its
+  own SVG markup) or **upload a custom SVG / alpha PNG** (sanitised SVG or a
+  data-URL, capped at 40 KB). New `ProjectIcon` component renders all forms
+  (curated key / inline SVG / image / initials) wherever a project icon shows
+  (row, collapsed rail, flyout). `icon` storage stays a plain string.
+
 ### [0.35.1] — 2026-06-04
 - Calendar now fits the screen: the month grid uses `minmax(0, 1fr)` columns and
   zero-min cells, so a long task title is clipped instead of stretching a column

@@ -1,5 +1,7 @@
-// Curated ionicons5 set for project icons. project.icon stores the `key`;
-// empty → render initials. (No emoji — themed vector icons only.)
+// project.icon can be: '' (→ initials), a curated key (below), raw '<svg…>'
+// markup (an ionicon picked from the full set, or an uploaded SVG), or a
+// 'data:image/…' URL (an uploaded raster icon).
+import DOMPurify from 'dompurify'
 import {
   BriefcaseOutline,
   HomeOutline,
@@ -40,7 +42,21 @@ export const PROJECT_ICONS = [
 
 const BY_KEY = Object.fromEntries(PROJECT_ICONS.map((i) => [i.key, i.component]))
 
-// iconComponent returns the ionicon for a stored key, or null if none/unknown.
+// iconComponent returns the ionicon for a curated key, or null otherwise.
 export function iconComponent(key) {
-  return key ? BY_KEY[key] || null : null
+  return key && BY_KEY[key] ? BY_KEY[key] : null
+}
+
+// Classify a stored icon value so the renderer knows how to draw it.
+export function iconKind(icon) {
+  if (!icon) return 'none'
+  if (icon.startsWith('data:image')) return 'img'
+  if (icon.trimStart().startsWith('<svg')) return 'svg'
+  if (BY_KEY[icon]) return 'curated'
+  return 'none'
+}
+
+// Sanitise SVG markup (uploaded or extracted) before it's rendered via v-html.
+export function sanitizeIconSvg(svg) {
+  return DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } })
 }

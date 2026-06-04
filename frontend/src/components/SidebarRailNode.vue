@@ -2,8 +2,8 @@
 import { ref, computed } from 'vue'
 import { NPopover, NIcon } from 'naive-ui'
 import { FolderOutline } from '@vicons/ionicons5'
-import { iconComponent } from '@/utils/projectIcons'
 import SidebarFlyout from './SidebarFlyout.vue'
+import ProjectIcon from './ProjectIcon.vue'
 
 // One icon in the collapsed rail (a root group or project). Hovering opens a
 // flyout with the navigable subtree (budget-style).
@@ -13,7 +13,6 @@ const props = defineProps({
 })
 
 const show = ref(false)
-const iconComp = computed(() => (props.kind === 'project' ? iconComponent(props.node.icon) : null))
 const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUpperCase())
 </script>
 
@@ -33,8 +32,7 @@ const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUp
           class="picon"
           :style="{ background: node.color || 'var(--t-primary)' }"
         >
-          <n-icon v-if="iconComp" :component="iconComp" :size="15" />
-          <template v-else>{{ initials }}</template>
+          <ProjectIcon :icon="node.icon" :initials="initials" :size="15" />
         </span>
         <span v-else class="gicon">
           <n-icon :component="FolderOutline" :size="18" />
