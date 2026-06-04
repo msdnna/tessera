@@ -170,7 +170,9 @@ function goToday() {
 }
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* minmax(0, 1fr) lets columns shrink below their content so a long task
+     title doesn't blow the grid past the screen (it gets clipped instead). */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 1px;
   background: var(--t-border);
   border: 1px solid var(--t-border);
@@ -187,6 +189,7 @@ function goToday() {
 }
 .cal-cell {
   background: var(--t-surface);
+  min-width: 0;
   min-height: 96px;
   padding: 4px;
   display: flex;

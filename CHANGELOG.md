@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.35.1] — 2026-06-04
+- Calendar now fits the screen: the month grid uses `minmax(0, 1fr)` columns and
+  zero-min cells, so a long task title is clipped instead of stretching a column
+  and pushing the rest off-screen.
+- Mobile sub-toolbar no longer overflows off the right (that stray rounded white
+  edge was the task-search input): button labels are hidden (icons only) and the
+  search fills the remaining width.
+
 ### [0.35.0] — 2026-06-04
 - Filters popover: removed the redundant «Фильтры» heading (the «Сбросить» link
   stays, right-aligned, only when filters are active).

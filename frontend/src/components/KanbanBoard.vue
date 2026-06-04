@@ -626,7 +626,7 @@ watch(
         >
           <n-button size="small" quaternary :type="groupMode === 'tag' ? 'primary' : 'default'">
             <template #icon><n-icon :component="AlbumsOutline" /></template>
-            Группировка
+            <span class="sb-label">Группировка</span>
           </n-button>
         </n-dropdown>
 
@@ -639,7 +639,7 @@ watch(
         >
           <n-button size="small" quaternary>
             <template #icon><n-icon :component="SwapVerticalOutline" /></template>
-            Сортировка
+            <span class="sb-label">Сортировка</span>
           </n-button>
         </n-dropdown>
 
@@ -647,7 +647,9 @@ watch(
           <template #trigger>
             <n-button size="small" quaternary :type="activeFilterCount ? 'primary' : 'default'">
               <template #icon><n-icon :component="FilterOutline" /></template>
-              Фильтры{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
+              <span class="sb-label">Фильтры</span>{{
+                activeFilterCount ? ` (${activeFilterCount})` : ''
+              }}
             </n-button>
           </template>
           <div class="vp">
@@ -877,6 +879,22 @@ watch(
 .task-search {
   width: 220px;
   max-width: 40%;
+}
+/* Mobile: drop the button labels (icons only) and let the search fill the rest,
+   so the sub-toolbar fits the screen instead of overflowing off the right. */
+@media (max-width: 768px) {
+  .sb-label {
+    display: none;
+  }
+  .subbar-spacer {
+    display: none;
+  }
+  .task-search {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    margin-left: 4px;
+  }
 }
 .vp {
   width: 240px;
