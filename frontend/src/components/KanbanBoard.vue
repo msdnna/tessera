@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, h } from 'vue'
 import { useRoute } from 'vue-router'
 import draggable from 'vuedraggable'
 import {
@@ -24,6 +24,7 @@ import {
   FilterOutline,
   GitBranchOutline,
   SearchOutline,
+  CheckmarkOutline,
 } from '@vicons/ionicons5'
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -69,13 +70,25 @@ const sortOptions = [
   { label: 'По приоритету', value: 'priority' },
   { label: 'По сроку', value: 'due' },
 ]
-// Dropdown form (opens straight from the toolbar button); marks the active one.
-const sortMenuOptions = computed(() =>
-  sortOptions.map((o) => ({
-    key: o.value,
-    label: o.value === sortBy.value ? `${o.label}  ✓` : o.label,
-  })),
-)
+// Dropdown form (opens straight from the toolbar button); a right-aligned check
+// icon marks the active option.
+const sortMenuOptions = computed(() => sortOptions.map((o) => ({ key: o.value, label: o.label })))
+function renderSortLabel(option) {
+  const active = option.key === sortBy.value
+  return h(
+    'div',
+    {
+      style:
+        'display:flex;align-items:center;justify-content:space-between;gap:28px;min-width:140px',
+    },
+    [
+      h('span', option.label),
+      active
+        ? h(NIcon, { size: 16, style: 'color:var(--t-primary)' }, { default: () => h(CheckmarkOutline) })
+        : null,
+    ],
+  )
+}
 const dueOptions = [
   { label: 'Все', value: '' },
   { label: 'Просроченные', value: 'overdue' },
@@ -628,6 +641,7 @@ watch(
           trigger="click"
           placement="bottom-start"
           :options="sortMenuOptions"
+          :render-label="renderSortLabel"
           @select="(k) => (sortBy = k)"
         >
           <n-button size="small" quaternary>

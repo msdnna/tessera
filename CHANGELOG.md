@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.34.1] — 2026-06-04
+- Sort dropdown: the active option is now marked with a right-aligned primary
+  check icon (via render-label) instead of a trailing text "✓".
+
 ### [0.34.0] — 2026-06-04
 - Color picker: added the default grey (#9aa0aa, the «К работе» column colour) to
   the column swatches so it isn't lost when recolouring.
