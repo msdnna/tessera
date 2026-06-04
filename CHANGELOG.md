@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.34.2] — 2026-06-04
+- Fix List/Calendar views crashing: `useTaskMenu` received `columns` as a getter
+  function but resolved it with `unref` (which doesn't call functions), so the
+  options computed ran `.filter` on a function and threw on every render. Resolve
+  function / ref / array forms properly. (Regression from 0.33.0.)
+
 ### [0.34.1] — 2026-06-04
 - Sort dropdown: the active option is now marked with a right-aligned primary
   check icon (via render-label) instead of a trailing text "✓".

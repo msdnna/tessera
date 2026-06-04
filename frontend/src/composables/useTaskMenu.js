@@ -12,9 +12,15 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
   const y = ref(0)
   const target = ref(null) // the task object the menu acts on
 
+  // `columns` may be a getter function, a ref, or a plain array.
+  function resolveColumns() {
+    const c = typeof columns === 'function' ? columns() : unref(columns)
+    return c || []
+  }
+
   const options = computed(() => {
     const t = target.value
-    const cols = (unref(columns) || []).filter((c) => c.id !== t?.column_id)
+    const cols = resolveColumns().filter((c) => c.id !== t?.column_id)
     return [
       { label: 'Открыть', key: 'open' },
       { label: t?.completed_at ? 'Снять выполнение' : 'Отметить выполненной', key: 'toggle' },
