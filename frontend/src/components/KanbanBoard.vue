@@ -204,8 +204,10 @@ function suppress() {
 // of Sortable's own drag image (`.sortable-fallback` on touch, `.sortable-drag`
 // on desktop) each animation frame, with a dragover fallback for desktop.
 const EDGE = 72 // px from a board edge that triggers scrolling
+const STEP_COOLDOWN = 600 // ms between one-column steps while held at the edge
 let edgeRAF = null
 let pointerX = null // last desktop dragover X (touch uses the drag image)
+let lastStep = 0
 function onDragOver(e) {
   pointerX = e.clientX
 }
@@ -219,18 +221,33 @@ function dragX() {
   }
   return pointerX
 }
+// Scroll exactly one column in `dir` (-1 left / +1 right), snapping to its start.
+function stepColumn(dir) {
+  const el = boardScroll.value
+  if (!el) return
+  const stride = colWidth.value + GAP
+  const idx = Math.round(el.scrollLeft / stride)
+  const max = el.scrollWidth - el.clientWidth
+  const left = Math.max(0, Math.min(max, (idx + dir) * stride))
+  el.scrollTo({ left, behavior: 'smooth' })
+}
 function autoScrollTick() {
   const el = boardScroll.value
   const px = dragX()
   if (dragging && el && px != null) {
     const rect = el.getBoundingClientRect()
-    let dx = 0
-    if (px < rect.left + EDGE) dx = px - (rect.left + EDGE)
-    else if (px > rect.right - EDGE) dx = px - (rect.right - EDGE)
-    if (dx !== 0) {
-      // Scale speed with how far into the edge zone the pointer is (cap 24px).
-      const speed = Math.sign(dx) * Math.min(24, 5 + Math.abs(dx) / 4)
-      el.scrollLeft += speed
+    let dir = 0
+    if (px < rect.left + EDGE) dir = -1
+    else if (px > rect.right - EDGE) dir = 1
+    if (dir !== 0) {
+      // One column per entry, then one more every cooldown if held at the edge.
+      const now = performance.now()
+      if (now - lastStep > STEP_COOLDOWN) {
+        stepColumn(dir)
+        lastStep = now
+      }
+    } else {
+      lastStep = 0 // left the zone → next entry steps immediately
     }
   }
   edgeRAF = requestAnimationFrame(autoScrollTick)

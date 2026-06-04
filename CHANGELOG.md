@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.33.3] — 2026-06-04
+- Drag auto-scroll now advances one column at a time (smooth snap to the next
+  column) instead of sliding continuously while the pointer sits in the edge
+  zone — one step per entry, then one more every 600ms if held. More intuitive.
+
 ### [0.33.2] — 2026-06-04
 - Mobile drag auto-scroll finally works: the board's mobile `scroll-snap-type:
   x mandatory` + `scroll-behavior: smooth` were reverting the per-frame
