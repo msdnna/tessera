@@ -1092,17 +1092,17 @@ function eventText(e) {
 
       <template #footer>
         <div class="footer">
-          <n-space>
+          <n-space :wrap="false" :size="8">
             <n-button type="primary" ghost @click="onArchiveClick">
               <template #icon><n-icon :component="ArchiveOutline" /></template>
-              В архив
+              <span class="fbtn-label">В архив</span>
             </n-button>
             <n-button type="error" ghost @click="onDeleteClick">
               <template #icon><n-icon :component="TrashOutline" /></template>
-              Удалить
+              <span class="fbtn-label">Удалить</span>
             </n-button>
           </n-space>
-          <n-space>
+          <n-space :wrap="false" :size="8">
             <n-button @click="close">Отмена</n-button>
             <n-button type="primary" @click="save">Сохранить</n-button>
           </n-space>
@@ -1360,6 +1360,21 @@ function eventText(e) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+/* Remove naive's tab-strip scroll shadow (shows in the overflow gutter on
+   mobile where the tabs scroll horizontally). */
+.detail-tabs :deep(.n-tabs-nav-scroll-wrapper)::before,
+.detail-tabs :deep(.n-tabs-nav-scroll-wrapper)::after {
+  box-shadow: none !important;
+}
+/* Mobile: drop the archive/delete labels (icons only) so all four footer
+   buttons fit on one row. */
+@media (max-width: 768px) {
+  .fbtn-label {
+    display: none;
+  }
 }
 
 /* rendered markdown (description + comments) */

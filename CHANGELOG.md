@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.41.4] — 2026-06-04
+- Task modal on mobile: footer buttons stay on one row (Архив/Удалить become
+  icon-only when space is tight); the detail tab strip no longer shows naive's
+  horizontal scroll shadow in the overflow gutter.
+
 ### [0.41.3] — 2026-06-04
 - Childless cards now nest the same way as cards that already have subtasks: no
   dashed «вложить как подзадачу» hint — instead, while a drag is in progress the
