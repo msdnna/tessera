@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.34.3] — 2026-06-04
+- Grouping control is now a dropdown like Sort (opens the option list straight
+  from the toolbar button, active option ticked) instead of an in-popover button
+  group — scales better as grouping modes grow.
+
 ### [0.34.2] — 2026-06-04
 - Fix List/Calendar views crashing: `useTaskMenu` received `columns` as a getter
   function but resolved it with `unref` (which doesn't call functions), so the

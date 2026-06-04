@@ -12,7 +12,6 @@ import {
   NCheckboxGroup,
   NCheckbox,
   NSpace,
-  NButtonGroup,
   NIcon,
   NTooltip,
   NDropdown,
@@ -70,11 +69,15 @@ const sortOptions = [
   { label: 'По приоритету', value: 'priority' },
   { label: 'По сроку', value: 'due' },
 ]
-// Dropdown form (opens straight from the toolbar button); a right-aligned check
-// icon marks the active option.
+// Grouping + sort share a dropdown form (open straight from the toolbar button);
+// a right-aligned check icon marks the active option.
+const groupOptions = [
+  { label: 'По статусам', value: 'status' },
+  { label: 'По тегам', value: 'tag' },
+]
+const groupMenuOptions = computed(() => groupOptions.map((o) => ({ key: o.value, label: o.label })))
 const sortMenuOptions = computed(() => sortOptions.map((o) => ({ key: o.value, label: o.label })))
-function renderSortLabel(option) {
-  const active = option.key === sortBy.value
+function renderCheckLabel(active, label) {
   return h(
     'div',
     {
@@ -82,13 +85,15 @@ function renderSortLabel(option) {
         'display:flex;align-items:center;justify-content:space-between;gap:28px;min-width:140px',
     },
     [
-      h('span', option.label),
+      h('span', label),
       active
         ? h(NIcon, { size: 16, style: 'color:var(--t-primary)' }, { default: () => h(CheckmarkOutline) })
         : null,
     ],
   )
 }
+const renderGroupLabel = (option) => renderCheckLabel(option.key === groupMode.value, option.label)
+const renderSortLabel = (option) => renderCheckLabel(option.key === sortBy.value, option.label)
 const dueOptions = [
   { label: 'Все', value: '' },
   { label: 'Просроченные', value: 'overdue' },
@@ -612,30 +617,18 @@ watch(
            a task-name search on the right. (Layout + Теги/Архив live in the
            global header now.) -->
       <div class="subbar">
-        <n-popover trigger="click" placement="bottom-start">
-          <template #trigger>
-            <n-button size="small" quaternary :type="groupMode === 'tag' ? 'primary' : 'default'">
-              <template #icon><n-icon :component="AlbumsOutline" /></template>
-              Группировка
-            </n-button>
-          </template>
-          <div class="vp">
-            <n-button-group size="small" class="vp-grp">
-              <n-button
-                :type="groupMode === 'status' ? 'primary' : 'default'"
-                @click="groupMode = 'status'"
-              >
-                По статусам
-              </n-button>
-              <n-button
-                :type="groupMode === 'tag' ? 'primary' : 'default'"
-                @click="groupMode = 'tag'"
-              >
-                По тегам
-              </n-button>
-            </n-button-group>
-          </div>
-        </n-popover>
+        <n-dropdown
+          trigger="click"
+          placement="bottom-start"
+          :options="groupMenuOptions"
+          :render-label="renderGroupLabel"
+          @select="(k) => (groupMode = k)"
+        >
+          <n-button size="small" quaternary :type="groupMode === 'tag' ? 'primary' : 'default'">
+            <template #icon><n-icon :component="AlbumsOutline" /></template>
+            Группировка
+          </n-button>
+        </n-dropdown>
 
         <n-dropdown
           trigger="click"
@@ -901,12 +894,6 @@ watch(
   gap: 6px;
   max-height: 70vh;
   overflow-y: auto;
-}
-.vp-grp {
-  display: flex;
-}
-.vp-grp .n-button {
-  flex: 1;
 }
 .vp-div {
   margin: 8px 0 2px;
