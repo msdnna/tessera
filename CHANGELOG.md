@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.41.2] — 2026-06-04
+- Fix duplicated «вложить как подзадачу» / «＋ Создать подзадачу» labels while
+  dragging onto a childless card: the dragged card carries its own add-subtask
+  button and empty nest hint, which Sortable relocates into the drop target.
+  Both are now hidden on the card being dragged (sortable-chosen/ghost/drag/
+  fallback).
+
 ### [0.41.1] — 2026-06-04
 - Fix the glitchy subtask-nesting drag preview: replaced the separate empty
   "sink" dropzone (which rendered the dragged card squished/centered and flashed

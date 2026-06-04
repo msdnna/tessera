@@ -158,6 +158,20 @@ body {
   text-decoration: underline;
 }
 
+/* While a card is being dragged, hide its own "create subtask" button and its
+   empty nest dropzone hint — otherwise Sortable relocates the card (with those
+   labels) into a drop target and they look duplicated. */
+.sortable-ghost .add-sub,
+.sortable-chosen .add-sub,
+.sortable-drag .add-sub,
+.sortable-fallback .add-sub,
+.sortable-ghost .subs.empty,
+.sortable-chosen .subs.empty,
+.sortable-drag .subs.empty,
+.sortable-fallback .subs.empty {
+  display: none !important;
+}
+
 /* @-mention chip in rendered task descriptions / comments. */
 .mention {
   color: var(--t-primary);
