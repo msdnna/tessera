@@ -457,10 +457,10 @@ async function submitAddSub() {
       item-key="id"
       class="subs"
       :class="{
-        stack: subtasksExpanded && subModel.length,
-        list: !subtasksExpanded && subModel.length,
-        empty: !subModel.length,
-        'drop-on': dragging && !subModel.length,
+        stack: subtasksExpanded,
+        list: !subtasksExpanded,
+        collapsed: !subModel.length && !dragging,
+        pending: !subModel.length && dragging,
       }"
       :animation="150"
       :delay="300"
@@ -468,9 +468,6 @@ async function submitAddSub() {
       @click.stop
       @change="onSubChange"
     >
-      <template v-if="dragging && !subModel.length" #header>
-        <span class="nest-hint">＋ вложить как подзадачу</span>
-      </template>
       <template #item="{ element: s, index }">
         <div v-if="subtasksExpanded" class="sub-layer" :style="{ zIndex: 40 - index }">
           <TaskCard
@@ -536,26 +533,20 @@ async function submitAddSub() {
   margin-bottom: 8px;
 }
 /* "Drop to nest" zone — collapsed (and unhittable) until a drag is in progress. */
-/* Empty subtask list: collapsed (unhittable) until a board drag reveals it as a
-   dashed "drop to nest" zone. */
-.subs.empty {
+/* Empty + idle → fully hidden (overrides the list/stack block styling). Empty
+   while a board drag is in progress → keep the block (a small drop area) so a
+   dropped task attaches under the card, same as a card that already has subs. */
+.subs.collapsed {
   height: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
   overflow: hidden;
 }
-.subs.empty.drop-on {
-  height: auto;
-  min-height: 30px;
-  margin-top: 4px;
-  padding: 6px;
-  border: 1px dashed var(--t-border);
-  border-radius: 6px;
-}
-.nest-hint {
-  display: block;
-  text-align: center;
-  font-size: 11px;
-  color: var(--t-text3);
-  pointer-events: none;
+.subs.pending {
+  min-height: 26px;
 }
 .card {
   background: var(--t-surface);

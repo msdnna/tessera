@@ -165,10 +165,10 @@ body {
 .sortable-chosen .add-sub,
 .sortable-drag .add-sub,
 .sortable-fallback .add-sub,
-.sortable-ghost .subs.empty,
-.sortable-chosen .subs.empty,
-.sortable-drag .subs.empty,
-.sortable-fallback .subs.empty {
+.sortable-ghost .subs.pending,
+.sortable-chosen .subs.pending,
+.sortable-drag .subs.pending,
+.sortable-fallback .subs.pending {
   display: none !important;
 }
 

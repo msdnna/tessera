@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.41.3] — 2026-06-04
+- Childless cards now nest the same way as cards that already have subtasks: no
+  dashed «вложить как подзадачу» hint — instead, while a drag is in progress the
+  card shows its (empty) subtask block so the dragged task visibly attaches under
+  it. (The block stays hidden when idle.)
+
 ### [0.41.2] — 2026-06-04
 - Fix duplicated «вложить как подзадачу» / «＋ Создать подзадачу» labels while
   dragging onto a childless card: the dragged card carries its own add-subtask
