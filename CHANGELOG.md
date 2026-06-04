@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.33.6] — 2026-06-04
+- On touch devices the "＋ Создать подзадачу" button is always visible (kept
+  pale) instead of hidden behind hover — fixes the confusing empty space under a
+  card on mobile. Desktop keeps the hover reveal.
+
 ### [0.33.5] — 2026-06-04
 - Fix the touch context menu never opening: Sortable starts a drag ~160ms into
   any hold (even without movement), so the previous "is a drag active" guard

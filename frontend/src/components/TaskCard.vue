@@ -806,4 +806,11 @@ async function submitAddSub() {
 .add-sub:hover {
   background: var(--t-hover);
 }
+/* Touch devices have no hover, so always show it — but kept pale so it reads as
+   secondary to the column's main "+ Создать задачу". */
+@media (hover: none) {
+  .add-sub {
+    opacity: 0.55;
+  }
+}
 </style>
