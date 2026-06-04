@@ -15,6 +15,7 @@ import {
   NButtonGroup,
   NIcon,
   NTooltip,
+  NDropdown,
   useMessage,
 } from 'naive-ui'
 import {
@@ -68,6 +69,13 @@ const sortOptions = [
   { label: 'По приоритету', value: 'priority' },
   { label: 'По сроку', value: 'due' },
 ]
+// Dropdown form (opens straight from the toolbar button); marks the active one.
+const sortMenuOptions = computed(() =>
+  sortOptions.map((o) => ({
+    key: o.value,
+    label: o.value === sortBy.value ? `${o.label}  ✓` : o.label,
+  })),
+)
 const dueOptions = [
   { label: 'Все', value: '' },
   { label: 'Просроченные', value: 'overdue' },
@@ -599,7 +607,6 @@ watch(
             </n-button>
           </template>
           <div class="vp">
-            <n-text depth="3" class="flbl flbl-0">Группировка</n-text>
             <n-button-group size="small" class="vp-grp">
               <n-button
                 :type="groupMode === 'status' ? 'primary' : 'default'"
@@ -617,18 +624,17 @@ watch(
           </div>
         </n-popover>
 
-        <n-popover trigger="click" placement="bottom-start">
-          <template #trigger>
-            <n-button size="small" quaternary>
-              <template #icon><n-icon :component="SwapVerticalOutline" /></template>
-              Сортировка
-            </n-button>
-          </template>
-          <div class="vp">
-            <n-text depth="3" class="flbl flbl-0">Сортировка</n-text>
-            <n-select v-model:value="sortBy" :options="sortOptions" size="small" style="width: 200px" />
-          </div>
-        </n-popover>
+        <n-dropdown
+          trigger="click"
+          placement="bottom-start"
+          :options="sortMenuOptions"
+          @select="(k) => (sortBy = k)"
+        >
+          <n-button size="small" quaternary>
+            <template #icon><n-icon :component="SwapVerticalOutline" /></template>
+            Сортировка
+          </n-button>
+        </n-dropdown>
 
         <n-popover trigger="click" placement="bottom-start">
           <template #trigger>

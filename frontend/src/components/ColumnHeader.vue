@@ -61,7 +61,17 @@ const message = useMessage()
 const renaming = ref(false)
 const nameEdit = ref('')
 const settingsOpen = ref(false)
-const swatches = ['', '#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
+const swatches = [
+  '',
+  '#9aa0aa',
+  '#7c5cff',
+  '#2f80ed',
+  '#0eb0a9',
+  '#18a058',
+  '#f0a020',
+  '#e0533d',
+  '#eb2f96',
+]
 
 function startRename() {
   if (!props.editable) return

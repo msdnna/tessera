@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.34.0] — 2026-06-04
+- Color picker: added the default grey (#9aa0aa, the «К работе» column colour) to
+  the column swatches so it isn't lost when recolouring.
+- Sub-toolbar: dropped the redundant «Группировка» heading inside the grouping
+  popover, and the «Сортировка» button now opens the option list directly
+  (n-dropdown, current choice ticked) instead of a popover-wrapped select.
+- Sidebar context menus now open on a still touch long-press (new `useLongPress`
+  on groups, projects and boards) — moving is a drag, holding opens the menu —
+  fixing the menu never appearing on touch inside the mobile drawer.
+
 ### [0.33.7] — 2026-06-04
 - Mobile: stretch the board columns to fill the screen height (board-scroll gets
   a viewport-based height, columns `align-self: stretch`) so the whole column is

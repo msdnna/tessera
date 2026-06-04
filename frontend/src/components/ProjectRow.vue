@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon, NButton, NInput, NPopover, NPopconfirm, NText, NDropdown, useMessage } from 'naive-ui'
 import {
@@ -14,6 +14,7 @@ import { projects as projApi, boards as boardsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PROJECT_ICONS, iconComponent } from '@/utils/projectIcons'
 import { pressMoved } from '@/utils/dnd'
+import { useLongPress } from '@/composables/useLongPress'
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -162,6 +163,25 @@ function onBoardCtxSelect(key) {
   else if (key === 'delete') removeBoard(b)
 }
 
+// Touch long-press → context menus (the native contextmenu is unreliable on the
+// draggable rows inside the mobile drawer).
+const lpProj = useLongPress(onProjectCtx)
+let bTimer = null
+function bStart(e, b) {
+  const t = e.touches && e.touches[0]
+  if (!t) return
+  const x = t.clientX
+  const y = t.clientY
+  clearTimeout(bTimer)
+  bTimer = setTimeout(() => {
+    if (!pressMoved()) onBoardCtx({ clientX: x, clientY: y }, b)
+  }, 450)
+}
+function bCancel() {
+  clearTimeout(bTimer)
+}
+onBeforeUnmount(bCancel)
+
 // inline board creation via the "+" button
 function startAddBoard() {
   expanded.value = true
@@ -187,7 +207,13 @@ async function addBoard() {
 
 <template>
   <div class="project-block">
-    <div class="row project-row" @contextmenu.prevent.stop="onProjectCtx">
+    <div
+      class="row project-row"
+      @contextmenu.prevent.stop="onProjectCtx"
+      @touchstart.passive="lpProj.start"
+      @touchend="lpProj.cancel"
+      @touchcancel="lpProj.cancel"
+    >
       <n-icon
         class="chev"
         :class="{ open: expanded }"
@@ -284,6 +310,9 @@ async function addBoard() {
         :class="{ active: route.params.id === b.id }"
         @click="editingBoardId !== b.id && router.push(`/board/${b.id}`)"
         @contextmenu.prevent.stop="onBoardCtx($event, b)"
+        @touchstart.passive="bStart($event, b)"
+        @touchend="bCancel"
+        @touchcancel="bCancel"
       >
         <n-icon :component="GridOutline" :size="14" />
         <n-input

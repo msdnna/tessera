@@ -14,6 +14,7 @@ import { workspaces as wsApi, groups as groupsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
 import { pressMoved } from '@/utils/dnd'
+import { useLongPress } from '@/composables/useLongPress'
 import ProjectRow from './ProjectRow.vue'
 
 const props = defineProps({
@@ -48,6 +49,7 @@ function onCtx(e) {
   ctxY.value = e.clientY
   nextTick(() => (ctxShow.value = true))
 }
+const lp = useLongPress(onCtx)
 function onCtxSelect(key) {
   ctxShow.value = false
   if (key === 'add-project') onAdd('project')
@@ -118,7 +120,13 @@ async function commitRename() {
 
 <template>
   <div class="group-node">
-    <div class="row group-row" @contextmenu.prevent.stop="onCtx">
+    <div
+      class="row group-row"
+      @contextmenu.prevent.stop="onCtx"
+      @touchstart.passive="lp.start"
+      @touchend="lp.cancel"
+      @touchcancel="lp.cancel"
+    >
       <n-icon
         class="chev"
         :class="{ open: expanded }"
