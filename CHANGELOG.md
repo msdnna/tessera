@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.39.0] — 2026-06-04
+- Hard delete now confirms first (it's irreversible — the task doesn't go to the
+  archive): context menus (card / list / calendar) and a new red-ghost «Удалить»
+  button in the task modal all show a confirmation dialog. The modal's «В архив»
+  is now primary-ghost (was red).
+- Sidebar tree: boards under a project now use the same gutter line as
+  group→child, so the whole tree shares one indentation style.
+- Groups get an icon + colour: extracted a shared `IconColorPicker` (used by
+  projects and groups). Group picker has the curated grid + ionicons search (no
+  upload), and a colour picker defaulting to transparent; the default icon stays
+  the folder. Project picker keeps SVG/PNG upload.
+
 ### [0.38.0] — 2026-06-04
 - Syntax highlighting for fenced code blocks (highlight.js + marked-highlight):
   json, yaml, python, js/ts, bash, go, sql, html/xml, css, markdown, dockerfile,
@@ -629,6 +641,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.17.0] — 2026-06-04
+- Project groups gain `icon` and `color` (migration 0008); `PATCH /groups/:id`
+  now accepts them alongside the name.
 
 ### [0.16.0] — 2026-06-04
 - Inline image upload for descriptions/comments: `POST /api/uploads` (authed,

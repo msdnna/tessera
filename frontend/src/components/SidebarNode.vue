@@ -16,6 +16,8 @@ import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDn
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import ProjectRow from './ProjectRow.vue'
+import ProjectIcon from './ProjectIcon.vue'
+import IconColorPicker from './IconColorPicker.vue'
 
 const props = defineProps({
   group: { type: Object, required: true },
@@ -56,6 +58,23 @@ function onCtxSelect(key) {
   else if (key === 'add-group') onAdd('group')
   else if (key === 'rename') startRename()
   else if (key === 'delete') remove()
+}
+
+const initials = computed(() => (props.group.name || '?').trim().slice(0, 2).toUpperCase())
+
+// Update preserves all fields (handler replaces name/icon/color together).
+async function applyGroup(patch) {
+  try {
+    await groupsApi.update(props.group.id, {
+      name: props.group.name,
+      icon: props.group.icon || '',
+      color: props.group.color || '',
+      ...patch,
+    })
+    await store.refresh()
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 
 const subgroups = computed(() => store.childGroups(props.group.id))
@@ -109,12 +128,7 @@ async function commitRename() {
   renaming.value = false
   const n = nameEdit.value.trim()
   if (!n || n === props.group.name) return
-  try {
-    await groupsApi.update(props.group.id, { name: n })
-    await store.refresh()
-  } catch (e) {
-    message.error(e.message)
-  }
+  await applyGroup({ name: n })
 }
 </script>
 
@@ -133,7 +147,17 @@ async function commitRename() {
         :component="ChevronForwardOutline"
         @click="expanded = !expanded"
       />
-      <n-icon :component="FolderOutline" :size="16" class="folder" @click="expanded = !expanded" />
+      <span
+        class="gicon"
+        :class="{ 'gicon-bare': !group.color || group.color === 'transparent' }"
+        :style="{
+          background: group.color && group.color !== 'transparent' ? group.color : 'transparent',
+        }"
+        @click="expanded = !expanded"
+      >
+        <ProjectIcon v-if="group.icon" :icon="group.icon" :initials="initials" :size="15" />
+        <n-icon v-else :component="FolderOutline" :size="16" />
+      </span>
       <n-input
         v-if="renaming"
         ref="renameInput"
@@ -157,6 +181,15 @@ async function commitRename() {
           </n-button>
         </template>
         <div class="gsettings">
+          <IconColorPicker
+            :icon="group.icon"
+            :color="group.color"
+            :initials="initials"
+            fallback-folder
+            transparent-default
+            @update:icon="applyGroup({ icon: $event })"
+            @update:color="applyGroup({ color: $event })"
+          />
           <n-button size="small" block @click="startRename">
             <template #icon><n-icon :component="CreateOutline" /></template>
             Переименовать
@@ -249,9 +282,18 @@ async function commitRename() {
 .chev.open {
   transform: rotate(90deg);
 }
-.folder {
-  color: var(--t-text2);
+.gicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: #fff;
   flex: none;
+}
+.gicon-bare {
+  color: var(--t-text2);
 }
 .name {
   flex: 1;

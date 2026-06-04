@@ -47,6 +47,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
+import { confirmHardDelete } from '@/utils/confirm'
 import TaskMiniCard from './TaskMiniCard.vue'
 
 const props = defineProps({
@@ -323,6 +324,16 @@ function onArchiveClick() {
     onPositiveClick: () => archiveTask(false),
     onNegativeClick: hasSubs ? () => archiveTask(true) : undefined,
   })
+}
+async function onDeleteClick() {
+  if (!(await confirmHardDelete(dialog))) return
+  try {
+    await tasksApi.remove(props.taskId)
+    emit('changed')
+    close()
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 
 // ── transfer to another board (via the breadcrumb) ──
@@ -1082,9 +1093,13 @@ function eventText(e) {
       <template #footer>
         <div class="footer">
           <n-space>
-            <n-button type="error" ghost @click="onArchiveClick">
+            <n-button type="primary" ghost @click="onArchiveClick">
               <template #icon><n-icon :component="ArchiveOutline" /></template>
               В архив
+            </n-button>
+            <n-button type="error" ghost @click="onDeleteClick">
+              <template #icon><n-icon :component="TrashOutline" /></template>
+              Удалить
             </n-button>
           </n-space>
           <n-space>

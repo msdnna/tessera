@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount, h, render } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   NIcon,
@@ -9,8 +9,6 @@ import {
   NPopconfirm,
   NText,
   NDropdown,
-  NModal,
-  NCard,
   useMessage,
 } from 'naive-ui'
 import {
@@ -23,8 +21,8 @@ import {
 } from '@vicons/ionicons5'
 import { projects as projApi, boards as boardsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { PROJECT_ICONS, sanitizeIconSvg } from '@/utils/projectIcons'
 import ProjectIcon from './ProjectIcon.vue'
+import IconColorPicker from './IconColorPicker.vue'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 
@@ -76,95 +74,8 @@ async function removeBoard(b) {
   }
 }
 
-const swatches = [
-  '',
-  'transparent',
-  '#7c5cff',
-  '#2f80ed',
-  '#0eb0a9',
-  '#18a058',
-  '#f0a020',
-  '#e0533d',
-  '#eb2f96',
-]
 const boards = computed(() => store.boardsByProject[props.project.id] || [])
 const initials = computed(() => (props.project.name || '?').trim().slice(0, 2).toUpperCase())
-
-// ── icon picker: search the full ionicons5 set / upload SVG or PNG ──
-const addIconOptions = [
-  { label: 'Найти иконку', key: 'search' },
-  { label: 'Загрузить SVG / PNG', key: 'upload' },
-]
-const iconFileInput = ref(null)
-const iconSearchShow = ref(false)
-const iconQuery = ref('')
-const allIcons = ref([]) // [{ name, comp }] — lazily loaded
-const iconsLoading = ref(false)
-const MAX_ICON = 40 * 1024
-
-function onAddIcon(key) {
-  if (key === 'search') openIconSearch()
-  else if (key === 'upload') iconFileInput.value?.click?.()
-}
-async function openIconSearch() {
-  iconSearchShow.value = true
-  if (allIcons.value.length) return
-  iconsLoading.value = true
-  try {
-    const mod = await import('@vicons/ionicons5')
-    allIcons.value = Object.entries(mod)
-      .filter(([name, c]) => name !== 'default' && c)
-      .map(([name, comp]) => ({ name, comp }))
-  } catch (e) {
-    message.error(e.message)
-  } finally {
-    iconsLoading.value = false
-  }
-}
-const iconResults = computed(() => {
-  const q = iconQuery.value.trim().toLowerCase()
-  const list = q ? allIcons.value.filter((i) => i.name.toLowerCase().includes(q)) : allIcons.value
-  return list.slice(0, 90)
-})
-// Render an icon component off-DOM to grab its <svg> markup, so we can store a
-// self-contained icon (no need to ship the whole icon set at render time).
-function extractSvg(comp) {
-  const div = document.createElement('div')
-  render(h(comp), div)
-  const svg = div.querySelector('svg')
-  const markup = svg ? svg.outerHTML : ''
-  render(null, div)
-  return markup
-}
-function pickIcon(comp) {
-  const svg = sanitizeIconSvg(extractSvg(comp))
-  if (!svg) return
-  iconSearchShow.value = false
-  updateField({ icon: svg })
-}
-function onIconFile(e) {
-  const file = e.target.files && e.target.files[0]
-  e.target.value = ''
-  if (!file) return
-  const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')
-  const isPng = file.type === 'image/png'
-  if (!isSvg && !isPng) {
-    message.warning('Поддерживаются только SVG или PNG')
-    return
-  }
-  const reader = new FileReader()
-  reader.onload = () => {
-    let icon = String(reader.result || '')
-    if (isSvg) icon = sanitizeIconSvg(icon)
-    if (!icon || icon.length > MAX_ICON) {
-      message.warning('Файл повреждён или слишком большой (макс. 40 КБ)')
-      return
-    }
-    updateField({ icon })
-  }
-  if (isSvg) reader.readAsText(file)
-  else reader.readAsDataURL(file)
-}
 
 async function toggle() {
   expanded.value = !expanded.value
@@ -353,39 +264,14 @@ async function addBoard() {
           </n-button>
         </template>
         <div class="settings">
-          <div class="icons">
-            <button
-              class="ic"
-              :class="{ active: !project.icon }"
-              title="Инициалы"
-              @click="updateField({ icon: '' })"
-            >
-              {{ initials }}
-            </button>
-            <button
-              v-for="i in PROJECT_ICONS"
-              :key="i.key"
-              class="ic"
-              :class="{ active: project.icon === i.key }"
-              @click="updateField({ icon: i.key })"
-            >
-              <n-icon :component="i.component" :size="16" />
-            </button>
-            <n-dropdown trigger="click" :options="addIconOptions" @select="onAddIcon">
-              <button class="ic ic-more" title="Ещё иконки: поиск или загрузка">＋</button>
-            </n-dropdown>
-          </div>
-          <div class="swatches">
-            <button
-              v-for="s in swatches"
-              :key="s || 'none'"
-              class="sw"
-              :class="{ active: s === (project.color || ''), 'sw-bare': s === 'transparent' }"
-              :style="s === 'transparent' ? {} : { background: s || 'var(--t-border)' }"
-              :title="s === 'transparent' ? 'Без фона (для кастомной иконки)' : ''"
-              @click="updateField({ color: s })"
-            />
-          </div>
+          <IconColorPicker
+            :icon="project.icon"
+            :color="project.color"
+            :initials="initials"
+            allow-upload
+            @update:icon="updateField({ icon: $event })"
+            @update:color="updateField({ color: $event })"
+          />
           <div class="action-row">
             <n-button size="small" @click="startRename">
               <template #icon><n-icon :component="CreateOutline" /></template>
@@ -484,59 +370,8 @@ async function addBoard() {
       @select="onBoardCtxSelect"
       @clickoutside="bcShow = false"
     />
-
-    <input
-      ref="iconFileInput"
-      type="file"
-      accept="image/svg+xml,image/png"
-      hidden
-      @change="onIconFile"
-    />
-    <n-modal v-model:show="iconSearchShow">
-      <n-card title="Иконка из коллекции" style="max-width: 440px" role="dialog">
-        <n-input
-          v-model:value="iconQuery"
-          placeholder="Поиск по названию (англ.): home, code, rocket…"
-          clearable
-        />
-        <div v-if="iconsLoading" class="icon-hint">Загрузка коллекции…</div>
-        <div v-else-if="!iconResults.length" class="icon-hint">Ничего не найдено</div>
-        <div v-else class="icon-grid">
-          <button
-            v-for="i in iconResults"
-            :key="i.name"
-            class="ic"
-            :title="i.name"
-            @click="pickIcon(i.comp)"
-          >
-            <n-icon :component="i.comp" :size="18" />
-          </button>
-        </div>
-      </n-card>
-    </n-modal>
   </div>
 </template>
-
-<style scoped>
-.ic-more {
-  font-size: 18px;
-  font-weight: 400;
-}
-.icon-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 6px;
-  max-height: 320px;
-  overflow-y: auto;
-  margin-top: 12px;
-}
-.icon-hint {
-  margin-top: 12px;
-  font-size: 13px;
-  color: var(--t-text3);
-  text-align: center;
-}
-</style>
 
 <style scoped>
 .row {
@@ -593,8 +428,12 @@ async function addBoard() {
   text-overflow: ellipsis;
   color: var(--t-text1);
 }
+/* Match the group→child gutter (SidebarNode .children) so the whole tree shares
+   one indentation style. */
 .boards {
-  padding-left: 18px;
+  margin-left: 15px;
+  padding-left: 6px;
+  border-left: 1px solid var(--t-border);
 }
 .board-row {
   font-size: 13px;
@@ -627,59 +466,5 @@ async function addBoard() {
   flex-direction: column;
   gap: 8px;
   width: 190px;
-}
-.icons {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-}
-.ic {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--t-border);
-  background: var(--t-surface);
-  color: var(--t-text2);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  line-height: 1;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-}
-.ic.active {
-  border-color: var(--t-primary);
-  color: var(--t-primary);
-}
-.swatches {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-}
-.sw {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-}
-.sw.active {
-  border-color: var(--t-text1);
-}
-/* "No background" swatch — a checkerboard so it reads as transparent. */
-.sw-bare {
-  background-color: var(--t-surface);
-  background-image:
-    linear-gradient(45deg, var(--t-border) 25%, transparent 25%, transparent 75%, var(--t-border) 75%),
-    linear-gradient(45deg, var(--t-border) 25%, transparent 25%, transparent 75%, var(--t-border) 75%);
-  background-size: 10px 10px;
-  background-position:
-    0 0,
-    5px 5px;
 }
 </style>

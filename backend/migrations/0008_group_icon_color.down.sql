@@ -1,0 +1,1 @@
+ALTER TABLE project_groups DROP COLUMN IF EXISTS icon, DROP COLUMN IF EXISTS color;

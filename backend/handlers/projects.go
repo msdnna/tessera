@@ -62,13 +62,17 @@ func (h *API) UpdateProjectGroup(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name string `json:"name" binding:"required"`
+		Name  string `json:"name" binding:"required"`
+		Icon  string `json:"icon"`
+		Color string `json:"color"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	updated, err := h.q.UpdateProjectGroup(c, db.UpdateProjectGroupParams{ID: g.ID, Name: req.Name})
+	updated, err := h.q.UpdateProjectGroup(c, db.UpdateProjectGroupParams{
+		ID: g.ID, Name: req.Name, Icon: req.Icon, Color: req.Color,
+	})
 	if err != nil {
 		fail(c)
 		return

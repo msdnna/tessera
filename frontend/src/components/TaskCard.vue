@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import draggable from 'vuedraggable'
-import { NIcon, NPopover, NDatePicker, NInput, NDropdown } from 'naive-ui'
+import { NIcon, NPopover, NDatePicker, NInput, NDropdown, useDialog } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
@@ -14,6 +14,7 @@ import {
 import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { pressMoved } from '@/utils/dnd'
+import { confirmHardDelete } from '@/utils/confirm'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -32,6 +33,7 @@ const props = defineProps({
   wsId: { type: String, default: null },
 })
 const emit = defineEmits(['open', 'changed'])
+const dialog = useDialog()
 
 const newTagName = ref('')
 const editingTitle = ref(false)
@@ -160,6 +162,9 @@ async function onCtxSelect(key) {
   ctxShow.value = false
   if (key === 'open') return emit('open', t.id)
   if (key === 'subtask') return startAddSub()
+  if (key === 'delete') {
+    if (!(await confirmHardDelete(dialog))) return
+  }
   try {
     if (key === 'toggle') await tasksApi.update(t.id, { ...baseOf(t), completed: !t.completed_at })
     else if (key.startsWith('prio:'))

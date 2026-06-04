@@ -81,6 +81,8 @@ type ProjectGroup struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	ParentID    *uuid.UUID `json:"parent_id"`
+	Icon        string     `json:"icon"`
+	Color       string     `json:"color"`
 }
 
 type RefreshToken struct {

@@ -14,7 +14,7 @@ import (
 const createProjectGroup = `-- name: CreateProjectGroup :one
 INSERT INTO project_groups (workspace_id, parent_id, name, position)
 VALUES ($1, $2, $3, $4)
-RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id
+RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id, icon, color
 `
 
 type CreateProjectGroupParams struct {
@@ -40,6 +40,8 @@ func (q *Queries) CreateProjectGroup(ctx context.Context, arg CreateProjectGroup
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentID,
+		&i.Icon,
+		&i.Color,
 	)
 	return i, err
 }
@@ -54,7 +56,7 @@ func (q *Queries) DeleteProjectGroup(ctx context.Context, id uuid.UUID) error {
 }
 
 const getProjectGroup = `-- name: GetProjectGroup :one
-SELECT id, workspace_id, name, position, created_at, updated_at, parent_id FROM project_groups WHERE id = $1
+SELECT id, workspace_id, name, position, created_at, updated_at, parent_id, icon, color FROM project_groups WHERE id = $1
 `
 
 func (q *Queries) GetProjectGroup(ctx context.Context, id uuid.UUID) (ProjectGroup, error) {
@@ -68,12 +70,14 @@ func (q *Queries) GetProjectGroup(ctx context.Context, id uuid.UUID) (ProjectGro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentID,
+		&i.Icon,
+		&i.Color,
 	)
 	return i, err
 }
 
 const listProjectGroups = `-- name: ListProjectGroups :many
-SELECT id, workspace_id, name, position, created_at, updated_at, parent_id FROM project_groups WHERE workspace_id = $1 ORDER BY position
+SELECT id, workspace_id, name, position, created_at, updated_at, parent_id, icon, color FROM project_groups WHERE workspace_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListProjectGroups(ctx context.Context, workspaceID uuid.UUID) ([]ProjectGroup, error) {
@@ -93,6 +97,8 @@ func (q *Queries) ListProjectGroups(ctx context.Context, workspaceID uuid.UUID) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParentID,
+			&i.Icon,
+			&i.Color,
 		); err != nil {
 			return nil, err
 		}
@@ -119,7 +125,7 @@ const moveProjectGroup = `-- name: MoveProjectGroup :one
 UPDATE project_groups
 SET parent_id = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id
+RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id, icon, color
 `
 
 type MoveProjectGroupParams struct {
@@ -139,24 +145,33 @@ func (q *Queries) MoveProjectGroup(ctx context.Context, arg MoveProjectGroupPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentID,
+		&i.Icon,
+		&i.Color,
 	)
 	return i, err
 }
 
 const updateProjectGroup = `-- name: UpdateProjectGroup :one
 UPDATE project_groups
-SET name = $2, updated_at = now()
+SET name = $2, icon = $3, color = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id
+RETURNING id, workspace_id, name, position, created_at, updated_at, parent_id, icon, color
 `
 
 type UpdateProjectGroupParams struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Icon  string    `json:"icon"`
+	Color string    `json:"color"`
 }
 
 func (q *Queries) UpdateProjectGroup(ctx context.Context, arg UpdateProjectGroupParams) (ProjectGroup, error) {
-	row := q.db.QueryRow(ctx, updateProjectGroup, arg.ID, arg.Name)
+	row := q.db.QueryRow(ctx, updateProjectGroup,
+		arg.ID,
+		arg.Name,
+		arg.Icon,
+		arg.Color,
+	)
 	var i ProjectGroup
 	err := row.Scan(
 		&i.ID,
@@ -166,6 +181,8 @@ func (q *Queries) UpdateProjectGroup(ctx context.Context, arg UpdateProjectGroup
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentID,
+		&i.Icon,
+		&i.Color,
 	)
 	return i, err
 }

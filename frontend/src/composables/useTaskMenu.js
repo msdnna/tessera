@@ -1,12 +1,15 @@
 import { ref, computed, unref } from 'vue'
+import { useDialog } from 'naive-ui'
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { pressMoved } from '@/utils/dnd'
+import { confirmHardDelete } from '@/utils/confirm'
 
 // Reusable right-click menu for a task, shared by the list/calendar views (and
 // usable anywhere a task object is on hand). Callbacks: onOpen(id), onChanged().
 // `columns` (ref/array of {id,name}) adds a "move to column" submenu.
 export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
+  const dialog = useDialog()
   const show = ref(false)
   const x = ref(0)
   const y = ref(0)
@@ -69,6 +72,7 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
     show.value = false
     if (!t) return
     if (key === 'open') return onOpen?.(t.id)
+    if (key === 'delete' && !(await confirmHardDelete(dialog))) return
     try {
       if (key === 'toggle') {
         await tasksApi.update(t.id, { ...base(t), completed: !t.completed_at })
