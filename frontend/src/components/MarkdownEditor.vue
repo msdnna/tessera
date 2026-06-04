@@ -1,8 +1,9 @@
 <script setup>
 import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
-import { NIcon } from 'naive-ui'
-import { LinkOutline } from '@vicons/ionicons5'
-import { renderRich } from '@/utils/markdown'
+import { NIcon, useMessage } from 'naive-ui'
+import { LinkOutline, ImageOutline, GitNetworkOutline } from '@vicons/ionicons5'
+import { uploads as uploadsApi } from '@/api'
+import RichContent from './RichContent.vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -16,6 +17,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'submit', 'blur'])
 
+const message = useMessage()
 const mode = ref(props.initialMode) // 'write' | 'preview'
 watch(
   () => props.initialMode,
@@ -24,7 +26,6 @@ watch(
   },
 )
 const ta = ref(null)
-const previewHtml = computed(() => renderRich(props.modelValue, props.mentionItems))
 
 // Members the user picked from the dropdown, so getMentions can resolve ids.
 const picked = ref([])
@@ -86,6 +87,71 @@ function insertLink() {
     el.selectionStart = el.selectionEnd = caret
     hideBubble()
   })
+}
+
+// ── insert at caret (images, snippets) ──
+function insertAtCaret(text) {
+  const el = ta.value
+  const val = props.modelValue
+  const s = el ? el.selectionStart : val.length
+  const e = el ? el.selectionEnd : val.length
+  setValue(val.slice(0, s) + text + val.slice(e))
+  const caret = s + text.length
+  nextTick(() => {
+    if (!el) return
+    el.focus()
+    el.selectionStart = el.selectionEnd = caret
+  })
+}
+
+// ── image upload (button / paste / drop) ──
+const imgInput = ref(null)
+const uploading = ref(false)
+async function uploadImage(file) {
+  if (!file || !file.type.startsWith('image/')) return
+  uploading.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await uploadsApi.upload(fd)
+    if (res.data?.url) insertAtCaret(`\n![${file.name || 'image'}](${res.data.url})\n`)
+  } catch (err) {
+    message.error(err.message || 'Не удалось загрузить изображение')
+  } finally {
+    uploading.value = false
+  }
+}
+function pickImage() {
+  imgInput.value?.click?.()
+}
+function onImgFile(e) {
+  const f = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (f) uploadImage(f)
+}
+function onPaste(e) {
+  const items = e.clipboardData && e.clipboardData.items
+  for (const it of items || []) {
+    if (it.type && it.type.startsWith('image/')) {
+      const f = it.getAsFile()
+      if (f) {
+        e.preventDefault()
+        uploadImage(f)
+        return
+      }
+    }
+  }
+}
+function onDrop(e) {
+  const files = e.dataTransfer && e.dataTransfer.files
+  const img = files && [...files].find((f) => f.type.startsWith('image/'))
+  if (img) {
+    e.preventDefault()
+    uploadImage(img)
+  }
+}
+function insertMermaid() {
+  insertAtCaret('\n```mermaid\nflowchart TD\n  A[Старт] --> B[Готово]\n```\n')
 }
 
 const tools = [
@@ -267,7 +333,29 @@ defineExpose({ getMentions, clear, focus })
       <button type="button" :class="{ active: mode === 'preview' }" @click="mode = 'preview'">
         Просмотр
       </button>
+      <span class="md2-spacer" />
+      <template v-if="mode === 'write'">
+        <button
+          type="button"
+          class="md2-act"
+          :class="{ busy: uploading }"
+          title="Вставить изображение"
+          @click="pickImage"
+        >
+          <n-icon :component="ImageOutline" :size="16" />
+        </button>
+        <button
+          type="button"
+          class="md2-act"
+          title="Вставить Mermaid-диаграмму"
+          @click="insertMermaid"
+        >
+          <n-icon :component="GitNetworkOutline" :size="16" />
+        </button>
+      </template>
     </div>
+
+    <input ref="imgInput" type="file" accept="image/*" hidden @change="onImgFile" />
 
     <div v-if="mode === 'write'" class="md2-write">
       <textarea
@@ -282,6 +370,9 @@ defineExpose({ getMentions, clear, focus })
         @mouseup="onSelect"
         @scroll="hideBubble"
         @blur="onBlur"
+        @paste="onPaste"
+        @dragover.prevent
+        @drop="onDrop"
       />
 
       <Transition name="bubble">
@@ -312,8 +403,13 @@ defineExpose({ getMentions, clear, focus })
       </ul>
     </div>
 
-    <!-- eslint-disable-next-line vue/no-v-html -->
-    <div v-else class="md md2-preview" v-html="previewHtml || '<em>Нечего показать</em>'" />
+    <RichContent
+      v-else
+      class="md2-preview"
+      :source="modelValue"
+      :members="mentionItems"
+      empty="Нечего показать"
+    />
   </div>
 </template>
 
@@ -325,8 +421,30 @@ defineExpose({ getMentions, clear, focus })
 /* Mirror the modal's bottom n-tabs (line, small) for a unified look. */
 .md2-tabs {
   display: flex;
+  align-items: center;
   gap: 18px;
   margin-bottom: 6px;
+}
+.md2-spacer {
+  flex: 1;
+}
+.md2-act {
+  border: none;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+}
+.md2-act:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.md2-act.busy {
+  opacity: 0.5;
+  pointer-events: none;
 }
 .md2-tabs button {
   border: none;

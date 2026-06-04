@@ -72,6 +72,15 @@ body {
   min-height: 6px;
 }
 
+/* Images embedded in rendered Markdown (uploaded into descriptions/comments). */
+.md img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  display: block;
+  margin: 6px 0;
+}
+
 /* Links inside rendered Markdown (description preview, comments). */
 .md a {
   color: var(--t-primary);

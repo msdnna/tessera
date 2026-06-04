@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.37.0] — 2026-06-04
+- Images in descriptions & comments: the Markdown editor gains an image button,
+  plus paste-image and drag-and-drop — each uploads via `/uploads` and inserts
+  `![](url)`. Rendered images are capped to the content width.
+- Mermaid diagrams: a ```mermaid``` fenced block (there's a toolbar button to
+  insert a starter) renders as an SVG in the preview/comments. New `RichContent`
+  component does Markdown + async Mermaid rendering (Mermaid is lazy-loaded only
+  when a diagram is present, theme-aware, securityLevel strict). It replaces the
+  raw `v-html` used for the description preview and comments.
+
 ### [0.36.1] — 2026-06-04
 - Project colour picker gains a «без фона» (transparent) swatch — the icon tile
   then renders with no coloured square (glyph/initials use the text colour), so a
@@ -612,6 +622,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.16.0] — 2026-06-04
+- Inline image upload for descriptions/comments: `POST /api/uploads` (authed,
+  image only, ≤8 MiB) stores the file under `UPLOAD_DIR/media/<uuid>.<ext>` and
+  returns `{ url }`; `GET /api/uploads/:name` serves it publicly (an `<img>`
+  can't send the bearer header) with a path-traversal-safe name check and a
+  long cache header.
 
 ### [0.15.0] — 2026-06-03
 - Task detail (`GET /tasks/:id`) now returns each subtask with its `tag_ids` and

@@ -167,6 +167,12 @@ export const tasks = {
   removeAttachment: (attachmentId) => api.delete(`/attachments/${attachmentId}`),
 }
 
+export const uploads = {
+  // Inline image for descriptions/comments → { url }. Served publicly.
+  upload: (formData) =>
+    api.post('/uploads', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+}
+
 export const notifications = {
   list: () => api.get('/notifications'),
   unreadCount: () => api.get('/notifications/unread-count'),

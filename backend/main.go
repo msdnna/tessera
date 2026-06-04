@@ -52,6 +52,10 @@ func main() {
 		// Live updates. Per-workspace scoping + WS auth land in a later phase.
 		api.GET("/ws", wsHandler.Connect)
 
+		// Inline images embedded in descriptions/comments are served publicly
+		// (an <img> can't send the bearer header); unguessable by UUID filename.
+		api.GET("/uploads/:name", rh.ServeUpload)
+
 		// Protected — require a valid access token.
 		protected := api.Group("/")
 		protected.Use(middleware.Auth(cfg.JWTSecret))
@@ -137,6 +141,10 @@ func main() {
 			protected.POST("/tasks/:id/attachments", rh.UploadAttachment)
 			protected.GET("/attachments/:id/download", rh.DownloadAttachment)
 			protected.DELETE("/attachments/:id", rh.DeleteAttachment)
+
+			// Inline image upload for descriptions/comments (served via the
+			// public /uploads/:name route above).
+			protected.POST("/uploads", rh.UploadMedia)
 
 			// Persistent notifications (#3).
 			protected.GET("/notifications", rh.ListNotifications)

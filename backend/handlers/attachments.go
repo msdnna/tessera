@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,6 +19,81 @@ import (
 
 // maxAttachmentBytes caps a single upload (25 MiB).
 const maxAttachmentBytes = 25 << 20
+
+// maxMediaBytes caps an inline image embedded in a description/comment (8 MiB).
+const maxMediaBytes = 8 << 20
+
+// mediaExts maps allowed image content types to a file extension.
+var mediaExts = map[string]string{
+	"image/png":     ".png",
+	"image/jpeg":    ".jpg",
+	"image/gif":     ".gif",
+	"image/webp":    ".webp",
+	"image/svg+xml": ".svg",
+	"image/bmp":     ".bmp",
+}
+
+// mediaNameRe guards the public serve route against path traversal.
+var mediaNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+\.[a-z0-9]+$`)
+
+// UploadMedia stores an inline image and returns a public URL the editor embeds
+// as Markdown. Unlike task attachments, these are served without auth (images
+// can't send the bearer header) — unguessable by their UUID filename.
+func (h *API) UploadMedia(c *gin.Context) {
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "файл не передан"})
+		return
+	}
+	if fileHeader.Size > maxMediaBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "изображение больше 8 МБ"})
+		return
+	}
+	ct := fileHeader.Header.Get("Content-Type")
+	ext, ok := mediaExts[ct]
+	if !ok {
+		// Fall back to the filename extension if it's an allowed image type.
+		fe := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		for _, e := range mediaExts {
+			if e == fe {
+				ext, ok = fe, true
+				break
+			}
+		}
+	}
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "поддерживаются только изображения"})
+		return
+	}
+
+	dir := filepath.Join(h.uploadDir, "media")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fail(c)
+		return
+	}
+	name := uuid.NewString() + ext
+	if err := saveUploaded(fileHeader, filepath.Join(dir, name)); err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"url": "/api/uploads/" + name})
+}
+
+// ServeUpload serves an inline image by name (public; see UploadMedia).
+func (h *API) ServeUpload(c *gin.Context) {
+	name := filepath.Base(c.Param("name"))
+	if !mediaNameRe.MatchString(name) {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	p := filepath.Join(h.uploadDir, "media", name)
+	if _, err := os.Stat(p); err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	c.File(p)
+}
 
 func (h *API) ListAttachments(c *gin.Context) {
 	id, ok := parseID(c, "id")

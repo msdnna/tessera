@@ -45,8 +45,8 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
-import { renderRich } from '@/utils/markdown'
 import MarkdownEditor from './MarkdownEditor.vue'
+import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
 
 const props = defineProps({
@@ -461,9 +461,6 @@ function fmtWhen(d) {
     hour: '2-digit',
     minute: '2-digit',
   })
-}
-function commentHtml(body) {
-  return renderRich(body, mentionItems.value)
 }
 async function postComment() {
   const body = newComment.value.trim()
@@ -890,8 +887,12 @@ function eventText(e) {
                         <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
                       </n-space>
                     </template>
-                    <!-- eslint-disable-next-line vue/no-v-html -->
-                    <div v-else class="md c-text" v-html="commentHtml(c.body)" />
+                    <RichContent
+                      v-else
+                      class="c-text"
+                      :source="c.body"
+                      :members="mentionItems"
+                    />
                   </div>
                 </div>
                 <div v-if="!comments.length" class="empty-hint">Комментариев пока нет</div>
