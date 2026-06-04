@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.41.1] — 2026-06-04
+- Fix the glitchy subtask-nesting drag preview: replaced the separate empty
+  "sink" dropzone (which rendered the dragged card squished/centered and flashed
+  a duplicate) with a single always-mounted subtask list bound to the real model.
+  A dropped task renders immediately as a full-width subtask; childless cards
+  still show a dashed "вложить как подзадачу" zone while dragging.
+
 ### [0.41.0] — 2026-06-04
 - Drag-and-drop subtask nesting (backlog item): subtask lists now share the
   "tasks" Sortable group with the columns, so a task dragged onto another task's

@@ -244,19 +244,6 @@ async function onSubChange(evt) {
     emit('changed')
   }
 }
-// Empty drop sink for childless cards (the zone shown while dragging).
-const nestSink = ref([])
-async function onNestDrop(evt) {
-  if (!evt.added) return
-  const el = evt.added.element
-  nestSink.value = []
-  try {
-    await tasksApi.setParent(el.id, props.task.id)
-  } catch (e) {
-    void e
-  }
-  emit('changed')
-}
 function subDue(s) {
   return s.due_date
     ? new Date(s.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
@@ -459,21 +446,33 @@ async function submitAddSub() {
     </div>
     <!-- /.card -->
 
-    <!-- Expanded: a stack of full subtask cards peeking from under the parent. -->
+    <!-- Subtasks: one always-mounted drop list (shared "tasks" group), so a task
+         can be dropped to nest even on a childless card. Renders as a fanned
+         stack (expanded) or an emerging list card (collapsed); empty → a dashed
+         drop hint while a board drag is in progress. -->
     <draggable
-      v-if="!nested && subtasksExpanded && subtasks.length"
+      v-if="!nested"
       :list="subModel"
       group="tasks"
       item-key="id"
-      class="substack"
+      class="subs"
+      :class="{
+        stack: subtasksExpanded && subModel.length,
+        list: !subtasksExpanded && subModel.length,
+        empty: !subModel.length,
+        'drop-on': dragging && !subModel.length,
+      }"
       :animation="150"
       :delay="300"
       :touch-start-threshold="6"
       @click.stop
       @change="onSubChange"
     >
+      <template v-if="dragging && !subModel.length" #header>
+        <span class="nest-hint">＋ вложить как подзадачу</span>
+      </template>
       <template #item="{ element: s, index }">
-        <div class="sub-layer" :style="{ zIndex: 40 - index }">
+        <div v-if="subtasksExpanded" class="sub-layer" :style="{ zIndex: 40 - index }">
           <TaskCard
             :task="s"
             :subtasks="[]"
@@ -487,57 +486,21 @@ async function submitAddSub() {
             @changed="emit('changed')"
           />
         </div>
+        <div
+          v-else
+          class="subrow"
+          :class="{ done: s.completed_at }"
+          @click="emit('open', s.id)"
+          @contextmenu.prevent.stop="onCtx($event, s)"
+        >
+          <span class="check sm" @click.stop="toggleSubDone(s)">
+            <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
+          </span>
+          <span v-if="s.priority" class="pr-dot" :style="{ background: PRIORITY_COLORS[s.priority] }" />
+          <span class="sub-title">{{ s.title }}</span>
+          <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+        </div>
       </template>
-    </draggable>
-
-    <!-- Collapsed: one card peeking from under the parent, listing the subtasks. -->
-    <div v-else-if="!nested && subtasks.length" class="sub-list">
-      <draggable
-        :list="subModel"
-        group="tasks"
-        item-key="id"
-        :animation="150"
-        :delay="300"
-        :touch-start-threshold="6"
-        @click.stop
-        @change="onSubChange"
-      >
-        <template #item="{ element: s }">
-          <div
-            class="subrow"
-            :class="{ done: s.completed_at }"
-            @click="emit('open', s.id)"
-            @contextmenu.prevent.stop="onCtx($event, s)"
-          >
-            <span class="check sm" @click.stop="toggleSubDone(s)">
-              <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
-            </span>
-            <span
-              v-if="s.priority"
-              class="pr-dot"
-              :style="{ background: PRIORITY_COLORS[s.priority] }"
-            />
-            <span class="sub-title">{{ s.title }}</span>
-            <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
-          </div>
-        </template>
-      </draggable>
-    </div>
-
-    <!-- Childless card: a drop zone (appears while dragging) to nest a task. -->
-    <draggable
-      v-if="!nested && !subtasks.length"
-      :list="nestSink"
-      group="tasks"
-      item-key="id"
-      class="nest-zone"
-      :class="{ on: dragging }"
-      @change="onNestDrop"
-    >
-      <template #header>
-        <span class="nest-hint">＋ вложить как подзадачу</span>
-      </template>
-      <template #item="{ element }"><span :key="element.id" /></template>
     </draggable>
 
     <template v-if="!nested">
@@ -573,21 +536,23 @@ async function submitAddSub() {
   margin-bottom: 8px;
 }
 /* "Drop to nest" zone — collapsed (and unhittable) until a drag is in progress. */
-.nest-zone {
+/* Empty subtask list: collapsed (unhittable) until a board drag reveals it as a
+   dashed "drop to nest" zone. */
+.subs.empty {
   height: 0;
   overflow: hidden;
 }
-.nest-zone.on {
+.subs.empty.drop-on {
   height: auto;
   min-height: 30px;
   margin-top: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 6px;
   border: 1px dashed var(--t-border);
   border-radius: 6px;
 }
 .nest-hint {
+  display: block;
+  text-align: center;
   font-size: 11px;
   color: var(--t-text3);
   pointer-events: none;
@@ -610,7 +575,7 @@ async function submitAddSub() {
    alternatives — var(--t-hover), var(--t-border) (greyer),
    color-mix(in srgb, var(--t-primary) 8%, var(--t-surface)) (accent). */
 .sub-layer,
-.sub-list {
+.subs.list {
   --sub-bg: color-mix(in srgb, var(--t-surface) 70%, var(--t-bg));
 }
 /* Each expanded subtask card: rounded bottom only, peeking ~8px from under the
@@ -629,7 +594,7 @@ async function submitAddSub() {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 /* Collapsed: a single card emerging from under the parent, holding the list. */
-.sub-list {
+.subs.list {
   position: relative;
   z-index: 1;
   margin-top: -8px;
@@ -804,7 +769,7 @@ async function submitAddSub() {
 
 /* First-level subtasks cascade directly below the parent card (no indent).
    Expanded cards attach with no gap; collapsed text rows get a little spacing. */
-.substack {
+.subs.stack {
   display: flex;
   flex-direction: column;
 }
