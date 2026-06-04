@@ -24,6 +24,8 @@ const props = defineProps({
   // This card is itself a first-level subtask shown below its parent: darker
   // shade, no nested-subtask cascade, no "create subtask" button.
   nested: { type: Boolean, default: false },
+  // A board drag is in progress → reveal the "drop to nest" zone on childless cards.
+  dragging: { type: Boolean, default: false },
   // Board status columns [{ id, name }] for the context-menu "move to column".
   columns: { type: Array, default: () => [] },
   tagsMap: { type: Object, default: () => ({}) },
@@ -214,14 +216,24 @@ watch(
   (v) => (subModel.value = [...v]),
   { immediate: true, deep: true },
 )
-async function onSubReorder(evt) {
-  const info = evt.moved || evt.added
-  if (!info) return
+// A card dropped into this card's subtask list becomes its subtask; a subtask
+// dragged within the list is just reordered.
+async function onSubChange(evt) {
+  if (evt.added) {
+    try {
+      await tasksApi.setParent(evt.added.element.id, props.task.id)
+    } catch (e) {
+      void e
+    }
+    emit('changed')
+    return
+  }
+  if (!evt.moved) return
   const arr = subModel.value
-  const before = arr[info.newIndex - 1]
-  const after = arr[info.newIndex + 1]
+  const before = arr[evt.moved.newIndex - 1]
+  const after = arr[evt.moved.newIndex + 1]
   try {
-    await tasksApi.move(info.element.id, {
+    await tasksApi.move(evt.moved.element.id, {
       column_id: props.task.column_id,
       before_id: before ? before.id : null,
       after_id: after ? after.id : null,
@@ -231,6 +243,19 @@ async function onSubReorder(evt) {
     void e
     emit('changed')
   }
+}
+// Empty drop sink for childless cards (the zone shown while dragging).
+const nestSink = ref([])
+async function onNestDrop(evt) {
+  if (!evt.added) return
+  const el = evt.added.element
+  nestSink.value = []
+  try {
+    await tasksApi.setParent(el.id, props.task.id)
+  } catch (e) {
+    void e
+  }
+  emit('changed')
 }
 function subDue(s) {
   return s.due_date
@@ -438,14 +463,14 @@ async function submitAddSub() {
     <draggable
       v-if="!nested && subtasksExpanded && subtasks.length"
       :list="subModel"
-      :group="'sub-' + task.id"
+      group="tasks"
       item-key="id"
       class="substack"
       :animation="150"
       :delay="300"
       :touch-start-threshold="6"
       @click.stop
-      @change="onSubReorder"
+      @change="onSubChange"
     >
       <template #item="{ element: s, index }">
         <div class="sub-layer" :style="{ zIndex: 40 - index }">
@@ -469,13 +494,13 @@ async function submitAddSub() {
     <div v-else-if="!nested && subtasks.length" class="sub-list">
       <draggable
         :list="subModel"
-        :group="'sub-' + task.id"
+        group="tasks"
         item-key="id"
         :animation="150"
         :delay="300"
         :touch-start-threshold="6"
         @click.stop
-        @change="onSubReorder"
+        @change="onSubChange"
       >
         <template #item="{ element: s }">
           <div
@@ -498,6 +523,22 @@ async function submitAddSub() {
         </template>
       </draggable>
     </div>
+
+    <!-- Childless card: a drop zone (appears while dragging) to nest a task. -->
+    <draggable
+      v-if="!nested && !subtasks.length"
+      :list="nestSink"
+      group="tasks"
+      item-key="id"
+      class="nest-zone"
+      :class="{ on: dragging }"
+      @change="onNestDrop"
+    >
+      <template #header>
+        <span class="nest-hint">＋ вложить как подзадачу</span>
+      </template>
+      <template #item="{ element }"><span :key="element.id" /></template>
+    </draggable>
 
     <template v-if="!nested">
       <div v-if="addingSub" class="sub-add-input" @click.stop>
@@ -530,6 +571,26 @@ async function submitAddSub() {
 <style scoped>
 .tw {
   margin-bottom: 8px;
+}
+/* "Drop to nest" zone — collapsed (and unhittable) until a drag is in progress. */
+.nest-zone {
+  height: 0;
+  overflow: hidden;
+}
+.nest-zone.on {
+  height: auto;
+  min-height: 30px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--t-border);
+  border-radius: 6px;
+}
+.nest-hint {
+  font-size: 11px;
+  color: var(--t-text3);
+  pointer-events: none;
 }
 .card {
   background: var(--t-surface);

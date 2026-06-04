@@ -218,7 +218,7 @@ function openTask(id) {
   showTaskModal.value = true
 }
 
-let dragging = false
+const dragging = ref(false) // reactive: also shown to cards for the nest dropzone
 let suppressReloadUntil = 0
 function suppress() {
   suppressReloadUntil = Date.now() + 1500
@@ -261,7 +261,7 @@ function stepColumn(dir) {
 function autoScrollTick() {
   const el = boardScroll.value
   const px = dragX()
-  if (dragging && el && px != null) {
+  if (dragging.value && el && px != null) {
     const rect = el.getBoundingClientRect()
     let dir = 0
     if (px < rect.left + EDGE) dir = -1
@@ -283,7 +283,7 @@ function autoScrollTick() {
   edgeRAF = requestAnimationFrame(autoScrollTick)
 }
 function onDragStart() {
-  dragging = true
+  dragging.value = true
   pointerX = null
   scrollIdx = null
   lastStep = 0
@@ -298,7 +298,7 @@ function onDragStart() {
   if (!edgeRAF) edgeRAF = requestAnimationFrame(autoScrollTick)
 }
 function onDragEnd() {
-  dragging = false
+  dragging.value = false
   pointerX = null
   const el = boardScroll.value
   if (el) {
@@ -470,6 +470,10 @@ async function onColChange(evt, dcol) {
         const arr = lists.value[dcol.key]
         const before = arr[info.newIndex - 1]
         const after = arr[info.newIndex + 1]
+        // A subtask dragged out onto a column becomes top-level again.
+        if (evt.added && info.element.parent_id) {
+          await tasksApi.setParent(info.element.id, null)
+        }
         await tasksApi.move(info.element.id, {
           column_id: dcol.key,
           before_id: before ? before.id : null,
@@ -564,7 +568,7 @@ function onChanged() {
 
 useRealtime((ev) => {
   if (ev.scope !== wsStore.currentId) return
-  if (dragging || Date.now() < suppressReloadUntil) return
+  if (dragging.value || Date.now() < suppressReloadUntil) return
   scheduleReload()
 })
 
@@ -789,6 +793,7 @@ watch(
                       :task="element"
                       :subtasks="subtasksByParent[element.id] || []"
                       :subtasks-expanded="subtasksExpanded"
+                      :dragging="dragging"
                       :columns="columns"
                       :tags-map="tagsMap"
                       :members-map="membersMap"

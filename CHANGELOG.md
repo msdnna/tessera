@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.41.0] — 2026-06-04
+- Drag-and-drop subtask nesting (backlog item): subtask lists now share the
+  "tasks" Sortable group with the columns, so a task dragged onto another task's
+  subtask area becomes its subtask (`PATCH /tasks/:id/parent`), a subtask dragged
+  out onto a column detaches back to top-level, and subtasks can move between
+  parents. Childless cards reveal a dashed "вложить как подзадачу" drop zone
+  while a drag is in progress.
+
 ### [0.40.0] — 2026-06-04
 - Sidebar tree alignment: fixed-width chevron + icon columns so groups, projects
   and boards line up at a given level regardless of icon (leaf boards get a
