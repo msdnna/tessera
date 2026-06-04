@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.33.7] — 2026-06-04
+- Mobile: stretch the board columns to fill the screen height (board-scroll gets
+  a viewport-based height, columns `align-self: stretch`) so the whole column is
+  a drop target — fixes the cramped drag area where the horizontal scrollbar sat
+  right under the last card.
+
 ### [0.33.6] — 2026-06-04
 - On touch devices the "＋ Создать подзадачу" button is always visible (kept
   pale) instead of hidden behind hover — fixes the confusing empty space under a

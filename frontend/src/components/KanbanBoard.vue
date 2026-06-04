@@ -923,15 +923,27 @@ watch(
   flex: 0 0 var(--col-w, 220px);
 }
 
-/* Mobile: snap each column to the start for a smooth one-at-a-time swipe. */
+/* Mobile: snap each column to the start for a smooth one-at-a-time swipe, and
+   stretch the columns to fill the screen so the whole area is a drop target
+   (offset ≈ header + sub-toolbar; tune if a gap/extra scroll appears). */
 @media (max-width: 768px) {
   .board-scroll {
     scroll-snap-type: x mandatory;
     scroll-behavior: smooth;
+    align-items: stretch;
+    height: calc(100vh - 130px);
+    height: calc(100dvh - 130px);
+  }
+  .cols {
+    align-items: stretch;
   }
   .col,
   .add-col-mobile {
     scroll-snap-align: start;
+  }
+  .col {
+    align-self: stretch;
+    max-height: none;
   }
 }
 .add-task-input {
