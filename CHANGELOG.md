@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.33.4] — 2026-06-04
+- Drag auto-scroll no longer skips a column: it tracks an explicit target column
+  index (re-synced when the pointer returns to centre) instead of reading the
+  mid-animation `scrollLeft`, so each step advances exactly one column.
+- Suppress the long-press context menu while a touch drag is in progress (detect
+  Sortable's `.sortable-fallback` clone) — so dragging a card / sidebar item no
+  longer pops the menu; a still long-press still opens it.
+
 ### [0.33.3] — 2026-06-04
 - Drag auto-scroll now advances one column at a time (smooth snap to the next
   column) instead of sliding continuously while the pointer sits in the edge

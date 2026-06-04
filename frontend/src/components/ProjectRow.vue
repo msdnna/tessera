@@ -13,6 +13,7 @@ import {
 import { projects as projApi, boards as boardsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PROJECT_ICONS, iconComponent } from '@/utils/projectIcons'
+import { dragActive } from '@/utils/dnd'
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -123,6 +124,7 @@ const pcOptions = [
   { label: 'Удалить проект', key: 'delete' },
 ]
 function onProjectCtx(e) {
+  if (dragActive()) return
   pcShow.value = false
   pcX.value = e.clientX
   pcY.value = e.clientY

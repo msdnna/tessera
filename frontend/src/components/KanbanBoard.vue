@@ -221,15 +221,16 @@ function dragX() {
   }
   return pointerX
 }
+let scrollIdx = null // tracked target column index (avoids reading mid-animation scrollLeft)
 // Scroll exactly one column in `dir` (-1 left / +1 right), snapping to its start.
 function stepColumn(dir) {
   const el = boardScroll.value
   if (!el) return
   const stride = colWidth.value + GAP
-  const idx = Math.round(el.scrollLeft / stride)
-  const max = el.scrollWidth - el.clientWidth
-  const left = Math.max(0, Math.min(max, (idx + dir) * stride))
-  el.scrollTo({ left, behavior: 'smooth' })
+  const maxIdx = Math.round((el.scrollWidth - el.clientWidth) / stride)
+  if (scrollIdx == null) scrollIdx = Math.round(el.scrollLeft / stride)
+  scrollIdx = Math.max(0, Math.min(maxIdx, scrollIdx + dir))
+  el.scrollTo({ left: scrollIdx * stride, behavior: 'smooth' })
 }
 function autoScrollTick() {
   const el = boardScroll.value
@@ -247,7 +248,10 @@ function autoScrollTick() {
         lastStep = now
       }
     } else {
-      lastStep = 0 // left the zone → next entry steps immediately
+      // Centre: re-sync the target to where we actually are so the next step
+      // moves exactly one column (no skipping from a mid-animation read).
+      lastStep = 0
+      scrollIdx = Math.round(el.scrollLeft / (colWidth.value + GAP))
     }
   }
   edgeRAF = requestAnimationFrame(autoScrollTick)
@@ -255,6 +259,8 @@ function autoScrollTick() {
 function onDragStart() {
   dragging = true
   pointerX = null
+  scrollIdx = null
+  lastStep = 0
   // Mobile uses scroll-snap (x mandatory) + smooth scrolling, which both revert
   // our per-frame scrollLeft nudges — disable them for the duration of the drag.
   const el = boardScroll.value

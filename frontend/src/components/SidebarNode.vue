@@ -13,6 +13,7 @@ import {
 import { workspaces as wsApi, groups as groupsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
+import { dragActive } from '@/utils/dnd'
 import ProjectRow from './ProjectRow.vue'
 
 const props = defineProps({
@@ -41,6 +42,7 @@ const ctxOptions = [
   { label: 'Удалить группу', key: 'delete' },
 ]
 function onCtx(e) {
+  if (dragActive()) return
   ctxShow.value = false
   ctxX.value = e.clientX
   ctxY.value = e.clientY
