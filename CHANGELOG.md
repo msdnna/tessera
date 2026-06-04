@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.33.2] — 2026-06-04
+- Mobile drag auto-scroll finally works: the board's mobile `scroll-snap-type:
+  x mandatory` + `scroll-behavior: smooth` were reverting the per-frame
+  `scrollLeft` nudges (snapping back to a column), so no scrolling was visible.
+  Both are now disabled for the duration of a drag and restored on drop. This,
+  not the coordinate source, was the real blocker.
+
 ### [0.33.1] — 2026-06-04
 - Edge auto-scroll now tracks Sortable's moving drag clone (`.sortable-fallback`)
   each frame instead of relying on touch/pointer move events, which weren't

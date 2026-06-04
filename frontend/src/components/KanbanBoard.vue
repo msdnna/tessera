@@ -238,12 +238,24 @@ function autoScrollTick() {
 function onDragStart() {
   dragging = true
   pointerX = null
+  // Mobile uses scroll-snap (x mandatory) + smooth scrolling, which both revert
+  // our per-frame scrollLeft nudges — disable them for the duration of the drag.
+  const el = boardScroll.value
+  if (el) {
+    el.style.scrollSnapType = 'none'
+    el.style.scrollBehavior = 'auto'
+  }
   window.addEventListener('dragover', onDragOver, { passive: true })
   if (!edgeRAF) edgeRAF = requestAnimationFrame(autoScrollTick)
 }
 function onDragEnd() {
   dragging = false
   pointerX = null
+  const el = boardScroll.value
+  if (el) {
+    el.style.scrollSnapType = ''
+    el.style.scrollBehavior = ''
+  }
   window.removeEventListener('dragover', onDragOver)
   if (edgeRAF) {
     cancelAnimationFrame(edgeRAF)
