@@ -45,6 +45,7 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
+import { hueGrad, tagPillBg } from '@/utils/gradient'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import { confirmHardDelete } from '@/utils/confirm'
@@ -161,6 +162,7 @@ const newSubtask = ref('')
 const newTagName = ref('')
 
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+
 const tagObjs = computed(() =>
   selectedTags.value.map((id) => props.tags.find((t) => t.id === id)).filter(Boolean),
 )
@@ -684,7 +686,7 @@ function eventText(e) {
               <n-popover trigger="click" placement="bottom-start">
                 <template #trigger>
                   <button class="val">
-                    <span class="dot" :style="{ background: PRIORITY_COLORS[priority] }" />
+                    <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[priority]) }" />
                     {{ PRIORITY_LABELS[priority] }}
                   </button>
                 </template>
@@ -695,7 +697,7 @@ function eventText(e) {
                     class="menu-item"
                     @click="setPriority(o.value)"
                   >
-                    <span class="dot" :style="{ background: PRIORITY_COLORS[o.value] }" />
+                    <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
                     {{ o.label }}
                   </div>
                 </div>
@@ -765,12 +767,12 @@ function eventText(e) {
                         v-for="t in tagObjs"
                         :key="t.id"
                         class="chip"
-                        :style="{
-                          background: (t.color || '#888') + '22',
-                          color: t.color || '#888',
-                        }"
-                        >{{ t.name }}</span
+                        :style="{ border: '1px solid transparent', background: tagPillBg(t.color, true) }"
                       >
+                        <span class="accent-grad-text" :style="{ '--grad': hueGrad(t.color) }">{{
+                          t.name
+                        }}</span>
+                      </span>
                     </template>
                     <span v-else class="muted">Нет</span>
                   </button>
@@ -781,18 +783,16 @@ function eventText(e) {
                       v-for="t in tags"
                       :key="t.id"
                       class="tagchip"
-                      :style="
-                        selectedTags.includes(t.id)
-                          ? {
-                              background: t.color || '#888',
-                              color: '#fff',
-                              borderColor: t.color || '#888',
-                            }
-                          : { color: t.color || '#888', borderColor: (t.color || '#888') + '88' }
-                      "
+                      :class="{ on: selectedTags.includes(t.id) }"
+                      :style="{
+                        border: '1px solid transparent',
+                        background: tagPillBg(t.color, selectedTags.includes(t.id)),
+                      }"
                       @click="toggleTag(t.id)"
                     >
-                      {{ t.name }}
+                      <span class="accent-grad-text" :style="{ '--grad': hueGrad(t.color) }">{{
+                        t.name
+                      }}</span>
                     </button>
                   </div>
                   <n-input
@@ -1356,6 +1356,9 @@ function eventText(e) {
   background: transparent;
   cursor: pointer;
 }
+.tagchip.on {
+  font-weight: 600;
+}
 .footer {
   display: flex;
   align-items: center;
@@ -1443,13 +1446,24 @@ function eventText(e) {
 .detail-tabs :deep(.n-tab-pane) {
   padding-top: 14px;
 }
+/* Accent-gradient underline under the active tab. */
+.detail-tabs :deep(.n-tabs-bar) {
+  background: var(--t-accent-grad);
+}
 .tab-badge {
   margin-left: 6px;
 }
-/* Accent (not naive's default red) tab counters, matching the Android client. */
+/* Accent (not naive's default red) tab counters, matching the Android client —
+   and a touch smaller than naive's default badge. */
 .tab-badge :deep(.n-badge-sup) {
   background: var(--t-accent-grad);
   color: var(--t-on-primary);
+  height: 15px;
+  min-width: 15px;
+  line-height: 15px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 /* comments */

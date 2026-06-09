@@ -980,12 +980,30 @@ watch(
   flex: 0 0 var(--col-w, 280px);
   background: var(--t-surface-alt);
   border-radius: 10px;
-  border-top: 3px solid var(--col-accent);
   padding: 10px;
   align-self: flex-start;
   max-height: calc(100vh - 180px);
   display: flex;
   flex-direction: column;
+  /* Same-hue diagonal of the column's accent for its top bar. */
+  --col-grad: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--col-accent) 86%, #000),
+    var(--col-accent) 50%,
+    color-mix(in srgb, var(--col-accent) 86%, #fff)
+  );
+  position: relative;
+}
+/* Top accent bar — a thin gradient strip (replaces the flat 3px border-top). */
+.col::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 10px 10px 0 0;
+  background: var(--col-grad);
 }
 .col-head {
   display: flex;

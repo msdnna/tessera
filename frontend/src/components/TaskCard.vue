@@ -22,6 +22,7 @@ import {
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
+import { hueGrad, hueGradVert, tagPillBg } from '@/utils/gradient'
 import { pressMoved } from '@/utils/dnd'
 import { confirmHardDelete } from '@/utils/confirm'
 
@@ -94,19 +95,11 @@ const stackShadow = computed(() => {
     .join(', ')
 })
 const cardStyle = computed(() =>
-  props.task.priority
-    ? { borderLeftColor: PRIORITY_COLORS[props.task.priority], borderLeftWidth: '3px' }
-    : {},
+  props.task.priority ? { '--card-bar': hueGradVert(PRIORITY_COLORS[props.task.priority]) } : {},
 )
 
 function initials(name) {
   return (name || '?').trim().slice(0, 2).toUpperCase()
-}
-// Same-hue diagonal gradient of an arbitrary colour (tag/priority hue), matching
-// the global --t-accent-grad contract (darker BL → base centre → lighter TR).
-function hueGrad(c) {
-  const x = c || '#888'
-  return `linear-gradient(to top right, color-mix(in srgb, ${x} 86%, #000), ${x} 50%, color-mix(in srgb, ${x} 86%, #fff))`
 }
 function isAssigned(uid) {
   return (props.task.assignee_ids || []).includes(uid)
@@ -311,7 +304,7 @@ async function submitAddSub() {
   <div class="tw">
     <div
       class="card"
-      :class="{ done, nested, 'has-subs': !nested && subtasks.length }"
+      :class="{ done, nested, 'has-subs': !nested && subtasks.length, 'has-prio': task.priority }"
       :style="cardStyle"
       @click="emit('open', task.id)"
       @contextmenu.prevent.stop="onCtx"
@@ -363,7 +356,7 @@ async function submitAddSub() {
             class="menu-item"
             @click="setPriority(o.value)"
           >
-            <span class="dot" :style="{ background: PRIORITY_COLORS[o.value] }" />
+            <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
             {{ o.label }}
           </div>
         </div>
@@ -392,8 +385,8 @@ async function submitAddSub() {
                 v-else
                 class="pill tag-pill"
                 :style="{
-                  background: (taskTags[0].color || '#888') + '22',
-                  borderColor: (taskTags[0].color || '#888') + '55',
+                  border: '1px solid transparent',
+                  background: tagPillBg(taskTags[0].color),
                   color: taskTags[0].color || '#888',
                   boxShadow: stackShadow,
                   marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
@@ -426,11 +419,11 @@ async function submitAddSub() {
               :key="t.id"
               class="tagchip"
               :class="{ on: hasTag(t.id) }"
-              :style="
-                hasTag(t.id)
-                  ? { background: t.color || '#888', color: '#fff', borderColor: t.color || '#888' }
-                  : { color: t.color || '#888', borderColor: (t.color || '#888') + '88' }
-              "
+              :style="{
+                border: '1px solid transparent',
+                background: tagPillBg(t.color, hasTag(t.id)),
+                color: t.color || '#888',
+              }"
               @click="toggleTag(t.id)"
             >
               {{ t.name }}
@@ -525,7 +518,7 @@ async function submitAddSub() {
           <span class="check sm" @click.stop="toggleSubDone(s)">
             <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
           </span>
-          <span v-if="s.priority" class="pr-dot" :style="{ background: PRIORITY_COLORS[s.priority] }" />
+          <span v-if="s.priority" class="pr-dot" :style="{ background: hueGradVert(PRIORITY_COLORS[s.priority]) }" />
           <span class="sub-title">{{ s.title }}</span>
           <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
         </div>
@@ -579,12 +572,28 @@ async function submitAddSub() {
   min-height: 26px;
 }
 .card {
+  position: relative;
   background: var(--t-surface);
   border: 1px solid var(--t-border);
   border-radius: 8px;
   padding: 8px 10px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
+}
+/* Priority accent: a thin vertical-gradient bar on the left edge (replaces the
+   old flat 3px left border). The bar's hue/gradient comes from --card-bar. */
+.card.has-prio::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 8px 0 0 8px;
+  background: var(--card-bar);
+}
+.card.nested.has-prio::before {
+  border-radius: 0 0 0 8px;
 }
 /* The parent keeps its rounded corners and sits above the subtask stack so the
    children appear to emerge from under it. */
@@ -763,6 +772,9 @@ async function submitAddSub() {
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
+}
+.tagchip.on {
+  font-weight: 600;
 }
 .menu-item {
   display: flex;

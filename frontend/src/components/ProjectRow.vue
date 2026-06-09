@@ -23,6 +23,7 @@ import {
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { projects as projApi, boards as boardsApi } from '@/api'
+import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import ProjectIcon from './ProjectIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
@@ -248,7 +249,10 @@ async function addBoard() {
         class="picon"
         :class="{ 'picon-bare': project.color === 'transparent' }"
         :style="{
-          background: project.color === 'transparent' ? 'transparent' : project.color || 'var(--t-primary)',
+          background:
+            project.color === 'transparent'
+              ? 'transparent'
+              : hueGrad(project.color || 'var(--t-primary)'),
         }"
         @click="toggle"
       >

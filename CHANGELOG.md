@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.2] — 2026-06-09
+- Comprehensive accent-gradient pass (the soft same-hue diagonal from the Android
+  client), via a shared `utils/gradient.js` (`hueGrad` / `hueGradVert` /
+  `tagPillBg` / `swatchBg`) applied across:
+  - column top bars (column-hue diagonal) and card priority bars (vertical
+    priority-hue gradient, replacing the flat left border);
+  - priority dots everywhere (board / list / mini / calendar-less home / modal);
+  - tags — gradient on the border + text, the fill left subtle (matching
+    Android), on both the card pills and the tag-picker chips, in card + modal;
+  - the task-modal tab underline;
+  - colour-picker swatches (column header + project/group icon picker) and the
+    sidebar project/group icon tiles;
+  - switches, checkboxes, radio-button toggles and ghost-primary button labels
+    (global Naive overrides).
+- Make the task-modal tab counter a touch smaller (was oversized).
+
 ### [0.42.1] — 2026-06-09
 - Fix the accent gradient leaking onto board controls: the layout switch, the
   grouping/sort/filter buttons and the subtasks toggle no longer get a gradient

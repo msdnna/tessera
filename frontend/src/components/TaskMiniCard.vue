@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
+import { hueGrad } from '@/utils/gradient'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -32,7 +33,7 @@ function initials(name) {
     <div class="mini-top">
       <span
         class="mini-pr"
-        :style="{ background: PRIORITY_COLORS[task.priority || 0] }"
+        :style="{ background: hueGrad(PRIORITY_COLORS[task.priority || 0]) }"
         :title="PRIORITY_LABELS[task.priority || 0]"
       />
       <span v-if="task.number" class="mini-num">#{{ task.number }}</span>

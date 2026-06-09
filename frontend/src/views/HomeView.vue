@@ -6,6 +6,7 @@ import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
+import { hueGrad } from '@/utils/gradient'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 
 const router = useRouter()
@@ -128,7 +129,9 @@ watch(() => wsStore.currentId, load)
         >
           <span
             class="pr-dot"
-            :style="{ background: PRIORITY_COLORS[t.priority] || 'transparent' }"
+            :style="{
+              background: PRIORITY_COLORS[t.priority] ? hueGrad(PRIORITY_COLORS[t.priority]) : 'transparent',
+            }"
           />
           <span class="t-num">#{{ t.number }}</span>
           <span class="t-title">{{ t.title }}</span>

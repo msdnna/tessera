@@ -82,6 +82,12 @@ const swatches = [
   '#eb2f96',
 ]
 
+// Same-hue diagonal gradient for a colour swatch (flat fallback for "default").
+function swatchBg(s) {
+  if (!s) return 'var(--t-border)'
+  return `linear-gradient(to top right, color-mix(in srgb, ${s} 86%, #000), ${s} 50%, color-mix(in srgb, ${s} 86%, #fff))`
+}
+
 function startRename() {
   if (!props.editable) return
   nameEdit.value = props.dcol.name
@@ -149,7 +155,7 @@ async function removeCol() {
             :key="s || 'none'"
             class="sw"
             :class="{ active: s === (dcol.color || '') }"
-            :style="{ background: s || 'var(--t-border)' }"
+            :style="{ background: swatchBg(s) }"
             :title="s || 'По умолчанию'"
             @click="setColor(s)"
           />

@@ -4,6 +4,7 @@ import { NPopover, NIcon } from 'naive-ui'
 import { FolderOutline } from '@vicons/ionicons5'
 import SidebarFlyout from './SidebarFlyout.vue'
 import ProjectIcon from './ProjectIcon.vue'
+import { hueGrad } from '@/utils/gradient'
 
 // One icon in the collapsed rail (a root group or project). Hovering opens a
 // flyout with the navigable subtree (budget-style).
@@ -32,7 +33,8 @@ const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUp
           class="picon"
           :class="{ 'picon-bare': node.color === 'transparent' }"
           :style="{
-            background: node.color === 'transparent' ? 'transparent' : node.color || 'var(--t-primary)',
+            background:
+              node.color === 'transparent' ? 'transparent' : hueGrad(node.color || 'var(--t-primary)'),
           }"
         >
           <ProjectIcon :icon="node.icon" :initials="initials" :size="15" />

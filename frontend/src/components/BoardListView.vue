@@ -1,6 +1,7 @@
 <script setup>
 import { NDropdown } from 'naive-ui'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
+import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 
 const props = defineProps({
@@ -57,7 +58,7 @@ function isOverdue(t) {
       >
         <span
           class="lv-pr"
-          :style="{ background: PRIORITY_COLORS[t.priority || 0] }"
+          :style="{ background: hueGrad(PRIORITY_COLORS[t.priority || 0]) }"
           :title="PRIORITY_LABELS[t.priority || 0]"
         />
         <span v-if="t.number" class="lv-num">#{{ t.number }}</span>

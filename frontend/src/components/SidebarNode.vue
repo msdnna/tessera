@@ -14,6 +14,7 @@ import {
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { workspaces as wsApi, groups as groupsApi } from '@/api'
+import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
 import { pressMoved } from '@/utils/dnd'
@@ -160,7 +161,8 @@ async function commitRename() {
         class="gicon"
         :class="{ 'gicon-bare': !group.color || group.color === 'transparent' }"
         :style="{
-          background: group.color && group.color !== 'transparent' ? group.color : 'transparent',
+          background:
+            group.color && group.color !== 'transparent' ? hueGrad(group.color) : 'transparent',
         }"
         @click="expanded = !expanded"
       >

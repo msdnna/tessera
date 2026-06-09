@@ -23,6 +23,11 @@ function swatchActive(s) {
   if (s === props.color) return true
   return props.transparentDefault && s === 'transparent' && !props.color
 }
+// Same-hue diagonal gradient for a colour swatch (flat fallback for "default").
+function swatchBg(s) {
+  if (!s) return 'var(--t-border)'
+  return `linear-gradient(to top right, color-mix(in srgb, ${s} 86%, #000), ${s} 50%, color-mix(in srgb, ${s} 86%, #fff))`
+}
 
 const addIconOptions = [
   { label: 'Найти иконку', key: 'search' },
@@ -131,7 +136,7 @@ function onIconFile(e) {
         :key="s || 'none'"
         class="sw"
         :class="{ active: swatchActive(s), 'sw-bare': s === 'transparent' }"
-        :style="s === 'transparent' ? {} : { background: s || 'var(--t-border)' }"
+        :style="s === 'transparent' ? {} : { background: swatchBg(s) }"
         :title="s === 'transparent' ? 'Без фона' : ''"
         @click="emit('update:color', s)"
       />
