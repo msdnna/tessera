@@ -168,6 +168,7 @@ async function add() {
   height: 20px;
   border-radius: 50%;
   border: 2px solid transparent;
+  background-origin: border-box;
   cursor: pointer;
 }
 .sw.active {

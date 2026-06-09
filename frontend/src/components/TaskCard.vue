@@ -576,29 +576,28 @@ async function submitAddSub() {
   min-height: 26px;
 }
 .card {
+  --card-fill: var(--t-surface);
   position: relative;
-  background: var(--t-surface);
+  background: var(--card-fill);
   border: 1px solid var(--t-border);
   border-radius: 12px;
   padding: 8px 10px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
-  /* Clip the priority bar to the card's rounded rect (so the bar follows the
-     corner radius instead of squaring it off). Box-shadow isn't affected; the
-     subtask cascade lives outside .card (in .tw), so nothing else is clipped. */
-  overflow: hidden;
 }
-/* Priority accent: a thin vertical-gradient bar on the left edge (replaces the
-   old flat 3px left border). Square corners — the card's overflow:hidden +
-   border-radius round it to match the card. The hue comes from --card-bar. */
-.card.has-prio::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--card-bar);
+/* Priority accent: a 3px vertical-gradient LEFT border that wraps the rounded
+   top-left / bottom-left corners (extending onto the top/bottom edges by the
+   radius), exactly like the Android client. Implementation: the left border is
+   transparent and the gradient is painted on the border-box background layer
+   (so it shows through the transparent border and follows the corner radius);
+   the padding-box layer keeps the interior flat. The other three borders stay
+   the opaque neutral colour, hiding the gradient there. */
+.card.has-prio {
+  border-left-width: 3px;
+  border-left-color: transparent;
+  background:
+    linear-gradient(var(--card-fill), var(--card-fill)) padding-box,
+    var(--card-bar) border-box;
 }
 /* The parent keeps its rounded corners and sits above the subtask stack so the
    children appear to emerge from under it. */
@@ -623,7 +622,7 @@ async function submitAddSub() {
   margin-bottom: 0;
 }
 .card.nested {
-  background: var(--sub-bg);
+  --card-fill: var(--sub-bg);
   border-radius: 0 0 12px 12px;
   padding-top: 16px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);

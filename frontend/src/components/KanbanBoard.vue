@@ -979,7 +979,6 @@ watch(
   box-sizing: border-box;
   width: var(--col-w, 280px);
   flex: 0 0 var(--col-w, 280px);
-  background: var(--t-surface-alt);
   border-radius: 14px;
   padding: 10px;
   align-self: flex-start;
@@ -993,18 +992,14 @@ watch(
     var(--col-accent) 50%,
     color-mix(in srgb, var(--col-accent) 86%, #fff)
   );
-  position: relative;
-}
-/* Top accent bar — a thin gradient strip (replaces the flat 3px border-top). */
-.col::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  border-radius: 14px 14px 0 0;
-  background: var(--col-grad);
+  /* Top accent: a 3px gradient TOP border that wraps the rounded top corners
+     onto the side edges (transparent top border reveals the gradient painted on
+     the border-box; padding-box keeps the column fill flat). */
+  border: 0 solid transparent;
+  border-top-width: 3px;
+  background:
+    linear-gradient(var(--t-surface-alt), var(--t-surface-alt)) padding-box,
+    var(--col-grad) border-box;
 }
 .col-head {
   display: flex;

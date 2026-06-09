@@ -225,6 +225,9 @@ function onIconFile(e) {
   height: 22px;
   border-radius: 50%;
   border: 2px solid transparent;
+  /* Gradient must span the whole circle incl. the transparent border, else it
+     repeats in the border ring and shows a square-ish seam inside the circle. */
+  background-origin: border-box;
   cursor: pointer;
 }
 .sw.active {

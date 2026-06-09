@@ -276,6 +276,7 @@ async function removeCol() {
   height: 22px;
   border-radius: 50%;
   border: 2px solid transparent;
+  background-origin: border-box;
   cursor: pointer;
 }
 .sw.active {

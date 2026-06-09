@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.5] — 2026-06-09
+- Fix the priority/column accent border (root cause: replacing the original
+  `border-left`/`border-top` with a `::before` strip lost the corner wrap — a
+  strip is clipped at the corner, a border wraps onto the adjacent edges by the
+  radius). Now the accent side has a transparent border and the gradient is
+  painted on the border-box background layer, so it shows through and wraps the
+  rounded corners exactly like the Android client (cards: left → top/bottom
+  corners; columns: top → side corners).
+- Fix the "square inside the colour-picker circles": with a transparent border
+  the gradient defaulted to `background-origin: padding-box` and repeated in the
+  border ring, leaving a square-ish seam. Swatches now use
+  `background-origin: border-box` (one continuous gradient).
+
 ### [0.42.4] — 2026-06-09
 - Bigger corner radius on cards (12px) and columns (14px) to match the Android
   client; the priority / column accent bars follow the rounded corners.
