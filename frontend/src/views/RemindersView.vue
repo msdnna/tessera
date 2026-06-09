@@ -143,7 +143,16 @@ onMounted(load)
   border-radius: 8px;
 }
 .rem.overdue {
-  border-color: #e0533d;
+  border-color: transparent;
+  background:
+    linear-gradient(var(--t-surface), var(--t-surface)) padding-box,
+    linear-gradient(
+        to top right,
+        color-mix(in srgb, #e0533d 86%, #000),
+        #e0533d 50%,
+        color-mix(in srgb, #e0533d 86%, #fff)
+      )
+      border-box;
 }
 .rem.done .rem-msg {
   text-decoration: line-through;

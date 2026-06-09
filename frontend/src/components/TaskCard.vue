@@ -97,6 +97,13 @@ const stackShadow = computed(() => {
 const cardStyle = computed(() =>
   props.task.priority ? { '--card-bar': hueGradVert(PRIORITY_COLORS[props.task.priority]) } : {},
 )
+// Priority colour + per-card SVG gradient (for the flag pill icon — same idea as
+// the column glyph: gradient referenced by fill/stroke url so the flag carries
+// the active priority's gradient, like Android).
+const prioColor = computed(() =>
+  props.task.priority ? PRIORITY_COLORS[props.task.priority] : null,
+)
+const flagGradId = computed(() => `pf-${props.task.id}`)
 
 function initials(name) {
   return (name || '?').trim().slice(0, 2).toUpperCase()
@@ -342,10 +349,23 @@ async function submitAddSub() {
       <n-popover trigger="click" placement="bottom-start">
         <template #trigger>
           <button class="pill" :class="{ set: task.priority }" @click.stop>
+            <svg v-if="task.priority" class="grad-def" width="0" height="0" aria-hidden="true">
+              <defs>
+                <linearGradient :id="flagGradId" x1="0" y1="1" x2="1" y2="0">
+                  <stop offset="0" :style="{ stopColor: `color-mix(in srgb, ${prioColor} 86%, #000)` }" />
+                  <stop offset="0.5" :style="{ stopColor: prioColor }" />
+                  <stop offset="1" :style="{ stopColor: `color-mix(in srgb, ${prioColor} 86%, #fff)` }" />
+                </linearGradient>
+              </defs>
+            </svg>
             <n-icon
               :component="FlagOutline"
               :size="13"
-              :style="{ color: task.priority ? PRIORITY_COLORS[task.priority] : undefined }"
+              :style="
+                task.priority
+                  ? { color: PRIORITY_COLORS[task.priority], '--icon-grad': `url(#${flagGradId})` }
+                  : {}
+              "
             />
           </button>
         </template>
@@ -694,6 +714,21 @@ async function submitAddSub() {
 .pill.set {
   border-style: solid;
   color: var(--t-text2);
+}
+/* Flag (priority) icon carries the active priority's gradient (set --icon-grad
+   inline on the flag only; the date pill is also .pill.set but has no
+   --icon-grad, so it falls back to currentColor). */
+.pill.set :deep(svg [stroke='currentColor']) {
+  stroke: var(--icon-grad, currentColor);
+}
+.pill.set :deep(svg [fill='currentColor']) {
+  fill: var(--icon-grad, currentColor);
+}
+.grad-def {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 .pill-text {
   font-size: 11px;

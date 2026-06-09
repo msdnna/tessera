@@ -112,7 +112,7 @@ watch(
         <div class="actions">
           <n-popconfirm v-if="selected.id" @positive-click="remove">
             <template #trigger>
-              <n-button quaternary type="error">Удалить</n-button>
+              <n-button type="error" ghost>Удалить</n-button>
             </template>
             Удалить заметку?
           </n-popconfirm>
@@ -148,7 +148,10 @@ watch(
   background: var(--t-surface);
 }
 .note-item.active {
-  border-color: var(--t-primary);
+  border-color: transparent;
+  background:
+    linear-gradient(var(--t-surface), var(--t-surface)) padding-box,
+    var(--t-accent-grad) border-box;
 }
 .ni-title {
   font-weight: 600;

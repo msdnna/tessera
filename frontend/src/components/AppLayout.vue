@@ -143,7 +143,7 @@ watch(
 }
 .sider-resizer:hover .rz-bar,
 .sider-resizer.active .rz-bar {
-  background: var(--t-primary);
+  background: var(--t-accent-grad-vert);
   height: 72px;
 }
 /* While dragging, the sider must track the cursor with no width animation. */

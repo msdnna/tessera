@@ -43,7 +43,7 @@ function isOverdue(t) {
   <div class="list-view">
     <section v-for="col in columns" :key="col.key" class="lv-group">
       <header class="lv-ghead">
-        <span class="lv-dot" :style="{ background: col.color || 'var(--t-border)' }" />
+        <span class="lv-dot" :style="{ background: col.color ? hueGrad(col.color) : 'var(--t-border)' }" />
         <span class="lv-gname">{{ col.name }}</span>
         <span class="lv-gcount">{{ (lists[col.key] || []).length }}</span>
       </header>
@@ -191,8 +191,17 @@ function isOverdue(t) {
   color: var(--t-text2);
 }
 .lv-due.overdue {
-  color: #e0533d;
   font-weight: 600;
+  background-image: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e0533d 86%, #000),
+    #e0533d 50%,
+    color-mix(in srgb, #e0533d 86%, #fff)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 .lv-ava-row {
   display: flex;

@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.7] — 2026-06-09
+- Fix focus rings being clipped on the left/top: containers with `overflow-y:
+  auto` (filter panel, column task list, tag manager list) force `overflow-x`
+  to clip — added small padding so focused selects / checkboxes / inputs aren't
+  cut off.
+- More accent-gradient coverage: list-view column dots and overdue dates; Home
+  stat-card left borders (gradient + corner wrap) and the column-pointer pill +
+  overdue date text; note active border + reminder overdue border; the sidebar
+  resizer bar (vertical gradient); the date-picker selected day; the «Удалить»
+  note button is now a red ghost; «Переименовать» project/group buttons are
+  accent ghosts; and the transparent layout/toolbar toggles gradient their
+  label + icon when active.
+- Priority flag pill: the flag icon now carries the active priority's gradient
+  (per-card SVG gradient via stroke url), matching Android.
+
 ### [0.42.6] — 2026-06-09
 - Actually fix the colour-swatch gradient seam (the 0.42.5 `background-origin`
   fix was defeated by the inline `background:` shorthand, which resets

@@ -913,6 +913,9 @@ watch(
   gap: 6px;
   max-height: 70vh;
   overflow-y: auto;
+  /* overflow-y:auto forces overflow-x to clip; pad so the focus ring on the
+     left edge of the select / checkboxes isn't cut off. */
+  padding: 3px 4px;
 }
 .vp-div {
   margin: 8px 0 2px;
@@ -1054,6 +1057,9 @@ watch(
   flex: 1;
   overflow-y: auto;
   min-height: 8px;
+  /* overflow-y:auto forces overflow-x to clip; pad so a focused subtask/task
+     input's left border ring isn't cut off. */
+  padding: 0 3px;
 }
 .ghost {
   opacity: 0.5;

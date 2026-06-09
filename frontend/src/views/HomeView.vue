@@ -194,24 +194,36 @@ watch(() => wsStore.currentId, load)
   margin-bottom: 24px;
 }
 .card {
+  --card-fill: var(--t-surface);
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid var(--t-border);
-  background: var(--t-surface);
+  /* 3px gradient left border (of the card's accent) that wraps the rounded
+     corners: transparent left border reveals the gradient on the border-box;
+     the padding-box layer is the (hover/active-aware) fill. */
+  border-left: 3px solid transparent;
+  background:
+    linear-gradient(var(--card-fill), var(--card-fill)) padding-box,
+    linear-gradient(
+        to top,
+        color-mix(in srgb, var(--accent) 86%, #000),
+        var(--accent) 50%,
+        color-mix(in srgb, var(--accent) 86%, #fff)
+      )
+      border-box;
   cursor: pointer;
   text-align: left;
-  border-left: 3px solid var(--accent);
-  transition: background 0.12s;
 }
 .card:hover {
-  background: var(--t-hover);
+  --card-fill: var(--t-hover);
 }
 .card.active {
-  background: color-mix(in srgb, var(--accent) 12%, var(--t-surface));
+  --card-fill: color-mix(in srgb, var(--accent) 12%, var(--t-surface));
   border-color: var(--accent);
+  border-left-color: transparent;
 }
 .card-val {
   font-size: 26px;
@@ -281,7 +293,17 @@ watch(() => wsStore.currentId, load)
 }
 .t-col {
   font-size: 11px;
-  color: var(--c);
+  /* gradient text of the column hue (border stays a soft solid of the hue) */
+  background-image: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--c) 86%, #000),
+    var(--c) 50%,
+    color-mix(in srgb, var(--c) 86%, #fff)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
   border: 1px solid color-mix(in srgb, var(--c) 50%, transparent);
   border-radius: 10px;
   padding: 1px 8px;
@@ -293,8 +315,17 @@ watch(() => wsStore.currentId, load)
   flex: none;
 }
 .t-due.overdue {
-  color: #e0533d;
   font-weight: 600;
+  background-image: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e0533d 86%, #000),
+    #e0533d 50%,
+    color-mix(in srgb, #e0533d 86%, #fff)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 .t-avas {
   display: inline-flex;

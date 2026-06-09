@@ -140,6 +140,9 @@ async function add() {
   gap: 4px;
   max-height: 280px;
   overflow-y: auto;
+  /* overflow-y:auto forces overflow-x to clip; pad so the focused rename input's
+     top/left border ring isn't cut off. */
+  padding: 3px;
   margin-bottom: 10px;
 }
 .tag-row {

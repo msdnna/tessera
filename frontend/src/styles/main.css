@@ -120,6 +120,21 @@
   -webkit-text-fill-color: transparent;
 }
 
+/* Transparent (toolbar / layout) toggles opted out of the fill via `ngrad`:
+   when active (primary-type) gradient the label + icon instead. */
+.ngrad.n-button--primary-type .n-button__content {
+  background-image: var(--t-accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.ngrad.n-button--primary-type .n-button__icon [fill='currentColor'] {
+  fill: url(#t-accent-grad-svg);
+}
+.ngrad.n-button--primary-type .n-button__icon [stroke='currentColor'] {
+  stroke: url(#t-accent-grad-svg);
+}
+
 /* ── Accent gradient on Naive controls (theme-following) ── */
 .n-switch.n-switch--active .n-switch__rail {
   background-image: var(--t-accent-grad);
@@ -129,6 +144,10 @@
   background-image: var(--t-accent-grad);
 }
 .n-radio-button.n-radio-button--checked {
+  background-image: var(--t-accent-grad);
+}
+/* Selected day in the date picker (reminders + task due date). */
+.n-date-panel-date.n-date-panel-date--selected {
   background-image: var(--t-accent-grad);
 }
 

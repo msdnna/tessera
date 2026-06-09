@@ -201,7 +201,7 @@ async function commitRename() {
             @update:icon="applyGroup({ icon: $event })"
             @update:color="applyGroup({ color: $event })"
           />
-          <n-button size="small" block @click="startRename">
+          <n-button type="primary" ghost size="small" block @click="startRename">
             <template #icon><n-icon :component="CreateOutline" /></template>
             Переименовать
           </n-button>

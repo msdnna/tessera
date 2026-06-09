@@ -293,7 +293,7 @@ async function addBoard() {
             @update:color="updateField({ color: $event })"
           />
           <div class="action-row">
-            <n-button size="small" @click="startRename">
+            <n-button type="primary" ghost size="small" @click="startRename">
               <template #icon><n-icon :component="CreateOutline" /></template>
               Переименовать
             </n-button>
