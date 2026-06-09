@@ -136,7 +136,7 @@ function onIconFile(e) {
         :key="s || 'none'"
         class="sw"
         :class="{ active: swatchActive(s), 'sw-bare': s === 'transparent' }"
-        :style="s === 'transparent' ? {} : { background: swatchBg(s) }"
+        :style="s === 'transparent' ? {} : { backgroundImage: swatchBg(s) }"
         :title="s === 'transparent' ? 'Без фона' : ''"
         @click="emit('update:color', s)"
       />

@@ -34,6 +34,10 @@ export function tagPillBg(c, filled = true) {
 }
 
 // Colour swatch fill — gradient for a real colour, a flat neutral for "default".
+// Always an *image* (a flat colour is expressed as a 2-stop gradient) so callers
+// can assign it to `background-image` (not the `background` shorthand, which
+// would reset background-origin to padding-box and make the gradient repeat in a
+// transparent border ring — a visible seam inside a round swatch).
 export function swatchBg(c) {
-  return c ? hueGrad(c) : 'var(--t-border)'
+  return c ? hueGrad(c) : 'linear-gradient(var(--t-border), var(--t-border))'
 }

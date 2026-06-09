@@ -110,7 +110,7 @@ async function add() {
             :key="s"
             class="sw"
             :class="{ active: s === t.color }"
-            :style="{ background: hueGrad(s) }"
+            :style="{ backgroundImage: hueGrad(s) }"
             @mousedown.prevent
             @click="setColor(t, s)"
           />

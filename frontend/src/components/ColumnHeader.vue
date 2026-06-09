@@ -171,7 +171,7 @@ async function removeCol() {
             :key="s || 'none'"
             class="sw"
             :class="{ active: s === (dcol.color || '') }"
-            :style="{ background: swatchBg(s) }"
+            :style="{ backgroundImage: swatchBg(s) }"
             :title="s || 'По умолчанию'"
             @click="setColor(s)"
           />

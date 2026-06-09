@@ -108,7 +108,7 @@ function fmtTime(d) {
             :key="t.key"
             class="swatch-btn"
             :class="{ active: t.key === theme.activeTheme.key }"
-            :style="{ background: hueGrad(t.primary) }"
+            :style="{ backgroundImage: hueGrad(t.primary) }"
             :title="t.name"
             @click="theme.selectColor(t)"
           />

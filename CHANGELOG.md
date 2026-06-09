@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.6] — 2026-06-09
+- Actually fix the colour-swatch gradient seam (the 0.42.5 `background-origin`
+  fix was defeated by the inline `background:` shorthand, which resets
+  background-origin to padding-box). Swatches now set `background-image` inline
+  (the shorthand isn't used), so the stylesheet's `background-origin: border-box`
+  applies and the gradient fills the whole circle with no square seam.
+
 ### [0.42.5] — 2026-06-09
 - Fix the priority/column accent border (root cause: replacing the original
   `border-left`/`border-top` with a `::before` strip lost the corner wrap — a
