@@ -49,6 +49,15 @@
   color: transparent;
 }
 
+/* Paints an SVG icon with the accent gradient (App.vue hosts the gradient def).
+   Attribute selectors keep fill- and stroke-based icons correct. */
+.grad-icon [fill='currentColor'] {
+  fill: url(#t-accent-grad-svg);
+}
+.grad-icon [stroke='currentColor'] {
+  stroke: url(#t-accent-grad-svg);
+}
+
 /* ── Accent gradient on Naive buttons ───────────────────────────────────────
    Naive emits NO class for text/quaternary/tertiary variants (only --ghost /
    --dashed / --secondary / --<type>-type), and paints fill via background-color

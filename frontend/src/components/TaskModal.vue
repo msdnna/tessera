@@ -1461,14 +1461,21 @@ function eventText(e) {
 .tab-badge :deep(.n-badge-sup) {
   background: var(--t-accent-grad);
   color: var(--t-on-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 16px;
   height: 16px;
   min-width: 16px;
-  line-height: 16px;
   padding: 0;
   border-radius: 50%;
   font-size: 10px;
   font-weight: 600;
+}
+/* Centre the animated number inside the fixed circle. */
+.tab-badge :deep(.n-badge-sup .n-base-slot-machine) {
+  line-height: 16px;
+  height: 16px;
 }
 /* Dim the counter on inactive tabs (neutral, recedes). */
 .detail-tabs :deep(.n-tabs-tab:not(.n-tabs-tab--active) .n-badge-sup) {

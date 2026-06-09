@@ -153,6 +153,8 @@ function fmtTime(d) {
   gap: 8px;
 }
 .swatch-btn {
+  appearance: none;
+  -webkit-appearance: none;
   width: 24px;
   height: 24px;
   border-radius: 50%;

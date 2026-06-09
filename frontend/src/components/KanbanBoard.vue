@@ -88,7 +88,7 @@ function renderCheckLabel(active, label) {
     [
       h('span', label),
       active
-        ? h(NIcon, { size: 16, style: 'color:var(--t-primary)' }, { default: () => h(CheckmarkOutline) })
+        ? h(NIcon, { size: 16, class: 'grad-icon' }, { default: () => h(CheckmarkOutline) })
         : null,
     ],
   )
@@ -980,7 +980,7 @@ watch(
   width: var(--col-w, 280px);
   flex: 0 0 var(--col-w, 280px);
   background: var(--t-surface-alt);
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 10px;
   align-self: flex-start;
   max-height: calc(100vh - 180px);
@@ -1003,7 +1003,7 @@ watch(
   left: 0;
   right: 0;
   height: 3px;
-  border-radius: 10px 10px 0 0;
+  border-radius: 14px 14px 0 0;
   background: var(--col-grad);
 }
 .col-head {

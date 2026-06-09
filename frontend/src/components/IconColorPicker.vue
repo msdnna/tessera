@@ -219,6 +219,8 @@ function onIconFile(e) {
   gap: 6px;
 }
 .sw {
+  appearance: none;
+  -webkit-appearance: none;
   width: 22px;
   height: 22px;
   border-radius: 50%;

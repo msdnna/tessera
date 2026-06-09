@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.4] — 2026-06-09
+- Bigger corner radius on cards (12px) and columns (14px) to match the Android
+  client; the priority / column accent bars follow the rounded corners.
+- Tab counter: centre the number inside the circle (was shifted) via flex.
+- Accent-gradient checkmark in the grouping / sort dropdowns (shared SVG accent
+  gradient def in App.vue + a reusable `.grad-icon` helper).
+- Reset native `appearance` on colour-picker swatch buttons.
+
 ### [0.42.3] — 2026-06-09
 - Accent gradient on Naive buttons, done by variant (Naive emits no class for
   text/quaternary, so it's split correctly): filled primary buttons get a

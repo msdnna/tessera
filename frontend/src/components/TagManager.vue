@@ -162,6 +162,8 @@ async function add() {
   padding-left: 2px;
 }
 .sw {
+  appearance: none;
+  -webkit-appearance: none;
   width: 20px;
   height: 20px;
   border-radius: 50%;
