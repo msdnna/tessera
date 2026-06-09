@@ -73,9 +73,15 @@ const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value })
 const stackLayers = computed(() => Math.min(taskTags.value.length - 1, 2))
 const stackShadow = computed(() => {
   if (taskTags.value.length < 2) return ''
+  // Each deeper layer peeks 5px further right and is a touch shorter (negative
+  // spread). Colours are mixed to an *opaque* soft tint of the tag's hue so the
+  // layers don't show through one another (the old translucent `55` alpha did).
   return taskTags.value
     .slice(1, 3)
-    .map((t, i) => `${(i + 1) * 5}px 0 0 ${-(i * 1 + 1)}px ${(t.color || '#888') + '55'}`)
+    .map(
+      (t, i) =>
+        `${(i + 1) * 5}px 0 0 ${-(i + 1)}px color-mix(in srgb, ${t.color || '#888'} 45%, var(--t-surface))`,
+    )
     .join(', ')
 })
 const cardStyle = computed(() =>
@@ -86,6 +92,12 @@ const cardStyle = computed(() =>
 
 function initials(name) {
   return (name || '?').trim().slice(0, 2).toUpperCase()
+}
+// Same-hue diagonal gradient of an arbitrary colour (tag/priority hue), matching
+// the global --t-accent-grad contract (darker BL → base centre → lighter TR).
+function hueGrad(c) {
+  const x = c || '#888'
+  return `linear-gradient(to top right, color-mix(in srgb, ${x} 86%, #000), ${x} 50%, color-mix(in srgb, ${x} 86%, #fff))`
 }
 function isAssigned(uid) {
   return (props.task.assignee_ids || []).includes(uid)
@@ -342,6 +354,17 @@ async function submitAddSub() {
         </div>
       </n-popover>
 
+      <!-- due date: opens the calendar directly -->
+      <n-popover trigger="click" placement="bottom-start">
+        <template #trigger>
+          <button class="pill" :class="{ set: due }" @click.stop>
+            <n-icon :component="CalendarClearOutline" :size="13" />
+            <span v-if="due" class="pill-text">{{ due }}</span>
+          </button>
+        </template>
+        <n-date-picker panel type="date" :value="dueTs" @update:value="setDue" />
+      </n-popover>
+
       <!-- tags: stacked when >1; hover previews full list, click opens picker -->
       <n-popover trigger="click" placement="bottom-start">
         <template #trigger>
@@ -358,11 +381,15 @@ async function submitAddSub() {
                   borderColor: (taskTags[0].color || '#888') + '55',
                   color: taskTags[0].color || '#888',
                   boxShadow: stackShadow,
-                  marginRight: stackLayers ? stackLayers * 5 + 4 + 'px' : undefined,
+                  marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
                 }"
                 @click.stop
               >
-                <span class="tname">{{ taskTags[0].name }}</span>
+                <span
+                  class="tname accent-grad-text"
+                  :style="{ '--grad': hueGrad(taskTags[0].color) }"
+                  >{{ taskTags[0].name }}</span
+                >
                 <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
               </button>
             </template>
@@ -402,17 +429,6 @@ async function submitAddSub() {
             @click.stop
           />
         </div>
-      </n-popover>
-
-      <!-- due date: opens the calendar directly -->
-      <n-popover trigger="click" placement="bottom-start">
-        <template #trigger>
-          <button class="pill" :class="{ set: due }" @click.stop>
-            <n-icon :component="CalendarClearOutline" :size="13" />
-            <span v-if="due" class="pill-text">{{ due }}</span>
-          </button>
-        </template>
-        <n-date-picker panel type="date" :value="dueTs" @update:value="setDue" />
       </n-popover>
 
       <span class="spacer" />
@@ -688,7 +704,7 @@ async function submitAddSub() {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: var(--t-on-primary);
   font-size: 10px;
   font-weight: 600;

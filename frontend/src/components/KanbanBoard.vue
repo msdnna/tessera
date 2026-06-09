@@ -34,6 +34,7 @@ import { PRIORITY_LABELS } from '@/styles/tokens'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
+import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
@@ -615,7 +616,8 @@ watch(
 </script>
 
 <template>
-  <n-spin :show="loading">
+  <n-spin :show="loading" :rotate="false">
+    <template #icon><TesseraSpinner /></template>
     <div v-if="board" class="board-wrap">
       <!-- Sub-toolbar under the header: grouping / sort / filters / subtasks +
            a task-name search on the right. (Layout + Теги/Архив live in the
@@ -779,6 +781,8 @@ watch(
                 item-key="id"
                 class="drop"
                 ghost-class="ghost"
+                filter=".add-sub, .sub-add-input"
+                :prevent-on-filter="false"
                 :animation="150"
                 :delay="160"
                 :delay-on-touch-only="true"

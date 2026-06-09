@@ -88,7 +88,7 @@ async function createWorkspace() {
 <template>
   <div class="sidebar" :class="{ collapsed }">
     <div class="brand">
-      <span class="brand-mark">mt</span>
+      <img class="brand-mark" src="/favicon.svg" alt="Tessera" />
       <span v-if="!collapsed" class="brand-name">Tessera</span>
       <!-- Tools live here (right of the logo) when expanded; when the rail is
            collapsed (desktop) they move to the header instead. -->
@@ -280,17 +280,12 @@ async function createWorkspace() {
   padding: 2px 0;
 }
 .brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: var(--t-primary);
-  color: var(--t-on-primary);
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: -0.5px;
+  object-fit: contain;
+  flex: none;
 }
 .brand-name {
   font-weight: 700;

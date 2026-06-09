@@ -123,7 +123,7 @@ function initials(name) {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: var(--t-on-primary);
   font-size: 10px;
   display: inline-flex;

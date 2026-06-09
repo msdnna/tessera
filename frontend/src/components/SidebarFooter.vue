@@ -76,7 +76,7 @@ function logout() {
 }
 .ava {
   flex: none;
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: var(--t-on-primary);
   font-size: 12px;
   font-weight: 600;

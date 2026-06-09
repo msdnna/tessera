@@ -1240,7 +1240,7 @@ function eventText(e) {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: var(--t-on-primary);
   font-size: 10px;
   font-weight: 600;
@@ -1463,7 +1463,7 @@ function eventText(e) {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: var(--t-on-primary);
   font-size: 11px;
   font-weight: 600;

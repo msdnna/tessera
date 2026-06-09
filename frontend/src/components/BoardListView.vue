@@ -202,7 +202,7 @@ function isOverdue(t) {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: #fff;
   font-size: 10px;
   display: inline-flex;

@@ -1,8 +1,9 @@
 <script setup>
 import { ref } from 'vue'
-import { NCard, NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
+import { NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import AuthLayout from '@/components/AuthLayout.vue'
 
 const email = ref('')
 const name = ref('')
@@ -26,36 +27,25 @@ async function submit() {
 </script>
 
 <template>
-  <div class="center">
-    <n-card title="Регистрация в Tessera" style="max-width: 380px">
-      <n-form @submit.prevent="submit">
-        <n-form-item label="Имя">
-          <n-input v-model:value="name" placeholder="Ваше имя" />
-        </n-form-item>
-        <n-form-item label="Email">
-          <n-input v-model:value="email" placeholder="you@example.com" />
-        </n-form-item>
-        <n-form-item label="Пароль">
-          <n-input
-            v-model:value="password"
-            type="password"
-            show-password-on="click"
-            placeholder="минимум 8 символов"
-            @keyup.enter="submit"
-          />
-        </n-form-item>
-        <n-button type="primary" block :loading="loading" @click="submit">Создать аккаунт</n-button>
-      </n-form>
-      <template #footer> Уже есть аккаунт? <router-link to="/login">Вход</router-link> </template>
-    </n-card>
-  </div>
+  <auth-layout title="Регистрация в Tessera">
+    <n-form @submit.prevent="submit">
+      <n-form-item label="Имя">
+        <n-input v-model:value="name" placeholder="Ваше имя" />
+      </n-form-item>
+      <n-form-item label="Email">
+        <n-input v-model:value="email" placeholder="you@example.com" />
+      </n-form-item>
+      <n-form-item label="Пароль">
+        <n-input
+          v-model:value="password"
+          type="password"
+          show-password-on="click"
+          placeholder="минимум 8 символов"
+          @keyup.enter="submit"
+        />
+      </n-form-item>
+      <n-button type="primary" block :loading="loading" @click="submit">Создать аккаунт</n-button>
+    </n-form>
+    <div class="auth-foot">Уже есть аккаунт? <router-link to="/login">Вход</router-link></div>
+  </auth-layout>
 </template>
-
-<style scoped>
-.center {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-</style>

@@ -10,6 +10,52 @@
   --t-text3: #868d96;
   --t-primary: #7c5cff;
   --t-on-primary: #ffffff;
+  /* Accent gradient (ported from the Android client): a soft same-hue diagonal —
+     darker bottom-left → base colour at the centre → lighter top-right. The
+     `to top right` keyword puts the box centre at the 50% stop, so the middle of
+     any filled element keeps the exact base colour. Strength = fraction toward
+     black/white at the corners: 14% for fills, 8% for thin/subtle accents.
+     Defined in terms of --t-primary, so it re-resolves when the theme changes. */
+  --t-accent-grad: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 86%, #000) 0%,
+    var(--t-primary) 50%,
+    color-mix(in srgb, var(--t-primary) 86%, #fff) 100%
+  );
+  --t-accent-grad-subtle: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 92%, #000) 0%,
+    var(--t-primary) 50%,
+    color-mix(in srgb, var(--t-primary) 92%, #fff) 100%
+  );
+}
+
+/* ── Accent gradient application ───────────────────────────────────────────
+   Every solid accent (primary) surface carries the same-hue diagonal gradient.
+   Naive paints its fill via background-color (a CSS var), so we layer the
+   gradient as a background-image on top; hover/press feedback then comes from a
+   small brightness shift since the image hides Naive's colour transition.
+   Scoped to *filled* primary buttons — text / ghost / dashed / secondary /
+   tertiary / quaternary primaries (e.g. the board sub-toolbar) stay flat. */
+.n-button--primary-type:not(.n-button--text):not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(.n-button--tertiary):not(.n-button--quaternary):not(.n-button--disabled) {
+  background-image: var(--t-accent-grad);
+}
+.n-button--primary-type:not(.n-button--text):not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(.n-button--tertiary):not(.n-button--quaternary):not(.n-button--disabled):hover {
+  filter: brightness(1.05);
+}
+.n-button--primary-type:not(.n-button--text):not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(.n-button--tertiary):not(.n-button--quaternary):not(.n-button--disabled):active {
+  filter: brightness(0.96);
+}
+
+/* Helper for accent text/icons: paints the foreground with the accent gradient
+   via background-clip. Use .accent-grad-text for the primary hue, or set
+   --grad inline to a custom (e.g. per-tag hue) gradient. */
+.accent-grad-text {
+  background-image: var(--grad, var(--t-accent-grad));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 html,
@@ -170,6 +216,23 @@ body {
 .sortable-drag .subs.pending,
 .sortable-fallback .subs.pending {
   display: none !important;
+}
+
+/* Auth screens: footer line under the form (slotted into AuthLayout, so styled
+   globally rather than via the shell's scoped styles). */
+.auth-foot {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.auth-foot a {
+  color: var(--t-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.auth-foot a:hover {
+  text-decoration: underline;
 }
 
 /* @-mention chip in rendered task descriptions / comments. */

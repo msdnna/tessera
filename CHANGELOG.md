@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.0] — 2026-06-09
+- Fix: the «＋ Создать подзадачу» button no longer starts a card drag on desktop.
+  The board's task Sortable now filters the add-subtask button and its inline
+  input (with `prevent-on-filter` off), so a press opens the input instead of
+  grabbing the card. (Mobile tap already worked.)
+- Fix stacked tag pills (2+ tags): the peeking layers are now opaque soft tints
+  of each tag's own hue instead of translucent shadows (no more see-through
+  overlap), and the gap after the tag pill matches the gap before it (reserve
+  exactly the stack peek, drop the extra margin).
+- Swap the card pill order to priority → due date → tags.
+- Accent-gradient port from the Android client: new `--t-accent-grad` /
+  `--t-accent-grad-subtle` CSS vars (soft same-hue diagonal, base colour pinned
+  at the centre) applied to filled primary buttons, avatars, the «сегодня»
+  calendar cell, the mention-list selection and tag text.
+- Brand logo + favicon: the sidebar mark and the browser favicon now use the
+  Tessera tile (`design/tessera-brand`); added `theme-color` + apple-touch-icon.
+- Custom branded loader (`TesseraSpinner`): the Tessera tile tumbles in place of
+  naive's default spinner on the board and home loading states.
+- Redesigned login/register screens (`AuthLayout`): a full-bleed brand gradient
+  with the white monogram + wordmark over a themed form card.
+
 ### [0.41.5] — 2026-06-04
 - Centre the icon-only Архив/Удалить buttons in the mobile modal footer (drop
   the icon margin reserved for the hidden label).

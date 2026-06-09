@@ -1,8 +1,9 @@
 <script setup>
 import { ref } from 'vue'
-import { NCard, NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
+import { NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import AuthLayout from '@/components/AuthLayout.vue'
 
 const email = ref('')
 const password = ref('')
@@ -25,34 +26,21 @@ async function submit() {
 </script>
 
 <template>
-  <div class="center">
-    <n-card title="Вход в Tessera" style="max-width: 380px">
-      <n-form @submit.prevent="submit">
-        <n-form-item label="Email">
-          <n-input v-model:value="email" placeholder="you@example.com" />
-        </n-form-item>
-        <n-form-item label="Пароль">
-          <n-input
-            v-model:value="password"
-            type="password"
-            show-password-on="click"
-            @keyup.enter="submit"
-          />
-        </n-form-item>
-        <n-button type="primary" block :loading="loading" @click="submit">Войти</n-button>
-      </n-form>
-      <template #footer>
-        Нет аккаунта? <router-link to="/register">Регистрация</router-link>
-      </template>
-    </n-card>
-  </div>
+  <auth-layout title="Вход в Tessera">
+    <n-form @submit.prevent="submit">
+      <n-form-item label="Email">
+        <n-input v-model:value="email" placeholder="you@example.com" />
+      </n-form-item>
+      <n-form-item label="Пароль">
+        <n-input
+          v-model:value="password"
+          type="password"
+          show-password-on="click"
+          @keyup.enter="submit"
+        />
+      </n-form-item>
+      <n-button type="primary" block :loading="loading" @click="submit">Войти</n-button>
+    </n-form>
+    <div class="auth-foot">Нет аккаунта? <router-link to="/register">Регистрация</router-link></div>
+  </auth-layout>
 </template>
-
-<style scoped>
-.center {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-</style>

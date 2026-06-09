@@ -6,6 +6,7 @@ import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
+import TesseraSpinner from '@/components/TesseraSpinner.vue'
 
 const router = useRouter()
 const wsStore = useWorkspacesStore()
@@ -98,7 +99,8 @@ watch(() => wsStore.currentId, load)
 </script>
 
 <template>
-  <n-spin :show="loading">
+  <n-spin :show="loading" :rotate="false">
+    <template #icon><TesseraSpinner /></template>
     <div class="home">
       <h2 class="greeting">Привет, {{ auth.user?.name || 'друг' }} 👋</h2>
 
@@ -299,7 +301,7 @@ watch(() => wsStore.currentId, load)
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: var(--t-on-primary);
   font-size: 10px;
   font-weight: 600;

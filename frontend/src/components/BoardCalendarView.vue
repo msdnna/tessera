@@ -203,7 +203,7 @@ function goToday() {
   color: var(--t-text3);
 }
 .cal-cell.today .cal-daynum {
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: #fff;
 }
 .cal-daynum {

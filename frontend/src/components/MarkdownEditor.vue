@@ -562,7 +562,7 @@ defineExpose({ getMentions, clear, focus })
 }
 .md2-mentions li:hover,
 .md2-mentions li.active {
-  background: var(--t-primary);
+  background: var(--t-accent-grad);
   color: var(--t-on-primary);
 }
 .md2-preview {
