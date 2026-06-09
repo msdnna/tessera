@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.8] — 2026-06-09
+- Notification bell badge: accent gradient + centred number (matches the modal
+  tab counter), instead of naive's off-centre red.
+- Fix the «＋ Создать подзадачу» button (and its spacing) vanishing on a plain
+  mouse-press on a card — Sortable adds `.sortable-chosen` on mousedown (before
+  any drag), and the hide rule was keyed on it, so cards jumped. The rule now
+  only hides on the actual drag clone / placeholder.
+- Toolbar / layout toggles (Доска/Список/Календарь, Группировка…) stay a clean
+  solid accent when active instead of a clipped gradient: background-clip:text
+  clipped the label and an objectBoundingBox SVG gradient is degenerate on the
+  axis-aligned <line>s these icons are built from (parts vanished). Gradient is
+  kept on shape-based icons (column glyph, flag, check).
+- Action icons in the list / calendar task context menus (shared useTaskMenu).
+
 ### [0.42.7] — 2026-06-09
 - Fix focus rings being clipped on the left/top: containers with `overflow-y:
   auto` (filter panel, column task list, tag manager list) force `overflow-x`

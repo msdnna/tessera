@@ -120,20 +120,12 @@
   -webkit-text-fill-color: transparent;
 }
 
-/* Transparent (toolbar / layout) toggles opted out of the fill via `ngrad`:
-   when active (primary-type) gradient the label + icon instead. */
-.ngrad.n-button--primary-type .n-button__content {
-  background-image: var(--t-accent-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.ngrad.n-button--primary-type .n-button__icon [fill='currentColor'] {
-  fill: url(#t-accent-grad-svg);
-}
-.ngrad.n-button--primary-type .n-button__icon [stroke='currentColor'] {
-  stroke: url(#t-accent-grad-svg);
-}
+/* Transparent (toolbar / layout) toggles opted out of the fill via `ngrad`;
+   when active they stay a clean solid accent (Naive's text-primary look). We do
+   NOT gradient them: background-clip:text on the tight button box clips the
+   label, and an objectBoundingBox SVG gradient is degenerate on the axis-aligned
+   <line> elements these icons (list / calendar) are built from, so parts vanish.
+   The accent gradient is kept on shape-based icons (column glyph, flag, check). */
 
 /* ── Accent gradient on Naive controls (theme-following) ── */
 .n-switch.n-switch--active .n-switch__rail {
@@ -298,14 +290,15 @@ body {
 }
 
 /* While a card is being dragged, hide its own "create subtask" button and its
-   empty nest dropzone hint — otherwise Sortable relocates the card (with those
-   labels) into a drop target and they look duplicated. */
+   empty nest dropzone hint on the moving clone / placeholder — otherwise Sortable
+   relocates the card (with those labels) into a drop target and they look
+   duplicated. NOT on `.sortable-chosen`: that class is added on mousedown (before
+   any actual drag), so hiding there removed the button + its space on a plain
+   click and made the cards below jump. */
 .sortable-ghost .add-sub,
-.sortable-chosen .add-sub,
 .sortable-drag .add-sub,
 .sortable-fallback .add-sub,
 .sortable-ghost .subs.pending,
-.sortable-chosen .subs.pending,
 .sortable-drag .subs.pending,
 .sortable-fallback .subs.pending {
   display: none !important;

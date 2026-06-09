@@ -130,13 +130,23 @@ function fmtTime(d) {
    Equal min-width/height + a pill radius keeps it a clean circle for a single
    digit (and a neat pill for "9+"). */
 .bell-badge :deep(.n-badge-sup) {
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 16px;
   min-width: 16px;
   padding: 0 4px;
   box-sizing: border-box;
   font-size: 10px;
-  line-height: 16px;
+  font-weight: 600;
   border-radius: 999px;
+}
+/* Centre the animated number inside the badge. */
+.bell-badge :deep(.n-badge-sup .n-base-slot-machine) {
+  line-height: 16px;
+  height: 16px;
 }
 .appearance {
   width: 200px;

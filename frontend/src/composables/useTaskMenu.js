@@ -1,9 +1,19 @@
-import { ref, computed, unref } from 'vue'
-import { useDialog } from 'naive-ui'
+import { ref, computed, unref, h } from 'vue'
+import { useDialog, NIcon } from 'naive-ui'
+import {
+  OpenOutline,
+  CheckmarkDoneOutline,
+  FlagOutline,
+  ArrowForwardOutline,
+  ArchiveOutline,
+  TrashOutline,
+} from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { pressMoved } from '@/utils/dnd'
 import { confirmHardDelete } from '@/utils/confirm'
+
+const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 
 // Reusable right-click menu for a task, shared by the list/calendar views (and
 // usable anywhere a task object is on hand). Callbacks: onOpen(id), onChanged().
@@ -25,11 +35,16 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
     const t = target.value
     const cols = resolveColumns().filter((c) => c.id !== t?.column_id)
     return [
-      { label: 'Открыть', key: 'open' },
-      { label: t?.completed_at ? 'Снять выполнение' : 'Отметить выполненной', key: 'toggle' },
+      { label: 'Открыть', key: 'open', icon: menuIcon(OpenOutline) },
+      {
+        label: t?.completed_at ? 'Снять выполнение' : 'Отметить выполненной',
+        key: 'toggle',
+        icon: menuIcon(CheckmarkDoneOutline),
+      },
       {
         label: 'Приоритет',
         key: 'prio',
+        icon: menuIcon(FlagOutline),
         children: PRIORITY_LABELS.map((l, i) => ({ label: l, key: 'prio:' + i })),
       },
       ...(cols.length
@@ -37,13 +52,14 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
             {
               label: 'Переместить в колонку',
               key: 'move',
+              icon: menuIcon(ArrowForwardOutline),
               children: cols.map((c) => ({ label: c.name, key: 'col:' + c.id })),
             },
           ]
         : []),
       { type: 'divider', key: 'd1' },
-      { label: 'В архив', key: 'archive' },
-      { label: 'Удалить', key: 'delete' },
+      { label: 'В архив', key: 'archive', icon: menuIcon(ArchiveOutline) },
+      { label: 'Удалить', key: 'delete', icon: menuIcon(TrashOutline) },
     ]
   })
 
