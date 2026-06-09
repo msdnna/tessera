@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, h } from 'vue'
 import draggable from 'vuedraggable'
 import { NIcon, NPopover, NDatePicker, NInput, NDropdown, useDialog } from 'naive-ui'
 import {
@@ -10,7 +10,16 @@ import {
   CheckmarkCircle,
   EllipseOutline,
   CheckmarkOutline,
+  OpenOutline,
+  CheckmarkDoneOutline,
+  ArrowForwardOutline,
+  GitBranchOutline,
+  ArchiveOutline,
+  TrashOutline,
 } from '@vicons/ionicons5'
+
+// Render a dropdown-option icon (naive's `icon` option field wants a render fn).
+const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { pressMoved } from '@/utils/dnd'
@@ -132,11 +141,16 @@ const ctxOptions = computed(() => {
   const isMain = t && t.id === props.task.id
   const cols = props.columns.filter((c) => c.id !== t?.column_id)
   return [
-    { label: 'Открыть', key: 'open' },
-    { label: t?.completed_at ? 'Снять выполнение' : 'Отметить выполненной', key: 'toggle' },
+    { label: 'Открыть', key: 'open', icon: menuIcon(OpenOutline) },
+    {
+      label: t?.completed_at ? 'Снять выполнение' : 'Отметить выполненной',
+      key: 'toggle',
+      icon: menuIcon(CheckmarkDoneOutline),
+    },
     {
       label: 'Приоритет',
       key: 'prio',
+      icon: menuIcon(FlagOutline),
       children: PRIORITY_LABELS.map((l, i) => ({ label: l, key: 'prio:' + i })),
     },
     ...(cols.length
@@ -144,14 +158,15 @@ const ctxOptions = computed(() => {
           {
             label: 'Переместить в колонку',
             key: 'move',
+            icon: menuIcon(ArrowForwardOutline),
             children: cols.map((c) => ({ label: c.name, key: 'col:' + c.id })),
           },
         ]
       : []),
     { type: 'divider', key: 'd1' },
-    ...(isMain ? [{ label: 'Создать подзадачу', key: 'subtask' }] : []),
-    { label: 'В архив', key: 'archive' },
-    { label: 'Удалить', key: 'delete' },
+    ...(isMain ? [{ label: 'Создать подзадачу', key: 'subtask', icon: menuIcon(GitBranchOutline) }] : []),
+    { label: 'В архив', key: 'archive', icon: menuIcon(ArchiveOutline) },
+    { label: 'Удалить', key: 'delete', icon: menuIcon(TrashOutline) },
   ]
 })
 function baseOf(t) {
@@ -468,6 +483,7 @@ async function submitAddSub() {
          drop hint while a board drag is in progress. -->
     <draggable
       v-if="!nested"
+      :key="subtasksExpanded ? 'stack' : 'list'"
       :list="subModel"
       group="tasks"
       item-key="id"
@@ -553,13 +569,11 @@ async function submitAddSub() {
    while a board drag is in progress → keep the block (a small drop area) so a
    dropped task attaches under the card, same as a card that already has subs. */
 .subs.collapsed {
-  height: 0;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  border: none;
-  box-shadow: none;
-  overflow: hidden;
+  /* Fully hidden when idle: `display:none` beats the `.subs.list` padding/border
+     that (being later in source) would otherwise leak a ~20px empty ghost box
+     under childless cards. The drop zone still appears via `.subs.pending`
+     while a board drag is in progress. */
+  display: none;
 }
 .subs.pending {
   min-height: 26px;

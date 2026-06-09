@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, h } from 'vue'
 import draggable from 'vuedraggable'
 import { NIcon, NButton, NInput, NDropdown, NPopover, NPopconfirm, useMessage } from 'naive-ui'
 import {
@@ -9,7 +9,10 @@ import {
   AddOutline,
   CreateOutline,
   TrashOutline,
+  DocumentTextOutline,
 } from '@vicons/ionicons5'
+
+const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { workspaces as wsApi, groups as groupsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
@@ -44,11 +47,11 @@ const ctxShow = ref(false)
 const ctxX = ref(0)
 const ctxY = ref(0)
 const ctxOptions = [
-  { label: 'Новый проект', key: 'add-project' },
-  { label: 'Новая группа', key: 'add-group' },
+  { label: 'Новый проект', key: 'add-project', icon: menuIcon(DocumentTextOutline) },
+  { label: 'Новая группа', key: 'add-group', icon: menuIcon(FolderOutline) },
   { type: 'divider', key: 'd1' },
-  { label: 'Переименовать', key: 'rename' },
-  { label: 'Удалить группу', key: 'delete' },
+  { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+  { label: 'Удалить группу', key: 'delete', icon: menuIcon(TrashOutline) },
 ]
 function onCtx(e) {
   if (pressMoved()) return
@@ -95,8 +98,8 @@ const onProjChange = (evt) =>
   moveSidebarProject(evt, projModel.value, props.group.id, store, message)
 
 const addOptions = [
-  { label: 'Проект', key: 'project' },
-  { label: 'Группа', key: 'group' },
+  { label: 'Проект', key: 'project', icon: menuIcon(DocumentTextOutline) },
+  { label: 'Группа', key: 'group', icon: menuIcon(FolderOutline) },
 ]
 
 async function onAdd(key) {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   NIcon,
@@ -18,7 +18,10 @@ import {
   AddOutline,
   CreateOutline,
   TrashOutline,
+  OpenOutline,
 } from '@vicons/ionicons5'
+
+const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { projects as projApi, boards as boardsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import ProjectIcon from './ProjectIcon.vue'
@@ -133,10 +136,10 @@ const pcShow = ref(false)
 const pcX = ref(0)
 const pcY = ref(0)
 const pcOptions = [
-  { label: 'Новая доска', key: 'add-board' },
+  { label: 'Новая доска', key: 'add-board', icon: menuIcon(AddOutline) },
   { type: 'divider', key: 'd1' },
-  { label: 'Переименовать', key: 'rename' },
-  { label: 'Удалить проект', key: 'delete' },
+  { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+  { label: 'Удалить проект', key: 'delete', icon: menuIcon(TrashOutline) },
 ]
 function onProjectCtx(e) {
   if (pressMoved()) return
@@ -157,9 +160,9 @@ const bcX = ref(0)
 const bcY = ref(0)
 const bcTarget = ref(null)
 const bcOptions = [
-  { label: 'Открыть', key: 'open' },
-  { label: 'Переименовать', key: 'rename' },
-  { label: 'Удалить доску', key: 'delete' },
+  { label: 'Открыть', key: 'open', icon: menuIcon(OpenOutline) },
+  { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+  { label: 'Удалить доску', key: 'delete', icon: menuIcon(TrashOutline) },
 ]
 function onBoardCtx(e, b) {
   bcTarget.value = b

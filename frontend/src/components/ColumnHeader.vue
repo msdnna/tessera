@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, h } from 'vue'
 import { NIcon, NButton, NInput, NPopover, NPopconfirm, NDropdown, useMessage } from 'naive-ui'
 import {
   EllipsisHorizontalOutline,
@@ -8,7 +8,10 @@ import {
   CheckmarkCircle,
   EllipseOutline,
   ContrastOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
+
+const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { columns as columnsApi } from '@/api'
 
 const props = defineProps({
@@ -25,7 +28,9 @@ const emit = defineEmits(['changed', 'set-done'])
 const statusIcon = computed(() =>
   props.isDone ? CheckmarkCircle : props.first ? EllipseOutline : ContrastOutline,
 )
-const statusColor = computed(() => props.dcol.color || 'var(--t-text2)')
+// Tint the glyph with the column colour; fall back to the accent (same as the
+// column's top bar) rather than a dull grey so the icon always reads as coloured.
+const statusColor = computed(() => props.dcol.color || 'var(--t-primary)')
 
 function toggleDone() {
   emit('set-done', props.isDone ? null : props.dcol.key)
@@ -37,10 +42,14 @@ const ctxShow = ref(false)
 const ctxX = ref(0)
 const ctxY = ref(0)
 const ctxOptions = computed(() => [
-  { label: 'Переименовать', key: 'rename' },
-  { label: props.isDone ? 'Снять завершение' : 'Сделать завершающей', key: 'done' },
+  { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+  {
+    label: props.isDone ? 'Снять завершение' : 'Сделать завершающей',
+    key: 'done',
+    icon: menuIcon(CheckmarkDoneOutline),
+  },
   { type: 'divider', key: 'd1' },
-  { label: 'Удалить колонку', key: 'delete' },
+  { label: 'Удалить колонку', key: 'delete', icon: menuIcon(TrashOutline) },
 ])
 function onCtx(e) {
   if (!props.editable) return

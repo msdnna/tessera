@@ -1446,6 +1446,11 @@ function eventText(e) {
 .tab-badge {
   margin-left: 6px;
 }
+/* Accent (not naive's default red) tab counters, matching the Android client. */
+.tab-badge :deep(.n-badge-sup) {
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+}
 
 /* comments */
 .comments {

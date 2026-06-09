@@ -30,20 +30,18 @@
   );
 }
 
-/* ── Accent gradient application ───────────────────────────────────────────
-   Every solid accent (primary) surface carries the same-hue diagonal gradient.
-   Naive paints its fill via background-color (a CSS var), so we layer the
-   gradient as a background-image on top; hover/press feedback then comes from a
-   small brightness shift since the image hides Naive's colour transition.
-   Scoped to *filled* primary buttons — text / ghost / dashed / secondary /
-   tertiary / quaternary primaries (e.g. the board sub-toolbar) stay flat. */
-.n-button--primary-type:not(.n-button--text):not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(.n-button--tertiary):not(.n-button--quaternary):not(.n-button--disabled) {
+/* Accent gradient on the auth submit button. Scoped to the auth card on purpose:
+   Naive renders quaternary/tertiary primaries (the board sub-toolbar) and the
+   filled layout-switch toggle with the same `--primary-type` class, so a global
+   primary-button rule would wrongly gradient those toggles. The auth card holds
+   only the one filled action button, so we target it directly. */
+.auth-card .n-button.n-button--primary-type {
   background-image: var(--t-accent-grad);
 }
-.n-button--primary-type:not(.n-button--text):not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(.n-button--tertiary):not(.n-button--quaternary):not(.n-button--disabled):hover {
+.auth-card .n-button.n-button--primary-type:hover {
   filter: brightness(1.05);
 }
-.n-button--primary-type:not(.n-button--text):not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(.n-button--tertiary):not(.n-button--quaternary):not(.n-button--disabled):active {
+.auth-card .n-button.n-button--primary-type:active {
   filter: brightness(0.96);
 }
 

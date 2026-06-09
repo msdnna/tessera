@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, h } from 'vue'
 import draggable from 'vuedraggable'
 import {
   NSelect,
@@ -14,7 +14,15 @@ import {
   NTooltip,
   useMessage,
 } from 'naive-ui'
-import { HomeOutline, DocumentTextOutline, AlarmOutline, AddOutline } from '@vicons/ionicons5'
+import {
+  HomeOutline,
+  DocumentTextOutline,
+  AlarmOutline,
+  AddOutline,
+  FolderOutline,
+} from '@vicons/ionicons5'
+
+const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
@@ -47,8 +55,8 @@ const onRootGrp = (evt) => moveSidebarGroup(evt, rootGrpModel.value, null, store
 const onRootProj = (evt) => moveSidebarProject(evt, rootProjModel.value, null, store, message)
 
 const addOptions = [
-  { label: 'Проект', key: 'project' },
-  { label: 'Группа', key: 'group' },
+  { label: 'Проект', key: 'project', icon: menuIcon(DocumentTextOutline) },
+  { label: 'Группа', key: 'group', icon: menuIcon(FolderOutline) },
 ]
 
 async function onWorkspaceChange(id) {

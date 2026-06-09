@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.1] — 2026-06-09
+- Fix the accent gradient leaking onto board controls: the layout switch, the
+  grouping/sort/filter buttons and the subtasks toggle no longer get a gradient
+  fill (naive renders quaternary/filled primaries with the same class, so the
+  gradient is now scoped to the auth submit button only).
+- Fix childless cards showing an empty placeholder box under them in the
+  collapsed subtask view (`.subs.collapsed` is now fully hidden instead of
+  leaking the list padding/border).
+- Fix expanded subtask cards getting clipped after toggling the subtasks view
+  off and on again (the subtask list now remounts on mode change, clearing stale
+  Sortable layout styles).
+- Column status glyphs are tinted with the column colour, falling back to the
+  accent (like the column's top bar) instead of a dull grey.
+- Context menus now carry action icons (task card, column header, sidebar group/
+  project/board and the add menus), matching the Android client.
+- Tab counters in the task modal use the accent colour instead of naive's red.
+
 ### [0.42.0] — 2026-06-09
 - Fix: the «＋ Создать подзадачу» button no longer starts a card drag on desktop.
   The board's task Sortable now filters the add-subtask button and its inline
