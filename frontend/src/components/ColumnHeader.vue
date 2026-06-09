@@ -31,6 +31,13 @@ const statusIcon = computed(() =>
 // Tint the glyph with the column colour; fall back to the accent (same as the
 // column's top bar) rather than a dull grey so the icon always reads as coloured.
 const statusColor = computed(() => props.dcol.color || 'var(--t-primary)')
+// Per-column SVG gradient so the glyph carries the same-hue diagonal gradient
+// (Android parity). An SVG <linearGradient> referenced by fill/stroke: url(#id);
+// applied via attribute selectors so fill-based and stroke-based ionicons each
+// gradient correctly without cross-contamination. Stops use the column hue.
+const gradId = computed(() => `cgrad-${props.dcol.key}`)
+const glyphDark = computed(() => `color-mix(in srgb, ${statusColor.value} 86%, #000)`)
+const glyphLight = computed(() => `color-mix(in srgb, ${statusColor.value} 86%, #fff)`)
 
 function toggleDone() {
   emit('set-done', props.isDone ? null : props.dcol.key)
@@ -125,11 +132,20 @@ async function removeCol() {
 
 <template>
   <div class="col-head" @contextmenu="onCtx">
+    <svg v-if="editable" class="cg-def" width="0" height="0" aria-hidden="true">
+      <defs>
+        <linearGradient :id="gradId" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0" :style="{ stopColor: glyphDark }" />
+          <stop offset="0.5" :style="{ stopColor: statusColor }" />
+          <stop offset="1" :style="{ stopColor: glyphLight }" />
+        </linearGradient>
+      </defs>
+    </svg>
     <n-icon
       v-if="editable"
       :component="statusIcon"
       class="col-stat col-drag"
-      :style="{ color: statusColor }"
+      :style="{ color: statusColor, '--icon-grad': `url(#${gradId})` }"
       :title="isDone ? 'Завершающая колонка' : 'Перетащите за заголовок'"
     />
     <n-input
@@ -207,6 +223,21 @@ async function removeCol() {
   font-size: 16px;
   cursor: grab;
   flex: none;
+}
+/* Paint the glyph with the per-column SVG gradient. Attribute selectors keep
+   fill-based and stroke-based ionicons correct (only recolour where the icon
+   used currentColor). */
+.col-stat :deep(svg [fill='currentColor']) {
+  fill: var(--icon-grad);
+}
+.col-stat :deep(svg [stroke='currentColor']) {
+  stroke: var(--icon-grad);
+}
+.cg-def {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 .col-title {
   flex: 1;

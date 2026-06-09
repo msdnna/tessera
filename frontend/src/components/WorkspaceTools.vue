@@ -10,6 +10,7 @@ import {
 } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
+import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useNotificationsStore } from '@/stores/notifications'
 import MembersModal from './MembersModal.vue'
@@ -63,7 +64,7 @@ function fmtTime(d) {
       <div class="feed">
         <div class="feed-head">
           <span>Уведомления</span>
-          <n-button v-if="notes.unread" text size="tiny" type="primary" @click="notes.markAllRead()">
+          <n-button v-if="notes.unread" text size="tiny" type="primary" class="ngrad" @click="notes.markAllRead()">
             Прочитать все
           </n-button>
         </div>
@@ -107,7 +108,7 @@ function fmtTime(d) {
             :key="t.key"
             class="swatch-btn"
             :class="{ active: t.key === theme.activeTheme.key }"
-            :style="{ background: t.primary }"
+            :style="{ background: hueGrad(t.primary) }"
             :title="t.name"
             @click="theme.selectColor(t)"
           />

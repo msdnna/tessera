@@ -22,7 +22,7 @@ import {
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
-import { hueGrad, hueGradVert, tagPillBg } from '@/utils/gradient'
+import { hueGrad, hueGradVert, tagPillBg, softFill } from '@/utils/gradient'
 import { pressMoved } from '@/utils/dnd'
 import { confirmHardDelete } from '@/utils/confirm'
 
@@ -419,11 +419,15 @@ async function submitAddSub() {
               :key="t.id"
               class="tagchip"
               :class="{ on: hasTag(t.id) }"
-              :style="{
-                border: '1px solid transparent',
-                background: tagPillBg(t.color, hasTag(t.id)),
-                color: t.color || '#888',
-              }"
+              :style="
+                hasTag(t.id)
+                  ? { background: hueGrad(t.color), color: '#fff', borderColor: 'transparent' }
+                  : {
+                      background: softFill(t.color),
+                      color: t.color || '#888',
+                      borderColor: (t.color || '#888') + '66',
+                    }
+              "
               @click="toggleTag(t.id)"
             >
               {{ t.name }}
@@ -579,9 +583,14 @@ async function submitAddSub() {
   padding: 8px 10px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
+  /* Clip the priority bar to the card's rounded rect (so the bar follows the
+     corner radius instead of squaring it off). Box-shadow isn't affected; the
+     subtask cascade lives outside .card (in .tw), so nothing else is clipped. */
+  overflow: hidden;
 }
 /* Priority accent: a thin vertical-gradient bar on the left edge (replaces the
-   old flat 3px left border). The bar's hue/gradient comes from --card-bar. */
+   old flat 3px left border). Square corners — the card's overflow:hidden +
+   border-radius round it to match the card. The hue comes from --card-bar. */
 .card.has-prio::before {
   content: '';
   position: absolute;
@@ -589,11 +598,7 @@ async function submitAddSub() {
   top: 0;
   bottom: 0;
   width: 3px;
-  border-radius: 8px 0 0 8px;
   background: var(--card-bar);
-}
-.card.nested.has-prio::before {
-  border-radius: 0 0 0 8px;
 }
 /* The parent keeps its rounded corners and sits above the subtask stack so the
    children appear to emerge from under it. */

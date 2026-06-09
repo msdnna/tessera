@@ -38,21 +38,6 @@
   );
 }
 
-/* Accent gradient on the auth submit button. Scoped to the auth card on purpose:
-   Naive renders quaternary/tertiary primaries (the board sub-toolbar) and the
-   filled layout-switch toggle with the same `--primary-type` class, so a global
-   primary-button rule would wrongly gradient those toggles. The auth card holds
-   only the one filled action button, so we target it directly. */
-.auth-card .n-button.n-button--primary-type {
-  background-image: var(--t-accent-grad);
-}
-.auth-card .n-button.n-button--primary-type:hover {
-  filter: brightness(1.05);
-}
-.auth-card .n-button.n-button--primary-type:active {
-  filter: brightness(0.96);
-}
-
 /* Helper for accent text/icons: paints the foreground with the accent gradient
    via background-clip. Use .accent-grad-text for the primary hue, or set
    --grad inline to a custom (e.g. per-tag hue) gradient. */
@@ -64,38 +49,78 @@
   color: transparent;
 }
 
-/* Gradient *border* that keeps the corner radius: paint the fill on the
-   padding-box and the gradient on the border-box, with a transparent border so
-   only the gradient shows in the border ring. Set --grad (border gradient) and
-   --gb-fill (the interior fill, default surface) inline. */
-.grad-border {
-  border: 1px solid transparent;
-  background:
-    linear-gradient(var(--gb-fill, var(--t-surface)), var(--gb-fill, var(--t-surface))) padding-box,
-    var(--grad, var(--t-accent-grad)) border-box;
+/* ── Accent gradient on Naive buttons ───────────────────────────────────────
+   Naive emits NO class for text/quaternary/tertiary variants (only --ghost /
+   --dashed / --secondary / --<type>-type), and paints fill via background-color
+   (--n-color), text via --n-text-color, and the border via a .n-button__border
+   overlay. So:
+   • FILLED primary (solid bg) → layer the gradient as a background-image.
+     Add the `ngrad` class to opt a transparent (quaternary/text) primary OUT,
+     since one would otherwise get a solid gradient block. */
+.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(
+    .n-button--secondary
+  ):not(.ngrad) {
+  background-image: var(--t-accent-grad);
+}
+.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(
+    .n-button--secondary
+  ):not(.ngrad):hover {
+  filter: brightness(1.05);
+}
+.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(
+    .n-button--secondary
+  ):not(.ngrad):active {
+  filter: brightness(0.96);
 }
 
-/* ── Accent gradient on Naive controls (theme-following, same-hue diagonal) ── */
-/* Switch: gradient rail when on. */
+/* • GHOST (any type) → border + label as one same-hue gradient unit (the web
+     analogue of Android's accentGradientTint). The hue is derived from the
+     button's own --n-text-color, so primary/success/error ghosts each gradient
+     in their own colour. Border drawn as a 1px gradient ring via mask so the
+     interior stays transparent and the corner radius is preserved. */
+.n-button--ghost:not(.ngrad) {
+  --bgrad: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--n-text-color) 86%, #000),
+    var(--n-text-color) 50%,
+    color-mix(in srgb, var(--n-text-color) 86%, #fff)
+  );
+}
+.n-button--ghost:not(.ngrad) .n-button__border,
+.n-button--ghost:not(.ngrad) .n-button__state-border {
+  display: none;
+}
+.n-button--ghost:not(.ngrad)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--bgrad);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.n-button--ghost:not(.ngrad) .n-button__content {
+  background-image: var(--bgrad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Accent gradient on Naive controls (theme-following) ── */
 .n-switch.n-switch--active .n-switch__rail {
   background-image: var(--t-accent-grad);
 }
-/* Checkbox: gradient box when checked / indeterminate. */
 .n-checkbox.n-checkbox--checked .n-checkbox-box,
 .n-checkbox.n-checkbox--indeterminate .n-checkbox-box {
   background-image: var(--t-accent-grad);
 }
-/* Radio button-group active segment (board grouping/layout toggles use this). */
 .n-radio-button.n-radio-button--checked {
   background-image: var(--t-accent-grad);
-}
-/* Ghost primary buttons: tint the label with the gradient (border + icon stay
-   the primary colour Naive draws). Scoped to ghost so filled/quaternary stay put. */
-.n-button--ghost.n-button--primary-type .n-button__content {
-  background-image: var(--t-accent-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
 html,
@@ -258,21 +283,66 @@ body {
   display: none !important;
 }
 
-/* Auth screens: footer line under the form (slotted into AuthLayout, so styled
-   globally rather than via the shell's scoped styles). */
+/* ── Auth screens (login / register) ────────────────────────────────────────
+   The form sits directly on the brand gradient (no card), Android-style. The
+   form is slotted into AuthLayout, so its controls are styled here globally. */
 .auth-foot {
-  margin-top: 16px;
+  margin-top: 18px;
   text-align: center;
   font-size: 13px;
-  color: var(--t-text3);
+  color: rgba(255, 255, 255, 0.8);
 }
 .auth-foot a {
-  color: var(--t-primary);
-  font-weight: 600;
+  color: #fff;
+  font-weight: 700;
   text-decoration: none;
 }
 .auth-foot a:hover {
   text-decoration: underline;
+}
+/* Labels in white over the gradient. (Naive sets its colour CSS vars inline, so
+   these overrides target real properties with !important to win over them.) */
+.auth .n-form-item .n-form-item-label__text {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+/* Frosted translucent inputs (no hard border), white text. */
+.auth .n-input {
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-radius: 10px;
+}
+.auth .n-input .n-input__border,
+.auth .n-input .n-input__state-border {
+  border: none !important;
+}
+.auth .n-input .n-input__input-el,
+.auth .n-input .n-input__textarea-el {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+  caret-color: #ffffff;
+}
+.auth .n-input .n-input__placeholder,
+.auth .n-input .n-input__input-el::placeholder {
+  color: rgba(255, 255, 255, 0.7) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.7);
+}
+.auth .n-input .n-input__eye,
+.auth .n-input .n-input__suffix {
+  color: rgba(255, 255, 255, 0.8);
+}
+/* White submit button with the brand-purple label (overrides the global
+   filled-primary gradient inside the auth screen). */
+.auth .n-button--primary-type {
+  background: #ffffff !important;
+  margin-top: 4px;
+}
+.auth .n-button--primary-type:hover {
+  background: rgba(255, 255, 255, 0.92) !important;
+  filter: none;
+}
+.auth .n-button--primary-type .n-button__content {
+  color: #6d5fe0 !important;
+  -webkit-text-fill-color: #6d5fe0;
+  font-weight: 600;
 }
 
 /* @-mention chip in rendered task descriptions / comments. */

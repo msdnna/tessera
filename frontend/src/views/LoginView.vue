@@ -26,7 +26,7 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout title="Вход в Tessera">
+  <auth-layout subtitle="Войдите в аккаунт">
     <n-form @submit.prevent="submit">
       <n-form-item label="Email">
         <n-input v-model:value="email" placeholder="you@example.com" />

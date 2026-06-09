@@ -3,6 +3,7 @@ import { ref, nextTick } from 'vue'
 import { NInput, NButton, NText, NIcon, NPopconfirm, useMessage } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
+import { hueGrad } from '@/utils/gradient'
 
 const props = defineProps({
   wsId: { type: String, default: null },
@@ -109,7 +110,7 @@ async function add() {
             :key="s"
             class="sw"
             :class="{ active: s === t.color }"
-            :style="{ background: s }"
+            :style="{ background: hueGrad(s) }"
             @mousedown.prevent
             @click="setColor(t, s)"
           />

@@ -45,7 +45,7 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad, tagPillBg } from '@/utils/gradient'
+import { hueGrad, tagPillBg, softFill } from '@/utils/gradient'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import { confirmHardDelete } from '@/utils/confirm'
@@ -784,15 +784,18 @@ function eventText(e) {
                       :key="t.id"
                       class="tagchip"
                       :class="{ on: selectedTags.includes(t.id) }"
-                      :style="{
-                        border: '1px solid transparent',
-                        background: tagPillBg(t.color, selectedTags.includes(t.id)),
-                      }"
+                      :style="
+                        selectedTags.includes(t.id)
+                          ? { background: hueGrad(t.color), color: '#fff', borderColor: 'transparent' }
+                          : {
+                              background: softFill(t.color),
+                              color: t.color || '#888',
+                              borderColor: (t.color || '#888') + '66',
+                            }
+                      "
                       @click="toggleTag(t.id)"
                     >
-                      <span class="accent-grad-text" :style="{ '--grad': hueGrad(t.color) }">{{
-                        t.name
-                      }}</span>
+                      {{ t.name }}
                     </button>
                   </div>
                   <n-input
@@ -1454,16 +1457,23 @@ function eventText(e) {
   margin-left: 6px;
 }
 /* Accent (not naive's default red) tab counters, matching the Android client —
-   and a touch smaller than naive's default badge. */
+   a small fixed circle (not naive's oversized pill). */
 .tab-badge :deep(.n-badge-sup) {
   background: var(--t-accent-grad);
   color: var(--t-on-primary);
-  height: 15px;
-  min-width: 15px;
-  line-height: 15px;
-  padding: 0 4px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  line-height: 16px;
+  padding: 0;
+  border-radius: 50%;
   font-size: 10px;
   font-weight: 600;
+}
+/* Dim the counter on inactive tabs (neutral, recedes). */
+.detail-tabs :deep(.n-tabs-tab:not(.n-tabs-tab--active) .n-badge-sup) {
+  background: var(--t-text3);
+  opacity: 0.55;
 }
 
 /* comments */

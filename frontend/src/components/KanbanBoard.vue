@@ -630,7 +630,7 @@ watch(
           :render-label="renderGroupLabel"
           @select="(k) => (groupMode = k)"
         >
-          <n-button size="small" quaternary :type="groupMode === 'tag' ? 'primary' : 'default'">
+          <n-button size="small" quaternary class="ngrad" :type="groupMode === 'tag' ? 'primary' : 'default'">
             <template #icon><n-icon :component="AlbumsOutline" /></template>
             <span class="sb-label">Группировка</span>
           </n-button>
@@ -651,7 +651,7 @@ watch(
 
         <n-popover trigger="click" placement="bottom-start">
           <template #trigger>
-            <n-button size="small" quaternary :type="activeFilterCount ? 'primary' : 'default'">
+            <n-button size="small" quaternary class="ngrad" :type="activeFilterCount ? 'primary' : 'default'">
               <template #icon><n-icon :component="FilterOutline" /></template>
               <span class="sb-label">Фильтры</span>{{
                 activeFilterCount ? ` (${activeFilterCount})` : ''
@@ -660,7 +660,7 @@ watch(
           </template>
           <div class="vp">
             <div v-if="activeFilterCount" class="vp-fhead">
-              <n-button text size="tiny" type="primary" @click="resetFilters">Сбросить</n-button>
+              <n-button text size="tiny" type="primary" class="ngrad" @click="resetFilters">Сбросить</n-button>
             </div>
             <n-text depth="3" class="flbl flbl-0">Срок</n-text>
             <n-select v-model:value="filters.due" :options="dueOptions" size="small" />
@@ -707,6 +707,7 @@ watch(
             <n-button
               size="small"
               quaternary
+              class="ngrad"
               :type="subtasksExpanded ? 'primary' : 'default'"
               @click="subtasksExpanded = !subtasksExpanded"
             >

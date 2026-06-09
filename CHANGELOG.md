@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.42.3] — 2026-06-09
+- Accent gradient on Naive buttons, done by variant (Naive emits no class for
+  text/quaternary, so it's split correctly): filled primary buttons get a
+  gradient fill; ghost buttons (any type) get border + label as one same-hue
+  gradient unit (1px gradient ring via mask, hue from the button's own colour);
+  transparent toolbar/layout toggles opt out via an `ngrad` class so they don't
+  turn into solid blocks.
+- Column status glyphs now carry the per-column gradient (SVG `linearGradient`
+  referenced by fill/stroke, applied via attribute selectors so both fill- and
+  stroke-based icons recolour correctly).
+- Restore the card's rounded corner on priority cards: the left priority bar is
+  clipped to the card radius (overflow:hidden) instead of squaring it off.
+- Fix the tag-picker chips: a transparent-fill gradient border was bleeding over
+  the label. Picker chips now use a solid gradient fill (selected) / soft tint
+  (unselected) with readable text, matching the Android reference.
+- Tab counter is a proper small circle (was an oval) and dims on inactive tabs.
+- Gradient swatches in the tag-colour picker and the appearance (accent-colour)
+  picker too.
+- Login / register: drop the "Tessera" wordmark and the card — the form now sits
+  directly on the brand gradient with frosted inputs and a white submit button
+  (purple label), matching the Android auth screen.
+
 ### [0.42.2] — 2026-06-09
 - Comprehensive accent-gradient pass (the soft same-hue diagonal from the Android
   client), via a shared `utils/gradient.js` (`hueGrad` / `hueGradVert` /

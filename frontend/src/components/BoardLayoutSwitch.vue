@@ -18,6 +18,7 @@ const opts = [
       :key="o.value"
       text
       size="small"
+      class="ngrad"
       :type="store.layout === o.value ? 'primary' : 'default'"
       @click="store.layout = o.value"
     >
