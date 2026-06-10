@@ -61,7 +61,7 @@ frontend `0.43.0` · android `0.3.1`.
   (Android-стиль) вместо модалок; акцентные кнопки/иконки в поповерах.
 - Точечные багфиксы — по мере появления.
 
-### 3. Бизнес-фичи — GitLab self-hosted Issues integration — 🔶 В РАБОТЕ (фаза A)
+### 3. Бизнес-фичи — GitLab self-hosted Issues integration — ✅ фаза A реализована (B+ в бэклоге)
 - **Цель:** тянуть issues/work-items, назначенные на пользователя, из self-hosted
   GitLab (self-hosted) в Tessera вместо дублей.
 - **Решено по дизайну (2026-06-11):** транспорт — **pull-first polling** (Tessera→GL,
@@ -75,15 +75,19 @@ frontend `0.43.0` · android `0.3.1`.
   положить». `S:`→колонка, `P:`→priority, прочее→теги (с префиксом, additive — ручные
   scope-теги не затираются). `B: Future`→доска Backlog и `M:`→подзадачи — спроектировано,
   отложено.
-- **Сделано — backend phase A thin slice (0.19.0):** migration 0009
-  (`gitlab_credentials`/`gitlab_integrations`/`gitlab_links`), `ENCRYPTION_KEY` +
-  `internal/secrets` (AES-GCM), `internal/gitlab` (GraphQL-клиент + rule engine, юнит-тесты),
-  эндпоинты connection/integration/sync (ручной pull). Verified: config-раунд-трип и гарды
-  (smoke на tessera_test); **живой fetch против реального GL (self-hosted) ещё не проверен**.
-- **Дальше:** (1) проверить sync против боевого GitLab; (2) frontend UI (Connect GitLab в
-  профиле, настройки интеграции + редактор правил, кнопка Sync now, бейдж synced);
-  (3) тикер-воркер для авто-синка; (4) `M:`-подзадачи через GraphQL hierarchy; затем
-  бэклог write-back/webhooks/OAuth.
+- **Фаза A реализована целиком** (manual+авто pull, без write-back):
+  - backend `0.19.0`: migration 0009, `internal/secrets` (AES-GCM, `ENCRYPTION_KEY`),
+    `internal/gitlab` (GraphQL `project.issues(assigneeUsername:)` + rule engine, юнит-тесты),
+    эндпоинты connection/integration/sync. **Живой sync против GL (self-hosted) подтверждён пользователем.**
+  - backend `0.20.0`: автор issue на `gitlab_links` (отдаётся в `gitlab` на GET /tasks/:id;
+    синканные задачи без `created_by`), **фоновый воркер автосинка** (owner_user_id +
+    sync_interval_sec + last_synced_at; `runSync` вынесен из gin-хендлера), migration 0010.
+  - backend `0.21.0`: `GET /boards/:id/tasks` отдаёт `gitlab_iid`/`gitlab_url` (для бейджа).
+  - frontend `0.44.0`: модалка GitLab (аккаунт PAT + конфиг интеграции + редактор правил
+    статус→колонка/приоритет→уровень/теги + Sync now), бейдж `!iid` на карточке, строка
+    автора в TaskModal. Build/lint зелёные; **UI вживую против GL пользователем ещё не прогнан**.
+- **Дальше (бэклог фазы B+):** `M:`-подзадачи через GraphQL hierarchy; write-back (action-
+  bindings + loop-guard через снапшот-хэши, уже в схеме); webhooks; OAuth/SSO.
 
 ## Сверка с budget-go (общие проектные аспекты)
 
