@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, h } from 'vue'
 import draggable from 'vuedraggable'
-import { NIcon, NPopover, NDatePicker, NInput, NDropdown, useDialog } from 'naive-ui'
+import { NIcon, NPopover, NDatePicker, NInput, NDropdown, NPopconfirm } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
@@ -24,7 +24,6 @@ import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/a
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill } from '@/utils/gradient'
 import { pressMoved } from '@/utils/dnd'
-import { confirmHardDelete } from '@/utils/confirm'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -45,7 +44,6 @@ const props = defineProps({
   wsId: { type: String, default: null },
 })
 const emit = defineEmits(['open', 'changed'])
-const dialog = useDialog()
 
 const newTagName = ref('')
 const editingTitle = ref(false)
@@ -136,6 +134,10 @@ const ctxShow = ref(false)
 const ctxX = ref(0)
 const ctxY = ref(0)
 const ctxTarget = ref(null) // task object the menu acts on
+const showDeleteConfirm = ref(false)
+const pendingDeleteTarget = ref(null)
+const showArchiveConfirm = ref(false)
+const pendingArchiveTarget = ref(null)
 const ctxOptions = computed(() => {
   const t = ctxTarget.value
   const isMain = t && t.id === props.task.id
@@ -192,7 +194,14 @@ async function onCtxSelect(key) {
   if (key === 'open') return emit('open', t.id)
   if (key === 'subtask') return startAddSub()
   if (key === 'delete') {
-    if (!(await confirmHardDelete(dialog))) return
+    pendingDeleteTarget.value = t
+    showDeleteConfirm.value = true
+    return
+  }
+  if (key === 'archive') {
+    pendingArchiveTarget.value = t
+    showArchiveConfirm.value = true
+    return
   }
   try {
     if (key === 'toggle') await tasksApi.update(t.id, { ...baseOf(t), completed: !t.completed_at })
@@ -200,8 +209,26 @@ async function onCtxSelect(key) {
       await tasksApi.update(t.id, { ...baseOf(t), priority: Number(key.slice(5)) })
     else if (key.startsWith('col:'))
       await tasksApi.move(t.id, { column_id: key.slice(4), before_id: null, after_id: null })
-    else if (key === 'archive') await tasksApi.archive(t.id)
-    else if (key === 'delete') await tasksApi.remove(t.id)
+    emit('changed')
+  } catch {
+    /* surfaced by the board's reload path */
+  }
+}
+async function doCtxDelete() {
+  const t = pendingDeleteTarget.value
+  if (!t) return
+  try {
+    await tasksApi.remove(t.id)
+    emit('changed')
+  } catch {
+    /* surfaced by the board's reload path */
+  }
+}
+async function doCtxArchive() {
+  const t = pendingArchiveTarget.value
+  if (!t) return
+  try {
+    await tasksApi.archive(t.id)
     emit('changed')
   } catch {
     /* surfaced by the board's reload path */
@@ -574,6 +601,29 @@ async function submitAddSub() {
       @select="onCtxSelect"
       @clickoutside="ctxShow = false"
     />
+    <n-popconfirm
+      v-model:show="showDeleteConfirm"
+      :x="ctxX"
+      :y="ctxY"
+      :positive-button-props="{ type: 'error' }"
+      positive-text="Удалить"
+      @positive-click="doCtxDelete"
+      @clickoutside="showDeleteConfirm = false"
+    >
+      <template #trigger><span /></template>
+      Удалить безвозвратно? Это действие необратимо.
+    </n-popconfirm>
+    <n-popconfirm
+      v-model:show="showArchiveConfirm"
+      :x="ctxX"
+      :y="ctxY"
+      positive-text="В архив"
+      @positive-click="doCtxArchive"
+      @clickoutside="showArchiveConfirm = false"
+    >
+      <template #trigger><span /></template>
+      Перенести задачу в архив?
+    </n-popconfirm>
   </div>
 </template>
 

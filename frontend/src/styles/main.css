@@ -36,6 +36,13 @@
     var(--t-primary) 50%,
     color-mix(in srgb, var(--t-primary) 86%, #fff) 100%
   );
+  /* Error gradient — same soft diagonal formula as accent, but red (#e5484d). */
+  --t-error-grad: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e5484d 86%, #000) 0%,
+    #e5484d 50%,
+    color-mix(in srgb, #e5484d 86%, #fff) 100%
+  );
 }
 
 /* Helper for accent text/icons: paints the foreground with the accent gradient
@@ -141,6 +148,41 @@
 /* Selected day in the date picker (reminders + task due date). */
 .n-date-panel-date.n-date-panel-date--selected {
   background-image: var(--t-accent-grad);
+}
+
+/* ── NPopconfirm ────────────────────────────────────────────────────────────
+   Action buttons: gradient on the positive (confirm) button.
+   Delete/destroy popovers pass positive-button-props="{ type: 'error' }"
+   to get the red error gradient instead of the default accent gradient.
+   Icon: replace Naive's yellow warning with a matching gradient fill via the
+   SVG <linearGradient> defs in App.vue (#t-accent-grad-svg / #t-error-grad-svg).
+   :has() distinguishes destructive popovers (error button) from neutral ones. */
+/* Override the inherited yellow fill and apply gradient directly on the svg. */
+.n-popconfirm__icon .n-base-icon,
+.n-popconfirm__icon .n-base-icon svg {
+  fill: url(#t-accent-grad-svg) !important;
+  color: transparent !important;
+}
+/* Destructive popovers (error button) get the red gradient on the icon.
+   The root gets class 'n-popconfirm' via internalExtraClass. */
+.n-popconfirm:has(.n-popconfirm__action .n-button--error-type)
+  .n-popconfirm__icon
+  .n-base-icon,
+.n-popconfirm:has(.n-popconfirm__action .n-button--error-type)
+  .n-popconfirm__icon
+  .n-base-icon
+  svg {
+  fill: url(#t-error-grad-svg) !important;
+}
+.n-popconfirm__action .n-button--primary-type:not(.n-button--ghost) {
+  background-image: var(--t-accent-grad) !important;
+  border: none !important;
+  color: #fff !important;
+}
+.n-popconfirm__action .n-button--error-type:not(.n-button--ghost) {
+  background-image: var(--t-error-grad) !important;
+  border: none !important;
+  color: #fff !important;
 }
 
 html,

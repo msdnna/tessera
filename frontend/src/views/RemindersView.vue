@@ -99,7 +99,7 @@ onMounted(load)
             {{ fmt(r.remind_at) }}<span v-if="overdue(r)"> · просрочено</span>
           </div>
         </div>
-        <n-popconfirm @positive-click="remove(r)">
+        <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove(r)">
           <template #trigger>
             <n-button text size="tiny" type="error">
               <n-icon :component="TrashOutline" />

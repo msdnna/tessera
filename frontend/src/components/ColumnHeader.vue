@@ -186,7 +186,7 @@ async function removeCol() {
           <template #icon><n-icon :component="CheckmarkDoneOutline" /></template>
           {{ isDone ? 'Снять завершение' : 'Сделать завершающей' }}
         </n-button>
-        <n-popconfirm @positive-click="removeCol">
+        <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="removeCol">
           <template #trigger>
             <n-button type="error" ghost size="small" block>
               <template #icon><n-icon :component="TrashOutline" /></template>

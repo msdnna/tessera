@@ -56,7 +56,7 @@ watch(
             <template #icon><n-icon :component="ArrowUndoOutline" /></template>
             Восстановить
           </n-button>
-          <n-popconfirm @positive-click="remove(t)">
+          <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove(t)">
             <template #trigger>
               <n-button type="error" ghost size="small">
                 <template #icon><n-icon :component="TrashOutline" /></template>

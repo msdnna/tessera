@@ -1,5 +1,5 @@
 <script setup>
-import { NDropdown } from 'naive-ui'
+import { NDropdown, NPopconfirm } from 'naive-ui'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
@@ -107,6 +107,29 @@ function isOverdue(t) {
       @select="menu.select"
       @clickoutside="menu.show.value = false"
     />
+    <n-popconfirm
+      v-model:show="menu.deleteConfirmShow.value"
+      :x="menu.x.value"
+      :y="menu.y.value"
+      :positive-button-props="{ type: 'error' }"
+      positive-text="Удалить"
+      @positive-click="menu.confirmDelete()"
+      @clickoutside="menu.deleteConfirmShow.value = false"
+    >
+      <template #trigger><span /></template>
+      Удалить безвозвратно? Это действие необратимо.
+    </n-popconfirm>
+    <n-popconfirm
+      v-model:show="menu.archiveConfirmShow.value"
+      :x="menu.x.value"
+      :y="menu.y.value"
+      positive-text="В архив"
+      @positive-click="menu.confirmArchive()"
+      @clickoutside="menu.archiveConfirmShow.value = false"
+    >
+      <template #trigger><span /></template>
+      Перенести задачу в архив?
+    </n-popconfirm>
   </div>
 </template>
 

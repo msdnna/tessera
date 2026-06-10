@@ -1,5 +1,5 @@
 import { ref, computed, unref, h } from 'vue'
-import { useDialog, NIcon } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import {
   OpenOutline,
   CheckmarkDoneOutline,
@@ -11,7 +11,6 @@ import {
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { pressMoved } from '@/utils/dnd'
-import { confirmHardDelete } from '@/utils/confirm'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 
@@ -19,11 +18,12 @@ const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 // usable anywhere a task object is on hand). Callbacks: onOpen(id), onChanged().
 // `columns` (ref/array of {id,name}) adds a "move to column" submenu.
 export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
-  const dialog = useDialog()
   const show = ref(false)
   const x = ref(0)
   const y = ref(0)
   const target = ref(null) // the task object the menu acts on
+  const deleteConfirmShow = ref(false)
+  const archiveConfirmShow = ref(false)
 
   // `columns` may be a getter function, a ref, or a plain array.
   function resolveColumns() {
@@ -88,7 +88,14 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
     show.value = false
     if (!t) return
     if (key === 'open') return onOpen?.(t.id)
-    if (key === 'delete' && !(await confirmHardDelete(dialog))) return
+    if (key === 'delete') {
+      deleteConfirmShow.value = true
+      return
+    }
+    if (key === 'archive') {
+      archiveConfirmShow.value = true
+      return
+    }
     try {
       if (key === 'toggle') {
         await tasksApi.update(t.id, { ...base(t), completed: !t.completed_at })
@@ -96,10 +103,6 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
         await tasksApi.update(t.id, { ...base(t), priority: Number(key.slice(5)) })
       } else if (key.startsWith('col:')) {
         await tasksApi.move(t.id, { column_id: key.slice(4), before_id: null, after_id: null })
-      } else if (key === 'archive') {
-        await tasksApi.archive(t.id)
-      } else if (key === 'delete') {
-        await tasksApi.remove(t.id)
       }
       onChanged?.()
     } catch {
@@ -107,5 +110,38 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
     }
   }
 
-  return { show, x, y, options, open, select }
+  async function confirmDelete() {
+    const t = target.value
+    if (!t) return
+    try {
+      await tasksApi.remove(t.id)
+      onChanged?.()
+    } catch {
+      onChanged?.()
+    }
+  }
+
+  async function confirmArchive() {
+    const t = target.value
+    if (!t) return
+    try {
+      await tasksApi.archive(t.id)
+      onChanged?.()
+    } catch {
+      onChanged?.()
+    }
+  }
+
+  return {
+    show,
+    x,
+    y,
+    options,
+    open,
+    select,
+    deleteConfirmShow,
+    confirmDelete,
+    archiveConfirmShow,
+    confirmArchive,
+  }
 }

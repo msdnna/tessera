@@ -95,7 +95,7 @@ async function add() {
           >
             {{ t.name }}
           </span>
-          <n-popconfirm @positive-click="remove(t)">
+          <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove(t)">
             <template #trigger>
               <n-button text size="tiny" type="error">
                 <n-icon :component="TrashOutline" />

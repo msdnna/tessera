@@ -18,7 +18,6 @@ import {
   NBadge,
   NPopconfirm,
   useMessage,
-  useDialog,
 } from 'naive-ui'
 import {
   FlagOutline,
@@ -48,7 +47,6 @@ import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill } from '@/utils/gradient'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
-import { confirmHardDelete } from '@/utils/confirm'
 import TaskMiniCard from './TaskMiniCard.vue'
 
 const props = defineProps({
@@ -64,7 +62,6 @@ const store = useWorkspacesStore()
 const auth = useAuthStore()
 const router = useRouter()
 const message = useMessage()
-const dialog = useDialog()
 const loading = ref(false)
 const task = ref(null)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
@@ -314,21 +311,13 @@ async function archiveTask(detachChildren) {
     message.error(e.message)
   }
 }
-function onArchiveClick() {
-  const hasSubs = (task.value?.subtasks?.length || 0) > 0
-  dialog.warning({
-    title: 'В архив',
-    content: hasSubs
-      ? 'У задачи есть подзадачи — что с ними сделать?'
-      : 'Перенести задачу в архив?',
-    positiveText: hasSubs ? 'В архив вместе' : 'В архив',
-    negativeText: hasSubs ? 'Открепить подзадачи' : 'Отмена',
-    onPositiveClick: () => archiveTask(false),
-    onNegativeClick: hasSubs ? () => archiveTask(true) : undefined,
-  })
+const archiveHasSubs = computed(
+  () => (task.value?.subtasks?.length || 0) > 0,
+)
+async function handleArchiveNegative() {
+  if (archiveHasSubs.value) await archiveTask(true)
 }
-async function onDeleteClick() {
-  if (!(await confirmHardDelete(dialog))) return
+async function doDelete() {
   try {
     await tasksApi.remove(props.taskId)
     emit('changed')
@@ -880,7 +869,7 @@ function eventText(e) {
                         <button class="c-act" title="Изменить" @click="startEditComment(c)">
                           ✎
                         </button>
-                        <n-popconfirm @positive-click="deleteComment(c.id)">
+                        <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="deleteComment(c.id)">
                           <template #trigger>
                             <button class="c-act" title="Удалить">✕</button>
                           </template>
@@ -993,9 +982,14 @@ function eventText(e) {
                     <span class="rel-num">#{{ r.related_number }}</span>
                     <span class="rel-title">{{ r.related_title }}</span>
                   </button>
-                  <button class="c-act" title="Убрать связь" @click="removeRelation(r.id)">
-                    <n-icon :component="CloseOutline" />
-                  </button>
+                  <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="removeRelation(r.id)">
+                    <template #trigger>
+                      <button class="c-act" title="Убрать связь">
+                        <n-icon :component="CloseOutline" />
+                      </button>
+                    </template>
+                    Убрать связь?
+                  </n-popconfirm>
                 </div>
                 <div v-if="!relations.length" class="empty-hint">Связей пока нет</div>
                 <div class="rel-add">
@@ -1064,9 +1058,14 @@ function eventText(e) {
                   <button class="c-act" title="Скачать" @click="downloadAttachment(a)">
                     <n-icon :component="DownloadOutline" />
                   </button>
-                  <button class="c-act" title="Удалить" @click="deleteAttachment(a.id)">
-                    <n-icon :component="TrashOutline" />
-                  </button>
+                  <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="deleteAttachment(a.id)">
+                    <template #trigger>
+                      <button class="c-act" title="Удалить">
+                        <n-icon :component="TrashOutline" />
+                      </button>
+                    </template>
+                    Удалить файл «{{ a.filename }}»?
+                  </n-popconfirm>
                 </div>
                 <div v-if="!attachments.length" class="empty-hint">Файлов пока нет</div>
                 <input ref="fileInput" type="file" hidden @change="onFileChosen" />
@@ -1096,14 +1095,33 @@ function eventText(e) {
       <template #footer>
         <div class="footer">
           <n-space :wrap="false" :size="8">
-            <n-button type="primary" ghost @click="onArchiveClick">
-              <template #icon><n-icon :component="ArchiveOutline" /></template>
-              <span class="fbtn-label">В архив</span>
-            </n-button>
-            <n-button type="error" ghost @click="onDeleteClick">
-              <template #icon><n-icon :component="TrashOutline" /></template>
-              <span class="fbtn-label">Удалить</span>
-            </n-button>
+            <n-popconfirm
+              :positive-text="archiveHasSubs ? 'В архив вместе' : 'В архив'"
+              :negative-text="archiveHasSubs ? 'Открепить подзадачи' : 'Отмена'"
+              @positive-click="() => archiveTask(false)"
+              @negative-click="handleArchiveNegative"
+            >
+              <template #trigger>
+                <n-button type="primary" ghost>
+                  <template #icon><n-icon :component="ArchiveOutline" /></template>
+                  <span class="fbtn-label">В архив</span>
+                </n-button>
+              </template>
+              {{ archiveHasSubs ? 'У задачи есть подзадачи — что с ними сделать?' : 'Перенести задачу в архив?' }}
+            </n-popconfirm>
+            <n-popconfirm
+              :positive-button-props="{ type: 'error' }"
+              positive-text="Удалить"
+              @positive-click="doDelete"
+            >
+              <template #trigger>
+                <n-button type="error" ghost>
+                  <template #icon><n-icon :component="TrashOutline" /></template>
+                  <span class="fbtn-label">Удалить</span>
+                </n-button>
+              </template>
+              Удалить безвозвратно? Это действие необратимо.
+            </n-popconfirm>
           </n-space>
           <n-space :wrap="false" :size="8">
             <n-button @click="close">Отмена</n-button>

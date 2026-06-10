@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.43.0] — 2026-06-10
+- Destructive/irreversible actions now confirm via an inline `n-popconfirm`
+  popover (Android-style) instead of a centred modal dialog: hard-delete and
+  archive of tasks (board card + list/calendar context menus + task modal),
+  delete of columns, projects, boards, groups, tags, members, notes, reminders,
+  comments, and archived tasks. New confirmations added where there were none —
+  detaching a relation and deleting an attachment.
+- Archiving a task from the board/list/calendar context menu now asks for
+  confirmation too (previously only the task modal did).
+- Popover buttons carry the accent gradient (red error gradient for destructive
+  actions); the warning icon is repainted with the matching SVG gradient.
+- Context-menu confirmation popovers close on an outside click.
+- Removed the now-unused custom `confirmHardDelete` dialog helper and the
+  `n-dialog-provider` (no `useDialog` consumers remain).
+
 ### [0.42.8] — 2026-06-09
 - Notification bell badge: accent gradient + centred number (matches the modal
   tab counter), instead of naive's off-centre red.

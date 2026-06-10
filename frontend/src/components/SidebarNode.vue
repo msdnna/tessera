@@ -205,7 +205,7 @@ async function commitRename() {
             <template #icon><n-icon :component="CreateOutline" /></template>
             Переименовать
           </n-button>
-          <n-popconfirm @positive-click="remove">
+          <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove">
             <template #trigger>
               <n-button type="error" ghost size="small" block>
                 <template #icon><n-icon :component="TrashOutline" /></template>

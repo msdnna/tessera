@@ -78,7 +78,7 @@ watch(
             <span class="mail">{{ m.email }}</span>
           </div>
           <n-tag size="small" :bordered="false">{{ m.role }}</n-tag>
-          <n-popconfirm v-if="m.role !== 'owner'" @positive-click="remove(m.user_id)">
+          <n-popconfirm v-if="m.role !== 'owner'" :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove(m.user_id)">
             <template #trigger>
               <n-button text size="tiny" type="error"
                 ><n-icon :component="TrashOutline"

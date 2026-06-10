@@ -5,7 +5,6 @@ import {
   NConfigProvider,
   NGlobalStyle,
   NMessageProvider,
-  NDialogProvider,
   ruRU,
   dateRuRU,
 } from 'naive-ui'
@@ -33,6 +32,12 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
         <stop offset="0.5" style="stop-color: var(--t-primary)" />
         <stop offset="1" style="stop-color: color-mix(in srgb, var(--t-primary) 86%, #fff)" />
       </linearGradient>
+      <!-- Error gradient for destructive popconfirm icons. -->
+      <linearGradient id="t-error-grad-svg" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" style="stop-color: #b33030" />
+        <stop offset="0.5" style="stop-color: #e5484d" />
+        <stop offset="1" style="stop-color: #f58181" />
+      </linearGradient>
     </defs>
   </svg>
   <n-config-provider
@@ -43,9 +48,7 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
   >
     <n-global-style />
     <n-message-provider>
-      <n-dialog-provider>
-        <router-view />
-      </n-dialog-provider>
+      <router-view />
     </n-message-provider>
   </n-config-provider>
 </template>
