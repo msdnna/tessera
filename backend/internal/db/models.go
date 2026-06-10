@@ -41,14 +41,17 @@ type GitlabCredential struct {
 }
 
 type GitlabIntegration struct {
-	ID          uuid.UUID `json:"id"`
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	ProjectPath string    `json:"project_path"`
-	BoardID     uuid.UUID `json:"board_id"`
-	LabelRules  []byte    `json:"label_rules"`
-	Enabled     bool      `json:"enabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	WorkspaceID     uuid.UUID  `json:"workspace_id"`
+	ProjectPath     string     `json:"project_path"`
+	BoardID         uuid.UUID  `json:"board_id"`
+	LabelRules      []byte     `json:"label_rules"`
+	Enabled         bool       `json:"enabled"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
+	SyncIntervalSec int32      `json:"sync_interval_sec"`
+	LastSyncedAt    *time.Time `json:"last_synced_at"`
 }
 
 type GitlabLink struct {
@@ -64,6 +67,8 @@ type GitlabLink struct {
 	LabelsHash    string     `json:"labels_hash"`
 	LastSyncedAt  time.Time  `json:"last_synced_at"`
 	CreatedAt     time.Time  `json:"created_at"`
+	GlAuthor      string     `json:"gl_author"`
+	GlAuthorName  string     `json:"gl_author_name"`
 }
 
 type Membership struct {

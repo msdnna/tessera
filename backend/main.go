@@ -34,6 +34,10 @@ func main() {
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret)
 	rh := handlers.NewAPI(queries, hub, cfg.UploadDir, cfg.EncryptionKey)
 
+	// Background GitLab auto-sync worker (idle until an integration sets a
+	// positive sync interval).
+	go rh.RunSyncWorker(context.Background())
+
 	r := gin.Default()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)

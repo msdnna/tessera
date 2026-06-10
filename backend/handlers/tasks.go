@@ -13,12 +13,14 @@ import (
 	"tessera/middleware"
 )
 
-// taskDetail bundles a task with its tags, assignees and direct subtasks.
+// taskDetail bundles a task with its tags, assignees and direct subtasks, plus
+// GitLab provenance when the task is mirrored from a GitLab issue.
 type taskDetail struct {
 	db.Task
 	Tags      []db.Tag                     `json:"tags"`
 	Assignees []db.ListTaskAssigneesRow    `json:"assignees"`
 	Subtasks  []db.ListSubtasksWithMetaRow `json:"subtasks"`
+	GitLab    *gitlabLinkView              `json:"gitlab,omitempty"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -222,6 +224,7 @@ func (h *API) GetTask(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, taskDetail{
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, Subtasks: subtasks,
+		GitLab: h.gitlabLinkForTask(c, id),
 	})
 }
 

@@ -118,6 +118,8 @@ type Issue struct {
 	State       string // opened | closed
 	UpdatedAt   *time.Time
 	Labels      []string
+	AuthorLogin string // GitLab username of the issue author (may not be a Tessera user)
+	AuthorName  string
 }
 
 const assignedIssuesQuery = `
@@ -133,6 +135,7 @@ query($path: ID!, $username: String!, $after: String) {
         webUrl
         state
         updatedAt
+        author { username name }
         labels { nodes { title } }
       }
     }
@@ -161,7 +164,11 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 						WebURL      string     `json:"webUrl"`
 						State       string     `json:"state"`
 						UpdatedAt   *time.Time `json:"updatedAt"`
-						Labels      struct {
+						Author      *struct {
+							Username string `json:"username"`
+							Name     string `json:"name"`
+						} `json:"author"`
+						Labels struct {
 							Nodes []struct {
 								Title string `json:"title"`
 							} `json:"nodes"`
@@ -183,10 +190,15 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 				labels = append(labels, l.Title)
 			}
 			iid, _ := strconv.ParseInt(n.IID, 10, 64)
-			out = append(out, Issue{
+			issue := Issue{
 				GlobalID: n.ID, IID: iid, Title: n.Title, Description: n.Description,
 				WebURL: n.WebURL, State: n.State, UpdatedAt: n.UpdatedAt, Labels: labels,
-			})
+			}
+			if n.Author != nil {
+				issue.AuthorLogin = n.Author.Username
+				issue.AuthorName = n.Author.Name
+			}
+			out = append(out, issue)
 		}
 		if !data.Project.Issues.PageInfo.HasNextPage {
 			break

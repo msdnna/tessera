@@ -39,6 +39,9 @@ services:
       # Uploaded media + task attachments live here; a volume keeps them across
       # rebuilds (the default ./uploads is inside the container = wiped on build).
       - UPLOAD_DIR=/data/uploads
+      - GITLAB_INSECURE_TLS=true
+    extra_hosts:
+      - "internal-gitlab.example:10.0.0.10"  
     ports:
       - "8090:8080" # host 8080 is taken by the budget app on this box
     depends_on:

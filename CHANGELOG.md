@@ -835,6 +835,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.20.0] — 2026-06-11
+- GitLab sync now records the **issue author** (`gitlab_links.gl_author` /
+  `gl_author_name`, migration 0010) and exposes it — with the issue number and
+  web URL — on `GET /tasks/:id` under a `gitlab` object. Synced tasks no longer
+  set `created_by` (the author is a GitLab identity that may not be a Tessera
+  user). GraphQL query extended with `author { username name }`.
+- **Background auto-sync worker:** integrations gain `owner_user_id`,
+  `sync_interval_sec` and `last_synced_at`. A goroutine pulls each enabled
+  integration whose interval has elapsed, driven by the owner's stored
+  credential (idle while every interval is 0 = manual-only). The pull engine
+  was extracted from the HTTP handler into a context-based `runSync` shared by
+  the manual endpoint and the worker; per-issue errors are now logged and
+  skipped instead of aborting the whole run.
+- `PUT /workspaces/:id/gitlab/integration` accepts `sync_interval_sec` and
+  records the configuring user as the sync owner.
+
 ### [0.19.0] — 2026-06-11
 - GitLab integration, phase A (pull-only): mirror the issues assigned to you
   from a self-hosted GitLab into a Tessera board. Migration 0009 adds

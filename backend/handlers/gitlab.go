@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -92,11 +95,23 @@ func (h *API) DisconnectGitlab(c *gin.Context) {
 // gitlabIntegrationView is the JSON shape returned to the client (label_rules
 // decoded from JSONB into the typed rule engine config).
 type gitlabIntegrationView struct {
-	Configured  bool         `json:"configured"`
-	ProjectPath string       `json:"project_path"`
-	BoardID     *uuid.UUID   `json:"board_id"`
-	Enabled     bool         `json:"enabled"`
-	LabelRules  gitlab.Rules `json:"label_rules"`
+	Configured      bool         `json:"configured"`
+	ProjectPath     string       `json:"project_path"`
+	BoardID         *uuid.UUID   `json:"board_id"`
+	Enabled         bool         `json:"enabled"`
+	SyncIntervalSec int32        `json:"sync_interval_sec"`
+	LastSyncedAt    *time.Time   `json:"last_synced_at"`
+	LabelRules      gitlab.Rules `json:"label_rules"`
+}
+
+// integrationView projects a stored integration row into its JSON view.
+func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
+	bid := integ.BoardID
+	return gitlabIntegrationView{
+		Configured: true, ProjectPath: integ.ProjectPath, BoardID: &bid,
+		Enabled: integ.Enabled, SyncIntervalSec: integ.SyncIntervalSec,
+		LastSyncedAt: integ.LastSyncedAt, LabelRules: parseRules(integ.LabelRules),
+	}
 }
 
 // GetGitlabIntegration returns the workspace's integration config, or an
@@ -118,11 +133,7 @@ func (h *API) GetGitlabIntegration(c *gin.Context) {
 		fail(c)
 		return
 	}
-	bid := integ.BoardID
-	c.JSON(http.StatusOK, gitlabIntegrationView{
-		Configured: true, ProjectPath: integ.ProjectPath, BoardID: &bid,
-		Enabled: integ.Enabled, LabelRules: parseRules(integ.LabelRules),
-	})
+	c.JSON(http.StatusOK, integrationView(integ))
 }
 
 // SetGitlabIntegration creates or updates the workspace's integration config.
@@ -135,10 +146,11 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		return
 	}
 	var req struct {
-		ProjectPath string          `json:"project_path" binding:"required"`
-		BoardID     uuid.UUID       `json:"board_id" binding:"required"`
-		Enabled     bool            `json:"enabled"`
-		LabelRules  json.RawMessage `json:"label_rules"`
+		ProjectPath     string          `json:"project_path" binding:"required"`
+		BoardID         uuid.UUID       `json:"board_id" binding:"required"`
+		Enabled         bool            `json:"enabled"`
+		SyncIntervalSec int32           `json:"sync_interval_sec"`
+		LabelRules      json.RawMessage `json:"label_rules"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -150,6 +162,9 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "board does not belong to this workspace"})
 		return
 	}
+	if req.SyncIntervalSec < 0 {
+		req.SyncIntervalSec = 0
+	}
 
 	rules := req.LabelRules
 	if len(rules) == 0 || string(rules) == "null" || string(rules) == "{}" {
@@ -158,31 +173,28 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		rules = def
 	}
 
+	// The configuring user's credential drives unattended sync.
+	owner := middleware.CurrentUser(c)
 	integ, err := h.q.UpsertGitlabIntegration(c, db.UpsertGitlabIntegrationParams{
-		WorkspaceID: wsID,
-		ProjectPath: strings.TrimSpace(req.ProjectPath),
-		BoardID:     req.BoardID,
-		LabelRules:  rules,
-		Enabled:     req.Enabled,
+		WorkspaceID:     wsID,
+		ProjectPath:     strings.TrimSpace(req.ProjectPath),
+		BoardID:         req.BoardID,
+		LabelRules:      rules,
+		Enabled:         req.Enabled,
+		OwnerUserID:     &owner,
+		SyncIntervalSec: req.SyncIntervalSec,
 	})
 	if err != nil {
 		fail(c)
 		return
 	}
-	bid := integ.BoardID
-	c.JSON(http.StatusOK, gitlabIntegrationView{
-		Configured: true, ProjectPath: integ.ProjectPath, BoardID: &bid,
-		Enabled: integ.Enabled, LabelRules: parseRules(integ.LabelRules),
-	})
+	c.JSON(http.StatusOK, integrationView(integ))
 }
 
-// ── Manual sync (pull) ─────────────────────────────────────
+// ── Sync (pull) ────────────────────────────────────────────
 
-// SyncGitlab pulls the issues assigned to the current user from the configured
-// GitLab project and mirrors them onto the integration's board: status label →
-// column, priority label → priority, other labels → tags. Pull-only — never
-// writes back to GitLab. Existing links are updated in place; new issues create
-// tasks.
+// SyncGitlab runs an on-demand pull for the workspace's integration, using the
+// requesting user's own credential.
 func (h *API) SyncGitlab(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok {
@@ -206,36 +218,57 @@ func (h *API) SyncGitlab(c *gin.Context) {
 		return
 	}
 
-	client, cred, ok := h.gitlabClient(c)
-	if !ok {
+	uid := middleware.CurrentUser(c)
+	cred, err := h.q.GetGitlabCredential(c, uid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "connect your GitLab account first"})
+		return
+	}
+	if err != nil {
+		fail(c)
 		return
 	}
 
-	issues, err := client.AssignedIssues(c, integ.ProjectPath, cred.GlUsername)
+	created, updated, err := h.runSync(c, integ, cred, uid)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "GitLab fetch failed: " + err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "GitLab sync failed: " + err.Error()})
 		return
+	}
+	c.JSON(http.StatusOK, gin.H{"total": created + updated, "created": created, "updated": updated})
+}
+
+// runSync is the credential-driven pull engine, decoupled from the HTTP request
+// so the background worker can call it too. It mirrors the issues assigned to
+// cred's GitLab user onto the integration's board (status→column, priority→
+// priority, others→tags), attributing events to actorID. Pull-only. Per-issue
+// errors are logged and skipped; only a fetch/board-level failure aborts.
+func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.GitlabCredential, actorID uuid.UUID) (created, updated int, err error) {
+	token, err := h.sealer.Decrypt(cred.TokenEnc)
+	if err != nil {
+		return 0, 0, fmt.Errorf("decrypt stored token: %w", err)
+	}
+	client := gitlab.New(cred.BaseUrl, token)
+	issues, err := client.AssignedIssues(ctx, integ.ProjectPath, cred.GlUsername)
+	if err != nil {
+		return 0, 0, err
 	}
 
-	board, err := h.q.GetBoard(c, integ.BoardID)
+	board, err := h.q.GetBoard(ctx, integ.BoardID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "integration board no longer exists"})
-		return
+		return 0, 0, fmt.Errorf("integration board no longer exists")
 	}
-	cols, err := h.q.ListColumns(c, board.ID)
+	cols, err := h.q.ListColumns(ctx, board.ID)
 	if err != nil || len(cols) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "integration board has no columns"})
-		return
+		return 0, 0, fmt.Errorf("integration board has no columns")
 	}
 	colByName := make(map[string]db.BoardColumn, len(cols))
 	for _, col := range cols {
 		colByName[col.Name] = col
 	}
-	doneID := h.doneColumnID(c, board)
+	doneID := h.resolveDoneColumn(ctx, board)
 	rules := parseRules(integ.LabelRules)
-	uid := middleware.CurrentUser(c)
+	wsID := integ.WorkspaceID
 
-	var created, updated int
 	for _, issue := range issues {
 		res := rules.Resolve(issue.Labels)
 		col, found := colByName[res.ColumnName]
@@ -248,123 +281,188 @@ func (h *API) SyncGitlab(c *gin.Context) {
 			completedAt = &now
 		}
 
-		link, lerr := h.q.GetGitlabLinkByGlobalID(c, db.GetGitlabLinkByGlobalIDParams{
+		link, lerr := h.q.GetGitlabLinkByGlobalID(ctx, db.GetGitlabLinkByGlobalIDParams{
 			IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
 		})
 		switch {
 		case errors.Is(lerr, pgx.ErrNoRows):
-			t, ok := h.syncCreateTask(c, wsID, board.ID, col.ID, uid, issue, res.Priority, completedAt)
-			if !ok {
-				return
+			t, cerr := h.syncCreateTask(ctx, wsID, board.ID, col.ID, issue, res.Priority, completedAt)
+			if cerr != nil {
+				log.Printf("gitlab sync: create task for issue !%d failed: %v", issue.IID, cerr)
+				continue
 			}
-			if _, err := h.q.CreateGitlabLink(c, db.CreateGitlabLinkParams{
+			if _, cerr := h.q.CreateGitlabLink(ctx, db.CreateGitlabLinkParams{
 				TaskID: t.ID, IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
 				GlIid: issue.IID, GlProjectPath: integ.ProjectPath, GlWebUrl: issue.WebURL,
 				GlUpdatedAt: issue.UpdatedAt,
 				TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
 				LabelsHash: hashStr(strings.Join(issue.Labels, "\n")),
-			}); err != nil {
-				fail(c)
-				return
+				GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
+			}); cerr != nil {
+				log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
+				continue
 			}
-			h.applyTags(c, t.ID, wsID, res.TagNames)
-			h.logEvent(c, t.ID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
+			h.applyTags(ctx, t.ID, wsID, res.TagNames)
+			h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 			h.broadcast(wsID, "task.created", t)
 			created++
 		case lerr != nil:
-			fail(c)
-			return
+			log.Printf("gitlab sync: lookup link for issue !%d failed: %v", issue.IID, lerr)
+			continue
 		default:
-			t, err := h.q.SyncUpdateTask(c, db.SyncUpdateTaskParams{
+			t, uerr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
 				ID: link.TaskID, Title: issue.Title, Description: issue.Description,
 				Priority: res.Priority, ColumnID: col.ID, CompletedAt: completedAt,
 			})
-			if err != nil {
-				fail(c)
-				return
+			if uerr != nil {
+				log.Printf("gitlab sync: update task for issue !%d failed: %v", issue.IID, uerr)
+				continue
 			}
-			if _, err := h.q.UpdateGitlabLink(c, db.UpdateGitlabLinkParams{
+			if _, uerr := h.q.UpdateGitlabLink(ctx, db.UpdateGitlabLinkParams{
 				TaskID: link.TaskID, GlIid: issue.IID, GlWebUrl: issue.WebURL,
 				GlUpdatedAt: issue.UpdatedAt,
 				TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
 				LabelsHash: hashStr(strings.Join(issue.Labels, "\n")),
-			}); err != nil {
-				fail(c)
-				return
+				GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
+			}); uerr != nil {
+				log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
+				continue
 			}
-			h.applyTags(c, link.TaskID, wsID, res.TagNames)
+			h.applyTags(ctx, link.TaskID, wsID, res.TagNames)
 			h.broadcast(wsID, "task.updated", t)
 			updated++
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"total": len(issues), "created": created, "updated": updated})
+	_ = h.q.MarkGitlabSynced(ctx, integ.ID)
+	return created, updated, nil
+}
+
+// ── Background auto-sync worker ────────────────────────────
+
+// RunSyncWorker periodically pulls integrations that are due by their configured
+// interval, driven by the owner's stored credential. Blocks until ctx is done;
+// start it in a goroutine.
+func (h *API) RunSyncWorker(ctx context.Context) {
+	const tick = 30 * time.Second
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			h.autoSyncDue(ctx)
+		}
+	}
+}
+
+// autoSyncDue syncs every integration whose interval has elapsed (the query
+// already filters for enabled + interval>0 + owner set + due).
+func (h *API) autoSyncDue(ctx context.Context) {
+	integs, err := h.q.ListAutoSyncIntegrations(ctx)
+	if err != nil {
+		return
+	}
+	for _, integ := range integs {
+		if integ.OwnerUserID == nil {
+			continue
+		}
+		cred, err := h.q.GetGitlabCredential(ctx, *integ.OwnerUserID)
+		if err != nil {
+			continue // owner disconnected — skip until reconfigured
+		}
+		created, updated, serr := h.runSync(ctx, integ, cred, *integ.OwnerUserID)
+		if serr != nil {
+			log.Printf("gitlab auto-sync ws=%s: %v", integ.WorkspaceID, serr)
+			continue
+		}
+		if created+updated > 0 {
+			log.Printf("gitlab auto-sync ws=%s: +%d new, ~%d updated", integ.WorkspaceID, created, updated)
+		}
+	}
 }
 
 // ── helpers ────────────────────────────────────────────────
 
-// gitlabClient loads the current user's credential and builds an authenticated
-// client. Writes a 400 and returns ok=false when no credential is linked.
-func (h *API) gitlabClient(c *gin.Context) (*gitlab.Client, db.GitlabCredential, bool) {
-	cred, err := h.q.GetGitlabCredential(c, middleware.CurrentUser(c))
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "connect your GitLab account first"})
-		return nil, db.GitlabCredential{}, false
+// resolveDoneColumn is the context-based form of doneColumnID for use off the
+// request path: the board's explicit done column, else its rightmost column.
+func (h *API) resolveDoneColumn(ctx context.Context, board db.Board) *uuid.UUID {
+	if board.DoneColumnID != nil {
+		return board.DoneColumnID
 	}
+	col, err := h.q.RightmostColumn(ctx, board.ID)
 	if err != nil {
-		fail(c)
-		return nil, db.GitlabCredential{}, false
+		return nil
 	}
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "stored GitLab token could not be decrypted"})
-		return nil, db.GitlabCredential{}, false
-	}
-	return gitlab.New(cred.BaseUrl, token), cred, true
+	return &col.ID
 }
 
-// syncCreateTask creates a mirrored task at the end of its target column.
-func (h *API) syncCreateTask(c *gin.Context, wsID, boardID, columnID, uid uuid.UUID, issue gitlab.Issue, priority int32, completedAt *time.Time) (db.Task, bool) {
-	pos, err := h.nextTaskPosition(c, columnID, nil)
+// syncCreateTask creates a mirrored task at the end of its target column. The
+// task has no Tessera creator (created_by stays null) — the GitLab author is
+// recorded on the link instead, since it may not be a Tessera user.
+func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.UUID, issue gitlab.Issue, priority int32, completedAt *time.Time) (db.Task, error) {
+	maxPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
 	if err != nil {
-		fail(c)
-		return db.Task{}, false
+		return db.Task{}, err
 	}
-	num, err := h.q.NextWorkspaceTaskNumber(c, wsID)
+	num, err := h.q.NextWorkspaceTaskNumber(ctx, wsID)
 	if err != nil {
-		fail(c)
-		return db.Task{}, false
+		return db.Task{}, err
 	}
-	t, err := h.q.CreateTask(c, db.CreateTaskParams{
+	t, err := h.q.CreateTask(ctx, db.CreateTaskParams{
 		BoardID: boardID, ColumnID: columnID, ParentID: nil,
 		Title: issue.Title, Description: issue.Description, Priority: priority,
-		DueDate: nil, Position: pos, CreatedBy: &uid, Number: &num,
+		DueDate: nil, Position: positionBetween(&maxPos, nil), CreatedBy: nil, Number: &num,
 	})
 	if err != nil {
-		fail(c)
-		return db.Task{}, false
+		return db.Task{}, err
 	}
 	if completedAt != nil {
-		if done, derr := h.q.SyncUpdateTask(c, db.SyncUpdateTaskParams{
+		if done, derr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
 			ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
 			ColumnID: t.ColumnID, CompletedAt: completedAt,
 		}); derr == nil {
 			t = done
 		}
 	}
-	return t, true
+	return t, nil
 }
 
 // applyTags ensures each named tag exists in the workspace and attaches it to
 // the task. Additive only: tags the user applied manually are never removed,
 // so synced labels never clobber scope tags. Best-effort per tag.
-func (h *API) applyTags(c *gin.Context, taskID, wsID uuid.UUID, names []string) {
+func (h *API) applyTags(ctx context.Context, taskID, wsID uuid.UUID, names []string) {
 	for _, name := range names {
-		tag, err := h.q.EnsureTag(c, db.EnsureTagParams{WorkspaceID: wsID, Name: name, Color: ""})
+		tag, err := h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, Name: name, Color: ""})
 		if err != nil {
 			continue
 		}
-		_ = h.q.AddTaskTag(c, db.AddTaskTagParams{TaskID: taskID, TagID: tag.ID})
+		_ = h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: taskID, TagID: tag.ID})
+	}
+}
+
+// gitlabLinkView is the GitLab provenance attached to a synced task: the issue
+// number, its web URL and the author login (a GitLab identity that may not be a
+// Tessera user).
+type gitlabLinkView struct {
+	IID         int64  `json:"iid"`
+	WebURL      string `json:"web_url"`
+	Author      string `json:"author"`
+	AuthorName  string `json:"author_name"`
+	ProjectPath string `json:"project_path"`
+}
+
+// gitlabLinkForTask returns the GitLab link view for a task, or nil when the
+// task isn't mirrored from GitLab. Best-effort.
+func (h *API) gitlabLinkForTask(c *gin.Context, taskID uuid.UUID) *gitlabLinkView {
+	link, err := h.q.GetGitlabLinkByTask(c, taskID)
+	if err != nil {
+		return nil
+	}
+	return &gitlabLinkView{
+		IID: link.GlIid, WebURL: link.GlWebUrl, Author: link.GlAuthor,
+		AuthorName: link.GlAuthorName, ProjectPath: link.GlProjectPath,
 	}
 }
 

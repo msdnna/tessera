@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,15 +22,25 @@ import (
 // logging failure must never break the user-facing mutation, so errors are
 // swallowed.
 func (h *API) logEvent(c *gin.Context, taskID uuid.UUID, kind string, data map[string]any) {
+	h.logEventActor(c, taskID, middleware.CurrentUser(c), kind, data)
+}
+
+// logEventActor is logEvent with an explicit actor, usable outside an HTTP
+// request (e.g. the background sync worker). actorID == uuid.Nil logs a system
+// event with no actor.
+func (h *API) logEventActor(ctx context.Context, taskID, actorID uuid.UUID, kind string, data map[string]any) {
 	raw := []byte("{}")
 	if data != nil {
 		if b, err := json.Marshal(data); err == nil {
 			raw = b
 		}
 	}
-	actor := middleware.CurrentUser(c)
-	_, _ = h.q.LogTaskEvent(c, db.LogTaskEventParams{
-		TaskID: taskID, ActorID: &actor, Kind: kind, Data: raw,
+	var actor *uuid.UUID
+	if actorID != uuid.Nil {
+		actor = &actorID
+	}
+	_, _ = h.q.LogTaskEvent(ctx, db.LogTaskEventParams{
+		TaskID: taskID, ActorID: actor, Kind: kind, Data: raw,
 	})
 }
 

@@ -15,10 +15,10 @@ import (
 const createGitlabLink = `-- name: CreateGitlabLink :one
 INSERT INTO gitlab_links (
     task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url,
-    gl_updated_at, title_hash, desc_hash, labels_hash
+    gl_updated_at, title_hash, desc_hash, labels_hash, gl_author, gl_author_name
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name
 `
 
 type CreateGitlabLinkParams struct {
@@ -32,6 +32,8 @@ type CreateGitlabLinkParams struct {
 	TitleHash     string     `json:"title_hash"`
 	DescHash      string     `json:"desc_hash"`
 	LabelsHash    string     `json:"labels_hash"`
+	GlAuthor      string     `json:"gl_author"`
+	GlAuthorName  string     `json:"gl_author_name"`
 }
 
 func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkParams) (GitlabLink, error) {
@@ -46,6 +48,8 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		arg.TitleHash,
 		arg.DescHash,
 		arg.LabelsHash,
+		arg.GlAuthor,
+		arg.GlAuthorName,
 	)
 	var i GitlabLink
 	err := row.Scan(
@@ -61,6 +65,8 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		&i.LabelsHash,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.GlAuthor,
+		&i.GlAuthorName,
 	)
 	return i, err
 }
@@ -94,7 +100,7 @@ func (q *Queries) GetGitlabCredential(ctx context.Context, userID uuid.UUID) (Gi
 }
 
 const getGitlabIntegrationByWorkspace = `-- name: GetGitlabIntegrationByWorkspace :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at FROM gitlab_integrations WHERE workspace_id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at FROM gitlab_integrations WHERE workspace_id = $1
 `
 
 func (q *Queries) GetGitlabIntegrationByWorkspace(ctx context.Context, workspaceID uuid.UUID) (GitlabIntegration, error) {
@@ -109,13 +115,16 @@ func (q *Queries) GetGitlabIntegrationByWorkspace(ctx context.Context, workspace
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OwnerUserID,
+		&i.SyncIntervalSec,
+		&i.LastSyncedAt,
 	)
 	return i, err
 }
 
 const getGitlabLinkByGlobalID = `-- name: GetGitlabLinkByGlobalID :one
 
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
 `
 
 type GetGitlabLinkByGlobalIDParams struct {
@@ -140,8 +149,89 @@ func (q *Queries) GetGitlabLinkByGlobalID(ctx context.Context, arg GetGitlabLink
 		&i.LabelsHash,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.GlAuthor,
+		&i.GlAuthorName,
 	)
 	return i, err
+}
+
+const getGitlabLinkByTask = `-- name: GetGitlabLinkByTask :one
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name FROM gitlab_links WHERE task_id = $1
+`
+
+func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (GitlabLink, error) {
+	row := q.db.QueryRow(ctx, getGitlabLinkByTask, taskID)
+	var i GitlabLink
+	err := row.Scan(
+		&i.TaskID,
+		&i.IntegrationID,
+		&i.GlGlobalID,
+		&i.GlIid,
+		&i.GlProjectPath,
+		&i.GlWebUrl,
+		&i.GlUpdatedAt,
+		&i.TitleHash,
+		&i.DescHash,
+		&i.LabelsHash,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.GlAuthor,
+		&i.GlAuthorName,
+	)
+	return i, err
+}
+
+const listAutoSyncIntegrations = `-- name: ListAutoSyncIntegrations :many
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at FROM gitlab_integrations
+WHERE enabled
+  AND sync_interval_sec > 0
+  AND owner_user_id IS NOT NULL
+  AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
+`
+
+// ListAutoSyncIntegrations returns integrations due for unattended sync: enabled,
+// with a positive interval, an owner credential set, and either never synced or
+// past their interval. Used by the background worker.
+func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegration, error) {
+	rows, err := q.db.Query(ctx, listAutoSyncIntegrations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitlabIntegration
+	for rows.Next() {
+		var i GitlabIntegration
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProjectPath,
+			&i.BoardID,
+			&i.LabelRules,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OwnerUserID,
+			&i.SyncIntervalSec,
+			&i.LastSyncedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markGitlabSynced = `-- name: MarkGitlabSynced :exec
+UPDATE gitlab_integrations SET last_synced_at = now() WHERE id = $1
+`
+
+// MarkGitlabSynced stamps the integration's last successful sync time.
+func (q *Queries) MarkGitlabSynced(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markGitlabSynced, id)
+	return err
 }
 
 const syncUpdateTask = `-- name: SyncUpdateTask :one
@@ -195,19 +285,22 @@ func (q *Queries) SyncUpdateTask(ctx context.Context, arg SyncUpdateTaskParams) 
 const updateGitlabLink = `-- name: UpdateGitlabLink :one
 UPDATE gitlab_links
 SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
-    title_hash = $5, desc_hash = $6, labels_hash = $7, last_synced_at = now()
+    title_hash = $5, desc_hash = $6, labels_hash = $7,
+    gl_author = $8, gl_author_name = $9, last_synced_at = now()
 WHERE task_id = $1
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name
 `
 
 type UpdateGitlabLinkParams struct {
-	TaskID      uuid.UUID  `json:"task_id"`
-	GlIid       int64      `json:"gl_iid"`
-	GlWebUrl    string     `json:"gl_web_url"`
-	GlUpdatedAt *time.Time `json:"gl_updated_at"`
-	TitleHash   string     `json:"title_hash"`
-	DescHash    string     `json:"desc_hash"`
-	LabelsHash  string     `json:"labels_hash"`
+	TaskID       uuid.UUID  `json:"task_id"`
+	GlIid        int64      `json:"gl_iid"`
+	GlWebUrl     string     `json:"gl_web_url"`
+	GlUpdatedAt  *time.Time `json:"gl_updated_at"`
+	TitleHash    string     `json:"title_hash"`
+	DescHash     string     `json:"desc_hash"`
+	LabelsHash   string     `json:"labels_hash"`
+	GlAuthor     string     `json:"gl_author"`
+	GlAuthorName string     `json:"gl_author_name"`
 }
 
 func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkParams) (GitlabLink, error) {
@@ -219,6 +312,8 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		arg.TitleHash,
 		arg.DescHash,
 		arg.LabelsHash,
+		arg.GlAuthor,
+		arg.GlAuthorName,
 	)
 	var i GitlabLink
 	err := row.Scan(
@@ -234,6 +329,8 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		&i.LabelsHash,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.GlAuthor,
+		&i.GlAuthorName,
 	)
 	return i, err
 }
@@ -285,23 +382,27 @@ func (q *Queries) UpsertGitlabCredential(ctx context.Context, arg UpsertGitlabCr
 
 const upsertGitlabIntegration = `-- name: UpsertGitlabIntegration :one
 
-INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, updated_at)
-VALUES ($1, $2, $3, $4, $5, now())
+INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, owner_user_id, sync_interval_sec, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, now())
 ON CONFLICT (workspace_id) DO UPDATE
 SET project_path = EXCLUDED.project_path,
     board_id = EXCLUDED.board_id,
     label_rules = EXCLUDED.label_rules,
     enabled = EXCLUDED.enabled,
+    owner_user_id = EXCLUDED.owner_user_id,
+    sync_interval_sec = EXCLUDED.sync_interval_sec,
     updated_at = now()
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at
 `
 
 type UpsertGitlabIntegrationParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	ProjectPath string    `json:"project_path"`
-	BoardID     uuid.UUID `json:"board_id"`
-	LabelRules  []byte    `json:"label_rules"`
-	Enabled     bool      `json:"enabled"`
+	WorkspaceID     uuid.UUID  `json:"workspace_id"`
+	ProjectPath     string     `json:"project_path"`
+	BoardID         uuid.UUID  `json:"board_id"`
+	LabelRules      []byte     `json:"label_rules"`
+	Enabled         bool       `json:"enabled"`
+	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
+	SyncIntervalSec int32      `json:"sync_interval_sec"`
 }
 
 // ── Per-workspace integration ──────────────────────────────
@@ -312,6 +413,8 @@ func (q *Queries) UpsertGitlabIntegration(ctx context.Context, arg UpsertGitlabI
 		arg.BoardID,
 		arg.LabelRules,
 		arg.Enabled,
+		arg.OwnerUserID,
+		arg.SyncIntervalSec,
 	)
 	var i GitlabIntegration
 	err := row.Scan(
@@ -323,6 +426,9 @@ func (q *Queries) UpsertGitlabIntegration(ctx context.Context, arg UpsertGitlabI
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OwnerUserID,
+		&i.SyncIntervalSec,
+		&i.LastSyncedAt,
 	)
 	return i, err
 }
