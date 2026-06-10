@@ -61,9 +61,29 @@ frontend `0.43.0` · android `0.3.1`.
   (Android-стиль) вместо модалок; акцентные кнопки/иконки в поповерах.
 - Точечные багфиксы — по мере появления.
 
-### 3. Бизнес-фичи — GitLab self-hosted Issues integration — ⏭ СЛЕДУЮЩЕЕ
-- Тянуть рабочие задачи/issues из self-hosted GitLab прямо в Tessera вместо дублей.
-  Дизайн TBD (направление синка, маппинг issues↔tasks).
+### 3. Бизнес-фичи — GitLab self-hosted Issues integration — 🔶 В РАБОТЕ (фаза A)
+- **Цель:** тянуть issues/work-items, назначенные на пользователя, из self-hosted
+  GitLab (self-hosted) в Tessera вместо дублей.
+- **Решено по дизайну (2026-06-11):** транспорт — **pull-first polling** (Tessera→GL,
+  работает во всех топологиях с egress; webhooks — потом). GraphQL (issues+work-items
+  единообразно, иерархия для `M:`-подзадач). Привязка: **per-user PAT** (credential) +
+  **per-workspace integration** (project→board + правила лейблов). Лестница auth:
+  PAT → OAuth2 → SSO (последнее за скобки). Двухсторонность (write-back), webhooks,
+  OAuth — **в бэклог**.
+- **Ядро кастомизации — движок правил по namespace-префиксам лейблов** (таксономия
+  пользователя `S:`/`P:`/`T:`/`C:`/`Scope:`/`effort::`/`M:`/`B:`): эффект, а не «куда
+  положить». `S:`→колонка, `P:`→priority, прочее→теги (с префиксом, additive — ручные
+  scope-теги не затираются). `B: Future`→доска Backlog и `M:`→подзадачи — спроектировано,
+  отложено.
+- **Сделано — backend phase A thin slice (0.19.0):** migration 0009
+  (`gitlab_credentials`/`gitlab_integrations`/`gitlab_links`), `ENCRYPTION_KEY` +
+  `internal/secrets` (AES-GCM), `internal/gitlab` (GraphQL-клиент + rule engine, юнит-тесты),
+  эндпоинты connection/integration/sync (ручной pull). Verified: config-раунд-трип и гарды
+  (smoke на tessera_test); **живой fetch против реального GL (self-hosted) ещё не проверен**.
+- **Дальше:** (1) проверить sync против боевого GitLab; (2) frontend UI (Connect GitLab в
+  профиле, настройки интеграции + редактор правил, кнопка Sync now, бейдж synced);
+  (3) тикер-воркер для авто-синка; (4) `M:`-подзадачи через GraphQL hierarchy; затем
+  бэклог write-back/webhooks/OAuth.
 
 ## Сверка с budget-go (общие проектные аспекты)
 
