@@ -1,0 +1,77 @@
+package website.msdnna.tessera.data.repository
+
+import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.AddAssigneeRequest
+import website.msdnna.tessera.data.model.AddTagRequest
+import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.CreateTagRequest
+import website.msdnna.tessera.data.model.CreateTaskRequest
+import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.MoveTaskRequest
+import website.msdnna.tessera.data.model.SetParentRequest
+import website.msdnna.tessera.data.model.Tag
+import website.msdnna.tessera.data.model.Task
+import website.msdnna.tessera.data.model.UpdateTaskRequest
+
+/** Reads a board's columns + cards and performs all card mutations. */
+class BoardRepository {
+    private val api get() = AppContainer.api()
+
+    suspend fun board(boardId: String): website.msdnna.tessera.data.model.Board = api.board(boardId)
+
+    /** Resolves a task's board id (for opening a task when only its id is known). */
+    suspend fun taskBoardId(taskId: String): String = api.task(taskId).boardId
+    suspend fun columns(boardId: String): List<BoardColumn> = api.columns(boardId).orEmpty()
+    suspend fun createColumn(boardId: String, name: String): BoardColumn =
+        api.createColumn(boardId, website.msdnna.tessera.data.model.CreateColumnRequest(name))
+    suspend fun renameColumn(column: BoardColumn, name: String): BoardColumn =
+        api.updateColumn(column.id, website.msdnna.tessera.data.model.UpdateColumnRequest(name, column.color))
+    suspend fun setColumnColor(column: BoardColumn, color: String): BoardColumn =
+        api.updateColumn(column.id, website.msdnna.tessera.data.model.UpdateColumnRequest(column.name, color))
+    suspend fun deleteColumn(columnId: String) = api.deleteColumn(columnId)
+    suspend fun moveColumn(columnId: String, beforeId: String?, afterId: String?): BoardColumn =
+        api.moveColumn(columnId, website.msdnna.tessera.data.model.ColumnMoveRequest(beforeId, afterId))
+    suspend fun setDoneColumn(boardId: String, columnId: String?) =
+        api.setDoneColumn(boardId, website.msdnna.tessera.data.model.SetDoneColumnRequest(columnId))
+    suspend fun tasks(boardId: String): List<Task> = api.boardTasks(boardId).orEmpty()
+    suspend fun subtasks(boardId: String): List<Task> = api.boardSubtasks(boardId).orEmpty()
+    suspend fun tags(workspaceId: String): List<Tag> = api.tags(workspaceId).orEmpty()
+    suspend fun members(workspaceId: String): List<Member> = api.members(workspaceId).orEmpty()
+
+    suspend fun createTask(boardId: String, columnId: String, title: String, parentId: String? = null): Task =
+        api.createTask(boardId, CreateTaskRequest(columnId = columnId, title = title, parentId = parentId))
+
+    suspend fun moveTask(taskId: String, columnId: String, beforeId: String? = null, afterId: String? = null): Task =
+        api.moveTask(taskId, MoveTaskRequest(columnId, beforeId, afterId))
+
+    suspend fun setParent(taskId: String, parentId: String?): Task =
+        api.setTaskParent(taskId, SetParentRequest(parentId))
+
+    /** Full update — pass the task plus the fields you're changing. */
+    suspend fun updateTask(
+        task: Task,
+        title: String = task.title,
+        description: String = task.description,
+        priority: Int = task.priority,
+        dueDate: String? = task.dueDate,
+        completed: Boolean = task.isCompleted,
+    ): Task = api.updateTask(task.id, UpdateTaskRequest(title, description, priority, dueDate, completed))
+
+    suspend fun archiveTask(taskId: String) = api.archiveTask(taskId)
+    suspend fun deleteTask(taskId: String) = api.deleteTask(taskId)
+
+    suspend fun addTag(taskId: String, tagId: String) = api.addTaskTag(taskId, AddTagRequest(tagId))
+    suspend fun removeTag(taskId: String, tagId: String) = api.removeTaskTag(taskId, tagId)
+    suspend fun addAssignee(taskId: String, userId: String) = api.addTaskAssignee(taskId, AddAssigneeRequest(userId))
+    suspend fun removeAssignee(taskId: String, userId: String) = api.removeTaskAssignee(taskId, userId)
+
+    suspend fun createTag(workspaceId: String, name: String, color: String): Tag =
+        api.createTag(workspaceId, CreateTagRequest(name, color))
+    suspend fun updateTag(tagId: String, name: String, color: String): Tag =
+        api.updateTag(tagId, CreateTagRequest(name, color))
+    suspend fun deleteTag(tagId: String) = api.deleteTag(tagId)
+
+    // ── archive ──────────────────────────────────────────────────────────────
+    suspend fun archived(boardId: String): List<Task> = api.boardArchive(boardId).orEmpty()
+    suspend fun restoreTask(taskId: String) = api.restoreTask(taskId)
+}

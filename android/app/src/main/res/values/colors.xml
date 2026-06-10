@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pre-Compose window background. Brand purple (logo bundle's mid tone) so a
+         cold start opens straight into the purple launch splash with no grey flash
+         before Compose draws the spinning tessera tile. -->
+    <color name="window_background">#7C6CFF</color>
+</resources>

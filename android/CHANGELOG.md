@@ -1,0 +1,429 @@
+# Changelog — Tessera Android
+
+All notable changes to the Android app. Versioned independently via
+`android/VERSION`; see the repo root for backend/frontend changelogs.
+
+## Unreleased
+
+## 0.3.1 — 2026-06-10
+- Create-column placeholder now has a **dashed border** instead of a solid one.
+- Links and @-mentions in descriptions and comments now use the **accent gradient**
+  (matching the app-wide design language) instead of a flat accent colour.
+
+## 0.3.0 — 2026-06-10
+- **@-mentions: autocomplete in the editor + highlight in rendered text.** The
+  Markdown editor (description + comments) now pops a member autocomplete while
+  typing "@…" and inserts "@Name "; rendered content (comment bodies, description
+  preview) highlights "@Name" tokens for known members in the accent colour —
+  mirrors the web (`utils/markdown.js`). Mentions were previously inert (no
+  picker, no highlight).
+- **Create a column from the board.** A "+ Создать колонку" placeholder tile now
+  sits at the end of the status lanes; tapping it opens an inline name field that
+  commits on Enter / focus-loss and cancels on a blank entry — like the web.
+  (Added the missing `POST boards/:id/columns` binding: API → repository → VM.)
+
+## 0.2.6 — 2026-06-09
+- No code changes vs 0.2.5 — published as the newer target to verify the sidebar
+  "Доступно обновление" row (and the post-"Позже" update path) on a 0.2.5 install.
+
+## 0.2.5 — 2026-06-09
+- **Sidebar "Доступно обновление vX" row with an "Обновить" button.** Tapping
+  "Позже" on the update dialog now only hides it for the session — the available
+  release is tracked separately (`UpdateViewModel.available`) and surfaced as a
+  persistent sidebar entry, so you can still start the update without restarting
+  the app. The button re-enters the same download→install flow.
+
+## 0.2.4 — 2026-06-09
+- No code changes vs 0.2.3 — published purely as the newer-versionCode target to
+  verify the in-app update flow end-to-end from a 0.2.3 install.
+
+## 0.2.3 — 2026-06-09
+- **FIX: in-app update never detected anything in release builds.** The
+  `LatestRelease` Gson model lived in the `update` package, which the R8 keep
+  rule (`-keep …data.model.**`) didn't cover, so a release build renamed its
+  fields and Gson deserialised `latest.json` to all-defaults (versionCode 0) →
+  `0 > installed` is always false → no banner. Moved the model into `data.model`
+  so it's kept. (Only release/R8 was affected; debug parsed fine.) **0.2.0–0.2.2
+  carry the broken parser and can't self-update — install 0.2.3+ manually once.**
+
+## 0.2.2 — 2026-06-09
+- **Update check now also runs on every foreground resume**, not just at process
+  start (`UpdateViewModel.init`). A release published while the app was merely
+  backgrounded is now noticed when you return to it, instead of only after a cold
+  start. `check()` still no-ops if a prompt is already showing or was dismissed.
+
+## 0.2.1 — 2026-06-09
+- **Login screen simplified:** dropped the "Tessera by msdnna" wordmark (read as
+  cluttered) — only the "mt" monogram remains, enlarged to 50 % of the screen
+  width above the form.
+
+## 0.2.0 — 2026-06-09
+- **Login polish round 2:** the "Tessera" wordmark now uses the brand Fredoka
+  lettering (white) instead of a system font; the server popover has roomier
+  padding and a caret pointing up at the (now active-highlighted) gear.
+- **Selected kanban column no longer resets** after a task-modal save —
+  `BoardViewModel.reload()` is silent (keeps the columns Row mounted) instead of
+  flipping `loading`, which used to tear it down and scroll back to column 1.
+- **State persists across launches.** The sidebar tree expand state
+  (`expandedGroups`/`expandedProjects`) and the last-open destination
+  (Home/Notes/Reminders/a board) are saved to DataStore and restored on launch —
+  the app reopens where you left it. Boards for restored-expanded projects
+  preload; a reminder deep-link still wins over the restore. (`AppPreferences`
+  gained `expandedGroups`/`expandedProjects`/`lastDest`; `WorkspaceViewModel`
+  persists on every toggle; `MainScreen` restores/persists `dest`.)
+- **Login/register redesigned** to match the launch splash: full-bleed purple
+  gradient, large white monogram, frosted inputs rendered directly on the
+  gradient with a white CTA. Server settings moved behind a gear popover
+  (top-right) and apply live — whatever is in the field is the server used, no
+  Save button. New vendored `settings` ionicon (`Ion.SETTINGS`).
+- **In-app self-update.** On launch the app fetches `<server>/apks/latest.json`
+  (served by the frontend nginx from the repo `./apks` bind-mount) and, if its
+  versionCode is newer, shows an update dialog → downloads the signed APK to the
+  cache (with progress) → hands it to the system installer (new
+  `REQUEST_INSTALL_PACKAGES` perm + FileProvider `updates/` path). Release/debug
+  build scripts now also emit `latest.json`; nginx serves `/apks/` as plain
+  files. App version shown in the sidebar footer. (`update/UpdateRepository`,
+  `UpdateViewModel`, `UpdateDialog`.)
+- **New brand logo + loader (from the Claude Design bundle).** Launcher icon is
+  now the "mt" monogram (msdnna · Tessera) + tessera tile on the purple diagonal
+  gradient — adaptive (foreground/background/monochrome) plus rasters in every
+  density. The in-app mark (`mt_logo`, used in the splash, auth and sidebar) is
+  the new monogram, still accent-gradient tinted. A new `TesseraLoader` — a
+  spinning tessera tile (1.5 s ease-in-out, per the brand README) — replaces the
+  generic `CircularProgressIndicator` on every loading screen (boards, notes,
+  reminders, search, members, task modal, home), and the launch splash is now a
+  white tile spinning on the purple gradient (pre-Compose window background made
+  purple to avoid a grey flash). Notification icon left as the bell for now.
+- **Sidebar create/rename is now inline — no modals.** Adding a project, group,
+  subgroup or board opens an inline field in the tree (commit on Enter / tap-away,
+  blank dismisses), mirroring the web. Renaming moved into the context menu and
+  edits in place. Only "new workspace" keeps a modal.
+- **Sidebar context menus are themed popovers with leading icons** (replacing the
+  Material dropdowns), and **deletes confirm via a popover** (like task/relation
+  delete) instead of a full-screen dialog.
+- **Project / group colour + icon pickers** in the context menu (the Naive accent
+  palette + the 16 curated icons + reset), matching the web `IconColorPicker`.
+- **Tree rows realigned** — chevron and entity-icon centres share one vertical
+  axis across every depth (groups, projects, boards), and **nested levels draw a
+  left gutter guide line** like the web.
+- **Drag-and-drop in the sidebar** (long-press): groups and projects reorder and
+  reparent, with a depth-aware insertion line and a floating ghost of the dragged
+  row; persists via the `groups/:id/move` and `projects/:id/move` endpoints.
+- **Calendar board view is now a real month grid** (Пн-first 6×7, prev/next/Сегодня
+  nav, "Июнь 2026" title) with priority-coloured task chips in each day cell,
+  today highlight and an undated strip — replacing the date-grouped list.
+- **Toolbar polish:** wider gaps between the icon buttons; the title-search field
+  shrunk so icons + search split the row roughly half-and-half.
+- **Layout switcher is now a horizontal segmented selector** (icon over a small
+  caption; active segment = accent-gradient block with inverted glyph/label)
+  instead of a plain dropdown list — reusable `HSegmentedSelector` with a Studio
+  `@Preview`.
+- **Dropdowns hug their content** (`IntrinsicSize.Max`, min 140 dp like the web's
+  `min-width:140`) instead of stretching, and the active **checkmark is pinned to
+  the right** (label takes the row, 28 dp gap) — matches the web `space-between`.
+- **Attachment deletion now asks to confirm** (popover, like task/relation delete).
+- **Board toolbar refined to the web's exact controls.** View switching moved to
+  a **chevron next to the board name** in the app bar (Доска/Список/Календарь,
+  active ticked). The toolbar is now group / sort / filter dropdowns + a subtasks
+  toggle, in that order; group & sort are dropdowns with a right-aligned checkmark
+  on the active option. **Filter is a dropdown** (chips: priority/due/tags/
+  assignees) — no longer a modal, and no title/sort inside it (title = the field
+  to the right). Active controls show **only the accent gradient on the glyph**
+  (no grey pill). Icons now match the web 1:1 — vendored `albums` (group),
+  `swap` (sort, true SwapVertical), `filter` (FilterOutline), `git_branch`
+  (GitBranch) from ionicons5.
+- **Fix: inline images / attachments now persist server-side.** `UPLOAD_DIR`
+  defaulted to `./uploads` inside the backend container, so every rebuild wiped
+  uploaded media (→ 404, broken images). Added a `uploads_data` volume mounted at
+  `/data/uploads` with `UPLOAD_DIR` pointed at it (docker-compose). **Needs a
+  backend redeploy; media uploaded before this is gone.** (The Android WebView
+  OkHttp intercept from the previous build was correct — the resource was simply
+  missing.)
+- **Board toolbar reworked to match the web mobile bar.** View / group-by-tag /
+  sort / filter / subtasks collapsed to icon-only buttons (view + sort open
+  dropdowns; active toggles tint accent) plus an inline **"Поиск по названию"**
+  field that filters cards live. Archive + tag management moved out of the board
+  toolbar into the **app-bar ⋯** (next to search + bell, shown on a board).
+  Refresh button replaced with **pull-to-refresh** + a custom app-style indicator
+  (floating accent refresh glyph, rotates with the pull, spins while refreshing).
+  New vendored icons `funnel`/`swap` (`Ion.FUNNEL`/`Ion.SORT`).
+- **Fix: inline description images now load.** The rich-text WebView couldn't
+  fetch `/api/uploads/…` images (its network stack ≠ the app's OkHttp); now a
+  `shouldInterceptRequest` routes our-server resources through OkHttp (Bearer
+  attached) so they load like Coil avatars.
+- **Fix: bigger attachment download/delete touch targets** (44 dp) in the Files
+  tab; filename wraps to two lines with the size beneath it.
+- **Relations now register on both tasks (backend).** Linking task B → A also
+  logs an event in **A's history** ("добавил связь с #B", with `blocks`⇄
+  `blocked_by` flipped) and broadcasts A's update — previously the link was
+  one-way and invisible from the referenced task.
+- **Workspace members modal.** Invite an existing user by email (member/admin),
+  list members with role, remove non-owners. People icon in the sidebar brand
+  row → `MembersModal`; `/workspaces/:id/members` (GET/POST/DELETE).
+- **Board filters / sort / saved views.** A "Фильтр" toolbar chip opens a sheet:
+  text, priority, due (overdue/today/week/has/none), tag and assignee multi-
+  selects, plus sort (вручную/приоритет/срок). Client-side over loaded cards;
+  applied to kanban/list/calendar (drag keeps the unfiltered order). The
+  per-board view (filter+sort+group+subtasks) is **persisted to DataStore**
+  (`view_<boardId>`), restored on open — the web's localStorage "saved view".
+- **Board archive.** Toolbar ⋯ → "Архив доски": lists archived cards
+  (`GET /boards/:id/archive`), restore (`PATCH /tasks/:id/restore`) or delete
+  permanently. **Tag manager.** ⋯ → "Управление тегами": create, recolour
+  (8-swatch palette), rename and delete workspace tags (`/tags/:id`). (Column
+  colour + done-column toggle already shipped in the column ⋯ menu.)
+- **Task-modal loose ends.** Attachment **download** (auth'd fetch → cache file
+  → open/share via FileProvider); **transfer to another board** (tap the
+  breadcrumb → project/board picker → `PATCH /tasks/:id/transfer`); relation
+  **kind picker** (связана/блокирует/заблокирована/дублирует) + **cross-board
+  task autocomplete** (search `/workspaces/:id/tasks` by #number/title) replacing
+  the number-only field.
+- **Persistent notifications + bell.** A bell in the top bar with a live unread
+  badge and a feed popover (web `WorkspaceTools`): `GET /notifications`, optimistic
+  mark-read + "Прочитать все" (`/notifications/:id/read`, `/notifications/read-all`).
+  A workspace-scoped `RealtimeClient` reloads the feed on `notification` events.
+  Tapping an item that points at a task opens it (resolves the board, switches to
+  it, opens the modal). `NotificationViewModel`/`NotificationRepository`,
+  `ui/screens/NotificationsPanel.kt`.
+- **Reminders + on-device delivery (the Android-specific half the web deferred).**
+  Reminders list/compose (`RemindersView` parity): message + a custom local-zone
+  date-time picker (`ReminderDateTimePicker`), done-toggle, delete, overdue
+  styling. CRUD over `/reminders`. **Delivery is local** — there is no server push
+  or scheduler: `reminders/ReminderScheduler` arms an exact `AlarmManager` alarm
+  per future not-done reminder, `ReminderReceiver` posts a notification on the
+  `reminders` channel, and `BootReceiver` + `ReminderSync` re-arm after reboot/
+  update. Every reminder-list load reschedules, so web-created reminders fire too.
+  Reminder notifications deep-link to the linked task. New perms: POST_NOTIFICATIONS
+  (requested at runtime), SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED.
+- **Global search.** Full-screen autofocused overlay (web `SearchBar`) over
+  `GET /workspaces/:id/search` — 220 ms debounce + sequence guard, results grouped
+  Задачи / Заметки, picking one opens the task or the note. `ui/screens/SearchOverlay.kt`.
+- **Home / "Моя работа" dashboard.** Greeting + six summary stat cards
+  (`/workspaces/:id/summary`) that filter a workspace-wide task list
+  (`/workspaces/:id/tasks`): мои / активные / просрочено / сегодня / неделя /
+  выполнено, each row showing priority, #, project/board, tags and due date.
+  Now the app's default screen. `HomeViewModel`/`HomeRepository`.
+- **Notes module.** Two-pane notes adapted to mobile master/detail (web
+  `NotesView`): list + a sliding editor (title + plain-Markdown body), create/
+  save/delete over `/workspaces/:id/notes` + `/notes/:id`. `NotesViewModel`.
+- **Navigation hub.** `MainScreen` now routes between Home / Заметки / Напоминания
+  / a board (new sidebar destinations) and hosts the bell + search; opening a task
+  from anywhere (notification, search, dashboard, reminder) is centralised.
+- **Removed** the debug crash logger from `TesseraApplication` (was a Huawei-logcat
+  diagnostic); the reminders notification channel is created on launch instead.
+- **Soft accent gradients.** Every non-neutral (primary/accent/entity) surface
+  now carries a barely-noticeable diagonal gradient of the same hue (darker
+  bottom-left → lighter top-right) instead of a flat fill. The gradient line is
+  the box diagonal, so the element's geometric **centre is the exact original
+  colour** — pipette the middle of a button and it is unchanged. Strength is one
+  token, `AccentGradientStrength` (`0.14`), tuned on-device.
+  - Two primitives in `ui/theme/AccentGradient.kt`: `accentGradient(base)` — an
+    alpha-preserving `Brush` for fills/borders (so muted tag/chip tints don't
+    re-saturate); and `Modifier.accentGradientTint(base)` — an offscreen-layer +
+    `SrcAtop` pass that paints a multi-part *outline* element (ghost button:
+    border + icon + label; logo) with **one continuous** gradient. `IonIcon`
+    and `MtLogo` gained a `gradient` flag; the frame modifiers a `gradient`
+    opt-out so neutral cards/columns stay flat.
+  - Rolled out across the app: `TButton`, `TSwitch`, `UnderlineTabs` (active
+    label + underline + badge), the board view-mode segmented control, filled/
+    ghost confirm buttons, priority dots & flags, completion check circles,
+    initials avatars, project/group icons & initials tiles, tag chips (modal +
+    pickers), the Markdown editor's Написать/Просмотр tabs, coloured links
+    (`#N`, "Открепить", auth toggle, date-picker OK),
+    the `mt` logo, column top bars & swatches & drag line (`topAccentFrame`),
+    the stacked-tag cascade, and the accent theme swatches.
+  - Refinements after on-device review: card tag pills carry the gradient on the
+    **text only** (the pill bg/border stay flat — the gradient there read as
+    excessive); the card's thin left accent bar uses a **vertical** gradient
+    (`accentGradientVertical`, dark bottom → light top) since the diagonal was
+    invisible across a 3 dp width — the wide column top bars keep the diagonal;
+    the board view-mode segmented control's active item now gradients too; and
+    small accents (card left bar, tab label/underline/badge) drop to a gentler
+    `AccentGradientStrengthSubtle` (`0.08`) so they don't out-contrast the big
+    filled surfaces.
+- **Custom date picker.** Replaced the Material3 `DatePicker` in `DueDatePicker`
+  with our own grid (so it follows the design system, like the custom Markdown
+  editor): Monday-first weeks, прев/след month + year arrows (the "back" glyph is
+  the forward chevron mirrored — no new asset), out-of-month days dimmed, a
+  today dot, and a **rounded-square** selected day (8 dp radius, like the
+  buttons) carrying the accent gradient. Tap a day to pick (commits + closes);
+  Очистить clears, Сегодня picks today. Still emits/parses ISO-8601 UTC-midnight
+  via `Calendar` (no java.time on minSdk 24).
+- **Board column snap.** The horizontally-scrolling kanban row now snaps to whole
+  columns after a flick/drag-release (`rememberColumnSnapFling`: project the
+  natural fling, then spring to the nearest column boundary), so a column locks
+  flush to the left edge instead of stopping mid-scroll. Clamped to ±1 column
+  from the release point so a fast flick can't skip over a column.
+  - `AccentGradientPreview` is a Studio workbench: a strength sweep plus all
+    seven accents and the accent elements (avatar, toggle, chip, tab underline,
+    ghost buttons with glyphs, active tab) in light/dark.
+- **Phase 5 — task modal (start).** Tapping a card opens a full task detail
+  modal mirroring the web `TaskModal.vue`, with native (non-M3) controls:
+  - Borderless title, breadcrumb (workspace / group / project / board) + `#N`.
+  - Property grid — priority, due, assignees, tags (with on-the-fly create),
+    a pill `TSwitch` for "Выполнено", and parent (attach/detach). Card-level
+    edits apply immediately; title + description save on "Сохранить".
+  - Rich Markdown description via a native `MarkdownEditor` (Написать / Просмотр
+    tabs, inline image upload, mermaid-snippet button). Preview renders through
+    `RichContent` — a WebView running the same `marked` + highlight.js + mermaid
+    pipeline as the web (so code highlighting and mermaid diagrams match);
+    `marked` is bundled, highlight/mermaid load on demand.
+  - `UnderlineTabs` for Комментарии / Подзадачи / Связи / Файлы / История, each
+    wired to the backend (comment CRUD with @-mentions, relations by `#N`,
+    attachment upload/list/delete, the activity journal). Subtasks/relations are
+    tappable to navigate the modal to that task.
+  - Footer: ghost archive + delete icon buttons, Отмена / Сохранить.
+  - New data layer: `TaskDetail`/`Comment`/`Relation`/`Attachment`/`TaskEvent`
+    models, the `tasks/:id` + collab/upload endpoints, `TaskRepository`, and
+    `TaskDetailViewModel`. Ten more ionicons vendored (image, attach, download,
+    trash, close, archive, git-merge, pencil, send, link).
+  - Modal bug fixes after on-device testing: tap **anywhere** on a card opens the
+    modal (long-press title = rename, long-press body = drag); fixed a crash
+    opening any task with no assignees (server sends `assignees: null`; Gson
+    ignores Kotlin defaults — `TaskDetail` lists are now null-safe getters); tab
+    underline now spans exactly its label (`IntrinsicSize.Max`, was collapsing/
+    overflowing); write-mode formatting toolbar (B/I/S/code/H/list/quote/link).
+- Tag cascade fixed for 3+ tags: the stacked layers are now opaque (each tag
+  colour blended with the surface) and drawn farthest-first, so neither the
+  front pill nor the layers bleed through each other.
+- Previews cleaned up: removed `PriorityCardPreview` (its job — dialling in the
+  accent — is done); `TaskCardPreview` is the single card preview and now shows
+  a 3-tag card via the real `TaskCard`.
+- Fixes after the dependency bump (Compose BOM 2026.05.01; APK 20→13 MB):
+  - Killed the tonal-tint cast on menus / dialogs / date-pickers: every M3
+    `surface*` token (surfaceContainer*, surfaceVariant, surfaceTint, …) is now
+    pinned to our neutral surface instead of being derived from `primary`.
+  - Inline create fields use a neutral outline + cursor (not the accent).
+  - Tag pill back to the pill radius (was too oval); the multi-tag cascade peeks
+    strictly to the right.
+  - Column header: count sits just left of the right-aligned "⋯" menu.
+- Card/board parity round 8 (from desktop↔android comparison):
+  - Priority pill is now an icon-only flag tinted by priority (no text label).
+  - Tag pill restyled to match the web (tinted bg + border + colour) with a
+    stacked "+N" cascade for multiple tags.
+  - Assignee quick-action uses the person-add icon.
+  - Empty quick-action pills get a dashed outline (set pills stay solid).
+  - Column header: task count moved to the right + a column menu (rename /
+    delete column); status icons differ per column (open circle / contrast /
+    check-circle).
+  - Manual board refresh button in the board toolbar.
+  - Spacing tweaks for the "+ создать подзадачу" / "+ создать задачу" rows.
+- Card polish round 7:
+  - Expanded subtasks now CASCADE (parent → sub1 → sub2 …): each subtask is its
+    own card peeking from under the one above via `overlapTop` + decreasing
+    `zIndex`, with its own priority accent — matching the web stack (was a flat
+    panel of spaced cards). `DemoCascade` preview updated for tuning.
+  - Card shadows softened (`softShadow`: low-alpha, downward-biased).
+  - Priority accent thinned to 3dp.
+  - Column headers use status icons (done → check-circle, tag-mode → tag,
+    otherwise an open circle) instead of plain colour dots.
+- Card polish round 6:
+  - Drag ghost is now a compact card (no trailing "+ create subtask" area) and
+    lost its heavy elevation shadow.
+  - Subtask cards are lighter (`surface` mixed 70/30 with the page bg) and cards
+    carry a subtle 2dp shadow for depth.
+  - Column colour now uses `topAccentFrame` — the column's coloured top tapers
+    smoothly into the 1px frame at the corners (no hard 4dp strip).
+  - Expanded-subtasks toggle (branch icon in the board toolbar): subtasks render
+    as full mini-cards (with priority accent + pills) instead of compact rows.
+  - Shared frame helpers extracted to `Frames.kt` (`leftAccentFrame`,
+    `topAccentFrame`).
+- Subtask cascade redone the web way: the parent card stays fully rounded and
+  draws on top (zIndex); the subtask card "emerges" from under it via
+  `Modifier.overlapTop` (negative-margin equivalent — lifts the child and trims
+  its layout height so there's no gap). Fixes the squared-bottom that broke the
+  accent's corner. `DemoCascade` preview added for tuning.
+- Priority accent finalised: cards now draw their frame in one pass
+  (`cardFrame` — the "two rounded rects" technique) — a thin neutral border on
+  top/right/bottom and a thick accent only on the left, curving smoothly along
+  the corner radius. Per-corner radii keep the parent's bottom square when a
+  subtask block is stacked under it. Standalone demos in `PriorityCardPreview`.
+- Kanban usability rework (round 5, from device feedback):
+  - Subtasks are now a separate stacked card butted under the parent (parent's
+    bottom corners squared, subtask block rounded only at the bottom, borders
+    overlapped) — no corner gap, reads as its own card.
+  - Columns get a 1px border so the panel is clearly delimited on light theme.
+  - Added `@Preview`s of the card (`TaskCardPreview.kt`, light + dark) to tweak
+    the priority-accent rendering in Android Studio.
+- Kanban usability rework (round 4, from device feedback):
+  - Column panel background now wraps its content (ends after "+ создать
+    задачу"); the column scrolls when it has many cards.
+  - Priority accent redrawn as a left slice of a rounded rect — it curves
+    smoothly along the card's corner radius (matches the web's left border).
+  - "+ СОЗДАТЬ ЗАДАЧУ" / "+ СОЗДАТЬ ПОДЗАДАЧУ" are uppercase.
+  - Subtasks back inside the parent's rounded container with a hairline divider
+    + shaded section (no corner gap).
+  - Inline create now also commits/cancels on tap outside the field (tap the
+    empty board area), not just Enter.
+- Kanban usability rework (round 3, from device feedback):
+  - Fixed inline create (card + subtask): the field no longer self-cancels on
+    appear — it commits on Enter / tap-away and cancels only when left blank
+    (was firing a phantom focus-loss immediately).
+  - Drag ghost is now the full card (not just title) for top-level tasks.
+  - Columns have a visible panel background with a coloured top strip; cards are
+    inset from the column edges.
+  - Larger card/column corner radius; the priority accent and column strip taper
+    along the full corner.
+  - Subtasks continue seamlessly from the parent card (single rounded container,
+    no corner gap).
+- Kanban usability rework (round 2, from device feedback):
+  - Columns leave a larger peek of the next column; each column has a coloured
+    top strip in its colour.
+  - Cards: priority accent is thicker and tapers at the rounded corners;
+    subtasks span the full card width; the assignee sits bottom-right; the
+    kebab (⋮) is gone — move via drag, rename via tapping the title.
+  - Create card / subtask are inline fields only (no dialogs/buttons): a
+    non-blank value commits on Enter or tap-away, a blank value cancels.
+    "+ создать задачу" / "+ создать подзадачу" rendered lowercase, the subtask
+    one centred and paler.
+  - Drag-and-drop reworked: a full card-shaped ghost tracks the finger exactly
+    (fixed the offset bug), an insertion line shows where the card will land,
+    and dragging to a screen edge auto-scrolls between columns.
+- Kanban parity + drag-and-drop:
+  - Columns are now ~full screen width with snap paging (like the web mobile
+    board).
+  - Cards match the web `TaskCard`: completion check (toggles done), inline
+    title rename, #number, a pills row (priority / tags / due-date picker /
+    assignees) with dashed-when-empty affordances, subtasks as compact rows
+    with a "Создать подзадачу" quick-add, a "Создать задачу" footer, and an
+    overflow menu (rename / toggle done / move to column / archive / delete).
+  - Real drag-and-drop: long-press a card to pick it up (ghost follows the
+    finger), drop to reorder within a column or move to another visible column;
+    placement uses fractional ranks via before/after ids.
+- Icons: switched the whole app from Material icons to **ionicons-5** (the same
+  set the web uses). Needed outline SVGs are vendored into
+  `assets/ionicons/` and rendered via Coil with a theme tint (`IonIcon` /
+  `IonIconButton`); the curated project-icon keys map to these too. Dropped the
+  `material-icons-extended` dependency.
+- Fixes from first device test:
+  - Project/group icons now render properly — curated keys map to Material
+    icons, raw SVG and `data:` images render via Coil, groups fall back to a
+    folder and projects to a coloured initials tile (matches the web).
+  - System status/navigation bar icons follow the theme (no more glare).
+  - Buttons carry icons: board view switcher (kanban/list/calendar/tags) is
+    icon+label; sidebar reworked toward the web layout — brand row with a
+    palette button (accent + dark-mode picker), bordered workspace selector
+    with a new-workspace action, and a "ПРОЕКТЫ" section header. Footer shows
+    the user avatar.
+
+- Sidebar: workspace switcher, nested groups/projects tree, lazy-loaded boards,
+  full CRUD (create/rename/delete for groups, projects, boards) via context
+  menus + themed dialogs. Selecting a board opens it in the content area.
+- Board views: kanban (with tag-grouping lens — the killer feature), list and
+  calendar, plus a view switcher. Cards show priority accent, tags, number, due
+  date and subtask count. Create cards per column; move cards between columns
+  via the card menu (full drag-and-drop is a follow-up).
+- Build plumbing: `android/build.sh`, `tools/build-android-release.sh`,
+  Makefile targets (`android`, `android-release`, `lint-android`,
+  `format-android`, `test-android`, `test-android-cover`, `bump-android`,
+  `bump-web`), and a multi-service `make version`.
+
+## 0.1.0 — Scaffold
+- Project skeleton: Gradle (AGP 9.2 / Kotlin 2.3 / Compose BOM 2026.04.01),
+  minSdk 24 / target 36 / compileSdk 37, ktlint + detekt + test deps.
+- "mt" monogram launcher icon (adaptive + raster fallbacks) and in-app logo.
+- Custom design system (`ui/theme`) porting the web's colour tokens and the 7
+  accent themes; light + dark.
+- Networking: Retrofit 3 / OkHttp 5 with Bearer auth + silent refresh-on-401,
+  DataStore-backed session + theme + server override.
+- Auth screen (login/register, server settings), app-shell skeleton
+  (drawer sidebar + topbar), session gate (splash → auth → main).

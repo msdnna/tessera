@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Downloaded attachments live under cacheDir/attachments and are shared
+         to other apps (open/save) via the FileProvider below. -->
+    <cache-path name="attachments" path="attachments/" />
+    <!-- Self-update APKs downloaded to cacheDir/updates, handed to the installer. -->
+    <cache-path name="updates" path="updates/" />
+</paths>

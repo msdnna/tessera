@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Bare host theme: no action bar, edge-to-edge handled in Compose.
+         All visual styling lives in the Compose TesseraTheme. -->
+    <style name="Theme.Tessera" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

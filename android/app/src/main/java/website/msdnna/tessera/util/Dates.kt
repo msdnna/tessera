@@ -1,0 +1,97 @@
+package website.msdnna.tessera.util
+
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+
+private val months = listOf(
+    "янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек",
+)
+
+/**
+ * Formats an ISO-8601 timestamp (e.g. `2026-06-10T00:00:00Z`) to a short
+ * `10 июн` label. String-based to avoid java.time desugaring on minSdk 24.
+ * Returns "" for blank/unparseable input.
+ */
+fun shortDate(iso: String?): String {
+    if (iso.isNullOrBlank() || iso.length < 10) return ""
+    return try {
+        val day = iso.substring(8, 10).trimStart('0')
+        val month = iso.substring(5, 7).toInt()
+        "$day ${months[month - 1]}"
+    } catch (_: Exception) {
+        ""
+    }
+}
+
+/** The `yyyy-MM-dd` date portion of an ISO timestamp, or "" for the undated. */
+fun isoDateKey(iso: String?): String =
+    if (iso.isNullOrBlank() || iso.length < 10) "" else iso.substring(0, 10)
+
+/**
+ * A fuller `4 июн. 2026 г.` label for the task modal's due-date row. Returns ""
+ * for blank/unparseable input. String-based (no java.time on minSdk 24).
+ */
+fun longDate(iso: String?): String {
+    if (iso.isNullOrBlank() || iso.length < 10) return ""
+    return try {
+        val year = iso.substring(0, 4)
+        val month = iso.substring(5, 7).toInt()
+        val day = iso.substring(8, 10).trimStart('0')
+        "$day ${months[month - 1]}. $year г."
+    } catch (_: Exception) {
+        ""
+    }
+}
+
+/**
+ * A `4 июн., 14:30` timestamp for comments / journal entries. The time is the
+ * raw ISO (UTC) clock — good enough for an at-a-glance "when".
+ */
+fun whenLabel(iso: String?): String {
+    val date = shortDate(iso)
+    if (date.isEmpty()) return ""
+    val time = if (iso != null && iso.length >= 16) iso.substring(11, 16) else ""
+    return if (time.isEmpty()) date else "$date, $time"
+}
+
+// ── Full instants (reminders) — these carry a real time-of-day, so they parse
+// to an epoch and render/deliver in the device's local zone (unlike the
+// date-only helpers above, which read the raw UTC clock). ────────────────────
+
+/**
+ * Parses a full ISO-8601 instant (`2026-06-15T14:30:00Z`, with offset, or with
+ * fractional seconds) to epoch millis, or null if unparseable. Fractional
+ * seconds are stripped first so a single set of patterns covers Go's RFC3339.
+ */
+fun parseInstantMillis(iso: String?): Long? {
+    if (iso.isNullOrBlank()) return null
+    val cleaned = iso.replace(Regex("""\.\d+"""), "")
+    val patterns = listOf("yyyy-MM-dd'T'HH:mm:ssXXX", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mmXXX")
+    for (pat in patterns) {
+        runCatching {
+            SimpleDateFormat(pat, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.parse(cleaned)
+        }.getOrNull()?.let { return it.time }
+    }
+    return null
+}
+
+/** Epoch millis → UTC ISO-8601 (`yyyy-MM-dd'T'HH:mm:ss'Z'`) for sending to the backend. */
+fun millisToUtcIso(millis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+        .apply { timeZone = TimeZone.getTimeZone("UTC") }
+        .format(Date(millis))
+
+/** A local-zone `15 июн 2026, 14:30` label for a full instant. "" if unparseable. */
+fun localDateTimeLabel(iso: String?): String {
+    val millis = parseInstantMillis(iso) ?: return ""
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val day = cal.get(Calendar.DAY_OF_MONTH)
+    val month = months[cal.get(Calendar.MONTH)]
+    val year = cal.get(Calendar.YEAR)
+    val hh = cal.get(Calendar.HOUR_OF_DAY).toString().padStart(2, '0')
+    val mm = cal.get(Calendar.MINUTE).toString().padStart(2, '0')
+    return "$day $month $year, $hh:$mm"
+}

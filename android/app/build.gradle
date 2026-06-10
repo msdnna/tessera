@@ -1,0 +1,235 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'io.gitlab.arturbosch.detekt'
+    id 'jacoco'
+}
+
+def appVersionName = rootProject.file("VERSION").text.trim()
+def (vmaj, vmin, vpatch) = appVersionName.tokenize('.').collect { it.toInteger() }
+def appVersionCode = vmaj * 10000 + vmin * 100 + vpatch
+
+android {
+    namespace 'website.msdnna.tessera'
+    compileSdk 37
+
+    defaultConfig {
+        applicationId "website.msdnna.tessera"
+        minSdk 24
+        targetSdk 36
+        versionCode appVersionCode
+        versionName appVersionName
+
+        // Production server the app talks to by default. Overridable at
+        // runtime (DataStore) from the login screen's advanced section so the
+        // same APK can point at a dev/test backend.
+        buildConfigField "String", "DEFAULT_BASE_URL", "\"https://tessera.website.msdnna\""
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            all {
+                jvmArgs '--add-opens=java.base/java.lang=ALL-UNNAMED'
+                jacoco {
+                    includeNoLocationClasses = true
+                    excludes = ['jdk.internal.*']
+                }
+            }
+        }
+    }
+
+    signingConfigs {
+        release {
+            def ks = System.getenv("ANDROID_KEYSTORE_FILE") ?: ""
+            if (ks) {
+                storeFile     file(ks)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
+                keyAlias      System.getenv("ANDROID_KEY_ALIAS")         ?: ""
+                keyPassword   System.getenv("ANDROID_KEY_PASSWORD")      ?: ""
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ""
+            enableUnitTestCoverage = true
+        }
+        release {
+            // Use the production keystore when its env vars are set; otherwise
+            // fall back to the debug keystore so an ad-hoc `assembleRelease`
+            // doesn't require signing setup. `make android-release` enforces
+            // the real keystore via tools/build-android-release.sh.
+            def hasReleaseKs = (System.getenv("ANDROID_KEYSTORE_FILE") ?: "").trim() != ""
+            signingConfig hasReleaseKs ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.addAll(
+            '-opt-in=androidx.compose.material3.ExperimentalMaterial3Api',
+            '-opt-in=androidx.compose.foundation.ExperimentalFoundationApi',
+            '-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi'
+        )
+    }
+}
+
+dependencies {
+    def composeBom = platform('androidx.compose:compose-bom:2026.05.01')
+    implementation composeBom
+
+    implementation 'androidx.core:core-ktx:1.19.0'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    // Material3 is used only as a thin scaffold (ripple, text selection, base
+    // Surface). The visual language is our own design system in ui/theme.
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.activity:activity-compose:1.13.0'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.10.0'
+    implementation 'androidx.navigation:navigation-compose:2.9.8'
+    implementation 'androidx.datastore:datastore-preferences:1.2.1'
+
+    implementation 'com.squareup.retrofit2:retrofit:3.0.0'
+    implementation 'com.squareup.retrofit2:converter-gson:3.0.0'
+    implementation 'com.squareup.okhttp3:okhttp:5.3.2'
+    implementation 'com.google.code.gson:gson:2.14.0'
+
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
+
+    implementation 'io.coil-kt:coil-compose:2.7.0'
+    implementation 'io.coil-kt:coil-svg:2.7.0'
+
+    // ── Unit tests ──────────────────────────────────────────────────────────
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'io.mockk:mockk:1.14.11'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'
+    testImplementation 'app.cash.turbine:turbine:1.2.1'
+    testImplementation 'org.robolectric:robolectric:4.16.1'
+    testImplementation 'androidx.test:core:1.7.0'
+    testImplementation 'androidx.test.ext:junit:1.3.0'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:5.3.2'
+    testImplementation 'com.google.truth:truth:1.4.5'
+}
+
+// ── JaCoCo (coverage) ────────────────────────────────────────────────────────
+jacoco {
+    toolVersion = "0.8.13"
+}
+
+def coverageExcludes = [
+    '**/R.class',
+    '**/R$*.class',
+    '**/BuildConfig.*',
+    '**/Manifest*.*',
+    '**/*Test*.*',
+    'android/**/*.*',
+    '**/databinding/**',
+    '**/*ComposableSingletons*',
+    '**/*ComposableLambda*',
+    '**/website/msdnna/tessera/ui/**',
+    '**/website/msdnna/tessera/MainActivity*',
+    '**/website/msdnna/tessera/data/api/**',
+]
+
+tasks.register('jacocoTestReport', JacocoReport) {
+    dependsOn 'testDebugUnitTest'
+    group = 'verification'
+    description = 'Generate JaCoCo coverage report for debug unit tests'
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+
+    def runtimeJar = zipTree(
+        "$buildDir/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar",
+    ).matching { exclude coverageExcludes }
+    classDirectories.setFrom(files(runtimeJar))
+    sourceDirectories.setFrom(files(['src/main/java']))
+    executionData.setFrom(fileTree(dir: buildDir, includes: ['**/*.exec']))
+}
+
+// ── ktlint (CLI via JavaExec; ktlint-gradle 13.x doesn't bind to AGP 9.2) ─────
+configurations {
+    ktlint
+}
+
+dependencies {
+    ktlint("com.pinterest.ktlint:ktlint-cli:1.8.0") {
+        attributes {
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling, Bundling.EXTERNAL))
+        }
+    }
+}
+
+def ktlintSources = files("src/main/java", "src/test/java")
+
+tasks.register("ktlintCheck", JavaExec) {
+    group = "verification"
+    description = "Run ktlint on all Kotlin sources"
+    classpath = configurations.ktlint
+    mainClass.set("com.pinterest.ktlint.Main")
+    jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+    args(
+        "**/src/main/java/**/*.kt",
+        "**/src/test/java/**/*.kt",
+        "--reporter=plain",
+        "--reporter=checkstyle,output=${layout.buildDirectory.get().asFile}/reports/ktlint/ktlint.xml"
+    )
+    inputs.files(ktlintSources)
+    inputs.file("${rootProject.projectDir}/.editorconfig")
+    outputs.file("${layout.buildDirectory.get().asFile}/reports/ktlint/ktlint.xml")
+}
+
+tasks.register("ktlintFormat", JavaExec) {
+    group = "verification"
+    description = "Run ktlint formatter (rewrites files in place)"
+    classpath = configurations.ktlint
+    mainClass.set("com.pinterest.ktlint.Main")
+    jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+    args(
+        "-F",
+        "**/src/main/java/**/*.kt",
+        "**/src/test/java/**/*.kt"
+    )
+}
+
+detekt {
+    toolVersion = "1.23.8"
+    config.setFrom(files("$projectDir/detekt.yml"))
+    buildUponDefaultConfig = true
+    autoCorrect = false
+    parallel = true
+    source.setFrom(files("src/main/java", "src/test/java"))
+}
+
+tasks.withType(io.gitlab.arturbosch.detekt.Detekt).configureEach {
+    jvmTarget = "17"
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+        txt.required.set(false)
+        sarif.required.set(false)
+        md.required.set(false)
+    }
+}

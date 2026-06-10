@@ -1,0 +1,113 @@
+# Detekt config for the Tessera Android app.
+# Базируется на дефолтном конфиге (buildUponDefaultConfig = true) — здесь
+# только override-ы для правил, шумных на Compose-кодовой базе.
+
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+complexity:
+  LongMethod:
+    active: true
+    threshold: 250
+    ignoreAnnotated:
+      - 'Composable'
+  LongParameterList:
+    active: true
+    functionThreshold: 12
+    constructorThreshold: 12
+    ignoreDefaultParameters: true
+    ignoreAnnotated:
+      - 'Composable'
+  TooManyFunctions:
+    active: false
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 30
+    ignoreSingleWhenExpression: true
+    ignoreAnnotated:
+      - 'Composable'
+  LargeClass:
+    active: true
+    threshold: 1200
+  ComplexCondition:
+    active: true
+    threshold: 6
+  NestedBlockDepth:
+    active: true
+    threshold: 5
+
+style:
+  MagicNumber:
+    active: false
+  ReturnCount:
+    active: true
+    max: 6
+  WildcardImport:
+    active: false
+  MaxLineLength:
+    active: true
+    maxLineLength: 160
+    excludePackageStatements: true
+    excludeImportStatements: true
+    excludeCommentStatements: true
+  UnusedPrivateMember:
+    active: false
+  UnusedPrivateProperty:
+    active: false
+  UnusedParameter:
+    active: false
+  ForbiddenComment:
+    active: false
+  NewLineAtEndOfFile:
+    active: false
+  UnnecessaryAbstractClass:
+    active: false
+  DataClassContainsFunctions:
+    active: false
+  ExplicitItLambdaParameter:
+    active: false
+  DestructuringDeclarationWithTooManyEntries:
+    active: false
+  ThrowsCount:
+    active: false
+
+naming:
+  FunctionNaming:
+    active: true
+    ignoreAnnotated:
+      - 'Composable'
+  TopLevelPropertyNaming:
+    active: true
+    constantPattern: '[A-Z][A-Za-z0-9_]*'
+    propertyPattern: '[A-Za-z][A-Za-z0-9_]*'
+  VariableNaming:
+    active: true
+    variablePattern: '[a-z][A-Za-z0-9_]*'
+  PackageNaming:
+    active: false
+  MatchingDeclarationName:
+    active: false
+
+performance:
+  SpreadOperator:
+    active: false
+
+empty-blocks:
+  EmptyFunctionBlock:
+    active: true
+    ignoreOverridden: true
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
+  PrintStackTrace:
+    active: true
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    active: true
+  IgnoredReturnValue:
+    active: false
