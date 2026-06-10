@@ -36,6 +36,9 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - APP_ENV=${APP_ENV:-development}
       - TZ=${TZ:-Europe/Moscow}
+      # Uploaded media + task attachments live here; a volume keeps them across
+      # rebuilds (the default ./uploads is inside the container = wiped on build).
+      - UPLOAD_DIR=/data/uploads
     ports:
       - "8090:8080" # host 8080 is taken by the budget app on this box
     depends_on:
@@ -43,6 +46,8 @@ services:
         condition: service_healthy
     networks:
       - tessera-network
+    volumes:
+      - uploads_data:/data/uploads
 
   frontend:
     build:
@@ -60,10 +65,19 @@ services:
       - backend
     networks:
       - tessera-network
+    volumes:
+      # Android self-update store: the release build drops the signed APK +
+      # latest.json here (tools/build-android-release.sh); nginx serves /apks/.
+      - ./apks:/usr/share/nginx/html/apks:ro
 
 volumes:
   postgres_data:
+  uploads_data:
 
 networks:
   tessera-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+          gateway: 172.21.0.1

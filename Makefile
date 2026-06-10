@@ -75,8 +75,54 @@ test: test-backend test-frontend ## Test everything
 # ── Versioning ─────────────────────────────────────────────
 .PHONY: version
 version: ## Show service versions
-	@echo "backend: $$(cat backend/VERSION)"
+	@echo "backend:  $$(cat backend/VERSION)"
+	@echo "frontend: $$(cat frontend/VERSION)"
+	@echo "android:  $$(cat android/VERSION)"
 
 .PHONY: bump-api
 bump-api: ## Bump backend version (BUMP=patch|minor|major)
 	@./tools/bump-version.sh backend $(or $(BUMP),patch)
+
+.PHONY: bump-web
+bump-web: ## Bump frontend version (BUMP=patch|minor|major)
+	@./tools/bump-version.sh frontend $(or $(BUMP),patch)
+
+.PHONY: bump-android
+bump-android: ## Bump Android version (BUMP=patch|minor|major)
+	@./tools/bump-version.sh android $(or $(BUMP),patch)
+
+# ── Android ────────────────────────────────────────────────
+ANDROID_DIR := android
+
+# Gradle wrapper invocation that sources android/local.env (SDK/JDK paths +
+# optional SOCKS proxy), mirroring the build scripts.
+ANDROID_GRADLE := cd $(ANDROID_DIR) && set -a && [ -f ./local.env ] && . ./local.env; set +a; \
+  ANDROID_HOME="$${ANDROID_HOME:-$$HOME/Android/Sdk}" \
+  JAVA_HOME="$${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}" \
+  GRADLE_OPTS="$${SOCKS_PROXY_HOST:+-DsocksProxyHost=$$SOCKS_PROXY_HOST -DsocksProxyPort=$$SOCKS_PROXY_PORT -DsocksProxyVersion=5} -Dorg.gradle.internal.http.socketTimeout=300000" \
+  ./gradlew --no-daemon
+
+.PHONY: android
+android: ## Build debug Android APK (android/msdnna-tessera-v<version>.apk)
+	cd $(ANDROID_DIR) && ./build.sh
+
+.PHONY: android-release
+android-release: ## Build signed release APK (requires ANDROID_KEYSTORE_* env vars)
+	./tools/build-android-release.sh
+
+.PHONY: lint-android
+lint-android: ## Run ktlint + detekt on the Android app
+	@$(ANDROID_GRADLE) :app:ktlintCheck :app:detekt
+
+.PHONY: format-android
+format-android: ## Auto-format Kotlin sources via ktlint
+	@$(ANDROID_GRADLE) :app:ktlintFormat
+
+.PHONY: test-android
+test-android: ## Run Android unit tests
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest
+
+.PHONY: test-android-cover
+test-android-cover: ## Android unit tests + JaCoCo coverage report
+	@$(ANDROID_GRADLE) :app:jacocoTestReport
+	@echo "Coverage: $(ANDROID_DIR)/app/build/reports/jacoco/jacocoTestReport/html/index.html"
