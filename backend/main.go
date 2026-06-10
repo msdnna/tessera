@@ -32,7 +32,7 @@ func main() {
 	versionHandler := handlers.NewVersionHandler(appVersion)
 	wsHandler := handlers.NewWSHandler(hub)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret)
-	rh := handlers.NewAPI(queries, hub, cfg.UploadDir)
+	rh := handlers.NewAPI(queries, hub, cfg.UploadDir, cfg.EncryptionKey)
 
 	r := gin.Default()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
@@ -158,6 +158,15 @@ func main() {
 			protected.GET("/notes/:id", rh.GetNote)
 			protected.PATCH("/notes/:id", rh.UpdateNote)
 			protected.DELETE("/notes/:id", rh.DeleteNote)
+
+			// GitLab integration: per-user connection (PAT), per-workspace
+			// config + manual pull sync (Phase A, pull-only).
+			protected.GET("/gitlab/connection", rh.GetGitlabConnection)
+			protected.POST("/gitlab/connection", rh.ConnectGitlab)
+			protected.DELETE("/gitlab/connection", rh.DisconnectGitlab)
+			protected.GET("/workspaces/:id/gitlab/integration", rh.GetGitlabIntegration)
+			protected.PUT("/workspaces/:id/gitlab/integration", rh.SetGitlabIntegration)
+			protected.POST("/workspaces/:id/gitlab/sync", rh.SyncGitlab)
 
 			// Reminders (personal).
 			protected.POST("/reminders", rh.CreateReminder)

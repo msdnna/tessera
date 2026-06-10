@@ -73,6 +73,35 @@ func (q *Queries) DeleteTag(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const ensureTag = `-- name: EnsureTag :one
+INSERT INTO tags (workspace_id, name, color)
+VALUES ($1, $2, $3)
+ON CONFLICT (workspace_id, name) DO UPDATE SET name = EXCLUDED.name
+RETURNING id, workspace_id, name, color, created_at
+`
+
+type EnsureTagParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Name        string    `json:"name"`
+	Color       string    `json:"color"`
+}
+
+// EnsureTag returns the workspace tag with this name, creating it (with the
+// given color) if absent. Used by the GitLab sync to map labels onto tags
+// idempotently.
+func (q *Queries) EnsureTag(ctx context.Context, arg EnsureTagParams) (Tag, error) {
+	row := q.db.QueryRow(ctx, ensureTag, arg.WorkspaceID, arg.Name, arg.Color)
+	var i Tag
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Color,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getTag = `-- name: GetTag :one
 SELECT id, workspace_id, name, color, created_at FROM tags WHERE id = $1
 `

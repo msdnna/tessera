@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	DatabaseURL string
-	Port        string
-	JWTSecret   string
-	AppEnv      string
-	UploadDir   string
+	DatabaseURL   string
+	Port          string
+	JWTSecret     string
+	AppEnv        string
+	UploadDir     string
+	EncryptionKey string
 }
 
 // New reads configuration from the environment. In production
@@ -55,12 +56,24 @@ func New() *Config {
 		log.Println("WARNING: DATABASE_URL not set — using local dev default")
 	}
 
+	// Key for encrypting secrets at rest (GitLab PATs). Independent from
+	// JWT_SECRET so rotating one doesn't invalidate the other.
+	encKey := os.Getenv("ENCRYPTION_KEY")
+	if encKey == "" {
+		if prod {
+			log.Fatal("ENCRYPTION_KEY is required in production (APP_ENV=production)")
+		}
+		encKey = "dev-encryption-key-change-in-production"
+		log.Println("WARNING: ENCRYPTION_KEY not set — using dev default (stored secrets won't decrypt in prod)")
+	}
+
 	return &Config{
-		DatabaseURL: dbURL,
-		Port:        getEnv("PORT", "8080"),
-		JWTSecret:   jwt,
-		AppEnv:      getEnv("APP_ENV", "development"),
-		UploadDir:   getEnv("UPLOAD_DIR", "./uploads"),
+		DatabaseURL:   dbURL,
+		Port:          getEnv("PORT", "8080"),
+		JWTSecret:     jwt,
+		AppEnv:        getEnv("APP_ENV", "development"),
+		UploadDir:     getEnv("UPLOAD_DIR", "./uploads"),
+		EncryptionKey: encKey,
 	}
 }
 

@@ -30,6 +30,42 @@ type BoardColumn struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type GitlabCredential struct {
+	UserID     uuid.UUID `json:"user_id"`
+	BaseUrl    string    `json:"base_url"`
+	TokenEnc   string    `json:"token_enc"`
+	GlUserID   int64     `json:"gl_user_id"`
+	GlUsername string    `json:"gl_username"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+type GitlabIntegration struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	ProjectPath string    `json:"project_path"`
+	BoardID     uuid.UUID `json:"board_id"`
+	LabelRules  []byte    `json:"label_rules"`
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type GitlabLink struct {
+	TaskID        uuid.UUID  `json:"task_id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	GlGlobalID    string     `json:"gl_global_id"`
+	GlIid         int64      `json:"gl_iid"`
+	GlProjectPath string     `json:"gl_project_path"`
+	GlWebUrl      string     `json:"gl_web_url"`
+	GlUpdatedAt   *time.Time `json:"gl_updated_at"`
+	TitleHash     string     `json:"title_hash"`
+	DescHash      string     `json:"desc_hash"`
+	LabelsHash    string     `json:"labels_hash"`
+	LastSyncedAt  time.Time  `json:"last_synced_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
 type Membership struct {
 	ID          uuid.UUID `json:"id"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`

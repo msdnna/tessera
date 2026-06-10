@@ -835,6 +835,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.19.0] — 2026-06-11
+- GitLab integration, phase A (pull-only): mirror the issues assigned to you
+  from a self-hosted GitLab into a Tessera board. Migration 0009 adds
+  `gitlab_credentials` (per-user, AES-256-GCM-encrypted PAT + resolved GitLab
+  identity), `gitlab_integrations` (per-workspace: project path, target board,
+  `label_rules` JSONB), and `gitlab_links` (task ↔ work-item mapping with field
+  snapshots reserved for a future two-way sync).
+- New `ENCRYPTION_KEY` config (fail-closed in production) feeds an AES-GCM
+  sealer (`internal/secrets`) for secrets at rest.
+- Endpoints: `GET/POST/DELETE /gitlab/connection` (link a PAT — validated
+  against GitLab's `currentUser`), `GET/PUT /workspaces/:id/gitlab/integration`
+  (config + the label rule engine), `POST /workspaces/:id/gitlab/sync` (manual
+  pull). The GraphQL client (`internal/gitlab`) reads issues assigned to the
+  user via `project.issues(assigneeUsername:)`; `GITLAB_INSECURE_TLS=true`
+  skips cert verification for self-hosted private CAs.
+- Label rule engine (`internal/gitlab/rules.go`, unit-tested): `S:`-prefixed
+  labels → board column, `P:`-prefixed → native priority, everything else →
+  tags (prefix kept). Tags are additive, so manually-applied scope tags are
+  never clobbered. Sync is pull-only — it never writes back to GitLab.
+
 ### [0.18.0] — 2026-06-10
 - Two-way relation history: `POST /tasks/:id/relations` now also logs a
   `relation` event on the referenced task (`inverseRelationKind`: blocks ⇄

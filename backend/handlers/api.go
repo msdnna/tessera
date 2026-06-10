@@ -1,8 +1,11 @@
+// Package handlers implements the HTTP resource handlers for the Tessera API,
+// sharing dependencies and helpers through the API type.
 package handlers
 
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +14,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/realtime"
+	"tessera/internal/secrets"
 	"tessera/middleware"
 )
 
@@ -19,10 +23,18 @@ type API struct {
 	q         *db.Queries
 	hub       *realtime.Hub
 	uploadDir string
+	sealer    *secrets.Sealer // encrypts secrets at rest (GitLab PATs)
 }
 
-func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir string) *API {
-	return &API{q: q, hub: hub, uploadDir: uploadDir}
+// NewAPI wires the shared handler dependencies, building the secret sealer from
+// the configured encryption key.
+func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir, encryptionKey string) *API {
+	sealer, err := secrets.NewSealer(encryptionKey)
+	if err != nil {
+		// config.New guarantees a non-empty key, so this is unreachable in practice.
+		log.Fatalf("failed to init secret sealer: %v", err)
+	}
+	return &API{q: q, hub: hub, uploadDir: uploadDir, sealer: sealer}
 }
 
 // positionGap is the spacing used when appending to the end of a list.
