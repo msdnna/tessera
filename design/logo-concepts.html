@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tessera — концепты логотипа «mt»</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Manrope:wght@600;700;800&family=Unbounded:wght@600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Nunito:wght@700;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --p:#7C5CFF; --p-l:#9A86FF; --p-d:#5E3FE0;
+    --bg:#F6F7F9; --surface:#fff; --border:#E6E8EC;
+    --t1:#1F2329; --t2:#4A5059; --t3:#868D96;
+    --radius:16px;
+  }
+  body.dark{
+    --bg:#16161A; --surface:#1E1E24; --border:#33333D;
+    --t1:#F0F0F3; --t2:#D6D6DD; --t3:#9A9AA6;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:'Inter',system-ui,sans-serif;
+    background:var(--bg); color:var(--t1);
+    transition:background .25s,color .25s;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:40px 24px 96px}
+  header.page{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:8px}
+  h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
+  .lede{color:var(--t2);font-size:15px;max-width:680px;line-height:1.55;margin:0}
+  .toggle{
+    border:1px solid var(--border);background:var(--surface);color:var(--t1);
+    border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;
+    display:inline-flex;gap:8px;align-items:center;white-space:nowrap;
+  }
+  .toggle:hover{border-color:var(--p)}
+  .swatches{display:flex;gap:10px;margin:22px 0 0;flex-wrap:wrap}
+  .sw{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);font-weight:500}
+  .chip{width:22px;height:22px;border-radius:7px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+  h2{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);margin:54px 0 4px}
+  .h2sub{color:var(--t2);font-size:14px;margin:0 0 22px;line-height:1.5;max-width:720px}
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+  .card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:26px 22px 18px;display:flex;flex-direction:column;align-items:center;gap:16px;
+    transition:background .25s,border-color .25s;
+  }
+  .stage{height:130px;display:flex;align-items:center;justify-content:center;width:100%}
+  .name{font-size:13px;font-weight:700;color:var(--t1);text-align:center}
+  .desc{font-size:12px;color:var(--t3);text-align:center;line-height:1.5;margin-top:-8px}
+  /* gradient text for typographic options */
+  .mt-text{
+    font-size:84px;line-height:1;letter-spacing:-.04em;
+    background:linear-gradient(135deg,var(--p-l),var(--p) 52%,var(--p-d));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    padding:0 4px;
+  }
+  svg .grad-stroke{stroke:url(#g);}
+  svg .grad-fill{fill:url(#g);}
+  /* app-icon row */
+  .icons{display:flex;gap:22px;flex-wrap:wrap}
+  .iconwrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .squircle{width:104px;height:104px;border-radius:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px -12px rgba(124,92,255,.55)}
+  .squircle.grad{background:linear-gradient(140deg,var(--p-l),var(--p) 55%,var(--p-d))}
+  .squircle.white{background:var(--surface);box-shadow:0 8px 24px -14px rgba(0,0,0,.4);border:1px solid var(--border)}
+  .scaleRow{display:flex;align-items:flex-end;gap:18px}
+  .footnote{color:var(--t3);font-size:12px;margin-top:14px}
+  a.rec{color:var(--p);font-weight:600;text-decoration:none}
+  .pill{display:inline-block;font-size:11px;font-weight:700;color:var(--p);background:color-mix(in srgb,var(--p) 14%,transparent);border-radius:999px;padding:3px 9px;margin-bottom:10px}
+</style>
+</head>
+<body>
+
+<!-- shared gradient defs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9A86FF"/>
+      <stop offset=".52" stop-color="#7C5CFF"/>
+      <stop offset="1" stop-color="#5E3FE0"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header class="page">
+    <div>
+      <h1>Tessera — логотип «mt»</h1>
+      <p class="lede">Пересмотр монограммы. Идея старого знака — просто буквы из вордмарка, без смысла и с неровным весом. Здесь — направления, где монограмма <b>mt</b> завязана на назначении системы: задачи, канбан, чек-листы, планирование. Главная зацепка — само слово <b>tessera</b> (плитка мозаики): карточка-задача и есть плитка, а доска — мозаика из них.</p>
+    </div>
+    <button class="toggle" id="themeBtn">🌙 Тёмный фон</button>
+  </header>
+
+  <div class="swatches">
+    <div class="sw"><span class="chip" style="background:#9A86FF"></span>#9A86FF светлее</div>
+    <div class="sw"><span class="chip" style="background:#7C5CFF"></span>#7C5CFF база</div>
+    <div class="sw"><span class="chip" style="background:#5E3FE0"></span>#5E3FE0 темнее</div>
+    <div class="sw"><span class="chip" style="background:#fff;box-shadow:inset 0 0 0 1px #ddd"></span>#FFFFFF</div>
+  </div>
+
+  <!-- ============ CONCEPTUAL MARKS ============ -->
+  <h2>Концептуальные знаки</h2>
+  <p class="h2sub">Кастомные монограммы — геометрия читается как «mt» <i>и</i> как смысл продукта. Все на монолинейной скруглённой основе, в тон скруглениям интерфейса (radius 8–12). Тинтуются акцентным градиентом.</p>
+  <div class="grid">
+
+    <!-- 1. Monoline (refined baseline) -->
+    <div class="card">
+      <div class="stage">
+        <svg width="150" height="120" viewBox="0 0 120 110" fill="none">
+          <g class="grad-stroke" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/>
+            <path d="M80,42 L80,77 C80,85 86,85 90,82 M70,56 L94,56"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Monoline</div>
+      <div class="desc">Чистая скруглённая монолиния. Дружелюбно, ровный вес, базовая форма для остальных.</div>
+    </div>
+
+    <!-- 2. Checklist — t as checkmark -->
+    <div class="card">
+      <div class="stage">
+        <svg width="150" height="120" viewBox="0 0 120 110" fill="none">
+          <g class="grad-stroke" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/>
+            <!-- t stem + crossbar that doubles as a checkmark -->
+            <path d="M80,40 L80,86"/>
+            <path d="M70,60 L78,69 L98,44"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Check-t · чек-лист</div>
+      <div class="desc">Перекладина «t» превращается в галочку — задача выполнена. Прямая отсылка к чек-листам.</div>
+    </div>
+
+    <!-- 3. Kanban — m stems as columns/cards -->
+    <div class="card">
+      <div class="stage">
+        <svg width="150" height="120" viewBox="0 0 120 110" fill="none">
+          <g class="grad-fill">
+            <!-- three kanban columns forming the m, different heights -->
+            <rect x="18" y="50" width="13" height="36" rx="6.5"/>
+            <rect x="38" y="42" width="13" height="44" rx="6.5"/>
+            <rect x="58" y="56" width="13" height="30" rx="6.5"/>
+            <!-- little card lifted off the middle column -->
+            <rect x="35" y="28" width="19" height="11" rx="4" opacity=".55"/>
+          </g>
+          <g class="grad-stroke" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M82,42 L82,86 M72,56 L96,56"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Kanban-m · доска</div>
+      <div class="desc">Три стойки «m» = колонки канбана, разной высоты, с карточкой над активной. «t» — рядом.</div>
+    </div>
+
+    <!-- 4. Tessera tile / mosaic -->
+    <div class="card">
+      <div class="stage">
+        <svg width="150" height="120" viewBox="0 0 120 110" fill="none">
+          <!-- rotated tile (tessera) holding the monogram -->
+          <rect class="grad-fill" x="24" y="9" width="72" height="72" rx="18" transform="rotate(45 60 45)" opacity=".14"/>
+          <g class="grad-stroke" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(2,4) scale(.92)">
+            <path d="M24,70 L24,49 C24,42 30,41 33,41 C37,41 41,44 41,51 L41,70 M41,51 C41,44 45,41 50,41 C54,41 58,44 58,51 L58,70"/>
+            <path d="M72,34 L72,63 C72,70 77,70 81,67 M64,47 L88,47"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Tessera · плитка</div>
+      <div class="desc">Монограмма внутри повёрнутой плитки-мозаики — буквальный смысл названия. Сильный знак для иконки.</div>
+    </div>
+
+    <!-- 5. Mosaic icon — 2x2 tiles -->
+    <div class="card">
+      <div class="stage">
+        <svg width="120" height="120" viewBox="0 0 110 110" fill="none">
+          <g class="grad-fill">
+            <rect x="14" y="14" width="36" height="36" rx="9" opacity=".5"/>
+            <rect x="58" y="14" width="36" height="36" rx="9" opacity=".78"/>
+            <rect x="14" y="58" width="36" height="36" rx="9"/>
+            <rect x="58" y="58" width="36" height="36" rx="9" opacity=".62"/>
+          </g>
+          <text x="55" y="63" text-anchor="middle" font-family="Outfit" font-weight="800" font-size="34" fill="#fff">mt</text>
+        </svg>
+      </div>
+      <div class="name">Mosaic · мозаика</div>
+      <div class="desc">2×2 плитки разной насыщенности = доска из задач, «mt» поверх. Абстрактнее, но богатый знак.</div>
+    </div>
+
+    <!-- 6. Clock-t — time management -->
+    <div class="card">
+      <div class="stage">
+        <svg width="150" height="120" viewBox="0 0 120 110" fill="none">
+          <g class="grad-stroke" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/>
+            <path d="M82,42 L82,86 M72,56 L96,56"/>
+          </g>
+          <!-- clock dot at the foot of t: time / reminders -->
+          <circle class="grad-fill" cx="82" cy="86" r="9"/>
+          <path d="M82,86 L82,81 M82,86 L86,88" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="name">Clock-t · время</div>
+      <div class="desc">Засечка «t» = циферблат со стрелками. Тайм-менеджмент и напоминания.</div>
+    </div>
+
+  </div>
+
+  <!-- ============ TYPOGRAPHIC OPTIONS ============ -->
+  <h2>Типографические направления</h2>
+  <p class="h2sub">Если хочется чистый вордмарк-монограмму без метафор — вот «mt» в разных качественных гарнитурах (не Nunito). Заливка — акцентный градиент. Выбираем характер: геометрия / гротеск / дисплейная подача.</p>
+  <div class="grid">
+    <div class="card"><div class="stage"><div class="mt-text" style="font-family:'Outfit';font-weight:800">mt</div></div><div class="name">Outfit 800</div><div class="desc">Геометрия, нейтрально-современно. Близко к текущему, но ровнее.</div></div>
+    <div class="card"><div class="stage"><div class="mt-text" style="font-family:'Space Grotesk';font-weight:700">mt</div></div><div class="name">Space Grotesk 700</div><div class="desc">Технологичный гротеск, характерная «t».</div></div>
+    <div class="card"><div class="stage"><div class="mt-text" style="font-family:'Sora';font-weight:800">mt</div></div><div class="name">Sora 800</div><div class="desc">Сдержанно-продуктовый, мягко скруглённые углы.</div></div>
+    <div class="card"><div class="stage"><div class="mt-text" style="font-family:'Manrope';font-weight:800">mt</div></div><div class="name">Manrope 800</div><div class="desc">Чистый, аккуратный, хорош в мелком размере.</div></div>
+    <div class="card"><div class="stage"><div class="mt-text" style="font-family:'Bricolage Grotesque';font-weight:800">mt</div></div><div class="name">Bricolage 800</div><div class="desc">С характером, чуть «человечный» гротеск.</div></div>
+    <div class="card"><div class="stage"><div class="mt-text" style="font-family:'Unbounded';font-weight:700">mt</div></div><div class="name">Unbounded 700</div><div class="desc">Дисплейная подача, жирно и заметно.</div></div>
+  </div>
+
+  <!-- ============ APP ICON PREVIEWS ============ -->
+  <h2>В формате иконки приложения</h2>
+  <p class="h2sub">Топовые направления на squircle — градиент-фон с белым знаком и инверсия (белый фон, градиент-знак). Так логотип увидят на домашнем экране и в сторе.</p>
+  <div class="icons">
+
+    <!-- monoline on gradient -->
+    <div class="iconwrap">
+      <div class="squircle grad">
+        <svg width="64" height="58" viewBox="0 0 120 110" fill="none">
+          <g stroke="#fff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/>
+            <path d="M80,42 L80,77 C80,85 86,85 90,82 M70,56 L94,56"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Monoline</div>
+    </div>
+
+    <!-- check on gradient -->
+    <div class="iconwrap">
+      <div class="squircle grad">
+        <svg width="64" height="58" viewBox="0 0 120 110" fill="none">
+          <g stroke="#fff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/>
+            <path d="M80,40 L80,86"/>
+            <path d="M70,60 L78,69 L98,44"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Check-t</div>
+    </div>
+
+    <!-- tessera tile on white -->
+    <div class="iconwrap">
+      <div class="squircle white">
+        <svg width="66" height="60" viewBox="0 0 120 110" fill="none">
+          <rect class="grad-fill" x="24" y="9" width="72" height="72" rx="18" transform="rotate(45 60 45)" opacity=".16"/>
+          <g class="grad-stroke" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(2,4) scale(.92)">
+            <path d="M24,70 L24,49 C24,42 30,41 33,41 C37,41 41,44 41,51 L41,70 M41,51 C41,44 45,41 50,41 C54,41 58,44 58,51 L58,70"/>
+            <path d="M72,34 L72,63 C72,70 77,70 81,67 M64,47 L88,47"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Tessera (white)</div>
+    </div>
+
+    <!-- mosaic on gradient -->
+    <div class="iconwrap">
+      <div class="squircle grad">
+        <svg width="62" height="62" viewBox="0 0 110 110" fill="none">
+          <g fill="#fff">
+            <rect x="14" y="14" width="36" height="36" rx="9" opacity=".55"/>
+            <rect x="58" y="14" width="36" height="36" rx="9" opacity=".85"/>
+            <rect x="14" y="58" width="36" height="36" rx="9"/>
+            <rect x="58" y="58" width="36" height="36" rx="9" opacity=".68"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Mosaic</div>
+    </div>
+
+    <!-- outfit wordmark on gradient -->
+    <div class="iconwrap">
+      <div class="squircle grad">
+        <span style="font-family:'Outfit';font-weight:800;font-size:46px;color:#fff;letter-spacing:-.04em">mt</span>
+      </div>
+      <div class="name">Outfit</div>
+    </div>
+  </div>
+
+  <!-- scale check -->
+  <h2>Проверка масштаба</h2>
+  <p class="h2sub">Монограмма должна оставаться читаемой вплоть до favicon (16px). Monoline и Check-t держат форму лучше всего за счёт ровной толщины линии.</p>
+  <div class="scaleRow">
+    <div class="iconwrap">
+      <svg width="64" height="58" viewBox="0 0 120 110" fill="none"><g class="grad-stroke" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/><path d="M80,42 L80,77 C80,85 86,85 90,82 M70,56 L94,56"/></g></svg>
+      <div class="name" style="font-size:11px;color:var(--t3)">64px</div>
+    </div>
+    <div class="iconwrap">
+      <svg width="40" height="36" viewBox="0 0 120 110" fill="none"><g class="grad-stroke" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/><path d="M80,42 L80,77 C80,85 86,85 90,82 M70,56 L94,56"/></g></svg>
+      <div class="name" style="font-size:11px;color:var(--t3)">40px</div>
+    </div>
+    <div class="iconwrap">
+      <svg width="24" height="22" viewBox="0 0 120 110" fill="none"><g class="grad-stroke" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/><path d="M80,42 L80,77 C80,85 86,85 90,82 M70,56 L94,56"/></g></svg>
+      <div class="name" style="font-size:11px;color:var(--t3)">24px</div>
+    </div>
+    <div class="iconwrap">
+      <svg width="16" height="15" viewBox="0 0 120 110" fill="none"><g class="grad-stroke" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M22,86 L22,60 C22,51 29,50 32,50 C37,50 42,54 42,62 L42,86 M42,62 C42,54 47,50 52,50 C57,50 62,54 62,62 L62,86"/><path d="M80,42 L80,77 C80,85 86,85 90,82 M70,56 L94,56"/></g></svg>
+      <div class="name" style="font-size:11px;color:var(--t3)">16px</div>
+    </div>
+  </div>
+
+  <p class="footnote">Открой файл в браузере, переключи фон кнопкой вверху. Скажи, какое направление берём — доведу выбранный знак до чистого SVG и заменю <code>mt_logo.xml</code> + сгенерирую <code>ic_launcher</code> во всех плотностях.</p>
+</div>
+
+<script>
+  const btn=document.getElementById('themeBtn');
+  btn.addEventListener('click',()=>{
+    document.body.classList.toggle('dark');
+    btn.textContent=document.body.classList.contains('dark')?'☀️ Светлый фон':'🌙 Тёмный фон';
+  });
+</script>
+</body>
+</html>
