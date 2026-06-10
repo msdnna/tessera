@@ -835,6 +835,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.18.0] — 2026-06-10
+- Two-way relation history: `POST /tasks/:id/relations` now also logs a
+  `relation` event on the referenced task (`inverseRelationKind`: blocks ⇄
+  blocked_by, relates/duplicates symmetric) and broadcasts it, so the link
+  shows in both tasks' activity. No reverse relation row is created (avoids an
+  orphan on one-sided delete). Already running in deploy; previously uncommitted.
+
 ### [0.17.0] — 2026-06-04
 - Project groups gain `icon` and `color` (migration 0008); `PATCH /groups/:id`
   now accepts them alongside the name.

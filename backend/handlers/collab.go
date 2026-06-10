@@ -338,8 +338,27 @@ func (h *API) AddRelation(c *gin.Context) {
 		return
 	}
 	h.logEvent(c, id, "relation", map[string]any{"related": req.Number, "kind": kind})
+	// Record the link on the referenced task too, so it shows in #target's
+	// history ("добавил связь с #<source>") — relations are otherwise one-way.
+	if t.Number != nil {
+		h.logEvent(c, target.ID, "relation", map[string]any{"related": *t.Number, "kind": inverseRelationKind(kind)})
+		h.broadcast(wsID, "task.updated", gin.H{"id": target.ID})
+	}
 	h.broadcast(wsID, "task.updated", gin.H{"id": id})
 	c.Status(http.StatusCreated)
+}
+
+// inverseRelationKind flips a directed relation kind for the referenced task's
+// side (relates/duplicates are symmetric; blocks ⇄ blocked_by).
+func inverseRelationKind(kind string) string {
+	switch kind {
+	case "blocks":
+		return "blocked_by"
+	case "blocked_by":
+		return "blocks"
+	default:
+		return kind
+	}
 }
 
 func (h *API) DeleteRelation(c *gin.Context) {
