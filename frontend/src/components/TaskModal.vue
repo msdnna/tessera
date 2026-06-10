@@ -30,6 +30,7 @@ import {
   EllipseOutline,
   ArchiveOutline,
   GitMergeOutline,
+  GitBranchOutline,
   AttachOutline,
   TrashOutline,
   DownloadOutline,
@@ -666,6 +667,21 @@ function eventText(e) {
             </n-popover>
             <span v-if="task?.number" class="tnum">#{{ task.number }}</span>
           </div>
+          <a
+            v-if="task?.gitlab"
+            class="gl-line"
+            :href="task.gitlab.web_url"
+            target="_blank"
+            rel="noopener"
+            :title="`Открыть issue !${task.gitlab.iid} в GitLab`"
+          >
+            <n-icon :component="GitBranchOutline" :size="13" />
+            <span>GitLab !{{ task.gitlab.iid }}</span>
+            <span v-if="task.gitlab.author" class="gl-author"
+              >· автор @{{ task.gitlab.author
+              }}<template v-if="task.gitlab.author_name"> ({{ task.gitlab.author_name }})</template></span
+            >
+          </a>
           <n-input v-model:value="title" placeholder="Название задачи" class="title-input plain" />
 
           <div class="props">
@@ -1153,6 +1169,23 @@ function eventText(e) {
   font-size: 12px;
   color: var(--t-text3);
   flex: none;
+}
+/* GitLab provenance line for synced tasks. */
+.gl-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0 2px;
+  font-size: 12px;
+  color: var(--t-text2);
+  text-decoration: none;
+  width: fit-content;
+}
+.gl-line:hover {
+  color: var(--t-primary);
+}
+.gl-author {
+  color: var(--t-text3);
 }
 .crumbs {
   display: inline-flex;

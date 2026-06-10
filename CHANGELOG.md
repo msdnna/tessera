@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.44.0] — 2026-06-11
+- GitLab integration UI (a single modal opened from the workspace toolbar):
+  - **Account** — connect a GitLab account by base URL + personal access token
+    (validated server-side), shows the linked `@username`, disconnect with
+    confirmation.
+  - **Integration** — pick the GitLab project path and target board, toggle the
+    integration, choose an auto-sync interval, and a **rule editor** for the
+    custom bindings: status-label → column rows, priority-label → level rows,
+    a default column, label prefixes, and the tag mode / keep-prefix switches.
+  - **Синхронизировать** button runs an on-demand pull and reports the counts.
+- Synced tasks now show their GitLab provenance: a clickable `!iid` chip on the
+  board card, and an author line (`GitLab !iid · автор @login`) in the task
+  modal, both linking to the source issue.
+
 ### [0.43.0] — 2026-06-10
 - Destructive/irreversible actions now confirm via an inline `n-popconfirm`
   popover (Android-style) instead of a centred modal dialog: hard-delete and
@@ -834,6 +848,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.21.0] — 2026-06-11
+- The board task list (`GET /boards/:id/tasks`) now carries `gitlab_iid` and
+  `gitlab_url` (null for non-synced tasks) via a LEFT JOIN to `gitlab_links`, so
+  the kanban can badge cards mirrored from GitLab and link to the source issue
+  without a per-card request.
 
 ### [0.20.0] — 2026-06-11
 - GitLab sync now records the **issue author** (`gitlab_links.gl_author` /

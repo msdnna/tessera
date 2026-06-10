@@ -369,6 +369,17 @@ async function submitAddSub() {
         >{{ task.title }}</span
       >
       <span v-if="task.number" class="tnum">#{{ task.number }}</span>
+      <a
+        v-if="task.gitlab_iid"
+        class="gl-chip"
+        :href="task.gitlab_url"
+        target="_blank"
+        rel="noopener"
+        :title="`GitLab issue !${task.gitlab_iid} — открыть`"
+        @click.stop
+      >
+        <n-icon :component="GitBranchOutline" :size="11" />!{{ task.gitlab_iid }}
+      </a>
     </div>
 
     <div class="pills">
@@ -741,6 +752,26 @@ async function submitAddSub() {
   font-size: 11px;
   color: var(--t-text3);
   padding-top: 3px;
+}
+/* "synced from GitLab" chip — links to the source issue. */
+.gl-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--t-text2);
+  border: 1px solid var(--t-border);
+  background: var(--t-hover);
+}
+.gl-chip:hover {
+  color: var(--t-primary);
+  border-color: var(--t-primary);
 }
 .pills {
   display: flex;

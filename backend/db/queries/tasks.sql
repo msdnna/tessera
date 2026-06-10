@@ -18,12 +18,15 @@ SELECT * FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position;
 SELECT
     t.*,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
-    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
+    gl.gl_iid AS gitlab_iid,
+    gl.gl_web_url AS gitlab_url
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
+LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
-GROUP BY t.id
+GROUP BY t.id, gl.gl_iid, gl.gl_web_url
 ORDER BY t.position;
 
 -- name: ListSubtasks :many

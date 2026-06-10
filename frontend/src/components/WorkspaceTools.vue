@@ -7,6 +7,7 @@ import {
   NotificationsOutline,
   PeopleOutline,
   ColorPaletteOutline,
+  GitBranchOutline,
 } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
@@ -14,6 +15,7 @@ import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useNotificationsStore } from '@/stores/notifications'
 import MembersModal from './MembersModal.vue'
+import GitLabModal from './GitLabModal.vue'
 
 defineProps({ placement: { type: String, default: 'bottom-end' } })
 
@@ -23,6 +25,7 @@ const notes = useNotificationsStore()
 const router = useRouter()
 
 const showMembers = ref(false)
+const showGitlab = ref(false)
 
 function openNotification(n) {
   notes.markRead(n.id)
@@ -45,6 +48,16 @@ function fmtTime(d) {
         </n-button>
       </template>
       Участники
+    </n-tooltip>
+
+    <!-- GitLab integration -->
+    <n-tooltip>
+      <template #trigger>
+        <n-button quaternary circle size="small" aria-label="GitLab" @click="showGitlab = true">
+          <n-icon :component="GitBranchOutline" />
+        </n-button>
+      </template>
+      GitLab
     </n-tooltip>
 
     <!-- Notifications -->
@@ -117,6 +130,7 @@ function fmtTime(d) {
     </n-popover>
 
     <MembersModal v-model:show="showMembers" :ws-id="ws.currentId" />
+    <GitLabModal v-model:show="showGitlab" :ws-id="ws.currentId" />
   </div>
 </template>
 

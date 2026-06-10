@@ -180,4 +180,15 @@ export const notifications = {
   markAllRead: () => api.post('/notifications/read-all'),
 }
 
+export const gitlab = {
+  // Per-user GitLab connection (PAT).
+  getConnection: () => api.get('/gitlab/connection'),
+  connect: (data) => api.post('/gitlab/connection', data), // { base_url, token }
+  disconnect: () => api.delete('/gitlab/connection'),
+  // Per-workspace integration config + manual sync.
+  getIntegration: (wsId) => api.get(`/workspaces/${wsId}/gitlab/integration`),
+  setIntegration: (wsId, data) => api.put(`/workspaces/${wsId}/gitlab/integration`, data),
+  sync: (wsId) => api.post(`/workspaces/${wsId}/gitlab/sync`),
+}
+
 export default api
