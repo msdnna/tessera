@@ -3,6 +3,7 @@ import { NDropdown, NPopconfirm } from 'naive-ui'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
+import { initials } from '@/utils/initials'
 
 const props = defineProps({
   // Grouped, filtered, sorted columns from KanbanBoard: [{ key, name, color }]
@@ -22,15 +23,6 @@ const menu = useTaskMenu({
   columns: () => props.statusColumns,
 })
 
-function initials(name) {
-  if (!name) return '?'
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join('')
-}
 function fmtDue(d) {
   return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
 }

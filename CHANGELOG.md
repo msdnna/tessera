@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.51.0] — 2026-06-11
+- Avatar initials are smarter: a two-word name → first letter of each
+  (`Василий Соколов` → ВС), a dot handle → each part (`a.fokin` → AF), a single
+  word → its first two letters (`msdnna` → MS). Shared `utils/initials`.
+- `@`-mentions are highlighted even when the user isn't in Tessera (any
+  `@handle`, e.g. GitLab `@v.sokolov`), not only known members.
+- Descending due-date sort keeps tasks **without** a due date at the bottom
+  (instead of floating them to the top).
+- Workspace toolbar: GitLab moved under an **«Интеграции»** dropdown button
+  (single GitLab item) instead of a standalone button.
+
 ### [0.50.0] — 2026-06-11
 - Fix: Markdown descriptions that contain inline HTML (e.g. GitLab `<details>`)
   no longer render as plain text — the HTML-vs-Markdown heuristic now only treats

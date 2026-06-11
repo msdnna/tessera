@@ -426,12 +426,15 @@ const filteredTasks = computed(() => {
   const dir = sortDir.value === 'desc' ? -1 : 1
   if (sortBy.value === 'priority') s.sort((a, b) => dir * ((a.priority || 0) - (b.priority || 0)))
   else if (sortBy.value === 'due')
-    s.sort(
-      (a, b) =>
-        dir *
-        ((a.due_date ? Date.parse(a.due_date) : Infinity) -
-          (b.due_date ? Date.parse(b.due_date) : Infinity)),
-    )
+    s.sort((a, b) => {
+      // Tasks without a due date always sink to the bottom (both directions).
+      const av = a.due_date ? Date.parse(a.due_date) : null
+      const bv = b.due_date ? Date.parse(b.due_date) : null
+      if (av === null && bv === null) return 0
+      if (av === null) return 1
+      if (bv === null) return -1
+      return dir * (av - bv)
+    })
   return s
 })
 

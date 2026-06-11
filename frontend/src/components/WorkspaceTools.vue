@@ -1,13 +1,13 @@
 <script setup>
 import { ref } from 'vue'
-import { NButton, NIcon, NBadge, NPopover, NTooltip, NSwitch, NText, NEmpty } from 'naive-ui'
+import { NButton, NIcon, NBadge, NPopover, NTooltip, NSwitch, NText, NEmpty, NDropdown } from 'naive-ui'
 import {
   SunnyOutline,
   MoonOutline,
   NotificationsOutline,
   PeopleOutline,
   ColorPaletteOutline,
-  GitBranchOutline,
+  ExtensionPuzzleOutline,
 } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
@@ -26,6 +26,10 @@ const router = useRouter()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
+const integrationOptions = [{ label: 'GitLab', key: 'gitlab' }]
+function onIntegrationSelect(key) {
+  if (key === 'gitlab') showGitlab.value = true
+}
 
 function openNotification(n) {
   notes.markRead(n.id)
@@ -50,15 +54,22 @@ function fmtTime(d) {
       Участники
     </n-tooltip>
 
-    <!-- GitLab integration -->
-    <n-tooltip>
-      <template #trigger>
-        <n-button quaternary circle size="small" aria-label="GitLab" @click="showGitlab = true">
-          <n-icon :component="GitBranchOutline" />
-        </n-button>
-      </template>
-      GitLab
-    </n-tooltip>
+    <!-- Integrations -->
+    <n-dropdown
+      trigger="click"
+      :placement="placement"
+      :options="integrationOptions"
+      @select="onIntegrationSelect"
+    >
+      <n-tooltip>
+        <template #trigger>
+          <n-button quaternary circle size="small" aria-label="Интеграции">
+            <n-icon :component="ExtensionPuzzleOutline" />
+          </n-button>
+        </template>
+        Интеграции
+      </n-tooltip>
+    </n-dropdown>
 
     <!-- Notifications -->
     <n-popover trigger="click" :placement="placement">

@@ -24,6 +24,7 @@ import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/a
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue } from '@/utils/gradient'
 import { pressMoved } from '@/utils/dnd'
+import { initials } from '@/utils/initials'
 import { useThemeStore } from '@/stores/theme'
 
 const theme = useThemeStore()
@@ -130,9 +131,6 @@ const prioColor = computed(() =>
 )
 const flagGradId = computed(() => `pf-${props.task.id}`)
 
-function initials(name) {
-  return (name || '?').trim().slice(0, 2).toUpperCase()
-}
 function isAssigned(uid) {
   return (props.task.assignee_ids || []).includes(uid)
 }

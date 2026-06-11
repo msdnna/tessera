@@ -81,18 +81,20 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// highlightMentions wraps "@Name" tokens for known members in a styled span.
-// Operates on rendered HTML; matches only at text boundaries to avoid touching
-// tags/attributes. Longer names first so "@Ann Lee" wins over "@Ann".
+// highlightMentions wraps "@…" tokens in a styled span. Known member display
+// names (which may contain spaces, e.g. "@Ann Lee") are matched first; any other
+// "@handle" (a username like @v.sokolov from GitLab, not a Tessera user) is also
+// highlighted via a generic fallback token. Operates on rendered HTML and only
+// at text boundaries to avoid touching tags/attributes.
 function highlightMentions(html, members) {
-  if (!members || !members.length) return html
-  const labels = members
+  const alts = (members || [])
     .map((m) => m.label)
     .filter(Boolean)
     .sort((a, b) => b.length - a.length)
     .map(escapeRe)
-  if (!labels.length) return html
-  const re = new RegExp(`(^|[\\s>(])@(${labels.join('|')})`, 'g')
+  // Generic handle: a letter/digit then word chars, dots or hyphens.
+  alts.push('[A-Za-z0-9][\\w.-]*')
+  const re = new RegExp(`(^|[\\s>(])@(${alts.join('|')})`, 'g')
   return html.replace(re, '$1<span class="mention">@$2</span>')
 }
 

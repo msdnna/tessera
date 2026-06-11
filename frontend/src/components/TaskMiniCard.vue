@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
+import { initials } from '@/utils/initials'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -17,15 +18,6 @@ const due = computed(() => {
   if (!props.task.due_date) return null
   return new Date(props.task.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
 })
-function initials(name) {
-  if (!name) return '?'
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join('')
-}
 </script>
 
 <template>

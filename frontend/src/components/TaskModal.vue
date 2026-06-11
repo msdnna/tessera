@@ -48,6 +48,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue } from '@/utils/gradient'
 import { useThemeStore } from '@/stores/theme'
+import { initials } from '@/utils/initials'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
@@ -217,9 +218,6 @@ const breadcrumb = computed(() => {
   return parts
 })
 
-function initials(name) {
-  return (name || '?').trim().slice(0, 2).toUpperCase()
-}
 function subDue(d) {
   return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
 }
