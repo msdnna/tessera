@@ -86,8 +86,20 @@ frontend `0.43.0` · android `0.3.1`.
   - frontend `0.44.0`: модалка GitLab (аккаунт PAT + конфиг интеграции + редактор правил
     статус→колонка/приоритет→уровень/теги + Sync now), бейдж `!iid` на карточке, строка
     автора в TaskModal. Build/lint зелёные; **UI вживую против GL пользователем ещё не прогнан**.
-- **Дальше (бэклог фазы B+):** `M:`-подзадачи через GraphQL hierarchy; write-back (action-
-  bindings + loop-guard через снапшот-хэши, уже в схеме); webhooks; OAuth/SSO.
+- **Доработки после фазы A (2026-06-11, backend 0.20–0.23, web 0.45–0.46):** автор задачи
+  (created_by/GL-автор) в модалке + автор→исполнитель на карточке; цвета тегов из GL +
+  авто-цвет + читаемость по теме (`readableHue`); сроки из issue (milestone — следующий шаг);
+  **синк исполнителей и комментов с внешними GL-юзерами** (migration 0011: `task_gitlab_assignees`,
+  `task_comments.gl_*`); **mixed-sync** (`source` user|gitlab на тегах/ассайни — реконсайл только
+  gitlab-набора); слинкованные задачи добираются по iid → переназначение отражается, синк не удаляет.
+- **Очередь доработок (по запросу пользователя 2026-06-11):** (2) сроки из **milestone**
+  `End date` (issue.dueDate ?? milestone.dueDate; ручной срок > GL; флаг `due_overridden` +
+  UI-настройка `due_source`); (3) **генерализация правил** label_rules → список
+  `{match: prefix|regex, action: status|priority|board|group|tag, params}` (group/подзадачи —
+  под капотом через GraphQL hierarchy, позже); (4) **кастомный фильтр группировки** на доске
+  (группировка по префиксу тега и шире — пользовательский фильтр, не хардкод).
+- **Бэклог фазы B+:** write-back (action-bindings + loop-guard через снапшот-хэши, уже в схеме);
+  webhooks; OAuth/SSO; `M:`-подзадачи (GraphQL hierarchy).
 
 ## Сверка с budget-go (общие проектные аспекты)
 
