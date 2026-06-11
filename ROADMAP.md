@@ -104,8 +104,12 @@ frontend `0.43.0` · android `0.3.1`.
   (список уровней поле+направление); **`M:`-подзадачи** — дети work-item'а из GL Hierarchy widget →
   Tessera subtasks (migration GraphQL, дедуп от top-level); **прокси вложений GL** (подписанный
   `/api/gitlab/asset`, переписывание `/uploads/…` на синке). Кнопка «Интеграции» (dropdown).
-- **Бэклог фазы B+:** **composer-bar** (вынести фильтр+сорт+группировку в один широкий бар);
-  write-back (action-bindings + loop-guard через снапшот-хэши, уже в схеме); webhooks; OAuth/SSO.
+- **Доработки 4 (2026-06-11, backend 0.29.1, web 0.54.0):** **composer-bar** — группировка/
+  сортировка/фильтры как удаляемые чипы в одном широком баре с «＋»-меню + инлайн-поиск
+  (заменил кнопки Группировка/Сортировка/Фильтры); фикс **прокси вложений** (тянем через
+  uploads API `/api/v4/projects/:id/uploads/:secret/:filename` по PAT, а не web-роут).
+- **Бэклог фазы B+:** write-back (action-bindings + loop-guard через снапшот-хэши, уже в схеме);
+  webhooks; OAuth/SSO.
 
 ## Сверка с budget-go (общие проектные аспекты)
 
