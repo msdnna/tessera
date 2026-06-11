@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.54.0] — 2026-06-11
+- **Composer bar** (a reference tracker/GitLab-style): grouping, sort levels and filters now
+  render as removable chips in one wide bar with an «＋» menu to add any
+  facet (group by status/tags/namespace, a sort field, or a priority/assignee/
+  tag/due filter) and an inline name search — replacing the separate
+  Группировка / Сортировка / Фильтры toolbar buttons. The grouping chip toggles
+  status↔tags on click; a sort chip flips its direction; a clear-all «×» resets
+  filters + sort. Subtasks toggle and the saved-view buttons stay on the right.
+
 ### [0.53.0] — 2026-06-11
 - **Multi-level sort**: the sort control is now a popover with an ordered list of
   sort levels (field + direction), applied as primary/secondary/… tie-breakers —

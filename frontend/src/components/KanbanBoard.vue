@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, h } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import draggable from 'vuedraggable'
 import {
@@ -7,11 +7,7 @@ import {
   NButton,
   NInput,
   NText,
-  NSelect,
   NPopover,
-  NCheckboxGroup,
-  NCheckbox,
-  NSpace,
   NIcon,
   NTooltip,
   NDropdown,
@@ -19,12 +15,7 @@ import {
   useMessage,
 } from 'naive-ui'
 import {
-  AlbumsOutline,
-  SwapVerticalOutline,
-  FilterOutline,
   GitBranchOutline,
-  SearchOutline,
-  CheckmarkOutline,
   SaveOutline,
   FolderOpenOutline,
   TrashOutline,
@@ -105,15 +96,6 @@ const sortFieldOptions = [
   { label: 'Название', value: 'title' },
   { label: 'Номер', value: 'number' },
 ]
-const sortDirOptions = [
-  { label: 'По возрастанию', value: 'asc' },
-  { label: 'По убыванию', value: 'desc' },
-]
-function addSortLevel() {
-  const used = new Set(sortLevels.value.map((l) => l.field))
-  const next = sortFieldOptions.find((o) => !used.has(o.value)) || sortFieldOptions[0]
-  sortLevels.value.push({ field: next.value, dir: 'asc' })
-}
 // One sort level's comparison (direction applied; due-less tasks always last).
 function cmpLevel(a, b, { field, dir }) {
   const d = dir === 'desc' ? -1 : 1
@@ -130,29 +112,6 @@ function cmpLevel(a, b, { field, dir }) {
   if (field === 'number') return d * ((a.number || 0) - (b.number || 0))
   return 0
 }
-// Grouping uses a dropdown form (open straight from the toolbar button); a
-// right-aligned check icon marks the active option.
-const groupOptions = [
-  { label: 'По статусам', value: 'status' },
-  { label: 'По тегам', value: 'tag' },
-]
-const groupMenuOptions = computed(() => groupOptions.map((o) => ({ key: o.value, label: o.label })))
-function renderCheckLabel(active, label) {
-  return h(
-    'div',
-    {
-      style:
-        'display:flex;align-items:center;justify-content:space-between;gap:28px;min-width:140px',
-    },
-    [
-      h('span', label),
-      active
-        ? h(NIcon, { size: 16, class: 'grad-icon' }, { default: () => h(CheckmarkOutline) })
-        : null,
-    ],
-  )
-}
-const renderGroupLabel = (option) => renderCheckLabel(option.key === groupMode.value, option.label)
 const dueOptions = [
   { label: 'Все', value: '' },
   { label: 'Просроченные', value: 'overdue' },
@@ -182,6 +141,123 @@ function resetFilters() {
   filters.tags = []
   filters.due = ''
   filters.q = ''
+}
+
+// ── composer bar: grouping + sort + filters as removable chips ──
+// All facets render as chips over the existing state; an "add" dropdown mutates
+// the same refs. The search box lives in the bar too (filters.q).
+const facetChips = computed(() => {
+  const out = []
+  out.push({
+    kind: 'group',
+    label:
+      groupMode.value === 'tag'
+        ? `Группировка: теги${tagPrefix.value ? ` · ${tagPrefix.value}` : ''}`
+        : 'Группировка: статусы',
+  })
+  sortLevels.value.forEach((l, i) => {
+    const f = sortFieldOptions.find((o) => o.value === l.field)?.label || l.field
+    out.push({ kind: 'sort', i, label: `Сорт: ${f} ${l.dir === 'desc' ? '↓' : '↑'}` })
+  })
+  filters.priorities.forEach((p) =>
+    out.push({ kind: 'priority', value: p, label: `Приоритет: ${PRIORITY_LABELS[p]}` }),
+  )
+  filters.assignees.forEach((a) =>
+    out.push({ kind: 'assignee', value: a, label: `Исполнитель: ${membersMap[a]?.name || '—'}` }),
+  )
+  filters.tags.forEach((t) =>
+    out.push({ kind: 'tag', value: t, label: `Тег: ${tagsMap[t]?.name || '—'}` }),
+  )
+  if (filters.due) {
+    out.push({ kind: 'due', label: `Срок: ${dueOptions.find((o) => o.value === filters.due)?.label || filters.due}` })
+  }
+  return out
+})
+const addOptions = computed(() => [
+  {
+    label: 'Группировка',
+    key: 'group',
+    children: [
+      { label: 'По статусам', key: 'g.status' },
+      { label: 'По тегам (все)', key: 'g.tag' },
+      ...tagPrefixOptions.value
+        .filter((o) => o.value)
+        .map((o) => ({ label: `По тегам · ${o.label}`, key: `g.tagp.${encodeURIComponent(o.value)}` })),
+    ],
+  },
+  {
+    label: 'Сортировка',
+    key: 'sort',
+    children: sortFieldOptions.map((o) => ({ label: o.label, key: `s.${o.value}` })),
+  },
+  {
+    label: 'Фильтр: приоритет',
+    key: 'fp',
+    children: priorityFilterOptions.map((o) => ({ label: o.label, key: `fp.${o.value}` })),
+  },
+  {
+    label: 'Фильтр: исполнитель',
+    key: 'fa',
+    children: memberFilterOptions.value.map((o) => ({ label: o.label, key: `fa.${o.value}` })),
+  },
+  {
+    label: 'Фильтр: тег',
+    key: 'ft',
+    children: tagFilterOptions.value.map((o) => ({ label: o.label, key: `ft.${o.value}` })),
+  },
+  {
+    label: 'Фильтр: срок',
+    key: 'fd',
+    children: dueOptions.filter((o) => o.value).map((o) => ({ label: o.label, key: `fd.${o.value}` })),
+  },
+])
+function onAddFacet(key) {
+  if (key === 'g.status') {
+    groupMode.value = 'status'
+    tagPrefix.value = ''
+  } else if (key === 'g.tag') {
+    groupMode.value = 'tag'
+    tagPrefix.value = ''
+  } else if (key.startsWith('g.tagp.')) {
+    groupMode.value = 'tag'
+    tagPrefix.value = decodeURIComponent(key.slice('g.tagp.'.length))
+  } else if (key.startsWith('s.')) {
+    const f = key.slice(2)
+    if (!sortLevels.value.some((l) => l.field === f)) sortLevels.value.push({ field: f, dir: 'asc' })
+  } else if (key.startsWith('fp.')) {
+    const v = Number(key.slice(3))
+    if (!filters.priorities.includes(v)) filters.priorities.push(v)
+  } else if (key.startsWith('fa.')) {
+    const v = key.slice(3)
+    if (!filters.assignees.includes(v)) filters.assignees.push(v)
+  } else if (key.startsWith('ft.')) {
+    const v = key.slice(3)
+    if (!filters.tags.includes(v)) filters.tags.push(v)
+  } else if (key.startsWith('fd.')) {
+    filters.due = key.slice(3)
+  }
+}
+function removeChip(c) {
+  if (c.kind === 'sort') sortLevels.value.splice(c.i, 1)
+  else if (c.kind === 'priority') filters.priorities = filters.priorities.filter((x) => x !== c.value)
+  else if (c.kind === 'assignee') filters.assignees = filters.assignees.filter((x) => x !== c.value)
+  else if (c.kind === 'tag') filters.tags = filters.tags.filter((x) => x !== c.value)
+  else if (c.kind === 'due') filters.due = ''
+}
+function onChipClick(c) {
+  if (c.kind === 'group') {
+    groupMode.value = groupMode.value === 'status' ? 'tag' : 'status'
+  } else if (c.kind === 'sort') {
+    const l = sortLevels.value[c.i]
+    l.dir = l.dir === 'desc' ? 'asc' : 'desc'
+  }
+}
+const hasClearableFacets = computed(
+  () => sortLevels.value.length > 0 || activeFilterCount.value > 0,
+)
+function clearAll() {
+  resetFilters()
+  sortLevels.value = []
 }
 
 // ── per-board view persistence (localStorage, per device) ──
@@ -758,117 +834,43 @@ watch(
            a task-name search on the right. (Layout + Теги/Архив live in the
            global header now.) -->
       <div class="subbar">
-        <n-dropdown
-          trigger="click"
-          placement="bottom-start"
-          :options="groupMenuOptions"
-          :render-label="renderGroupLabel"
-          @select="(k) => (groupMode = k)"
-        >
-          <n-button size="small" quaternary class="ngrad" :type="groupMode === 'tag' ? 'primary' : 'default'">
-            <template #icon><n-icon :component="AlbumsOutline" /></template>
-            <span class="sb-label">Группировка</span>
-          </n-button>
-        </n-dropdown>
-
-        <!-- Tag-grouping namespace filter: columns = tags matching this prefix
-             (e.g. "T: " groups by type). Empty = every tag. Custom values allowed. -->
-        <n-select
-          v-if="groupMode === 'tag'"
-          v-model:value="tagPrefix"
-          :options="tagPrefixOptions"
-          size="small"
-          filterable
-          tag
-          clearable
-          placeholder="Группа тегов"
-          class="sb-prefix"
-        />
-
-        <!-- multi-level sort: ordered list of {field, dir}; empty = manual order -->
-        <n-popover trigger="click" placement="bottom-start">
-          <template #trigger>
-            <n-button
-              size="small"
-              quaternary
-              class="ngrad"
-              :type="sortLevels.length ? 'primary' : 'default'"
+        <!-- Composer bar: grouping / sort / filters as removable chips + an add
+             menu + the name search, all in one wide bar (a reference tracker/GitLab-style). -->
+        <div class="composer">
+          <span
+            v-for="(c, ci) in facetChips"
+            :key="ci"
+            class="facet"
+            :class="{ group: c.kind === 'group', sortable: c.kind === 'sort' }"
+            :title="c.kind === 'group' ? 'Переключить статусы/теги' : c.kind === 'sort' ? 'Сменить направление' : ''"
+            @click="onChipClick(c)"
+          >
+            {{ c.label }}
+            <button
+              v-if="c.kind !== 'group'"
+              class="facet-x"
+              title="Убрать"
+              @click.stop="removeChip(c)"
             >
-              <template #icon><n-icon :component="SwapVerticalOutline" /></template>
-              <span class="sb-label">Сортировка{{ sortLevels.length ? ` (${sortLevels.length})` : '' }}</span>
-            </n-button>
-          </template>
-          <div class="sort-pop">
-            <div v-for="(lvl, i) in sortLevels" :key="i" class="sort-row">
-              <span class="sort-ord">{{ i + 1 }}</span>
-              <n-select v-model:value="lvl.field" :options="sortFieldOptions" size="small" />
-              <n-select v-model:value="lvl.dir" :options="sortDirOptions" size="small" />
-              <n-button text size="tiny" type="error" @click="sortLevels.splice(i, 1)">
-                <n-icon :component="TrashOutline" />
-              </n-button>
-            </div>
-            <n-text v-if="!sortLevels.length" depth="3" class="sort-empty">
-              Вручную (порядок на доске)
-            </n-text>
-            <n-button dashed size="tiny" type="primary" class="sort-add" @click="addSortLevel">
-              <template #icon><n-icon :component="AddOutline" /></template>
-              Уровень сортировки
-            </n-button>
-          </div>
-        </n-popover>
+              ×
+            </button>
+          </span>
 
-        <n-popover trigger="click" placement="bottom-start">
-          <template #trigger>
-            <n-button size="small" quaternary class="ngrad" :type="activeFilterCount ? 'primary' : 'default'">
-              <template #icon><n-icon :component="FilterOutline" /></template>
-              <span class="sb-label">Фильтры</span>{{
-                activeFilterCount ? ` (${activeFilterCount})` : ''
-              }}
-            </n-button>
-          </template>
-          <div class="vp">
-            <div v-if="activeFilterCount" class="vp-fhead">
-              <n-button text size="tiny" type="primary" class="ngrad" @click="resetFilters">Сбросить</n-button>
-            </div>
-            <n-text depth="3" class="flbl flbl-0">Срок</n-text>
-            <n-select v-model:value="filters.due" :options="dueOptions" size="small" />
-            <n-text depth="3" class="flbl">Приоритет</n-text>
-            <n-checkbox-group v-model:value="filters.priorities">
-              <n-space vertical :size="4">
-                <n-checkbox
-                  v-for="o in priorityFilterOptions"
-                  :key="o.value"
-                  :value="o.value"
-                  :label="o.label"
-                />
-              </n-space>
-            </n-checkbox-group>
-            <n-text depth="3" class="flbl">Исполнитель</n-text>
-            <n-checkbox-group v-model:value="filters.assignees">
-              <n-space vertical :size="4">
-                <n-checkbox
-                  v-for="o in memberFilterOptions"
-                  :key="o.value"
-                  :value="o.value"
-                  :label="o.label"
-                />
-              </n-space>
-            </n-checkbox-group>
-            <template v-if="tagFilterOptions.length">
-              <n-text depth="3" class="flbl">Теги</n-text>
-              <n-checkbox-group v-model:value="filters.tags">
-                <n-space vertical :size="4">
-                  <n-checkbox
-                    v-for="o in tagFilterOptions"
-                    :key="o.value"
-                    :value="o.value"
-                    :label="o.label"
-                  />
-                </n-space>
-              </n-checkbox-group>
-            </template>
-          </div>
-        </n-popover>
+          <n-dropdown trigger="click" placement="bottom-start" :options="addOptions" @select="onAddFacet">
+            <button class="facet-add" title="Добавить группировку / сортировку / фильтр">
+              <n-icon :component="AddOutline" :size="14" />
+            </button>
+          </n-dropdown>
+
+          <input
+            v-model="filters.q"
+            class="composer-search"
+            placeholder="Поиск по названию…"
+          />
+          <button v-if="hasClearableFacets" class="facet-clear" title="Сбросить всё" @click="clearAll">
+            ×
+          </button>
+        </div>
 
         <n-tooltip>
           <template #trigger>
@@ -884,18 +886,6 @@ watch(
           </template>
           {{ subtasksExpanded ? 'Свернуть подзадачи' : 'Развернуть подзадачи' }}
         </n-tooltip>
-
-        <div class="subbar-spacer" />
-
-        <n-input
-          v-model:value="filters.q"
-          size="small"
-          placeholder="Поиск по названию"
-          clearable
-          class="task-search"
-        >
-          <template #prefix><n-icon :component="SearchOutline" /></template>
-        </n-input>
 
         <!-- saved views: load (folder) + save (disk) -->
         <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
@@ -1118,13 +1108,102 @@ watch(
 .subbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--t-border);
 }
 .subbar-spacer {
   flex: 1;
+}
+/* composer bar */
+.composer {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+}
+.facet {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  background: var(--t-hover);
+  color: var(--t-text2);
+  white-space: nowrap;
+}
+.facet.group {
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
+  color: var(--t-text1);
+  cursor: pointer;
+  padding-right: 9px;
+}
+.facet.sortable {
+  cursor: pointer;
+}
+.facet-x {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--t-text3);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 3px;
+  border-radius: 50%;
+}
+.facet-x:hover {
+  color: var(--t-text1);
+  background: var(--t-border);
+}
+.facet-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px dashed var(--t-border);
+  background: none;
+  color: var(--t-primary);
+  cursor: pointer;
+  flex: none;
+}
+.facet-add:hover {
+  border-color: var(--t-primary);
+}
+.composer-search {
+  flex: 1;
+  min-width: 120px;
+  border: none;
+  background: none;
+  outline: none;
+  color: var(--t-text1);
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.composer-search::placeholder {
+  color: var(--t-text3);
+}
+.facet-clear {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--t-text3);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  flex: none;
+}
+.facet-clear:hover {
+  color: var(--t-text1);
 }
 .sb-prefix {
   width: 170px;
