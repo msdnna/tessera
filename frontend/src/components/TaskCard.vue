@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, h } from 'vue'
 import draggable from 'vuedraggable'
-import { NIcon, NPopover, NDatePicker, NInput, NDropdown, NPopconfirm } from 'naive-ui'
+import { NIcon, NPopover, NTooltip, NDatePicker, NInput, NDropdown, NPopconfirm } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
@@ -22,8 +22,13 @@ import {
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
-import { hueGrad, hueGradVert, tagPillBg, softFill } from '@/utils/gradient'
+import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue } from '@/utils/gradient'
 import { pressMoved } from '@/utils/dnd'
+import { useThemeStore } from '@/stores/theme'
+
+const theme = useThemeStore()
+// Tag/label colour clamped for legibility on the active theme (used for text).
+const tagText = (c) => readableHue(c, theme.isDark)
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -456,7 +461,7 @@ async function submitAddSub() {
                 :style="{
                   border: '1px solid transparent',
                   background: tagPillBg(taskTags[0].color),
-                  color: taskTags[0].color || '#888',
+                  color: tagText(taskTags[0].color),
                   boxShadow: stackShadow,
                   marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
                 }"
@@ -464,7 +469,7 @@ async function submitAddSub() {
               >
                 <span
                   class="tname accent-grad-text"
-                  :style="{ '--grad': hueGrad(taskTags[0].color) }"
+                  :style="{ '--grad': hueGrad(tagText(taskTags[0].color)) }"
                   >{{ taskTags[0].name }}</span
                 >
                 <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
@@ -475,7 +480,7 @@ async function submitAddSub() {
                 v-for="t in taskTags"
                 :key="t.id"
                 class="chip"
-                :style="{ background: (t.color || '#888') + '22', color: t.color || '#888' }"
+                :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
                 >{{ t.name }}</span
               >
             </div>
@@ -493,7 +498,7 @@ async function submitAddSub() {
                   ? { background: hueGrad(t.color), color: '#fff', borderColor: 'transparent' }
                   : {
                       background: softFill(t.color),
-                      color: t.color || '#888',
+                      color: tagText(t.color),
                       borderColor: (t.color || '#888') + '66',
                     }
               "
@@ -517,21 +522,23 @@ async function submitAddSub() {
       <!-- author → assignees: the creator (non-clickable) points at the
            assignee(s). Author omitted when unknown (older tasks). -->
       <div class="people">
-        <span
-          v-if="author"
-          class="avatar author-ava"
-          :title="author.gl ? `Автор: @${author.login} (GitLab)` : `Автор: ${author.name}`"
-          @click.stop
-          >{{ initials(author.name) }}</span
-        >
+        <n-tooltip v-if="author">
+          <template #trigger>
+            <span class="avatar author-ava" @click.stop>{{ initials(author.name) }}</span>
+          </template>
+          {{ author.gl ? `Автор: @${author.login} (GitLab)` : `Автор: ${author.name}` }}
+        </n-tooltip>
         <n-icon v-if="author" :component="ArrowForwardOutline" :size="11" class="people-arrow" />
         <n-popover trigger="click" placement="bottom-end">
           <template #trigger>
             <button class="pill assignee-pill" @click.stop>
               <template v-if="assignees.length">
-                <span v-for="u in assignees" :key="u.user_id" class="avatar" :title="u.name">
-                  {{ initials(u.name) }}
-                </span>
+                <n-tooltip v-for="u in assignees" :key="u.user_id">
+                  <template #trigger>
+                    <span class="avatar">{{ initials(u.name) }}</span>
+                  </template>
+                  Исполнитель: {{ u.name }}
+                </n-tooltip>
               </template>
               <n-icon v-else :component="PersonAddOutline" :size="13" />
             </button>

@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.45.1] — 2026-06-11
+- Tag text is now legible on both themes: the label colour is lightness-clamped
+  for the active theme (`readableHue`) when used as text/gradient, so a dark blue
+  (`C: Backend`) stays readable on dark and a light grey (`T: Configuration`)
+  stays readable on light — the chip background tint is unchanged.
+- Board-card author and assignee avatars now show a proper hover tooltip
+  (`n-tooltip`) instead of the native `title` text.
+
 ### [0.45.0] — 2026-06-11
 - Tasks now show an **Автор** (author) field — who created the card, read-only,
   fixed at creation. The task modal gains an Автор row (the GitLab issue author

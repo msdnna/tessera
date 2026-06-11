@@ -46,7 +46,8 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad, tagPillBg, softFill } from '@/utils/gradient'
+import { hueGrad, tagPillBg, softFill, readableHue } from '@/utils/gradient'
+import { useThemeStore } from '@/stores/theme'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
@@ -61,6 +62,9 @@ const props = defineProps({
 const emit = defineEmits(['update:show', 'changed', 'open'])
 
 const store = useWorkspacesStore()
+const theme = useThemeStore()
+// Tag colour clamped for legible text on the active theme.
+const tagText = (c) => readableHue(c, theme.isDark)
 const auth = useAuthStore()
 const router = useRouter()
 const message = useMessage()
@@ -795,7 +799,7 @@ function eventText(e) {
                         class="chip"
                         :style="{ border: '1px solid transparent', background: tagPillBg(t.color, true) }"
                       >
-                        <span class="accent-grad-text" :style="{ '--grad': hueGrad(t.color) }">{{
+                        <span class="accent-grad-text" :style="{ '--grad': hueGrad(tagText(t.color)) }">{{
                           t.name
                         }}</span>
                       </span>
@@ -815,7 +819,7 @@ function eventText(e) {
                           ? { background: hueGrad(t.color), color: '#fff', borderColor: 'transparent' }
                           : {
                               background: softFill(t.color),
-                              color: t.color || '#888',
+                              color: tagText(t.color),
                               borderColor: (t.color || '#888') + '66',
                             }
                       "
