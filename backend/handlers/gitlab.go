@@ -248,6 +248,14 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"total": created + updated, "created": created, "updated": updated})
 }
 
+// syncBoard caches a board's columns + done column during a sync run.
+type syncBoard struct {
+	id     uuid.UUID
+	cols   []db.BoardColumn
+	byName map[string]db.BoardColumn
+	doneID *uuid.UUID
+}
+
 // runSync is the credential-driven pull engine, decoupled from the HTTP request
 // so the background worker can call it too. It mirrors the issues assigned to
 // cred's GitLab user onto the integration's board (status→column, priority→
@@ -277,30 +285,57 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 	}
 	issues := mergeIssues(assigned, linked)
 
-	board, err := h.q.GetBoard(ctx, integ.BoardID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("integration board no longer exists")
-	}
-	cols, err := h.q.ListColumns(ctx, board.ID)
-	if err != nil || len(cols) == 0 {
-		return 0, 0, fmt.Errorf("integration board has no columns")
-	}
-	colByName := make(map[string]db.BoardColumn, len(cols))
-	for _, col := range cols {
-		colByName[col.Name] = col
-	}
-	doneID := h.resolveDoneColumn(ctx, board)
 	rules := parseRules(integ.LabelRules)
 	wsID := integ.WorkspaceID
 
+	// Per-board column cache — a "board" rule can route a task onto a different
+	// board (e.g. a Backlog board), so columns are resolved per target board.
+	cache := map[uuid.UUID]*syncBoard{}
+	loadBoard := func(bid uuid.UUID) (*syncBoard, error) {
+		if bc, ok := cache[bid]; ok {
+			return bc, nil
+		}
+		b, err := h.q.GetBoard(ctx, bid)
+		if err != nil {
+			return nil, err
+		}
+		cols, err := h.q.ListColumns(ctx, bid)
+		if err != nil || len(cols) == 0 {
+			return nil, fmt.Errorf("board has no columns")
+		}
+		byName := make(map[string]db.BoardColumn, len(cols))
+		for _, c := range cols {
+			byName[c.Name] = c
+		}
+		bc := &syncBoard{id: bid, cols: cols, byName: byName, doneID: h.resolveDoneColumn(ctx, b)}
+		cache[bid] = bc
+		return bc, nil
+	}
+	if _, err := loadBoard(integ.BoardID); err != nil {
+		return 0, 0, fmt.Errorf("integration board has no columns")
+	}
+
 	for _, issue := range issues {
 		res := rules.Resolve(issue.Labels)
-		col, found := colByName[res.ColumnName]
+		// A board rule can route to another board in this workspace.
+		targetBoard := integ.BoardID
+		if res.BoardID != "" {
+			if bid, perr := uuid.Parse(res.BoardID); perr == nil {
+				if ws, werr := h.q.WorkspaceIDForBoard(ctx, bid); werr == nil && ws == wsID {
+					targetBoard = bid
+				}
+			}
+		}
+		bc, berr := loadBoard(targetBoard)
+		if berr != nil {
+			bc = cache[integ.BoardID] // fall back to the default board
+		}
+		col, found := bc.byName[res.ColumnName]
 		if !found {
-			col = cols[0] // leftmost column as a last-resort fallback
+			col = bc.cols[0] // leftmost column as a last-resort fallback
 		}
 		var completedAt *time.Time
-		if doneID != nil && col.ID == *doneID {
+		if bc.doneID != nil && col.ID == *bc.doneID {
 			now := time.Now()
 			completedAt = &now
 		}
@@ -311,7 +346,7 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		})
 		switch {
 		case errors.Is(lerr, pgx.ErrNoRows):
-			t, cerr := h.syncCreateTask(ctx, wsID, board.ID, col.ID, issue, res.Priority, completedAt, dueDate)
+			t, cerr := h.syncCreateTask(ctx, wsID, bc.id, col.ID, issue, res.Priority, completedAt, dueDate)
 			if cerr != nil {
 				log.Printf("gitlab sync: create task for issue !%d failed: %v", issue.IID, cerr)
 				continue
@@ -337,7 +372,7 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		default:
 			t, uerr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
 				ID: link.TaskID, Title: issue.Title, Description: issue.Description,
-				Priority: res.Priority, ColumnID: col.ID, CompletedAt: completedAt,
+				Priority: res.Priority, ColumnID: col.ID, CompletedAt: completedAt, BoardID: bc.id,
 			})
 			if uerr != nil {
 				log.Printf("gitlab sync: update task for issue !%d failed: %v", issue.IID, uerr)
@@ -452,7 +487,7 @@ func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.U
 	if completedAt != nil {
 		if done, derr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
 			ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
-			ColumnID: t.ColumnID, CompletedAt: completedAt,
+			ColumnID: t.ColumnID, CompletedAt: completedAt, BoardID: t.BoardID,
 		}); derr == nil {
 			t = done
 		}
@@ -612,7 +647,9 @@ func parseRules(raw []byte) gitlab.Rules {
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return gitlab.DefaultRules()
 	}
-	if r.StatusPrefix == "" && len(r.StatusToColumn) == 0 && len(r.PriorityMap) == 0 {
+	// Empty or legacy (pre-generic) config → fall back to defaults; the user
+	// re-saves through the new rule editor.
+	if len(r.Rules) == 0 {
 		return gitlab.DefaultRules()
 	}
 	return r

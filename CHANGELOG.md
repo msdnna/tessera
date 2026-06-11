@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.48.0] — 2026-06-11
+- GitLab integration settings get a **generic rule editor**: add ordered rules
+  with a match (prefix or regex), an action (status / priority / board / tag /
+  group / ignore) and per-action params (value maps for status/priority/board, a
+  keep-prefix toggle for tags), plus a default column and default action for
+  unmatched labels. Replaces the fixed status/priority/tag form.
+
 ### [0.47.0] — 2026-06-11
 - GitLab integration settings gain a **«Источник срока»** (due source) selector:
   issue-then-milestone (default) / issue only / milestone only / off.
@@ -876,6 +883,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.25.0] — 2026-06-11
+- The GitLab label rule engine is now **generic**: `label_rules` is an ordered
+  list of `{match, match_type: prefix|regex, action, …}` rules instead of the
+  hardcoded status/priority/tag split. Actions: `status` (→ column via value_map),
+  `priority` (→ level), `board` (→ route the task onto another board, e.g. a
+  Backlog board), `tag` (keep-prefix per rule), `group` (recognised; subtask
+  grouping wired later via GraphQL hierarchy), `ignore`. First matching rule wins
+  per label; unmatched labels follow `default_action`. Legacy configs fall back
+  to defaults until re-saved.
+- Sync resolves the target board per issue (board action) with a per-board column
+  cache, so a routed task lands on / moves to the mapped board.
 
 ### [0.24.0] — 2026-06-11
 - GitLab due-date sync now also reads the issue's **milestone End date**: a task's

@@ -406,7 +406,7 @@ func (q *Queries) MarkGitlabSynced(ctx context.Context, id uuid.UUID) error {
 
 const syncUpdateTask = `-- name: SyncUpdateTask :one
 UPDATE tasks
-SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, updated_at = now()
+SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, board_id = $7, updated_at = now()
 WHERE id = $1
 RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number
 `
@@ -418,6 +418,7 @@ type SyncUpdateTaskParams struct {
 	Priority    int32      `json:"priority"`
 	ColumnID    uuid.UUID  `json:"column_id"`
 	CompletedAt *time.Time `json:"completed_at"`
+	BoardID     uuid.UUID  `json:"board_id"`
 }
 
 // SyncUpsertTask updates the synced fields of a linked task without touching its
@@ -430,6 +431,7 @@ func (q *Queries) SyncUpdateTask(ctx context.Context, arg SyncUpdateTaskParams) 
 		arg.Priority,
 		arg.ColumnID,
 		arg.CompletedAt,
+		arg.BoardID,
 	)
 	var i Task
 	err := row.Scan(

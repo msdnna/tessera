@@ -64,13 +64,11 @@ const enabled = ref(true)
 const intervalSec = ref(0)
 const dueSource = ref('issue_milestone')
 const lastSynced = ref(null)
-const statusPrefix = ref('S: ')
-const priorityPrefix = ref('P: ')
 const defaultColumn = ref('')
-const tagMode = ref('all')
+const defaultAction = ref('tag')
 const tagKeepPrefix = ref(true)
-const statusRows = ref([]) // [{ k: glStatus, v: columnName }]
-const prioRows = ref([]) // [{ k: glPriority, v: level }]
+// Generic rule list. Each: { match, match_type, action, keep_prefix, map:[{k,v}] }
+const rules = ref([])
 const boardOptions = ref([])
 const columnOptions = ref([])
 const saving = ref(false)
@@ -82,10 +80,30 @@ const intervalOptions = [
   { label: 'Каждые 15 минут', value: 900 },
   { label: 'Каждый час', value: 3600 },
 ]
-const tagModeOptions = [
-  { label: 'Создавать теги', value: 'all' },
+const actionOptions = [
+  { label: 'Статус → колонка', value: 'status' },
+  { label: 'Приоритет', value: 'priority' },
+  { label: 'Доска (роутинг)', value: 'board' },
+  { label: 'Тег', value: 'tag' },
+  { label: 'Группировка (подзадачи)', value: 'group' },
   { label: 'Игнорировать', value: 'ignore' },
 ]
+const matchTypeOptions = [
+  { label: 'Префикс', value: 'prefix' },
+  { label: 'Regex', value: 'regex' },
+]
+const defaultActionOptions = [
+  { label: 'Создавать тег', value: 'tag' },
+  { label: 'Игнорировать', value: 'ignore' },
+]
+// Target options for a rule's value-map, by action.
+function mapTargetOptions(action) {
+  if (action === 'status') return columnOptions.value
+  if (action === 'priority') return priorityLevelOptions
+  if (action === 'board') return boardOptions.value
+  return []
+}
+const mapActions = ['status', 'priority', 'board']
 const dueSourceOptions = [
   { label: 'Issue, иначе срок Milestone', value: 'issue_milestone' },
   { label: 'Только из Issue', value: 'issue' },
@@ -142,13 +160,19 @@ async function loadIntegration() {
     dueSource.value = data.due_source || 'issue_milestone'
     lastSynced.value = data.last_synced_at || null
     const r = data.label_rules || {}
-    statusPrefix.value = r.status_prefix ?? 'S: '
-    priorityPrefix.value = r.priority_prefix ?? 'P: '
     defaultColumn.value = r.default_column || ''
-    tagMode.value = r.tag_mode || 'all'
+    defaultAction.value = r.default_action || 'tag'
     tagKeepPrefix.value = r.tag_keep_prefix !== false
-    statusRows.value = Object.entries(r.status_to_column || {}).map(([k, v]) => ({ k, v }))
-    prioRows.value = Object.entries(r.priority_map || {}).map(([k, v]) => ({ k, v: Number(v) }))
+    rules.value = (r.rules || []).map((rule) => ({
+      match: rule.match || '',
+      match_type: rule.match_type || 'prefix',
+      action: rule.action || 'tag',
+      keep_prefix: rule.keep_prefix !== false,
+      map: Object.entries(rule.value_map || {}).map(([k, v]) => ({
+        k,
+        v: rule.action === 'priority' ? Number(v) : v,
+      })),
+    }))
     if (boardId.value) await loadColumns(boardId.value)
   } catch (e) {
     message.error(e.message)
@@ -160,11 +184,11 @@ function onBoardChange(id) {
   loadColumns(id)
 }
 
-function addStatusRow() {
-  statusRows.value.push({ k: '', v: '' })
+function addRule() {
+  rules.value.push({ match: '', match_type: 'prefix', action: 'tag', keep_prefix: true, map: [] })
 }
-function addPrioRow() {
-  prioRows.value.push({ k: '', v: 0 })
+function addMapRow(rule) {
+  rule.map.push({ k: '', v: '' })
 }
 
 async function save() {
@@ -173,17 +197,21 @@ async function save() {
     return
   }
   const label_rules = {
-    status_prefix: statusPrefix.value,
-    status_to_column: Object.fromEntries(
-      statusRows.value.filter((r) => r.k && r.v).map((r) => [r.k, r.v]),
-    ),
     default_column: defaultColumn.value,
-    priority_prefix: priorityPrefix.value,
-    priority_map: Object.fromEntries(
-      prioRows.value.filter((r) => r.k !== '').map((r) => [r.k, Number(r.v)]),
-    ),
-    tag_mode: tagMode.value,
+    default_action: defaultAction.value,
     tag_keep_prefix: tagKeepPrefix.value,
+    rules: rules.value.map((rule) => {
+      const out = { match: rule.match, match_type: rule.match_type, action: rule.action }
+      if (rule.action === 'tag') out.keep_prefix = rule.keep_prefix
+      if (mapActions.includes(rule.action)) {
+        out.value_map = Object.fromEntries(
+          rule.map
+            .filter((m) => m.k !== '' && m.v !== '' && m.v != null)
+            .map((m) => [m.k, String(m.v)]),
+        )
+      }
+      return out
+    }),
   }
   saving.value = true
   try {
@@ -311,12 +339,9 @@ watch(
           <div><n-switch v-model:value="enabled" /></div>
         </div>
 
-        <!-- Rule engine -->
-        <h4 class="gl-h gl-h-sub">Правила лейблов → доска</h4>
-
+        <!-- Generic rule engine -->
+        <h4 class="gl-h gl-h-sub">Правила лейблов</h4>
         <div class="gl-grid">
-          <n-text depth="3" class="lbl">Префикс статуса</n-text>
-          <n-input v-model:value="statusPrefix" size="small" placeholder="S: " />
           <n-text depth="3" class="lbl">Колонка по умолчанию</n-text>
           <n-select
             v-model:value="defaultColumn"
@@ -324,50 +349,71 @@ watch(
             size="small"
             placeholder="напр. К работе"
           />
-        </div>
-
-        <div class="gl-rules">
-          <div class="gl-rules-head">
-            <span>Статус GitLab</span><span>→ Колонка</span><span></span>
-          </div>
-          <div v-for="(row, i) in statusRows" :key="`s${i}`" class="gl-rule">
-            <n-input v-model:value="row.k" size="small" placeholder="In review" />
-            <n-select v-model:value="row.v" :options="columnOptions" size="small" placeholder="колонка" />
-            <n-button text size="tiny" type="error" @click="statusRows.splice(i, 1)">
-              <n-icon :component="TrashOutline" />
-            </n-button>
-          </div>
-          <n-button text size="tiny" type="primary" class="gl-add" @click="addStatusRow">
-            <n-icon :component="AddOutline" /> статус
-          </n-button>
-        </div>
-
-        <div class="gl-grid gl-grid-top">
-          <n-text depth="3" class="lbl">Префикс приоритета</n-text>
-          <n-input v-model:value="priorityPrefix" size="small" placeholder="P: " />
-        </div>
-        <div class="gl-rules">
-          <div class="gl-rules-head">
-            <span>Приоритет GitLab</span><span>→ Уровень</span><span></span>
-          </div>
-          <div v-for="(row, i) in prioRows" :key="`p${i}`" class="gl-rule">
-            <n-input v-model:value="row.k" size="small" placeholder="Critical" />
-            <n-select v-model:value="row.v" :options="priorityLevelOptions" size="small" />
-            <n-button text size="tiny" type="error" @click="prioRows.splice(i, 1)">
-              <n-icon :component="TrashOutline" />
-            </n-button>
-          </div>
-          <n-button text size="tiny" type="primary" class="gl-add" @click="addPrioRow">
-            <n-icon :component="AddOutline" /> приоритет
-          </n-button>
-        </div>
-
-        <div class="gl-grid gl-grid-top">
           <n-text depth="3" class="lbl">Прочие лейблы</n-text>
-          <n-select v-model:value="tagMode" :options="tagModeOptions" size="small" />
+          <n-select v-model:value="defaultAction" :options="defaultActionOptions" size="small" />
           <n-text depth="3" class="lbl">Сохранять префикс тега</n-text>
           <div><n-switch v-model:value="tagKeepPrefix" /></div>
         </div>
+
+        <div v-for="(rule, ri) in rules" :key="ri" class="gl-rcard">
+          <div class="gl-rrow">
+            <n-input
+              v-model:value="rule.match"
+              size="small"
+              placeholder="S: либо ^(T|C): "
+              class="gl-rmatch"
+            />
+            <n-select
+              v-model:value="rule.match_type"
+              :options="matchTypeOptions"
+              size="small"
+              class="gl-rtype"
+            />
+            <n-select
+              v-model:value="rule.action"
+              :options="actionOptions"
+              size="small"
+              class="gl-raction"
+            />
+            <n-button text size="tiny" type="error" @click="rules.splice(ri, 1)">
+              <n-icon :component="TrashOutline" />
+            </n-button>
+          </div>
+          <div v-if="rule.action === 'tag'" class="gl-ropt">
+            <n-text depth="3" class="lbl">Сохранять префикс</n-text>
+            <n-switch v-model:value="rule.keep_prefix" size="small" />
+          </div>
+          <div v-if="mapActions.includes(rule.action)" class="gl-rmap">
+            <div v-for="(m, mi) in rule.map" :key="mi" class="gl-rule">
+              <n-input
+                v-model:value="m.k"
+                size="small"
+                :placeholder="
+                  rule.action === 'board'
+                    ? 'Future'
+                    : rule.action === 'priority'
+                      ? 'Critical'
+                      : 'In review'
+                "
+              />
+              <n-select
+                v-model:value="m.v"
+                :options="mapTargetOptions(rule.action)"
+                size="small"
+                placeholder="→ значение"
+              />
+              <n-button text size="tiny" type="error" @click="rule.map.splice(mi, 1)">
+                <n-icon :component="TrashOutline" />
+              </n-button>
+            </div>
+            <n-button text size="tiny" type="primary" class="gl-add" @click="addMapRow(rule)">
+              <n-icon :component="AddOutline" /> значение
+            </n-button>
+          </div>
+        </div>
+        <n-button text size="small" type="primary" class="gl-add" @click="addRule">
+          <n-icon :component="AddOutline" /> правило
+        </n-button>
 
         <div class="gl-footer">
           <span class="gl-synced">Последний синк: {{ lastSyncedText }}</span>
@@ -456,6 +502,29 @@ watch(
   gap: 8px;
   align-items: center;
   margin-bottom: 6px;
+}
+.gl-rcard {
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.gl-rrow {
+  display: grid;
+  grid-template-columns: 1fr 96px 150px 24px;
+  gap: 8px;
+  align-items: center;
+}
+.gl-ropt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.gl-rmap {
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--t-border);
 }
 .gl-add {
   margin-top: 2px;

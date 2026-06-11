@@ -1,26 +1,41 @@
 package gitlab
 
-import "strings"
+import (
+	"regexp"
+	"strconv"
+	"strings"
+)
 
-// Rules is the per-integration label rule engine config (stored as JSONB on
-// gitlab_integrations.label_rules). It maps a GitLab issue's labels onto Tessera
-// board state by label-namespace prefix:
-//   - StatusPrefix labels  → a board column (kanban status; mutually exclusive)
-//   - PriorityPrefix labels → the native task priority field
-//   - everything else       → tags (optionally keeping the prefix)
-//
-// Column/priority targets are referenced by *name* / scalar (portable across
-// boards), and resolved to ids by the caller against the integration's board.
+// Rules is the per-integration label rule engine (stored as JSONB on
+// gitlab_integrations.label_rules). It's a generic, ordered list of rules: each
+// matches GitLab labels by a prefix or regex and applies an action. This
+// replaces the old hardcoded status/priority/tag split.
 type Rules struct {
-	StatusPrefix   string            `json:"status_prefix"`
-	StatusToColumn map[string]string `json:"status_to_column"` // GL status value (sans prefix) → column name
-	DefaultColumn  string            `json:"default_column"`   // column for issues with no mapped status
+	Rules         []Rule `json:"rules"`
+	DefaultColumn string `json:"default_column"`  // column for issues with no status match
+	DefaultAction string `json:"default_action"`  // "tag" (default) | "ignore" for unmatched labels
+	TagKeepPrefix bool   `json:"tag_keep_prefix"` // keep the label prefix on tag names (default action + tag rules without their own setting)
+}
 
-	PriorityPrefix string           `json:"priority_prefix"`
-	PriorityMap    map[string]int32 `json:"priority_map"` // GL priority value (sans prefix) → 0..4
+// Rule matches labels and maps them to one action.
+//
+//	action "status"   → ValueMap[value] is a Tessera column name
+//	action "priority" → ValueMap[value] is a priority level "0".."4"
+//	action "board"    → ValueMap[value] is a target Tessera board id (uuid string)
+//	action "tag"      → the label becomes a tag (KeepPrefix decides the name)
+//	action "group"    → marks the task as a grouped parent (subtasks handled later)
+//	action "ignore"   → the label is dropped
+//
+// "value" is the label title with the matched prefix trimmed (prefix match) or
+// the full title (regex match).
+type Rule struct {
+	Match      string            `json:"match"`       // prefix string or regex pattern
+	MatchType  string            `json:"match_type"`  // "prefix" (default) | "regex"
+	Action     string            `json:"action"`      // status|priority|board|tag|group|ignore
+	ValueMap   map[string]string `json:"value_map"`   // for status/priority/board
+	KeepPrefix bool              `json:"keep_prefix"` // for tag action
 
-	TagMode       string `json:"tag_mode"`        // "all" (default) | "ignore"
-	TagKeepPrefix bool   `json:"tag_keep_prefix"` // keep the "T: " prefix on synced tag names
+	re *regexp.Regexp // compiled lazily for regex rules
 }
 
 // Label is a GitLab label reduced to what the rule engine needs.
@@ -29,8 +44,7 @@ type Label struct {
 	Color string // hex, e.g. "#428BCA" (may be empty)
 }
 
-// Tag is a label resolved to a Tessera tag (name + the GitLab label colour,
-// which may be empty — the caller picks a fallback colour then).
+// Tag is a label resolved to a Tessera tag.
 type Tag struct {
 	Name  string
 	Color string
@@ -39,88 +53,125 @@ type Tag struct {
 // Resolution is the board state derived from an issue's labels.
 type Resolution struct {
 	ColumnName string // target column name (DefaultColumn if no status matched)
-	Priority   int32  // 0 when no priority label matched
-	Tags       []Tag  // labels to attach as tags (deduped, in input order)
+	Priority   int32  // 0 when no priority matched
+	Tags       []Tag  // labels to attach as tags (deduped, in order)
+	BoardID    string // target board id when a board rule matched, else ""
+	Group      bool   // a group rule matched (subtask grouping handled later)
 }
 
-// DefaultRules returns sensible defaults for the msdnna GitLab taxonomy
-// (prefixes S:/P:/T:/C:/Scope:/B: …). Status collapses onto the 4 seeded board
-// columns; non-status/priority labels become tags with their prefix kept, so
-// they stay visually distinct from manually-applied scope tags.
+// DefaultRules encodes the msdnna GitLab taxonomy as generic rules: S:→status,
+// P:→priority, M:→group; everything else becomes a prefixed tag (default action).
 func DefaultRules() Rules {
 	return Rules{
-		StatusPrefix: "S: ",
-		StatusToColumn: map[string]string{
-			"To do":        "К работе",
-			"On hold":      "К работе",
-			"In progress":  "В процессе",
-			"Needs rework": "В процессе",
-			"Needs tests":  "В процессе",
-			"In review":    "На рассмотрении",
-			"Tested":       "На рассмотрении",
-			"Done":         "Готово",
-		},
-		DefaultColumn:  "К работе",
-		PriorityPrefix: "P: ",
-		PriorityMap: map[string]int32{
-			"Critical":     4,
-			"High":         3,
-			"Medium":       2,
-			"Low":          1,
-			"Nice to have": 0,
-		},
-		TagMode:       "all",
+		DefaultColumn: "К работе",
+		DefaultAction: "tag",
 		TagKeepPrefix: true,
+		Rules: []Rule{
+			{Match: "S: ", MatchType: "prefix", Action: "status", ValueMap: map[string]string{
+				"To do": "К работе", "On hold": "К работе",
+				"In progress": "В процессе", "Needs rework": "В процессе", "Needs tests": "В процессе",
+				"In review": "На рассмотрении", "Tested": "На рассмотрении",
+				"Done": "Готово",
+			}},
+			{Match: "P: ", MatchType: "prefix", Action: "priority", ValueMap: map[string]string{
+				"Critical": "4", "High": "3", "Medium": "2", "Low": "1", "Nice to have": "0",
+			}},
+			{Match: "M: ", MatchType: "prefix", Action: "group"},
+		},
 	}
 }
 
-// Resolve maps an issue's labels to board state. Pure: no I/O, deterministic in
-// input order. The first matched status label wins (statuses are meant to be
-// mutually exclusive); likewise the first matched priority.
-func (r Rules) Resolve(labels []Label) Resolution {
-	res := Resolution{ColumnName: r.DefaultColumn}
-	statusSet := false
-	prioSet := false
+// matches reports whether the rule matches a label title, returning the extracted
+// value (title minus prefix, or full title for regex).
+func (r *Rule) matches(title string) (string, bool) {
+	if r.MatchType == "regex" {
+		if r.re == nil {
+			re, err := regexp.Compile(r.Match)
+			if err != nil {
+				return "", false
+			}
+			r.re = re
+		}
+		if r.re.MatchString(title) {
+			return title, true
+		}
+		return "", false
+	}
+	// prefix (default)
+	if r.Match == "" || strings.HasPrefix(title, r.Match) {
+		return strings.TrimPrefix(title, r.Match), true
+	}
+	return "", false
+}
+
+// Resolve maps an issue's labels to board state. Pure & deterministic in input
+// order. Each label takes the first rule that matches; status/priority/board are
+// first-match-wins across all labels.
+func (rs Rules) Resolve(labels []Label) Resolution {
+	res := Resolution{ColumnName: rs.DefaultColumn}
+	statusSet, prioSet, boardSet := false, false, false
 	seen := map[string]struct{}{}
 
+	addTag := func(title, color string, keepPrefix bool) {
+		name := title
+		if !keepPrefix {
+			name = stripNamespace(title)
+		}
+		if name == "" {
+			return
+		}
+		if _, dup := seen[name]; dup {
+			return
+		}
+		seen[name] = struct{}{}
+		res.Tags = append(res.Tags, Tag{Name: name, Color: color})
+	}
+
 	for _, l := range labels {
-		label := strings.TrimSpace(l.Title)
-		if label == "" {
+		title := strings.TrimSpace(l.Title)
+		if title == "" {
 			continue
 		}
-		switch {
-		case r.StatusPrefix != "" && strings.HasPrefix(label, r.StatusPrefix):
-			if !statusSet {
-				val := strings.TrimPrefix(label, r.StatusPrefix)
-				if col, ok := r.StatusToColumn[val]; ok {
-					res.ColumnName = col
-					statusSet = true
+		matched := false
+		for i := range rs.Rules {
+			rule := &rs.Rules[i]
+			value, ok := rule.matches(title)
+			if !ok {
+				continue
+			}
+			matched = true
+			switch rule.Action {
+			case "status":
+				if !statusSet {
+					if col, ok := rule.ValueMap[value]; ok {
+						res.ColumnName, statusSet = col, true
+					}
 				}
-			}
-		case r.PriorityPrefix != "" && strings.HasPrefix(label, r.PriorityPrefix):
-			if !prioSet {
-				val := strings.TrimPrefix(label, r.PriorityPrefix)
-				if p, ok := r.PriorityMap[val]; ok {
-					res.Priority = p
-					prioSet = true
+			case "priority":
+				if !prioSet {
+					if lvl, ok := rule.ValueMap[value]; ok {
+						if n, err := strconv.Atoi(lvl); err == nil {
+							res.Priority, prioSet = int32(n), true
+						}
+					}
 				}
+			case "board":
+				if !boardSet {
+					if bid, ok := rule.ValueMap[value]; ok && bid != "" {
+						res.BoardID, boardSet = bid, true
+					}
+				}
+			case "group":
+				res.Group = true
+			case "tag":
+				addTag(title, l.Color, rule.KeepPrefix)
+			case "ignore":
+				// dropped
 			}
-		default:
-			if r.TagMode == "ignore" {
-				continue
-			}
-			name := label
-			if !r.TagKeepPrefix {
-				name = stripNamespace(label)
-			}
-			if name == "" {
-				continue
-			}
-			if _, dup := seen[name]; dup {
-				continue
-			}
-			seen[name] = struct{}{}
-			res.Tags = append(res.Tags, Tag{Name: name, Color: l.Color})
+			break // first matching rule wins for this label
+		}
+		if !matched && rs.DefaultAction != "ignore" {
+			addTag(title, l.Color, rs.TagKeepPrefix)
 		}
 	}
 	return res

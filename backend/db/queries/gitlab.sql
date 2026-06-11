@@ -85,7 +85,7 @@ RETURNING *;
 -- position (the user may have reordered it on the board).
 -- name: SyncUpdateTask :one
 UPDATE tasks
-SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, updated_at = now()
+SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, board_id = $7, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
