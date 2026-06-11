@@ -539,6 +539,8 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 // and meta. Returns the task id, whether it was newly created, and ok=false on a
 // per-issue failure (logged, caller continues).
 func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate *time.Time, actorID uuid.UUID) (uuid.UUID, bool, bool) {
+	// Resolve GitLab-relative attachment links to signed proxy URLs.
+	issue.Description = h.rewriteAssets(issue.Description, wsID)
 	link, lerr := h.q.GetGitlabLinkByGlobalID(ctx, db.GetGitlabLinkByGlobalIDParams{
 		IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
 	})
@@ -613,7 +615,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) {
 	h.reconcileTags(ctx, taskID, wsID, tags)
 	h.reconcileAssignees(ctx, taskID, issue.Assignees)
-	h.syncComments(ctx, taskID, issue.Notes)
+	h.syncComments(ctx, taskID, wsID, issue.Notes)
 }
 
 // reconcileTags ensures each resolved tag exists (with the GitLab colour or a
@@ -656,11 +658,11 @@ func (h *API) reconcileAssignees(ctx context.Context, taskID uuid.UUID, people [
 
 // syncComments upserts each GitLab note as a comment, idempotent by note id, with
 // the GitLab author denormalised (it may not be a Tessera user).
-func (h *API) syncComments(ctx context.Context, taskID uuid.UUID, notes []gitlab.Note) {
+func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []gitlab.Note) {
 	for _, n := range notes {
 		noteID := n.GlobalID
 		_ = h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
-			TaskID: taskID, Body: n.Body, GlNoteID: &noteID,
+			TaskID: taskID, Body: h.rewriteAssets(n.Body, wsID), GlNoteID: &noteID,
 			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name, CreatedAt: n.CreatedAt,
 		})
 	}

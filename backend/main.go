@@ -60,6 +60,11 @@ func main() {
 		// (an <img> can't send the bearer header); unguessable by UUID filename.
 		api.GET("/uploads/:name", rh.ServeUpload)
 
+		// Signed proxy for GitLab attachments embedded in synced content
+		// (public — an <img> can't send auth; HMAC-signed so only Tessera
+		// links work, fetched with the integration owner's token).
+		api.GET("/gitlab/asset", rh.GitlabAsset)
+
 		// Protected — require a valid access token.
 		protected := api.Group("/")
 		protected.Use(middleware.Auth(cfg.JWTSecret))

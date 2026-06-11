@@ -3,6 +3,7 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"log"
@@ -24,6 +25,7 @@ type API struct {
 	hub       *realtime.Hub
 	uploadDir string
 	sealer    *secrets.Sealer // encrypts secrets at rest (GitLab PATs)
+	assetKey  []byte          // HMAC key for signed GitLab asset-proxy URLs
 }
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from
@@ -34,7 +36,8 @@ func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir, encryptionKey string) *
 		// config.New guarantees a non-empty key, so this is unreachable in practice.
 		log.Fatalf("failed to init secret sealer: %v", err)
 	}
-	return &API{q: q, hub: hub, uploadDir: uploadDir, sealer: sealer}
+	ak := sha256.Sum256([]byte(encryptionKey + ":gitlab-asset"))
+	return &API{q: q, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:]}
 }
 
 // positionGap is the spacing used when appending to the end of a list.

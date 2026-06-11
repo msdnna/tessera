@@ -38,6 +38,16 @@ func New(baseURL, token string) *Client {
 	}
 }
 
+// NewHTTPClient returns a plain HTTP client configured like the GraphQL client
+// (honours GITLAB_INSECURE_TLS), for streaming asset downloads.
+func NewHTTPClient() *http.Client {
+	tr := &http.Transport{}
+	if strings.EqualFold(os.Getenv("GITLAB_INSECURE_TLS"), "true") {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for self-hosted private CAs
+	}
+	return &http.Client{Timeout: 60 * time.Second, Transport: tr}
+}
+
 // graphqlError is one entry of a GraphQL `errors` array.
 type graphqlError struct {
 	Message string `json:"message"`

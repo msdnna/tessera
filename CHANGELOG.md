@@ -934,6 +934,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.29.0] — 2026-06-11
+- GitLab **attachment links** in synced descriptions/comments now resolve: the
+  sync rewrites project-relative `/uploads/…` links to a signed, same-origin
+  proxy (`GET /api/gitlab/asset`, public but HMAC-signed so only Tessera-minted
+  links work) that streams the file from GitLab using the integration owner's
+  token. No expiry — the unguessable signature is the capability, like Tessera's
+  own public uploads; works for inline images too.
+
 ### [0.28.0] — 2026-06-11
 - GitLab **subtask grouping**: an issue matched by a `group` rule (e.g. `M:`) now
   pulls its GitLab child items (Work Items Hierarchy widget, GraphQL) and mirrors
