@@ -24,11 +24,15 @@ data class TaskDetail(
     // Always read them through the non-null accessors below.
     @SerializedName("tags") private val tagsRaw: List<Tag>? = null,
     @SerializedName("assignees") private val assigneesRaw: List<AssigneeUser>? = null,
+    @SerializedName("gitlab_assignees") private val gitlabAssigneesRaw: List<GitlabAssignee>? = null,
     @SerializedName("subtasks") private val subtasksRaw: List<Task>? = null,
+    // GitLab provenance — present when this task mirrors a GitLab issue.
+    @SerializedName("gitlab") val gitlab: GitlabLink? = null,
 ) {
     val isCompleted: Boolean get() = completedAt != null
     val tags: List<Tag> get() = tagsRaw.orEmpty()
     val assignees: List<AssigneeUser> get() = assigneesRaw.orEmpty()
+    val gitlabAssignees: List<GitlabAssignee> get() = gitlabAssigneesRaw.orEmpty()
     val subtasks: List<Task> get() = subtasksRaw.orEmpty()
 
     /** A lightweight [Task] view of this detail, for reusing card-level pickers. */
@@ -47,6 +51,21 @@ data class AssigneeUser(
     @SerializedName("name") val name: String = "",
 )
 
+/** GitLab provenance attached to a synced task (issue number, link, author). */
+data class GitlabLink(
+    @SerializedName("iid") val iid: Long = 0,
+    @SerializedName("web_url") val webUrl: String = "",
+    @SerializedName("author") val author: String = "",
+    @SerializedName("author_name") val authorName: String = "",
+    @SerializedName("project_path") val projectPath: String = "",
+)
+
+/** An external GitLab assignee (no Tessera account) — display-only. */
+data class GitlabAssignee(
+    @SerializedName("gl_username") val glUsername: String = "",
+    @SerializedName("gl_name") val glName: String = "",
+)
+
 /** A task comment — mirrors `ListTaskCommentsRow`. */
 data class Comment(
     @SerializedName("id") val id: String = "",
@@ -57,7 +76,16 @@ data class Comment(
     @SerializedName("updated_at") val updatedAt: String = "",
     @SerializedName("author_name") val authorName: String? = null,
     @SerializedName("author_email") val authorEmail: String? = null,
-)
+    // GitLab note author (when the comment was synced from GitLab; author_id null).
+    @SerializedName("gl_author_login") val glAuthorLogin: String? = null,
+    @SerializedName("gl_author_name") val glAuthorName: String? = null,
+) {
+    /** Display name: the Tessera author, else the GitLab note author. */
+    val displayName: String? get() = authorName ?: glAuthorName
+
+    /** True when this comment came from GitLab (no local author). */
+    val isGitlab: Boolean get() = authorId == null && glAuthorName != null
+}
 
 /** A task relation (referenced by #N) — mirrors `ListTaskRelationsRow`. */
 data class Relation(

@@ -73,7 +73,6 @@ import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.components.BoardDragOverlay
 import website.msdnna.tessera.ui.components.BoardDragState
 import website.msdnna.tessera.ui.components.ColorDot
-import website.msdnna.tessera.ui.components.dashedBorder
 import website.msdnna.tessera.ui.components.Drop
 import website.msdnna.tessera.ui.components.InlineCreateField
 import website.msdnna.tessera.ui.components.InlineTitleEditor
@@ -87,6 +86,7 @@ import website.msdnna.tessera.ui.components.TSwitch
 import website.msdnna.tessera.ui.components.TaskCard
 import website.msdnna.tessera.ui.components.animatePlacement
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.components.dashedBorder
 import website.msdnna.tessera.ui.components.dragCollapse
 import website.msdnna.tessera.ui.components.dragDim
 import website.msdnna.tessera.ui.components.draggableColumn

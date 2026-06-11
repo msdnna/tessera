@@ -20,10 +20,30 @@ fun shortDate(iso: String?): String {
     return try {
         val day = iso.substring(8, 10).trimStart('0')
         val month = iso.substring(5, 7).toInt()
-        "$day ${months[month - 1]}"
+        val year = iso.substring(0, 4)
+        // Include the year only when it isn't the current one, so a far-off (or
+        // stale) date isn't mistaken for one this year.
+        val suffix = if (year == currentYear()) "" else " $year"
+        "$day ${months[month - 1]}$suffix"
     } catch (_: Exception) {
         ""
     }
+}
+
+private fun currentYear(): String = Calendar.getInstance().get(Calendar.YEAR).toString()
+
+/** Today's `yyyy-MM-dd` in the device zone. */
+private fun todayKey(): String {
+    val cal = Calendar.getInstance()
+    return "%04d-%02d-%02d".format(
+        cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH),
+    )
+}
+
+/** True when a date-only due is before today (a task overdue if not completed). */
+fun isOverdue(iso: String?): Boolean {
+    val key = isoDateKey(iso)
+    return key.isNotEmpty() && key < todayKey()
 }
 
 /** The `yyyy-MM-dd` date portion of an ISO timestamp, or "" for the undated. */

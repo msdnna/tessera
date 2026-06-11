@@ -22,6 +22,13 @@ data class Task(
     @SerializedName("number") val number: Long? = null,
     @SerializedName("tag_ids") val tagIds: List<String> = emptyList(),
     @SerializedName("assignee_ids") val assigneeIds: List<String> = emptyList(),
+    // GitLab provenance (present when the card is mirrored from a GitLab issue).
+    @SerializedName("gitlab_iid") val gitlabIid: Long? = null,
+    @SerializedName("gitlab_url") val gitlabUrl: String? = null,
+    @SerializedName("gitlab_author") val gitlabAuthor: String? = null,
+    @SerializedName("gitlab_author_name") val gitlabAuthorName: String? = null,
+    // External GitLab assignees (no Tessera account) — display names only.
+    @SerializedName("gitlab_assignees") val gitlabAssignees: List<String> = emptyList(),
 ) {
     val isCompleted: Boolean get() = completedAt != null
 }

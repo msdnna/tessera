@@ -5,6 +5,22 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.4.0 — 2026-06-12
+GitLab integration parity, part 1 — display (the connection/config screens and
+board-view controls follow in later parts):
+- Synced tasks now show their **GitLab provenance**: a clickable `!iid` badge on
+  the card (opens the issue in the browser), and in the task modal an **Автор**
+  row (GitLab issue author or the Tessera creator), an external-assignee display
+  for GitLab users with no Tessera account, a GitLab issue link, and synced
+  comments rendered with their GitLab author (`· GitLab`).
+- The board card replaces the single assignee avatar with **author → assignee(s)**
+  (author muted/read-only); external GitLab assignees appear as muted avatars.
+- Card due dates show the **year** when it isn't the current one and tint **red
+  when overdue**; avatar initials are smarter (two words → both initials, a dot
+  handle → each part).
+- GitLab attachment links (`/api/gitlab/asset`) resolve like other server media
+  (inline images fetched with auth; links open in the browser).
+
 ## 0.3.1 — 2026-06-10
 - Create-column placeholder now has a **dashed border** instead of a solid one.
 - Links and @-mentions in descriptions and comments now use the **accent gradient**

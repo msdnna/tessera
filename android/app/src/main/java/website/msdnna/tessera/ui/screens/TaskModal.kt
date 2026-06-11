@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -49,6 +52,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.GitlabAssignee
+import website.msdnna.tessera.data.model.GitlabLink
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
@@ -172,6 +177,9 @@ fun TaskModal(
                         dueIso = detail.dueDate,
                         completed = detail.isCompleted,
                         assignees = detail.assignees.map { it.id },
+                        gitlabAssignees = detail.gitlabAssignees,
+                        createdBy = detail.createdBy,
+                        gitlab = detail.gitlab,
                         taskTagIds = detail.tags.map { it.id },
                         parentId = detail.parentId,
                         tags = tags,
@@ -321,16 +329,31 @@ private fun PropertyGrid(
     dueIso: String?,
     completed: Boolean,
     assignees: List<String>,
+    gitlabAssignees: List<GitlabAssignee>,
+    createdBy: String?,
+    gitlab: GitlabLink?,
     taskTagIds: List<String>,
     parentId: String?,
     tags: List<Tag>,
     members: List<Member>,
     parentCandidates: List<Task>,
 ) {
+    // Author (read-only): GitLab issue author for synced tasks, else the creator.
+    val authorName: String? = when {
+        gitlab?.author?.isNotBlank() == true -> gitlab.authorName.ifBlank { gitlab.author }
+        createdBy != null -> members.find { it.userId == createdBy }?.name
+        else -> null
+    }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PropRow(Ion.FLAG, "Приоритет") { PriorityValue(priority) { vm.setPriority(it) } }
         PropRow(Ion.CALENDAR, "Срок") { DueValue(dueIso) { vm.setDue(it) } }
-        PropRow(Ion.PEOPLE, "Исполнители") { AssigneesValue(assignees, members) { vm.toggleAssignee(it) } }
+        if (authorName != null) {
+            PropRow(Ion.PERSON_ADD, "Автор") { AuthorValue(authorName, gl = gitlab?.author?.takeIf { it.isNotBlank() }) }
+        }
+        PropRow(Ion.PEOPLE, "Исполнители") { AssigneesValue(assignees, gitlabAssignees, members) { vm.toggleAssignee(it) } }
+        if (gitlab != null) {
+            PropRow(Ion.GIT_BRANCH, "GitLab") { GitlabLinkValue(gitlab) }
+        }
         PropRow(Ion.PRICETAG, "Теги") { TagsValue(taskTagIds, tags, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} }) }
         PropRow(Ion.CHECK, "Выполнено") { TSwitch(checked = completed, onCheckedChange = { vm.setCompleted(it) }) }
         PropRow(Ion.GIT_MERGE, "Родитель") {
@@ -401,18 +424,30 @@ private fun DueValue(dueIso: String?, onPick: (String?) -> Unit) {
 }
 
 @Composable
-private fun AssigneesValue(assignees: List<String>, members: List<Member>, onToggle: (String) -> Unit) {
+private fun AssigneesValue(
+    assignees: List<String>,
+    gitlabAssignees: List<GitlabAssignee>,
+    members: List<Member>,
+    onToggle: (String) -> Unit,
+) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     val chosen = members.filter { it.userId in assignees }
     Box {
         Row(Modifier.clickableNoRipple { menu = true }, verticalAlignment = Alignment.CenterVertically) {
-            if (chosen.isEmpty()) {
+            if (chosen.isEmpty() && gitlabAssignees.isEmpty()) {
                 Text("Никто", color = c.text3, fontSize = 14.sp)
             } else {
                 chosen.forEach { m ->
                     Box(Modifier.size(24.dp).clip(CircleShape).background(accentGradient(c.primary)), contentAlignment = Alignment.Center) {
                         Text(initials(m.name), color = c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
+                // External GitLab assignees (no Tessera account) — muted, read-only.
+                gitlabAssignees.forEach { g ->
+                    Box(Modifier.size(24.dp).clip(CircleShape).background(c.text3), contentAlignment = Alignment.Center) {
+                        Text(initials(g.glName), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(Modifier.width(4.dp))
                 }
@@ -438,6 +473,42 @@ private fun AssigneesValue(assignees: List<String>, members: List<Member>, onTog
                 }
             }
         }
+    }
+}
+
+/** Read-only author display (creator or GitLab issue author). */
+@Composable
+private fun AuthorValue(name: String, gl: String?) {
+    val c = Tessera.colors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(24.dp).clip(CircleShape).background(c.text3), contentAlignment = Alignment.Center) {
+            Text(initials(name), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(name, color = c.text1, fontSize = 14.sp)
+        if (gl != null) {
+            Spacer(Modifier.width(6.dp))
+            Text("@$gl · GitLab", color = c.text3, fontSize = 12.sp)
+        }
+    }
+}
+
+/** A clickable GitLab issue link (opens the issue in the browser). */
+@Composable
+private fun GitlabLinkValue(gitlab: GitlabLink) {
+    val c = Tessera.colors
+    val ctx = LocalContext.current
+    Row(
+        Modifier.clickableNoRipple {
+            if (gitlab.webUrl.isNotBlank()) {
+                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(gitlab.webUrl))) }
+            }
+        },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("!${gitlab.iid}", fontSize = 14.sp, style = TextStyle(brush = accentGradient(c.primary)))
+        Spacer(Modifier.width(6.dp))
+        IonIcon(Ion.LINK, size = 13.dp, tint = c.text3)
     }
 }
 
@@ -541,13 +612,26 @@ private fun CommentsTab(vm: TaskDetailViewModel, comments: List<website.msdnna.t
         }
         comments.forEach { cm ->
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Box(Modifier.size(26.dp).clip(CircleShape).background(accentGradient(c.primary)), contentAlignment = Alignment.Center) {
-                    Text(initials(cm.authorName ?: "?"), color = c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Box(
+                    Modifier.size(26.dp).clip(CircleShape)
+                        .then(if (cm.isGitlab) Modifier.background(c.text3) else Modifier.background(accentGradient(c.primary))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        initials(cm.displayName ?: "?"),
+                        color = if (cm.isGitlab) Color.White else c.onPrimary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(cm.authorName ?: "Кто-то", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(cm.displayName ?: "Кто-то", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        if (cm.isGitlab) {
+                            Spacer(Modifier.width(5.dp))
+                            Text("· GitLab", color = c.text3, fontSize = 11.sp)
+                        }
                         Spacer(Modifier.width(6.dp))
                         Text(whenLabel(cm.createdAt), color = c.text3, fontSize = 11.sp)
                         if (cm.authorId != null && cm.authorId == meId) {
@@ -905,7 +989,17 @@ private fun InlineEnterField(placeholder: String, prefix: String? = null, onComm
     }
 }
 
-private fun initials(name: String): String = name.trim().take(2).uppercase().ifBlank { "?" }
+private fun initials(name: String): String {
+    val s = name.trim()
+    if (s.isEmpty()) return "?"
+    if (s.contains('.')) {
+        val parts = s.split('.').map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.size >= 2) return "${parts[0].first()}${parts[1].first()}".uppercase()
+    }
+    val words = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
+    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
+    return s.take(2).uppercase()
+}
 
 /**
  * Board picker for transferring a task (web's breadcrumb "Перенести в доску").

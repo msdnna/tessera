@@ -181,10 +181,15 @@ private fun buildRichHtml(source: String, c: TesseraColors, serverRoot: String, 
   }
   var el = document.getElementById('content');
   el.innerHTML = highlightMentions(marked.parse(SRC || ''));
-  // Expand root-relative upload URLs to the active server.
+  // Expand root-relative upload/asset URLs to the active server (inline images
+  // are intercepted + fetched with auth; links open in the browser).
   el.querySelectorAll('img').forEach(function(im){
     var s = im.getAttribute('src')||'';
     if (s.charAt(0) === '/') im.src = ROOT + s;
+  });
+  el.querySelectorAll('a').forEach(function(an){
+    var h = an.getAttribute('href')||'';
+    if (h.charAt(0) === '/') an.href = ROOT + h;
   });
   function report(){ if (window.AndroidRich) AndroidRich.onHeight(document.body.scrollHeight + 4); }
   // Image loads change height — re-report once they settle.

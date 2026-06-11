@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui.components
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -32,9 +34,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -54,6 +58,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.shortDate
 
@@ -230,6 +235,25 @@ private fun CardHeader(task: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, s
         task.number?.let {
             Spacer(Modifier.width(6.dp))
             Text("#$it", color = c.text3, fontSize = 11.sp)
+        }
+        task.gitlabIid?.let { iid ->
+            Spacer(Modifier.width(6.dp))
+            val ctx = LocalContext.current
+            Row(
+                Modifier.clip(RoundedCornerShape(RadiusSm))
+                    .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                    .clickableNoRipple {
+                        task.gitlabUrl?.let { url ->
+                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
+                    }
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IonIcon(Ion.GIT_BRANCH, size = 10.dp, tint = c.text2)
+                Spacer(Modifier.width(2.dp))
+                Text("!$iid", color = c.text2, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
         if (showMenu) {
             Spacer(Modifier.width(2.dp))
@@ -457,11 +481,19 @@ private fun DuePill(task: Task, vm: BoardViewModel) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
     val due = shortDate(task.dueDate)
+    // Overdue (past due, not done) → red tint, like the web.
+    val overdue = !task.isCompleted && isOverdue(task.dueDate)
+    val overdueColor = Color(0xFFE0533D)
+    val tint = when {
+        overdue -> overdueColor
+        due.isNotBlank() -> c.text2
+        else -> c.text3
+    }
     Pill(onClick = { picker = true }, set = due.isNotBlank()) {
-        IonIcon(Ion.CALENDAR, size = 13.dp, tint = if (due.isNotBlank()) c.text2 else c.text3)
+        IonIcon(Ion.CALENDAR, size = 13.dp, tint = tint)
         if (due.isNotBlank()) {
             Spacer(Modifier.width(4.dp))
-            Text(due, color = c.text2, fontSize = 11.sp)
+            Text(due, color = tint, fontSize = 11.sp)
         }
     }
     if (picker) {
@@ -481,25 +513,29 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     val assignees = task.assigneeIds.mapNotNull { state.membersMap[it] }
+    val external = task.gitlabAssignees
+    // Author (read-only): the GitLab issue author for synced cards, else the
+    // Tessera creator resolved from createdBy.
+    val authorName: String? = when {
+        task.gitlabAuthor != null -> task.gitlabAuthorName?.takeIf { it.isNotBlank() } ?: task.gitlabAuthor
+        task.createdBy != null -> state.membersMap[task.createdBy]?.name
+        else -> null
+    }
     Box {
         Box(Modifier.clip(RoundedCornerShape(RadiusSm)).clickableNoRipple { menu = true }.padding(2.dp)) {
-            if (assignees.isEmpty()) {
-                IonIcon(Ion.PERSON_ADD, size = 14.dp, tint = c.text3)
-            } else {
-                // Overlapping stack with a card-coloured ring (the "cutout"), as on the web.
-                Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
-                    assignees.forEach { m ->
-                        Box(
-                            Modifier.size(24.dp).clip(CircleShape).background(c.cardSurface).padding(1.5.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Box(
-                                Modifier.size(21.dp).clip(CircleShape).background(accentGradient(c.primary)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(initials(m.name), color = c.onPrimary, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Author → assignee cascade (author muted, non-actionable).
+                if (authorName != null) {
+                    CardAvatar(authorName, muted = true)
+                    Text("→", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 3.dp))
+                }
+                if (assignees.isEmpty() && external.isEmpty()) {
+                    IonIcon(Ion.PERSON_ADD, size = 14.dp, tint = c.text3)
+                } else {
+                    // Overlapping stack with a card-coloured ring (the "cutout").
+                    Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
+                        assignees.forEach { CardAvatar(it.name, muted = false) }
+                        external.forEach { CardAvatar(it, muted = true) }
                     }
                 }
             }
@@ -624,7 +660,46 @@ private fun Pill(onClick: () -> Unit, set: Boolean = false, content: @Composable
     ) { content() }
 }
 
-private fun initials(name: String): String = name.trim().take(2).uppercase().ifBlank { "?" }
+/**
+ * Avatar initials: two words → first letter of each ("Василий Соколов" → ВС);
+ * a dot handle → each part ("a.fokin" → AF); a single word → its first two
+ * letters ("msdnna" → MS). Mirrors the web `utils/initials`.
+ */
+private fun initials(name: String): String {
+    val s = name.trim()
+    if (s.isEmpty()) return "?"
+    if (s.contains('.')) {
+        val parts = s.split('.').map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.size >= 2) return "${parts[0].first()}${parts[1].first()}".uppercase()
+    }
+    val words = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
+    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
+    return s.take(2).uppercase()
+}
+
+/** A card avatar circle (24dp ring + inner gradient/grey disc). [muted] greys it
+ *  out for the read-only author and external GitLab assignees. */
+@Composable
+private fun CardAvatar(name: String, muted: Boolean) {
+    val c = Tessera.colors
+    Box(
+        Modifier.size(24.dp).clip(CircleShape).background(c.cardSurface).padding(1.5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(21.dp).clip(CircleShape)
+                .then(if (muted) Modifier.background(c.text3) else Modifier.background(accentGradient(c.primary))),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                initials(name),
+                color = if (muted) Color.White else c.onPrimary,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
 
 /**
  * Makes a subtask independently draggable (so the gesture lifts the subtask, not
