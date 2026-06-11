@@ -3,7 +3,11 @@ import { ref, nextTick } from 'vue'
 import { NInput, NButton, NText, NIcon, NPopconfirm, useMessage } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
-import { hueGrad } from '@/utils/gradient'
+import { hueGrad, readableHue } from '@/utils/gradient'
+import { useThemeStore } from '@/stores/theme'
+
+const theme = useThemeStore()
+const tagText = (c) => readableHue(c, theme.isDark)
 
 const props = defineProps({
   wsId: { type: String, default: null },
@@ -90,7 +94,7 @@ async function add() {
             v-else
             class="chip"
             title="Двойной клик — переименовать"
-            :style="{ background: (t.color || '#888') + '22', color: t.color || '#888' }"
+            :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
             @dblclick="startEdit(t)"
           >
             {{ t.name }}

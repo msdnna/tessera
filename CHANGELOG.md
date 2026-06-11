@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.50.0] — 2026-06-11
+- Fix: Markdown descriptions that contain inline HTML (e.g. GitLab `<details>`)
+  no longer render as plain text — the HTML-vs-Markdown heuristic now only treats
+  content as raw HTML when it *starts* with a block tag (legacy editor output),
+  so code fences/bold/etc. render correctly.
+- Board sort gains a **direction** (по возрастанию/убыванию) shown next to the
+  sort selector once a field is chosen; remembered per board.
+- Card due dates show the **year** when it isn't the current year, and an
+  **overdue** date (past due, not done) is tinted red.
+- GitLab settings: fixed the broken "add rule / add value" buttons (now dashed
+  with a clear icon + label) and enlarged the Синхронизировать / Сохранить
+  buttons.
+- De-jargoned UI wording (Последняя синхронизация, Правила меток, …).
+- The card tag picker popover is width-capped (no longer stretches across the
+  board), and the workspace Tags manager applies the theme-readable tag colour.
+
 ### [0.49.0] — 2026-06-11
 - Tag grouping on the board can now be scoped to a **tag namespace**: when
   grouping by tags, a namespace picker (auto-detected prefixes like `T: `, `C: `,
@@ -890,6 +906,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.26.0] — 2026-06-11
+- GitLab sync: a **closed** issue/work item now lands in the board's done column
+  and is marked complete even without a status label mapping there.
 
 ### [0.25.0] — 2026-06-11
 - The GitLab label rule engine is now **generic**: `label_rules` is an ordered

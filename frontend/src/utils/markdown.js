@@ -59,10 +59,14 @@ const SANITIZE_OPTS = {
   ADD_ATTR: ['target', 'rel', 'data-type', 'data-id', 'data-label', 'class'],
 }
 
-// looksLikeHtml is a cheap heuristic: rich-editor output contains HTML tags,
-// legacy descriptions/comments are plain Markdown.
+// looksLikeHtml decides whether to pass content through as raw HTML (legacy
+// TipTap-era output) vs render it as Markdown. It must be STRICT: Markdown may
+// itself contain inline HTML (e.g. GitLab descriptions with <details>), so we
+// only treat content as HTML when it *starts* with a block tag the rich editor
+// emitted — otherwise a single inline tag anywhere would wrongly suppress
+// Markdown parsing (code fences, bold, etc. rendered as plain text).
 function looksLikeHtml(src) {
-  return /<\/?[a-z][\s\S]*>/i.test(src)
+  return /^\s*<(?:p|div|h[1-6]|ul|ol|blockquote|pre|table|hr)\b/i.test(src)
 }
 
 // renderMarkdown turns user-entered markdown into sanitised HTML safe for

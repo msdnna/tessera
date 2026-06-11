@@ -92,11 +92,16 @@ const groupTags = computed(() =>
     : tagsList.value,
 )
 const sortBy = ref('position') // 'position' | 'priority' | 'due'
+const sortDir = ref('asc') // 'asc' | 'desc' (ignored for manual order)
 const filters = reactive({ priorities: [], assignees: [], tags: [], due: '', q: '' })
 const sortOptions = [
   { label: 'Вручную', value: 'position' },
   { label: 'По приоритету', value: 'priority' },
   { label: 'По сроку', value: 'due' },
+]
+const sortDirOptions = [
+  { label: 'По возрастанию', value: 'asc' },
+  { label: 'По убыванию', value: 'desc' },
 ]
 // Grouping + sort share a dropdown form (open straight from the toolbar button);
 // a right-aligned check icon marks the active option.
@@ -167,6 +172,7 @@ function persistView() {
         groupMode: groupMode.value,
         tagPrefix: tagPrefix.value,
         sortBy: sortBy.value,
+        sortDir: sortDir.value,
         subtasksExpanded: subtasksExpanded.value,
         filters,
       }),
@@ -186,6 +192,7 @@ function restoreView() {
       if (typeof v.tagPrefix === 'string') tagPrefix.value = v.tagPrefix
       subtasksExpanded.value = !!v.subtasksExpanded
       if (v.sortBy) sortBy.value = v.sortBy
+      if (v.sortDir) sortDir.value = v.sortDir
       if (v.filters) {
         filters.priorities = v.filters.priorities || []
         filters.assignees = v.filters.assignees || []
@@ -202,7 +209,9 @@ function restoreView() {
     nextTick(() => (restoring = false))
   }
 }
-watch([layout, groupMode, tagPrefix, sortBy, subtasksExpanded, filters], persistView, { deep: true })
+watch([layout, groupMode, tagPrefix, sortBy, sortDir, subtasksExpanded, filters], persistView, {
+  deep: true,
+})
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
@@ -414,12 +423,14 @@ const filteredTasks = computed(() => {
   if (q) arr = arr.filter((t) => t.title.toLowerCase().includes(q))
 
   const s = [...arr]
-  if (sortBy.value === 'priority') s.sort((a, b) => (b.priority || 0) - (a.priority || 0))
+  const dir = sortDir.value === 'desc' ? -1 : 1
+  if (sortBy.value === 'priority') s.sort((a, b) => dir * ((a.priority || 0) - (b.priority || 0)))
   else if (sortBy.value === 'due')
     s.sort(
       (a, b) =>
-        (a.due_date ? Date.parse(a.due_date) : Infinity) -
-        (b.due_date ? Date.parse(b.due_date) : Infinity),
+        dir *
+        ((a.due_date ? Date.parse(a.due_date) : Infinity) -
+          (b.due_date ? Date.parse(b.due_date) : Infinity)),
     )
   return s
 })
@@ -677,7 +688,7 @@ watch(
           filterable
           tag
           clearable
-          placeholder="Неймспейс тега"
+          placeholder="Группа тегов"
           class="sb-prefix"
         />
 
@@ -693,6 +704,15 @@ watch(
             <span class="sb-label">Сортировка</span>
           </n-button>
         </n-dropdown>
+
+        <!-- direction appears once a sort field (not manual order) is chosen -->
+        <n-select
+          v-if="sortBy !== 'position'"
+          v-model:value="sortDir"
+          :options="sortDirOptions"
+          size="small"
+          class="sb-prefix"
+        />
 
         <n-popover trigger="click" placement="bottom-start">
           <template #trigger>

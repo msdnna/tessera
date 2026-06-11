@@ -85,10 +85,19 @@ const author = computed(() => {
   }
   return null
 })
-const due = computed(() =>
-  props.task.due_date
-    ? new Date(props.task.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
-    : '',
+// Format a due date; include the year when it isn't the current year so a
+// far-off (or stale) date isn't mistaken for one in the current year.
+function fmtDue(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  const opts = { day: '2-digit', month: 'short' }
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
+  return d.toLocaleDateString('ru-RU', opts)
+}
+const due = computed(() => fmtDue(props.task.due_date))
+// Overdue: due date in the past on a not-yet-done task.
+const overdue = computed(
+  () => !!props.task.due_date && !done.value && Date.parse(props.task.due_date) < Date.now(),
 )
 const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
 const done = computed(() => !!props.task.completed_at)
@@ -317,9 +326,7 @@ async function onSubChange(evt) {
   }
 }
 function subDue(s) {
-  return s.due_date
-    ? new Date(s.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
-    : ''
+  return fmtDue(s.due_date)
 }
 async function toggleSubDone(s) {
   await tasksApi.update(s.id, {
@@ -441,7 +448,7 @@ async function submitAddSub() {
       <!-- due date: opens the calendar directly -->
       <n-popover trigger="click" placement="bottom-start">
         <template #trigger>
-          <button class="pill" :class="{ set: due }" @click.stop>
+          <button class="pill" :class="{ set: due, overdue }" @click.stop>
             <n-icon :component="CalendarClearOutline" :size="13" />
             <span v-if="due" class="pill-text">{{ due }}</span>
           </button>
@@ -835,6 +842,13 @@ async function submitAddSub() {
   border-style: solid;
   color: var(--t-text2);
 }
+/* overdue due-date pill: soft red tint (like a warning tag) */
+.pill.overdue {
+  color: #e0533d;
+  border-color: #e0533d;
+  border-style: solid;
+  background: color-mix(in srgb, #e0533d 12%, transparent);
+}
 /* Flag (priority) icon carries the active priority's gradient (set --icon-grad
    inline on the flag only; the date pill is also .pill.set but has no
    --icon-grad, so it falls back to currentColor). */
@@ -937,6 +951,8 @@ async function submitAddSub() {
   gap: 2px;
 }
 .tagmenu {
+  width: 300px;
+  max-width: 80vw;
   max-height: 260px;
   overflow-y: auto;
 }

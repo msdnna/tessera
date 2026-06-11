@@ -340,7 +340,7 @@ watch(
         </div>
 
         <!-- Generic rule engine -->
-        <h4 class="gl-h gl-h-sub">Правила лейблов</h4>
+        <h4 class="gl-h gl-h-sub">Правила меток</h4>
         <div class="gl-grid">
           <n-text depth="3" class="lbl">Колонка по умолчанию</n-text>
           <n-select
@@ -349,7 +349,7 @@ watch(
             size="small"
             placeholder="напр. К работе"
           />
-          <n-text depth="3" class="lbl">Прочие лейблы</n-text>
+          <n-text depth="3" class="lbl">Прочие метки</n-text>
           <n-select v-model:value="defaultAction" :options="defaultActionOptions" size="small" />
           <n-text depth="3" class="lbl">Сохранять префикс тега</n-text>
           <div><n-switch v-model:value="tagKeepPrefix" /></div>
@@ -406,23 +406,25 @@ watch(
                 <n-icon :component="TrashOutline" />
               </n-button>
             </div>
-            <n-button text size="tiny" type="primary" class="gl-add" @click="addMapRow(rule)">
-              <n-icon :component="AddOutline" /> значение
+            <n-button dashed size="tiny" type="primary" class="gl-add" @click="addMapRow(rule)">
+              <template #icon><n-icon :component="AddOutline" /></template>
+              Значение
             </n-button>
           </div>
         </div>
-        <n-button text size="small" type="primary" class="gl-add" @click="addRule">
-          <n-icon :component="AddOutline" /> правило
+        <n-button dashed size="small" type="primary" class="gl-add" @click="addRule">
+          <template #icon><n-icon :component="AddOutline" /></template>
+          Правило
         </n-button>
 
         <div class="gl-footer">
-          <span class="gl-synced">Последний синк: {{ lastSyncedText }}</span>
+          <span class="gl-synced">Последняя синхронизация: {{ lastSyncedText }}</span>
           <div class="gl-footer-btns">
-            <n-button size="small" :loading="syncing" @click="syncNow">
+            <n-button size="medium" :loading="syncing" @click="syncNow">
               <template #icon><n-icon :component="SyncOutline" /></template>
               Синхронизировать
             </n-button>
-            <n-button type="primary" size="small" :loading="saving" @click="save">Сохранить</n-button>
+            <n-button type="primary" size="medium" :loading="saving" @click="save">Сохранить</n-button>
           </div>
         </div>
       </section>

@@ -334,6 +334,16 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		if !found {
 			col = bc.cols[0] // leftmost column as a last-resort fallback
 		}
+		// A closed GitLab issue belongs in the done column and is completed,
+		// even without a status label that maps there.
+		if issue.State == "closed" && bc.doneID != nil {
+			for _, c := range bc.cols {
+				if c.ID == *bc.doneID {
+					col = c
+					break
+				}
+			}
+		}
 		var completedAt *time.Time
 		if bc.doneID != nil && col.ID == *bc.doneID {
 			now := time.Now()
