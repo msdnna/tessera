@@ -63,6 +63,34 @@ const membersList = computed(() => Object.values(membersMap))
 // view controls (layout comes from the store, above)
 const subtasksExpanded = ref(false) // full property cards vs compact rows
 const groupMode = ref('status') // 'status' | 'tag'
+const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
+
+// Namespace of a tag name ("T: bug" → "T: ", "effort::small" → "effort::").
+function tagNamespace(name) {
+  const i = (name || '').indexOf('::')
+  if (i >= 0) return name.slice(0, i + 2)
+  const j = (name || '').indexOf(': ')
+  if (j >= 0) return name.slice(0, j + 2)
+  return ''
+}
+// Detected namespaces from the workspace tags, for the prefix picker.
+const tagPrefixOptions = computed(() => {
+  const set = new Set()
+  for (const t of tagsList.value) {
+    const ns = tagNamespace(t.name)
+    if (ns) set.add(ns)
+  }
+  return [
+    { label: 'Все теги', value: '' },
+    ...[...set].sort().map((p) => ({ label: p, value: p })),
+  ]
+})
+// Tags that become columns in tag-grouping mode (filtered by the chosen prefix).
+const groupTags = computed(() =>
+  tagPrefix.value
+    ? tagsList.value.filter((t) => (t.name || '').startsWith(tagPrefix.value))
+    : tagsList.value,
+)
 const sortBy = ref('position') // 'position' | 'priority' | 'due'
 const filters = reactive({ priorities: [], assignees: [], tags: [], due: '', q: '' })
 const sortOptions = [
@@ -137,6 +165,7 @@ function persistView() {
       JSON.stringify({
         layout: layout.value,
         groupMode: groupMode.value,
+        tagPrefix: tagPrefix.value,
         sortBy: sortBy.value,
         subtasksExpanded: subtasksExpanded.value,
         filters,
@@ -154,6 +183,7 @@ function restoreView() {
       const v = JSON.parse(raw)
       if (v.layout) layout.value = v.layout
       if (v.groupMode) groupMode.value = v.groupMode
+      if (typeof v.tagPrefix === 'string') tagPrefix.value = v.tagPrefix
       subtasksExpanded.value = !!v.subtasksExpanded
       if (v.sortBy) sortBy.value = v.sortBy
       if (v.filters) {
@@ -172,7 +202,7 @@ function restoreView() {
     nextTick(() => (restoring = false))
   }
 }
-watch([layout, groupMode, sortBy, subtasksExpanded, filters], persistView, { deep: true })
+watch([layout, groupMode, tagPrefix, sortBy, subtasksExpanded, filters], persistView, { deep: true })
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
@@ -414,7 +444,7 @@ const displayColumns = computed(() => {
     return columns.value.map((c) => ({ key: c.id, name: c.name, color: c.color, status: c }))
   }
   return [
-    ...tagsList.value.map((t) => ({ key: t.id, name: t.name, color: t.color, tag: t })),
+    ...groupTags.value.map((t) => ({ key: t.id, name: t.name, color: t.color, tag: t })),
     { key: '__none__', name: 'Без тегов', color: '', tag: null },
   ]
 })
@@ -425,17 +455,18 @@ function rebuildLists() {
     for (const col of columns.value) map[col.id] = []
     for (const t of filteredTasks.value) (map[t.column_id] ||= []).push(t)
   } else {
-    for (const tg of tagsList.value) map[tg.id] = []
+    const tgIds = new Set(groupTags.value.map((t) => t.id))
+    for (const tg of groupTags.value) map[tg.id] = []
     map.__none__ = []
     for (const t of filteredTasks.value) {
-      const ids = t.tag_ids || []
+      const ids = (t.tag_ids || []).filter((id) => tgIds.has(id))
       if (!ids.length) map.__none__.push(t)
-      else for (const id of ids) if (map[id]) map[id].push(t)
+      else for (const id of ids) map[id].push(t)
     }
   }
   lists.value = map
 }
-watch([filteredTasks, groupMode], rebuildLists)
+watch([filteredTasks, groupMode, tagPrefix], rebuildLists)
 
 // Mutable mirror of displayColumns for column drag-reorder (status mode only).
 const colModel = ref([])
@@ -635,6 +666,20 @@ watch(
             <span class="sb-label">Группировка</span>
           </n-button>
         </n-dropdown>
+
+        <!-- Tag-grouping namespace filter: columns = tags matching this prefix
+             (e.g. "T: " groups by type). Empty = every tag. Custom values allowed. -->
+        <n-select
+          v-if="groupMode === 'tag'"
+          v-model:value="tagPrefix"
+          :options="tagPrefixOptions"
+          size="small"
+          filterable
+          tag
+          clearable
+          placeholder="Неймспейс тега"
+          class="sb-prefix"
+        />
 
         <n-dropdown
           trigger="click"
@@ -885,6 +930,10 @@ watch(
 }
 .subbar-spacer {
   flex: 1;
+}
+.sb-prefix {
+  width: 170px;
+  flex: none;
 }
 .task-search {
   width: 220px;

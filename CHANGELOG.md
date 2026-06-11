@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.49.0] — 2026-06-11
+- Tag grouping on the board can now be scoped to a **tag namespace**: when
+  grouping by tags, a namespace picker (auto-detected prefixes like `T: `, `C: `,
+  `effort::`, or a custom value) makes the columns just the tags in that
+  namespace — e.g. group by type or by team. Empty = all tags (as before). The
+  choice is remembered per board.
+
 ### [0.48.0] — 2026-06-11
 - GitLab integration settings get a **generic rule editor**: add ordered rules
   with a match (prefix or regex), an action (status / priority / board / tag /
