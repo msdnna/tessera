@@ -934,6 +934,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.28.0] — 2026-06-11
+- GitLab **subtask grouping**: an issue matched by a `group` rule (e.g. `M:`) now
+  pulls its GitLab child items (Work Items Hierarchy widget, GraphQL) and mirrors
+  each as a Tessera subtask under the parent — with its own priority, tags,
+  assignees, comments and completion (closed child → done). Children are synced
+  under the parent's board/column and de-duplicated from the top-level list.
+  Per-issue upsert was extracted into a shared path (`syncOneIssue`) used for both
+  top-level cards and children; re-parenting is reconciled on each sync.
+  Best-effort: a hierarchy-query failure skips children without breaking the sync.
+
 ### [0.27.0] — 2026-06-11
 - Per-user **saved board views** (migration 0013, `board_views`): `GET/POST
   /boards/:id/views` and `DELETE /views/:id` persist named snapshots of a board's

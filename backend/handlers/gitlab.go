@@ -315,9 +315,10 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		return 0, 0, fmt.Errorf("integration board has no columns")
 	}
 
-	for _, issue := range issues {
-		res := rules.Resolve(issue.Labels)
-		// A board rule can route to another board in this workspace.
+	// resolveBoardCol picks the target board (a board rule may route elsewhere),
+	// the column (status label, or the done column for a closed issue), and the
+	// completion timestamp.
+	resolveBoardCol := func(issue gitlab.Issue, res gitlab.Resolution) (*syncBoard, db.BoardColumn, *time.Time) {
 		targetBoard := integ.BoardID
 		if res.BoardID != "" {
 			if bid, perr := uuid.Parse(res.BoardID); perr == nil {
@@ -332,10 +333,8 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		}
 		col, found := bc.byName[res.ColumnName]
 		if !found {
-			col = bc.cols[0] // leftmost column as a last-resort fallback
+			col = bc.cols[0]
 		}
-		// A closed GitLab issue belongs in the done column and is completed,
-		// even without a status label that maps there.
 		if issue.State == "closed" && bc.doneID != nil {
 			for _, c := range bc.cols {
 				if c.ID == *bc.doneID {
@@ -349,64 +348,71 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 			now := time.Now()
 			completedAt = &now
 		}
-		dueDate := effectiveDue(issue, integ.DueSource)
+		return bc, col, completedAt
+	}
 
-		link, lerr := h.q.GetGitlabLinkByGlobalID(ctx, db.GetGitlabLinkByGlobalIDParams{
-			IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
-		})
-		switch {
-		case errors.Is(lerr, pgx.ErrNoRows):
-			t, cerr := h.syncCreateTask(ctx, wsID, bc.id, col.ID, issue, res.Priority, completedAt, dueDate)
-			if cerr != nil {
-				log.Printf("gitlab sync: create task for issue !%d failed: %v", issue.IID, cerr)
-				continue
-			}
-			if _, cerr := h.q.CreateGitlabLink(ctx, db.CreateGitlabLinkParams{
-				TaskID: t.ID, IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
-				GlIid: issue.IID, GlProjectPath: integ.ProjectPath, GlWebUrl: issue.WebURL,
-				GlUpdatedAt: issue.UpdatedAt,
-				TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
-				LabelsHash: hashStr(labelsKey(issue.Labels)),
-				GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
-			}); cerr != nil {
-				log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
-				continue
-			}
-			h.reconcileTaskMeta(ctx, t.ID, wsID, issue, res.Tags)
-			h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
-			h.broadcast(wsID, "task.created", t)
-			created++
-		case lerr != nil:
-			log.Printf("gitlab sync: lookup link for issue !%d failed: %v", issue.IID, lerr)
+	// Pre-pass: for grouped parents, fetch their GitLab children so they sync as
+	// Tessera subtasks (and are not duplicated as top-level cards).
+	claimed := map[string]bool{}
+	childrenOf := map[string][]gitlab.Issue{}
+	for _, issue := range issues {
+		if !rules.Resolve(issue.Labels).Group {
 			continue
-		default:
-			t, uerr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
-				ID: link.TaskID, Title: issue.Title, Description: issue.Description,
-				Priority: res.Priority, ColumnID: col.ID, CompletedAt: completedAt, BoardID: bc.id,
-			})
-			if uerr != nil {
-				log.Printf("gitlab sync: update task for issue !%d failed: %v", issue.IID, uerr)
-				continue
-			}
-			if _, uerr := h.q.UpdateGitlabLink(ctx, db.UpdateGitlabLinkParams{
-				TaskID: link.TaskID, GlIid: issue.IID, GlWebUrl: issue.WebURL,
-				GlUpdatedAt: issue.UpdatedAt,
-				TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
-				LabelsHash: hashStr(labelsKey(issue.Labels)),
-				GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
-			}); uerr != nil {
-				log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
-				continue
-			}
-			// Sync the due date only when GitLab has one — otherwise a
-			// manually-set Tessera due date is preserved (never reset).
-			if !link.DueOverridden && dueDate != nil {
-				_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate})
-				t.DueDate = dueDate
-			}
-			h.reconcileTaskMeta(ctx, link.TaskID, wsID, issue, res.Tags)
-			h.broadcast(wsID, "task.updated", t)
+		}
+		iids, cerr := client.ChildIIDs(ctx, integ.ProjectPath, issue.IID)
+		if cerr != nil || len(iids) == 0 {
+			continue
+		}
+		strs := make([]string, 0, len(iids))
+		for _, id := range iids {
+			strs = append(strs, strconv.FormatInt(id, 10))
+		}
+		kids, kerr := client.IssuesByIIDs(ctx, integ.ProjectPath, strs)
+		if kerr != nil {
+			continue
+		}
+		childrenOf[issue.GlobalID] = kids
+		for _, k := range kids {
+			claimed[k.GlobalID] = true
+		}
+	}
+
+	for _, issue := range issues {
+		if claimed[issue.GlobalID] {
+			continue // synced as a subtask under its parent
+		}
+		res := rules.Resolve(issue.Labels)
+		bc, col, completedAt := resolveBoardCol(issue, res)
+		dueDate := effectiveDue(issue, integ.DueSource)
+		taskID, wasCreated, ok := h.syncOneIssue(ctx, integ, issue, res, wsID, bc.id, col.ID, nil, completedAt, dueDate, actorID)
+		if !ok {
+			continue
+		}
+		if wasCreated {
+			created++
+		} else {
 			updated++
+		}
+		// Grouped parent → mirror its GitLab children as Tessera subtasks (under
+		// the parent's board/column; completion follows the child's own state).
+		if res.Group {
+			for _, kid := range childrenOf[issue.GlobalID] {
+				kres := rules.Resolve(kid.Labels)
+				var kdone *time.Time
+				if kid.State == "closed" {
+					now := time.Now()
+					kdone = &now
+				}
+				kdue := effectiveDue(kid, integ.DueSource)
+				parentID := taskID
+				if _, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, actorID); kok {
+					if kc {
+						created++
+					} else {
+						updated++
+					}
+				}
+			}
 		}
 	}
 
@@ -474,22 +480,37 @@ func (h *API) resolveDoneColumn(ctx context.Context, board db.Board) *uuid.UUID 
 	return &col.ID
 }
 
-// syncCreateTask creates a mirrored task at the end of its target column. The
-// task has no Tessera creator (created_by stays null) — the GitLab author is
-// recorded on the link instead, since it may not be a Tessera user.
-func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.UUID, issue gitlab.Issue, priority int32, completedAt, dueDate *time.Time) (db.Task, error) {
-	maxPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
-	if err != nil {
-		return db.Task{}, err
+// syncCreateTask creates a mirrored task at the end of its target column (or its
+// parent's subtask list when parentID is set). The task has no Tessera creator
+// (created_by stays null) — the GitLab author is on the link instead.
+func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, issue gitlab.Issue, priority int32, completedAt, dueDate *time.Time) (db.Task, error) {
+	var pos float64
+	if parentID != nil {
+		subs, err := h.q.ListSubtasks(ctx, parentID)
+		if err != nil {
+			return db.Task{}, err
+		}
+		if len(subs) == 0 {
+			pos = positionGap
+		} else {
+			last := subs[len(subs)-1].Position
+			pos = positionBetween(&last, nil)
+		}
+	} else {
+		maxPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
+		if err != nil {
+			return db.Task{}, err
+		}
+		pos = positionBetween(&maxPos, nil)
 	}
 	num, err := h.q.NextWorkspaceTaskNumber(ctx, wsID)
 	if err != nil {
 		return db.Task{}, err
 	}
 	t, err := h.q.CreateTask(ctx, db.CreateTaskParams{
-		BoardID: boardID, ColumnID: columnID, ParentID: nil,
+		BoardID: boardID, ColumnID: columnID, ParentID: parentID,
 		Title: issue.Title, Description: issue.Description, Priority: priority,
-		DueDate: dueDate, Position: positionBetween(&maxPos, nil), CreatedBy: nil, Number: &num,
+		DueDate: dueDate, Position: pos, CreatedBy: nil, Number: &num,
 	})
 	if err != nil {
 		return db.Task{}, err
@@ -503,6 +524,86 @@ func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.U
 		}
 	}
 	return t, nil
+}
+
+// sameUUIDPtr reports whether two optional UUIDs are equal.
+func sameUUIDPtr(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// syncOneIssue creates or updates the Tessera task mirroring one issue on the
+// given board/column, optionally as a subtask of parentID, reconciling its link
+// and meta. Returns the task id, whether it was newly created, and ok=false on a
+// per-issue failure (logged, caller continues).
+func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate *time.Time, actorID uuid.UUID) (uuid.UUID, bool, bool) {
+	link, lerr := h.q.GetGitlabLinkByGlobalID(ctx, db.GetGitlabLinkByGlobalIDParams{
+		IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
+	})
+	switch {
+	case errors.Is(lerr, pgx.ErrNoRows):
+		t, cerr := h.syncCreateTask(ctx, wsID, boardID, columnID, parentID, issue, res.Priority, completedAt, dueDate)
+		if cerr != nil {
+			log.Printf("gitlab sync: create task for issue !%d failed: %v", issue.IID, cerr)
+			return uuid.Nil, false, false
+		}
+		if _, cerr := h.q.CreateGitlabLink(ctx, db.CreateGitlabLinkParams{
+			TaskID: t.ID, IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
+			GlIid: issue.IID, GlProjectPath: integ.ProjectPath, GlWebUrl: issue.WebURL,
+			GlUpdatedAt: issue.UpdatedAt,
+			TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
+			LabelsHash: hashStr(labelsKey(issue.Labels)),
+			GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
+		}); cerr != nil {
+			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
+			return uuid.Nil, false, false
+		}
+		h.reconcileTaskMeta(ctx, t.ID, wsID, issue, res.Tags)
+		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
+		h.broadcast(wsID, "task.created", t)
+		return t.ID, true, true
+	case lerr != nil:
+		log.Printf("gitlab sync: lookup link for issue !%d failed: %v", issue.IID, lerr)
+		return uuid.Nil, false, false
+	default:
+		t, uerr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
+			ID: link.TaskID, Title: issue.Title, Description: issue.Description,
+			Priority: res.Priority, ColumnID: columnID, CompletedAt: completedAt, BoardID: boardID,
+		})
+		if uerr != nil {
+			log.Printf("gitlab sync: update task for issue !%d failed: %v", issue.IID, uerr)
+			return uuid.Nil, false, false
+		}
+		// Re-parent if the grouping changed (e.g. an issue became a child, or a
+		// child was detached). SetTaskParent also fixes board/column.
+		if !sameUUIDPtr(t.ParentID, parentID) {
+			if reparented, perr := h.q.SetTaskParent(ctx, db.SetTaskParentParams{
+				ID: link.TaskID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
+			}); perr == nil {
+				t = reparented
+			}
+		}
+		if _, uerr := h.q.UpdateGitlabLink(ctx, db.UpdateGitlabLinkParams{
+			TaskID: link.TaskID, GlIid: issue.IID, GlWebUrl: issue.WebURL,
+			GlUpdatedAt: issue.UpdatedAt,
+			TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
+			LabelsHash: hashStr(labelsKey(issue.Labels)),
+			GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
+		}); uerr != nil {
+			log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
+			return uuid.Nil, false, false
+		}
+		// Sync the due date only when GitLab has one and the user hasn't overridden.
+		if !link.DueOverridden && dueDate != nil {
+			_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate})
+			t.DueDate = dueDate
+		}
+		h.reconcileTaskMeta(ctx, link.TaskID, wsID, issue, res.Tags)
+		h.broadcast(wsID, "task.updated", t)
+		return link.TaskID, false, true
+	}
 }
 
 // reconcileTaskMeta applies a synced issue's tags, assignees and comments to its

@@ -295,6 +295,61 @@ func (n issueNode) toIssue() Issue {
 	return issue
 }
 
+const childItemsQuery = `
+query($path: ID!, $iid: String!) {
+  project(fullPath: $path) {
+    workItems(iid: $iid) {
+      nodes {
+        widgets {
+          ... on WorkItemWidgetHierarchy {
+            children { nodes { iid } }
+          }
+        }
+      }
+    }
+  }
+}`
+
+// ChildIIDs returns the iids of a work item's child items (the Hierarchy widget),
+// for syncing GitLab grouped issues as Tessera subtasks. Best-effort: returns
+// nil on any schema/transport error so the caller can skip children gracefully.
+func (c *Client) ChildIIDs(ctx context.Context, projectPath string, parentIID int64) ([]int64, error) {
+	var data struct {
+		Project *struct {
+			WorkItems struct {
+				Nodes []struct {
+					Widgets []struct {
+						Children *struct {
+							Nodes []struct {
+								IID string `json:"iid"`
+							} `json:"nodes"`
+						} `json:"children"`
+					} `json:"widgets"`
+				} `json:"nodes"`
+			} `json:"workItems"`
+		} `json:"project"`
+	}
+	vars := map[string]any{"path": projectPath, "iid": strconv.FormatInt(parentIID, 10)}
+	if err := c.do(ctx, childItemsQuery, vars, &data); err != nil {
+		return nil, err
+	}
+	if data.Project == nil || len(data.Project.WorkItems.Nodes) == 0 {
+		return nil, nil
+	}
+	var out []int64
+	for _, w := range data.Project.WorkItems.Nodes[0].Widgets {
+		if w.Children == nil {
+			continue
+		}
+		for _, ch := range w.Children.Nodes {
+			if n, err := strconv.ParseInt(ch.IID, 10, 64); err == nil {
+				out = append(out, n)
+			}
+		}
+	}
+	return out, nil
+}
+
 // parseDate parses a GitLab Date scalar ("YYYY-MM-DD") into a UTC time, or nil
 // when empty/invalid.
 func parseDate(s string) *time.Time {
