@@ -61,6 +61,7 @@ sealed interface MainDest {
     data object Home : MainDest
     data object Notes : MainDest
     data object Reminders : MainDest
+    data object GitLabSettings : MainDest
     data class BoardView(val board: Board) : MainDest
 }
 
@@ -154,6 +155,7 @@ fun MainScreen(
                 is MainDest.Home -> "home"
                 is MainDest.Notes -> "notes"
                 is MainDest.Reminders -> "reminders"
+                is MainDest.GitLabSettings -> "gitlab"
                 is MainDest.BoardView -> "board:${d.board.id}"
             },
         )
@@ -184,6 +186,7 @@ fun MainScreen(
                         membersOpen = true
                         scope.launch { drawerState.close() }
                     },
+                    onOpenGitlab = { navTo(MainDest.GitLabSettings) },
                     onOpenBoard = { board -> navTo(MainDest.BoardView(board)) },
                     updateVersion = updateAvailable?.let { "v${it.version}" },
                     onUpdate = {
@@ -236,6 +239,8 @@ fun MainScreen(
                         )
 
                         is MainDest.Reminders -> RemindersScreen()
+
+                        is MainDest.GitLabSettings -> GitLabSettingsScreen(workspaceId = state.currentId)
 
                         is MainDest.BoardView -> BoardScreen(
                             board = d.board,
@@ -335,6 +340,7 @@ private fun titleFor(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "Моя работа"
     is MainDest.Notes -> "Заметки"
     is MainDest.Reminders -> "Напоминания"
+    is MainDest.GitLabSettings -> "GitLab"
     is MainDest.BoardView -> dest.board.name
 }
 
@@ -343,6 +349,7 @@ private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "home"
     is MainDest.Notes -> "notes"
     is MainDest.Reminders -> "reminders"
+    is MainDest.GitLabSettings -> "gitlab"
     is MainDest.BoardView -> "board"
 }
 

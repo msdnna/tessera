@@ -5,6 +5,20 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.5.0 — 2026-06-12
+GitLab integration parity, part 2 — the **Интеграции** settings screen (opened from
+the new GitLab button in the sidebar brand row):
+- **Connect** your GitLab account with a base URL + personal access token, see the
+  resolved `@username`, and disconnect again.
+- **Per-workspace integration config**: pick the GitLab project path and the target
+  board, toggle the integration on/off, set the auto-sync interval and the due-date
+  source (issue/milestone), the default column and default label action, and whether
+  to keep label prefixes on tags.
+- A **generic label-rule editor**: each rule matches a label by prefix/regex and maps
+  it to an action (tag / status / priority / board), with per-action value maps
+  (status → column, priority → level, board → board) editable inline.
+- A manual **Синхронизировать** action reporting created/updated counts.
+
 ## 0.4.0 — 2026-06-12
 GitLab integration parity, part 1 — display (the connection/config screens and
 board-view controls follow in later parts):

@@ -7,6 +7,7 @@ import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import website.msdnna.tessera.data.model.AddAssigneeRequest
@@ -341,4 +342,32 @@ interface ApiService {
 
     @DELETE("notes/{id}")
     suspend fun deleteNote(@Path("id") noteId: String)
+
+    // ── GitLab integration ────────────────────────────────────────────────────
+    @GET("gitlab/connection")
+    suspend fun gitlabConnection(): website.msdnna.tessera.data.model.GitlabConnection
+
+    @POST("gitlab/connection")
+    suspend fun gitlabConnect(
+        @Body body: website.msdnna.tessera.data.model.GitlabConnectRequest,
+    ): website.msdnna.tessera.data.model.GitlabConnection
+
+    @DELETE("gitlab/connection")
+    suspend fun gitlabDisconnect()
+
+    @GET("workspaces/{id}/gitlab/integration")
+    suspend fun gitlabIntegration(
+        @Path("id") workspaceId: String,
+    ): website.msdnna.tessera.data.model.GitlabIntegration
+
+    @PUT("workspaces/{id}/gitlab/integration")
+    suspend fun gitlabSetIntegration(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.GitlabSetIntegrationRequest,
+    ): website.msdnna.tessera.data.model.GitlabIntegration
+
+    @POST("workspaces/{id}/gitlab/sync")
+    suspend fun gitlabSync(
+        @Path("id") workspaceId: String,
+    ): website.msdnna.tessera.data.model.GitlabSyncResult
 }
