@@ -19,6 +19,7 @@ SELECT
     t.*,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
+    COALESCE(array_agg(DISTINCT ga.gl_name) FILTER (WHERE ga.gl_name IS NOT NULL), '{}')::text[] AS gitlab_assignees,
     gl.gl_iid AS gitlab_iid,
     gl.gl_web_url AS gitlab_url,
     gl.gl_author AS gitlab_author,
@@ -26,6 +27,7 @@ SELECT
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
+LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
 GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name

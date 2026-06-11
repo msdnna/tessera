@@ -15,7 +15,7 @@ import (
 const createComment = `-- name: CreateComment :one
 INSERT INTO task_comments (task_id, author_id, body)
 VALUES ($1, $2, $3)
-RETURNING id, task_id, author_id, body, created_at, updated_at
+RETURNING id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name
 `
 
 type CreateCommentParams struct {
@@ -34,6 +34,9 @@ func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (T
 		&i.Body,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.GlNoteID,
+		&i.GlAuthorLogin,
+		&i.GlAuthorName,
 	)
 	return i, err
 }
@@ -48,7 +51,7 @@ func (q *Queries) DeleteComment(ctx context.Context, id uuid.UUID) error {
 }
 
 const getComment = `-- name: GetComment :one
-SELECT id, task_id, author_id, body, created_at, updated_at FROM task_comments WHERE id = $1
+SELECT id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name FROM task_comments WHERE id = $1
 `
 
 func (q *Queries) GetComment(ctx context.Context, id uuid.UUID) (TaskComment, error) {
@@ -61,12 +64,15 @@ func (q *Queries) GetComment(ctx context.Context, id uuid.UUID) (TaskComment, er
 		&i.Body,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.GlNoteID,
+		&i.GlAuthorLogin,
+		&i.GlAuthorName,
 	)
 	return i, err
 }
 
 const listTaskComments = `-- name: ListTaskComments :many
-SELECT c.id, c.task_id, c.author_id, c.body, c.created_at, c.updated_at, u.name AS author_name, u.email AS author_email
+SELECT c.id, c.task_id, c.author_id, c.body, c.created_at, c.updated_at, c.gl_note_id, c.gl_author_login, c.gl_author_name, u.name AS author_name, u.email AS author_email
 FROM task_comments c
 LEFT JOIN users u ON u.id = c.author_id
 WHERE c.task_id = $1
@@ -74,14 +80,17 @@ ORDER BY c.created_at
 `
 
 type ListTaskCommentsRow struct {
-	ID          uuid.UUID  `json:"id"`
-	TaskID      uuid.UUID  `json:"task_id"`
-	AuthorID    *uuid.UUID `json:"author_id"`
-	Body        string     `json:"body"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	AuthorName  *string    `json:"author_name"`
-	AuthorEmail *string    `json:"author_email"`
+	ID            uuid.UUID  `json:"id"`
+	TaskID        uuid.UUID  `json:"task_id"`
+	AuthorID      *uuid.UUID `json:"author_id"`
+	Body          string     `json:"body"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	GlNoteID      *string    `json:"gl_note_id"`
+	GlAuthorLogin string     `json:"gl_author_login"`
+	GlAuthorName  string     `json:"gl_author_name"`
+	AuthorName    *string    `json:"author_name"`
+	AuthorEmail   *string    `json:"author_email"`
 }
 
 func (q *Queries) ListTaskComments(ctx context.Context, taskID uuid.UUID) ([]ListTaskCommentsRow, error) {
@@ -100,6 +109,9 @@ func (q *Queries) ListTaskComments(ctx context.Context, taskID uuid.UUID) ([]Lis
 			&i.Body,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.GlNoteID,
+			&i.GlAuthorLogin,
+			&i.GlAuthorName,
 			&i.AuthorName,
 			&i.AuthorEmail,
 		); err != nil {
@@ -114,7 +126,7 @@ func (q *Queries) ListTaskComments(ctx context.Context, taskID uuid.UUID) ([]Lis
 }
 
 const updateComment = `-- name: UpdateComment :one
-UPDATE task_comments SET body = $2, updated_at = now() WHERE id = $1 RETURNING id, task_id, author_id, body, created_at, updated_at
+UPDATE task_comments SET body = $2, updated_at = now() WHERE id = $1 RETURNING id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name
 `
 
 type UpdateCommentParams struct {
@@ -132,6 +144,9 @@ func (q *Queries) UpdateComment(ctx context.Context, arg UpdateCommentParams) (T
 		&i.Body,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.GlNoteID,
+		&i.GlAuthorLogin,
+		&i.GlAuthorName,
 	)
 	return i, err
 }

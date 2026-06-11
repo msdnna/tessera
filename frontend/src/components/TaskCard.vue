@@ -72,6 +72,8 @@ const taskTags = computed(() =>
 const assignees = computed(() =>
   (props.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean),
 )
+// External GitLab assignees (no Tessera account) — display-only names.
+const glAssignees = computed(() => props.task.gitlab_assignees || [])
 // Author (read-only): GitLab issue author for synced cards, else the Tessera
 // creator resolved from created_by.
 const author = computed(() => {
@@ -532,15 +534,23 @@ async function submitAddSub() {
         <n-popover trigger="click" placement="bottom-end">
           <template #trigger>
             <button class="pill assignee-pill" @click.stop>
-              <template v-if="assignees.length">
-                <n-tooltip v-for="u in assignees" :key="u.user_id">
-                  <template #trigger>
-                    <span class="avatar">{{ initials(u.name) }}</span>
-                  </template>
-                  Исполнитель: {{ u.name }}
-                </n-tooltip>
-              </template>
-              <n-icon v-else :component="PersonAddOutline" :size="13" />
+              <n-tooltip v-for="u in assignees" :key="u.user_id">
+                <template #trigger>
+                  <span class="avatar">{{ initials(u.name) }}</span>
+                </template>
+                Исполнитель: {{ u.name }}
+              </n-tooltip>
+              <n-tooltip v-for="(g, i) in glAssignees" :key="`g${i}`">
+                <template #trigger>
+                  <span class="avatar ext-ava">{{ initials(g) }}</span>
+                </template>
+                Исполнитель: {{ g }} (GitLab)
+              </n-tooltip>
+              <n-icon
+                v-if="!assignees.length && !glAssignees.length"
+                :component="PersonAddOutline"
+                :size="13"
+              />
             </button>
           </template>
           <div class="menu">
@@ -914,6 +924,11 @@ async function submitAddSub() {
 .people-arrow {
   color: var(--t-text3);
   flex: none;
+}
+/* external GitLab assignee (no Tessera account): neutral, slightly muted */
+.ext-ava {
+  background: var(--t-text3);
+  opacity: 0.9;
 }
 .menu {
   min-width: 180px;

@@ -17,10 +17,11 @@ import (
 // GitLab provenance when the task is mirrored from a GitLab issue.
 type taskDetail struct {
 	db.Task
-	Tags      []db.Tag                     `json:"tags"`
-	Assignees []db.ListTaskAssigneesRow    `json:"assignees"`
-	Subtasks  []db.ListSubtasksWithMetaRow `json:"subtasks"`
-	GitLab    *gitlabLinkView              `json:"gitlab,omitempty"`
+	Tags            []db.Tag                        `json:"tags"`
+	Assignees       []db.ListTaskAssigneesRow       `json:"assignees"`
+	GitlabAssignees []db.ListTaskGitlabAssigneesRow `json:"gitlab_assignees"`
+	Subtasks        []db.ListSubtasksWithMetaRow    `json:"subtasks"`
+	GitLab          *gitlabLinkView                 `json:"gitlab,omitempty"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -222,9 +223,13 @@ func (h *API) GetTask(c *gin.Context) {
 	if subtasks == nil {
 		subtasks = []db.ListSubtasksWithMetaRow{}
 	}
+	glAssignees, _ := h.q.ListTaskGitlabAssignees(c, id)
+	if glAssignees == nil {
+		glAssignees = []db.ListTaskGitlabAssigneesRow{}
+	}
 	c.JSON(http.StatusOK, taskDetail{
-		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, Subtasks: subtasks,
-		GitLab: h.gitlabLinkForTask(c, id),
+		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
+		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id),
 	})
 }
 

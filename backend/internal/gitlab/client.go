@@ -108,6 +108,20 @@ func (c *Client) CurrentUser(ctx context.Context) (User, error) {
 	return User{ID: parseGID(data.CurrentUser.ID), Username: data.CurrentUser.Username}, nil
 }
 
+// Person is a GitLab user reference (assignee / note author).
+type Person struct {
+	Login string
+	Name  string
+}
+
+// Note is a GitLab issue comment (non-system note).
+type Note struct {
+	GlobalID  string
+	Body      string
+	Author    Person
+	CreatedAt time.Time
+}
+
 // Issue is a GitLab issue reduced to the fields the sync needs.
 type Issue struct {
 	GlobalID    string
@@ -121,12 +135,14 @@ type Issue struct {
 	Labels      []Label
 	AuthorLogin string // GitLab username of the issue author (may not be a Tessera user)
 	AuthorName  string
+	Assignees   []Person
+	Notes       []Note // user comments (system notes filtered out)
 }
 
-const assignedIssuesQuery = `
-query($path: ID!, $username: String!, $after: String) {
+const issuesQuery = `
+query($path: ID!, $username: String, $iids: [String!], $after: String) {
   project(fullPath: $path) {
-    issues(assigneeUsername: $username, first: 100, after: $after, sort: UPDATED_DESC) {
+    issues(assigneeUsername: $username, iids: $iids, first: 100, after: $after, sort: UPDATED_DESC) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id
@@ -138,16 +154,32 @@ query($path: ID!, $username: String!, $after: String) {
         updatedAt
         dueDate
         author { username name }
+        assignees { nodes { username name } }
         labels { nodes { title color } }
+        notes(first: 100) { nodes { id body system createdAt author { username name } } }
       }
     }
   }
 }`
 
-// AssignedIssues returns every issue in projectPath assigned to username,
-// following pagination. Uses the issues resolver (stable in GitLab 16.x);
-// work-item children/tasks are a later addition.
+// AssignedIssues returns the issues in projectPath assigned to username.
 func (c *Client) AssignedIssues(ctx context.Context, projectPath, username string) ([]Issue, error) {
+	return c.queryIssues(ctx, projectPath, map[string]any{"username": username})
+}
+
+// IssuesByIIDs returns the issues with the given iids regardless of assignee
+// (used to keep already-linked tasks fresh after a reassignment). Empty iids
+// returns nothing.
+func (c *Client) IssuesByIIDs(ctx context.Context, projectPath string, iids []string) ([]Issue, error) {
+	if len(iids) == 0 {
+		return nil, nil
+	}
+	return c.queryIssues(ctx, projectPath, map[string]any{"iids": iids})
+}
+
+// queryIssues runs the issues query with the given filter vars, following
+// pagination and decoding each node into an Issue.
+func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map[string]any) ([]Issue, error) {
 	var out []Issue
 	var after *string
 	for {
@@ -158,52 +190,22 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 						HasNextPage bool   `json:"hasNextPage"`
 						EndCursor   string `json:"endCursor"`
 					} `json:"pageInfo"`
-					Nodes []struct {
-						ID          string     `json:"id"`
-						IID         string     `json:"iid"`
-						Title       string     `json:"title"`
-						Description string     `json:"description"`
-						WebURL      string     `json:"webUrl"`
-						State       string     `json:"state"`
-						UpdatedAt   *time.Time `json:"updatedAt"`
-						DueDate     string     `json:"dueDate"`
-						Author      *struct {
-							Username string `json:"username"`
-							Name     string `json:"name"`
-						} `json:"author"`
-						Labels struct {
-							Nodes []struct {
-								Title string `json:"title"`
-								Color string `json:"color"`
-							} `json:"nodes"`
-						} `json:"labels"`
-					} `json:"nodes"`
+					Nodes []issueNode `json:"nodes"`
 				} `json:"issues"`
 			} `json:"project"`
 		}
-		vars := map[string]any{"path": projectPath, "username": username, "after": after}
-		if err := c.do(ctx, assignedIssuesQuery, vars, &data); err != nil {
+		vars := map[string]any{"path": projectPath, "after": after}
+		for k, v := range filter {
+			vars[k] = v
+		}
+		if err := c.do(ctx, issuesQuery, vars, &data); err != nil {
 			return nil, err
 		}
 		if data.Project == nil {
 			return nil, fmt.Errorf("gitlab: project %q not found or not accessible", projectPath)
 		}
 		for _, n := range data.Project.Issues.Nodes {
-			labels := make([]Label, 0, len(n.Labels.Nodes))
-			for _, l := range n.Labels.Nodes {
-				labels = append(labels, Label{Title: l.Title, Color: l.Color})
-			}
-			iid, _ := strconv.ParseInt(n.IID, 10, 64)
-			issue := Issue{
-				GlobalID: n.ID, IID: iid, Title: n.Title, Description: n.Description,
-				WebURL: n.WebURL, State: n.State, UpdatedAt: n.UpdatedAt,
-				DueDate: parseDate(n.DueDate), Labels: labels,
-			}
-			if n.Author != nil {
-				issue.AuthorLogin = n.Author.Username
-				issue.AuthorName = n.Author.Name
-			}
-			out = append(out, issue)
+			out = append(out, n.toIssue())
 		}
 		if !data.Project.Issues.PageInfo.HasNextPage {
 			break
@@ -212,6 +214,77 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 		after = &cursor
 	}
 	return out, nil
+}
+
+// issueNode mirrors the GraphQL issue node shape.
+type issueNode struct {
+	ID          string     `json:"id"`
+	IID         string     `json:"iid"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	WebURL      string     `json:"webUrl"`
+	State       string     `json:"state"`
+	UpdatedAt   *time.Time `json:"updatedAt"`
+	DueDate     string     `json:"dueDate"`
+	Author      *struct {
+		Username string `json:"username"`
+		Name     string `json:"name"`
+	} `json:"author"`
+	Assignees struct {
+		Nodes []struct {
+			Username string `json:"username"`
+			Name     string `json:"name"`
+		} `json:"nodes"`
+	} `json:"assignees"`
+	Labels struct {
+		Nodes []struct {
+			Title string `json:"title"`
+			Color string `json:"color"`
+		} `json:"nodes"`
+	} `json:"labels"`
+	Notes struct {
+		Nodes []struct {
+			ID        string    `json:"id"`
+			Body      string    `json:"body"`
+			System    bool      `json:"system"`
+			CreatedAt time.Time `json:"createdAt"`
+			Author    *struct {
+				Username string `json:"username"`
+				Name     string `json:"name"`
+			} `json:"author"`
+		} `json:"nodes"`
+	} `json:"notes"`
+}
+
+func (n issueNode) toIssue() Issue {
+	labels := make([]Label, 0, len(n.Labels.Nodes))
+	for _, l := range n.Labels.Nodes {
+		labels = append(labels, Label{Title: l.Title, Color: l.Color})
+	}
+	iid, _ := strconv.ParseInt(n.IID, 10, 64)
+	issue := Issue{
+		GlobalID: n.ID, IID: iid, Title: n.Title, Description: n.Description,
+		WebURL: n.WebURL, State: n.State, UpdatedAt: n.UpdatedAt,
+		DueDate: parseDate(n.DueDate), Labels: labels,
+	}
+	if n.Author != nil {
+		issue.AuthorLogin = n.Author.Username
+		issue.AuthorName = n.Author.Name
+	}
+	for _, a := range n.Assignees.Nodes {
+		issue.Assignees = append(issue.Assignees, Person{Login: a.Username, Name: a.Name})
+	}
+	for _, note := range n.Notes.Nodes {
+		if note.System || note.ID == "" {
+			continue // skip system notes ("changed status…")
+		}
+		nt := Note{GlobalID: note.ID, Body: note.Body, CreatedAt: note.CreatedAt}
+		if note.Author != nil {
+			nt.Author = Person{Login: note.Author.Username, Name: note.Author.Name}
+		}
+		issue.Notes = append(issue.Notes, nt)
+	}
+	return issue
 }
 
 // parseDate parses a GitLab Date scalar ("YYYY-MM-DD") into a UTC time, or nil

@@ -174,6 +174,7 @@ type Task struct {
 type TaskAssignee struct {
 	TaskID uuid.UUID `json:"task_id"`
 	UserID uuid.UUID `json:"user_id"`
+	Source string    `json:"source"`
 }
 
 type TaskAttachment struct {
@@ -188,12 +189,15 @@ type TaskAttachment struct {
 }
 
 type TaskComment struct {
-	ID        uuid.UUID  `json:"id"`
-	TaskID    uuid.UUID  `json:"task_id"`
-	AuthorID  *uuid.UUID `json:"author_id"`
-	Body      string     `json:"body"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	TaskID        uuid.UUID  `json:"task_id"`
+	AuthorID      *uuid.UUID `json:"author_id"`
+	Body          string     `json:"body"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	GlNoteID      *string    `json:"gl_note_id"`
+	GlAuthorLogin string     `json:"gl_author_login"`
+	GlAuthorName  string     `json:"gl_author_name"`
 }
 
 type TaskEvent struct {
@@ -203,6 +207,12 @@ type TaskEvent struct {
 	Kind      string     `json:"kind"`
 	Data      []byte     `json:"data"`
 	CreatedAt time.Time  `json:"created_at"`
+}
+
+type TaskGitlabAssignee struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	GlUsername string    `json:"gl_username"`
+	GlName     string    `json:"gl_name"`
 }
 
 type TaskRelation struct {
@@ -216,6 +226,7 @@ type TaskRelation struct {
 type TaskTag struct {
 	TaskID uuid.UUID `json:"task_id"`
 	TagID  uuid.UUID `json:"tag_id"`
+	Source string    `json:"source"`
 }
 
 type User struct {

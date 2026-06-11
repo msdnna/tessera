@@ -82,3 +82,45 @@ UPDATE tasks
 SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- name: LinkedIidsForIntegration :many
+SELECT gl_iid FROM gitlab_links WHERE integration_id = $1;
+
+-- ── sync reconciliation: mixed tags / assignees ────────────
+-- Resolve a GitLab username to a Tessera user (via their linked credential).
+-- name: GetUserIDByGitlabUsername :one
+SELECT user_id FROM gitlab_credentials WHERE gl_username = $1;
+
+-- name: AddTaskTagSourced :exec
+INSERT INTO task_tags (task_id, tag_id, source) VALUES ($1, $2, $3)
+ON CONFLICT (task_id, tag_id) DO NOTHING;
+
+-- name: DeleteStaleGitlabTaskTags :exec
+DELETE FROM task_tags
+WHERE task_id = $1 AND source = 'gitlab' AND NOT (tag_id = ANY($2::uuid[]));
+
+-- name: AddTaskAssigneeSourced :exec
+INSERT INTO task_assignees (task_id, user_id, source) VALUES ($1, $2, $3)
+ON CONFLICT (task_id, user_id) DO NOTHING;
+
+-- name: DeleteStaleGitlabAssignees :exec
+DELETE FROM task_assignees
+WHERE task_id = $1 AND source = 'gitlab' AND NOT (user_id = ANY($2::uuid[]));
+
+-- ── external GitLab assignees (no Tessera account) ─────────
+-- name: DeleteTaskGitlabAssignees :exec
+DELETE FROM task_gitlab_assignees WHERE task_id = $1;
+
+-- name: AddTaskGitlabAssignee :exec
+INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name) VALUES ($1, $2, $3)
+ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name;
+
+-- name: ListTaskGitlabAssignees :many
+SELECT gl_username, gl_name FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name;
+
+-- ── synced comments (idempotent by GitLab note id) ─────────
+-- name: UpsertGitlabComment :exec
+INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, created_at, updated_at)
+VALUES ($1, NULL, $2, $3, $4, $5, $6, $6)
+ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
+DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, updated_at = now();

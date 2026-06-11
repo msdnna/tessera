@@ -12,6 +12,54 @@ import (
 	"github.com/google/uuid"
 )
 
+const addTaskAssigneeSourced = `-- name: AddTaskAssigneeSourced :exec
+INSERT INTO task_assignees (task_id, user_id, source) VALUES ($1, $2, $3)
+ON CONFLICT (task_id, user_id) DO NOTHING
+`
+
+type AddTaskAssigneeSourcedParams struct {
+	TaskID uuid.UUID `json:"task_id"`
+	UserID uuid.UUID `json:"user_id"`
+	Source string    `json:"source"`
+}
+
+func (q *Queries) AddTaskAssigneeSourced(ctx context.Context, arg AddTaskAssigneeSourcedParams) error {
+	_, err := q.db.Exec(ctx, addTaskAssigneeSourced, arg.TaskID, arg.UserID, arg.Source)
+	return err
+}
+
+const addTaskGitlabAssignee = `-- name: AddTaskGitlabAssignee :exec
+INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name) VALUES ($1, $2, $3)
+ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name
+`
+
+type AddTaskGitlabAssigneeParams struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	GlUsername string    `json:"gl_username"`
+	GlName     string    `json:"gl_name"`
+}
+
+func (q *Queries) AddTaskGitlabAssignee(ctx context.Context, arg AddTaskGitlabAssigneeParams) error {
+	_, err := q.db.Exec(ctx, addTaskGitlabAssignee, arg.TaskID, arg.GlUsername, arg.GlName)
+	return err
+}
+
+const addTaskTagSourced = `-- name: AddTaskTagSourced :exec
+INSERT INTO task_tags (task_id, tag_id, source) VALUES ($1, $2, $3)
+ON CONFLICT (task_id, tag_id) DO NOTHING
+`
+
+type AddTaskTagSourcedParams struct {
+	TaskID uuid.UUID `json:"task_id"`
+	TagID  uuid.UUID `json:"tag_id"`
+	Source string    `json:"source"`
+}
+
+func (q *Queries) AddTaskTagSourced(ctx context.Context, arg AddTaskTagSourcedParams) error {
+	_, err := q.db.Exec(ctx, addTaskTagSourced, arg.TaskID, arg.TagID, arg.Source)
+	return err
+}
+
 const createGitlabLink = `-- name: CreateGitlabLink :one
 INSERT INTO gitlab_links (
     task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url,
@@ -77,6 +125,46 @@ DELETE FROM gitlab_credentials WHERE user_id = $1
 
 func (q *Queries) DeleteGitlabCredential(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteGitlabCredential, userID)
+	return err
+}
+
+const deleteStaleGitlabAssignees = `-- name: DeleteStaleGitlabAssignees :exec
+DELETE FROM task_assignees
+WHERE task_id = $1 AND source = 'gitlab' AND NOT (user_id = ANY($2::uuid[]))
+`
+
+type DeleteStaleGitlabAssigneesParams struct {
+	TaskID  uuid.UUID   `json:"task_id"`
+	Column2 []uuid.UUID `json:"column_2"`
+}
+
+func (q *Queries) DeleteStaleGitlabAssignees(ctx context.Context, arg DeleteStaleGitlabAssigneesParams) error {
+	_, err := q.db.Exec(ctx, deleteStaleGitlabAssignees, arg.TaskID, arg.Column2)
+	return err
+}
+
+const deleteStaleGitlabTaskTags = `-- name: DeleteStaleGitlabTaskTags :exec
+DELETE FROM task_tags
+WHERE task_id = $1 AND source = 'gitlab' AND NOT (tag_id = ANY($2::uuid[]))
+`
+
+type DeleteStaleGitlabTaskTagsParams struct {
+	TaskID  uuid.UUID   `json:"task_id"`
+	Column2 []uuid.UUID `json:"column_2"`
+}
+
+func (q *Queries) DeleteStaleGitlabTaskTags(ctx context.Context, arg DeleteStaleGitlabTaskTagsParams) error {
+	_, err := q.db.Exec(ctx, deleteStaleGitlabTaskTags, arg.TaskID, arg.Column2)
+	return err
+}
+
+const deleteTaskGitlabAssignees = `-- name: DeleteTaskGitlabAssignees :exec
+DELETE FROM task_gitlab_assignees WHERE task_id = $1
+`
+
+// ── external GitLab assignees (no Tessera account) ─────────
+func (q *Queries) DeleteTaskGitlabAssignees(ctx context.Context, taskID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteTaskGitlabAssignees, taskID)
 	return err
 }
 
@@ -181,6 +269,43 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 	return i, err
 }
 
+const getUserIDByGitlabUsername = `-- name: GetUserIDByGitlabUsername :one
+SELECT user_id FROM gitlab_credentials WHERE gl_username = $1
+`
+
+// ── sync reconciliation: mixed tags / assignees ────────────
+// Resolve a GitLab username to a Tessera user (via their linked credential).
+func (q *Queries) GetUserIDByGitlabUsername(ctx context.Context, glUsername string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getUserIDByGitlabUsername, glUsername)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
+const linkedIidsForIntegration = `-- name: LinkedIidsForIntegration :many
+SELECT gl_iid FROM gitlab_links WHERE integration_id = $1
+`
+
+func (q *Queries) LinkedIidsForIntegration(ctx context.Context, integrationID uuid.UUID) ([]int64, error) {
+	rows, err := q.db.Query(ctx, linkedIidsForIntegration, integrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var gl_iid int64
+		if err := rows.Scan(&gl_iid); err != nil {
+			return nil, err
+		}
+		items = append(items, gl_iid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAutoSyncIntegrations = `-- name: ListAutoSyncIntegrations :many
 SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at FROM gitlab_integrations
 WHERE enabled
@@ -214,6 +339,35 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 			&i.SyncIntervalSec,
 			&i.LastSyncedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTaskGitlabAssignees = `-- name: ListTaskGitlabAssignees :many
+SELECT gl_username, gl_name FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name
+`
+
+type ListTaskGitlabAssigneesRow struct {
+	GlUsername string `json:"gl_username"`
+	GlName     string `json:"gl_name"`
+}
+
+func (q *Queries) ListTaskGitlabAssignees(ctx context.Context, taskID uuid.UUID) ([]ListTaskGitlabAssigneesRow, error) {
+	rows, err := q.db.Query(ctx, listTaskGitlabAssignees, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTaskGitlabAssigneesRow
+	for rows.Next() {
+		var i ListTaskGitlabAssigneesRow
+		if err := rows.Scan(&i.GlUsername, &i.GlName); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -333,6 +487,35 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		&i.GlAuthorName,
 	)
 	return i, err
+}
+
+const upsertGitlabComment = `-- name: UpsertGitlabComment :exec
+INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, created_at, updated_at)
+VALUES ($1, NULL, $2, $3, $4, $5, $6, $6)
+ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
+DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, updated_at = now()
+`
+
+type UpsertGitlabCommentParams struct {
+	TaskID        uuid.UUID `json:"task_id"`
+	Body          string    `json:"body"`
+	GlNoteID      *string   `json:"gl_note_id"`
+	GlAuthorLogin string    `json:"gl_author_login"`
+	GlAuthorName  string    `json:"gl_author_name"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// ── synced comments (idempotent by GitLab note id) ─────────
+func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabCommentParams) error {
+	_, err := q.db.Exec(ctx, upsertGitlabComment,
+		arg.TaskID,
+		arg.Body,
+		arg.GlNoteID,
+		arg.GlAuthorLogin,
+		arg.GlAuthorName,
+		arg.CreatedAt,
+	)
+	return err
 }
 
 const upsertGitlabCredential = `-- name: UpsertGitlabCredential :one

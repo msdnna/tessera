@@ -172,6 +172,8 @@ const tagObjs = computed(() =>
 const assigneeObjs = computed(() =>
   selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
 )
+// External GitLab assignees (display-only) from the task detail.
+const glAssignees = computed(() => task.value?.gitlab_assignees || [])
 // Author = who created the card (read-only): the GitLab issue author for synced
 // tasks, otherwise the Tessera user resolved from created_by.
 const author = computed(() => {
@@ -755,16 +757,21 @@ function eventText(e) {
               <n-popover trigger="click" placement="bottom-start">
                 <template #trigger>
                   <button class="val">
-                    <template v-if="assigneeObjs.length">
-                      <span
-                        v-for="u in assigneeObjs"
-                        :key="u.user_id"
-                        class="avatar"
-                        :title="u.name"
-                        >{{ initials(u.name) }}</span
-                      >
-                    </template>
-                    <span v-else class="muted">Никто</span>
+                    <span
+                      v-for="u in assigneeObjs"
+                      :key="u.user_id"
+                      class="avatar"
+                      :title="u.name"
+                      >{{ initials(u.name) }}</span
+                    >
+                    <span
+                      v-for="(g, i) in glAssignees"
+                      :key="`g${i}`"
+                      class="avatar ext-ava"
+                      :title="`${g} (GitLab)`"
+                      >{{ initials(g) }}</span
+                    >
+                    <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted">Никто</span>
                   </button>
                 </template>
                 <div class="menu">
@@ -901,10 +908,11 @@ function eventText(e) {
               </template>
               <div class="comments">
                 <div v-for="c in comments" :key="c.id" class="comment">
-                  <span class="c-ava">{{ initials(c.author_name) }}</span>
+                  <span class="c-ava">{{ initials(c.author_name || c.gl_author_name) }}</span>
                   <div class="c-body">
                     <div class="c-head">
-                      <span class="c-author">{{ c.author_name || 'Кто-то' }}</span>
+                      <span class="c-author">{{ c.author_name || c.gl_author_name || 'Кто-то' }}</span>
+                      <span v-if="!c.author_name && c.gl_author_name" class="c-gl">· GitLab</span>
                       <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
                       <span v-if="c.author_id === meId" class="c-acts">
                         <button class="c-act" title="Изменить" @click="startEditComment(c)">
@@ -1316,6 +1324,10 @@ function eventText(e) {
   color: var(--t-text3);
   font-size: 12px;
 }
+/* external GitLab assignee avatar (no Tessera account) */
+.ext-ava {
+  background: var(--t-text3);
+}
 .muted {
   color: var(--t-text3);
 }
@@ -1611,6 +1623,10 @@ function eventText(e) {
   font-weight: 600;
   font-size: 13px;
   color: var(--t-text1);
+}
+.c-gl {
+  font-size: 11px;
+  color: var(--t-text3);
 }
 .c-when {
   font-size: 11px;

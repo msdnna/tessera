@@ -10,6 +10,7 @@ import (
 	"hash/fnv"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -249,10 +250,23 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		return 0, 0, fmt.Errorf("decrypt stored token: %w", err)
 	}
 	client := gitlab.New(cred.BaseUrl, token)
-	issues, err := client.AssignedIssues(ctx, integ.ProjectPath, cred.GlUsername)
+	// Issues currently assigned to me (discovers new) plus every issue we already
+	// linked (keeps them fresh and reflects a reassignment away from me — the
+	// task stays, the assignee changes). Merge, deduped by global id.
+	assigned, err := client.AssignedIssues(ctx, integ.ProjectPath, cred.GlUsername)
 	if err != nil {
 		return 0, 0, err
 	}
+	linkedIids, _ := h.q.LinkedIidsForIntegration(ctx, integ.ID)
+	iidStrs := make([]string, 0, len(linkedIids))
+	for _, id := range linkedIids {
+		iidStrs = append(iidStrs, strconv.FormatInt(id, 10))
+	}
+	linked, err := client.IssuesByIIDs(ctx, integ.ProjectPath, iidStrs)
+	if err != nil {
+		return 0, 0, err
+	}
+	issues := mergeIssues(assigned, linked)
 
 	board, err := h.q.GetBoard(ctx, integ.BoardID)
 	if err != nil {
@@ -303,7 +317,7 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 				log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 				continue
 			}
-			h.applyTags(ctx, t.ID, wsID, res.Tags)
+			h.reconcileTaskMeta(ctx, t.ID, wsID, issue, res.Tags)
 			h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 			h.broadcast(wsID, "task.created", t)
 			created++
@@ -335,7 +349,7 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 				_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: issue.DueDate})
 				t.DueDate = issue.DueDate
 			}
-			h.applyTags(ctx, link.TaskID, wsID, res.Tags)
+			h.reconcileTaskMeta(ctx, link.TaskID, wsID, issue, res.Tags)
 			h.broadcast(wsID, "task.updated", t)
 			updated++
 		}
@@ -436,11 +450,21 @@ func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.U
 	return t, nil
 }
 
-// applyTags ensures each resolved tag exists in the workspace (with the GitLab
-// label colour, or a stable auto-colour when GitLab supplies none) and attaches
-// it to the task. Additive only: tags the user applied manually are never
-// removed, so synced labels never clobber scope tags. Best-effort per tag.
-func (h *API) applyTags(ctx context.Context, taskID, wsID uuid.UUID, tags []gitlab.Tag) {
+// reconcileTaskMeta applies a synced issue's tags, assignees and comments to its
+// Tessera task. Each is "mixed": the sync owns the gitlab-sourced set (added,
+// refreshed and pruned to match GitLab) and never touches what the user added
+// manually.
+func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) {
+	h.reconcileTags(ctx, taskID, wsID, tags)
+	h.reconcileAssignees(ctx, taskID, issue.Assignees)
+	h.syncComments(ctx, taskID, issue.Notes)
+}
+
+// reconcileTags ensures each resolved tag exists (with the GitLab colour or a
+// stable auto-colour), attaches it as gitlab-sourced, and prunes gitlab-sourced
+// tags GitLab no longer has. Manual ('user') tags are left untouched.
+func (h *API) reconcileTags(ctx context.Context, taskID, wsID uuid.UUID, tags []gitlab.Tag) {
+	ids := make([]uuid.UUID, 0, len(tags))
 	for _, t := range tags {
 		color := t.Color
 		if color == "" {
@@ -450,8 +474,56 @@ func (h *API) applyTags(ctx context.Context, taskID, wsID uuid.UUID, tags []gitl
 		if err != nil {
 			continue
 		}
-		_ = h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: taskID, TagID: tag.ID})
+		_ = h.q.AddTaskTagSourced(ctx, db.AddTaskTagSourcedParams{TaskID: taskID, TagID: tag.ID, Source: "gitlab"})
+		ids = append(ids, tag.ID)
 	}
+	_ = h.q.DeleteStaleGitlabTaskTags(ctx, db.DeleteStaleGitlabTaskTagsParams{TaskID: taskID, Column2: ids})
+}
+
+// reconcileAssignees rebuilds the GitLab-sourced assignee set: a GitLab assignee
+// whose username maps to a Tessera user becomes a real (gitlab-sourced) assignee;
+// the rest are stored as external display-only assignees. Manual ('user')
+// assignees are left untouched.
+func (h *API) reconcileAssignees(ctx context.Context, taskID uuid.UUID, people []gitlab.Person) {
+	_ = h.q.DeleteTaskGitlabAssignees(ctx, taskID) // external set is fully rebuilt
+	tesseraIDs := make([]uuid.UUID, 0, len(people))
+	for _, p := range people {
+		if uid, err := h.q.GetUserIDByGitlabUsername(ctx, p.Login); err == nil {
+			_ = h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"})
+			tesseraIDs = append(tesseraIDs, uid)
+		} else {
+			_ = h.q.AddTaskGitlabAssignee(ctx, db.AddTaskGitlabAssigneeParams{TaskID: taskID, GlUsername: p.Login, GlName: p.Name})
+		}
+	}
+	_ = h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs})
+}
+
+// syncComments upserts each GitLab note as a comment, idempotent by note id, with
+// the GitLab author denormalised (it may not be a Tessera user).
+func (h *API) syncComments(ctx context.Context, taskID uuid.UUID, notes []gitlab.Note) {
+	for _, n := range notes {
+		noteID := n.GlobalID
+		_ = h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
+			TaskID: taskID, Body: n.Body, GlNoteID: &noteID,
+			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name, CreatedAt: n.CreatedAt,
+		})
+	}
+}
+
+// mergeIssues concatenates two issue lists, deduped by global id (first wins).
+func mergeIssues(a, b []gitlab.Issue) []gitlab.Issue {
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]gitlab.Issue, 0, len(a)+len(b))
+	for _, set := range [][]gitlab.Issue{a, b} {
+		for _, is := range set {
+			if seen[is.GlobalID] {
+				continue
+			}
+			seen[is.GlobalID] = true
+			out = append(out, is)
+		}
+	}
+	return out
 }
 
 // tagPalette is a small set of pleasant accent colours used to auto-colour a

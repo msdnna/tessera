@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.46.0] — 2026-06-11
+- Board card and task modal now render **external GitLab assignees** (a GitLab
+  user with no Tessera account) alongside Tessera assignees — a muted avatar with
+  a hover tooltip; the author → assignee cascade includes them.
+- Synced **comments** display their GitLab author (and a `· GitLab` marker) when
+  the author isn't a Tessera user; such comments have no local edit/delete.
+
 ### [0.45.1] — 2026-06-11
 - Tag text is now legible on both themes: the label colour is lightness-clamped
   for the active theme (`readableHue`) when used as text/gradient, so a dark blue
@@ -865,6 +872,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.23.0] — 2026-06-11
+- GitLab sync now mirrors **assignees** and **comments**, representing GitLab
+  users with no Tessera account (migration 0011). A GitLab assignee whose
+  username is linked to a Tessera user (via their credential) becomes a real
+  assignee; the rest land in `task_gitlab_assignees` (display-only). Comments
+  are pulled from issue notes (system notes skipped) and upserted idempotently
+  by note id, with the GitLab author denormalised. `GET /tasks/:id` and the
+  board task list now include `gitlab_assignees`.
+- **Mixed reconciliation:** `task_tags`/`task_assignees` gain a `source`
+  (`user`|`gitlab`). Each sync rebuilds only the `gitlab`-sourced set — adding,
+  recolouring and pruning to match GitLab — and never touches what you applied
+  manually. So a label/assignee removed in GitLab is removed here, while your own
+  tags/assignees stay.
+- **Linked tasks stay synced after reassignment:** the pull now also refetches
+  every already-linked issue by iid (not just issues currently assigned to me),
+  so a task reassigned away from you remains on the board and reflects its new
+  (external) assignee instead of going stale. Sync never deletes tasks.
 
 ### [0.22.0] — 2026-06-11
 - GitLab sync now pulls **label colours** (`labels { … color }`) and applies them
