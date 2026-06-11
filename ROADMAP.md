@@ -92,12 +92,12 @@ frontend `0.43.0` · android `0.3.1`.
   **синк исполнителей и комментов с внешними GL-юзерами** (migration 0011: `task_gitlab_assignees`,
   `task_comments.gl_*`); **mixed-sync** (`source` user|gitlab на тегах/ассайни — реконсайл только
   gitlab-набора); слинкованные задачи добираются по iid → переназначение отражается, синк не удаляет.
-- **Очередь доработок (по запросу пользователя 2026-06-11):** (2) сроки из **milestone**
-  `End date` (issue.dueDate ?? milestone.dueDate; ручной срок > GL; флаг `due_overridden` +
-  UI-настройка `due_source`); (3) **генерализация правил** label_rules → список
-  `{match: prefix|regex, action: status|priority|board|group|tag, params}` (group/подзадачи —
-  под капотом через GraphQL hierarchy, позже); (4) **кастомный фильтр группировки** на доске
-  (группировка по префиксу тега и шире — пользовательский фильтр, не хардкод).
+- **Доработки 2 (2026-06-11, backend 0.24–0.25, web 0.47–0.49) — ✅ СДЕЛАНО:**
+  (2) сроки из **milestone** `End date` (issue.dueDate ?? milestone; ручной срок > GL через
+  `due_overridden`; UI `due_source`); (3) **генерализация правил** — label_rules → список
+  `{match: prefix|regex, action: status|priority|board|group|tag}` (board роутит на другую
+  доску; group распознаётся, подзадачи — позже через GraphQL hierarchy); generic-редактор в UI;
+  (4) **группировка по неймспейсу тега** на доске (авто-префиксы + кастом, persisted).
 - **Бэклог фазы B+:** write-back (action-bindings + loop-guard через снапшот-хэши, уже в схеме);
   webhooks; OAuth/SSO; `M:`-подзадачи (GraphQL hierarchy).
 
