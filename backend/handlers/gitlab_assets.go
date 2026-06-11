@@ -87,33 +87,32 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		return
 	}
 
-	// Fetch via the project uploads API (authenticates with the PAT) rather than
-	// the web /uploads/ route (which needs a session and serves the login page).
-	// relPath is "/uploads/<secret>/<filename>" → API ".../uploads/<secret>/<filename>".
+	base := strings.TrimRight(cred.BaseUrl, "/")
+	projectPath := strings.Trim(integ.ProjectPath, "/")
+
+	// GitLab 17.4+ exposes a PAT-authenticated uploads API; try it first and
+	// stream the bytes. relPath "/uploads/<secret>/<file>" → ".../uploads/<secret>/<file>".
 	rest := strings.TrimPrefix(relPath, "/uploads/")
-	target := strings.TrimRight(cred.BaseUrl, "/") +
-		"/api/v4/projects/" + url.QueryEscape(strings.Trim(integ.ProjectPath, "/")) +
-		"/uploads/" + rest
-	req, err := http.NewRequestWithContext(c, http.MethodGet, target, nil)
-	if err != nil {
-		c.Status(http.StatusBadGateway)
-		return
+	apiURL := base + "/api/v4/projects/" + url.QueryEscape(projectPath) + "/uploads/" + rest
+	if req, rerr := http.NewRequestWithContext(c, http.MethodGet, apiURL, nil); rerr == nil {
+		req.Header.Set("PRIVATE-TOKEN", token)
+		if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
+			if resp.StatusCode == http.StatusOK {
+				defer func() { _ = resp.Body.Close() }()
+				ct := resp.Header.Get("Content-Type")
+				if ct == "" {
+					ct = "application/octet-stream"
+				}
+				c.Header("Cache-Control", "private, max-age=3600")
+				c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+				return
+			}
+			_ = resp.Body.Close()
+		}
 	}
-	req.Header.Set("PRIVATE-TOKEN", token)
-	resp, err := gitlab.NewHTTPClient().Do(req)
-	if err != nil {
-		c.Status(http.StatusBadGateway)
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		c.Status(resp.StatusCode) // forward upstream status (e.g. 401/404) for debugging
-		return
-	}
-	ct := resp.Header.Get("Content-Type")
-	if ct == "" {
-		ct = "application/octet-stream"
-	}
-	c.Header("Cache-Control", "private, max-age=3600")
-	c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+
+	// Older GitLab (< 17.4) has no such API and its web /uploads/ route ignores
+	// the token; redirect to it so the browser's own GitLab session serves the
+	// file (the user is logged into GitLab).
+	c.Redirect(http.StatusFound, base+"/"+projectPath+relPath)
 }

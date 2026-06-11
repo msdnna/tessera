@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.54.1] — 2026-06-11
+- Fix: the board loader stays vertically centred during the initial load instead
+  of flashing near the top before jumping to the middle.
+- The toolbar buttons to the right of the composer bar (subtasks toggle, saved-
+  view load/save) now match the composer bar's height.
+
 ### [0.54.0] — 2026-06-11
 - **Composer bar** (a reference tracker/GitLab-style): grouping, sort levels and filters now
   render as removable chips in one wide bar with an «＋» menu to add any
@@ -942,6 +948,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.29.2] — 2026-06-11
+- GitLab asset proxy: the uploads-by-secret API only exists in GitLab ≥ 17.4, so
+  on older instances (older versions) the proxy now **redirects** to the web
+  `/uploads/…` URL — the browser's own GitLab session serves the file. 17.4+ is
+  still served via the PAT-authenticated API; the redirect is the fallback.
 
 ### [0.29.1] — 2026-06-11
 - Fix: the GitLab asset proxy now fetches via the project **uploads API**

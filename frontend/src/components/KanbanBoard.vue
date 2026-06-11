@@ -827,7 +827,7 @@ watch(
 </script>
 
 <template>
-  <n-spin :show="loading" :rotate="false">
+  <n-spin :show="loading" :rotate="false" class="board-spin">
     <template #icon><TesseraSpinner /></template>
     <div v-if="board" class="board-wrap">
       <!-- Sub-toolbar under the header: grouping / sort / filters / subtasks +
@@ -877,7 +877,7 @@ watch(
             <n-button
               size="small"
               quaternary
-              class="ngrad"
+              class="ngrad bar-btn"
               :type="subtasksExpanded ? 'primary' : 'default'"
               @click="subtasksExpanded = !subtasksExpanded"
             >
@@ -895,7 +895,7 @@ watch(
                 <n-button
                     size="small"
                     quaternary
-                    class="ngrad"
+                    class="ngrad bar-btn"
                     :type="currentViewName ? 'primary' : 'default'"
                 >
                     <template #icon><n-icon :component="FolderOpenOutline" /></template>
@@ -930,7 +930,7 @@ watch(
             <template #trigger>
             <n-tooltip>
                 <template #trigger>
-                <n-button size="small" quaternary class="ngrad">
+                <n-button size="small" quaternary class="ngrad bar-btn">
                     <template #icon><n-icon :component="SaveOutline" /></template>
                 </n-button>
                 </template>
@@ -1115,6 +1115,15 @@ watch(
 }
 .subbar-spacer {
   flex: 1;
+}
+/* Keep the loader vertically centred during the initial board load (the spin
+   content would otherwise be empty → spinner pinned to the top before content). */
+.board-spin :deep(.n-spin-content) {
+  min-height: 72vh;
+}
+/* Right-side toolbar buttons match the composer bar's height. */
+.bar-btn {
+  height: 36px;
 }
 /* composer bar */
 .composer {
