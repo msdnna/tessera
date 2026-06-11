@@ -62,6 +62,7 @@ const projectPath = ref('')
 const boardId = ref(null)
 const enabled = ref(true)
 const intervalSec = ref(0)
+const dueSource = ref('issue_milestone')
 const lastSynced = ref(null)
 const statusPrefix = ref('S: ')
 const priorityPrefix = ref('P: ')
@@ -84,6 +85,12 @@ const intervalOptions = [
 const tagModeOptions = [
   { label: 'Создавать теги', value: 'all' },
   { label: 'Игнорировать', value: 'ignore' },
+]
+const dueSourceOptions = [
+  { label: 'Issue, иначе срок Milestone', value: 'issue_milestone' },
+  { label: 'Только из Issue', value: 'issue' },
+  { label: 'Только из Milestone', value: 'milestone' },
+  { label: 'Не синхронизировать', value: 'off' },
 ]
 const priorityLevelOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
 
@@ -132,6 +139,7 @@ async function loadIntegration() {
     boardId.value = data.board_id || null
     enabled.value = data.enabled !== false
     intervalSec.value = data.sync_interval_sec || 0
+    dueSource.value = data.due_source || 'issue_milestone'
     lastSynced.value = data.last_synced_at || null
     const r = data.label_rules || {}
     statusPrefix.value = r.status_prefix ?? 'S: '
@@ -184,6 +192,7 @@ async function save() {
       board_id: boardId.value,
       enabled: enabled.value,
       sync_interval_sec: Number(intervalSec.value),
+      due_source: dueSource.value,
       label_rules,
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
@@ -294,6 +303,9 @@ watch(
 
           <n-text depth="3" class="lbl">Автосинхронизация</n-text>
           <n-select v-model:value="intervalSec" :options="intervalOptions" size="small" />
+
+          <n-text depth="3" class="lbl">Источник срока</n-text>
+          <n-select v-model:value="dueSource" :options="dueSourceOptions" size="small" />
 
           <n-text depth="3" class="lbl">Включена</n-text>
           <div><n-switch v-model:value="enabled" /></div>

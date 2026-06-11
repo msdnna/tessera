@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.47.0] — 2026-06-11
+- GitLab integration settings gain a **«Источник срока»** (due source) selector:
+  issue-then-milestone (default) / issue only / milestone only / off.
+
 ### [0.46.0] — 2026-06-11
 - Board card and task modal now render **external GitLab assignees** (a GitLab
   user with no Tessera account) alongside Tessera assignees — a muted avatar with
@@ -872,6 +876,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.24.0] — 2026-06-11
+- GitLab due-date sync now also reads the issue's **milestone End date**: a task's
+  due = the issue's own due, else the milestone's due (configurable per
+  integration via `due_source`: `issue_milestone` default / `issue` / `milestone`
+  / `off`; migration 0012). Applies to open and closed issues.
+- **Manual due wins:** editing a linked task's due date sets `due_overridden` on
+  the link, after which the sync never touches it again (priority: your manual
+  date > issue due > milestone due).
 
 ### [0.23.0] — 2026-06-11
 - GitLab sync now mirrors **assignees** and **comments**, representing GitLab

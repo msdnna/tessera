@@ -124,19 +124,20 @@ type Note struct {
 
 // Issue is a GitLab issue reduced to the fields the sync needs.
 type Issue struct {
-	GlobalID    string
-	IID         int64
-	Title       string
-	Description string
-	WebURL      string
-	State       string // opened | closed
-	UpdatedAt   *time.Time
-	DueDate     *time.Time // GitLab issue due date (date-only), nil when unset
-	Labels      []Label
-	AuthorLogin string // GitLab username of the issue author (may not be a Tessera user)
-	AuthorName  string
-	Assignees   []Person
-	Notes       []Note // user comments (system notes filtered out)
+	GlobalID     string
+	IID          int64
+	Title        string
+	Description  string
+	WebURL       string
+	State        string // opened | closed
+	UpdatedAt    *time.Time
+	DueDate      *time.Time // issue's own due date (date-only), nil when unset
+	MilestoneDue *time.Time // due date (End date) of the issue's milestone, if any
+	Labels       []Label
+	AuthorLogin  string // GitLab username of the issue author (may not be a Tessera user)
+	AuthorName   string
+	Assignees    []Person
+	Notes        []Note // user comments (system notes filtered out)
 }
 
 const issuesQuery = `
@@ -153,6 +154,7 @@ query($path: ID!, $username: String, $iids: [String!], $after: String) {
         state
         updatedAt
         dueDate
+        milestone { dueDate }
         author { username name }
         assignees { nodes { username name } }
         labels { nodes { title color } }
@@ -226,7 +228,10 @@ type issueNode struct {
 	State       string     `json:"state"`
 	UpdatedAt   *time.Time `json:"updatedAt"`
 	DueDate     string     `json:"dueDate"`
-	Author      *struct {
+	Milestone   *struct {
+		DueDate string `json:"dueDate"`
+	} `json:"milestone"`
+	Author *struct {
 		Username string `json:"username"`
 		Name     string `json:"name"`
 	} `json:"author"`
@@ -266,6 +271,9 @@ func (n issueNode) toIssue() Issue {
 		GlobalID: n.ID, IID: iid, Title: n.Title, Description: n.Description,
 		WebURL: n.WebURL, State: n.State, UpdatedAt: n.UpdatedAt,
 		DueDate: parseDate(n.DueDate), Labels: labels,
+	}
+	if n.Milestone != nil {
+		issue.MilestoneDue = parseDate(n.Milestone.DueDate)
 	}
 	if n.Author != nil {
 		issue.AuthorLogin = n.Author.Username

@@ -52,6 +52,7 @@ type GitlabIntegration struct {
 	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
 	SyncIntervalSec int32      `json:"sync_interval_sec"`
 	LastSyncedAt    *time.Time `json:"last_synced_at"`
+	DueSource       string     `json:"due_source"`
 }
 
 type GitlabLink struct {
@@ -69,6 +70,7 @@ type GitlabLink struct {
 	CreatedAt     time.Time  `json:"created_at"`
 	GlAuthor      string     `json:"gl_author"`
 	GlAuthorName  string     `json:"gl_author_name"`
+	DueOverridden bool       `json:"due_overridden"`
 }
 
 type Membership struct {
