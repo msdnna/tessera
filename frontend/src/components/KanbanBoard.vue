@@ -28,6 +28,7 @@ import {
   SaveOutline,
   FolderOpenOutline,
   TrashOutline,
+  AddOutline,
 } from '@vicons/ionicons5'
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -95,26 +96,47 @@ const groupTags = computed(() =>
     ? tagsList.value.filter((t) => (t.name || '').startsWith(tagPrefix.value))
     : tagsList.value,
 )
-const sortBy = ref('position') // 'position' | 'priority' | 'due'
-const sortDir = ref('asc') // 'asc' | 'desc' (ignored for manual order)
+// Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
+const sortLevels = ref([])
 const filters = reactive({ priorities: [], assignees: [], tags: [], due: '', q: '' })
-const sortOptions = [
-  { label: 'Вручную', value: 'position' },
-  { label: 'По приоритету', value: 'priority' },
-  { label: 'По сроку', value: 'due' },
+const sortFieldOptions = [
+  { label: 'Приоритет', value: 'priority' },
+  { label: 'Срок', value: 'due' },
+  { label: 'Название', value: 'title' },
+  { label: 'Номер', value: 'number' },
 ]
 const sortDirOptions = [
   { label: 'По возрастанию', value: 'asc' },
   { label: 'По убыванию', value: 'desc' },
 ]
-// Grouping + sort share a dropdown form (open straight from the toolbar button);
-// a right-aligned check icon marks the active option.
+function addSortLevel() {
+  const used = new Set(sortLevels.value.map((l) => l.field))
+  const next = sortFieldOptions.find((o) => !used.has(o.value)) || sortFieldOptions[0]
+  sortLevels.value.push({ field: next.value, dir: 'asc' })
+}
+// One sort level's comparison (direction applied; due-less tasks always last).
+function cmpLevel(a, b, { field, dir }) {
+  const d = dir === 'desc' ? -1 : 1
+  if (field === 'due') {
+    const av = a.due_date ? Date.parse(a.due_date) : null
+    const bv = b.due_date ? Date.parse(b.due_date) : null
+    if (av === null && bv === null) return 0
+    if (av === null) return 1
+    if (bv === null) return -1
+    return d * (av - bv)
+  }
+  if (field === 'priority') return d * ((a.priority || 0) - (b.priority || 0))
+  if (field === 'title') return d * String(a.title || '').localeCompare(String(b.title || ''), 'ru')
+  if (field === 'number') return d * ((a.number || 0) - (b.number || 0))
+  return 0
+}
+// Grouping uses a dropdown form (open straight from the toolbar button); a
+// right-aligned check icon marks the active option.
 const groupOptions = [
   { label: 'По статусам', value: 'status' },
   { label: 'По тегам', value: 'tag' },
 ]
 const groupMenuOptions = computed(() => groupOptions.map((o) => ({ key: o.value, label: o.label })))
-const sortMenuOptions = computed(() => sortOptions.map((o) => ({ key: o.value, label: o.label })))
 function renderCheckLabel(active, label) {
   return h(
     'div',
@@ -131,7 +153,6 @@ function renderCheckLabel(active, label) {
   )
 }
 const renderGroupLabel = (option) => renderCheckLabel(option.key === groupMode.value, option.label)
-const renderSortLabel = (option) => renderCheckLabel(option.key === sortBy.value, option.label)
 const dueOptions = [
   { label: 'Все', value: '' },
   { label: 'Просроченные', value: 'overdue' },
@@ -175,8 +196,7 @@ function persistView() {
         layout: layout.value,
         groupMode: groupMode.value,
         tagPrefix: tagPrefix.value,
-        sortBy: sortBy.value,
-        sortDir: sortDir.value,
+        sortLevels: sortLevels.value,
         subtasksExpanded: subtasksExpanded.value,
         filters,
       }),
@@ -195,8 +215,9 @@ function restoreView() {
       if (v.groupMode) groupMode.value = v.groupMode
       if (typeof v.tagPrefix === 'string') tagPrefix.value = v.tagPrefix
       subtasksExpanded.value = !!v.subtasksExpanded
-      if (v.sortBy) sortBy.value = v.sortBy
-      if (v.sortDir) sortDir.value = v.sortDir
+      if (Array.isArray(v.sortLevels)) sortLevels.value = v.sortLevels
+      else if (v.sortBy && v.sortBy !== 'position')
+        sortLevels.value = [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
       if (v.filters) {
         filters.priorities = v.filters.priorities || []
         filters.assignees = v.filters.assignees || []
@@ -213,7 +234,7 @@ function restoreView() {
     nextTick(() => (restoring = false))
   }
 }
-watch([layout, groupMode, tagPrefix, sortBy, sortDir, subtasksExpanded, filters], persistView, {
+watch([layout, groupMode, tagPrefix, sortLevels, subtasksExpanded, filters], persistView, {
   deep: true,
 })
 
@@ -237,8 +258,7 @@ function currentViewConfig() {
     layout: layout.value,
     groupMode: groupMode.value,
     tagPrefix: tagPrefix.value,
-    sortBy: sortBy.value,
-    sortDir: sortDir.value,
+    sortLevels: sortLevels.value,
     subtasksExpanded: subtasksExpanded.value,
     filters: { ...filters },
   }
@@ -248,8 +268,10 @@ function applyViewConfig(c) {
   if (c.layout) layout.value = c.layout
   if (c.groupMode) groupMode.value = c.groupMode
   tagPrefix.value = c.tagPrefix || ''
-  if (c.sortBy) sortBy.value = c.sortBy
-  if (c.sortDir) sortDir.value = c.sortDir
+  if (Array.isArray(c.sortLevels)) sortLevels.value = c.sortLevels.map((l) => ({ ...l }))
+  else if (c.sortBy && c.sortBy !== 'position')
+    sortLevels.value = [{ field: c.sortBy, dir: c.sortDir || 'asc' }]
+  else sortLevels.value = []
   subtasksExpanded.value = !!c.subtasksExpanded
   Object.assign(filters, { priorities: [], assignees: [], tags: [], due: '', q: '' }, c.filters || {})
 }
@@ -492,18 +514,15 @@ const filteredTasks = computed(() => {
   if (q) arr = arr.filter((t) => t.title.toLowerCase().includes(q))
 
   const s = [...arr]
-  const dir = sortDir.value === 'desc' ? -1 : 1
-  if (sortBy.value === 'priority') s.sort((a, b) => dir * ((a.priority || 0) - (b.priority || 0)))
-  else if (sortBy.value === 'due')
+  if (sortLevels.value.length) {
     s.sort((a, b) => {
-      // Tasks without a due date always sink to the bottom (both directions).
-      const av = a.due_date ? Date.parse(a.due_date) : null
-      const bv = b.due_date ? Date.parse(b.due_date) : null
-      if (av === null && bv === null) return 0
-      if (av === null) return 1
-      if (bv === null) return -1
-      return dir * (av - bv)
+      for (const lvl of sortLevels.value) {
+        const r = cmpLevel(a, b, lvl)
+        if (r) return r
+      }
+      return 0
     })
+  }
   return s
 })
 
@@ -766,27 +785,37 @@ watch(
           class="sb-prefix"
         />
 
-        <n-dropdown
-          trigger="click"
-          placement="bottom-start"
-          :options="sortMenuOptions"
-          :render-label="renderSortLabel"
-          @select="(k) => (sortBy = k)"
-        >
-          <n-button size="small" quaternary>
-            <template #icon><n-icon :component="SwapVerticalOutline" /></template>
-            <span class="sb-label">Сортировка</span>
-          </n-button>
-        </n-dropdown>
-
-        <!-- direction appears once a sort field (not manual order) is chosen -->
-        <n-select
-          v-if="sortBy !== 'position'"
-          v-model:value="sortDir"
-          :options="sortDirOptions"
-          size="small"
-          class="sb-prefix"
-        />
+        <!-- multi-level sort: ordered list of {field, dir}; empty = manual order -->
+        <n-popover trigger="click" placement="bottom-start">
+          <template #trigger>
+            <n-button
+              size="small"
+              quaternary
+              class="ngrad"
+              :type="sortLevels.length ? 'primary' : 'default'"
+            >
+              <template #icon><n-icon :component="SwapVerticalOutline" /></template>
+              <span class="sb-label">Сортировка{{ sortLevels.length ? ` (${sortLevels.length})` : '' }}</span>
+            </n-button>
+          </template>
+          <div class="sort-pop">
+            <div v-for="(lvl, i) in sortLevels" :key="i" class="sort-row">
+              <span class="sort-ord">{{ i + 1 }}</span>
+              <n-select v-model:value="lvl.field" :options="sortFieldOptions" size="small" />
+              <n-select v-model:value="lvl.dir" :options="sortDirOptions" size="small" />
+              <n-button text size="tiny" type="error" @click="sortLevels.splice(i, 1)">
+                <n-icon :component="TrashOutline" />
+              </n-button>
+            </div>
+            <n-text v-if="!sortLevels.length" depth="3" class="sort-empty">
+              Вручную (порядок на доске)
+            </n-text>
+            <n-button dashed size="tiny" type="primary" class="sort-add" @click="addSortLevel">
+              <template #icon><n-icon :component="AddOutline" /></template>
+              Уровень сортировки
+            </n-button>
+          </div>
+        </n-popover>
 
         <n-popover trigger="click" placement="bottom-start">
           <template #trigger>
@@ -856,78 +885,6 @@ watch(
           {{ subtasksExpanded ? 'Свернуть подзадачи' : 'Развернуть подзадачи' }}
         </n-tooltip>
 
-        <!-- saved views: load (folder) + save (disk) -->
-        <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
-          <template #trigger>
-            <n-tooltip>
-              <template #trigger>
-                <n-button
-                  size="small"
-                  quaternary
-                  class="ngrad"
-                  :type="currentViewName ? 'primary' : 'default'"
-                >
-                  <template #icon><n-icon :component="FolderOpenOutline" /></template>
-                </n-button>
-              </template>
-              {{ currentViewName ? `Представление: ${currentViewName}` : 'Загрузить представление' }}
-            </n-tooltip>
-          </template>
-          <div class="views-pop">
-            <div v-for="v in savedViews" :key="v.id" class="view-row">
-              <button class="view-name" :class="{ active: v.name === currentViewName }" @click="applyView(v)">
-                {{ v.name }}
-              </button>
-              <n-popconfirm
-                :positive-button-props="{ type: 'error' }"
-                positive-text="Удалить"
-                @positive-click="deleteView(v)"
-              >
-                <template #trigger>
-                  <n-button text size="tiny" type="error"><n-icon :component="TrashOutline" /></n-button>
-                </template>
-                Удалить представление «{{ v.name }}»?
-              </n-popconfirm>
-            </div>
-            <n-text v-if="!savedViews.length" depth="3" class="views-empty">
-              Нет сохранённых представлений
-            </n-text>
-          </div>
-        </n-popover>
-
-        <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
-          <template #trigger>
-            <n-tooltip>
-              <template #trigger>
-                <n-button size="small" quaternary class="ngrad">
-                  <template #icon><n-icon :component="SaveOutline" /></template>
-                </n-button>
-              </template>
-              Сохранить представление
-            </n-tooltip>
-          </template>
-          <div class="views-pop">
-            <n-input
-              v-model:value="newViewName"
-              size="small"
-              placeholder="Название представления"
-              @keyup.enter="saveView"
-            />
-            <div v-if="savedViews.length" class="views-over">
-              <n-text depth="3" class="views-lbl">Перезаписать:</n-text>
-              <button
-                v-for="v in savedViews"
-                :key="v.id"
-                class="view-chip"
-                @click="newViewName = v.name"
-              >
-                {{ v.name }}
-              </button>
-            </div>
-            <n-button type="primary" size="small" block @click="saveView">Сохранить</n-button>
-          </div>
-        </n-popover>
-
         <div class="subbar-spacer" />
 
         <n-input
@@ -939,6 +896,78 @@ watch(
         >
           <template #prefix><n-icon :component="SearchOutline" /></template>
         </n-input>
+
+        <!-- saved views: load (folder) + save (disk) -->
+        <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
+            <template #trigger>
+            <n-tooltip>
+                <template #trigger>
+                <n-button
+                    size="small"
+                    quaternary
+                    class="ngrad"
+                    :type="currentViewName ? 'primary' : 'default'"
+                >
+                    <template #icon><n-icon :component="FolderOpenOutline" /></template>
+                </n-button>
+                </template>
+                {{ currentViewName ? `Представление: ${currentViewName}` : 'Загрузить представление' }}
+            </n-tooltip>
+            </template>
+            <div class="views-pop">
+            <div v-for="v in savedViews" :key="v.id" class="view-row">
+                <button class="view-name" :class="{ active: v.name === currentViewName }" @click="applyView(v)">
+                {{ v.name }}
+                </button>
+                <n-popconfirm
+                :positive-button-props="{ type: 'error' }"
+                positive-text="Удалить"
+                @positive-click="deleteView(v)"
+                >
+                <template #trigger>
+                    <n-button text size="tiny" type="error"><n-icon :component="TrashOutline" /></n-button>
+                </template>
+                Удалить представление «{{ v.name }}»?
+                </n-popconfirm>
+            </div>
+            <n-text v-if="!savedViews.length" depth="3" class="views-empty">
+                Нет сохранённых представлений
+            </n-text>
+            </div>
+        </n-popover>
+
+        <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
+            <template #trigger>
+            <n-tooltip>
+                <template #trigger>
+                <n-button size="small" quaternary class="ngrad">
+                    <template #icon><n-icon :component="SaveOutline" /></template>
+                </n-button>
+                </template>
+                Сохранить представление
+            </n-tooltip>
+            </template>
+            <div class="views-pop">
+            <n-input
+                v-model:value="newViewName"
+                size="small"
+                placeholder="Название представления"
+                @keyup.enter="saveView"
+            />
+            <div v-if="savedViews.length" class="views-over">
+                <n-text depth="3" class="views-lbl">Перезаписать:</n-text>
+                <button
+                v-for="v in savedViews"
+                :key="v.id"
+                class="view-chip"
+                @click="newViewName = v.name"
+                >
+                {{ v.name }}
+                </button>
+            </div>
+            <n-button type="primary" size="small" block @click="saveView">Сохранить</n-button>
+            </div>
+        </n-popover>
       </div>
 
       <BoardListView
@@ -1100,6 +1129,30 @@ watch(
 .sb-prefix {
   width: 170px;
   flex: none;
+}
+.sort-pop {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sort-row {
+  display: grid;
+  grid-template-columns: 16px 1fr 1fr 22px;
+  gap: 6px;
+  align-items: center;
+}
+.sort-ord {
+  font-size: 11px;
+  color: var(--t-text3);
+  text-align: center;
+}
+.sort-empty {
+  font-size: 12px;
+}
+.sort-add {
+  margin-top: 2px;
+  align-self: flex-start;
 }
 .views-pop {
   width: 240px;

@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.53.0] — 2026-06-11
+- **Multi-level sort**: the sort control is now a popover with an ordered list of
+  sort levels (field + direction), applied as primary/secondary/… tie-breakers —
+  e.g. by due date desc, then by priority desc. Fields: priority, due, title,
+  number; due-less tasks always sink to the bottom. Persisted per board and in
+  saved views (old single-sort views migrate automatically).
+
 ### [0.52.0] — 2026-06-11
 - **Saved board views** (a reference tracker-style, per-user, server-side): two toolbar
   buttons next to the subtasks toggle — a folder to load a saved view and a disk
