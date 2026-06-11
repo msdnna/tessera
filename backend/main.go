@@ -114,6 +114,9 @@ func main() {
 			protected.GET("/boards/:id/tasks", rh.ListBoardTasks)
 			protected.GET("/boards/:id/subtasks", rh.ListBoardSubtasks)
 			protected.GET("/boards/:id/archive", rh.ListBoardArchived)
+			protected.GET("/boards/:id/views", rh.ListBoardViews)
+			protected.POST("/boards/:id/views", rh.SaveBoardView)
+			protected.DELETE("/views/:id", rh.DeleteBoardView)
 
 			protected.PATCH("/columns/:id", rh.UpdateColumn)
 			protected.PATCH("/columns/:id/move", rh.MoveColumn)

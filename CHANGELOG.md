@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.52.0] — 2026-06-11
+- **Saved board views** (a reference tracker-style, per-user, server-side): two toolbar
+  buttons next to the subtasks toggle — a folder to load a saved view and a disk
+  to save the current one (grouping, tag namespace, sort + direction, filters,
+  expanded subtasks, layout). Views are stored in the DB (not just localStorage),
+  so they follow you across devices (web/Android); save overwrites a same-named
+  view, and views can be deleted. The active view's name shows in the load
+  button's tooltip.
+
 ### [0.51.0] — 2026-06-11
 - Avatar initials are smarter: a two-word name → first letter of each
   (`Василий Соколов` → ВС), a dot handle → each part (`a.fokin` → AF), a single
@@ -917,6 +926,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.27.0] — 2026-06-11
+- Per-user **saved board views** (migration 0013, `board_views`): `GET/POST
+  /boards/:id/views` and `DELETE /views/:id` persist named snapshots of a board's
+  toolbar state (config JSON, opaque to the backend) per user, so a view follows
+  the user across devices. POST upserts by (board, user, name); delete is
+  owner-checked.
 
 ### [0.26.0] — 2026-06-11
 - GitLab sync: a **closed** issue/work item now lands in the board's done column

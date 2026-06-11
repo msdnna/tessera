@@ -30,6 +30,16 @@ type BoardColumn struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type BoardView struct {
+	ID        uuid.UUID `json:"id"`
+	BoardID   uuid.UUID `json:"board_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Name      string    `json:"name"`
+	Config    []byte    `json:"config"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type GitlabCredential struct {
 	UserID     uuid.UUID `json:"user_id"`
 	BaseUrl    string    `json:"base_url"`

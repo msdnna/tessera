@@ -112,6 +112,10 @@ export const boards = {
   subtasks: (id) => api.get(`/boards/${id}/subtasks`),
   archive: (id) => api.get(`/boards/${id}/archive`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
+  // Per-user saved board views (layouts).
+  views: (id) => api.get(`/boards/${id}/views`),
+  saveView: (id, data) => api.post(`/boards/${id}/views`, data), // { name, config }
+  deleteView: (viewId) => api.delete(`/views/${viewId}`),
 }
 
 export const notes = {

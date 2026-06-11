@@ -15,6 +15,7 @@ import {
   NIcon,
   NTooltip,
   NDropdown,
+  NPopconfirm,
   useMessage,
 } from 'naive-ui'
 import {
@@ -24,6 +25,9 @@ import {
   GitBranchOutline,
   SearchOutline,
   CheckmarkOutline,
+  SaveOutline,
+  FolderOpenOutline,
+  TrashOutline,
 } from '@vicons/ionicons5'
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -212,6 +216,71 @@ function restoreView() {
 watch([layout, groupMode, tagPrefix, sortBy, sortDir, subtasksExpanded, filters], persistView, {
   deep: true,
 })
+
+// ── saved views (per-user, server-side; cross-device) ──
+const savedViews = ref([])
+const currentViewName = ref('')
+const newViewName = ref('')
+const showSaveView = ref(false)
+const showLoadView = ref(false)
+
+async function loadViews() {
+  try {
+    savedViews.value = (await boards.views(props.boardId)).data || []
+  } catch {
+    savedViews.value = []
+  }
+}
+// Snapshot / restore the full toolbar state that a view captures.
+function currentViewConfig() {
+  return {
+    layout: layout.value,
+    groupMode: groupMode.value,
+    tagPrefix: tagPrefix.value,
+    sortBy: sortBy.value,
+    sortDir: sortDir.value,
+    subtasksExpanded: subtasksExpanded.value,
+    filters: { ...filters },
+  }
+}
+function applyViewConfig(c) {
+  if (!c) return
+  if (c.layout) layout.value = c.layout
+  if (c.groupMode) groupMode.value = c.groupMode
+  tagPrefix.value = c.tagPrefix || ''
+  if (c.sortBy) sortBy.value = c.sortBy
+  if (c.sortDir) sortDir.value = c.sortDir
+  subtasksExpanded.value = !!c.subtasksExpanded
+  Object.assign(filters, { priorities: [], assignees: [], tags: [], due: '', q: '' }, c.filters || {})
+}
+async function saveView() {
+  const name = (newViewName.value || currentViewName.value).trim()
+  if (!name) return
+  try {
+    await boards.saveView(props.boardId, { name, config: currentViewConfig() })
+    currentViewName.value = name
+    newViewName.value = ''
+    showSaveView.value = false
+    await loadViews()
+    message.success(`Представление «${name}» сохранено`)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+function applyView(v) {
+  applyViewConfig(v.config)
+  currentViewName.value = v.name
+  showLoadView.value = false
+}
+async function deleteView(v) {
+  try {
+    await boards.deleteView(v.id)
+    if (currentViewName.value === v.name) currentViewName.value = ''
+    await loadViews()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
@@ -638,6 +707,7 @@ onMounted(async () => {
   }
   restoreView()
   await load(props.boardId)
+  loadViews()
   applyTaskQuery()
 })
 onBeforeUnmount(() => {
@@ -651,6 +721,7 @@ watch(
     if (!id) return
     restoreView()
     await load(id)
+    loadViews()
     applyTaskQuery()
   },
 )
@@ -784,6 +855,78 @@ watch(
           </template>
           {{ subtasksExpanded ? 'Свернуть подзадачи' : 'Развернуть подзадачи' }}
         </n-tooltip>
+
+        <!-- saved views: load (folder) + save (disk) -->
+        <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
+          <template #trigger>
+            <n-tooltip>
+              <template #trigger>
+                <n-button
+                  size="small"
+                  quaternary
+                  class="ngrad"
+                  :type="currentViewName ? 'primary' : 'default'"
+                >
+                  <template #icon><n-icon :component="FolderOpenOutline" /></template>
+                </n-button>
+              </template>
+              {{ currentViewName ? `Представление: ${currentViewName}` : 'Загрузить представление' }}
+            </n-tooltip>
+          </template>
+          <div class="views-pop">
+            <div v-for="v in savedViews" :key="v.id" class="view-row">
+              <button class="view-name" :class="{ active: v.name === currentViewName }" @click="applyView(v)">
+                {{ v.name }}
+              </button>
+              <n-popconfirm
+                :positive-button-props="{ type: 'error' }"
+                positive-text="Удалить"
+                @positive-click="deleteView(v)"
+              >
+                <template #trigger>
+                  <n-button text size="tiny" type="error"><n-icon :component="TrashOutline" /></n-button>
+                </template>
+                Удалить представление «{{ v.name }}»?
+              </n-popconfirm>
+            </div>
+            <n-text v-if="!savedViews.length" depth="3" class="views-empty">
+              Нет сохранённых представлений
+            </n-text>
+          </div>
+        </n-popover>
+
+        <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
+          <template #trigger>
+            <n-tooltip>
+              <template #trigger>
+                <n-button size="small" quaternary class="ngrad">
+                  <template #icon><n-icon :component="SaveOutline" /></template>
+                </n-button>
+              </template>
+              Сохранить представление
+            </n-tooltip>
+          </template>
+          <div class="views-pop">
+            <n-input
+              v-model:value="newViewName"
+              size="small"
+              placeholder="Название представления"
+              @keyup.enter="saveView"
+            />
+            <div v-if="savedViews.length" class="views-over">
+              <n-text depth="3" class="views-lbl">Перезаписать:</n-text>
+              <button
+                v-for="v in savedViews"
+                :key="v.id"
+                class="view-chip"
+                @click="newViewName = v.name"
+              >
+                {{ v.name }}
+              </button>
+            </div>
+            <n-button type="primary" size="small" block @click="saveView">Сохранить</n-button>
+          </div>
+        </n-popover>
 
         <div class="subbar-spacer" />
 
@@ -957,6 +1100,62 @@ watch(
 .sb-prefix {
   width: 170px;
   flex: none;
+}
+.views-pop {
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.view-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.view-name {
+  flex: 1;
+  text-align: left;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--t-text1);
+  font-size: 13px;
+}
+.view-name:hover {
+  background: var(--t-hover);
+}
+.view-name.active {
+  color: var(--t-primary);
+  font-weight: 600;
+}
+.views-empty {
+  font-size: 12px;
+}
+.views-over {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.views-lbl {
+  font-size: 11px;
+  width: 100%;
+}
+.view-chip {
+  border: 1px solid var(--t-border);
+  background: var(--t-hover);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--t-text2);
+}
+.view-chip:hover {
+  border-color: var(--t-primary);
+  color: var(--t-primary);
 }
 .task-search {
   width: 220px;
