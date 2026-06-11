@@ -1123,7 +1123,8 @@ watch(
 }
 /* Right-side toolbar buttons match the composer bar's height. */
 .bar-btn {
-  height: 36px;
+  height: 40px;
+  width: 40px;
 }
 /* composer bar */
 .composer {
@@ -1132,7 +1133,8 @@ watch(
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  min-height: 34px;
+  box-sizing: border-box;
+  min-height: 40px;
   padding: 4px 8px;
   border: 1px solid var(--t-border);
   border-radius: 8px;

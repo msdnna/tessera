@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.54.2] — 2026-06-11
+- The composer bar and the toolbar buttons beside it are now exactly the same
+  height (40px, border-box) — the buttons no longer come up short.
+
 ### [0.54.1] — 2026-06-11
 - Fix: the board loader stays vertically centred during the initial load instead
   of flashing near the top before jumping to the middle.
