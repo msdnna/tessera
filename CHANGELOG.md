@@ -943,6 +943,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.29.1] — 2026-06-11
+- Fix: the GitLab asset proxy now fetches via the project **uploads API**
+  (`/api/v4/projects/:id/uploads/:secret/:filename`, authenticated by the PAT)
+  instead of the web `/uploads/` route, which ignored `PRIVATE-TOKEN` and
+  returned the GitLab login page. Existing rewritten links keep working (only the
+  upstream fetch changed); upstream error status is forwarded for debugging.
+
 ### [0.29.0] — 2026-06-11
 - GitLab **attachment links** in synced descriptions/comments now resolve: the
   sync rewrites project-relative `/uploads/…` links to a signed, same-origin

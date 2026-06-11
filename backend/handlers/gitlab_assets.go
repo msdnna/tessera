@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -86,7 +87,13 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		return
 	}
 
-	target := strings.TrimRight(cred.BaseUrl, "/") + "/" + strings.Trim(integ.ProjectPath, "/") + relPath
+	// Fetch via the project uploads API (authenticates with the PAT) rather than
+	// the web /uploads/ route (which needs a session and serves the login page).
+	// relPath is "/uploads/<secret>/<filename>" → API ".../uploads/<secret>/<filename>".
+	rest := strings.TrimPrefix(relPath, "/uploads/")
+	target := strings.TrimRight(cred.BaseUrl, "/") +
+		"/api/v4/projects/" + url.QueryEscape(strings.Trim(integ.ProjectPath, "/")) +
+		"/uploads/" + rest
 	req, err := http.NewRequestWithContext(c, http.MethodGet, target, nil)
 	if err != nil {
 		c.Status(http.StatusBadGateway)
@@ -100,7 +107,7 @@ func (h *API) GitlabAsset(c *gin.Context) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		c.Status(http.StatusBadGateway)
+		c.Status(resp.StatusCode) // forward upstream status (e.g. 401/404) for debugging
 		return
 	}
 	ct := resp.Header.Get("Content-Type")
