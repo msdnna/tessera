@@ -98,8 +98,14 @@ frontend `0.43.0` · android `0.3.1`.
   `{match: prefix|regex, action: status|priority|board|group|tag}` (board роутит на другую
   доску; group распознаётся, подзадачи — позже через GraphQL hierarchy); generic-редактор в UI;
   (4) **группировка по неймспейсу тега** на доске (авто-префиксы + кастом, persisted).
-- **Бэклог фазы B+:** write-back (action-bindings + loop-guard через снапшот-хэши, уже в схеме);
-  webhooks; OAuth/SSO; `M:`-подзадачи (GraphQL hierarchy).
+- **Доработки 3 (2026-06-11, backend 0.26–0.29, web 0.50–0.53):** баги (контраст тегов,
+  тултипы, markdown с inline-HTML, closed→Done, инициалы Имя/Фамилия и a.fokin→AF, любые @-mentions);
+  **сохранённые представления досок** per-user (миграция 0013); **многоуровневая сортировка**
+  (список уровней поле+направление); **`M:`-подзадачи** — дети work-item'а из GL Hierarchy widget →
+  Tessera subtasks (migration GraphQL, дедуп от top-level); **прокси вложений GL** (подписанный
+  `/api/gitlab/asset`, переписывание `/uploads/…` на синке). Кнопка «Интеграции» (dropdown).
+- **Бэклог фазы B+:** **composer-bar** (вынести фильтр+сорт+группировку в один широкий бар);
+  write-back (action-bindings + loop-guard через снапшот-хэши, уже в схеме); webhooks; OAuth/SSO.
 
 ## Сверка с budget-go (общие проектные аспекты)
 
