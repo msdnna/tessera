@@ -67,6 +67,17 @@ const taskTags = computed(() =>
 const assignees = computed(() =>
   (props.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean),
 )
+// Author (read-only): GitLab issue author for synced cards, else the Tessera
+// creator resolved from created_by.
+const author = computed(() => {
+  const t = props.task
+  if (t.gitlab_author) return { name: t.gitlab_author_name || t.gitlab_author, login: t.gitlab_author, gl: true }
+  if (t.created_by) {
+    const m = props.membersMap[t.created_by]
+    if (m) return { name: m.name }
+  }
+  return null
+})
 const due = computed(() =>
   props.task.due_date
     ? new Date(props.task.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
@@ -503,31 +514,42 @@ async function submitAddSub() {
 
       <span class="spacer" />
 
-      <!-- assignees: avatar + name list -->
-      <n-popover trigger="click" placement="bottom-end">
-        <template #trigger>
-          <button class="pill assignee-pill" @click.stop>
-            <template v-if="assignees.length">
-              <span v-for="u in assignees" :key="u.user_id" class="avatar" :title="u.name">
-                {{ initials(u.name) }}
-              </span>
-            </template>
-            <n-icon v-else :component="PersonAddOutline" :size="13" />
-          </button>
-        </template>
-        <div class="menu">
-          <div
-            v-for="m in members"
-            :key="m.user_id"
-            class="menu-item assignee-item"
-            @click="toggleAssignee(m.user_id)"
-          >
-            <span class="avatar sm">{{ initials(m.name) }}</span>
-            <span class="aname">{{ m.name }}</span>
-            <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
+      <!-- author → assignees: the creator (non-clickable) points at the
+           assignee(s). Author omitted when unknown (older tasks). -->
+      <div class="people">
+        <span
+          v-if="author"
+          class="avatar author-ava"
+          :title="author.gl ? `Автор: @${author.login} (GitLab)` : `Автор: ${author.name}`"
+          @click.stop
+          >{{ initials(author.name) }}</span
+        >
+        <n-icon v-if="author" :component="ArrowForwardOutline" :size="11" class="people-arrow" />
+        <n-popover trigger="click" placement="bottom-end">
+          <template #trigger>
+            <button class="pill assignee-pill" @click.stop>
+              <template v-if="assignees.length">
+                <span v-for="u in assignees" :key="u.user_id" class="avatar" :title="u.name">
+                  {{ initials(u.name) }}
+                </span>
+              </template>
+              <n-icon v-else :component="PersonAddOutline" :size="13" />
+            </button>
+          </template>
+          <div class="menu">
+            <div
+              v-for="m in members"
+              :key="m.user_id"
+              class="menu-item assignee-item"
+              @click="toggleAssignee(m.user_id)"
+            >
+              <span class="avatar sm">{{ initials(m.name) }}</span>
+              <span class="aname">{{ m.name }}</span>
+              <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
+            </div>
           </div>
-        </div>
-      </n-popover>
+        </n-popover>
+      </div>
       </div>
     </div>
     <!-- /.card -->
@@ -868,6 +890,23 @@ async function submitAddSub() {
 .assignee-pill {
   border: none;
   padding: 2px;
+}
+/* author → assignee group */
+.people {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+/* the author avatar: read-only, visually muted vs the accent assignees */
+.author-ava {
+  margin-left: 0;
+  cursor: default;
+  background: var(--t-text3);
+  opacity: 0.85;
+}
+.people-arrow {
+  color: var(--t-text3);
+  flex: none;
 }
 .menu {
   min-width: 180px;

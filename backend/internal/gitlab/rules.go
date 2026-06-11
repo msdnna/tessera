@@ -23,11 +23,24 @@ type Rules struct {
 	TagKeepPrefix bool   `json:"tag_keep_prefix"` // keep the "T: " prefix on synced tag names
 }
 
+// Label is a GitLab label reduced to what the rule engine needs.
+type Label struct {
+	Title string
+	Color string // hex, e.g. "#428BCA" (may be empty)
+}
+
+// Tag is a label resolved to a Tessera tag (name + the GitLab label colour,
+// which may be empty — the caller picks a fallback colour then).
+type Tag struct {
+	Name  string
+	Color string
+}
+
 // Resolution is the board state derived from an issue's labels.
 type Resolution struct {
-	ColumnName string   // target column name (DefaultColumn if no status matched)
-	Priority   int32    // 0 when no priority label matched
-	TagNames   []string // labels to attach as tags (deduped, in input order)
+	ColumnName string // target column name (DefaultColumn if no status matched)
+	Priority   int32  // 0 when no priority label matched
+	Tags       []Tag  // labels to attach as tags (deduped, in input order)
 }
 
 // DefaultRules returns sensible defaults for the msdnna GitLab taxonomy
@@ -64,14 +77,14 @@ func DefaultRules() Rules {
 // Resolve maps an issue's labels to board state. Pure: no I/O, deterministic in
 // input order. The first matched status label wins (statuses are meant to be
 // mutually exclusive); likewise the first matched priority.
-func (r Rules) Resolve(labels []string) Resolution {
+func (r Rules) Resolve(labels []Label) Resolution {
 	res := Resolution{ColumnName: r.DefaultColumn}
 	statusSet := false
 	prioSet := false
 	seen := map[string]struct{}{}
 
-	for _, raw := range labels {
-		label := strings.TrimSpace(raw)
+	for _, l := range labels {
+		label := strings.TrimSpace(l.Title)
 		if label == "" {
 			continue
 		}
@@ -107,7 +120,7 @@ func (r Rules) Resolve(labels []string) Resolution {
 				continue
 			}
 			seen[name] = struct{}{}
-			res.TagNames = append(res.TagNames, name)
+			res.Tags = append(res.Tags, Tag{Name: name, Color: l.Color})
 		}
 	}
 	return res

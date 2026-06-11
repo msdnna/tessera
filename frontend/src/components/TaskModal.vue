@@ -23,6 +23,7 @@ import {
   FlagOutline,
   CalendarClearOutline,
   PeopleOutline,
+  PersonOutline,
   PricetagOutline,
   CheckmarkDoneOutline,
   CheckmarkOutline,
@@ -167,6 +168,20 @@ const tagObjs = computed(() =>
 const assigneeObjs = computed(() =>
   selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
 )
+// Author = who created the card (read-only): the GitLab issue author for synced
+// tasks, otherwise the Tessera user resolved from created_by.
+const author = computed(() => {
+  const t = task.value
+  if (!t) return null
+  if (t.gitlab && t.gitlab.author) {
+    return { name: t.gitlab.author_name || t.gitlab.author, login: t.gitlab.author, gl: true }
+  }
+  if (t.created_by) {
+    const m = membersById.value[t.created_by]
+    if (m) return { name: m.name }
+  }
+  return null
+})
 const dueLabel = computed(() =>
   dueTs.value
     ? new Date(dueTs.value).toLocaleDateString('ru-RU', {
@@ -677,10 +692,6 @@ function eventText(e) {
           >
             <n-icon :component="GitBranchOutline" :size="13" />
             <span>GitLab !{{ task.gitlab.iid }}</span>
-            <span v-if="task.gitlab.author" class="gl-author"
-              >· автор @{{ task.gitlab.author
-              }}<template v-if="task.gitlab.author_name"> ({{ task.gitlab.author_name }})</template></span
-            >
           </a>
           <n-input v-model:value="title" placeholder="Название задачи" class="title-input plain" />
 
@@ -720,6 +731,16 @@ function eventText(e) {
                 </template>
                 <n-date-picker panel type="date" :value="dueTs" @update:value="setDue" />
               </n-popover>
+            </div>
+
+            <!-- author (read-only) -->
+            <div v-if="author" class="prow">
+              <span class="plabel"><n-icon :component="PersonOutline" :size="15" /> Автор</span>
+              <div class="val static" :title="author.gl ? `@${author.login} · GitLab` : author.name">
+                <span class="avatar">{{ initials(author.name) }}</span>
+                <span class="author-name">{{ author.name }}</span>
+                <span v-if="author.gl" class="author-gl">@{{ author.login }} · GitLab</span>
+              </div>
             </div>
 
             <!-- assignees -->
@@ -1276,6 +1297,20 @@ function eventText(e) {
 }
 .val:hover {
   background: var(--t-hover);
+}
+/* Read-only value (Author): no hover affordance, default cursor. */
+.val.static {
+  cursor: default;
+}
+.val.static:hover {
+  background: transparent;
+}
+.author-name {
+  color: var(--t-text1);
+}
+.author-gl {
+  color: var(--t-text3);
+  font-size: 12px;
 }
 .muted {
   color: var(--t-text3);

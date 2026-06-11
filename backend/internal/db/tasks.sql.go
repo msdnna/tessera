@@ -288,36 +288,40 @@ SELECT
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
     gl.gl_iid AS gitlab_iid,
-    gl.gl_web_url AS gitlab_url
+    gl.gl_web_url AS gitlab_url,
+    gl.gl_author AS gitlab_author,
+    gl.gl_author_name AS gitlab_author_name
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
-GROUP BY t.id, gl.gl_iid, gl.gl_web_url
+GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name
 ORDER BY t.position
 `
 
 type ListBoardTasksWithMetaRow struct {
-	ID          uuid.UUID   `json:"id"`
-	BoardID     uuid.UUID   `json:"board_id"`
-	ColumnID    uuid.UUID   `json:"column_id"`
-	ParentID    *uuid.UUID  `json:"parent_id"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
-	Priority    int32       `json:"priority"`
-	DueDate     *time.Time  `json:"due_date"`
-	Position    float64     `json:"position"`
-	CreatedBy   *uuid.UUID  `json:"created_by"`
-	CompletedAt *time.Time  `json:"completed_at"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
-	ArchivedAt  *time.Time  `json:"archived_at"`
-	Number      *int64      `json:"number"`
-	TagIds      []uuid.UUID `json:"tag_ids"`
-	AssigneeIds []uuid.UUID `json:"assignee_ids"`
-	GitlabIid   *int64      `json:"gitlab_iid"`
-	GitlabUrl   *string     `json:"gitlab_url"`
+	ID               uuid.UUID   `json:"id"`
+	BoardID          uuid.UUID   `json:"board_id"`
+	ColumnID         uuid.UUID   `json:"column_id"`
+	ParentID         *uuid.UUID  `json:"parent_id"`
+	Title            string      `json:"title"`
+	Description      string      `json:"description"`
+	Priority         int32       `json:"priority"`
+	DueDate          *time.Time  `json:"due_date"`
+	Position         float64     `json:"position"`
+	CreatedBy        *uuid.UUID  `json:"created_by"`
+	CompletedAt      *time.Time  `json:"completed_at"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+	ArchivedAt       *time.Time  `json:"archived_at"`
+	Number           *int64      `json:"number"`
+	TagIds           []uuid.UUID `json:"tag_ids"`
+	AssigneeIds      []uuid.UUID `json:"assignee_ids"`
+	GitlabIid        *int64      `json:"gitlab_iid"`
+	GitlabUrl        *string     `json:"gitlab_url"`
+	GitlabAuthor     *string     `json:"gitlab_author"`
+	GitlabAuthorName *string     `json:"gitlab_author_name"`
 }
 
 // ListBoardTasksWithMeta returns top-level board tasks with their tag and
@@ -352,6 +356,8 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID)
 			&i.AssigneeIds,
 			&i.GitlabIid,
 			&i.GitlabUrl,
+			&i.GitlabAuthor,
+			&i.GitlabAuthorName,
 		); err != nil {
 			return nil, err
 		}
@@ -716,4 +722,18 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.Number,
 	)
 	return i, err
+}
+
+const updateTaskDueDate = `-- name: UpdateTaskDueDate :exec
+UPDATE tasks SET due_date = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateTaskDueDateParams struct {
+	ID      uuid.UUID  `json:"id"`
+	DueDate *time.Time `json:"due_date"`
+}
+
+func (q *Queries) UpdateTaskDueDate(ctx context.Context, arg UpdateTaskDueDateParams) error {
+	_, err := q.db.Exec(ctx, updateTaskDueDate, arg.ID, arg.DueDate)
+	return err
 }

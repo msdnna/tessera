@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"net/http"
 	"strings"
@@ -296,13 +297,13 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 				GlIid: issue.IID, GlProjectPath: integ.ProjectPath, GlWebUrl: issue.WebURL,
 				GlUpdatedAt: issue.UpdatedAt,
 				TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
-				LabelsHash: hashStr(strings.Join(issue.Labels, "\n")),
+				LabelsHash: hashStr(labelsKey(issue.Labels)),
 				GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
 			}); cerr != nil {
 				log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 				continue
 			}
-			h.applyTags(ctx, t.ID, wsID, res.TagNames)
+			h.applyTags(ctx, t.ID, wsID, res.Tags)
 			h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 			h.broadcast(wsID, "task.created", t)
 			created++
@@ -322,13 +323,19 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 				TaskID: link.TaskID, GlIid: issue.IID, GlWebUrl: issue.WebURL,
 				GlUpdatedAt: issue.UpdatedAt,
 				TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
-				LabelsHash: hashStr(strings.Join(issue.Labels, "\n")),
+				LabelsHash: hashStr(labelsKey(issue.Labels)),
 				GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
 			}); uerr != nil {
 				log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
 				continue
 			}
-			h.applyTags(ctx, link.TaskID, wsID, res.TagNames)
+			// Sync the due date only when GitLab has one — otherwise a
+			// manually-set Tessera due date is preserved (never reset).
+			if issue.DueDate != nil {
+				_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: issue.DueDate})
+				t.DueDate = issue.DueDate
+			}
+			h.applyTags(ctx, link.TaskID, wsID, res.Tags)
 			h.broadcast(wsID, "task.updated", t)
 			updated++
 		}
@@ -413,7 +420,7 @@ func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.U
 	t, err := h.q.CreateTask(ctx, db.CreateTaskParams{
 		BoardID: boardID, ColumnID: columnID, ParentID: nil,
 		Title: issue.Title, Description: issue.Description, Priority: priority,
-		DueDate: nil, Position: positionBetween(&maxPos, nil), CreatedBy: nil, Number: &num,
+		DueDate: issue.DueDate, Position: positionBetween(&maxPos, nil), CreatedBy: nil, Number: &num,
 	})
 	if err != nil {
 		return db.Task{}, err
@@ -429,17 +436,45 @@ func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.U
 	return t, nil
 }
 
-// applyTags ensures each named tag exists in the workspace and attaches it to
-// the task. Additive only: tags the user applied manually are never removed,
-// so synced labels never clobber scope tags. Best-effort per tag.
-func (h *API) applyTags(ctx context.Context, taskID, wsID uuid.UUID, names []string) {
-	for _, name := range names {
-		tag, err := h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, Name: name, Color: ""})
+// applyTags ensures each resolved tag exists in the workspace (with the GitLab
+// label colour, or a stable auto-colour when GitLab supplies none) and attaches
+// it to the task. Additive only: tags the user applied manually are never
+// removed, so synced labels never clobber scope tags. Best-effort per tag.
+func (h *API) applyTags(ctx context.Context, taskID, wsID uuid.UUID, tags []gitlab.Tag) {
+	for _, t := range tags {
+		color := t.Color
+		if color == "" {
+			color = autoTagColor(t.Name)
+		}
+		tag, err := h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, Name: t.Name, Color: color})
 		if err != nil {
 			continue
 		}
 		_ = h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: taskID, TagID: tag.ID})
 	}
+}
+
+// tagPalette is a small set of pleasant accent colours used to auto-colour a
+// synced tag when its GitLab label has no colour.
+var tagPalette = []string{
+	"#7c5cff", "#2f80ed", "#18a058", "#e0a200", "#d0021b", "#9013fe",
+	"#0fb5ba", "#f25f4c", "#3aaed8", "#c2596b", "#5a8f3c", "#b06f2f",
+}
+
+// autoTagColor picks a deterministic palette colour from a tag name.
+func autoTagColor(name string) string {
+	hsh := fnv.New32a()
+	_, _ = hsh.Write([]byte(name))
+	return tagPalette[int(hsh.Sum32())%len(tagPalette)]
+}
+
+// labelsKey joins label titles for the link's snapshot hash.
+func labelsKey(labels []gitlab.Label) string {
+	titles := make([]string, len(labels))
+	for i, l := range labels {
+		titles[i] = l.Title
+	}
+	return strings.Join(titles, "\n")
 }
 
 // gitlabLinkView is the GitLab provenance attached to a synced task: the issue

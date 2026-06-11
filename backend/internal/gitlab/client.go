@@ -117,7 +117,8 @@ type Issue struct {
 	WebURL      string
 	State       string // opened | closed
 	UpdatedAt   *time.Time
-	Labels      []string
+	DueDate     *time.Time // GitLab issue due date (date-only), nil when unset
+	Labels      []Label
 	AuthorLogin string // GitLab username of the issue author (may not be a Tessera user)
 	AuthorName  string
 }
@@ -135,8 +136,9 @@ query($path: ID!, $username: String!, $after: String) {
         webUrl
         state
         updatedAt
+        dueDate
         author { username name }
-        labels { nodes { title } }
+        labels { nodes { title color } }
       }
     }
   }
@@ -164,6 +166,7 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 						WebURL      string     `json:"webUrl"`
 						State       string     `json:"state"`
 						UpdatedAt   *time.Time `json:"updatedAt"`
+						DueDate     string     `json:"dueDate"`
 						Author      *struct {
 							Username string `json:"username"`
 							Name     string `json:"name"`
@@ -171,6 +174,7 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 						Labels struct {
 							Nodes []struct {
 								Title string `json:"title"`
+								Color string `json:"color"`
 							} `json:"nodes"`
 						} `json:"labels"`
 					} `json:"nodes"`
@@ -185,14 +189,15 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 			return nil, fmt.Errorf("gitlab: project %q not found or not accessible", projectPath)
 		}
 		for _, n := range data.Project.Issues.Nodes {
-			labels := make([]string, 0, len(n.Labels.Nodes))
+			labels := make([]Label, 0, len(n.Labels.Nodes))
 			for _, l := range n.Labels.Nodes {
-				labels = append(labels, l.Title)
+				labels = append(labels, Label{Title: l.Title, Color: l.Color})
 			}
 			iid, _ := strconv.ParseInt(n.IID, 10, 64)
 			issue := Issue{
 				GlobalID: n.ID, IID: iid, Title: n.Title, Description: n.Description,
-				WebURL: n.WebURL, State: n.State, UpdatedAt: n.UpdatedAt, Labels: labels,
+				WebURL: n.WebURL, State: n.State, UpdatedAt: n.UpdatedAt,
+				DueDate: parseDate(n.DueDate), Labels: labels,
 			}
 			if n.Author != nil {
 				issue.AuthorLogin = n.Author.Username
@@ -207,6 +212,19 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 		after = &cursor
 	}
 	return out, nil
+}
+
+// parseDate parses a GitLab Date scalar ("YYYY-MM-DD") into a UTC time, or nil
+// when empty/invalid.
+func parseDate(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 // parseGID extracts the trailing numeric id from a GraphQL global id such as

@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.45.0] — 2026-06-11
+- Tasks now show an **Автор** (author) field — who created the card, read-only,
+  fixed at creation. The task modal gains an Автор row (the GitLab issue author
+  for synced tasks, otherwise the Tessera creator); the GitLab line keeps just
+  the issue link.
+- On the board card, the single assignee avatar is replaced by **author →
+  assignee(s)**: the creator's (muted, non-clickable, tooltip-only) avatar with
+  an arrow pointing at the clickable assignee avatar(s), cascading to several.
+
 ### [0.44.0] — 2026-06-11
 - GitLab integration UI (a single modal opened from the workspace toolbar):
   - **Account** — connect a GitLab account by base URL + personal access token
@@ -848,6 +857,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.22.0] — 2026-06-11
+- GitLab sync now pulls **label colours** (`labels { … color }`) and applies them
+  to the synced tags; tags whose GitLab label has no colour get a stable
+  auto-colour derived from the name. `EnsureTag` refreshes a tag's colour on
+  conflict only when a non-empty colour is supplied (never wipes one).
+- GitLab sync pulls the issue **due date** and sets it on create / when the
+  issue has one; a due date set manually in Tessera is preserved across re-syncs
+  (sync only overrides when GitLab itself has a due date). New `UpdateTaskDueDate`.
+- The board task list also returns `gitlab_author` / `gitlab_author_name` so the
+  card can show the author for GitLab-synced tasks (Tessera-created tasks already
+  carry `created_by`).
 
 ### [0.21.0] — 2026-06-11
 - The board task list (`GET /boards/:id/tasks`) now carries `gitlab_iid` and

@@ -10,12 +10,14 @@ SELECT * FROM tags WHERE workspace_id = $1 ORDER BY name;
 SELECT * FROM tags WHERE id = $1;
 
 -- EnsureTag returns the workspace tag with this name, creating it (with the
--- given color) if absent. Used by the GitLab sync to map labels onto tags
--- idempotently.
+-- given color) if absent. On conflict it refreshes the colour only when a
+-- non-empty one is supplied, so the GitLab sync keeps label colours current
+-- without wiping a colour set elsewhere. Used by the GitLab sync.
 -- name: EnsureTag :one
 INSERT INTO tags (workspace_id, name, color)
 VALUES ($1, $2, $3)
-ON CONFLICT (workspace_id, name) DO UPDATE SET name = EXCLUDED.name
+ON CONFLICT (workspace_id, name) DO UPDATE
+SET color = COALESCE(NULLIF(EXCLUDED.color, ''), tags.color)
 RETURNING *;
 
 -- name: UpdateTag :one

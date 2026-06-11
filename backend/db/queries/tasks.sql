@@ -20,13 +20,15 @@ SELECT
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
     gl.gl_iid AS gitlab_iid,
-    gl.gl_web_url AS gitlab_url
+    gl.gl_web_url AS gitlab_url,
+    gl.gl_author AS gitlab_author,
+    gl.gl_author_name AS gitlab_author_name
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
-GROUP BY t.id, gl.gl_iid, gl.gl_web_url
+GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name
 ORDER BY t.position;
 
 -- name: ListSubtasks :many
@@ -116,6 +118,9 @@ UPDATE tasks
 SET title = $2, description = $3, priority = $4, due_date = $5, completed_at = $6, updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- name: UpdateTaskDueDate :exec
+UPDATE tasks SET due_date = $2, updated_at = now() WHERE id = $1;
 
 -- name: MoveTask :one
 UPDATE tasks
