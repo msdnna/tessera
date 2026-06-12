@@ -6,21 +6,24 @@ All notable changes to the Android app. Versioned independently via
 ## Unreleased
 
 ## 0.6.0 — 2026-06-12
-Board-toolbar parity, part 3 — the full web composer scope, adapted to mobile
-controls:
+Board-toolbar parity, part 3 — the full web composer scope. The board toolbar is
+now a **composer bar** matching the web (a reference tracker/GitLab-style): grouping, sort and
+filters render as removable chips, with an add menu and an inline title search;
+a subtasks toggle and a saved-views popover sit to its right.
 - **Multi-level sort**: an ordered list of sort levels (Приоритет / Срок /
-  Название / Номер), each ascending or descending, edited in a "Вид" bottom sheet
-  (add level, flip direction, remove, reset to manual order). Replaces the old
+  Название / Номер), each ascending or descending, shown as `Сорт: … ↑` chips —
+  tap to flip direction, × to remove, the add menu to append. Replaces the old
   single Вручную/Приоритет/Срок picker.
-- **Tag-namespace grouping**: group columns by status, by all tags, or by a tag
-  namespace (e.g. `S: `, `effort::`) detected from the workspace tags. "Без тега"
-  then collects tasks with no tag in that namespace.
+- **Tag-namespace grouping**: the grouping chip's menu groups columns by status,
+  by all tags, or by a tag namespace (e.g. `S: `, `effort::`) detected from the
+  workspace tags. "Без тега" then collects tasks with no tag in that namespace.
+- **Filters as chips**: priority / assignee / tag / due filters are added from the
+  composer's add menu and shown as removable chips (the separate filter dropdown
+  is gone).
 - **Saved board views** (server-side, per-user, cross-device): a "Представления"
-  bottom sheet lists saved views (apply / delete) and saves the current toolbar
-  state under a name. The view config shares the web schema, so a view saved on
-  web applies on Android and vice versa.
-- The board toolbar consolidates these into a "Вид" sheet + a "Представления"
-  sheet alongside the existing filter dropdown, subtasks toggle and search.
+  popover lists saved views (apply / delete) and saves the current toolbar state
+  under a name. The view config shares the web schema, so a view saved on web
+  applies on Android and vice versa.
 
 ## 0.5.0 — 2026-06-12
 GitLab integration parity, part 2 — the **Интеграции** settings screen (opened from

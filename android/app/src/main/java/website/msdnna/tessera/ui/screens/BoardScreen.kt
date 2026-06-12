@@ -143,45 +143,31 @@ fun BoardScreen(
 }
 
 /**
- * Compact board toolbar (mobile-adapted composer): a "Вид" sheet (grouping +
- * multi-level sort), a "Представления" sheet (saved views), a filter dropdown
- * and a subtasks toggle, then a title-search field. View-mode switching lives in
- * the app bar. Active controls show only the accent gradient on the glyph.
+ * Board toolbar (web `KanbanBoard` parity): the composer bar — grouping / sort /
+ * filter chips + an add menu + the title search — fills the row, with a subtasks
+ * toggle and a saved-views popover pinned to the right. View-mode switching lives
+ * in the app bar. Active right-side controls show the accent gradient on the glyph.
  */
 @Composable
 private fun BoardToolbar(state: BoardUiState, vm: BoardViewModel) {
     val c = Tessera.colors
-    var filterMenu by remember { mutableStateOf(false) }
-    var viewSheet by remember { mutableStateOf(false) }
-    var viewsSheet by remember { mutableStateOf(false) }
+    var viewsMenu by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // Grouping (status / tags / namespaces) + multi-level sort — "Вид" sheet.
-        ToolIcon(Ion.ALBUMS, active = state.groupByTag || state.sortLevels.isNotEmpty()) { viewSheet = true }
-        // Saved server-side views — "Представления" sheet.
-        ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsSheet = true }
-        // Filtering — web FilterOutline (chips dropdown).
-        Box {
-            ToolIcon(Ion.FILTER, active = state.filter.isActive) { filterMenu = true }
-            TDropdown(expanded = filterMenu, onDismiss = { filterMenu = false }) {
-                FilterPanel(state = state, vm = vm)
-            }
-        }
+        BoardComposerBar(state = state, vm = vm, modifier = Modifier.weight(1f))
         // Expand subtasks — web GitBranchOutline.
         ToolIcon(Ion.GIT_BRANCH, active = state.subtasksExpanded) { vm.toggleSubtasksExpanded() }
-
-        TTextField(
-            value = state.filter.query,
-            onValueChange = { vm.setFilter(state.filter.copy(query = it)) },
-            placeholder = "Поиск",
-            modifier = Modifier.weight(1f),
-        )
+        // Saved server-side views — popover (web folder button).
+        Box {
+            ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsMenu = true }
+            TDropdown(expanded = viewsMenu, onDismiss = { viewsMenu = false }) {
+                SavedViewsPopover(state = state, vm = vm, onClose = { viewsMenu = false })
+            }
+        }
     }
-    if (viewSheet) BoardViewSheet(state = state, vm = vm, onDismiss = { viewSheet = false })
-    if (viewsSheet) SavedViewsSheet(state = state, vm = vm, onDismiss = { viewsSheet = false })
 }
 
 /** A 36dp icon toolbar button; the glyph carries the accent gradient when

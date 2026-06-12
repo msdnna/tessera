@@ -61,84 +61,6 @@ private val TagPalette = listOf(
     "#7c5cff", "#2f80ed", "#0eb0a9", "#18a058", "#f0a020", "#e0533d", "#eb2f96", "#9aa0aa",
 )
 
-private val DueLabels = mapOf(
-    DueFilter.All to "Все",
-    DueFilter.Overdue to "Просрочено",
-    DueFilter.Today to "Сегодня",
-    DueFilter.Week to "Неделя",
-    DueFilter.Has to "Со сроком",
-    DueFilter.None to "Без срока",
-)
-
-/**
- * Filter chips panel (web KanbanBoard filter dropdown) — priority / due / tags /
- * assignees only. Sorting + the title search live in the toolbar, so they're not
- * here. Rendered inside the filter button's [website.msdnna.tessera.ui.components
- * .TDropdown]; changes apply immediately.
- */
-@Composable
-fun FilterPanel(state: BoardUiState, vm: BoardViewModel) {
-    val c = Tessera.colors
-    val f = state.filter
-    Column(Modifier.width(300.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(14.dp)) {
-        if (f.isActive) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text(
-                    "Сбросить",
-                    color = c.primary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clickableNoRipple { vm.clearFilter() }.padding(4.dp),
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-        }
-
-        SectionLabel("Приоритет")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PriorityLabels.forEachIndexed { i, label ->
-                Chip(label, active = i in f.priorities) {
-                    vm.setFilter(f.copy(priorities = f.priorities.toggle(i)))
-                }
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-
-        SectionLabel("Срок")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            DueFilter.entries.forEach { d ->
-                Chip(DueLabels[d] ?: d.name, active = f.due == d) {
-                    vm.setFilter(f.copy(due = if (f.due == d) DueFilter.All else d))
-                }
-            }
-        }
-
-        if (state.tagList.isNotEmpty()) {
-            Spacer(Modifier.height(14.dp))
-            SectionLabel("Теги")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.tagList.forEach { tag ->
-                    Chip(tag.name, active = tag.id in f.tagIds, color = parseHexColor(tag.color, c.primary)) {
-                        vm.setFilter(f.copy(tagIds = f.tagIds.toggle(tag.id)))
-                    }
-                }
-            }
-        }
-
-        if (state.members.isNotEmpty()) {
-            Spacer(Modifier.height(14.dp))
-            SectionLabel("Исполнители")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.members.forEach { m ->
-                    Chip(m.name.ifBlank { m.email }, active = m.userId in f.assigneeIds) {
-                        vm.setFilter(f.copy(assigneeIds = f.assigneeIds.toggle(m.userId)))
-                    }
-                }
-            }
-        }
-    }
-}
-
 /** Board archive: list archived cards, restore or delete permanently. */
 @Composable
 fun ArchiveModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Unit) {
@@ -318,24 +240,3 @@ private fun TagRow(tag: website.msdnna.tessera.data.model.Tag, vm: BoardViewMode
         )
     }
 }
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(text, color = Tessera.colors.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 6.dp))
-}
-
-@Composable
-private fun Chip(label: String, active: Boolean, color: androidx.compose.ui.graphics.Color? = null, onClick: () -> Unit) {
-    val c = Tessera.colors
-    val accent = color ?: c.primary
-    Box(
-        Modifier.clip(RoundedCornerShape(RadiusSm))
-            .background(if (active) accentGradient(accent) else SolidColor(c.surfaceAlt))
-            .clickableNoRipple(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    ) {
-        Text(label, color = if (active) c.onPrimary else c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-private fun <T> Set<T>.toggle(item: T): Set<T> = if (item in this) this - item else this + item
