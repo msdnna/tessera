@@ -17,6 +17,7 @@ import website.msdnna.tessera.data.model.Attachment
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.CreateCommentRequest
 import website.msdnna.tessera.data.model.CreateGroupRequest
@@ -32,6 +33,7 @@ import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.RefreshRequest
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.Relation
+import website.msdnna.tessera.data.model.SaveBoardViewRequest
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
@@ -212,6 +214,16 @@ interface ApiService {
 
     @DELETE("tags/{id}")
     suspend fun deleteTag(@Path("id") tagId: String)
+
+    // ── Saved board views (per-user, server-side) ────────────────────────────
+    @GET("boards/{id}/views")
+    suspend fun boardViews(@Path("id") boardId: String): List<BoardView>?
+
+    @POST("boards/{id}/views")
+    suspend fun saveBoardView(@Path("id") boardId: String, @Body body: SaveBoardViewRequest): BoardView
+
+    @DELETE("views/{id}")
+    suspend fun deleteBoardView(@Path("id") viewId: String)
 
     // ── Archive (#7) ──────────────────────────────────────────────────────────
     @GET("boards/{id}/archive")

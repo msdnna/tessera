@@ -5,6 +5,23 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.6.0 — 2026-06-12
+Board-toolbar parity, part 3 — the full web composer scope, adapted to mobile
+controls:
+- **Multi-level sort**: an ordered list of sort levels (Приоритет / Срок /
+  Название / Номер), each ascending or descending, edited in a "Вид" bottom sheet
+  (add level, flip direction, remove, reset to manual order). Replaces the old
+  single Вручную/Приоритет/Срок picker.
+- **Tag-namespace grouping**: group columns by status, by all tags, or by a tag
+  namespace (e.g. `S: `, `effort::`) detected from the workspace tags. "Без тега"
+  then collects tasks with no tag in that namespace.
+- **Saved board views** (server-side, per-user, cross-device): a "Представления"
+  bottom sheet lists saved views (apply / delete) and saves the current toolbar
+  state under a name. The view config shares the web schema, so a view saved on
+  web applies on Android and vice versa.
+- The board toolbar consolidates these into a "Вид" sheet + a "Представления"
+  sheet alongside the existing filter dropdown, subtasks toggle and search.
+
 ## 0.5.0 — 2026-06-12
 GitLab integration parity, part 2 — the **Интеграции** settings screen (opened from
 the new GitLab button in the sidebar brand row):

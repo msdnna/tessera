@@ -46,7 +46,6 @@ import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.softShadow
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
-import website.msdnna.tessera.ui.viewmodels.BoardSort
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
@@ -143,54 +142,28 @@ fun BoardScreen(
     if (tagsOpen) TagManagerModal(state = state, vm = vm, onDismiss = onCloseTags)
 }
 
-private val SortLabels = mapOf(
-    BoardSort.Position to "Вручную",
-    BoardSort.Priority to "Приоритет",
-    BoardSort.Due to "По сроку",
-)
-
-/** Compact board toolbar matching the web: group / sort / filter dropdowns +
- *  a subtasks toggle, then a title-search field. View switching lives in the
- *  app bar next to the board name. Active controls show only the accent
- *  gradient on the glyph — no filled background. */
+/**
+ * Compact board toolbar (mobile-adapted composer): a "Вид" sheet (grouping +
+ * multi-level sort), a "Представления" sheet (saved views), a filter dropdown
+ * and a subtasks toggle, then a title-search field. View-mode switching lives in
+ * the app bar. Active controls show only the accent gradient on the glyph.
+ */
 @Composable
 private fun BoardToolbar(state: BoardUiState, vm: BoardViewModel) {
     val c = Tessera.colors
-    var groupMenu by remember { mutableStateOf(false) }
-    var sortMenu by remember { mutableStateOf(false) }
     var filterMenu by remember { mutableStateOf(false) }
+    var viewSheet by remember { mutableStateOf(false) }
+    var viewsSheet by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // Grouping (status / tag) — web AlbumsOutline.
-        Box {
-            ToolIcon(Ion.ALBUMS, active = state.groupByTag) { groupMenu = true }
-            TDropdown(expanded = groupMenu, onDismiss = { groupMenu = false }) {
-                CheckMenuItem("По статусу", selected = !state.groupByTag) {
-                    groupMenu = false
-                    if (state.groupByTag) vm.toggleGroupByTag()
-                }
-                CheckMenuItem("По тегам", selected = state.groupByTag) {
-                    groupMenu = false
-                    if (!state.groupByTag) vm.toggleGroupByTag()
-                }
-            }
-        }
-        // Sorting — web SwapVerticalOutline.
-        Box {
-            ToolIcon(Ion.SORT, active = state.sortBy != BoardSort.Position) { sortMenu = true }
-            TDropdown(expanded = sortMenu, onDismiss = { sortMenu = false }) {
-                BoardSort.entries.forEach { s ->
-                    CheckMenuItem(SortLabels[s] ?: s.name, selected = state.sortBy == s) {
-                        sortMenu = false
-                        vm.setSort(s)
-                    }
-                }
-            }
-        }
-        // Filtering — web FilterOutline (chips dropdown; sort + title live elsewhere).
+        // Grouping (status / tags / namespaces) + multi-level sort — "Вид" sheet.
+        ToolIcon(Ion.ALBUMS, active = state.groupByTag || state.sortLevels.isNotEmpty()) { viewSheet = true }
+        // Saved server-side views — "Представления" sheet.
+        ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsSheet = true }
+        // Filtering — web FilterOutline (chips dropdown).
         Box {
             ToolIcon(Ion.FILTER, active = state.filter.isActive) { filterMenu = true }
             TDropdown(expanded = filterMenu, onDismiss = { filterMenu = false }) {
@@ -207,19 +180,8 @@ private fun BoardToolbar(state: BoardUiState, vm: BoardViewModel) {
             modifier = Modifier.weight(1f),
         )
     }
-}
-
-/** A dropdown menu item with a right-aligned accent checkmark when [selected]
- *  (web group/sort dropdowns). */
-@Composable
-private fun CheckMenuItem(label: String, selected: Boolean, onClick: () -> Unit) {
-    TMenuItem(
-        label,
-        onClick = onClick,
-        trailing = {
-            if (selected) IonIcon(Ion.CHECK, size = 16.dp, tint = Tessera.colors.primary, gradient = true)
-        },
-    )
+    if (viewSheet) BoardViewSheet(state = state, vm = vm, onDismiss = { viewSheet = false })
+    if (viewsSheet) SavedViewsSheet(state = state, vm = vm, onDismiss = { viewsSheet = false })
 }
 
 /** A 36dp icon toolbar button; the glyph carries the accent gradient when

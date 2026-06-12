@@ -74,4 +74,17 @@ class BoardRepository {
     // ── archive ──────────────────────────────────────────────────────────────
     suspend fun archived(boardId: String): List<Task> = api.boardArchive(boardId).orEmpty()
     suspend fun restoreTask(taskId: String) = api.restoreTask(taskId)
+
+    // ── saved board views (per-user, server-side) ─────────────────────────────
+    suspend fun views(boardId: String): List<website.msdnna.tessera.data.model.BoardView> =
+        api.boardViews(boardId).orEmpty()
+
+    suspend fun saveView(
+        boardId: String,
+        name: String,
+        config: website.msdnna.tessera.data.model.BoardViewConfig,
+    ): website.msdnna.tessera.data.model.BoardView =
+        api.saveBoardView(boardId, website.msdnna.tessera.data.model.SaveBoardViewRequest(name, config))
+
+    suspend fun deleteView(viewId: String) = api.deleteBoardView(viewId)
 }

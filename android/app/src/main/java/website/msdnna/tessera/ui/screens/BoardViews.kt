@@ -646,11 +646,16 @@ private fun columnLanes(state: BoardUiState): List<Lane> =
     state.sortedColumns.map { col -> Lane(col.id, col.name, col.color, state.visibleTasksIn(col.id), canAdd = true) }
 
 private fun tagLanes(state: BoardUiState): List<Lane> {
-    val tags: List<Tag> = state.tags.values.sortedBy { it.name }
+    // In namespace mode only tags carrying the prefix become columns; "Без тега"
+    // then collects tasks with no tag *in that namespace* (web `rebuildLists`).
+    val tags: List<Tag> = state.tags.values
+        .filter { state.tagPrefix.isEmpty() || it.name.startsWith(state.tagPrefix) }
+        .sortedBy { it.name }
     val byTag = tags.map { tag ->
         Lane(tag.id, tag.name, tag.color, state.applyFilterSort(state.tasks.filter { tag.id in it.tagIds }), canAdd = false)
     }
-    val untagged = state.applyFilterSort(state.tasks.filter { it.tagIds.isEmpty() })
+    val tagIds = tags.map { it.id }.toSet()
+    val untagged = state.applyFilterSort(state.tasks.filter { task -> task.tagIds.none { it in tagIds } })
     return byTag + Lane("none", "Без тега", null, untagged, canAdd = false)
 }
 
