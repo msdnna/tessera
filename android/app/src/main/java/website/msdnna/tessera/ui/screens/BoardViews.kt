@@ -115,7 +115,22 @@ fun KanbanView(
     vm: BoardViewModel,
     onOpenTask: (Task) -> Unit,
 ) {
-    val lanes = if (state.groupByTag) tagLanes(state) else columnLanes(state)
+    // Lanes carry each column's filtered + multi-level-sorted card list. That work
+    // is O(n log n) per column; recomputing it on every recomposition re-sorts the
+    // whole board on every drag frame (a drag mutates only drag state, not the
+    // inputs below). Memoise on the actual inputs so a drag — or any unrelated
+    // recomposition — reuses the cached lanes instead of re-sorting 100s of cards.
+    val lanes = remember(
+        state.groupByTag,
+        state.tagPrefix,
+        state.columns,
+        state.tasks,
+        state.tags,
+        state.filter,
+        state.sortLevels,
+    ) {
+        if (state.groupByTag) tagLanes(state) else columnLanes(state)
+    }
     val scrollState = rememberScrollState()
     val drag = rememberBoardDragState()
     val focusManager = LocalFocusManager.current
@@ -202,8 +217,7 @@ fun KanbanView(
                     // clone tracks the finger) — no collapse, so it doesn't jump.
                     Column(
                         Modifier.animatePlacement().width(colWidth).fillMaxHeight()
-                            .dragDim(lane.id == draggingColId)
-                            .verticalScroll(rememberScrollState()),
+                            .dragDim(lane.id == draggingColId),
                     ) {
                         Column(
                             Modifier.fillMaxWidth()
@@ -271,45 +285,62 @@ fun KanbanView(
                                     ColumnMenu(lane, state, vm, onRename = { renamingCol = true })
                                 }
                             }
-                            Column(
-                                Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
+                            // Cards are virtualised: a column with 100s of cards (e.g.
+                            // an imported "Done" lane) composes only the visible window,
+                            // not every card. The header above stays fixed; this list
+                            // scrolls beneath it (web parity). weight(fill = false) lets a
+                            // short column still hug its content instead of stretching.
+                            //
+                            // LazyColumn disposes off-screen cards, which is safe here:
+                            // there is no vertical auto-scroll during a card drag, so the
+                            // dragged card (collapsed in place via dragCollapse) stays in
+                            // the composed window and its long-press gesture node survives.
+                            // Disposed cards drop their stale entry from `cardBounds`
+                            // (see draggableCard) so drop resolution only ever considers
+                            // on-screen cards — the same set the finger can actually reach.
+                            LazyColumn(
+                                Modifier.fillMaxWidth().weight(1f, fill = false),
+                                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 10.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                lane.tasks.forEach { task ->
-                                    // A faded copy of the dragged card marks the landing
-                                    // slot (the dragged card itself collapses + floats).
-                                    if (colDrop?.columnId == lane.id && colDrop.afterId == task.id) {
-                                        DraggedPreview(drag.dragging, state, vm)
+                                items(lane.tasks, key = { it.id }) { task ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        // A faded copy of the dragged card marks the landing
+                                        // slot (the dragged card itself collapses + floats).
+                                        if (colDrop?.columnId == lane.id && colDrop.afterId == task.id) {
+                                            DraggedPreview(drag.dragging, state, vm)
+                                        }
+                                        TaskCard(
+                                            task = task,
+                                            state = state,
+                                            vm = vm,
+                                            onOpen = onOpenTask,
+                                            modifier = Modifier.fadeInOnAppear().animatePlacement().dragCollapse(task.id == draggingId),
+                                            drag = if (lane.canAdd) drag else null,
+                                            onDropTask = if (lane.canAdd) onDropTask else null,
+                                            nestSlot = nestDrop?.takeIf { it.parentId == task.id }?.let { it.beforeId to it.afterId },
+                                        )
                                     }
-                                    // NB: never remove the dragged card from composition
-                                    // — its long-press gesture lives on its own node, so
-                                    // disposing it cancels the drag. It collapses instead.
-                                    TaskCard(
-                                        task = task,
-                                        state = state,
-                                        vm = vm,
-                                        onOpen = onOpenTask,
-                                        modifier = Modifier.fadeInOnAppear().animatePlacement().dragCollapse(task.id == draggingId),
-                                        drag = if (lane.canAdd) drag else null,
-                                        onDropTask = if (lane.canAdd) onDropTask else null,
-                                        nestSlot = nestDrop?.takeIf { it.parentId == task.id }?.let { it.beforeId to it.afterId },
-                                    )
                                 }
                                 if (lane.canAdd) {
-                                    if (colDrop?.columnId == lane.id && colDrop.afterId == null && drag.dragging != null) {
-                                        DraggedPreview(drag.dragging, state, vm)
-                                    }
-                                    if (addingColumn == lane.id) {
-                                        InlineCreateField(
-                                            placeholder = "Название задачи, Enter",
-                                            onCommit = {
-                                                vm.createTask(lane.id, it)
-                                                addingColumn = null
-                                            },
-                                            onDismiss = { addingColumn = null },
-                                        )
-                                    } else {
-                                        CreateText("+ СОЗДАТЬ ЗАДАЧУ") { addingColumn = lane.id }
+                                    item(key = "__footer__") {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            if (colDrop?.columnId == lane.id && colDrop.afterId == null && drag.dragging != null) {
+                                                DraggedPreview(drag.dragging, state, vm)
+                                            }
+                                            if (addingColumn == lane.id) {
+                                                InlineCreateField(
+                                                    placeholder = "Название задачи, Enter",
+                                                    onCommit = {
+                                                        vm.createTask(lane.id, it)
+                                                        addingColumn = null
+                                                    },
+                                                    onDismiss = { addingColumn = null },
+                                                )
+                                            } else {
+                                                CreateText("+ СОЗДАТЬ ЗАДАЧУ") { addingColumn = lane.id }
+                                            }
+                                        }
                                     }
                                 }
                             }

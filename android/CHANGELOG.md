@@ -5,6 +5,21 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.7.0 — 2026-06-14
+Kanban performance on large boards (e.g. a GitLab-imported column with 100s of
+cards). Card interactions stay smooth where they used to freeze.
+- **Virtualised columns**: a column's cards now render in a `LazyColumn`, so only
+  the visible window is composed instead of every card at once. The column header
+  is now fixed and the cards scroll beneath it (matching the web layout). Short
+  columns still hug their content. Drag-and-drop stays safe — the dragged card
+  collapses in place (never disposed mid-drag), and a disposed off-screen card
+  drops its stale bounds so drop resolution only considers on-screen cards.
+- **Memoised lanes**: each column's filtered + multi-level-sorted card list is now
+  cached on its inputs instead of being recomputed on every recomposition — a drag
+  no longer re-sorts the whole board every frame.
+- Stable card keys in the lazy list, so reordering within a column no longer
+  cascades recomposition through the rest of the column.
+
 ## 0.6.0 — 2026-06-12
 Board-toolbar parity, part 3 — the full web composer scope. The board toolbar is
 now a **composer bar** matching the web (a reference tracker/GitLab-style): grouping, sort and

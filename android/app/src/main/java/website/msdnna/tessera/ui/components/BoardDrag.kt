@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -178,6 +179,12 @@ fun rememberBoardDragState(): BoardDragState = remember { BoardDragState() }
  *  stale closure (which would resolve against an out-of-date board). */
 fun Modifier.draggableCard(state: BoardDragState, task: Task, onDrop: () -> Unit): Modifier = composed {
     val latestOnDrop by rememberUpdatedState(onDrop)
+    // Cards live in a virtualised LazyColumn — when one scrolls off and is disposed,
+    // drop its now-stale bounds so drop resolution only ever sees on-screen cards
+    // (a lingering off-screen Rect would skew slotAmong / nest hit-testing).
+    DisposableEffect(task.id) {
+        onDispose { state.cardBounds.remove(task.id) }
+    }
     this
         .onGloballyPositioned { coords ->
             val tl = coords.positionInWindow()
