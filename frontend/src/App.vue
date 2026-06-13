@@ -9,9 +9,13 @@ import {
   dateRuRU,
 } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
+import { PRIORITY_COLORS } from '@/styles/tokens'
 
 const theme = useThemeStore()
 const router = useRouter()
+
+// Priority colours 1..4 (0 = "none", never gradient'd) → shared flag-icon gradients.
+const PRIORITY_GRADS = PRIORITY_COLORS.slice(1)
 
 // When a refresh ultimately fails, the api client clears auth and fires this.
 function onExpired() {
@@ -37,6 +41,21 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
         <stop offset="0" style="stop-color: #b33030" />
         <stop offset="0.5" style="stop-color: #e5484d" />
         <stop offset="1" style="stop-color: #f58181" />
+      </linearGradient>
+      <!-- Priority flag gradients (one per level, indices 1..4 of PRIORITY_COLORS).
+           Shared so a board with 100s of cards holds 4 defs, not one SVG per card. -->
+      <linearGradient
+        v-for="(c, i) in PRIORITY_GRADS"
+        :id="`t-prio-grad-${i + 1}`"
+        :key="i"
+        x1="0"
+        y1="1"
+        x2="1"
+        y2="0"
+      >
+        <stop offset="0" :style="{ stopColor: `color-mix(in srgb, ${c} 86%, #000)` }" />
+        <stop offset="0.5" :style="{ stopColor: c }" />
+        <stop offset="1" :style="{ stopColor: `color-mix(in srgb, ${c} 86%, #fff)` }" />
       </linearGradient>
     </defs>
   </svg>

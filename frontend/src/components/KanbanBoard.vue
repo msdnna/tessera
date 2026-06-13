@@ -263,7 +263,7 @@ function clearAll() {
 // ── per-board view persistence (localStorage, per device) ──
 const viewKey = computed(() => `tessera_view_${props.boardId}`)
 let restoring = false
-function persistView() {
+function writeView() {
   if (restoring) return
   try {
     localStorage.setItem(
@@ -281,6 +281,25 @@ function persistView() {
     /* storage full / disabled — non-fatal */
   }
 }
+// The view watcher fires on every search keystroke; a synchronous localStorage
+// write per keystroke is a visible input-lag source on mid hardware. Debounce so
+// we persist once the user pauses, and flush on unmount so nothing is lost.
+let persistTimer = null
+function persistView() {
+  if (restoring) return
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    writeView()
+  }, 300)
+}
+onBeforeUnmount(() => {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+    writeView()
+  }
+})
 function restoreView() {
   restoring = true
   try {

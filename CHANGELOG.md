@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.54.3] — 2026-06-14
+- Performance (large boards): typing in the board search no longer writes the
+  saved-view state to localStorage on every keystroke — the write is debounced
+  (and flushed on leave), removing input lag on mid hardware.
+- Performance: the per-card priority-flag SVG gradient is no longer inlined once
+  per card (hundreds of hidden `<svg>` defs on a big board); cards now reference
+  four shared gradient defs (one per priority level) declared once in `App.vue`.
+
 ### [0.54.2] — 2026-06-11
 - The composer bar and the toolbar buttons beside it are now exactly the same
   height (40px, border-box) — the buttons no longer come up short.
