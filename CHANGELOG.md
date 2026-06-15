@@ -1028,6 +1028,10 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.31.1] — 2026-06-15
+- `userDTO` (auth/me + auth responses) now includes `email_verified`, so clients can
+  show verification status and a resend prompt.
+
 ### [0.31.0] — 2026-06-15
 User-management phase U2a (backend account lifecycle). Migration 0015; all additive.
 Email is sent through the SMTP mailer when configured, otherwise the no-op mailer

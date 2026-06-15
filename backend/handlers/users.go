@@ -18,18 +18,19 @@ const maxAvatarBytes = 2 << 20 // 2 MiB
 // userDTO is the public shape of a user (identity + legal-name profile + avatar
 // link). Email is the login and is not self-editable; password never leaves.
 type userDTO struct {
-	ID         uuid.UUID `json:"id"`
-	Email      string    `json:"email"`
-	Name       string    `json:"name"`
-	IsAdmin    bool      `json:"is_admin"`
-	Provider   string    `json:"provider"`
-	LastName   string    `json:"last_name"`
-	FirstName  string    `json:"first_name"`
-	MiddleName string    `json:"middle_name"`
-	Bio        string    `json:"bio"`
-	Company    string    `json:"company"`
-	JobTitle   string    `json:"job_title"`
-	AvatarURL  string    `json:"avatar_url,omitempty"`
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	Name          string    `json:"name"`
+	IsAdmin       bool      `json:"is_admin"`
+	EmailVerified bool      `json:"email_verified"`
+	Provider      string    `json:"provider"`
+	LastName      string    `json:"last_name"`
+	FirstName     string    `json:"first_name"`
+	MiddleName    string    `json:"middle_name"`
+	Bio           string    `json:"bio"`
+	Company       string    `json:"company"`
+	JobTitle      string    `json:"job_title"`
+	AvatarURL     string    `json:"avatar_url,omitempty"`
 }
 
 // prefsDTO mirrors user_preferences (localizing + personalizing settings).
@@ -65,8 +66,8 @@ func toPrefsDTO(p db.UserPreference) prefsDTO {
 // buildUserDTO maps a db.User and attaches the avatar URL when one is stored.
 func buildUserDTO(c *gin.Context, q *db.Queries, u db.User) userDTO {
 	dto := userDTO{
-		ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin, Provider: u.Provider,
-		LastName: u.LastName, FirstName: u.FirstName, MiddleName: u.MiddleName,
+		ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin, EmailVerified: u.EmailVerified,
+		Provider: u.Provider, LastName: u.LastName, FirstName: u.FirstName, MiddleName: u.MiddleName,
 		Bio: u.Bio, Company: u.Company, JobTitle: u.JobTitle,
 	}
 	if has, err := q.UserHasAvatar(c, u.ID); err == nil && has {
