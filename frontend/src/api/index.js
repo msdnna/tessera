@@ -66,6 +66,15 @@ export const auth = {
   me: () => api.get('/auth/me'),
 }
 
+export const accountFlows = {
+  verifyEmail: (token) => api.post('/auth/verify-email', { token }),
+  resendVerification: () => api.post('/auth/resend-verification'),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token, newPassword) =>
+    api.post('/auth/reset-password', { token, new_password: newPassword }),
+  acceptInvitation: (token) => api.post('/invitations/accept', { token }),
+}
+
 export const users = {
   updateProfile: (data) => api.patch('/users/me', data),
   changePassword: (data) => api.put('/users/me/password', data),
@@ -90,6 +99,9 @@ export const workspaces = {
   updateMemberRole: (id, userId, role) =>
     api.patch(`/workspaces/${id}/members/${userId}`, { role }),
   removeMember: (id, userId) => api.delete(`/workspaces/${id}/members/${userId}`),
+  invitations: (id) => api.get(`/workspaces/${id}/invitations`),
+  createInvitation: (id, data) => api.post(`/workspaces/${id}/invitations`, data),
+  deleteInvitation: (id, invId) => api.delete(`/workspaces/${id}/invitations/${invId}`),
   groups: (id) => api.get(`/workspaces/${id}/groups`),
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),

@@ -2,7 +2,7 @@
 import { ref, reactive, computed } from 'vue'
 import { NInput, NButton, NSelect, NAvatar, NIcon } from 'naive-ui'
 import { CloudUploadOutline, TrashOutline, CheckmarkCircle } from '@vicons/ionicons5'
-import { users } from '@/api'
+import { users, accountFlows } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
@@ -136,6 +136,17 @@ function flash(r) {
   r.value = true
   setTimeout(() => (r.value = false), 2000)
 }
+
+// ── email verification ──
+const verifySent = ref(false)
+async function resendVerify() {
+  try {
+    await accountFlows.resendVerification()
+  } catch {
+    /* no-op mailer / network — still mark as sent so the UI settles */
+  }
+  verifySent.value = true
+}
 </script>
 
 <template>
@@ -166,6 +177,18 @@ function flash(r) {
       <label class="field">
         <span>Email (логин)</span>
         <n-input :value="auth.user?.email" disabled />
+        <div class="verify-row">
+          <span v-if="auth.user?.email_verified" class="saved">
+            <n-icon :component="CheckmarkCircle" /> Почта подтверждена
+          </span>
+          <template v-else>
+            <span class="hint">Почта не подтверждена</span>
+            <n-button v-if="!verifySent" size="tiny" @click="resendVerify"
+              >Отправить письмо</n-button
+            >
+            <span v-else class="hint">Письмо отправлено</span>
+          </template>
+        </div>
       </label>
       <label class="field">
         <span>Отображаемое имя</span>
@@ -379,6 +402,12 @@ function flash(r) {
 .field > span {
   font-size: 12px;
   color: var(--t-text3);
+}
+.verify-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
 }
 .grid2 {
   display: grid;

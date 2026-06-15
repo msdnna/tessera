@@ -7,6 +7,24 @@ const routes = [
     component: () => import('@/views/RegisterView.vue'),
     meta: { public: true },
   },
+  // Open routes reached from email links — accessible signed in or out, no bounce.
+  {
+    path: '/forgot-password',
+    component: () => import('@/views/ForgotPasswordView.vue'),
+    meta: { open: true },
+  },
+  {
+    path: '/reset-password',
+    component: () => import('@/views/ResetPasswordView.vue'),
+    meta: { open: true },
+  },
+  {
+    path: '/verify-email',
+    component: () => import('@/views/VerifyEmailView.vue'),
+    meta: { open: true },
+  },
+  // Accepting an invite needs a signed-in session (the email must match).
+  { path: '/invite', component: () => import('@/views/AcceptInviteView.vue') },
   {
     path: '/',
     component: () => import('@/components/AppLayout.vue'),
@@ -24,7 +42,8 @@ const router = createRouter({ history: createWebHistory(), routes })
 
 router.beforeEach((to) => {
   const token = localStorage.getItem('tessera_token')
-  if (!to.meta.public && !token) return { path: '/login' }
+  if (to.meta.open) return // email-link landing pages: always accessible
+  if (!to.meta.public && !token) return { path: '/login', query: { next: to.fullPath } }
   if (to.meta.public && token) return { path: '/' }
 })
 

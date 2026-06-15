@@ -13,7 +13,7 @@ import {
   NIcon,
   useMessage,
 } from 'naive-ui'
-import { TrashOutline } from '@vicons/ionicons5'
+import { TrashOutline, CopyOutline, MailOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 
 const props = defineProps({
@@ -24,8 +24,10 @@ const emit = defineEmits(['update:show'])
 
 const message = useMessage()
 const members = ref([])
+const invitations = ref([])
 const email = ref('')
 const role = ref('member')
+const lastLink = ref('') // link from the most recent invitation, for copying
 const roleOptions = [
   { label: 'Участник', value: 'member' },
   { label: 'Админ', value: 'admin' },
@@ -34,22 +36,39 @@ const roleOptions = [
 async function load() {
   if (!props.wsId) return
   try {
-    members.value = (await wsApi.members(props.wsId)).data || []
+    const [m, inv] = await Promise.all([wsApi.members(props.wsId), wsApi.invitations(props.wsId)])
+    members.value = m.data || []
+    invitations.value = inv.data || []
   } catch (e) {
     message.error(e.message)
   }
 }
 
+// One input: add an already-registered user instantly; otherwise fall back to an
+// email invitation (link shared manually / by email when SMTP is on).
 async function invite() {
   const e = email.value.trim()
   if (!e) return
   try {
     await wsApi.addMember(props.wsId, { email: e, role: role.value })
     email.value = ''
+    lastLink.value = ''
     await load()
     message.success('Участник добавлен')
   } catch (err) {
-    message.error(err.message)
+    if (err.message === 'no user with that email') {
+      try {
+        const res = await wsApi.createInvitation(props.wsId, { email: e, role: role.value })
+        lastLink.value = res.data.link || ''
+        email.value = ''
+        await load()
+        message.success('Приглашение создано — скопируйте ссылку')
+      } catch (err2) {
+        message.error(err2.message)
+      }
+    } else {
+      message.error(err.message)
+    }
   }
 }
 
@@ -70,6 +89,24 @@ async function changeRole(userId, newRole) {
   } catch (e) {
     message.error(e.message)
     await load() // revert the select to the server's state
+  }
+}
+
+async function revokeInvite(invId) {
+  try {
+    await wsApi.deleteInvitation(props.wsId, invId)
+    await load()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function copyLink() {
+  try {
+    await navigator.clipboard.writeText(lastLink.value)
+    message.success('Ссылка скопирована')
+  } catch {
+    message.info(lastLink.value)
   }
 }
 
@@ -113,6 +150,21 @@ watch(
         </div>
       </div>
 
+      <!-- Pending invitations -->
+      <div v-if="invitations.length" class="invites">
+        <n-text depth="3" class="lbl">Приглашения</n-text>
+        <div v-for="inv in invitations" :key="inv.id" class="invite-row">
+          <n-icon :component="MailOutline" class="inv-icon" />
+          <span class="inv-mail">{{ inv.email }}</span>
+          <n-tag size="small" :bordered="false">{{
+            inv.role === 'admin' ? 'Админ' : 'Участник'
+          }}</n-tag>
+          <n-button text size="tiny" type="error" @click="revokeInvite(inv.id)">
+            <n-icon :component="TrashOutline" />
+          </n-button>
+        </div>
+      </div>
+
       <div class="invite">
         <n-text depth="3" class="lbl">Пригласить по email</n-text>
         <n-space>
@@ -123,9 +175,17 @@ watch(
             @keyup.enter="invite"
           />
           <n-select v-model:value="role" :options="roleOptions" size="small" style="width: 130px" />
-          <n-button type="primary" size="small" @click="invite">Добавить</n-button>
+          <n-button type="primary" size="small" @click="invite">Пригласить</n-button>
         </n-space>
-        <n-text depth="3" class="hint">Пользователь должен быть уже зарегистрирован.</n-text>
+        <n-text depth="3" class="hint">
+          Зарегистрированного — добавим сразу; нового — создадим приглашение по ссылке.
+        </n-text>
+        <div v-if="lastLink" class="link-box">
+          <n-input :value="lastLink" size="small" readonly />
+          <n-button size="small" @click="copyLink">
+            <template #icon><n-icon :component="CopyOutline" /></template>
+          </n-button>
+        </div>
       </div>
     </n-card>
   </n-modal>
@@ -137,7 +197,7 @@ watch(
   flex-direction: column;
   gap: 8px;
   margin-bottom: 16px;
-  max-height: 280px;
+  max-height: 240px;
   overflow-y: auto;
 }
 .member {
@@ -158,6 +218,25 @@ watch(
   font-size: 12px;
   color: var(--t-text3);
 }
+.invites {
+  margin-bottom: 16px;
+}
+.invite-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.inv-icon {
+  color: var(--t-text3);
+}
+.inv-mail {
+  flex: 1;
+  font-size: 13px;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .lbl {
   display: block;
   font-size: 12px;
@@ -167,5 +246,10 @@ watch(
   display: block;
   font-size: 11px;
   margin-top: 6px;
+}
+.link-box {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
 }
 </style>

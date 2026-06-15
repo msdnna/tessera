@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.57.0] — 2026-06-15
+User-management phase U2b (web) — consumes backend 0.31.x.
+- **Workspace invitations** in the members modal: one «Пригласить» field adds an
+  already-registered user instantly, or creates an email invitation with a
+  copyable link for someone without an account; pending invitations are listed
+  with a revoke button.
+- **Account-flow pages** reached from email links: `/forgot-password` (request a
+  reset), `/reset-password` (set a new one), `/verify-email` (confirm), `/invite`
+  (accept an invitation — switches to the workspace). A «Забыли пароль?» link on
+  the login screen; after signing in you return to the page you came from (`next`).
+- **Settings** shows email verification status with a resend button.
+
 ### [0.56.4] — 2026-06-15
 - **Fix (proper): boards now show immediately after login.** The per-project lazy
   load raced with the sidebar mounting (a restored-expanded project never fetched
