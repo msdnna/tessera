@@ -229,6 +229,36 @@ func (h *API) DeleteMyAvatar(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// SetUserActive activates/deactivates an account (global admin only). A
+// deactivated user can't log in. You can't change your own active state.
+func (h *API) SetUserActive(c *gin.Context) {
+	caller, err := h.q.GetUserByID(c, middleware.CurrentUser(c))
+	if err != nil || !caller.IsAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "requires admin"})
+		return
+	}
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	if id == caller.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot change your own active state"})
+		return
+	}
+	var req struct {
+		Active bool `json:"active"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.q.SetUserActive(c, db.SetUserActiveParams{ID: id, Active: req.Active}); err != nil {
+		fail(c)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 // GetUserAvatar serves a user's avatar blob. Unauthenticated (served straight
 // into <img>, like /uploads) — avatars are low-sensitivity and keyed by UUID.
 func (h *API) GetUserAvatar(c *gin.Context) {

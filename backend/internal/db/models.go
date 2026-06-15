@@ -281,6 +281,16 @@ type UserPreference struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+type UserToken struct {
+	ID        uuid.UUID  `json:"id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	Kind      string     `json:"kind"`
+	TokenHash string     `json:"token_hash"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
 type Workspace struct {
 	ID          uuid.UUID `json:"id"`
 	Name        string    `json:"name"`
@@ -288,4 +298,16 @@ type Workspace struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	TaskCounter int64     `json:"task_counter"`
+}
+
+type WorkspaceInvitation struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	Email       string     `json:"email"`
+	Role        string     `json:"role"`
+	TokenHash   string     `json:"token_hash"`
+	InvitedBy   *uuid.UUID `json:"invited_by"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	AcceptedAt  *time.Time `json:"accepted_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }

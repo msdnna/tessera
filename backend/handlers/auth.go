@@ -11,16 +11,19 @@ import (
 
 	"tessera/internal/auth"
 	"tessera/internal/db"
+	"tessera/internal/mail"
 	"tessera/middleware"
 )
 
 type AuthHandler struct {
-	q      *db.Queries
-	secret string
+	q         *db.Queries
+	secret    string
+	mailer    mail.Mailer
+	publicURL string
 }
 
-func NewAuthHandler(q *db.Queries, secret string) *AuthHandler {
-	return &AuthHandler{q: q, secret: secret}
+func NewAuthHandler(q *db.Queries, secret string, mailer mail.Mailer, publicURL string) *AuthHandler {
+	return &AuthHandler{q: q, secret: secret, mailer: mailer, publicURL: publicURL}
 }
 
 type authResponse struct {
@@ -80,6 +83,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		})
 	}
 
+	// Apply any pending workspace invitations addressed to this email, then send
+	// a verification email (no-op mailer just logs the link when SMTP is off).
+	h.acceptPendingInvitations(c, user)
+	h.sendVerification(c, user)
+
 	h.issue(c, user)
 }
 
@@ -97,6 +105,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	user, err := h.q.GetUserByEmail(c, strings.ToLower(req.Email))
 	if err != nil || !auth.CheckPassword(user.PasswordHash, req.Password) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		return
+	}
+	if !user.Active {
+		c.JSON(http.StatusForbidden, gin.H{"error": "account is deactivated"})
 		return
 	}
 

@@ -163,6 +163,29 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
+const markEmailVerified = `-- name: MarkEmailVerified :exec
+UPDATE users SET email_verified = true, updated_at = now() WHERE id = $1
+`
+
+func (q *Queries) MarkEmailVerified(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markEmailVerified, id)
+	return err
+}
+
+const setUserActive = `-- name: SetUserActive :exec
+UPDATE users SET active = $2, updated_at = now() WHERE id = $1
+`
+
+type SetUserActiveParams struct {
+	ID     uuid.UUID `json:"id"`
+	Active bool      `json:"active"`
+}
+
+func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) error {
+	_, err := q.db.Exec(ctx, setUserActive, arg.ID, arg.Active)
+	return err
+}
+
 const updateUserPassword = `-- name: UpdateUserPassword :exec
 UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1
 `

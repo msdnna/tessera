@@ -1028,6 +1028,25 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.31.0] — 2026-06-15
+User-management phase U2a (backend account lifecycle). Migration 0015; all additive.
+Email is sent through the SMTP mailer when configured, otherwise the no-op mailer
+logs the full message (so a self-host without SMTP can still read the link).
+- **Workspace invitations by email** (`workspace_invitations`): `POST/GET
+  /workspaces/:id/invitations` + `DELETE /workspaces/:id/invitations/:invId`
+  (owner/admin) — invite anyone by email, even without an account. The create
+  response includes the invite `link` (for copying when SMTP is off).
+  `POST /invitations/accept` joins the signed-in user (email must match); and
+  registering with an invited email **auto-joins** all matching pending invites.
+- **Email verification** (`user_tokens` kind=verify): a token is issued on register;
+  `POST /auth/verify-email` consumes it; `POST /auth/resend-verification` re-sends.
+  (Login is not gated on verification yet.)
+- **Password reset** (`user_tokens` kind=reset): `POST /auth/forgot-password` (always
+  200 — no account enumeration) emails a 1-hour link; `POST /auth/reset-password`
+  sets the new password and revokes existing sessions.
+- **Account deactivation**: `PATCH /admin/users/:id/active` (global admin only;
+  can't change your own) flips `users.active`; a deactivated user can't log in.
+
 ### [0.30.0] — 2026-06-15
 User-management phase U1a (backend). All additive (migration 0014).
 - **Self-service profile**: `PATCH /users/me` updates display name, split legal

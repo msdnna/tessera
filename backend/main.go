@@ -30,18 +30,18 @@ func main() {
 	hub := realtime.NewHub()
 	go hub.Run()
 
-	versionHandler := handlers.NewVersionHandler(appVersion)
-	wsHandler := handlers.NewWSHandler(hub)
-	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret)
-	rh := handlers.NewAPI(queries, hub, cfg.UploadDir, cfg.EncryptionKey)
-
-	// Email transport (scaffolded for U2 invites/verification/reset). No-op when
-	// SMTP is unconfigured, which is fine for self-host.
+	// Email transport (U2 invites / verification / reset). No-op when SMTP is
+	// unconfigured (self-host) — links are logged instead of sent.
 	mailer := mail.New(mail.Config{
 		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUser,
 		Password: cfg.SMTPPass, From: cfg.SMTPFrom,
 	})
 	log.Printf("mail: enabled=%v", mailer.Enabled())
+
+	versionHandler := handlers.NewVersionHandler(appVersion)
+	wsHandler := handlers.NewWSHandler(hub)
+	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, mailer, cfg.PublicURL)
+	rh := handlers.NewAPI(queries, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL)
 
 	// Background GitLab auto-sync worker (idle until an integration sets a
 	// positive sync interval).
@@ -61,6 +61,11 @@ func main() {
 		api.POST("/auth/register", authHandler.Register)
 		api.POST("/auth/login", authHandler.Login)
 		api.POST("/auth/refresh", authHandler.Refresh)
+		// Token-based account flows (the token IS the auth): email verification +
+		// password reset.
+		api.POST("/auth/verify-email", authHandler.VerifyEmail)
+		api.POST("/auth/forgot-password", authHandler.ForgotPassword)
+		api.POST("/auth/reset-password", authHandler.ResetPassword)
 
 		// Live updates. Per-workspace scoping + WS auth land in a later phase.
 		api.GET("/ws", wsHandler.Connect)
@@ -83,6 +88,7 @@ func main() {
 		protected.Use(middleware.Auth(cfg.JWTSecret))
 		{
 			protected.GET("/auth/me", authHandler.Me)
+			protected.POST("/auth/resend-verification", authHandler.ResendVerification)
 
 			// Self-service profile / password / preferences / avatar.
 			protected.PATCH("/users/me", rh.UpdateMyProfile)
@@ -104,6 +110,16 @@ func main() {
 			protected.POST("/workspaces/:id/members", rh.AddMember)
 			protected.PATCH("/workspaces/:id/members/:userId", rh.UpdateMemberRole)
 			protected.DELETE("/workspaces/:id/members/:userId", rh.RemoveMember)
+
+			// Workspace invitations (invite-by-email; invitee may be unregistered).
+			protected.POST("/workspaces/:id/invitations", rh.CreateInvitation)
+			protected.GET("/workspaces/:id/invitations", rh.ListInvitations)
+			protected.DELETE("/workspaces/:id/invitations/:invId", rh.DeleteInvitation)
+			protected.POST("/invitations/accept", rh.AcceptInvitation)
+
+			// Global admin: activate / deactivate an account (separate /admin
+			// prefix so it doesn't collide with the /users/me routes).
+			protected.PATCH("/admin/users/:id/active", rh.SetUserActive)
 
 			// Project groups & projects (nested under a workspace).
 			protected.POST("/workspaces/:id/groups", rh.CreateProjectGroup)

@@ -46,8 +46,11 @@ type noop struct{}
 
 func (noop) Enabled() bool { return false }
 
-func (noop) Send(to, subject, _ string) error {
-	log.Printf("mail (noop): would send to %s — %q", to, subject)
+func (noop) Send(to, subject, body string) error {
+	// Log the full body too: on a self-host without SMTP this is the only place
+	// the verification / reset / invite link surfaces (invites also return it in
+	// the API response).
+	log.Printf("mail (noop) to %s — %s\n%s", to, subject, body)
 	return nil
 }
 

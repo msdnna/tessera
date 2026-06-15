@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
+	"tessera/internal/mail"
 	"tessera/internal/realtime"
 	"tessera/internal/secrets"
 	"tessera/middleware"
@@ -26,18 +27,20 @@ type API struct {
 	uploadDir string
 	sealer    *secrets.Sealer // encrypts secrets at rest (GitLab PATs)
 	assetKey  []byte          // HMAC key for signed GitLab asset-proxy URLs
+	mailer    mail.Mailer     // transactional email (invitations); no-op when SMTP unset
+	publicURL string          // external base URL for links in emails
 }
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from
 // the configured encryption key.
-func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir, encryptionKey string) *API {
+func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir, encryptionKey string, mailer mail.Mailer, publicURL string) *API {
 	sealer, err := secrets.NewSealer(encryptionKey)
 	if err != nil {
 		// config.New guarantees a non-empty key, so this is unreachable in practice.
 		log.Fatalf("failed to init secret sealer: %v", err)
 	}
 	ak := sha256.Sum256([]byte(encryptionKey + ":gitlab-asset"))
-	return &API{q: q, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:]}
+	return &API{q: q, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:], mailer: mailer, publicURL: publicURL}
 }
 
 // positionGap is the spacing used when appending to the end of a list.
