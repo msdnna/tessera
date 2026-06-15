@@ -397,8 +397,8 @@ private fun BoardTitleSwitcher(
 }
 
 private val IntegrationProviders = listOf(
-    Triple(Ion.GIT_BRANCH, "GitLab", true),
-    Triple(Ion.GIT_MERGE, "GitHub", false),
+    Triple(Ion.GITLAB, "GitLab", true),
+    Triple(Ion.GITHUB, "GitHub", false),
 )
 
 /**

@@ -82,6 +82,8 @@ object Ion {
     const val PENCIL = "pencil"
     const val SEND = "send"
     const val LINK = "link"
+    const val GITLAB = "gitlab"
+    const val GITHUB = "github"
 
     const val BRIEFCASE = "briefcase"
     const val HOME = "home"

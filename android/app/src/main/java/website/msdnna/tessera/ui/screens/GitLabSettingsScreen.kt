@@ -86,7 +86,7 @@ fun GitLabSettingsScreen(workspaceId: String, vm: GitlabViewModel = viewModel(ke
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IonIcon(Ion.GIT_BRANCH, size = 20.dp, tint = c.primary, gradient = true)
+            IonIcon(Ion.GITLAB, size = 20.dp, tint = c.primary, gradient = true)
             Spacer(Modifier.width(8.dp))
             Text("GitLab", color = c.text1, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }

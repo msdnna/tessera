@@ -52,14 +52,17 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.GitlabAssignee
 import website.msdnna.tessera.data.model.GitlabLink
 import website.msdnna.tessera.data.model.Member
@@ -371,11 +374,17 @@ private fun PropertyGrid(
         PropRow(Ion.FLAG, "Приоритет") { PriorityValue(priority) { vm.setPriority(it) } }
         PropRow(Ion.CALENDAR, "Срок") { DueValue(dueIso) { vm.setDue(it) } }
         if (authorName != null) {
-            PropRow(Ion.PERSON_ADD, "Автор") { AuthorValue(authorName, gl = gitlab?.author?.takeIf { it.isNotBlank() }) }
+            PropRow(Ion.PERSON_ADD, "Автор") {
+                AuthorValue(
+                    authorName,
+                    gl = gitlab?.author?.takeIf { it.isNotBlank() },
+                    userId = if (gitlab?.author?.isNotBlank() == true) null else createdBy,
+                )
+            }
         }
         PropRow(Ion.PEOPLE, "Исполнители") { AssigneesValue(assignees, gitlabAssignees, members) { vm.toggleAssignee(it) } }
         if (gitlab != null) {
-            PropRow(Ion.GIT_BRANCH, "GitLab") { GitlabLinkValue(gitlab) }
+            PropRow(Ion.GITLAB, "GitLab") { GitlabLinkValue(gitlab) }
         }
         PropRow(Ion.PRICETAG, "Теги") { TagsValue(taskTagIds, tags, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} }) }
         PropRow(Ion.CHECK, "Выполнено") { TSwitch(checked = completed, onCheckedChange = { vm.setCompleted(it) }) }
@@ -462,16 +471,12 @@ private fun AssigneesValue(
                 Text("Никто", color = c.text3, fontSize = 14.sp)
             } else {
                 chosen.forEach { m ->
-                    Box(Modifier.size(24.dp).clip(CircleShape).background(accentGradient(c.primary)), contentAlignment = Alignment.Center) {
-                        Text(initials(m.name), color = c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                    }
+                    MemberAvatar(24.dp, m.name, userId = m.userId)
                     Spacer(Modifier.width(4.dp))
                 }
                 // External GitLab assignees (no Tessera account) — muted, read-only.
                 gitlabAssignees.forEach { g ->
-                    Box(Modifier.size(24.dp).clip(CircleShape).background(c.text3), contentAlignment = Alignment.Center) {
-                        Text(initials(g.glName), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                    }
+                    MemberAvatar(24.dp, g.glName, muted = true)
                     Spacer(Modifier.width(4.dp))
                 }
             }
@@ -484,9 +489,7 @@ private fun AssigneesValue(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(Modifier.size(22.dp).clip(CircleShape).background(accentGradient(c.primary)), contentAlignment = Alignment.Center) {
-                        Text(initials(m.name), color = c.onPrimary, fontSize = 10.sp)
-                    }
+                    MemberAvatar(22.dp, m.name, userId = m.userId)
                     Spacer(Modifier.width(8.dp))
                     Text(m.name, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
                     if (on) {
@@ -499,14 +502,32 @@ private fun AssigneesValue(
     }
 }
 
+/** A circular member avatar: the uploaded image (Tessera [userId] or GitLab
+ *  [avatarUrl]) over a gradient/grey disc, falling back to initials. */
+@Composable
+private fun MemberAvatar(size: Dp, name: String, userId: String? = null, avatarUrl: String? = null, muted: Boolean = false) {
+    val c = Tessera.colors
+    val url = avatarUrl?.takeIf { it.isNotBlank() }
+        ?: userId?.takeIf { it.isNotBlank() }?.let { "${RetrofitClient.serverRoot}/api/users/$it/avatar" }
+    Box(
+        Modifier.size(size).clip(CircleShape)
+            .background(if (muted) SolidColor(c.text3) else accentGradient(c.primary)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (url != null) {
+            AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(size).clip(CircleShape))
+        } else {
+            Text(initials(name), color = if (muted) Color.White else c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
 /** Read-only author display (creator or GitLab issue author). */
 @Composable
-private fun AuthorValue(name: String, gl: String?) {
+private fun AuthorValue(name: String, gl: String?, userId: String? = null) {
     val c = Tessera.colors
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(24.dp).clip(CircleShape).background(c.text3), contentAlignment = Alignment.Center) {
-            Text(initials(name), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-        }
+        MemberAvatar(24.dp, name, userId = userId, muted = userId == null)
         Spacer(Modifier.width(8.dp))
         Text(name, color = c.text1, fontSize = 14.sp)
         if (gl != null) {

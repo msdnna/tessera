@@ -5,6 +5,13 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.11.0 — 2026-06-16
+- **User avatars on task cards and in the task modal**: assignees and the author/
+  creator show their uploaded avatar (Coil image from `/api/users/:id/avatar`),
+  falling back to gradient initials. GitLab-user avatars are wired (via `avatarUrl`)
+  for when the sync provides them.
+- GitLab / GitHub logo icons (manual edits + bundled `gitlab.svg` / `github.svg`).
+
 ## 0.10.0 — 2026-06-15
 User-management phase U2c — Android, the client side of backend 0.31.x.
 - **Workspace invitations** in the members modal: one «Пригласить» field adds an

@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import coil.compose.AsyncImage
+import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.PriorityLabels
@@ -250,7 +252,7 @@ private fun CardHeader(task: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, s
                     .padding(horizontal = 5.dp, vertical = 1.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IonIcon(Ion.GIT_BRANCH, size = 10.dp, tint = c.text2)
+                IonIcon(Ion.GITLAB, size = 10.dp, tint = c.text2)
                 Spacer(Modifier.width(2.dp))
                 Text("!$iid", color = c.text2, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -526,7 +528,7 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Author → assignee cascade (author muted, non-actionable).
                 if (authorName != null) {
-                    CardAvatar(authorName, muted = true)
+                    CardAvatar(authorName, muted = true, userId = if (task.gitlabAuthor == null) task.createdBy else null)
                     Text("→", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 3.dp))
                 }
                 if (assignees.isEmpty() && external.isEmpty()) {
@@ -534,7 +536,7 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
                 } else {
                     // Overlapping stack with a card-coloured ring (the "cutout").
                     Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
-                        assignees.forEach { CardAvatar(it.name, muted = false) }
+                        assignees.forEach { CardAvatar(it.name, muted = false, userId = it.userId) }
                         external.forEach { CardAvatar(it, muted = true) }
                     }
                 }
@@ -677,11 +679,15 @@ private fun initials(name: String): String {
     return s.take(2).uppercase()
 }
 
-/** A card avatar circle (24dp ring + inner gradient/grey disc). [muted] greys it
- *  out for the read-only author and external GitLab assignees. */
+/** A card avatar circle (24dp ring + inner gradient/grey disc). Shows the user's
+ *  uploaded avatar when [userId] (Tessera) or [avatarUrl] (GitLab) is given,
+ *  falling back to initials. [muted] greys the fallback for the read-only author
+ *  and external GitLab assignees. */
 @Composable
-private fun CardAvatar(name: String, muted: Boolean) {
+private fun CardAvatar(name: String, muted: Boolean, userId: String? = null, avatarUrl: String? = null) {
     val c = Tessera.colors
+    val url = avatarUrl?.takeIf { it.isNotBlank() }
+        ?: userId?.takeIf { it.isNotBlank() }?.let { "${RetrofitClient.serverRoot}/api/users/$it/avatar" }
     Box(
         Modifier.size(24.dp).clip(CircleShape).background(c.cardSurface).padding(1.5.dp),
         contentAlignment = Alignment.Center,
@@ -691,12 +697,16 @@ private fun CardAvatar(name: String, muted: Boolean) {
                 .then(if (muted) Modifier.background(c.text3) else Modifier.background(accentGradient(c.primary))),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                initials(name),
-                color = if (muted) Color.White else c.onPrimary,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+            if (url != null) {
+                AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(21.dp).clip(CircleShape))
+            } else {
+                Text(
+                    initials(name),
+                    color = if (muted) Color.White else c.onPrimary,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
 }
