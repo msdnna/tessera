@@ -146,7 +146,8 @@ function flash(r) {
     <section class="card">
       <h2>Профиль</h2>
       <div class="avatar-row">
-        <n-avatar round :size="72" :src="avatarUrl" class="ava">{{ initials }}</n-avatar>
+        <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" />
+        <n-avatar v-else round :size="72" class="ava">{{ initials }}</n-avatar>
         <div class="avatar-actions">
           <input ref="fileInput" type="file" accept="image/*" hidden @change="onAvatarPicked" />
           <n-button size="small" @click="fileInput?.click()">
@@ -399,6 +400,12 @@ function flash(r) {
   background: var(--t-accent-grad);
   color: var(--t-on-primary);
   font-weight: 600;
+}
+.ava-img {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 .avatar-actions {
   display: flex;

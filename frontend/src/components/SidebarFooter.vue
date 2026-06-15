@@ -39,7 +39,8 @@ function logout() {
   <div class="sb-footer" :class="{ collapsed }">
     <n-popover v-if="compact" trigger="click" :placement="collapsed ? 'right-end' : 'top-start'">
       <template #trigger>
-        <n-avatar round :size="32" class="ava" :src="avatarUrl">{{ initials }}</n-avatar>
+        <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" />
+        <n-avatar v-else round :size="32" class="ava">{{ initials }}</n-avatar>
       </template>
       <div class="user-pop">
         <div class="up-name">{{ authStore.user?.name || 'Профиль' }}</div>
@@ -55,9 +56,8 @@ function logout() {
       </div>
     </n-popover>
     <div v-else class="user">
-      <n-avatar round :size="30" class="ava" :src="avatarUrl" @click="openSettings">{{
-        initials
-      }}</n-avatar>
+      <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" @click="openSettings" />
+      <n-avatar v-else round :size="30" class="ava" @click="openSettings">{{ initials }}</n-avatar>
       <span class="uname" @click="openSettings">{{ authStore.user?.name || 'Профиль' }}</span>
       <n-tooltip>
         <template #trigger>
@@ -100,6 +100,12 @@ function logout() {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+}
+.ava-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 .uname {
   flex: 1;

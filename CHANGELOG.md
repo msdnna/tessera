@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.56.2] — 2026-06-15
+- **Fix: the uploaded avatar now actually shows** (sidebar + settings). It was
+  rendered via `n-avatar :src` which didn't pick up the URL once it arrived from
+  `/auth/me`; now a plain `<img>` is used when an avatar is present, falling back to
+  the initials avatar otherwise.
+
 ### [0.56.1] — 2026-06-15
 U1b fixes from review.
 - **Fix: avatar upload silently failed** — the request set `Content-Type:
