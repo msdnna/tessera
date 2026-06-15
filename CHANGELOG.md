@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.56.4] — 2026-06-15
+- **Fix (proper): boards now show immediately after login.** The per-project lazy
+  load raced with the sidebar mounting (a restored-expanded project never fetched
+  its boards → «нет досок» until a manual re-expand). Boards for expanded projects
+  are now prefetched centrally in `selectWorkspace`, right after projects load.
+
 ### [0.56.3] — 2026-06-15
 Small UX fixes from review.
 - **Fix: boards now appear right after login** — a project whose expanded state was

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { workspaces as wsApi, projects as projApi } from '@/api'
+import { useTreeExpand } from '@/composables/useTreeExpand'
 
 // workspaces store — holds the list, the current selection, and the
 // groups/projects tree for the sidebar. Boards are loaded lazily per project.
@@ -29,6 +30,20 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     const [g, p] = await Promise.all([wsApi.groups(id), wsApi.projects(id)])
     groups.value = g.data || []
     projects.value = p.data || []
+    await prefetchExpandedBoards()
+  }
+
+  // Eagerly load boards for projects the user has expanded so they show right
+  // after login / a workspace switch. The per-project lazy load (on ProjectRow
+  // mount) races with the sidebar mount + component reuse and could leave a
+  // restored-expanded project showing «нет досок» until a manual re-expand;
+  // loading centrally here (the one place that sets projects + clears boards)
+  // is race-free.
+  async function prefetchExpandedBoards() {
+    const { isExpanded } = useTreeExpand()
+    await Promise.all(
+      projects.value.filter((p) => isExpanded(p.id, false)).map((p) => loadBoards(p.id)),
+    )
   }
 
   // refresh reloads groups + projects without touching expanded boards (used
