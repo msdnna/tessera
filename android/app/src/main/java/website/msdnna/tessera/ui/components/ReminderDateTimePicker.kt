@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,7 +72,7 @@ fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDism
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(16.dp),
+            Modifier.popupAppear(TransformOrigin.Center).clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(16.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 NavBtn(double = true, forward = false) { year-- }

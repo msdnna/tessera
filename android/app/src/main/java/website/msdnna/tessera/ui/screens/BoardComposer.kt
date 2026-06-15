@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowOverflow
 import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,8 +33,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.msdnna.tessera.data.model.BoardView
@@ -66,6 +75,43 @@ private val DueChipLabels = mapOf(
     DueFilter.None to "Без срока",
 )
 
+/**
+ * Hides this node's (expensive) intrinsic *width* from an enclosing FlowRow,
+ * reporting 0 instead of delegating to the child.
+ *
+ * The composer's inline search ([ComposerSearch]) is a `BasicTextField` placed in
+ * the chips [FlowRow] with `Modifier.weight(1f)`. A weighted child in a
+ * `maxLines`-limited FlowRow makes FlowRow *intrinsic-measure* that child on every
+ * layout pass, and a `BasicTextField`'s intrinsic-width query re-runs a full text
+ * layout (horizontal-scroll + height-in-lines text measurement). Once the leading
+ * chips grow wide enough to squeeze the field — e.g. a long tag-namespace grouping
+ * label like "Группировка: теги · effort::" — those nested intrinsic passes peg the
+ * main thread and ANR the app (frozen board, dead loader). Confirmed from a device
+ * ANR: MultiContentMeasurePolicy → DefaultIntrinsicMeasurable ×8 → TextFieldSizeNode
+ * → BoringLayout.isBoring.
+ *
+ * Width is the flow's main axis, so a constant 0 is all the weight pass needs (the
+ * field still gets the line's leftover space via its weight). Real measurement and
+ * the cross-axis (height) intrinsics delegate as normal, so the rendered layout is
+ * unchanged.
+ */
+private fun Modifier.zeroIntrinsicWidth(): Modifier = this.then(
+    object : LayoutModifier {
+        override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
+            val placeable = measurable.measure(constraints)
+            return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        }
+
+        override fun IntrinsicMeasureScope.minIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int) = 0
+        override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int) = 0
+        override fun IntrinsicMeasureScope.minIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int) =
+            measurable.minIntrinsicHeight(width)
+
+        override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int) =
+            measurable.maxIntrinsicHeight(width)
+    },
+)
+
 /** Namespace of a tag name ("S: bug" → "S: ", "effort::small" → "effort::"). */
 private fun tagNamespace(name: String): String {
     val i = name.indexOf("::")
@@ -79,63 +125,99 @@ private fun tagNamespace(name: String): String {
  * The board composer bar (web `KanbanBoard` parity): grouping / multi-level sort /
  * filters as removable chips, an "add" menu and an inline title search, all in one
  * bordered wrapping bar. Mutations apply to [vm] immediately.
+ *
+ * Collapsed it clips to a single row so the right-side tools stay aligned; tapping
+ * the bar [expanded]s it to full height (the tools slide off in [BoardToolbar]).
+ * A bottom-right corner cluster carries the clear-all (×) and the expand chevron.
  */
 @Composable
-fun BoardComposerBar(state: BoardUiState, vm: BoardViewModel, modifier: Modifier = Modifier) {
+fun BoardComposerBar(
+    state: BoardUiState,
+    vm: BoardViewModel,
+    expanded: Boolean,
+    setExpanded: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = Tessera.colors
     val f = state.filter
-    FlowRow(
+    val clearable = hasClearable(state)
+    Box(
         modifier
+            // The bar's 36dp min height + decoration live on the Box (matching the
+            // 36dp tool buttons); the FlowRow is centred within it so a single
+            // collapsed row sits vertically centred, like the clear-× on the right.
+            .heightIn(min = 36.dp)
             .clip(RoundedCornerShape(RadiusMd))
             .border(1.dp, c.border, RoundedCornerShape(RadiusMd))
             .background(c.surface)
-            .padding(horizontal = 8.dp, vertical = 5.dp)
-            .heightIn(min = 40.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .clickableNoRipple { setExpanded(true) },
     ) {
-        GroupChip(state, vm)
-        state.sortLevels.forEachIndexed { i, level ->
-            val label = SortField.fromKey(level.field)?.label ?: level.field
-            val arrow = if (level.dir == "desc") "↓" else "↑"
-            FacetChip("Сорт: $label $arrow", onClick = { vm.toggleSortDir(i) }, onRemove = { vm.removeSortLevel(i) })
+        FlowRow(
+            Modifier
+                .fillMaxWidth()
+                .align(Alignment.Center)
+                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = if (clearable) 28.dp else 8.dp),
+            maxLines = if (expanded) Int.MAX_VALUE else 1,
+            overflow = FlowRowOverflow.Clip,
+            // Inter-chip and inter-row gaps match the bar's 8dp edge padding so a
+            // multi-row (expanded / overflowing) bar isn't cramped vertically.
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            GroupChip(state, vm)
+            state.sortLevels.forEachIndexed { i, level ->
+                val label = SortField.fromKey(level.field)?.label ?: level.field
+                val arrow = if (level.dir == "desc") "↓" else "↑"
+                FacetChip("Сорт: $label $arrow", onClick = { vm.toggleSortDir(i) }, onRemove = { vm.removeSortLevel(i) })
+            }
+            f.priorities.sorted().forEach { p ->
+                FacetChip(
+                    "Приоритет: ${PriorityLabels.getOrElse(p) { "—" }}",
+                    onRemove = { vm.setFilter(f.copy(priorities = f.priorities - p)) },
+                )
+            }
+            f.assigneeIds.forEach { id ->
+                FacetChip(
+                    "Исполнитель: ${state.membersMap[id]?.name ?: "—"}",
+                    onRemove = { vm.setFilter(f.copy(assigneeIds = f.assigneeIds - id)) },
+                )
+            }
+            f.tagIds.forEach { id ->
+                FacetChip(
+                    "Тег: ${state.tags[id]?.name ?: "—"}",
+                    onRemove = { vm.setFilter(f.copy(tagIds = f.tagIds - id)) },
+                )
+            }
+            if (f.due != DueFilter.All) {
+                FacetChip(
+                    "Срок: ${DueChipLabels[f.due] ?: ""}",
+                    onRemove = { vm.setFilter(f.copy(due = DueFilter.All)) },
+                )
+            }
+            AddFacetButton(state, vm)
+            ComposerSearch(f.query, { vm.setFilter(f.copy(query = it)) }, Modifier.weight(1f).zeroIntrinsicWidth())
         }
-        f.priorities.sorted().forEach { p ->
-            FacetChip(
-                "Приоритет: ${PriorityLabels.getOrElse(p) { "—" }}",
-                onRemove = { vm.setFilter(f.copy(priorities = f.priorities - p)) },
-            )
-        }
-        f.assigneeIds.forEach { id ->
-            FacetChip(
-                "Исполнитель: ${state.membersMap[id]?.name ?: "—"}",
-                onRemove = { vm.setFilter(f.copy(assigneeIds = f.assigneeIds - id)) },
-            )
-        }
-        f.tagIds.forEach { id ->
-            FacetChip(
-                "Тег: ${state.tags[id]?.name ?: "—"}",
-                onRemove = { vm.setFilter(f.copy(tagIds = f.tagIds - id)) },
-            )
-        }
-        if (f.due != DueFilter.All) {
-            FacetChip(
-                "Срок: ${DueChipLabels[f.due] ?: ""}",
-                onRemove = { vm.setFilter(f.copy(due = DueFilter.All)) },
-            )
-        }
-        AddFacetButton(state, vm)
-        if (hasClearable(state)) {
+        // Right-edge clear-all (×) — vertically centred like the web composer.
+        // Expand/collapse is driven by tapping the bar / tapping outside it.
+        if (clearable) {
             Box(
-                Modifier.clip(CircleShape).clickableNoRipple {
-                    vm.clearFilter()
-                    vm.clearSort()
-                }
-                    .padding(horizontal = 4.dp),
+                Modifier.align(Alignment.CenterEnd).padding(end = 6.dp).clip(CircleShape)
+                    .clickableNoRipple {
+                        vm.clearFilter()
+                        vm.clearSort()
+                    }
+                    .padding(horizontal = 3.dp),
                 contentAlignment = Alignment.Center,
             ) { Text("×", color = c.text3, fontSize = 16.sp) }
         }
-        ComposerSearch(f.query, { vm.setFilter(f.copy(query = it)) }, Modifier.weight(1f))
+        // Collapsed: a transparent overlay covers the whole bar so a tap ANYWHERE
+        // (including on a chip / add / clear) only expands it — fishing for a blank
+        // spot to expand a chip-filled bar was fiddly. The chips' own taps fire
+        // only once expanded (overlay gone). Outside-tap collapse is handled by the
+        // scrim in BoardScreen.
+        if (!expanded) {
+            Box(Modifier.matchParentSize().clickableNoRipple { setExpanded(true) })
+        }
     }
 }
 
@@ -323,9 +405,13 @@ private fun FlowRowScope.ComposerSearch(value: String, onValue: (String) -> Unit
         singleLine = true,
         textStyle = TextStyle(color = c.text1, fontSize = 13.sp),
         cursorBrush = SolidColor(c.primary),
-        modifier = modifier.widthIn(min = 120.dp).padding(horizontal = 4.dp, vertical = 6.dp),
+        modifier = modifier.widthIn(min = 120.dp).padding(horizontal = 4.dp, vertical = 4.dp),
         decorationBox = { inner ->
-            if (value.isEmpty()) Text("Поиск по названию…", color = c.text3, fontSize = 13.sp)
+            // Single line + ellipsis: a narrow leftover width (e.g. next to a wide
+            // group chip) must truncate the hint, not wrap it and grow the bar.
+            if (value.isEmpty()) {
+                Text("Поиск…", color = c.text3, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             inner()
         },
     )

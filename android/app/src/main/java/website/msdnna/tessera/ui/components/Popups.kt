@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,11 +20,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -37,6 +45,35 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
+
+/**
+ * A quick fade + scale-in for content that mounts when it first appears — popups,
+ * menus and dialogs are composed only while open, so this is entrance-only (there
+ * is no exit frame to play). Implemented as a `graphicsLayer` tween rather than
+ * `AnimatedVisibility` so the content keeps its full measured size from the first
+ * frame — important inside a `Popup`, whose position provider measures the content
+ * (an animation that grew the layout would make the popup jump as it sized up).
+ *
+ * @param transformOrigin where the scale grows from — top-centre for a dropdown
+ *        falling from its anchor, centre for a centred dialog.
+ */
+@Composable
+fun Modifier.popupAppear(transformOrigin: TransformOrigin = TransformOrigin(0.5f, 0f)): Modifier {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val progress by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(140),
+        label = "popupAppear",
+    )
+    return this.graphicsLayer {
+        alpha = progress
+        val s = 0.92f + 0.08f * progress
+        scaleX = s
+        scaleY = s
+        this.transformOrigin = transformOrigin
+    }
+}
 
 /**
  * A themed dropdown / popover anchored just below its trigger — the Naive-style
@@ -64,10 +101,11 @@ fun TDropdown(
         properties = PopupProperties(focusable = true),
     ) {
         if (bare) {
-            Column(modifier, content = content)
+            Column(modifier.popupAppear(), content = content)
         } else {
             Column(
                 modifier
+                    .popupAppear()
                     .softShadow(RoundedCornerShape(RadiusMd), elevation = 6.dp)
                     .clip(RoundedCornerShape(RadiusMd))
                     .background(c.surface)
@@ -138,6 +176,7 @@ fun TConfirmPopover(
     ) {
         Column(
             Modifier
+                .popupAppear()
                 .softShadow(RoundedCornerShape(RadiusMd), elevation = 6.dp)
                 .clip(RoundedCornerShape(RadiusMd))
                 .background(c.surface)

@@ -31,6 +31,7 @@ import androidx.compose.ui.window.PopupProperties
 import website.msdnna.tessera.data.model.Notification
 import website.msdnna.tessera.ui.components.BelowAnchorPositionProvider
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.components.softShadow
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
@@ -61,6 +62,7 @@ fun NotificationsPanel(
     ) {
         Column(
             Modifier
+                .popupAppear()
                 .width(300.dp)
                 .softShadow(RoundedCornerShape(RadiusMd), elevation = 6.dp)
                 .clip(RoundedCornerShape(RadiusMd))

@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,13 +46,15 @@ import website.msdnna.tessera.ui.components.TSwitch
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.components.dashedBorder
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.GitlabViewModel
 import website.msdnna.tessera.util.Ion
-import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.localDateTimeLabel
 
 private val IntervalOptions = listOf(
     0 to "Вручную (выкл.)", 300 to "Каждые 5 минут", 900 to "Каждые 15 минут", 3600 to "Каждый час",
@@ -191,16 +194,24 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
         RuleCard(rule, state.columns, state.boards.map { it.id to it.label }, onRemove = { rules.removeAt(i) })
         Spacer(Modifier.height(8.dp))
     }
-    TButton("+ Правило", onClick = { rules.add(EditRule(GitlabRule())) }, kind = TButtonKind.Secondary)
+    DashedAddButton("Правило", onClick = { rules.add(EditRule(GitlabRule())) })
 
     Spacer(Modifier.height(16.dp))
     Text(
-        "Последняя синхронизация: " + (integ.lastSyncedAt?.let { shortDate(it) }.takeUnless { it.isNullOrBlank() } ?: "—"),
+        "Последняя синхронизация: " +
+            (integ.lastSyncedAt?.let { localDateTimeLabel(it) }.takeUnless { it.isNullOrBlank() } ?: "—"),
         color = c.text3, fontSize = 12.sp,
     )
     Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        TButton("Синхронизировать", onClick = { vm.sync(workspaceId) }, kind = TButtonKind.Secondary, loading = state.syncing, modifier = Modifier.weight(1f))
+        TButton(
+            "Синхронизировать",
+            onClick = { vm.sync(workspaceId) },
+            kind = TButtonKind.Secondary,
+            loading = state.syncing,
+            icon = Ion.REFRESH,
+            modifier = Modifier.weight(1f),
+        )
         TButton(
             "Сохранить",
             onClick = {
@@ -266,13 +277,30 @@ private fun RuleCard(rule: EditRule, columns: List<String>, boards: List<Pair<St
                     }
                     Spacer(Modifier.height(6.dp))
                 }
-                TButton("+ значение", onClick = { rule.map.add(MapEntry("", "")) }, kind = TButtonKind.Secondary)
+                DashedAddButton("значение", onClick = { rule.map.add(MapEntry("", "")) })
             }
         }
     }
 }
 
 // ── small helpers ────────────────────────────────────────────────────────────
+
+/** A dashed accent-bordered "+ add" button (web `n-button dashed type=primary`):
+ *  the icon + label carry the accent gradient on a dashed accent outline. */
+@Composable
+private fun DashedAddButton(label: String, onClick: () -> Unit) {
+    val c = Tessera.colors
+    Row(
+        Modifier.clip(RoundedCornerShape(RadiusSm)).dashedBorder(c.primary, RadiusSm)
+            .clickableNoRipple(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        IonIcon(Ion.ADD, size = 14.dp, tint = c.primary, gradient = true)
+        Text(label, style = TextStyle(brush = accentGradient(c.primary)), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    }
+}
 
 @Composable
 private fun SectionLabel(text: String) {

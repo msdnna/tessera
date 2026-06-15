@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -208,6 +211,11 @@ fun MainScreen(
                     notifState = notifState,
                     isBoard = dest is MainDest.BoardView,
                     boardId = (dest as? MainDest.BoardView)?.board?.id,
+                    isIntegration = dest is MainDest.GitLabSettings,
+                    projectBoards = (dest as? MainDest.BoardView)?.board
+                        ?.let { state.boardsByProject[it.projectId] }
+                        .orEmpty(),
+                    onSelectBoard = { board -> dest = MainDest.BoardView(board) },
                     onMenu = { scope.launch { drawerState.open() } },
                     onSearch = { searchOpen = true },
                     onBellToggle = { bellOpen = !bellOpen },
@@ -224,34 +232,36 @@ fun MainScreen(
                 HorizontalDivider(color = c.border)
 
                 Box(Modifier.fillMaxSize()) {
-                    when (val d = dest) {
-                        is MainDest.Home -> HomeScreen(
-                            workspaceId = state.currentId,
-                            userName = user?.name.orEmpty(),
-                            userId = user?.id.orEmpty(),
-                            onOpenTask = ::openTask,
-                        )
+                    Crossfade(targetState = dest, animationSpec = tween(220), label = "dest") { d ->
+                        when (d) {
+                            is MainDest.Home -> HomeScreen(
+                                workspaceId = state.currentId,
+                                userName = user?.name.orEmpty(),
+                                userId = user?.id.orEmpty(),
+                                onOpenTask = ::openTask,
+                            )
 
-                        is MainDest.Notes -> NotesScreen(
-                            workspaceId = state.currentId,
-                            preselectNoteId = notesPreselectId,
-                            onPreselectConsumed = { notesPreselectId = null },
-                        )
+                            is MainDest.Notes -> NotesScreen(
+                                workspaceId = state.currentId,
+                                preselectNoteId = notesPreselectId,
+                                onPreselectConsumed = { notesPreselectId = null },
+                            )
 
-                        is MainDest.Reminders -> RemindersScreen()
+                            is MainDest.Reminders -> RemindersScreen()
 
-                        is MainDest.GitLabSettings -> GitLabSettingsScreen(workspaceId = state.currentId)
+                            is MainDest.GitLabSettings -> GitLabSettingsScreen(workspaceId = state.currentId)
 
-                        is MainDest.BoardView -> BoardScreen(
-                            board = d.board,
-                            workspaceId = state.currentId,
-                            initialTaskId = pendingTaskId,
-                            onInitialTaskConsumed = { pendingTaskId = null },
-                            archiveOpen = boardArchiveOpen,
-                            tagsOpen = boardTagsOpen,
-                            onCloseArchive = { boardArchiveOpen = false },
-                            onCloseTags = { boardTagsOpen = false },
-                        )
+                            is MainDest.BoardView -> BoardScreen(
+                                board = d.board,
+                                workspaceId = state.currentId,
+                                initialTaskId = pendingTaskId,
+                                onInitialTaskConsumed = { pendingTaskId = null },
+                                archiveOpen = boardArchiveOpen,
+                                tagsOpen = boardTagsOpen,
+                                onCloseArchive = { boardArchiveOpen = false },
+                                onCloseTags = { boardTagsOpen = false },
+                            )
+                        }
                     }
                 }
             }
@@ -296,12 +306,19 @@ private val ViewSegments = listOf(
 
 /**
  * Board name + layout switcher (web mobile header): tapping the title OR the
- * chevron opens a horizontal Доска / Список / Календарь segmented selector.
- * Resolves the SAME [website.msdnna.tessera.ui.viewmodels.BoardViewModel] the
- * board uses (shared by key), so the switch reflects immediately.
+ * chevron opens a horizontal Доска / Список / Календарь segmented selector,
+ * followed by the other boards of the current project for a quick jump. Resolves
+ * the SAME [website.msdnna.tessera.ui.viewmodels.BoardViewModel] the board uses
+ * (shared by key), so the layout switch reflects immediately.
  */
 @Composable
-private fun BoardTitleSwitcher(boardId: String, title: String, modifier: Modifier = Modifier) {
+private fun BoardTitleSwitcher(
+    boardId: String,
+    title: String,
+    boards: List<Board>,
+    onSelectBoard: (Board) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = Tessera.colors
     val vm: website.msdnna.tessera.ui.viewmodels.BoardViewModel = viewModel(key = "board-$boardId")
     val st by vm.state.collectAsStateWithLifecycle()
@@ -322,16 +339,97 @@ private fun BoardTitleSwitcher(boardId: String, title: String, modifier: Modifie
             Spacer(Modifier.width(4.dp))
             website.msdnna.tessera.ui.components.IonIcon(Ion.CHEVRON_DOWN, size = 18.dp, tint = c.text2)
         }
-        TDropdown(expanded = menu, onDismiss = { menu = false }, bare = true) {
-            website.msdnna.tessera.ui.components.HSegmentedSelector(
-                options = ViewSegments,
-                selectedIndex = ViewModes.indexOf(st.viewMode).coerceAtLeast(0),
-                onSelect = { i ->
-                    menu = false
-                    vm.setViewMode(ViewModes[i])
-                },
-                modifier = Modifier.width(220.dp).padding(top = 4.dp),
-            )
+        TDropdown(expanded = menu, onDismiss = { menu = false }) {
+            Column(Modifier.width(240.dp)) {
+                website.msdnna.tessera.ui.components.HSegmentedSelector(
+                    options = ViewSegments,
+                    selectedIndex = ViewModes.indexOf(st.viewMode).coerceAtLeast(0),
+                    onSelect = { i ->
+                        menu = false
+                        vm.setViewMode(ViewModes[i])
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                )
+                if (boards.size > 1) {
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider(color = c.border)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Доски проекта".uppercase(),
+                        color = c.text3,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                    )
+                    boards.forEach { b ->
+                        val current = b.id == boardId
+                        Row(
+                            Modifier.fillMaxWidth().clickableNoRipple {
+                                menu = false
+                                if (!current) onSelectBoard(b)
+                            }.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                b.name,
+                                color = if (current) c.primary else c.text1,
+                                fontSize = 14.sp,
+                                fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (current) {
+                                website.msdnna.tessera.ui.components.IonIcon(
+                                    Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val IntegrationProviders = listOf(
+    Triple(Ion.GIT_BRANCH, "GitLab", true),
+    Triple(Ion.GIT_MERGE, "GitHub", false),
+)
+
+/**
+ * Integrations header switcher: the current provider name + chevron opens a
+ * picker of integration settings screens (GitLab now; GitHub etc. later). Mirrors
+ * [BoardTitleSwitcher]'s affordance so settings screens feel like board screens.
+ */
+@Composable
+private fun IntegrationTitleSwitcher(title: String, modifier: Modifier = Modifier) {
+    val c = Tessera.colors
+    var menu by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Row(
+            Modifier.clickableNoRipple { menu = true },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, color = c.text1, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Spacer(Modifier.width(4.dp))
+            website.msdnna.tessera.ui.components.IonIcon(Ion.CHEVRON_DOWN, size = 18.dp, tint = c.text2)
+        }
+        TDropdown(expanded = menu, onDismiss = { menu = false }) {
+            IntegrationProviders.forEach { (icon, name, available) ->
+                val current = name == title
+                TMenuItem(
+                    if (available) name else "$name · скоро",
+                    icon = icon,
+                    onClick = { menu = false },
+                    trailing = {
+                        if (current) {
+                            website.msdnna.tessera.ui.components.IonIcon(
+                                Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true,
+                            )
+                        }
+                    },
+                )
+            }
         }
     }
 }
@@ -361,6 +459,9 @@ private fun TopBar(
     notifState: website.msdnna.tessera.ui.viewmodels.NotificationUiState,
     isBoard: Boolean,
     boardId: String?,
+    isIntegration: Boolean,
+    projectBoards: List<Board>,
+    onSelectBoard: (Board) -> Unit,
     onMenu: () -> Unit,
     onSearch: () -> Unit,
     onBellToggle: () -> Unit,
@@ -378,10 +479,12 @@ private fun TopBar(
     ) {
         IonIconButton(Ion.MENU, onClick = onMenu, boxSize = 40.dp)
         Spacer(Modifier.width(4.dp))
-        if (boardId != null) {
-            BoardTitleSwitcher(boardId, title, Modifier.weight(1f))
-        } else {
-            Text(
+        when {
+            boardId != null -> BoardTitleSwitcher(boardId, title, projectBoards, onSelectBoard, Modifier.weight(1f))
+
+            isIntegration -> IntegrationTitleSwitcher(title, Modifier.weight(1f))
+
+            else -> Text(
                 title,
                 color = c.text1,
                 fontSize = 17.sp,

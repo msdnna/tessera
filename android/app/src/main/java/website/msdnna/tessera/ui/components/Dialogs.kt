@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +33,7 @@ private fun DialogShell(onDismiss: () -> Unit, content: @Composable () -> Unit) 
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
+                .popupAppear(TransformOrigin.Center)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(RadiusLg))
                 .background(c.surface)

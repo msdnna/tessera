@@ -63,6 +63,7 @@ fun TButton(
     kind: TButtonKind = TButtonKind.Primary,
     enabled: Boolean = true,
     loading: Boolean = false,
+    icon: String? = null,
 ) {
     val c = Tessera.colors
     val bg = when (kind) {
@@ -93,6 +94,11 @@ fun TButton(
     ) {
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.padding(2.dp), strokeWidth = 2.dp, color = fg)
+        } else if (icon != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                IonIcon(icon, size = 16.dp, tint = fg)
+                Text(text, color = fg, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
         } else {
             Text(text, color = fg, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }

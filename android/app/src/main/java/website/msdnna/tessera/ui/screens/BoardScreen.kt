@@ -1,10 +1,16 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -86,31 +92,42 @@ fun BoardScreen(
     }
     LaunchedEffect(archiveOpen) { if (archiveOpen) vm.loadArchived() }
 
+    // Composer collapsed by default so the tools stay aligned; expanding slides
+    // the tools off and a tap anywhere outside the bar (the board area) collapses
+    // it again — the same defocus-on-outside-tap as the tag editor.
+    var composerExpanded by remember(board.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        BoardToolbar(state = state, vm = vm)
+        BoardToolbar(state = state, vm = vm, expanded = composerExpanded, setExpanded = { composerExpanded = it })
         HorizontalDivider(color = Tessera.colors.border)
 
-        PullToRefreshBox(
-            isRefreshing = state.refreshing,
-            onRefresh = vm::pullRefresh,
-            modifier = Modifier.fillMaxSize(),
-            state = ptrState,
-            indicator = { BoardRefreshIndicator(distanceFraction = { ptrState.distanceFraction }, refreshing = state.refreshing) },
-        ) {
-            when {
-                state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    TesseraLoader()
+        Box(Modifier.fillMaxSize()) {
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = vm::pullRefresh,
+                modifier = Modifier.fillMaxSize(),
+                state = ptrState,
+                indicator = { BoardRefreshIndicator(distanceFraction = { ptrState.distanceFraction }, refreshing = state.refreshing) },
+            ) {
+                when {
+                    state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        TesseraLoader()
+                    }
+
+                    state.error != null -> BoardEmpty(state.error ?: "Ошибка")
+
+                    state.columns.isEmpty() -> BoardEmpty("На этой доске пока нет колонок")
+
+                    else -> Crossfade(targetState = state.viewMode, animationSpec = tween(200), label = "viewMode") { mode ->
+                        when (mode) {
+                            BoardViewMode.Kanban -> KanbanView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+                            BoardViewMode.List -> BoardListView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+                            BoardViewMode.Calendar -> BoardCalendarView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+                        }
+                    }
                 }
-
-                state.error != null -> BoardEmpty(state.error ?: "Ошибка")
-
-                state.columns.isEmpty() -> BoardEmpty("На этой доске пока нет колонок")
-
-                else -> when (state.viewMode) {
-                    BoardViewMode.Kanban -> KanbanView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
-                    BoardViewMode.List -> BoardListView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
-                    BoardViewMode.Calendar -> BoardCalendarView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
-                }
+            }
+            if (composerExpanded) {
+                Box(Modifier.fillMaxSize().clickableNoRipple { composerExpanded = false })
             }
         }
     }
@@ -149,7 +166,12 @@ fun BoardScreen(
  * in the app bar. Active right-side controls show the accent gradient on the glyph.
  */
 @Composable
-private fun BoardToolbar(state: BoardUiState, vm: BoardViewModel) {
+private fun BoardToolbar(
+    state: BoardUiState,
+    vm: BoardViewModel,
+    expanded: Boolean,
+    setExpanded: (Boolean) -> Unit,
+) {
     val c = Tessera.colors
     var viewsMenu by remember { mutableStateOf(false) }
     Row(
@@ -157,26 +179,45 @@ private fun BoardToolbar(state: BoardUiState, vm: BoardViewModel) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        BoardComposerBar(state = state, vm = vm, modifier = Modifier.weight(1f))
-        // Expand subtasks — web GitBranchOutline.
-        ToolIcon(Ion.GIT_BRANCH, active = state.subtasksExpanded) { vm.toggleSubtasksExpanded() }
-        // Saved server-side views — popover (web folder button).
-        Box {
-            ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsMenu = true }
-            TDropdown(expanded = viewsMenu, onDismiss = { viewsMenu = false }) {
-                SavedViewsPopover(state = state, vm = vm, onClose = { viewsMenu = false })
+        BoardComposerBar(
+            state = state,
+            vm = vm,
+            expanded = expanded,
+            setExpanded = setExpanded,
+            modifier = Modifier.weight(1f),
+        )
+        AnimatedVisibility(
+            visible = !expanded,
+            enter = expandHorizontally() + fadeIn(),
+            exit = shrinkHorizontally() + fadeOut(),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Expand subtasks — web GitBranchOutline.
+                ToolIcon(Ion.GIT_BRANCH, active = state.subtasksExpanded) { vm.toggleSubtasksExpanded() }
+                // Saved server-side views — popover (web folder button).
+                Box {
+                    ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsMenu = true }
+                    TDropdown(expanded = viewsMenu, onDismiss = { viewsMenu = false }) {
+                        SavedViewsPopover(state = state, vm = vm, onClose = { viewsMenu = false })
+                    }
+                }
             }
         }
     }
 }
 
-/** A 36dp icon toolbar button; the glyph carries the accent gradient when
- *  [active], with no background highlight. */
+/** A 36dp icon toolbar button on a flat neutral fill (web quaternary parity); the
+ *  background stays grey, only the glyph picks up the accent gradient when [active]. */
 @Composable
 private fun ToolIcon(icon: String, active: Boolean, onClick: () -> Unit) {
     val c = Tessera.colors
     Box(
-        Modifier.size(36.dp).clip(RoundedCornerShape(RadiusSm)).clickableNoRipple(onClick = onClick),
+        Modifier.size(36.dp).clip(RoundedCornerShape(RadiusSm))
+            .background(c.surfaceAlt)
+            .clickableNoRipple(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         IonIcon(icon, size = 19.dp, tint = if (active) c.primary else c.text2, gradient = active)

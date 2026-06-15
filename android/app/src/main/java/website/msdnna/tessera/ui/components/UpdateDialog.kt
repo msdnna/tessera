@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,7 +62,7 @@ fun UpdateDialog(
         contentAlignment = Alignment.Center,
     ) {
         // Swallow taps on the card so they don't reach the dismiss scrim.
-        Box(Modifier.padding(28.dp).clickableNoRipple {}) {
+        Box(Modifier.popupAppear(TransformOrigin.Center).padding(28.dp).clickableNoRipple {}) {
             TCard(modifier = Modifier.widthIn(max = 360.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

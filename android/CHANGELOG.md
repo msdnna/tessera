@@ -5,6 +5,29 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.8.0 — 2026-06-15
+UX animation pass + a critical board fix.
+- **Fix (critical): grouping the board by a tag namespace could hard-freeze the
+  app** — frozen board, dead loader, recoverable only by clearing app data. The
+  composer's inline search (`BasicTextField`) sat in the chips `FlowRow` with a
+  weight; a weighted text field in a `maxLines`-limited FlowRow makes FlowRow
+  intrinsic-measure it on every layout pass, and once the leading chips grew wide
+  (e.g. a long «Группировка: теги · effort::» grouping label) those nested
+  intrinsic passes pegged the main thread (ANR). The field now hides its expensive
+  intrinsic width from the flow (`Modifier.zeroIntrinsicWidth`); layout is
+  unchanged.
+- **Composer bar polish**: the inter-chip / inter-row gaps and the top/bottom
+  padding now match the 8dp side padding, so a multi-row (expanded / overflowing)
+  bar isn't cramped. Tapping anywhere in a collapsed bar — including on a chip, the
+  «＋» or the clear «×» — now just expands it; the chip actions fire only once the
+  bar is expanded.
+- **Animations**: an "airy" animated aurora gradient on the login screen (drifting
+  brand-purple blobs, `BlendMode.Screen`); a reusable `Modifier.popupAppear()`
+  (fade + scale) on every dropdown, confirm popover, the notifications panel and
+  all dialogs/pickers; `Crossfade` between MainScreen destinations and board
+  view-modes; a directional slide+fade for task-modal tabs; a search-overlay
+  entrance.
+
 ## 0.7.0 — 2026-06-14
 Kanban performance on large boards (e.g. a GitLab-imported column with 100s of
 cards). Card interactions stay smooth where they used to freeze.

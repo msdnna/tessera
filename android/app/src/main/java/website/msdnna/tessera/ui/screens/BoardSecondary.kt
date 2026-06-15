@@ -28,22 +28,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import website.msdnna.tessera.data.model.Task
-import website.msdnna.tessera.ui.components.ColorDot
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TConfirmPopover
-import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TTextField
+import website.msdnna.tessera.ui.components.TagChip
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -67,7 +68,7 @@ fun ArchiveModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Unit)
     val c = Tessera.colors
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(18.dp),
+            Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(18.dp),
         ) {
             Text("Архив доски", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(12.dp))
@@ -138,9 +139,12 @@ private fun ArchiveRow(task: Task, vm: BoardViewModel) {
 fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Unit) {
     val c = Tessera.colors
     var newName by remember { mutableStateOf("") }
+    // Which tag is in inline-edit; a tap on empty modal space clears it (cancel).
+    var editingId by remember { mutableStateOf<String?>(null) }
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(18.dp),
+            Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg))
+                .background(c.surface).clickableNoRipple { editingId = null }.padding(18.dp),
         ) {
             Text("Управление тегами", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(12.dp))
@@ -148,8 +152,16 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
             if (state.tagList.isEmpty()) {
                 Text("Тегов пока нет", color = c.text3, fontSize = 13.sp)
             } else {
-                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                    state.tagList.forEach { tag -> TagRow(tag, vm) }
+                Column(Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())) {
+                    state.tagList.forEach { tag ->
+                        TagRow(
+                            tag,
+                            vm,
+                            editing = editingId == tag.id,
+                            onEdit = { editingId = tag.id },
+                            onDone = { editingId = null },
+                        )
+                    }
                 }
             }
 
@@ -179,21 +191,46 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
     }
 }
 
+/**
+ * One tag row (web `TagManager` parity): the tag's own badge, tapped to open an
+ * inline editor (rename field + colour swatches); a trash button stays alongside.
+ * [editing] is owned by the modal so a tap outside the row cancels it.
+ */
 @Composable
-private fun TagRow(tag: website.msdnna.tessera.data.model.Tag, vm: BoardViewModel) {
+private fun TagRow(
+    tag: website.msdnna.tessera.data.model.Tag,
+    vm: BoardViewModel,
+    editing: Boolean,
+    onEdit: () -> Unit,
+    onDone: () -> Unit,
+) {
     val c = Tessera.colors
-    var paletteOpen by remember { mutableStateOf(false) }
-    var renaming by remember { mutableStateOf(false) }
+    var nameEdit by remember(tag.id, editing) { mutableStateOf(tag.name) }
     var confirmDelete by remember { mutableStateOf(false) }
+    fun commit(color: String) = vm.updateTag(tag.id, nameEdit.trim().ifBlank { tag.name }, color)
 
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.clickableNoRipple { paletteOpen = !paletteOpen }) {
-                ColorDot(parseHexColor(tag.color, c.primary), sizeDp = 16)
+            if (editing) {
+                Box(Modifier.weight(1f)) {
+                    TTextField(value = nameEdit, onValueChange = { nameEdit = it }, placeholder = "Имя тега")
+                }
+                Spacer(Modifier.width(6.dp))
+                IonIconButton(
+                    Ion.CHECK,
+                    onClick = {
+                        commit(tag.color)
+                        onDone()
+                    },
+                    boxSize = 30.dp,
+                    iconSize = 16.dp,
+                    tint = c.primary,
+                )
+            } else {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    TagChip(name = tag.name, color = tag.color, big = true, modifier = Modifier.clickableNoRipple { onEdit() })
+                }
             }
-            Spacer(Modifier.width(10.dp))
-            Text(tag.name, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
-            IonIconButton(Ion.PENCIL, onClick = { renaming = true }, boxSize = 30.dp, iconSize = 15.dp, tint = c.text3)
             Box {
                 IonIconButton(Ion.TRASH, onClick = { confirmDelete = true }, boxSize = 30.dp, iconSize = 15.dp, tint = c.text3)
                 TConfirmPopover(
@@ -207,9 +244,9 @@ private fun TagRow(tag: website.msdnna.tessera.data.model.Tag, vm: BoardViewMode
                 )
             }
         }
-        if (paletteOpen) {
+        if (editing) {
             FlowRow(
-                Modifier.padding(start = 26.dp, top = 6.dp),
+                Modifier.padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -218,25 +255,10 @@ private fun TagRow(tag: website.msdnna.tessera.data.model.Tag, vm: BoardViewMode
                     Box(
                         Modifier.size(22.dp).clip(CircleShape).background(accentGradient(parseHexColor(hex, c.text3)))
                             .then(if (selected) Modifier.border(2.dp, c.text1, CircleShape) else Modifier)
-                            .clickableNoRipple {
-                                vm.updateTag(tag.id, tag.name, hex)
-                                paletteOpen = false
-                            },
+                            .clickableNoRipple { commit(hex) },
                     )
                 }
             }
         }
-    }
-
-    if (renaming) {
-        TInputDialog(
-            "Переименовать тег",
-            initial = tag.name,
-            onConfirm = {
-                vm.updateTag(tag.id, it, tag.color)
-                renaming = false
-            },
-            onDismiss = { renaming = false },
-        )
     }
 }

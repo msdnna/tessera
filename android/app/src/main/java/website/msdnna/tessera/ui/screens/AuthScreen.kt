@@ -1,5 +1,11 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,6 +50,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
@@ -105,6 +113,9 @@ fun AuthScreen(
             .fillMaxSize()
             .background(accentGradient(BrandPurple)),
     ) {
+        // Airy drifting aurora over the brand gradient (mirrors the web login).
+        AuthAurora(Modifier.fillMaxSize())
+
         // Server settings — gear in the top-right, popover with a live URL field.
         Box(
             Modifier
@@ -235,6 +246,44 @@ fun AuthScreen(
                     },
             )
         }
+    }
+}
+
+/**
+ * Three large, soft radial blobs of neighbouring brand hues that slowly drift and
+ * breathe over the base brand gradient — the "airy" animated login background.
+ * Each blob is a radial gradient with a soft transparent falloff (so it reads as a
+ * blurred glow without an actual blur pass) and is composited with [BlendMode.Screen]
+ * so it only ever lightens the purple, never muddies it.
+ */
+@Composable
+private fun AuthAurora(modifier: Modifier = Modifier) {
+    val t = rememberInfiniteTransition(label = "authAurora")
+    val p1 by t.animateFloat(
+        0f, 1f, infiniteRepeatable(tween(13000, easing = LinearEasing), RepeatMode.Reverse), label = "p1",
+    )
+    val p2 by t.animateFloat(
+        0f, 1f, infiniteRepeatable(tween(17000, easing = LinearEasing), RepeatMode.Reverse), label = "p2",
+    )
+    val p3 by t.animateFloat(
+        0f, 1f, infiniteRepeatable(tween(21000, easing = LinearEasing), RepeatMode.Reverse), label = "p3",
+    )
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        fun blob(color: Color, cx: Float, cy: Float, r: Float) {
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(color, color.copy(alpha = 0f)),
+                    center = Offset(cx, cy),
+                    radius = r,
+                ),
+                blendMode = BlendMode.Screen,
+            )
+        }
+        blob(Color(0xFFA99BFF).copy(alpha = 0.55f), w * (0.15f + 0.25f * p1), h * (0.10f + 0.16f * p1), w * (0.85f + 0.20f * p1))
+        blob(Color(0xFF6A55E6).copy(alpha = 0.50f), w * (0.90f - 0.22f * p2), h * (0.88f - 0.16f * p2), w * (0.80f + 0.20f * p2))
+        blob(Color(0xFFC3B8FF).copy(alpha = 0.45f), w * (0.55f - 0.18f * p3), h * (0.40f + 0.18f * p3), w * (0.70f + 0.15f * p3))
     }
 }
 

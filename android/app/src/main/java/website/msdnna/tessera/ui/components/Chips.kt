@@ -13,23 +13,36 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.parseHexColor
+import website.msdnna.tessera.util.readableHue
 
-/** Small coloured tag chip, matching the web kanban card chips. */
+/** Small coloured tag chip, matching the web kanban card chips. The fill keeps
+ *  the raw tag colour (subtle), but the text is clamped to a legible lightness
+ *  for the active theme so dark/light tag colours stay readable (web parity).
+ *  Long names truncate; [big] renders a roomier badge (tag manager). */
 @Composable
-fun TagChip(name: String, color: String, modifier: Modifier = Modifier) {
+fun TagChip(name: String, color: String, modifier: Modifier = Modifier, big: Boolean = false) {
     val base = parseHexColor(color, Tessera.colors.text3)
+    val text = readableHue(base, Tessera.colors.isDark)
     Box(
         modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(if (big) 6.dp else 4.dp))
             .background(accentGradient(base.copy(alpha = 0.18f)))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .padding(horizontal = if (big) 9.dp else 6.dp, vertical = if (big) 4.dp else 2.dp),
     ) {
-        Text(name, fontSize = 11.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(base)))
+        Text(
+            name,
+            fontSize = if (big) 13.sp else 11.sp,
+            fontWeight = FontWeight.Medium,
+            style = TextStyle(brush = accentGradient(text)),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

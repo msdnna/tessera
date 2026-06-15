@@ -2,6 +2,13 @@ package website.msdnna.tessera.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +80,7 @@ import website.msdnna.tessera.ui.components.TabItem
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.UnderlineTabs
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
@@ -84,6 +93,7 @@ import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.longDate
 import website.msdnna.tessera.util.parseHexColor
+import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
 import website.msdnna.tessera.util.whenLabel
 
@@ -152,6 +162,7 @@ fun TaskModal(
     Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier
+                .popupAppear(TransformOrigin.Center)
                 .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.94f)
                 .clip(RoundedCornerShape(RadiusLg))
@@ -213,22 +224,34 @@ fun TaskModal(
                         onSelect = { tab = it },
                     )
                     Spacer(Modifier.height(12.dp))
-                    when (tab) {
-                        0 -> CommentsTab(vm, state.comments, members, me?.id)
+                    AnimatedContent(
+                        targetState = tab,
+                        transitionSpec = {
+                            // Slide toward the direction of travel (right when moving
+                            // to a later tab), with a quick cross-fade.
+                            val dir = if (targetState > initialState) 1 else -1
+                            (slideInHorizontally(tween(220)) { w -> dir * w / 8 } + fadeIn(tween(200))) togetherWith
+                                (slideOutHorizontally(tween(180)) { w -> -dir * w / 8 } + fadeOut(tween(160)))
+                        },
+                        label = "taskTab",
+                    ) { t ->
+                        when (t) {
+                            0 -> CommentsTab(vm, state.comments, members, me?.id)
 
-                        1 -> SubtasksTab(vm, detail.columnId, detail.subtasks) { currentId = it }
+                            1 -> SubtasksTab(vm, detail.columnId, detail.subtasks) { currentId = it }
 
-                        2 -> RelationsTab(
-                            vm = vm,
-                            relations = state.relations,
-                            candidates = state.relationCandidates,
-                            currentTaskId = detail.id,
-                            onOpen = { currentId = it },
-                        )
+                            2 -> RelationsTab(
+                                vm = vm,
+                                relations = state.relations,
+                                candidates = state.relationCandidates,
+                                currentTaskId = detail.id,
+                                onOpen = { currentId = it },
+                            )
 
-                        3 -> FilesTab(vm, state.attachments)
+                            3 -> FilesTab(vm, state.attachments)
 
-                        else -> HistoryTab(state.events)
+                            else -> HistoryTab(state.events)
+                        }
                     }
                 }
             }
@@ -528,10 +551,11 @@ private fun TagsValue(taskTagIds: List<String>, tags: List<Tag>, onToggle: (Stri
             } else {
                 chosen.forEach { t ->
                     val base = parseHexColor(t.color, c.text3)
+                    val text = readableHue(base, c.isDark)
                     Box(
                         Modifier.clip(RoundedCornerShape(RadiusSm)).background(accentGradient(base.copy(alpha = 0.18f)))
                             .padding(horizontal = 8.dp, vertical = 2.dp),
-                    ) { Text(t.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(base))) }
+                    ) { Text(t.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(text))) }
                 }
             }
         }
@@ -549,7 +573,7 @@ private fun TagsValue(taskTagIds: List<String>, tags: List<Tag>, onToggle: (Stri
                             .background(accentGradient(if (on) base else base.copy(alpha = 0.14f)))
                             .clickableNoRipple { onToggle(t.id) }
                             .padding(horizontal = 9.dp, vertical = 3.dp),
-                    ) { Text(t.name, color = if (on) c.onPrimary else base, fontSize = 12.sp) }
+                    ) { Text(t.name, color = if (on) c.onPrimary else readableHue(base, c.isDark), fontSize = 12.sp) }
                 }
             }
             Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).width(250.dp)) {
@@ -1024,7 +1048,7 @@ private fun TransferBoardPicker(workspaceId: String, onPick: (String) -> Unit, o
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(18.dp),
+            Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(18.dp),
         ) {
             Text("Перенести в доску", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(12.dp))

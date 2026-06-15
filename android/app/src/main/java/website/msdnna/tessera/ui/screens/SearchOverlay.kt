@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +36,7 @@ import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.SearchViewModel
 import website.msdnna.tessera.util.Ion
@@ -59,7 +61,7 @@ fun SearchOverlay(
     LaunchedEffect(Unit) { focus.requestFocus() }
 
     Column(
-        Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),
+        Modifier.popupAppear(TransformOrigin.Center).fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         Row(
             Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 8.dp, vertical = 8.dp),
