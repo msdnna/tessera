@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { NButton, NIcon, NPopover, NTooltip, NAvatar } from 'naive-ui'
-import { LogOutOutline, SettingsOutline } from '@vicons/ionicons5'
+import { LogOutOutline, SettingsOutline, ShieldCheckmarkOutline } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -14,8 +14,12 @@ const authStore = useAuthStore()
 const router = useRouter()
 
 const avatarUrl = computed(() => authStore.user?.avatar_url || null)
+const isAdmin = computed(() => authStore.isAdmin)
 function openSettings() {
   router.push('/settings')
+}
+function openAdmin() {
+  router.push('/admin')
 }
 
 const initials = computed(() => {
@@ -49,6 +53,10 @@ function logout() {
           <template #icon><n-icon :component="SettingsOutline" /></template>
           Настройки
         </n-button>
+        <n-button v-if="isAdmin" size="small" block @click="openAdmin">
+          <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>
+          Администрирование
+        </n-button>
         <n-button size="small" block @click="logout">
           <template #icon><n-icon :component="LogOutOutline" /></template>
           Выйти
@@ -59,6 +67,14 @@ function logout() {
       <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" @click="openSettings" />
       <n-avatar v-else round :size="30" class="ava" @click="openSettings">{{ initials }}</n-avatar>
       <span class="uname" @click="openSettings">{{ authStore.user?.name || 'Профиль' }}</span>
+      <n-tooltip v-if="isAdmin">
+        <template #trigger>
+          <n-button quaternary circle size="small" aria-label="Администрирование" @click="openAdmin">
+            <n-icon :component="ShieldCheckmarkOutline" />
+          </n-button>
+        </template>
+        Администрирование
+      </n-tooltip>
       <n-tooltip>
         <template #trigger>
           <n-button quaternary circle size="small" aria-label="Настройки" @click="openSettings">

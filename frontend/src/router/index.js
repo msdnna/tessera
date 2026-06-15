@@ -34,6 +34,11 @@ const routes = [
       { path: 'notes', component: () => import('@/views/NotesView.vue') },
       { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
       { path: 'settings', component: () => import('@/views/SettingsView.vue') },
+      {
+        path: 'admin',
+        component: () => import('@/views/AdminView.vue'),
+        meta: { admin: true },
+      },
     ],
   },
 ]
@@ -45,6 +50,11 @@ router.beforeEach((to) => {
   if (to.meta.open) return // email-link landing pages: always accessible
   if (!to.meta.public && !token) return { path: '/login', query: { next: to.fullPath } }
   if (to.meta.public && token) return { path: '/' }
+  // Admin-only routes: bounce non-admins home (the server also enforces this).
+  if (to.meta.admin) {
+    const u = JSON.parse(localStorage.getItem('tessera_user') || 'null')
+    if (!u?.is_admin) return { path: '/' }
+  }
 })
 
 export default router

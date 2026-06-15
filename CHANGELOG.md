@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.60.0] — 2026-06-16
+User-management phase U3b (web admin panel) — consumes backend 0.33.
+- **Admin panel** at `/admin` (route + sidebar-footer entry, both gated by
+  `is_admin`; the router also bounces non-admins home): lists every account on the
+  instance with avatar, name/email and status badges (admin / you / deactivated /
+  unverified), a name/email search, and per-row actions — copy a password-reset
+  link to the clipboard, grant/revoke admin (revoke confirms), and activate/
+  deactivate (deactivate confirms). You can't change your own admin/active state.
+
 ### [0.59.0] — 2026-06-16
 - **GitLab user avatars** now show on synced tasks: the issue author's avatar
   appears on the card and in the task modal, and external GitLab assignees show

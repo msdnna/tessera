@@ -90,6 +90,14 @@ export const users = {
   avatarUrl: (id) => `/api/users/${id}/avatar`,
 }
 
+// Global-admin panel (every endpoint re-checks is_admin server-side).
+export const admin = {
+  listUsers: () => api.get('/admin/users'),
+  setActive: (id, active) => api.patch(`/admin/users/${id}/active`, { active }),
+  setAdmin: (id, isAdmin) => api.patch(`/admin/users/${id}/admin`, { admin: isAdmin }),
+  resetLink: (id) => api.post(`/admin/users/${id}/reset-link`),
+}
+
 export const workspaces = {
   list: () => api.get('/workspaces'),
   get: (id) => api.get(`/workspaces/${id}`),
