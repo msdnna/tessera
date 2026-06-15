@@ -5,6 +5,15 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.13.0 — 2026-06-16
+User-management phase U3c (admin panel) — consumes backend 0.33.
+- **Администрирование** screen (sidebar entry shown only to admins): lists every
+  account on the instance with avatar, name/email and status badges (admin / вы /
+  деактивирован / не подтверждён), a name/email search, and per-row actions — copy
+  a password-reset link to the clipboard, grant/revoke admin (revoke confirms),
+  activate/deactivate (deactivate confirms). You can't change your own admin/active
+  state. New shield-checkmark ionicon asset.
+
 ## 0.12.0 — 2026-06-16
 - **GitLab user avatars** on synced tasks: the issue author's avatar shows on the
   board card and in the task modal (Coil image), and external GitLab assignees show

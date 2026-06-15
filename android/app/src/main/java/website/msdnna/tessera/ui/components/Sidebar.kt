@@ -112,6 +112,7 @@ fun Sidebar(
     onOpenMembers: () -> Unit,
     onOpenGitlab: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAdmin: () -> Unit,
     onOpenBoard: (Board) -> Unit,
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
@@ -199,6 +200,14 @@ fun Sidebar(
             NavRow(Ion.HOME, "Моя работа", active = activeNav == "home", onClick = onOpenHome)
             NavRow(Ion.ALARM, "Напоминания", active = activeNav == "reminders", onClick = onOpenReminders)
             NavRow(Ion.DOCUMENT_TEXT, "Заметки", active = activeNav == "notes", onClick = onOpenNotes)
+            if (user?.isAdmin == true) {
+                NavRow(
+                    Ion.SHIELD_CHECKMARK,
+                    "Администрирование",
+                    active = activeNav == "admin",
+                    onClick = onOpenAdmin,
+                )
+            }
 
             // "ПРОЕКТЫ" section header + add project/group (inline creators).
             Row(

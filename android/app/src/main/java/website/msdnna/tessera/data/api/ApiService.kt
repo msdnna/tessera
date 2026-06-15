@@ -13,6 +13,7 @@ import retrofit2.http.Path
 import website.msdnna.tessera.data.model.AddAssigneeRequest
 import website.msdnna.tessera.data.model.AddRelationRequest
 import website.msdnna.tessera.data.model.AddTagRequest
+import website.msdnna.tessera.data.model.AdminUser
 import website.msdnna.tessera.data.model.Attachment
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.AvatarResponse
@@ -28,6 +29,7 @@ import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.EmailRequest
 import website.msdnna.tessera.data.model.Invitation
 import website.msdnna.tessera.data.model.InviteRequest
+import website.msdnna.tessera.data.model.LinkResponse
 import website.msdnna.tessera.data.model.LoginRequest
 import website.msdnna.tessera.data.model.MeResponse
 import website.msdnna.tessera.data.model.Member
@@ -44,6 +46,8 @@ import website.msdnna.tessera.data.model.Relation
 import website.msdnna.tessera.data.model.ResetPasswordRequest
 import website.msdnna.tessera.data.model.RoleUpdate
 import website.msdnna.tessera.data.model.SaveBoardViewRequest
+import website.msdnna.tessera.data.model.SetActiveRequest
+import website.msdnna.tessera.data.model.SetAdminRequest
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
@@ -105,6 +109,19 @@ interface ApiService {
 
     @POST("auth/reset-password")
     suspend fun resetPassword(@Body body: ResetPasswordRequest)
+
+    // ── global admin panel (U3); every endpoint re-checks is_admin server-side ──
+    @GET("admin/users")
+    suspend fun adminUsers(): List<AdminUser>?
+
+    @PATCH("admin/users/{id}/active")
+    suspend fun adminSetActive(@Path("id") id: String, @Body body: SetActiveRequest)
+
+    @PATCH("admin/users/{id}/admin")
+    suspend fun adminSetAdmin(@Path("id") id: String, @Body body: SetAdminRequest)
+
+    @POST("admin/users/{id}/reset-link")
+    suspend fun adminResetLink(@Path("id") id: String): LinkResponse
 
     // ── Workspaces ──────────────────────────────────────────────────────────
     @GET("workspaces")
