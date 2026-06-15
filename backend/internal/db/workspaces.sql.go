@@ -211,6 +211,31 @@ func (q *Queries) NextWorkspaceTaskNumber(ctx context.Context, id uuid.UUID) (in
 	return task_counter, err
 }
 
+const updateMembershipRole = `-- name: UpdateMembershipRole :one
+UPDATE memberships SET role = $3
+WHERE workspace_id = $1 AND user_id = $2
+RETURNING id, workspace_id, user_id, role, created_at
+`
+
+type UpdateMembershipRoleParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	UserID      uuid.UUID `json:"user_id"`
+	Role        string    `json:"role"`
+}
+
+func (q *Queries) UpdateMembershipRole(ctx context.Context, arg UpdateMembershipRoleParams) (Membership, error) {
+	row := q.db.QueryRow(ctx, updateMembershipRole, arg.WorkspaceID, arg.UserID, arg.Role)
+	var i Membership
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.UserID,
+		&i.Role,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateWorkspace = `-- name: UpdateWorkspace :one
 UPDATE workspaces
 SET name = $2, updated_at = now()

@@ -43,3 +43,8 @@ ORDER BY u.name;
 
 -- name: DeleteMembership :exec
 DELETE FROM memberships WHERE workspace_id = $1 AND user_id = $2;
+
+-- name: UpdateMembershipRole :one
+UPDATE memberships SET role = $3
+WHERE workspace_id = $1 AND user_id = $2
+RETURNING *;

@@ -72,6 +72,30 @@ func (h *API) requireMember(c *gin.Context, workspaceID uuid.UUID) bool {
 	return true
 }
 
+// memberRole returns the caller's role in a workspace, or "" if not a member.
+func (h *API) memberRole(c *gin.Context, workspaceID uuid.UUID) string {
+	m, err := h.q.GetMembership(c, db.GetMembershipParams{
+		WorkspaceID: workspaceID,
+		UserID:      middleware.CurrentUser(c),
+	})
+	if err != nil {
+		return ""
+	}
+	return m.Role
+}
+
+// requireManager authorizes the caller as owner or admin of a workspace — the
+// roles that manage members, roles and workspace settings (permission matrix,
+// U1). Writes a 403 and returns false otherwise (non-members included).
+func (h *API) requireManager(c *gin.Context, workspaceID uuid.UUID) bool {
+	switch h.memberRole(c, workspaceID) {
+	case "owner", "admin":
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "requires admin or owner"})
+	return false
+}
+
 // broadcast fans a domain event out to connected clients scoped to a workspace.
 func (h *API) broadcast(workspaceID uuid.UUID, eventType string, payload any) {
 	data, err := json.Marshal(payload)

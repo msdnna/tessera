@@ -26,7 +26,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, name, password_hash, is_admin)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, name, password_hash, is_admin, created_at, updated_at
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
 `
 
 type CreateUserParams struct {
@@ -52,12 +52,21 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Provider,
+		&i.Active,
+		&i.EmailVerified,
+		&i.LastName,
+		&i.FirstName,
+		&i.MiddleName,
+		&i.Bio,
+		&i.Company,
+		&i.JobTitle,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, is_admin, created_at, updated_at FROM users WHERE email = $1
+SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -71,12 +80,21 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Provider,
+		&i.Active,
+		&i.EmailVerified,
+		&i.LastName,
+		&i.FirstName,
+		&i.MiddleName,
+		&i.Bio,
+		&i.Company,
+		&i.JobTitle,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, password_hash, is_admin, created_at, updated_at FROM users WHERE id = $1
+SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -90,6 +108,15 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Provider,
+		&i.Active,
+		&i.EmailVerified,
+		&i.LastName,
+		&i.FirstName,
+		&i.MiddleName,
+		&i.Bio,
+		&i.Company,
+		&i.JobTitle,
 	)
 	return i, err
 }
@@ -134,4 +161,76 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateUserPasswordParams struct {
+	ID           uuid.UUID `json:"id"`
+	PasswordHash string    `json:"password_hash"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
+	return err
+}
+
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users SET
+    name        = $2,
+    last_name   = $3,
+    first_name  = $4,
+    middle_name = $5,
+    bio         = $6,
+    company     = $7,
+    job_title   = $8,
+    updated_at  = now()
+WHERE id = $1
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
+`
+
+type UpdateUserProfileParams struct {
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	LastName   string    `json:"last_name"`
+	FirstName  string    `json:"first_name"`
+	MiddleName string    `json:"middle_name"`
+	Bio        string    `json:"bio"`
+	Company    string    `json:"company"`
+	JobTitle   string    `json:"job_title"`
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile,
+		arg.ID,
+		arg.Name,
+		arg.LastName,
+		arg.FirstName,
+		arg.MiddleName,
+		arg.Bio,
+		arg.Company,
+		arg.JobTitle,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.PasswordHash,
+		&i.IsAdmin,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Provider,
+		&i.Active,
+		&i.EmailVerified,
+		&i.LastName,
+		&i.FirstName,
+		&i.MiddleName,
+		&i.Bio,
+		&i.Company,
+		&i.JobTitle,
+	)
+	return i, err
 }

@@ -242,13 +242,43 @@ type TaskTag struct {
 }
 
 type User struct {
-	ID           uuid.UUID `json:"id"`
-	Email        string    `json:"email"`
-	Name         string    `json:"name"`
-	PasswordHash string    `json:"password_hash"`
-	IsAdmin      bool      `json:"is_admin"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	Name          string    `json:"name"`
+	PasswordHash  string    `json:"password_hash"`
+	IsAdmin       bool      `json:"is_admin"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	Provider      string    `json:"provider"`
+	Active        bool      `json:"active"`
+	EmailVerified bool      `json:"email_verified"`
+	LastName      string    `json:"last_name"`
+	FirstName     string    `json:"first_name"`
+	MiddleName    string    `json:"middle_name"`
+	Bio           string    `json:"bio"`
+	Company       string    `json:"company"`
+	JobTitle      string    `json:"job_title"`
+}
+
+type UserAvatar struct {
+	UserID      uuid.UUID `json:"user_id"`
+	ContentType string    `json:"content_type"`
+	Bytes       []byte    `json:"bytes"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type UserPreference struct {
+	UserID          uuid.UUID `json:"user_id"`
+	Language        string    `json:"language"`
+	Timezone        string    `json:"timezone"`
+	Country         string    `json:"country"`
+	TimeFormat      string    `json:"time_format"`
+	DateFormat      string    `json:"date_format"`
+	WeekStart       int16     `json:"week_start"`
+	Theme           string    `json:"theme"`
+	Accent          string    `json:"accent"`
+	BoardBackground string    `json:"board_background"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type Workspace struct {

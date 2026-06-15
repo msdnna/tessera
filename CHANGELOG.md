@@ -973,6 +973,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## backend
 
+### [0.30.0] — 2026-06-15
+User-management phase U1a (backend). All additive (migration 0014).
+- **Self-service profile**: `PATCH /users/me` updates display name, split legal
+  name (`last/first/middle`) and business fields (`bio/company/job_title`);
+  `PUT /users/me/password` changes the password after verifying the current one.
+- **Preferences in DB**: `user_preferences` (1:1) holds localizing (`language,
+  timezone, country, time_format, date_format, week_start`) + personalizing
+  (`theme, accent, board_background`) settings, returned by `GET /auth/me` and the
+  auth responses, written via `PUT /users/me/preferences`. Backs the web client's
+  move of appearance out of localStorage.
+- **Avatars**: `PUT/DELETE /users/me/avatar` (multipart, ≤2 MiB, PNG/JPEG/GIF/WebP)
+  stored as a DB blob in `user_avatars`; served publicly at `GET /users/:id/avatar`.
+- **Permission matrix enforced**: managing members, roles and workspace settings now
+  requires owner/admin (was any member); `PATCH /workspaces/:id/members/:userId`
+  changes a role inline (admin/member); the workspace owner can't be demoted or
+  removed, and `owner` can't be granted via add/role (ownership transfer is separate).
+- **Provider column** `users.provider` (`local` default) separates local accounts
+  from external (GitLab) identities ahead of OAuth/SSO.
+- **Email scaffold**: `internal/mail` (SMTP + no-op fallback) and SMTP/PUBLIC_URL
+  config, ready for U2 invites / verification / password-reset (no live flows yet).
+
 ### [0.29.2] — 2026-06-11
 - GitLab asset proxy: the uploads-by-secret API only exists in GitLab ≥ 17.4, so
   on older instances (older versions) the proxy now **redirects** to the web

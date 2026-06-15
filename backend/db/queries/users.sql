@@ -16,3 +16,19 @@ SELECT count(*) FROM users;
 SELECT id, email, name, is_admin, created_at, updated_at
 FROM users
 ORDER BY name;
+
+-- name: UpdateUserProfile :one
+UPDATE users SET
+    name        = $2,
+    last_name   = $3,
+    first_name  = $4,
+    middle_name = $5,
+    bio         = $6,
+    company     = $7,
+    job_title   = $8,
+    updated_at  = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdateUserPassword :exec
+UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1;

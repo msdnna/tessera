@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"tessera/internal/auth"
@@ -24,21 +23,11 @@ func NewAuthHandler(q *db.Queries, secret string) *AuthHandler {
 	return &AuthHandler{q: q, secret: secret}
 }
 
-type userDTO struct {
-	ID      uuid.UUID `json:"id"`
-	Email   string    `json:"email"`
-	Name    string    `json:"name"`
-	IsAdmin bool      `json:"is_admin"`
-}
-
-func toUserDTO(u db.User) userDTO {
-	return userDTO{ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin}
-}
-
 type authResponse struct {
-	AccessToken  string  `json:"access_token"`
-	RefreshToken string  `json:"refresh_token"`
-	User         userDTO `json:"user"`
+	AccessToken  string   `json:"access_token"`
+	RefreshToken string   `json:"refresh_token"`
+	User         userDTO  `json:"user"`
+	Preferences  prefsDTO `json:"preferences"`
 }
 
 // Register creates a user. The very first registered user becomes an admin.
@@ -156,7 +145,10 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
 		return
 	}
-	c.JSON(http.StatusOK, toUserDTO(user))
+	c.JSON(http.StatusOK, gin.H{
+		"user":        buildUserDTO(c, h.q, user),
+		"preferences": loadPrefsDTO(c, h.q, user.ID),
+	})
 }
 
 // issue mints an access + refresh pair and stores the refresh hash.
@@ -179,5 +171,10 @@ func (h *AuthHandler) issue(c *gin.Context, user db.User) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
-	c.JSON(http.StatusOK, authResponse{AccessToken: access, RefreshToken: refresh, User: toUserDTO(user)})
+	c.JSON(http.StatusOK, authResponse{
+		AccessToken:  access,
+		RefreshToken: refresh,
+		User:         buildUserDTO(c, h.q, user),
+		Preferences:  loadPrefsDTO(c, h.q, user.ID),
+	})
 }

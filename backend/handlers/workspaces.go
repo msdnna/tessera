@@ -64,13 +64,13 @@ func (h *API) GetWorkspace(c *gin.Context) {
 	c.JSON(http.StatusOK, ws)
 }
 
-// UpdateWorkspace renames a workspace (any member).
+// UpdateWorkspace renames a workspace (owner or admin).
 func (h *API) UpdateWorkspace(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
 		return
 	}
-	if !h.requireMember(c, id) {
+	if !h.requireManager(c, id) {
 		return
 	}
 	var req struct {
@@ -134,13 +134,20 @@ func (h *API) ListMembers(c *gin.Context) {
 	c.JSON(http.StatusOK, members)
 }
 
-// AddMember invites an existing user (by email) to the workspace.
+// manageableRole reports whether a role string is one a manager (owner/admin)
+// may grant via add/update. Ownership (owner) is transferred separately, not
+// assigned here.
+func manageableRole(role string) bool {
+	return role == "admin" || role == "member"
+}
+
+// AddMember invites an existing user (by email) to the workspace (owner/admin).
 func (h *API) AddMember(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
 		return
 	}
-	if !h.requireMember(c, id) {
+	if !h.requireManager(c, id) {
 		return
 	}
 	var req struct {
@@ -149,6 +156,14 @@ func (h *API) AddMember(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	role := req.Role
+	if role == "" {
+		role = "member"
+	}
+	if !manageableRole(role) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be admin or member"})
 		return
 	}
 	user, err := h.q.GetUserByEmail(c, strings.ToLower(req.Email))
@@ -160,10 +175,6 @@ func (h *API) AddMember(c *gin.Context) {
 		fail(c)
 		return
 	}
-	role := req.Role
-	if role == "" {
-		role = "member"
-	}
 	m, err := h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: id, UserID: user.ID, Role: role})
 	if err != nil {
 		fail(c)
@@ -172,17 +183,78 @@ func (h *API) AddMember(c *gin.Context) {
 	c.JSON(http.StatusCreated, m)
 }
 
-// RemoveMember removes a member from the workspace.
+// UpdateMemberRole changes a member's role (owner/admin). The workspace owner's
+// role is immutable here — ownership transfer is a separate, owner-only flow.
+func (h *API) UpdateMemberRole(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	if !h.requireManager(c, id) {
+		return
+	}
+	userID, ok := parseID(c, "userId")
+	if !ok {
+		return
+	}
+	var req struct {
+		Role string `json:"role" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !manageableRole(req.Role) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be admin or member"})
+		return
+	}
+	ws, err := h.q.GetWorkspace(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if userID == ws.OwnerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot change the workspace owner's role"})
+		return
+	}
+	m, err := h.q.UpdateMembershipRole(c, db.UpdateMembershipRoleParams{WorkspaceID: id, UserID: userID, Role: req.Role})
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, m)
+}
+
+// RemoveMember removes a member from the workspace (owner/admin). The workspace
+// owner cannot be removed.
 func (h *API) RemoveMember(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
 		return
 	}
-	if !h.requireMember(c, id) {
+	if !h.requireManager(c, id) {
 		return
 	}
 	userID, ok := parseID(c, "userId")
 	if !ok {
+		return
+	}
+	ws, err := h.q.GetWorkspace(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if userID == ws.OwnerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot remove the workspace owner"})
 		return
 	}
 	if err := h.q.DeleteMembership(c, db.DeleteMembershipParams{WorkspaceID: id, UserID: userID}); err != nil {

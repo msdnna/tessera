@@ -11,6 +11,7 @@ import (
 	"tessera/handlers"
 	"tessera/internal/database"
 	"tessera/internal/db"
+	"tessera/internal/mail"
 	"tessera/internal/realtime"
 	"tessera/middleware"
 )
@@ -33,6 +34,14 @@ func main() {
 	wsHandler := handlers.NewWSHandler(hub)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret)
 	rh := handlers.NewAPI(queries, hub, cfg.UploadDir, cfg.EncryptionKey)
+
+	// Email transport (scaffolded for U2 invites/verification/reset). No-op when
+	// SMTP is unconfigured, which is fine for self-host.
+	mailer := mail.New(mail.Config{
+		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUser,
+		Password: cfg.SMTPPass, From: cfg.SMTPFrom,
+	})
+	log.Printf("mail: enabled=%v", mailer.Enabled())
 
 	// Background GitLab auto-sync worker (idle until an integration sets a
 	// positive sync interval).
@@ -65,11 +74,22 @@ func main() {
 		// links work, fetched with the integration owner's token).
 		api.GET("/gitlab/asset", rh.GitlabAsset)
 
+		// Avatar blobs served publicly (an <img> can't send the bearer header);
+		// keyed by user UUID, low-sensitivity.
+		api.GET("/users/:id/avatar", rh.GetUserAvatar)
+
 		// Protected — require a valid access token.
 		protected := api.Group("/")
 		protected.Use(middleware.Auth(cfg.JWTSecret))
 		{
 			protected.GET("/auth/me", authHandler.Me)
+
+			// Self-service profile / password / preferences / avatar.
+			protected.PATCH("/users/me", rh.UpdateMyProfile)
+			protected.PUT("/users/me/password", rh.ChangeMyPassword)
+			protected.PUT("/users/me/preferences", rh.UpdateMyPreferences)
+			protected.PUT("/users/me/avatar", rh.UploadMyAvatar)
+			protected.DELETE("/users/me/avatar", rh.DeleteMyAvatar)
 
 			// Workspaces & membership.
 			protected.POST("/workspaces", rh.CreateWorkspace)
@@ -82,6 +102,7 @@ func main() {
 			protected.GET("/workspaces/:id/summary", rh.WorkspaceSummary)
 			protected.GET("/workspaces/:id/members", rh.ListMembers)
 			protected.POST("/workspaces/:id/members", rh.AddMember)
+			protected.PATCH("/workspaces/:id/members/:userId", rh.UpdateMemberRole)
 			protected.DELETE("/workspaces/:id/members/:userId", rh.RemoveMember)
 
 			// Project groups & projects (nested under a workspace).

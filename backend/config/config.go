@@ -15,6 +15,15 @@ type Config struct {
 	AppEnv        string
 	UploadDir     string
 	EncryptionKey string
+	// SMTP / email (scaffolded in U1; flows land in U2). All optional — when
+	// unset, mail.New returns a no-op mailer. PublicURL is the externally
+	// reachable base URL used to build links (verification / invite / reset).
+	SMTPHost  string
+	SMTPPort  string
+	SMTPUser  string
+	SMTPPass  string
+	SMTPFrom  string
+	PublicURL string
 }
 
 // New reads configuration from the environment. In production
@@ -74,6 +83,12 @@ func New() *Config {
 		AppEnv:        getEnv("APP_ENV", "development"),
 		UploadDir:     getEnv("UPLOAD_DIR", "./uploads"),
 		EncryptionKey: encKey,
+		SMTPHost:      os.Getenv("SMTP_HOST"),
+		SMTPPort:      getEnv("SMTP_PORT", "587"),
+		SMTPUser:      os.Getenv("SMTP_USER"),
+		SMTPPass:      os.Getenv("SMTP_PASS"),
+		SMTPFrom:      os.Getenv("SMTP_FROM"),
+		PublicURL:     os.Getenv("PUBLIC_URL"),
 	}
 }
 
