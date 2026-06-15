@@ -44,6 +44,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,10 +69,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.launch
+import website.msdnna.tessera.data.repository.ProfileRepository
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.MtLogo
 import website.msdnna.tessera.ui.components.TCard
 import website.msdnna.tessera.ui.components.TDropdown
+import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -105,6 +109,10 @@ fun AuthScreen(
     var email by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var forgotShow by remember { mutableStateOf(false) }
+    var forgotSent by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val profileRepo = remember { ProfileRepository() }
     var showServer by rememberSaveable { mutableStateOf(false) }
     var serverDraft by remember(serverUrl) { mutableStateOf(serverUrl) }
 
@@ -231,6 +239,17 @@ fun AuthScreen(
                 },
             )
 
+            if (!register) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    if (forgotSent) "Если аккаунт существует, письмо отправлено" else "Забыли пароль?",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().clickableNoRipple { if (!forgotSent) forgotShow = true },
+                )
+            }
+
             Spacer(Modifier.height(16.dp))
             Text(
                 if (register) "Уже есть аккаунт? Войти" else "Нет аккаунта? Зарегистрироваться",
@@ -246,6 +265,21 @@ fun AuthScreen(
                     },
             )
         }
+    }
+
+    if (forgotShow) {
+        TInputDialog(
+            title = "Восстановление пароля",
+            initial = email,
+            confirmText = "Отправить",
+            placeholder = "you@example.com",
+            onConfirm = { addr ->
+                forgotShow = false
+                forgotSent = true
+                scope.launch { runCatching { profileRepo.forgotPassword(addr) } }
+            },
+            onDismiss = { forgotShow = false },
+        )
     }
 }
 

@@ -8,6 +8,7 @@ data class User(
     @SerializedName("email") val email: String = "",
     @SerializedName("name") val name: String = "",
     @SerializedName("is_admin") val isAdmin: Boolean = false,
+    @SerializedName("email_verified") val emailVerified: Boolean = false,
     @SerializedName("provider") val provider: String = "local",
     @SerializedName("last_name") val lastName: String = "",
     @SerializedName("first_name") val firstName: String = "",
@@ -85,6 +86,30 @@ data class RegisterRequest(
 
 data class RefreshRequest(
     @SerializedName("refresh_token") val refreshToken: String,
+)
+
+/** A workspace invitation (U2). `link` is only present on the create response. */
+data class Invitation(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("workspace_id") val workspaceId: String = "",
+    @SerializedName("email") val email: String = "",
+    @SerializedName("role") val role: String = "member",
+    @SerializedName("created_at") val createdAt: String = "",
+    @SerializedName("expires_at") val expiresAt: String = "",
+    @SerializedName("link") val link: String = "",
+)
+
+data class InviteRequest(
+    @SerializedName("email") val email: String,
+    @SerializedName("role") val role: String,
+)
+
+/** Single-field request bodies for the account-lifecycle flows. */
+data class EmailRequest(@SerializedName("email") val email: String)
+data class TokenRequest(@SerializedName("token") val token: String)
+data class ResetPasswordRequest(
+    @SerializedName("token") val token: String,
+    @SerializedName("new_password") val newPassword: String,
 )
 
 /** Error envelope: the backend returns `{ "error": "..." }` on failures. */

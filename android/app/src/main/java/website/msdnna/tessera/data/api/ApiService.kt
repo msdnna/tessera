@@ -25,6 +25,9 @@ import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
+import website.msdnna.tessera.data.model.EmailRequest
+import website.msdnna.tessera.data.model.Invitation
+import website.msdnna.tessera.data.model.InviteRequest
 import website.msdnna.tessera.data.model.LoginRequest
 import website.msdnna.tessera.data.model.MeResponse
 import website.msdnna.tessera.data.model.Member
@@ -38,6 +41,7 @@ import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.RefreshRequest
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.Relation
+import website.msdnna.tessera.data.model.ResetPasswordRequest
 import website.msdnna.tessera.data.model.RoleUpdate
 import website.msdnna.tessera.data.model.SaveBoardViewRequest
 import website.msdnna.tessera.data.model.SetParentRequest
@@ -45,6 +49,7 @@ import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
 import website.msdnna.tessera.data.model.TaskEvent
+import website.msdnna.tessera.data.model.TokenRequest
 import website.msdnna.tessera.data.model.UpdateCommentRequest
 import website.msdnna.tessera.data.model.UpdateGroupRequest
 import website.msdnna.tessera.data.model.UpdateProjectRequest
@@ -87,6 +92,19 @@ interface ApiService {
 
     @DELETE("users/me/avatar")
     suspend fun deleteAvatar()
+
+    // ── account lifecycle (U2): verification, password reset ──
+    @POST("auth/verify-email")
+    suspend fun verifyEmail(@Body body: TokenRequest)
+
+    @POST("auth/resend-verification")
+    suspend fun resendVerification()
+
+    @POST("auth/forgot-password")
+    suspend fun forgotPassword(@Body body: EmailRequest)
+
+    @POST("auth/reset-password")
+    suspend fun resetPassword(@Body body: ResetPasswordRequest)
 
     // ── Workspaces ──────────────────────────────────────────────────────────
     @GET("workspaces")
@@ -238,6 +256,19 @@ interface ApiService {
 
     @DELETE("workspaces/{id}/members/{userId}")
     suspend fun removeMember(@Path("id") workspaceId: String, @Path("userId") userId: String)
+
+    // ── invitations (U2) ──
+    @GET("workspaces/{id}/invitations")
+    suspend fun invitations(@Path("id") workspaceId: String): List<Invitation>?
+
+    @POST("workspaces/{id}/invitations")
+    suspend fun createInvitation(@Path("id") workspaceId: String, @Body body: InviteRequest): Invitation
+
+    @DELETE("workspaces/{id}/invitations/{invId}")
+    suspend fun deleteInvitation(@Path("id") workspaceId: String, @Path("invId") invId: String)
+
+    @POST("invitations/accept")
+    suspend fun acceptInvitation(@Body body: TokenRequest): Workspace
 
     @PATCH("tags/{id}")
     suspend fun updateTag(@Path("id") tagId: String, @Body body: CreateTagRequest): Tag

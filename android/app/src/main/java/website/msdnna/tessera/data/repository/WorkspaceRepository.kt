@@ -69,4 +69,10 @@ class WorkspaceRepository {
     suspend fun removeMember(workspaceId: String, userId: String) = api.removeMember(workspaceId, userId)
     suspend fun updateMemberRole(workspaceId: String, userId: String, role: String) =
         api.updateMemberRole(workspaceId, userId, website.msdnna.tessera.data.model.RoleUpdate(role))
+
+    suspend fun invitations(workspaceId: String): List<website.msdnna.tessera.data.model.Invitation> =
+        api.invitations(workspaceId).orEmpty()
+    suspend fun createInvitation(workspaceId: String, email: String, role: String) =
+        api.createInvitation(workspaceId, website.msdnna.tessera.data.model.InviteRequest(email.trim(), role))
+    suspend fun deleteInvitation(workspaceId: String, invId: String) = api.deleteInvitation(workspaceId, invId)
 }

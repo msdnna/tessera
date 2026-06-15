@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.data.model.Invitation
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.repository.WorkspaceRepository
 import website.msdnna.tessera.util.errorMessage
@@ -15,10 +16,12 @@ data class MembersUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val members: List<Member> = emptyList(),
+    val invitations: List<Invitation> = emptyList(),
+    val lastInviteLink: String = "",
     val busy: Boolean = false,
 )
 
-/** Workspace members modal: list, invite an existing user by email, remove. */
+/** Workspace members modal: list members, invite (instant add or email link), remove. */
 class MembersViewModel(
     private val repo: WorkspaceRepository = WorkspaceRepository(),
 ) : ViewModel() {
@@ -32,16 +35,35 @@ class MembersViewModel(
         _state.update { it.copy(loading = true, error = null) }
         launchCatching {
             val members = repo.members(workspaceId)
-            _state.update { it.copy(loading = false, members = members) }
+            val invs = repo.invitations(workspaceId)
+            _state.update { it.copy(loading = false, members = members, invitations = invs) }
         }
     }
 
+    // Add an already-registered user instantly; otherwise create an email
+    // invitation (link surfaced for sharing). Mirrors the web flow.
     fun invite(email: String, role: String) {
         if (email.isBlank() || workspaceId.isBlank()) return
         _state.update { it.copy(busy = true, error = null) }
-        launchCatching {
-            repo.addMember(workspaceId, email, role)
-            _state.update { it.copy(busy = false, members = repo.members(workspaceId)) }
+        viewModelScope.launch {
+            val added = runCatching { repo.addMember(workspaceId, email, role) }
+            if (added.isSuccess) {
+                _state.update {
+                    it.copy(busy = false, lastInviteLink = "", members = repo.members(workspaceId), invitations = repo.invitations(workspaceId))
+                }
+                return@launch
+            }
+            val msg = errorMessage(added.exceptionOrNull()!!)
+            if (msg.contains("no user", ignoreCase = true)) {
+                runCatching { repo.createInvitation(workspaceId, email, role) }
+                    .onSuccess { inv ->
+                        val invs = repo.invitations(workspaceId)
+                        _state.update { it.copy(busy = false, lastInviteLink = inv.link, invitations = invs) }
+                    }
+                    .onFailure { e -> _state.update { it.copy(busy = false, error = errorMessage(e)) } }
+            } else {
+                _state.update { it.copy(busy = false, error = msg) }
+            }
         }
     }
 
@@ -53,6 +75,11 @@ class MembersViewModel(
     fun changeRole(userId: String, role: String) = launchCatching {
         repo.updateMemberRole(workspaceId, userId, role)
         _state.update { it.copy(members = repo.members(workspaceId)) }
+    }
+
+    fun revokeInvite(invId: String) = launchCatching {
+        repo.deleteInvitation(workspaceId, invId)
+        _state.update { it.copy(invitations = repo.invitations(workspaceId)) }
     }
 
     fun clearError() = _state.update { it.copy(error = null) }

@@ -47,4 +47,9 @@ class ProfileRepository {
         api.deleteAvatar()
         prefs.user.first()?.let { prefs.setUser(it.copy(avatarUrl = "")) }
     }
+
+    suspend fun resendVerification() = api.resendVerification()
+
+    suspend fun forgotPassword(email: String) =
+        api.forgotPassword(website.msdnna.tessera.data.model.EmailRequest(email.trim()))
 }

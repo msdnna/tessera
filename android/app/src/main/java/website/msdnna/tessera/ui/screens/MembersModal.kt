@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,7 @@ import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.ProjectIcon
 import website.msdnna.tessera.ui.components.TButton
+import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TFormError
@@ -65,6 +68,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
 
     LaunchedEffect(workspaceId) { if (workspaceId.isNotBlank()) vm.load(workspaceId) }
 
+    val clipboard = LocalClipboardManager.current
     var email by remember { mutableStateOf("") }
     var role by remember { mutableStateOf("member") }
 
@@ -87,8 +91,25 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
                 }
             }
 
+            // Pending invitations (by email; invitee may not have an account yet).
+            if (state.invitations.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text("Приглашения", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(4.dp))
+                state.invitations.forEach { inv ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IonIcon(Ion.LINK, size = 16.dp, tint = c.text3)
+                        Spacer(Modifier.width(8.dp))
+                        Text(inv.email, color = c.text2, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                        Text(if (inv.role == "admin") "Админ" else "Участник", color = c.text3, fontSize = 11.sp)
+                        Spacer(Modifier.width(6.dp))
+                        IonIconButton(Ion.TRASH, onClick = { vm.revokeInvite(inv.id) }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
-            Text("Добавить участника", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("Пригласить по email", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(6.dp))
             TTextField(
                 value = email,
@@ -103,7 +124,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
                 RoleChip("Админ", role == "admin") { role = "admin" }
                 Spacer(Modifier.weight(1f))
                 TButton(
-                    "Добавить",
+                    "Пригласить",
                     enabled = email.isNotBlank() && !state.busy,
                     loading = state.busy,
                     onClick = {
@@ -113,11 +134,28 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
                 )
             }
             Text(
-                "Пользователь должен быть уже зарегистрирован.",
+                "Зарегистрированного добавим сразу; нового — приглашение по ссылке.",
                 color = c.text3,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 6.dp),
             )
+            // The most recent invitation's link, for copying (also emailed when SMTP on).
+            if (state.lastInviteLink.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        state.lastInviteLink,
+                        color = c.text2,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TButton("Копировать", kind = TButtonKind.Secondary, onClick = {
+                        clipboard.setText(AnnotatedString(state.lastInviteLink))
+                    })
+                }
+            }
             TFormError(state.error, modifier = Modifier.padding(top = 6.dp))
 
             Spacer(Modifier.height(14.dp))

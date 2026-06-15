@@ -5,6 +5,16 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.10.0 — 2026-06-15
+User-management phase U2c — Android, the client side of backend 0.31.x.
+- **Workspace invitations** in the members modal: one «Пригласить» field adds an
+  already-registered user instantly or creates an email invitation with a copyable
+  link; pending invitations are listed with a revoke action.
+- **Forgot password** from the login screen (request a reset link by email).
+- **Settings** shows email-verification status with a resend button.
+- (Reset / verify / accept-invite are completed via the link from the email, which
+  opens the web pages.)
+
 ## 0.9.1 — 2026-06-15
 - Settings: Часовой пояс and Страна are now searchable pickers (filter the full
   list from the device's `TimeZone` / `Locale` data) instead of free-text fields.

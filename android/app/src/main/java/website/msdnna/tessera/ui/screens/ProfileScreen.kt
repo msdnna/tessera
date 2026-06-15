@@ -122,6 +122,7 @@ private fun ProfileCard(
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var avatarBust by remember { mutableStateOf(0L) }
+    var verifySent by remember { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -152,6 +153,24 @@ private fun ProfileCard(
                 }
             }
             ReadonlyField("Email (логин)", user?.email ?: "")
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (user?.emailVerified == true) {
+                    IonIcon(Ion.CHECK_CIRCLE, size = 15.dp, tint = c.primary, gradient = true)
+                    Text("Почта подтверждена", color = c.text3, fontSize = 12.sp)
+                } else {
+                    Text("Почта не подтверждена", color = c.text3, fontSize = 12.sp)
+                    if (verifySent) {
+                        Text("письмо отправлено", color = c.text3, fontSize = 12.sp)
+                    } else {
+                        TButton("Отправить", kind = TButtonKind.Secondary, onClick = {
+                            scope.launch {
+                                runCatching { repo.resendVerification() }
+                                verifySent = true
+                            }
+                        })
+                    }
+                }
+            }
             TTextField(name, { name = it }, label = "Отображаемое имя", placeholder = "Как вас показывать")
             TTextField(last, { last = it }, label = "Фамилия")
             TTextField(first, { first = it }, label = "Имя")
