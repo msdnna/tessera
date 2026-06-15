@@ -122,18 +122,20 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, name, is_admin, created_at, updated_at
+SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at
 FROM users
 ORDER BY name
 `
 
 type ListUsersRow struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	IsAdmin   bool      `json:"is_admin"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	Name          string    `json:"name"`
+	IsAdmin       bool      `json:"is_admin"`
+	Active        bool      `json:"active"`
+	EmailVerified bool      `json:"email_verified"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
@@ -150,6 +152,8 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 			&i.Email,
 			&i.Name,
 			&i.IsAdmin,
+			&i.Active,
+			&i.EmailVerified,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -183,6 +187,20 @@ type SetUserActiveParams struct {
 
 func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) error {
 	_, err := q.db.Exec(ctx, setUserActive, arg.ID, arg.Active)
+	return err
+}
+
+const setUserAdmin = `-- name: SetUserAdmin :exec
+UPDATE users SET is_admin = $2, updated_at = now() WHERE id = $1
+`
+
+type SetUserAdminParams struct {
+	ID      uuid.UUID `json:"id"`
+	IsAdmin bool      `json:"is_admin"`
+}
+
+func (q *Queries) SetUserAdmin(ctx context.Context, arg SetUserAdminParams) error {
+	_, err := q.db.Exec(ctx, setUserAdmin, arg.ID, arg.IsAdmin)
 	return err
 }
 

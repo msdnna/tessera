@@ -233,9 +233,8 @@ func (h *API) DeleteMyAvatar(c *gin.Context) {
 // SetUserActive activates/deactivates an account (global admin only). A
 // deactivated user can't log in. You can't change your own active state.
 func (h *API) SetUserActive(c *gin.Context) {
-	caller, err := h.q.GetUserByID(c, middleware.CurrentUser(c))
-	if err != nil || !caller.IsAdmin {
-		c.JSON(http.StatusForbidden, gin.H{"error": "requires admin"})
+	caller, ok := h.requireGlobalAdmin(c)
+	if !ok {
 		return
 	}
 	id, ok := parseID(c, "id")

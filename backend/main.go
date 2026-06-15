@@ -117,9 +117,12 @@ func main() {
 			protected.DELETE("/workspaces/:id/invitations/:invId", rh.DeleteInvitation)
 			protected.POST("/invitations/accept", rh.AcceptInvitation)
 
-			// Global admin: activate / deactivate an account (separate /admin
-			// prefix so it doesn't collide with the /users/me routes).
+			// Global admin panel (separate /admin prefix so it doesn't collide
+			// with the /users/me routes). Each handler re-checks is_admin.
+			protected.GET("/admin/users", rh.ListAllUsers)
 			protected.PATCH("/admin/users/:id/active", rh.SetUserActive)
+			protected.PATCH("/admin/users/:id/admin", rh.SetUserAdmin)
+			protected.POST("/admin/users/:id/reset-link", rh.CreateUserResetLink)
 
 			// Project groups & projects (nested under a workspace).
 			protected.POST("/workspaces/:id/groups", rh.CreateProjectGroup)

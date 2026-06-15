@@ -1061,6 +1061,18 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.33.0] — 2026-06-16
+User-management phase U3a (global admin panel backend). All global-admin only,
+each handler re-checks `is_admin`; no migration.
+- `GET /admin/users` — list every account on the instance (id, email, name,
+  is_admin, active, email_verified, created_at, avatar) for the admin panel.
+- `PATCH /admin/users/:id/admin` — grant/revoke the global-admin flag; you can't
+  change your own (a sole admin can't lock the instance out).
+- `POST /admin/users/:id/reset-link` — mint a password-reset link for any account
+  and return it, so an operator can hand it over without SMTP (also emailed when
+  SMTP is configured). Reuses the self-service reset token (kind `reset`, 1h TTL).
+- `SetUserActive` now shares a `requireGlobalAdmin` helper with the new handlers.
+
 ### [0.32.0] — 2026-06-16
 - **GitLab user avatars** captured on sync. Migration 0016 (additive):
   `gitlab_links.gl_author_avatar_url` + `task_gitlab_assignees.gl_avatar_url`.

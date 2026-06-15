@@ -13,9 +13,12 @@ SELECT * FROM users WHERE id = $1;
 SELECT count(*) FROM users;
 
 -- name: ListUsers :many
-SELECT id, email, name, is_admin, created_at, updated_at
+SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at
 FROM users
 ORDER BY name;
+
+-- name: SetUserAdmin :exec
+UPDATE users SET is_admin = $2, updated_at = now() WHERE id = $1;
 
 -- name: UpdateUserProfile :one
 UPDATE users SET
