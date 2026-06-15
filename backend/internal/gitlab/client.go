@@ -120,8 +120,9 @@ func (c *Client) CurrentUser(ctx context.Context) (User, error) {
 
 // Person is a GitLab user reference (assignee / note author).
 type Person struct {
-	Login string
-	Name  string
+	Login     string
+	Name      string
+	AvatarURL string // absolute (or instance-relative) avatar URL, "" when none
 }
 
 // Note is a GitLab issue comment (non-system note).
@@ -146,6 +147,7 @@ type Issue struct {
 	Labels       []Label
 	AuthorLogin  string // GitLab username of the issue author (may not be a Tessera user)
 	AuthorName   string
+	AuthorAvatar string // author avatar URL, "" when none
 	Assignees    []Person
 	Notes        []Note // user comments (system notes filtered out)
 }
@@ -165,8 +167,8 @@ query($path: ID!, $username: String, $iids: [String!], $after: String) {
         updatedAt
         dueDate
         milestone { dueDate }
-        author { username name }
-        assignees { nodes { username name } }
+        author { username name avatarUrl }
+        assignees { nodes { username name avatarUrl } }
         labels { nodes { title color } }
         notes(first: 100) { nodes { id body system createdAt author { username name } } }
       }
@@ -217,7 +219,7 @@ func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map
 			return nil, fmt.Errorf("gitlab: project %q not found or not accessible", projectPath)
 		}
 		for _, n := range data.Project.Issues.Nodes {
-			out = append(out, n.toIssue())
+			out = append(out, n.toIssue(c.baseURL))
 		}
 		if !data.Project.Issues.PageInfo.HasNextPage {
 			break
@@ -242,13 +244,15 @@ type issueNode struct {
 		DueDate string `json:"dueDate"`
 	} `json:"milestone"`
 	Author *struct {
-		Username string `json:"username"`
-		Name     string `json:"name"`
+		Username  string `json:"username"`
+		Name      string `json:"name"`
+		AvatarURL string `json:"avatarUrl"`
 	} `json:"author"`
 	Assignees struct {
 		Nodes []struct {
-			Username string `json:"username"`
-			Name     string `json:"name"`
+			Username  string `json:"username"`
+			Name      string `json:"name"`
+			AvatarURL string `json:"avatarUrl"`
 		} `json:"nodes"`
 	} `json:"assignees"`
 	Labels struct {
@@ -271,7 +275,16 @@ type issueNode struct {
 	} `json:"notes"`
 }
 
-func (n issueNode) toIssue() Issue {
+// absAvatar resolves a possibly instance-relative avatar URL against base.
+// Absolute URLs (gravatar, already-qualified) pass through unchanged.
+func absAvatar(base, u string) string {
+	if u == "" || strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return u
+	}
+	return base + "/" + strings.TrimLeft(u, "/")
+}
+
+func (n issueNode) toIssue(base string) Issue {
 	labels := make([]Label, 0, len(n.Labels.Nodes))
 	for _, l := range n.Labels.Nodes {
 		labels = append(labels, Label{Title: l.Title, Color: l.Color})
@@ -288,9 +301,12 @@ func (n issueNode) toIssue() Issue {
 	if n.Author != nil {
 		issue.AuthorLogin = n.Author.Username
 		issue.AuthorName = n.Author.Name
+		issue.AuthorAvatar = absAvatar(base, n.Author.AvatarURL)
 	}
 	for _, a := range n.Assignees.Nodes {
-		issue.Assignees = append(issue.Assignees, Person{Login: a.Username, Name: a.Name})
+		issue.Assignees = append(issue.Assignees, Person{
+			Login: a.Username, Name: a.Name, AvatarURL: absAvatar(base, a.AvatarURL),
+		})
 	}
 	for _, note := range n.Notes.Nodes {
 		if note.System || note.ID == "" {

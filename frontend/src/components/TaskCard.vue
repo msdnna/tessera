@@ -84,7 +84,12 @@ const glAssignees = computed(() => props.task.gitlab_assignees || [])
 const author = computed(() => {
   const t = props.task
   if (t.gitlab_author)
-    return { name: t.gitlab_author_name || t.gitlab_author, login: t.gitlab_author, gl: true }
+    return {
+      name: t.gitlab_author_name || t.gitlab_author,
+      login: t.gitlab_author,
+      avatar: t.gitlab_author_avatar_url,
+      gl: true,
+    }
   if (t.created_by) {
     const m = props.membersMap[t.created_by]
     if (m) return { name: m.name, id: t.created_by }

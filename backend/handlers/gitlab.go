@@ -558,6 +558,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
 			LabelsHash: hashStr(labelsKey(issue.Labels)),
 			GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
+			GlAuthorAvatarUrl: issue.AuthorAvatar,
 		}); cerr != nil {
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
@@ -593,6 +594,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
 			LabelsHash: hashStr(labelsKey(issue.Labels)),
 			GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
+			GlAuthorAvatarUrl: issue.AuthorAvatar,
 		}); uerr != nil {
 			log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
 			return uuid.Nil, false, false
@@ -650,7 +652,7 @@ func (h *API) reconcileAssignees(ctx context.Context, taskID uuid.UUID, people [
 			_ = h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"})
 			tesseraIDs = append(tesseraIDs, uid)
 		} else {
-			_ = h.q.AddTaskGitlabAssignee(ctx, db.AddTaskGitlabAssigneeParams{TaskID: taskID, GlUsername: p.Login, GlName: p.Name})
+			_ = h.q.AddTaskGitlabAssignee(ctx, db.AddTaskGitlabAssigneeParams{TaskID: taskID, GlUsername: p.Login, GlName: p.Name, GlAvatarUrl: p.AvatarURL})
 		}
 	}
 	_ = h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs})
@@ -730,11 +732,12 @@ func labelsKey(labels []gitlab.Label) string {
 // number, its web URL and the author login (a GitLab identity that may not be a
 // Tessera user).
 type gitlabLinkView struct {
-	IID         int64  `json:"iid"`
-	WebURL      string `json:"web_url"`
-	Author      string `json:"author"`
-	AuthorName  string `json:"author_name"`
-	ProjectPath string `json:"project_path"`
+	IID             int64  `json:"iid"`
+	WebURL          string `json:"web_url"`
+	Author          string `json:"author"`
+	AuthorName      string `json:"author_name"`
+	AuthorAvatarURL string `json:"author_avatar_url"`
+	ProjectPath     string `json:"project_path"`
 }
 
 // gitlabLinkForTask returns the GitLab link view for a task, or nil when the
@@ -746,7 +749,8 @@ func (h *API) gitlabLinkForTask(c *gin.Context, taskID uuid.UUID) *gitlabLinkVie
 	}
 	return &gitlabLinkView{
 		IID: link.GlIid, WebURL: link.GlWebUrl, Author: link.GlAuthor,
-		AuthorName: link.GlAuthorName, ProjectPath: link.GlProjectPath,
+		AuthorName: link.GlAuthorName, AuthorAvatarURL: link.GlAuthorAvatarUrl,
+		ProjectPath: link.GlProjectPath,
 	}
 }
 

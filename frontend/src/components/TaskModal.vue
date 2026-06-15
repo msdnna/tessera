@@ -184,7 +184,12 @@ const author = computed(() => {
   const t = task.value
   if (!t) return null
   if (t.gitlab && t.gitlab.author) {
-    return { name: t.gitlab.author_name || t.gitlab.author, login: t.gitlab.author, gl: true }
+    return {
+      name: t.gitlab.author_name || t.gitlab.author,
+      login: t.gitlab.author,
+      avatar: t.gitlab.author_avatar_url,
+      gl: true,
+    }
   }
   if (t.created_by) {
     const m = membersById.value[t.created_by]
@@ -783,9 +788,9 @@ function eventText(e) {
                       v-for="(g, i) in glAssignees"
                       :key="`g${i}`"
                       class="avatar ext-ava"
-                      :src="g.avatar_url"
-                      :name="g.name || g"
-                      :title="`${g.name || g} (GitLab)`"
+                      :src="g.gl_avatar_url"
+                      :name="g.gl_name || g.gl_username"
+                      :title="`${g.gl_name || g.gl_username} (GitLab)`"
                     />
                     <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted"
                       >Никто</span

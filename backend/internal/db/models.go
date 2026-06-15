@@ -66,21 +66,22 @@ type GitlabIntegration struct {
 }
 
 type GitlabLink struct {
-	TaskID        uuid.UUID  `json:"task_id"`
-	IntegrationID uuid.UUID  `json:"integration_id"`
-	GlGlobalID    string     `json:"gl_global_id"`
-	GlIid         int64      `json:"gl_iid"`
-	GlProjectPath string     `json:"gl_project_path"`
-	GlWebUrl      string     `json:"gl_web_url"`
-	GlUpdatedAt   *time.Time `json:"gl_updated_at"`
-	TitleHash     string     `json:"title_hash"`
-	DescHash      string     `json:"desc_hash"`
-	LabelsHash    string     `json:"labels_hash"`
-	LastSyncedAt  time.Time  `json:"last_synced_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	GlAuthor      string     `json:"gl_author"`
-	GlAuthorName  string     `json:"gl_author_name"`
-	DueOverridden bool       `json:"due_overridden"`
+	TaskID            uuid.UUID  `json:"task_id"`
+	IntegrationID     uuid.UUID  `json:"integration_id"`
+	GlGlobalID        string     `json:"gl_global_id"`
+	GlIid             int64      `json:"gl_iid"`
+	GlProjectPath     string     `json:"gl_project_path"`
+	GlWebUrl          string     `json:"gl_web_url"`
+	GlUpdatedAt       *time.Time `json:"gl_updated_at"`
+	TitleHash         string     `json:"title_hash"`
+	DescHash          string     `json:"desc_hash"`
+	LabelsHash        string     `json:"labels_hash"`
+	LastSyncedAt      time.Time  `json:"last_synced_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	GlAuthor          string     `json:"gl_author"`
+	GlAuthorName      string     `json:"gl_author_name"`
+	DueOverridden     bool       `json:"due_overridden"`
+	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
 }
 
 type Membership struct {
@@ -222,9 +223,10 @@ type TaskEvent struct {
 }
 
 type TaskGitlabAssignee struct {
-	TaskID     uuid.UUID `json:"task_id"`
-	GlUsername string    `json:"gl_username"`
-	GlName     string    `json:"gl_name"`
+	TaskID      uuid.UUID `json:"task_id"`
+	GlUsername  string    `json:"gl_username"`
+	GlName      string    `json:"gl_name"`
+	GlAvatarUrl string    `json:"gl_avatar_url"`
 }
 
 type TaskRelation struct {

@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.59.0] — 2026-06-16
+- **GitLab user avatars** now show on synced tasks: the issue author's avatar
+  appears on the card and in the task modal, and external GitLab assignees show
+  theirs in the modal (consumes backend 0.32 `gitlab_author_avatar_url` /
+  `gitlab.author_avatar_url` / `gitlab_assignees[].gl_avatar_url`). Falls back to
+  initials when an avatar is private/unavailable.
+- Fix: drop a redundant initializer in `localeOptions.js` flagged by lint.
+
 ### [0.58.1] — 2026-06-16
 - Fix: tag text in the Home (summary) task list is now clamped to a legible
   lightness for the active theme (`readableHue`), so dark tags stay readable on the
@@ -1052,6 +1060,15 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.32.0] — 2026-06-16
+- **GitLab user avatars** captured on sync. Migration 0016 (additive):
+  `gitlab_links.gl_author_avatar_url` + `task_gitlab_assignees.gl_avatar_url`.
+  The issues GraphQL query now selects `avatarUrl` for the author and assignees;
+  instance-relative URLs are resolved to absolute against the GitLab base, absolute
+  (gravatar/external) ones pass through. Exposed as `gitlab_author_avatar_url` on
+  the board card list and `gitlab.author_avatar_url` / `gitlab_assignees[].gl_avatar_url`
+  on the task detail. Clients render directly and fall back to initials on miss.
 
 ### [0.31.1] — 2026-06-15
 - `userDTO` (auth/me + auth responses) now includes `email_verified`, so clients can

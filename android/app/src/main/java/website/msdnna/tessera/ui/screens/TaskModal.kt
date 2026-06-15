@@ -379,6 +379,7 @@ private fun PropertyGrid(
                     authorName,
                     gl = gitlab?.author?.takeIf { it.isNotBlank() },
                     userId = if (gitlab?.author?.isNotBlank() == true) null else createdBy,
+                    avatarUrl = if (gitlab?.author?.isNotBlank() == true) gitlab.authorAvatarUrl else null,
                 )
             }
         }
@@ -476,7 +477,7 @@ private fun AssigneesValue(
                 }
                 // External GitLab assignees (no Tessera account) — muted, read-only.
                 gitlabAssignees.forEach { g ->
-                    MemberAvatar(24.dp, g.glName, muted = true)
+                    MemberAvatar(24.dp, g.glName, avatarUrl = g.glAvatarUrl, muted = true)
                     Spacer(Modifier.width(4.dp))
                 }
             }
@@ -524,10 +525,10 @@ private fun MemberAvatar(size: Dp, name: String, userId: String? = null, avatarU
 
 /** Read-only author display (creator or GitLab issue author). */
 @Composable
-private fun AuthorValue(name: String, gl: String?, userId: String? = null) {
+private fun AuthorValue(name: String, gl: String?, userId: String? = null, avatarUrl: String? = null) {
     val c = Tessera.colors
     Row(verticalAlignment = Alignment.CenterVertically) {
-        MemberAvatar(24.dp, name, userId = userId, muted = userId == null)
+        MemberAvatar(24.dp, name, userId = userId, avatarUrl = avatarUrl, muted = userId == null)
         Spacer(Modifier.width(8.dp))
         Text(name, color = c.text1, fontSize = 14.sp)
         if (gl != null) {

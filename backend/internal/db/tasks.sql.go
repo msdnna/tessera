@@ -291,40 +291,42 @@ SELECT
     gl.gl_iid AS gitlab_iid,
     gl.gl_web_url AS gitlab_url,
     gl.gl_author AS gitlab_author,
-    gl.gl_author_name AS gitlab_author_name
+    gl.gl_author_name AS gitlab_author_name,
+    gl.gl_author_avatar_url AS gitlab_author_avatar_url
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
-GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name
+GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name, gl.gl_author_avatar_url
 ORDER BY t.position
 `
 
 type ListBoardTasksWithMetaRow struct {
-	ID               uuid.UUID   `json:"id"`
-	BoardID          uuid.UUID   `json:"board_id"`
-	ColumnID         uuid.UUID   `json:"column_id"`
-	ParentID         *uuid.UUID  `json:"parent_id"`
-	Title            string      `json:"title"`
-	Description      string      `json:"description"`
-	Priority         int32       `json:"priority"`
-	DueDate          *time.Time  `json:"due_date"`
-	Position         float64     `json:"position"`
-	CreatedBy        *uuid.UUID  `json:"created_by"`
-	CompletedAt      *time.Time  `json:"completed_at"`
-	CreatedAt        time.Time   `json:"created_at"`
-	UpdatedAt        time.Time   `json:"updated_at"`
-	ArchivedAt       *time.Time  `json:"archived_at"`
-	Number           *int64      `json:"number"`
-	TagIds           []uuid.UUID `json:"tag_ids"`
-	AssigneeIds      []uuid.UUID `json:"assignee_ids"`
-	GitlabAssignees  []string    `json:"gitlab_assignees"`
-	GitlabIid        *int64      `json:"gitlab_iid"`
-	GitlabUrl        *string     `json:"gitlab_url"`
-	GitlabAuthor     *string     `json:"gitlab_author"`
-	GitlabAuthorName *string     `json:"gitlab_author_name"`
+	ID                    uuid.UUID   `json:"id"`
+	BoardID               uuid.UUID   `json:"board_id"`
+	ColumnID              uuid.UUID   `json:"column_id"`
+	ParentID              *uuid.UUID  `json:"parent_id"`
+	Title                 string      `json:"title"`
+	Description           string      `json:"description"`
+	Priority              int32       `json:"priority"`
+	DueDate               *time.Time  `json:"due_date"`
+	Position              float64     `json:"position"`
+	CreatedBy             *uuid.UUID  `json:"created_by"`
+	CompletedAt           *time.Time  `json:"completed_at"`
+	CreatedAt             time.Time   `json:"created_at"`
+	UpdatedAt             time.Time   `json:"updated_at"`
+	ArchivedAt            *time.Time  `json:"archived_at"`
+	Number                *int64      `json:"number"`
+	TagIds                []uuid.UUID `json:"tag_ids"`
+	AssigneeIds           []uuid.UUID `json:"assignee_ids"`
+	GitlabAssignees       []string    `json:"gitlab_assignees"`
+	GitlabIid             *int64      `json:"gitlab_iid"`
+	GitlabUrl             *string     `json:"gitlab_url"`
+	GitlabAuthor          *string     `json:"gitlab_author"`
+	GitlabAuthorName      *string     `json:"gitlab_author_name"`
+	GitlabAuthorAvatarUrl *string     `json:"gitlab_author_avatar_url"`
 }
 
 // ListBoardTasksWithMeta returns top-level board tasks with their tag and
@@ -362,6 +364,7 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID)
 			&i.GitlabUrl,
 			&i.GitlabAuthor,
 			&i.GitlabAuthorName,
+			&i.GitlabAuthorAvatarUrl,
 		); err != nil {
 			return nil, err
 		}

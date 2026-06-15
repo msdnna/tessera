@@ -23,14 +23,15 @@ SELECT
     gl.gl_iid AS gitlab_iid,
     gl.gl_web_url AS gitlab_url,
     gl.gl_author AS gitlab_author,
-    gl.gl_author_name AS gitlab_author_name
+    gl.gl_author_name AS gitlab_author_name,
+    gl.gl_author_avatar_url AS gitlab_author_avatar_url
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
-GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name
+GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name, gl.gl_author_avatar_url
 ORDER BY t.position;
 
 -- name: ListSubtasks :many

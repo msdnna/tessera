@@ -57,6 +57,7 @@ data class GitlabLink(
     @SerializedName("web_url") val webUrl: String = "",
     @SerializedName("author") val author: String = "",
     @SerializedName("author_name") val authorName: String = "",
+    @SerializedName("author_avatar_url") val authorAvatarUrl: String = "",
     @SerializedName("project_path") val projectPath: String = "",
 )
 
@@ -64,6 +65,7 @@ data class GitlabLink(
 data class GitlabAssignee(
     @SerializedName("gl_username") val glUsername: String = "",
     @SerializedName("gl_name") val glName: String = "",
+    @SerializedName("gl_avatar_url") val glAvatarUrl: String = "",
 )
 
 /** A task comment — mirrors `ListTaskCommentsRow`. */

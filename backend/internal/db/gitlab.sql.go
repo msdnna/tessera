@@ -29,18 +29,24 @@ func (q *Queries) AddTaskAssigneeSourced(ctx context.Context, arg AddTaskAssigne
 }
 
 const addTaskGitlabAssignee = `-- name: AddTaskGitlabAssignee :exec
-INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name) VALUES ($1, $2, $3)
-ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name
+INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url) VALUES ($1, $2, $3, $4)
+ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url
 `
 
 type AddTaskGitlabAssigneeParams struct {
-	TaskID     uuid.UUID `json:"task_id"`
-	GlUsername string    `json:"gl_username"`
-	GlName     string    `json:"gl_name"`
+	TaskID      uuid.UUID `json:"task_id"`
+	GlUsername  string    `json:"gl_username"`
+	GlName      string    `json:"gl_name"`
+	GlAvatarUrl string    `json:"gl_avatar_url"`
 }
 
 func (q *Queries) AddTaskGitlabAssignee(ctx context.Context, arg AddTaskGitlabAssigneeParams) error {
-	_, err := q.db.Exec(ctx, addTaskGitlabAssignee, arg.TaskID, arg.GlUsername, arg.GlName)
+	_, err := q.db.Exec(ctx, addTaskGitlabAssignee,
+		arg.TaskID,
+		arg.GlUsername,
+		arg.GlName,
+		arg.GlAvatarUrl,
+	)
 	return err
 }
 
@@ -63,25 +69,27 @@ func (q *Queries) AddTaskTagSourced(ctx context.Context, arg AddTaskTagSourcedPa
 const createGitlabLink = `-- name: CreateGitlabLink :one
 INSERT INTO gitlab_links (
     task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url,
-    gl_updated_at, title_hash, desc_hash, labels_hash, gl_author, gl_author_name
+    gl_updated_at, title_hash, desc_hash, labels_hash, gl_author, gl_author_name,
+    gl_author_avatar_url
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url
 `
 
 type CreateGitlabLinkParams struct {
-	TaskID        uuid.UUID  `json:"task_id"`
-	IntegrationID uuid.UUID  `json:"integration_id"`
-	GlGlobalID    string     `json:"gl_global_id"`
-	GlIid         int64      `json:"gl_iid"`
-	GlProjectPath string     `json:"gl_project_path"`
-	GlWebUrl      string     `json:"gl_web_url"`
-	GlUpdatedAt   *time.Time `json:"gl_updated_at"`
-	TitleHash     string     `json:"title_hash"`
-	DescHash      string     `json:"desc_hash"`
-	LabelsHash    string     `json:"labels_hash"`
-	GlAuthor      string     `json:"gl_author"`
-	GlAuthorName  string     `json:"gl_author_name"`
+	TaskID            uuid.UUID  `json:"task_id"`
+	IntegrationID     uuid.UUID  `json:"integration_id"`
+	GlGlobalID        string     `json:"gl_global_id"`
+	GlIid             int64      `json:"gl_iid"`
+	GlProjectPath     string     `json:"gl_project_path"`
+	GlWebUrl          string     `json:"gl_web_url"`
+	GlUpdatedAt       *time.Time `json:"gl_updated_at"`
+	TitleHash         string     `json:"title_hash"`
+	DescHash          string     `json:"desc_hash"`
+	LabelsHash        string     `json:"labels_hash"`
+	GlAuthor          string     `json:"gl_author"`
+	GlAuthorName      string     `json:"gl_author_name"`
+	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
 }
 
 func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkParams) (GitlabLink, error) {
@@ -98,6 +106,7 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		arg.LabelsHash,
 		arg.GlAuthor,
 		arg.GlAuthorName,
+		arg.GlAuthorAvatarUrl,
 	)
 	var i GitlabLink
 	err := row.Scan(
@@ -116,6 +125,7 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		&i.GlAuthor,
 		&i.GlAuthorName,
 		&i.DueOverridden,
+		&i.GlAuthorAvatarUrl,
 	)
 	return i, err
 }
@@ -214,7 +224,7 @@ func (q *Queries) GetGitlabIntegrationByWorkspace(ctx context.Context, workspace
 
 const getGitlabLinkByGlobalID = `-- name: GetGitlabLinkByGlobalID :one
 
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
 `
 
 type GetGitlabLinkByGlobalIDParams struct {
@@ -242,12 +252,13 @@ func (q *Queries) GetGitlabLinkByGlobalID(ctx context.Context, arg GetGitlabLink
 		&i.GlAuthor,
 		&i.GlAuthorName,
 		&i.DueOverridden,
+		&i.GlAuthorAvatarUrl,
 	)
 	return i, err
 }
 
 const getGitlabLinkByTask = `-- name: GetGitlabLinkByTask :one
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden FROM gitlab_links WHERE task_id = $1
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url FROM gitlab_links WHERE task_id = $1
 `
 
 func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (GitlabLink, error) {
@@ -269,6 +280,7 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 		&i.GlAuthor,
 		&i.GlAuthorName,
 		&i.DueOverridden,
+		&i.GlAuthorAvatarUrl,
 	)
 	return i, err
 }
@@ -355,12 +367,13 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 }
 
 const listTaskGitlabAssignees = `-- name: ListTaskGitlabAssignees :many
-SELECT gl_username, gl_name FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name
+SELECT gl_username, gl_name, gl_avatar_url FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name
 `
 
 type ListTaskGitlabAssigneesRow struct {
-	GlUsername string `json:"gl_username"`
-	GlName     string `json:"gl_name"`
+	GlUsername  string `json:"gl_username"`
+	GlName      string `json:"gl_name"`
+	GlAvatarUrl string `json:"gl_avatar_url"`
 }
 
 func (q *Queries) ListTaskGitlabAssignees(ctx context.Context, taskID uuid.UUID) ([]ListTaskGitlabAssigneesRow, error) {
@@ -372,7 +385,7 @@ func (q *Queries) ListTaskGitlabAssignees(ctx context.Context, taskID uuid.UUID)
 	var items []ListTaskGitlabAssigneesRow
 	for rows.Next() {
 		var i ListTaskGitlabAssigneesRow
-		if err := rows.Scan(&i.GlUsername, &i.GlName); err != nil {
+		if err := rows.Scan(&i.GlUsername, &i.GlName, &i.GlAvatarUrl); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -458,21 +471,23 @@ const updateGitlabLink = `-- name: UpdateGitlabLink :one
 UPDATE gitlab_links
 SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
     title_hash = $5, desc_hash = $6, labels_hash = $7,
-    gl_author = $8, gl_author_name = $9, last_synced_at = now()
+    gl_author = $8, gl_author_name = $9, gl_author_avatar_url = $10,
+    last_synced_at = now()
 WHERE task_id = $1
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url
 `
 
 type UpdateGitlabLinkParams struct {
-	TaskID       uuid.UUID  `json:"task_id"`
-	GlIid        int64      `json:"gl_iid"`
-	GlWebUrl     string     `json:"gl_web_url"`
-	GlUpdatedAt  *time.Time `json:"gl_updated_at"`
-	TitleHash    string     `json:"title_hash"`
-	DescHash     string     `json:"desc_hash"`
-	LabelsHash   string     `json:"labels_hash"`
-	GlAuthor     string     `json:"gl_author"`
-	GlAuthorName string     `json:"gl_author_name"`
+	TaskID            uuid.UUID  `json:"task_id"`
+	GlIid             int64      `json:"gl_iid"`
+	GlWebUrl          string     `json:"gl_web_url"`
+	GlUpdatedAt       *time.Time `json:"gl_updated_at"`
+	TitleHash         string     `json:"title_hash"`
+	DescHash          string     `json:"desc_hash"`
+	LabelsHash        string     `json:"labels_hash"`
+	GlAuthor          string     `json:"gl_author"`
+	GlAuthorName      string     `json:"gl_author_name"`
+	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
 }
 
 func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkParams) (GitlabLink, error) {
@@ -486,6 +501,7 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		arg.LabelsHash,
 		arg.GlAuthor,
 		arg.GlAuthorName,
+		arg.GlAuthorAvatarUrl,
 	)
 	var i GitlabLink
 	err := row.Scan(
@@ -504,6 +520,7 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		&i.GlAuthor,
 		&i.GlAuthorName,
 		&i.DueOverridden,
+		&i.GlAuthorAvatarUrl,
 	)
 	return i, err
 }

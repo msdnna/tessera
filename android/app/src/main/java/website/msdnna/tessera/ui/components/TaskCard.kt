@@ -532,7 +532,12 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Author → assignee cascade (author muted, non-actionable).
                 if (authorName != null) {
-                    CardAvatar(authorName, muted = true, userId = if (task.gitlabAuthor == null) task.createdBy else null)
+                    CardAvatar(
+                        authorName,
+                        muted = true,
+                        userId = if (task.gitlabAuthor == null) task.createdBy else null,
+                        avatarUrl = if (task.gitlabAuthor != null) task.gitlabAuthorAvatarUrl else null,
+                    )
                     Text("→", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 3.dp))
                 }
                 if (assignees.isEmpty() && external.isEmpty()) {

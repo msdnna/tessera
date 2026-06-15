@@ -3,7 +3,7 @@
 // names are localized via Intl.DisplayNames over the ISO 3166-1 alpha-2 space.
 
 export function timezoneOptions() {
-  let zones = []
+  let zones
   try {
     zones = Intl.supportedValuesOf('timeZone')
   } catch {

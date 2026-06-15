@@ -5,6 +5,13 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.12.0 — 2026-06-16
+- **GitLab user avatars** on synced tasks: the issue author's avatar shows on the
+  board card and in the task modal (Coil image), and external GitLab assignees show
+  theirs in the modal — consuming backend 0.32 `gitlab_author_avatar_url` /
+  `gitlab.author_avatar_url` / `gitlab_assignees[].gl_avatar_url`. Falls back to
+  gradient initials when an avatar is private/unavailable.
+
 ## 0.11.1 — 2026-06-16
 - Fix: tag text on the board card (the pill + the tag-picker dropdown) is now
   clamped to a legible lightness for the active theme (`readableHue`), matching the

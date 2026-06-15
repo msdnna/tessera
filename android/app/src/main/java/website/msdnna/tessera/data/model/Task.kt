@@ -27,6 +27,7 @@ data class Task(
     @SerializedName("gitlab_url") val gitlabUrl: String? = null,
     @SerializedName("gitlab_author") val gitlabAuthor: String? = null,
     @SerializedName("gitlab_author_name") val gitlabAuthorName: String? = null,
+    @SerializedName("gitlab_author_avatar_url") val gitlabAuthorAvatarUrl: String? = null,
     // External GitLab assignees (no Tessera account) — display names only.
     @SerializedName("gitlab_assignees") val gitlabAssignees: List<String> = emptyList(),
 ) {

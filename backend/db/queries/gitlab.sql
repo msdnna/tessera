@@ -68,16 +68,18 @@ SELECT * FROM gitlab_links WHERE task_id = $1;
 -- name: CreateGitlabLink :one
 INSERT INTO gitlab_links (
     task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url,
-    gl_updated_at, title_hash, desc_hash, labels_hash, gl_author, gl_author_name
+    gl_updated_at, title_hash, desc_hash, labels_hash, gl_author, gl_author_name,
+    gl_author_avatar_url
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING *;
 
 -- name: UpdateGitlabLink :one
 UPDATE gitlab_links
 SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
     title_hash = $5, desc_hash = $6, labels_hash = $7,
-    gl_author = $8, gl_author_name = $9, last_synced_at = now()
+    gl_author = $8, gl_author_name = $9, gl_author_avatar_url = $10,
+    last_synced_at = now()
 WHERE task_id = $1
 RETURNING *;
 
@@ -118,11 +120,11 @@ WHERE task_id = $1 AND source = 'gitlab' AND NOT (user_id = ANY($2::uuid[]));
 DELETE FROM task_gitlab_assignees WHERE task_id = $1;
 
 -- name: AddTaskGitlabAssignee :exec
-INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name) VALUES ($1, $2, $3)
-ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name;
+INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url) VALUES ($1, $2, $3, $4)
+ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url;
 
 -- name: ListTaskGitlabAssignees :many
-SELECT gl_username, gl_name FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name;
+SELECT gl_username, gl_name, gl_avatar_url FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name;
 
 -- ── synced comments (idempotent by GitLab note id) ─────────
 -- name: UpsertGitlabComment :exec
