@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.58.1] — 2026-06-16
+- Fix: tag text in the Home (summary) task list is now clamped to a legible
+  lightness for the active theme (`readableHue`), so dark tags stay readable on the
+  dark theme.
+
 ### [0.58.0] — 2026-06-16
 - **User avatars on task cards and in the task modal**: assignees and the author/
   creator now show their uploaded avatar (a shared `UserAvatar` falls back to

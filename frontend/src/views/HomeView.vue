@@ -6,12 +6,16 @@ import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad } from '@/utils/gradient'
+import { hueGrad, readableHue } from '@/utils/gradient'
+import { useThemeStore } from '@/stores/theme'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 
 const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
+const theme = useThemeStore()
+// Tag text colour clamped legible for the active theme (web parity).
+const tagText = (hex) => readableHue(hex || '#888', theme.isDark)
 
 const loading = ref(false)
 const summary = ref(null)
@@ -130,7 +134,9 @@ watch(() => wsStore.currentId, load)
           <span
             class="pr-dot"
             :style="{
-              background: PRIORITY_COLORS[t.priority] ? hueGrad(PRIORITY_COLORS[t.priority]) : 'transparent',
+              background: PRIORITY_COLORS[t.priority]
+                ? hueGrad(PRIORITY_COLORS[t.priority])
+                : 'transparent',
             }"
           />
           <span class="t-num">#{{ t.number }}</span>
@@ -141,7 +147,7 @@ watch(() => wsStore.currentId, load)
             class="t-tag"
             :style="{
               background: (tagsMap[tid]?.color || '#888') + '22',
-              color: tagsMap[tid]?.color || '#888',
+              color: tagText(tagsMap[tid]?.color),
             }"
           >
             {{ tagsMap[tid]?.name }}
