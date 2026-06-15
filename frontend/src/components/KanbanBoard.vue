@@ -1259,6 +1259,9 @@ watch(
    expand handler; the children act normally once expanded. */
 .composer.collapsed > * {
   pointer-events: none;
+  /* Dimmed while collapsed so it reads as one tap-to-expand surface (the chips
+     aren't individually actionable until expanded). */
+  opacity: 0.62;
 }
 .facet {
   display: inline-flex;

@@ -1,5 +1,7 @@
 <script setup>
 import { computed } from 'vue'
+import { NIcon } from 'naive-ui'
+import { CalendarClearOutline } from '@vicons/ionicons5'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { initials } from '@/utils/initials'
@@ -10,13 +12,18 @@ const props = defineProps({
   membersMap: { type: Object, default: () => ({}) },
 })
 
-const tags = computed(() => (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean))
+const tags = computed(() =>
+  (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
+)
 const assignees = computed(() =>
   (props.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean),
 )
 const due = computed(() => {
   if (!props.task.due_date) return null
-  return new Date(props.task.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
+  return new Date(props.task.due_date).toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: 'short',
+  })
 })
 </script>
 
@@ -44,7 +51,10 @@ const due = computed(() => {
     </div>
 
     <div class="mini-foot">
-      <span v-if="due" class="mini-due">🗓 {{ due }}</span>
+      <span v-if="due" class="mini-due">
+        <n-icon :component="CalendarClearOutline" :size="13" />
+        {{ due }}
+      </span>
       <span class="mini-avas">
         <span v-for="a in assignees" :key="a.user_id" class="mini-ava" :title="a.name">
           {{ initials(a.name) }}
@@ -105,6 +115,9 @@ const due = computed(() => {
   gap: 8px;
 }
 .mini-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
   color: var(--t-text2);
 }

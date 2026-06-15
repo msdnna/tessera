@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
+import { ref, computed, nextTick, watch, onBeforeUnmount, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   NIcon,
@@ -205,12 +205,17 @@ function bCancel() {
 }
 onBeforeUnmount(bCancel)
 
-// Restore-expanded projects need their boards loaded (toggle() isn't called).
-onMounted(() => {
-  if (expanded.value && !store.boardsByProject[props.project.id]) {
-    store.loadBoards(props.project.id)
-  }
-})
+// Load boards whenever the project is (or becomes) expanded — covers both the
+// initial mount and expand state restored from persistence AFTER mount (which
+// doesn't go through toggle(), so an onMounted-only check missed it and left
+// "нет досок" until a manual collapse+expand).
+watch(
+  expanded,
+  (v) => {
+    if (v && !store.boardsByProject[props.project.id]) store.loadBoards(props.project.id)
+  },
+  { immediate: true },
+)
 
 // inline board creation via the "+" button
 function startAddBoard() {

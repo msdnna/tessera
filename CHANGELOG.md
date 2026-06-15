@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.56.3] — 2026-06-15
+Small UX fixes from review.
+- **Fix: boards now appear right after login** — a project whose expanded state was
+  restored from persistence (not via a click) didn't fetch its boards, showing
+  «нет досок» until a manual collapse+expand; boards are now loaded whenever a
+  project is/ becomes expanded.
+- **Fix: opening a task from a notification in another workspace now switches the
+  sidebar to that workspace** (uses the notification's `workspace_id`).
+- Login inputs no longer flash the browser's autofill background — autofilled
+  values keep the frosted style and white text.
+- The GitLab entry in the integrations menu now shows the GitLab logo.
+- Collapsed composer bar is dimmed (and non-interactive) so it reads as one
+  tap-to-expand surface rather than individually clickable chips.
+- Subtask hover card: replaced the calendar emoji with a proper icon.
+
 ### [0.56.2] — 2026-06-15
 - **Fix: the uploaded avatar now actually shows** (sidebar + settings). It was
   rendered via `n-avatar :src` which didn't pick up the URL once it arrived from

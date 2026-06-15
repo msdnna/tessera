@@ -388,6 +388,16 @@ body {
   color: rgba(255, 255, 255, 0.7) !important;
   -webkit-text-fill-color: rgba(255, 255, 255, 0.7);
 }
+/* Browser autofill paints its own (light) background + dark text, which clashes
+   with the frosted login inputs. Mask it: keep white text and a frosted inset. */
+.auth .n-input .n-input__input-el:-webkit-autofill,
+.auth .n-input .n-input__input-el:-webkit-autofill:hover,
+.auth .n-input .n-input__input-el:-webkit-autofill:focus {
+  -webkit-text-fill-color: #ffffff;
+  caret-color: #ffffff;
+  -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.16) inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
 .auth .n-input .n-input__eye,
 .auth .n-input .n-input__suffix {
   color: rgba(255, 255, 255, 0.8);

@@ -1,6 +1,16 @@
 <script setup>
-import { ref } from 'vue'
-import { NButton, NIcon, NBadge, NPopover, NTooltip, NSwitch, NText, NEmpty, NDropdown } from 'naive-ui'
+import { ref, h } from 'vue'
+import {
+  NButton,
+  NIcon,
+  NBadge,
+  NPopover,
+  NTooltip,
+  NSwitch,
+  NText,
+  NEmpty,
+  NDropdown,
+} from 'naive-ui'
 import {
   SunnyOutline,
   MoonOutline,
@@ -8,6 +18,7 @@ import {
   PeopleOutline,
   ColorPaletteOutline,
   ExtensionPuzzleOutline,
+  LogoGitlab,
 } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
@@ -26,13 +37,20 @@ const router = useRouter()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
-const integrationOptions = [{ label: 'GitLab', key: 'gitlab' }]
+const integrationOptions = [
+  { label: 'GitLab', key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
+]
 function onIntegrationSelect(key) {
   if (key === 'gitlab') showGitlab.value = true
 }
 
 function openNotification(n) {
   notes.markRead(n.id)
+  // Switch the active workspace if the task lives in another one, so the sidebar
+  // tree reflects where the opened task actually is.
+  if (n.workspace_id && n.workspace_id !== ws.currentId) {
+    ws.selectWorkspace(n.workspace_id)
+  }
   if (n.task_id && n.task_board_id) {
     router.push(`/board/${n.task_board_id}?task=${n.task_id}`)
   }
@@ -75,12 +93,7 @@ function fmtTime(d) {
     <n-popover trigger="click" :placement="placement">
       <template #trigger>
         <n-button quaternary circle size="small" aria-label="Уведомления" class="bell-btn">
-          <n-badge
-            :value="notes.unread"
-            :max="9"
-            :show="notes.unread > 0"
-            class="bell-badge"
-          >
+          <n-badge :value="notes.unread" :max="9" :show="notes.unread > 0" class="bell-badge">
             <n-icon :component="NotificationsOutline" />
           </n-badge>
         </n-button>
@@ -88,7 +101,14 @@ function fmtTime(d) {
       <div class="feed">
         <div class="feed-head">
           <span>Уведомления</span>
-          <n-button v-if="notes.unread" text size="tiny" type="primary" class="ngrad" @click="notes.markAllRead()">
+          <n-button
+            v-if="notes.unread"
+            text
+            size="tiny"
+            type="primary"
+            class="ngrad"
+            @click="notes.markAllRead()"
+          >
             Прочитать все
           </n-button>
         </div>
