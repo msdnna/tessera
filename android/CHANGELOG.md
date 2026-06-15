@@ -5,6 +5,10 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.9.1 — 2026-06-15
+- Settings: Часовой пояс and Страна are now searchable pickers (filter the full
+  list from the device's `TimeZone` / `Locale` data) instead of free-text fields.
+
 ## 0.9.0 — 2026-06-15
 User-management phase U1c — the Android port of the web's U1b (needs backend 0.30.0).
 - **Account settings screen** (sidebar footer → tap the user): edit profile (display
