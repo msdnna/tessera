@@ -62,6 +62,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.parseHexColor
+import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
 
 /**
@@ -419,6 +420,9 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
         } else {
             val first = taskTags.first()
             val base = parseHexColor(first.color, c.text3)
+            // Clamp the tag colour into a legible band for the active theme (web
+            // parity) so the gradient text stays readable on either background.
+            val tagText = readableHue(base, c.isDark)
             // Behind layers are OPAQUE (surface blended with each tag's colour)
             // so neither the front pill nor the layers bleed through each other.
             val extra = taskTags.drop(1).take(2).map { lerp(c.cardSurface, parseHexColor(it.color, c.text3), 0.35f) }
@@ -435,10 +439,10 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
                     .padding(horizontal = 9.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(first.name, fontSize = 11.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(base)))
+                Text(first.name, fontSize = 11.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(tagText)))
                 if (taskTags.size > 1) {
                     Spacer(Modifier.width(4.dp))
-                    Text("+${taskTags.size - 1}", fontSize = 10.sp, style = TextStyle(brush = accentGradient(base.copy(alpha = 0.85f))))
+                    Text("+${taskTags.size - 1}", fontSize = 10.sp, style = TextStyle(brush = accentGradient(tagText.copy(alpha = 0.85f))))
                 }
             }
         }
@@ -457,7 +461,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
                             .clickableNoRipple { vm.toggleTag(task, tag.id) }
                             .padding(horizontal = 9.dp, vertical = 3.dp),
                     ) {
-                        Text(tag.name, color = if (on) Tessera.colors.onPrimary else base, fontSize = 12.sp)
+                        Text(tag.name, color = if (on) Tessera.colors.onPrimary else readableHue(base, c.isDark), fontSize = 12.sp)
                     }
                 }
             }

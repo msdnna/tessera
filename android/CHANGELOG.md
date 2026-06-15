@@ -5,6 +5,11 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.11.1 — 2026-06-16
+- Fix: tag text on the board card (the pill + the tag-picker dropdown) is now
+  clamped to a legible lightness for the active theme (`readableHue`), matching the
+  task modal — dark tags no longer become unreadable on the dark theme.
+
 ## 0.11.0 — 2026-06-16
 - **User avatars on task cards and in the task modal**: assignees and the author/
   creator show their uploaded avatar (Coil image from `/api/users/:id/avatar`),
