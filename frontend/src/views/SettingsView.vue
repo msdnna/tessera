@@ -5,9 +5,14 @@ import { CloudUploadOutline, TrashOutline, CheckmarkCircle } from '@vicons/ionic
 import { users } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
+import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
 
 const auth = useAuthStore()
 const theme = useThemeStore()
+
+// Built once from native Intl data (filterable selects show all on focus).
+const tzOptions = timezoneOptions()
+const countryOpts = countryOptions(theme.language || 'ru')
 
 // ── profile ────────────────────────────────────────────────────────────────
 const u = auth.user || {}
@@ -307,18 +312,24 @@ function flash(r) {
         </label>
         <label class="field">
           <span>Часовой пояс</span>
-          <n-input
-            :value="theme.timezone"
+          <n-select
+            :value="theme.timezone || null"
+            :options="tzOptions"
+            filterable
+            clearable
             placeholder="Europe/Moscow"
-            @update:value="(v) => theme.setLocale({ timezone: v })"
+            @update:value="(v) => theme.setLocale({ timezone: v || '' })"
           />
         </label>
         <label class="field">
           <span>Страна</span>
-          <n-input
-            :value="theme.country"
-            placeholder="RU"
-            @update:value="(v) => theme.setLocale({ country: v })"
+          <n-select
+            :value="theme.country || null"
+            :options="countryOpts"
+            filterable
+            clearable
+            placeholder="Выберите страну"
+            @update:value="(v) => theme.setLocale({ country: v || '' })"
           />
         </label>
       </div>

@@ -880,7 +880,7 @@ watch(
 <template>
   <n-spin :show="loading" :rotate="false" class="board-spin">
     <template #icon><TesseraSpinner /></template>
-    <div v-if="board" class="board-wrap">
+    <div v-if="board" class="board-wrap" :class="{ 'has-bg': !!themeStore.boardBackground }" :style="boardBgStyle">
       <!-- Sub-toolbar under the header: grouping / sort / filters / subtasks +
            a task-name search on the right. (Layout + Теги/Архив live in the
            global header now.) -->
@@ -1045,7 +1045,7 @@ watch(
         @changed="onChanged"
       />
 
-      <div v-else ref="boardScroll" class="board-scroll" :style="[colStyleVars, boardBgStyle]">
+      <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
         <draggable
           :list="colModel"
           group="columns"
@@ -1186,6 +1186,15 @@ watch(
    content would otherwise be empty → spinner pinned to the top before content). */
 .board-spin :deep(.n-spin-content) {
   min-height: 72vh;
+}
+/* A custom board background must reach the content-area edges (up to the sidebar
+   and the header), so bleed under the layout-content's 16px padding and fill the
+   viewport height. The board's own surfaces (columns/composer) sit on top. */
+.board-wrap.has-bg {
+  margin: -16px;
+  padding: 16px;
+  min-height: calc(100vh - 53px);
+  box-sizing: border-box;
 }
 /* Right-side toolbar buttons match the composer bar's height. */
 .bar-btn {
@@ -1421,6 +1430,12 @@ watch(
 /* Mobile: drop the button labels (icons only) and let the search fill the rest,
    so the sub-toolbar fits the screen instead of overflowing off the right. */
 @media (max-width: 768px) {
+  /* mobile layout-content padding is 12px (see AppLayout) */
+  .board-wrap.has-bg {
+    margin: -12px;
+    padding: 12px;
+    min-height: calc(100dvh - 53px);
+  }
   .sb-label {
     display: none;
   }

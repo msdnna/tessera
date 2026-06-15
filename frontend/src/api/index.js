@@ -73,7 +73,9 @@ export const users = {
   uploadAvatar: (file) => {
     const form = new FormData()
     form.append('avatar', file)
-    return api.put('/users/me/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    // Let the browser set Content-Type with the multipart boundary — setting it
+    // manually omits the boundary and the server can't parse the upload.
+    return api.put('/users/me/avatar', form)
   },
   deleteAvatar: () => api.delete('/users/me/avatar'),
   avatarUrl: (id) => `/api/users/${id}/avatar`,

@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.56.1] — 2026-06-15
+U1b fixes from review.
+- **Fix: avatar upload silently failed** — the request set `Content-Type:
+  multipart/form-data` manually, which drops the boundary so the server couldn't
+  parse the file; let the browser set it. Uploaded avatars now show (sidebar + settings).
+- **Timezone and Country are now searchable selects** (filterable, full list on
+  focus) built from native `Intl` data, instead of free-text inputs.
+- **Fix: a custom board background now covers the whole board area** — it bleeds
+  under the layout padding to the sidebar/header edges instead of only sitting
+  behind the columns.
+
 ### [0.56.0] — 2026-06-15
 User-management phase U1b (web) — consumes backend 0.30.0.
 - **Settings page** (`/settings`, from the sidebar account menu): edit the profile
