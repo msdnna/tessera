@@ -50,6 +50,11 @@ class MembersViewModel(
         _state.update { it.copy(members = repo.members(workspaceId)) }
     }
 
+    fun changeRole(userId: String, role: String) = launchCatching {
+        repo.updateMemberRole(workspaceId, userId, role)
+        _state.update { it.copy(members = repo.members(workspaceId)) }
+    }
+
     fun clearError() = _state.update { it.copy(error = null) }
 
     private fun launchCatching(block: suspend () -> Unit) {

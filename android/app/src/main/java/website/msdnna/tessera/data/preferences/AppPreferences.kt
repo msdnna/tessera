@@ -8,10 +8,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import website.msdnna.tessera.BuildConfig
+import website.msdnna.tessera.data.model.Preferences as UserPrefs
 import website.msdnna.tessera.data.model.User
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "tessera")
@@ -22,6 +24,8 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "te
  * only — no domain data is persisted here.
  */
 class AppPreferences(private val context: Context) {
+    private val gson = Gson()
+
     private object Keys {
         val SERVER_URL = stringPreferencesKey("server_url")
         val AUTH_TOKEN = stringPreferencesKey("auth_token")
@@ -30,6 +34,8 @@ class AppPreferences(private val context: Context) {
         val USER_EMAIL = stringPreferencesKey("user_email")
         val USER_NAME = stringPreferencesKey("user_name")
         val IS_ADMIN = booleanPreferencesKey("is_admin")
+        val USER_JSON = stringPreferencesKey("user_json") // full profile (avatar/legal name/…)
+        val PREFS_JSON = stringPreferencesKey("prefs_json") // full user preferences
         val ACCENT_KEY = stringPreferencesKey("accent_key")
         val DARK_MODE = booleanPreferencesKey("dark_mode")
         val CURRENT_WORKSPACE = stringPreferencesKey("current_workspace")
@@ -48,6 +54,11 @@ class AppPreferences(private val context: Context) {
     val refreshToken: Flow<String> = context.dataStore.data.map { it[Keys.REFRESH_TOKEN] ?: "" }
 
     val user: Flow<User?> = context.dataStore.data.map { prefs ->
+        // Prefer the full JSON profile; fall back to the legacy per-field keys
+        // (installs upgraded from before the profile fields existed).
+        prefs[Keys.USER_JSON]?.let { json ->
+            runCatching { gson.fromJson(json, User::class.java) }.getOrNull()?.takeIf { it.id.isNotBlank() }
+        }?.let { return@map it }
         val id = prefs[Keys.USER_ID] ?: return@map null
         if (id.isBlank()) return@map null
         User(
@@ -56,6 +67,11 @@ class AppPreferences(private val context: Context) {
             name = prefs[Keys.USER_NAME] ?: "",
             isAdmin = prefs[Keys.IS_ADMIN] ?: false,
         )
+    }
+
+    /** Full user preferences (cache of the server's; defaults until hydrated). */
+    val preferences: Flow<UserPrefs> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PREFS_JSON]?.let { runCatching { gson.fromJson(it, UserPrefs::class.java) }.getOrNull() } ?: UserPrefs()
     }
 
     val accentKey: Flow<String> = context.dataStore.data.map { it[Keys.ACCENT_KEY] ?: "purple" }
@@ -76,7 +92,18 @@ class AppPreferences(private val context: Context) {
                 prefs[Keys.USER_EMAIL] = user.email
                 prefs[Keys.USER_NAME] = user.name
                 prefs[Keys.IS_ADMIN] = user.isAdmin
+                prefs[Keys.USER_JSON] = gson.toJson(user)
             }
+        }
+    }
+
+    /** Caches the full preferences and keeps the theme-apply keys (accent/dark) in
+     *  sync so the existing theme path follows them. theme 'dark' → dark on. */
+    suspend fun setPreferences(p: UserPrefs) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.PREFS_JSON] = gson.toJson(p)
+            prefs[Keys.ACCENT_KEY] = p.accent
+            prefs[Keys.DARK_MODE] = p.theme == "dark"
         }
     }
 
@@ -93,6 +120,7 @@ class AppPreferences(private val context: Context) {
             prefs[Keys.USER_EMAIL] = user.email
             prefs[Keys.USER_NAME] = user.name
             prefs[Keys.IS_ADMIN] = user.isAdmin
+            prefs[Keys.USER_JSON] = gson.toJson(user)
         }
     }
 
@@ -104,6 +132,8 @@ class AppPreferences(private val context: Context) {
             prefs.remove(Keys.USER_EMAIL)
             prefs.remove(Keys.USER_NAME)
             prefs.remove(Keys.IS_ADMIN)
+            prefs.remove(Keys.USER_JSON)
+            prefs.remove(Keys.PREFS_JSON)
         }
     }
 

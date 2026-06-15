@@ -25,7 +25,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.repository.AuthRepository
+import website.msdnna.tessera.data.repository.ProfileRepository
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.screens.AuthScreen
 import website.msdnna.tessera.ui.screens.MainScreen
@@ -46,9 +48,11 @@ fun AppRoot(
     val prefs = AppContainer.prefs
     val scope = rememberCoroutineScope()
     val authRepo = remember { AuthRepository() }
+    val profileRepo = remember { ProfileRepository() }
 
     val accentKey by prefs.accentKey.collectAsStateWithLifecycle(initialValue = "purple")
     val isDark by prefs.darkMode.collectAsStateWithLifecycle(initialValue = false)
+    val preferences by prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences())
     val token by prefs.authToken.collectAsStateWithLifecycle(initialValue = "")
     val user by prefs.user.collectAsStateWithLifecycle(initialValue = null)
     val serverUrl by prefs.serverUrl.collectAsStateWithLifecycle(initialValue = AppContainer.serverUrl)
@@ -119,8 +123,8 @@ fun AppRoot(
                     accentKey = accentKey,
                     openTaskId = openTaskId,
                     onOpenTaskHandled = onOpenTaskHandled,
-                    onAccentChange = { scope.launch { prefs.setAccentKey(it) } },
-                    onToggleDark = { scope.launch { prefs.setDarkMode(!isDark) } },
+                    onAccentChange = { scope.launch { profileRepo.savePreferences(preferences.copy(accent = it)) } },
+                    onToggleDark = { scope.launch { profileRepo.savePreferences(preferences.copy(theme = if (isDark) "light" else "dark")) } },
                     onLogout = { scope.launch { authRepo.logout() } },
                 )
             }

@@ -35,11 +35,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.ProjectIcon
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TConfirmPopover
+import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TFormError
+import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
@@ -79,7 +82,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
 
                 else -> Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                     state.members.forEach { m ->
-                        MemberRow(m, onRemove = { vm.remove(m.userId) })
+                        MemberRow(m, onRemove = { vm.remove(m.userId) }, onChangeRole = { vm.changeRole(m.userId, it) })
                     }
                 }
             }
@@ -126,9 +129,10 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun MemberRow(member: Member, onRemove: () -> Unit) {
+private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (String) -> Unit) {
     val c = Tessera.colors
     var confirm by remember { mutableStateOf(false) }
+    var roleMenu by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -139,10 +143,35 @@ private fun MemberRow(member: Member, onRemove: () -> Unit) {
             Text(member.name.ifBlank { "—" }, color = c.text1, fontSize = 14.sp, maxLines = 1)
             if (member.email.isNotBlank()) Text(member.email, color = c.text3, fontSize = 12.sp, maxLines = 1)
         }
-        Box(
-            Modifier.clip(RoundedCornerShape(RadiusSm)).background(c.surfaceAlt).padding(horizontal = 8.dp, vertical = 3.dp),
-        ) {
-            Text(RoleLabels[member.role] ?: member.role, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        if (member.role == "owner") {
+            Box(
+                Modifier.clip(RoundedCornerShape(RadiusSm)).background(c.surfaceAlt).padding(horizontal = 8.dp, vertical = 3.dp),
+            ) {
+                Text(RoleLabels["owner"]!!, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            }
+        } else {
+            // Tap the role badge to switch member ↔ admin.
+            Box {
+                Row(
+                    Modifier.clip(RoundedCornerShape(RadiusSm)).background(c.surfaceAlt)
+                        .clickableNoRipple { roleMenu = true }.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(RoleLabels[member.role] ?: member.role, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.width(3.dp))
+                    IonIcon(Ion.CHEVRON_DOWN, size = 12.dp, tint = c.text3)
+                }
+                TDropdown(expanded = roleMenu, onDismiss = { roleMenu = false }) {
+                    TMenuItem("Участник", onClick = {
+                        roleMenu = false
+                        if (member.role != "member") onChangeRole("member")
+                    })
+                    TMenuItem("Админ", onClick = {
+                        roleMenu = false
+                        if (member.role != "admin") onChangeRole("admin")
+                    })
+                }
+            }
         }
         if (member.role != "owner") {
             Spacer(Modifier.width(6.dp))

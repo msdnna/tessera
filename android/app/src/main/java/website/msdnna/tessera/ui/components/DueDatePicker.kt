@@ -30,10 +30,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -46,6 +49,10 @@ private val MonthsFull = listOf(
 )
 private val Weekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "вс")
 
+/** Weekday header reordered for the user's week-start (0 = Sunday, else Monday). */
+private fun weekdayLabels(weekStart: Int): List<String> =
+    if (weekStart == 0) listOf(Weekdays.last()) + Weekdays.dropLast(1) else Weekdays
+
 /**
  * A due-date picker — our own grid (not M3), styled like the web frontend:
  * Monday-first weeks, prev/next month + year arrows, a rounded-square selected
@@ -55,6 +62,8 @@ private val Weekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "�
 @Composable
 fun DueDatePicker(initialIso: String?, onPick: (String?) -> Unit, onDismiss: () -> Unit) {
     val c = Tessera.colors
+    val weekStart by AppContainer.prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences())
+    val ws = weekStart.weekStart
     val todayMillis = remember { utcMidnightToday() }
     val selected = remember { isoToMillis(initialIso) }
     // Open on the selected month, else the current month.
@@ -97,7 +106,7 @@ fun DueDatePicker(initialIso: String?, onPick: (String?) -> Unit, onDismiss: () 
 
             // ── weekday header ──
             Row(Modifier.fillMaxWidth()) {
-                Weekdays.forEach { w ->
+                weekdayLabels(ws).forEach { w ->
                     Text(
                         w,
                         color = c.text3,
@@ -111,7 +120,7 @@ fun DueDatePicker(initialIso: String?, onPick: (String?) -> Unit, onDismiss: () 
             Spacer(Modifier.height(4.dp))
 
             // ── day grid (6 weeks) ──
-            val gridStart = monthGridStart(year, month)
+            val gridStart = monthGridStart(year, month, ws)
             for (week in 0 until 6) {
                 Row(Modifier.fillMaxWidth()) {
                     for (dow in 0 until 7) {
@@ -238,13 +247,15 @@ private fun utcMidnightToday(): Long = utcCal().apply {
 }.timeInMillis
 
 /** First grid cell (Monday on/before the 1st) for the given month, at UTC midnight. */
-private fun monthGridStart(year: Int, month: Int): Calendar {
+private fun monthGridStart(year: Int, month: Int, weekStart: Int): Calendar {
     val first = utcCal().apply {
         clear()
         set(year, month, 1)
     }
-    // Calendar.DAY_OF_WEEK: Sunday=1 … Saturday=7 → Monday-first offset 0..6.
-    val leading = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    // Calendar.DAY_OF_WEEK: Sunday=1 … Saturday=7. weekStart 0 = Sunday-first,
+    // else Monday-first; offset the leading blanks accordingly.
+    val firstDow = if (weekStart == 0) Calendar.SUNDAY else Calendar.MONDAY
+    val leading = (first.get(Calendar.DAY_OF_WEEK) - firstDow + 7) % 7
     return (first.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, -leading) }
 }
 

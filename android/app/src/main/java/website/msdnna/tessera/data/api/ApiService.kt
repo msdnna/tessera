@@ -15,6 +15,7 @@ import website.msdnna.tessera.data.model.AddRelationRequest
 import website.msdnna.tessera.data.model.AddTagRequest
 import website.msdnna.tessera.data.model.Attachment
 import website.msdnna.tessera.data.model.AuthResponse
+import website.msdnna.tessera.data.model.AvatarResponse
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.BoardView
@@ -25,14 +26,19 @@ import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.LoginRequest
+import website.msdnna.tessera.data.model.MeResponse
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
 import website.msdnna.tessera.data.model.NameRequest
+import website.msdnna.tessera.data.model.PasswordChange
+import website.msdnna.tessera.data.model.Preferences
+import website.msdnna.tessera.data.model.ProfileUpdate
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.RefreshRequest
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.Relation
+import website.msdnna.tessera.data.model.RoleUpdate
 import website.msdnna.tessera.data.model.SaveBoardViewRequest
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.Tag
@@ -63,7 +69,24 @@ interface ApiService {
     suspend fun refresh(@Body body: RefreshRequest): AuthResponse
 
     @GET("auth/me")
-    suspend fun me(): User
+    suspend fun me(): MeResponse
+
+    // ── self-service profile / preferences / avatar (U1) ──
+    @PATCH("users/me")
+    suspend fun updateProfile(@Body body: ProfileUpdate): User
+
+    @PUT("users/me/password")
+    suspend fun changePassword(@Body body: PasswordChange)
+
+    @PUT("users/me/preferences")
+    suspend fun updatePreferences(@Body body: Preferences): Preferences
+
+    @Multipart
+    @PUT("users/me/avatar")
+    suspend fun uploadAvatar(@Part file: MultipartBody.Part): AvatarResponse
+
+    @DELETE("users/me/avatar")
+    suspend fun deleteAvatar()
 
     // ── Workspaces ──────────────────────────────────────────────────────────
     @GET("workspaces")
@@ -204,6 +227,13 @@ interface ApiService {
     suspend fun addMember(
         @Path("id") workspaceId: String,
         @Body body: website.msdnna.tessera.data.model.AddMemberRequest,
+    )
+
+    @PATCH("workspaces/{id}/members/{userId}")
+    suspend fun updateMemberRole(
+        @Path("id") workspaceId: String,
+        @Path("userId") userId: String,
+        @Body body: RoleUpdate,
     )
 
     @DELETE("workspaces/{id}/members/{userId}")

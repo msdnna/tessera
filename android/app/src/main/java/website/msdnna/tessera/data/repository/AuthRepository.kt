@@ -4,6 +4,7 @@ import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.LoginRequest
+import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.User
 
@@ -25,11 +26,13 @@ class AuthRepository {
         return persist(res)
     }
 
-    /** Validates the stored token against /auth/me, refreshing the profile. */
+    /** Validates the stored token against /auth/me, refreshing the profile + prefs. */
     suspend fun verify(): User {
         val me = AppContainer.api().me()
-        prefs.setUser(me)
-        return me
+        val user = me.user ?: User()
+        prefs.setUser(user)
+        prefs.setPreferences(me.preferences ?: Preferences())
+        return user
     }
 
     suspend fun logout() {
@@ -43,6 +46,7 @@ class AuthRepository {
         RetrofitClient.refreshToken = res.refreshToken
         val user = res.user ?: User()
         prefs.setSession(res.accessToken to res.refreshToken, user)
+        prefs.setPreferences(res.preferences ?: Preferences())
         return user
     }
 }

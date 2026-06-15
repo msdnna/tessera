@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -45,6 +46,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
@@ -108,6 +111,7 @@ fun Sidebar(
     onOpenNotes: () -> Unit,
     onOpenMembers: () -> Unit,
     onOpenGitlab: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenBoard: (Board) -> Unit,
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
@@ -240,7 +244,7 @@ fun Sidebar(
 
             HorizontalDivider(color = c.border)
             if (updateVersion != null) SidebarUpdateRow(updateVersion, onUpdate)
-            SidebarFooter(user, onLogout)
+            SidebarFooter(user, onOpenSettings, onLogout)
         }
 
         // Drag overlay (insertion line at projected depth + floating clone).
@@ -408,8 +412,9 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                 onIcon = { ctx.vm.setProjectIcon(project, it) },
             )
         },
-        deleteMessage = "Удалить проект «${project.name}» со всеми досками?",
+        deleteMessage = "Проект «${project.name}» будет удалён со всеми досками и задачами. Действие необратимо.",
         onDelete = { ctx.vm.deleteProject(project.id) },
+        confirmName = project.name,
     )
     if (expanded) {
         IndentedChildren {
@@ -503,6 +508,7 @@ private fun TreeRow(
     menu: @Composable (close: () -> Unit) -> Unit,
     deleteMessage: String,
     onDelete: () -> Unit,
+    confirmName: String? = null,
 ) {
     val c = Tessera.colors
     var menuOpen by remember { mutableStateOf(false) }
@@ -555,15 +561,32 @@ private fun TreeRow(
                     confirmDelete = true
                 })
             }
-            TConfirmPopover(
-                expanded = confirmDelete,
-                message = deleteMessage,
-                onConfirm = {
-                    confirmDelete = false
-                    onDelete()
-                },
-                onDismiss = { confirmDelete = false },
-            )
+            // High-risk nodes (projects) require typing the name; others use a
+            // quick popconfirm.
+            if (confirmName != null) {
+                if (confirmDelete) {
+                    TConfirmByNameDialog(
+                        title = "Удалить проект",
+                        message = deleteMessage,
+                        name = confirmName,
+                        onConfirm = {
+                            confirmDelete = false
+                            onDelete()
+                        },
+                        onDismiss = { confirmDelete = false },
+                    )
+                }
+            } else {
+                TConfirmPopover(
+                    expanded = confirmDelete,
+                    message = deleteMessage,
+                    onConfirm = {
+                        confirmDelete = false
+                        onDelete()
+                    },
+                    onDismiss = { confirmDelete = false },
+                )
+            }
         }
     }
 }
@@ -627,21 +650,36 @@ private fun SidebarUpdateRow(version: String, onUpdate: () -> Unit) {
 }
 
 @Composable
-private fun SidebarFooter(user: User?, onLogout: () -> Unit) {
+private fun SidebarFooter(user: User?, onOpenSettings: () -> Unit, onLogout: () -> Unit) {
     val c = Tessera.colors
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        ProjectIcon(name = user?.name.orEmpty().ifBlank { "?" }, icon = "", color = "", size = 32.dp)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(user?.name?.ifBlank { "Пользователь" } ?: "Пользователь", color = c.text1, fontSize = 14.sp, maxLines = 1)
-            val email = user?.email.orEmpty()
-            if (email.isNotBlank()) Text(email, color = c.text3, fontSize = 12.sp, maxLines = 1)
-            Text("v${website.msdnna.tessera.BuildConfig.VERSION_NAME}", color = c.text3, fontSize = 11.sp, maxLines = 1)
+        // Tapping the user (avatar/name) opens account settings.
+        Row(
+            Modifier.weight(1f).clickableNoRipple(onClick = onOpenSettings),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val avatarUrl = user?.avatarUrl?.takeIf { it.isNotBlank() }
+            if (avatarUrl != null) {
+                AsyncImage(
+                    model = "${RetrofitClient.serverRoot}$avatarUrl",
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp).clip(CircleShape),
+                )
+            } else {
+                ProjectIcon(name = user?.name.orEmpty().ifBlank { "?" }, icon = "", color = "", size = 32.dp)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(user?.name?.ifBlank { "Пользователь" } ?: "Пользователь", color = c.text1, fontSize = 14.sp, maxLines = 1)
+                val email = user?.email.orEmpty()
+                if (email.isNotBlank()) Text(email, color = c.text3, fontSize = 12.sp, maxLines = 1)
+                Text("v${website.msdnna.tessera.BuildConfig.VERSION_NAME}", color = c.text3, fontSize = 11.sp, maxLines = 1)
+            }
         }
+        IonIconButton(Ion.SETTINGS, onClick = onOpenSettings)
         IonIconButton(Ion.LOGOUT, onClick = onLogout)
     }
 }

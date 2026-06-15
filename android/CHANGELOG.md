@@ -5,6 +5,24 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.9.0 — 2026-06-15
+User-management phase U1c — the Android port of the web's U1b (needs backend 0.30.0).
+- **Account settings screen** (sidebar footer → tap the user): edit profile (display
+  name, split legal name Фамилия/Имя/Отчество, bio, company, job title; email
+  read-only), upload/remove an **avatar** (multipart, shown via Coil in the sidebar +
+  settings), and change the password.
+- **Preferences synced to the account**: theme (system/light/dark), accent and a new
+  **board background**, plus localization (language, timezone, country, time/date
+  format, week start) now persist server-side per user and hydrate on sign-in. The
+  accent/dark quick-toggles save to the server too.
+- **Date pickers follow the week-start preference** (Monday/Sunday-first calendars).
+- **Inline member role editing** in the members modal — tap the role badge to switch
+  admin/member (owner is read-only).
+- **Type-to-confirm project deletion** — the project name must be typed before delete.
+- **Compatibility**: `/auth/me` and the auth responses now carry `{user, preferences}`;
+  the client reads the new shape (required against backend 0.30.0) and stores the full
+  profile + preferences in DataStore.
+
 ## 0.8.0 — 2026-06-15
 UX animation pass + a critical board fix.
 - **Fix (critical): grouping the board by a tag namespace could hard-freeze the

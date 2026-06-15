@@ -30,7 +30,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Calendar
+import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -46,6 +49,9 @@ private val MonthsFull = listOf(
 )
 private val Weekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "вс")
 
+private fun weekdayLabels(weekStart: Int): List<String> =
+    if (weekStart == 0) listOf(Weekdays.last()) + Weekdays.dropLast(1) else Weekdays
+
 /**
  * Date + time picker for reminders. Unlike [DueDatePicker] (UTC-midnight, date
  * only), a reminder is a real instant: the user picks a *local* day and time,
@@ -55,6 +61,7 @@ private val Weekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "�
 @Composable
 fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val c = Tessera.colors
+    val ws = AppContainer.prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences()).value.weekStart
     val initial = remember { localCal(parseInstantMillis(initialIso)) }
     var year by remember { mutableIntStateOf(initial.get(Calendar.YEAR)) }
     var month by remember { mutableIntStateOf(initial.get(Calendar.MONTH)) }
@@ -91,7 +98,7 @@ fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDism
             Spacer(Modifier.height(8.dp))
 
             Row(Modifier.fillMaxWidth()) {
-                Weekdays.forEach { w ->
+                weekdayLabels(ws).forEach { w ->
                     Text(
                         w,
                         color = c.text3,
@@ -104,7 +111,7 @@ fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDism
             }
             Spacer(Modifier.height(4.dp))
 
-            val gridStart = monthGridStart(year, month)
+            val gridStart = monthGridStart(year, month, ws)
             for (week in 0 until 6) {
                 Row(Modifier.fillMaxWidth()) {
                     for (dow in 0 until 7) {
@@ -247,12 +254,13 @@ private fun daysInMonth(year: Int, month: Int): Int =
         set(year, month, 1)
     }.getActualMaximum(Calendar.DAY_OF_MONTH)
 
-/** First grid cell (Monday on/before the 1st) for the given month, local zone. */
-private fun monthGridStart(year: Int, month: Int): Calendar {
+/** First grid cell (week-start on/before the 1st) for the given month, local zone. */
+private fun monthGridStart(year: Int, month: Int, weekStart: Int): Calendar {
     val first = Calendar.getInstance().apply {
         clear()
         set(year, month, 1)
     }
-    val leading = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val firstDow = if (weekStart == 0) Calendar.SUNDAY else Calendar.MONDAY
+    val leading = (first.get(Calendar.DAY_OF_WEEK) - firstDow + 7) % 7
     return (first.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, -leading) }
 }

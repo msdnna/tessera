@@ -67,4 +67,6 @@ class WorkspaceRepository {
     suspend fun addMember(workspaceId: String, email: String, role: String) =
         api.addMember(workspaceId, website.msdnna.tessera.data.model.AddMemberRequest(email.trim(), role))
     suspend fun removeMember(workspaceId: String, userId: String) = api.removeMember(workspaceId, userId)
+    suspend fun updateMemberRole(workspaceId: String, userId: String, role: String) =
+        api.updateMemberRole(workspaceId, userId, website.msdnna.tessera.data.model.RoleUpdate(role))
 }

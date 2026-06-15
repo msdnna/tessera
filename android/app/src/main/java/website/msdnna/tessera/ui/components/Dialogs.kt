@@ -71,6 +71,40 @@ fun TInputDialog(
     }
 }
 
+/**
+ * Type-to-confirm dialog for high-risk deletes: the user must type [name]
+ * exactly before the destructive button enables (GitHub-style). Used for
+ * project / workspace deletion.
+ */
+@Composable
+fun TConfirmByNameDialog(
+    title: String,
+    message: String,
+    name: String,
+    confirmText: String = "Удалить",
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = Tessera.colors
+    var typed by remember { mutableStateOf("") }
+    val matches = name.isNotBlank() && typed.trim() == name.trim()
+    DialogShell(onDismiss) {
+        Text(title, color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(10.dp))
+        Text(message, color = c.text2, fontSize = 14.sp)
+        Spacer(Modifier.height(10.dp))
+        Text("Введите «$name» для подтверждения:", color = c.text3, fontSize = 13.sp)
+        Spacer(Modifier.height(6.dp))
+        TTextField(value = typed, onValueChange = { typed = it }, placeholder = name)
+        Spacer(Modifier.height(18.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TButton("Отмена", kind = TButtonKind.Ghost, onClick = onDismiss)
+            Spacer(Modifier.width(8.dp))
+            TButton(confirmText, enabled = matches, onClick = { if (matches) onConfirm() })
+        }
+    }
+}
+
 /** Confirm / cancel dialog (destructive actions). */
 @Composable
 fun TConfirmDialog(
