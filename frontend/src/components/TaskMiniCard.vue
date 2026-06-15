@@ -4,7 +4,7 @@ import { NIcon } from 'naive-ui'
 import { CalendarClearOutline } from '@vicons/ionicons5'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
-import { initials } from '@/utils/initials'
+import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -56,9 +56,14 @@ const due = computed(() => {
         {{ due }}
       </span>
       <span class="mini-avas">
-        <span v-for="a in assignees" :key="a.user_id" class="mini-ava" :title="a.name">
-          {{ initials(a.name) }}
-        </span>
+        <UserAvatar
+          v-for="a in assignees"
+          :key="a.user_id"
+          class="mini-ava"
+          :user-id="a.user_id"
+          :name="a.name"
+          :title="a.name"
+        />
       </span>
     </div>
   </div>

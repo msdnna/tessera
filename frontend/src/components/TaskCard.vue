@@ -16,6 +16,7 @@ import {
   GitBranchOutline,
   ArchiveOutline,
   TrashOutline,
+  LogoGitlab,
 } from '@vicons/ionicons5'
 
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
@@ -25,6 +26,7 @@ import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue } from '@/utils/gradient'
 import { pressMoved } from '@/utils/dnd'
 import { initials } from '@/utils/initials'
+import UserAvatar from './UserAvatar.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
 
@@ -85,7 +87,7 @@ const author = computed(() => {
     return { name: t.gitlab_author_name || t.gitlab_author, login: t.gitlab_author, gl: true }
   if (t.created_by) {
     const m = props.membersMap[t.created_by]
-    if (m) return { name: m.name }
+    if (m) return { name: m.name, id: t.created_by }
   }
   return null
 })
@@ -402,7 +404,7 @@ async function submitAddSub() {
           :title="`GitLab issue !${task.gitlab_iid} — открыть`"
           @click.stop
         >
-          <n-icon :component="GitBranchOutline" :size="11" />!{{ task.gitlab_iid }}
+          <n-icon :component="LogoGitlab" :size="11" />!{{ task.gitlab_iid }}
         </a>
       </div>
 
@@ -533,7 +535,13 @@ async function submitAddSub() {
         <div class="people">
           <n-tooltip v-if="author">
             <template #trigger>
-              <span class="avatar author-ava" @click.stop>{{ initials(author.name) }}</span>
+              <UserAvatar
+                class="avatar author-ava"
+                :user-id="author.id"
+                :src="author.avatar"
+                :name="author.name"
+                @click.stop
+              />
             </template>
             {{ author.gl ? `Автор: @${author.login} (GitLab)` : `Автор: ${author.name}` }}
           </n-tooltip>
@@ -543,15 +551,15 @@ async function submitAddSub() {
               <button class="pill assignee-pill" @click.stop>
                 <n-tooltip v-for="u in assignees" :key="u.user_id">
                   <template #trigger>
-                    <span class="avatar">{{ initials(u.name) }}</span>
+                    <UserAvatar class="avatar" :user-id="u.user_id" :name="u.name" />
                   </template>
                   Исполнитель: {{ u.name }}
                 </n-tooltip>
                 <n-tooltip v-for="(g, i) in glAssignees" :key="`g${i}`">
                   <template #trigger>
-                    <span class="avatar ext-ava">{{ initials(g) }}</span>
+                    <UserAvatar class="avatar ext-ava" :src="g.avatar_url" :name="g.name || g" />
                   </template>
-                  Исполнитель: {{ g }} (GitLab)
+                  Исполнитель: {{ g.name || g }} (GitLab)
                 </n-tooltip>
                 <n-icon
                   v-if="!assignees.length && !glAssignees.length"

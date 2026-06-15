@@ -12,7 +12,7 @@ import {
   NPopconfirm,
   useMessage,
 } from 'naive-ui'
-import { TrashOutline, AddOutline, SyncOutline, GitBranchOutline } from '@vicons/ionicons5'
+import { TrashOutline, AddOutline, SyncOutline, LogoGitlab } from '@vicons/ionicons5'
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -266,7 +266,7 @@ watch(
     >
       <template #header>
         <span class="gl-title">
-          <n-icon :component="GitBranchOutline" class="grad-icon" /> GitLab
+          <n-icon :component="LogoGitlab" class="grad-icon" /> GitLab
         </span>
       </template>
 

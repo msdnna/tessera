@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.58.0] — 2026-06-16
+- **User avatars on task cards and in the task modal**: assignees and the author/
+  creator now show their uploaded avatar (a shared `UserAvatar` falls back to
+  gradient initials on miss/error); also in the subtask hover card. GitLab-user
+  avatars are wired (via `src`) and populate once the sync provides them.
+- GitLab logo icons across the GitLab modal / task cards / task modal (manual edits
+  folded in).
+
 ### [0.57.0] — 2026-06-15
 User-management phase U2b (web) — consumes backend 0.31.x.
 - **Workspace invitations** in the members modal: one «Пригласить» field adds an

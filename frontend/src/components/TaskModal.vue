@@ -31,7 +31,7 @@ import {
   EllipseOutline,
   ArchiveOutline,
   GitMergeOutline,
-  GitBranchOutline,
+  LogoGitlab,
   AttachOutline,
   TrashOutline,
   DownloadOutline,
@@ -53,6 +53,7 @@ import { initials } from '@/utils/initials'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
+import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -187,7 +188,7 @@ const author = computed(() => {
   }
   if (t.created_by) {
     const m = membersById.value[t.created_by]
-    if (m) return { name: m.name }
+    if (m) return { name: m.name, id: t.created_by }
   }
   return null
 })
@@ -694,7 +695,7 @@ function eventText(e) {
             rel="noopener"
             :title="`Открыть issue !${task.gitlab.iid} в GitLab`"
           >
-            <n-icon :component="GitBranchOutline" :size="13" />
+            <n-icon :component="LogoGitlab" :size="13" />
             <span>GitLab !{{ task.gitlab.iid }}</span>
           </a>
           <n-input v-model:value="title" placeholder="Название задачи" class="title-input plain" />
@@ -751,7 +752,12 @@ function eventText(e) {
                 class="val static"
                 :title="author.gl ? `@${author.login} · GitLab` : author.name"
               >
-                <span class="avatar">{{ initials(author.name) }}</span>
+                <UserAvatar
+                  class="avatar"
+                  :user-id="author.id"
+                  :src="author.avatar"
+                  :name="author.name"
+                />
                 <span class="author-name">{{ author.name }}</span>
                 <span v-if="author.gl" class="author-gl">@{{ author.login }} · GitLab</span>
               </div>
@@ -765,20 +771,22 @@ function eventText(e) {
               <n-popover trigger="click" placement="bottom-start">
                 <template #trigger>
                   <button class="val">
-                    <span
+                    <UserAvatar
                       v-for="u in assigneeObjs"
                       :key="u.user_id"
                       class="avatar"
+                      :user-id="u.user_id"
+                      :name="u.name"
                       :title="u.name"
-                      >{{ initials(u.name) }}</span
-                    >
-                    <span
+                    />
+                    <UserAvatar
                       v-for="(g, i) in glAssignees"
                       :key="`g${i}`"
                       class="avatar ext-ava"
-                      :title="`${g} (GitLab)`"
-                      >{{ initials(g) }}</span
-                    >
+                      :src="g.avatar_url"
+                      :name="g.name || g"
+                      :title="`${g.name || g} (GitLab)`"
+                    />
                     <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted"
                       >Никто</span
                     >
@@ -791,7 +799,7 @@ function eventText(e) {
                     class="menu-item"
                     @click="toggleAssignee(m.user_id)"
                   >
-                    <span class="avatar sm">{{ initials(m.name) }}</span>
+                    <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
                     <span class="grow">{{ m.name }}</span>
                     <n-icon
                       v-if="selectedAssignees.includes(m.user_id)"
