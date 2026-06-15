@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.55.0] — 2026-06-15
+- **Composer bar polish**: the inter-chip / inter-row gaps and the vertical
+  padding now match the 8px side padding, so a multi-row (expanded / overflowing)
+  bar isn't cramped. Tapping anywhere in a collapsed bar — including on a chip, the
+  «＋», the clear «×» or the search field — now just expands it; the controls act
+  only once the bar is expanded.
+- **Animations**: an "airy" animated aurora gradient on the login screen (drifting
+  brand-purple blobs, `screen`-blended, with a `prefers-reduced-motion` guard and a
+  form fade-up); route transitions on the login↔app switch and the
+  Home/Board/Notes/Reminders views; a write↔preview cross-fade in the Markdown
+  editor.
+
 ### [0.54.3] — 2026-06-14
 - Performance (large boards): typing in the board search no longer writes the
   saved-view state to localStorage on every keystroke — the write is debounced

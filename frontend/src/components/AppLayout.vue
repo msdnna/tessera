@@ -96,7 +96,11 @@ watch(
         <Topbar :show-tools="collapsed || narrow" />
       </n-layout-header>
       <n-layout-content content-style="padding: 16px" style="height: calc(100vh - 53px)">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <transition name="page" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </n-layout-content>
     </n-layout>
   </n-layout>
@@ -107,7 +111,11 @@ watch(
       <Topbar :mobile="true" @menu="drawerOpen = true" />
     </n-layout-header>
     <n-layout-content content-style="padding: 12px" style="height: calc(100vh - 53px)">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <transition name="page" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
     </n-layout-content>
     <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
       <n-drawer-content body-content-style="padding: 0">

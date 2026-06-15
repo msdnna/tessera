@@ -58,6 +58,22 @@ const membersList = computed(() => Object.values(membersMap))
 
 // view controls (layout comes from the store, above)
 const subtasksExpanded = ref(false) // full property cards vs compact rows
+// Composer bar: collapsed to a single row (clipping overflow chips) so the
+// right-side tool buttons stay in view; tapping expands it to full height and
+// slides the tools off-screen. Collapses again on an outside click.
+const composerExpanded = ref(false)
+const subbarEl = ref(null)
+function expandComposer() {
+  composerExpanded.value = true
+}
+function onDocPointerDown(e) {
+  if (!composerExpanded.value) return
+  const t = e.target
+  if (subbarEl.value?.contains(t)) return
+  // Ignore clicks inside teleported menus (chip dropdowns / view popovers).
+  if (t.closest?.('.n-dropdown-menu, .n-popover, .n-popselect, .n-base-select-menu')) return
+  composerExpanded.value = false
+}
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
 
@@ -606,7 +622,10 @@ const filteredTasks = computed(() => {
     arr = arr.filter((t) => (t.tag_ids || []).some((id) => filters.tags.includes(id)))
   if (filters.due) arr = arr.filter((t) => matchesDue(t, filters.due))
   const q = filters.q.trim().toLowerCase()
-  if (q) arr = arr.filter((t) => t.title.toLowerCase().includes(q))
+  if (q)
+    arr = arr.filter(
+      (t) => t.title.toLowerCase().includes(q) || (t.number != null && `#${t.number}`.includes(q)),
+    )
 
   const s = [...arr]
   if (sortLevels.value.length) {
@@ -819,6 +838,7 @@ onMounted(async () => {
     ro.observe(boardScroll.value)
     measure()
   }
+  document.addEventListener('pointerdown', onDocPointerDown, true)
   restoreView()
   await load(props.boardId)
   loadViews()
@@ -826,6 +846,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
+  document.removeEventListener('pointerdown', onDocPointerDown, true)
   onDragEnd()
   boardViewStore.reset()
 })
@@ -852,10 +873,15 @@ watch(
       <!-- Sub-toolbar under the header: grouping / sort / filters / subtasks +
            a task-name search on the right. (Layout + Теги/Архив live in the
            global header now.) -->
-      <div class="subbar">
+      <div ref="subbarEl" class="subbar">
         <!-- Composer bar: grouping / sort / filters as removable chips + an add
-             menu + the name search, all in one wide bar (a reference tracker/GitLab-style). -->
-        <div class="composer">
+             menu + the name search, all in one wide bar (a reference tracker/GitLab-style).
+             Collapsed to one row so the tools stay visible; tap to expand. -->
+        <div
+          class="composer"
+          :class="{ collapsed: !composerExpanded, 'has-clear': hasClearableFacets }"
+          @click="expandComposer"
+        >
           <span
             v-for="(c, ci) in facetChips"
             :key="ci"
@@ -875,7 +901,13 @@ watch(
             </button>
           </span>
 
-          <n-dropdown trigger="click" placement="bottom-start" :options="addOptions" @select="onAddFacet">
+          <n-dropdown
+            scrollable
+            trigger="click"
+            placement="bottom-start"
+            :options="addOptions"
+            @select="onAddFacet"
+          >
             <button class="facet-add" title="Добавить группировку / сортировку / фильтр">
               <n-icon :component="AddOutline" :size="14" />
             </button>
@@ -891,6 +923,9 @@ watch(
           </button>
         </div>
 
+        <!-- Right-side tools — slide off to the right while the composer is
+             expanded so the full chip set has room. -->
+        <div class="bar-tools" :class="{ hidden: composerExpanded }">
         <n-tooltip>
           <template #trigger>
             <n-button
@@ -977,6 +1012,7 @@ watch(
             <n-button type="primary" size="small" block @click="saveView">Сохранить</n-button>
             </div>
         </n-popover>
+        </div>
       </div>
 
       <BoardListView
@@ -1145,19 +1181,64 @@ watch(
   height: 40px;
   width: 40px;
 }
+/* The tool cluster slides off to the right (and yields its width) while the
+   composer is expanded, giving the chips the full bar width. */
+.bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  overflow: hidden;
+  transition:
+    max-width 0.28s ease,
+    opacity 0.2s ease,
+    transform 0.28s ease,
+    margin 0.28s ease;
+  max-width: 200px;
+}
+.bar-tools.hidden {
+  max-width: 0;
+  margin-left: -6px;
+  opacity: 0;
+  transform: translateX(16px);
+  pointer-events: none;
+}
 /* composer bar */
 .composer {
+  position: relative;
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  /* Inter-chip and inter-row gaps + vertical padding match the 8px horizontal
+     padding, so a multi-row (expanded / overflowing) bar isn't cramped. */
+  gap: 8px;
   box-sizing: border-box;
   min-height: 40px;
-  padding: 4px 8px;
+  padding: 8px;
   border: 1px solid var(--t-border);
   border-radius: 8px;
   background: var(--t-surface);
+  transition: max-height 0.28s ease;
+}
+/* Reserve room on the right for the absolutely-positioned clear-×. */
+.composer.has-clear {
+  padding-right: 26px;
+}
+/* Collapsed: capped to one row; chips wrap as whole pills (overflow rows are
+   clipped) rather than being cut mid-chip (tap to expand). */
+.composer.collapsed {
+  max-height: 40px;
+  overflow: hidden;
+  cursor: pointer;
+}
+/* Collapsed: any tap (even on a chip / add / clear / search) only expands the
+   bar — fishing for a blank spot to expand a chip-filled bar was fiddly. Killing
+   pointer events on the children lets the click fall through to .composer's
+   expand handler; the children act normally once expanded. */
+.composer.collapsed > * {
+  pointer-events: none;
 }
 .facet {
   display: inline-flex;
@@ -1223,6 +1304,10 @@ watch(
   color: var(--t-text3);
 }
 .facet-clear {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
   border: none;
   background: none;
   cursor: pointer;
@@ -1230,7 +1315,6 @@ watch(
   font-size: 16px;
   line-height: 1;
   padding: 0 4px;
-  flex: none;
 }
 .facet-clear:hover {
   color: var(--t-text1);
@@ -1337,6 +1421,12 @@ watch(
     min-width: 0;
     max-width: none;
     margin-left: 4px;
+  }
+  /* When collapsed on mobile the wide search would force the chips onto a
+     second (clipped) row; hide it so the chip row stays centred in the bar.
+     Tapping the bar expands it and brings the search back. */
+  .composer.collapsed .composer-search {
+    display: none;
   }
 }
 .vp {

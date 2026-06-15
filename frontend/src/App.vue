@@ -67,7 +67,11 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
   >
     <n-global-style />
     <n-message-provider>
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <transition name="fade" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
     </n-message-provider>
   </n-config-provider>
 </template>

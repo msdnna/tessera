@@ -408,6 +408,45 @@ body {
   font-weight: 600;
 }
 
+/* ── Route / view transitions ────────────────────────────────────────────────
+   Shared <Transition> classes used by the top-level router-view (App.vue, plain
+   fade) and the in-app content router-view (AppLayout, fade + small rise). Kept
+   global (not scoped) so they reach the slotted route components. */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+.page-enter-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.page-leave-active {
+  transition: opacity 0.13s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-enter-active,
+  .fade-leave-active,
+  .page-enter-active,
+  .page-leave-active {
+    transition: none;
+  }
+  .page-enter-from {
+    transform: none;
+  }
+}
+
 /* @-mention chip in rendered task descriptions / comments. */
 .mention {
   color: var(--t-primary);
@@ -415,4 +454,11 @@ body {
   border-radius: 4px;
   padding: 0 3px;
   font-weight: 500;
+}
+
+/* Scrollable dropdown menus (e.g. the board composer's tag filter list) cap at
+   the viewport instead of running off the bottom of the page. Naive's scrollbar
+   inherits max-height from the menu element, so the long list scrolls in place. */
+.n-dropdown-menu--scrollable {
+  max-height: 72vh;
 }

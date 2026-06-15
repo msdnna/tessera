@@ -357,7 +357,8 @@ defineExpose({ getMentions, clear, focus })
 
     <input ref="imgInput" type="file" accept="image/*" hidden @change="onImgFile" />
 
-    <div v-if="mode === 'write'" class="md2-write">
+    <Transition name="md2-fade" mode="out-in">
+    <div v-if="mode === 'write'" key="write" class="md2-write">
       <textarea
         ref="ta"
         :value="modelValue"
@@ -405,11 +406,13 @@ defineExpose({ getMentions, clear, focus })
 
     <RichContent
       v-else
+      key="preview"
       class="md2-preview"
       :source="modelValue"
       :members="mentionItems"
       empty="Нечего показать"
     />
+    </Transition>
   </div>
 </template>
 
@@ -462,6 +465,21 @@ defineExpose({ getMentions, clear, focus })
 .md2-tabs button.active {
   color: var(--t-primary);
   border-bottom-color: var(--t-primary);
+}
+/* Fade between Написать / Просмотр panes. */
+.md2-fade-enter-active,
+.md2-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.md2-fade-enter-from,
+.md2-fade-leave-to {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .md2-fade-enter-active,
+  .md2-fade-leave-active {
+    transition: none;
+  }
 }
 .md2-write {
   position: relative;
