@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { auth } from '@/api'
+import { useThemeStore } from './theme'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('tessera_token') || '')
@@ -10,7 +11,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => !!user.value?.is_admin)
 
-  // setAuth persists the {access_token, refresh_token, user} response shape.
+  // setAuth persists the {access_token, refresh_token, user, preferences} shape
+  // and hydrates the theme/preferences store from the server.
   function setAuth(res) {
     token.value = res.access_token
     refreshToken.value = res.refresh_token || ''
@@ -22,6 +24,7 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.removeItem('tessera_refresh_token')
     }
     localStorage.setItem('tessera_user', JSON.stringify(user.value))
+    if (res.preferences) useThemeStore().hydrate(res.preferences)
   }
 
   function logout() {
@@ -31,6 +34,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('tessera_token')
     localStorage.removeItem('tessera_refresh_token')
     localStorage.removeItem('tessera_user')
+    useThemeStore().reset()
   }
 
   async function login(email, password) {
@@ -43,17 +47,35 @@ export const useAuthStore = defineStore('auth', () => {
     setAuth(res.data)
   }
 
+  // setUser refreshes the cached user after a profile edit.
+  function setUser(u) {
+    user.value = u
+    localStorage.setItem('tessera_user', JSON.stringify(u))
+  }
+
   // verify confirms a stored token is still valid on app start.
   async function verify() {
     if (!token.value) return
     try {
       const res = await auth.me()
-      user.value = res.data
+      user.value = res.data.user
       localStorage.setItem('tessera_user', JSON.stringify(user.value))
+      if (res.data.preferences) useThemeStore().hydrate(res.data.preferences)
     } catch {
       logout()
     }
   }
 
-  return { token, user, isAuthenticated, isAdmin, login, register, logout, verify, setAuth }
+  return {
+    token,
+    user,
+    isAuthenticated,
+    isAdmin,
+    login,
+    register,
+    logout,
+    verify,
+    setAuth,
+    setUser,
+  }
 })

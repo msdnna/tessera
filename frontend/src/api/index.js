@@ -66,12 +66,27 @@ export const auth = {
   me: () => api.get('/auth/me'),
 }
 
+export const users = {
+  updateProfile: (data) => api.patch('/users/me', data),
+  changePassword: (data) => api.put('/users/me/password', data),
+  updatePreferences: (data) => api.put('/users/me/preferences', data),
+  uploadAvatar: (file) => {
+    const form = new FormData()
+    form.append('avatar', file)
+    return api.put('/users/me/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  deleteAvatar: () => api.delete('/users/me/avatar'),
+  avatarUrl: (id) => `/api/users/${id}/avatar`,
+}
+
 export const workspaces = {
   list: () => api.get('/workspaces'),
   get: (id) => api.get(`/workspaces/${id}`),
   create: (data) => api.post('/workspaces', data),
   members: (id) => api.get(`/workspaces/${id}/members`),
   addMember: (id, data) => api.post(`/workspaces/${id}/members`, data),
+  updateMemberRole: (id, userId, role) =>
+    api.patch(`/workspaces/${id}/members/${userId}`, { role }),
   removeMember: (id, userId) => api.delete(`/workspaces/${id}/members/${userId}`),
   groups: (id) => api.get(`/workspaces/${id}/groups`),
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),

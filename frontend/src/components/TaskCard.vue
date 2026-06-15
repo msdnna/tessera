@@ -26,8 +26,10 @@ import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue } from '@/utils/
 import { pressMoved } from '@/utils/dnd'
 import { initials } from '@/utils/initials'
 import { useThemeStore } from '@/stores/theme'
+import { useDateLocale } from '@/composables/useDateLocale'
 
 const theme = useThemeStore()
+const { firstDayOfWeek, dateFormat } = useDateLocale()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
 
@@ -79,7 +81,8 @@ const glAssignees = computed(() => props.task.gitlab_assignees || [])
 // creator resolved from created_by.
 const author = computed(() => {
   const t = props.task
-  if (t.gitlab_author) return { name: t.gitlab_author_name || t.gitlab_author, login: t.gitlab_author, gl: true }
+  if (t.gitlab_author)
+    return { name: t.gitlab_author_name || t.gitlab_author, login: t.gitlab_author, gl: true }
   if (t.created_by) {
     const m = props.membersMap[t.created_by]
     if (m) return { name: m.name }
@@ -125,9 +128,7 @@ const cardStyle = computed(() =>
 )
 // Shared flag gradient defs live in App.vue (one per priority level), so a board
 // with 100s of cards references 4 defs instead of inlining an <svg> per card.
-const flagGradId = computed(() =>
-  props.task.priority ? `t-prio-grad-${props.task.priority}` : '',
-)
+const flagGradId = computed(() => (props.task.priority ? `t-prio-grad-${props.task.priority}` : ''))
 
 function isAssigned(uid) {
   return (props.task.assignee_ids || []).includes(uid)
@@ -189,7 +190,9 @@ const ctxOptions = computed(() => {
         ]
       : []),
     { type: 'divider', key: 'd1' },
-    ...(isMain ? [{ label: 'Создать подзадачу', key: 'subtask', icon: menuIcon(GitBranchOutline) }] : []),
+    ...(isMain
+      ? [{ label: 'Создать подзадачу', key: 'subtask', icon: menuIcon(GitBranchOutline) }]
+      : []),
     { label: 'В архив', key: 'archive', icon: menuIcon(ArchiveOutline) },
     { label: 'Удалить', key: 'delete', icon: menuIcon(TrashOutline) },
   ]
@@ -365,202 +368,212 @@ async function submitAddSub() {
       @contextmenu.prevent.stop="onCtx"
     >
       <div class="card-top">
-      <span
-        class="check"
-        :title="done ? 'Выполнено' : 'Отметить выполненной'"
-        @click.stop="toggleDone"
-      >
-        <n-icon :component="done ? CheckmarkCircle : EllipseOutline" :size="20" />
-      </span>
-      <n-input
-        v-if="editingTitle"
-        ref="titleInput"
-        v-model:value="titleEdit"
-        size="small"
-        class="title-edit"
-        @click.stop
-        @keyup.enter="commitTitle"
-        @blur="commitTitle"
-      />
-      <span
-        v-else
-        class="title"
-        title="Клик — изменить; клик по карточке — открыть"
-        @click.stop="startTitleEdit"
-        >{{ task.title }}</span
-      >
-      <span v-if="task.number" class="tnum">#{{ task.number }}</span>
-      <a
-        v-if="task.gitlab_iid"
-        class="gl-chip"
-        :href="task.gitlab_url"
-        target="_blank"
-        rel="noopener"
-        :title="`GitLab issue !${task.gitlab_iid} — открыть`"
-        @click.stop
-      >
-        <n-icon :component="GitBranchOutline" :size="11" />!{{ task.gitlab_iid }}
-      </a>
-    </div>
+        <span
+          class="check"
+          :title="done ? 'Выполнено' : 'Отметить выполненной'"
+          @click.stop="toggleDone"
+        >
+          <n-icon :component="done ? CheckmarkCircle : EllipseOutline" :size="20" />
+        </span>
+        <n-input
+          v-if="editingTitle"
+          ref="titleInput"
+          v-model:value="titleEdit"
+          size="small"
+          class="title-edit"
+          @click.stop
+          @keyup.enter="commitTitle"
+          @blur="commitTitle"
+        />
+        <span
+          v-else
+          class="title"
+          title="Клик — изменить; клик по карточке — открыть"
+          @click.stop="startTitleEdit"
+          >{{ task.title }}</span
+        >
+        <span v-if="task.number" class="tnum">#{{ task.number }}</span>
+        <a
+          v-if="task.gitlab_iid"
+          class="gl-chip"
+          :href="task.gitlab_url"
+          target="_blank"
+          rel="noopener"
+          :title="`GitLab issue !${task.gitlab_iid} — открыть`"
+          @click.stop
+        >
+          <n-icon :component="GitBranchOutline" :size="11" />!{{ task.gitlab_iid }}
+        </a>
+      </div>
 
-    <div class="pills">
-      <!-- priority -->
-      <n-popover trigger="click" placement="bottom-start">
-        <template #trigger>
-          <button class="pill" :class="{ set: task.priority }" @click.stop>
-            <n-icon
-              :component="FlagOutline"
-              :size="13"
-              :style="
-                task.priority
-                  ? { color: PRIORITY_COLORS[task.priority], '--icon-grad': `url(#${flagGradId})` }
-                  : {}
-              "
-            />
-          </button>
-        </template>
-        <div class="menu">
-          <div
-            v-for="o in priorityOptions"
-            :key="o.value"
-            class="menu-item"
-            @click="setPriority(o.value)"
-          >
-            <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
-            {{ o.label }}
-          </div>
-        </div>
-      </n-popover>
-
-      <!-- due date: opens the calendar directly -->
-      <n-popover trigger="click" placement="bottom-start">
-        <template #trigger>
-          <button class="pill" :class="{ set: due, overdue }" @click.stop>
-            <n-icon :component="CalendarClearOutline" :size="13" />
-            <span v-if="due" class="pill-text">{{ due }}</span>
-          </button>
-        </template>
-        <n-date-picker panel type="date" :value="dueTs" @update:value="setDue" />
-      </n-popover>
-
-      <!-- tags: stacked when >1; hover previews full list, click opens picker -->
-      <n-popover trigger="click" placement="bottom-start">
-        <template #trigger>
-          <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
-            <template #trigger>
-              <button v-if="!taskTags.length" class="pill" @click.stop>
-                <n-icon :component="PricetagOutline" :size="13" />
-              </button>
-              <button
-                v-else
-                class="pill tag-pill"
-                :style="{
-                  border: '1px solid transparent',
-                  background: tagPillBg(taskTags[0].color),
-                  color: tagText(taskTags[0].color),
-                  boxShadow: stackShadow,
-                  marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
-                }"
-                @click.stop
-              >
-                <span
-                  class="tname accent-grad-text"
-                  :style="{ '--grad': hueGrad(tagText(taskTags[0].color)) }"
-                  >{{ taskTags[0].name }}</span
-                >
-                <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
-              </button>
-            </template>
-            <div class="preview">
-              <span
-                v-for="t in taskTags"
-                :key="t.id"
-                class="chip"
-                :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
-                >{{ t.name }}</span
-              >
-            </div>
-          </n-popover>
-        </template>
-        <div class="menu tagmenu">
-          <div class="chip-grid">
-            <button
-              v-for="t in tags"
-              :key="t.id"
-              class="tagchip"
-              :class="{ on: hasTag(t.id) }"
-              :style="
-                hasTag(t.id)
-                  ? { background: hueGrad(t.color), color: '#fff', borderColor: 'transparent' }
-                  : {
-                      background: softFill(t.color),
-                      color: tagText(t.color),
-                      borderColor: (t.color || '#888') + '66',
-                    }
-              "
-              @click="toggleTag(t.id)"
-            >
-              {{ t.name }}
-            </button>
-          </div>
-          <n-input
-            v-model:value="newTagName"
-            size="tiny"
-            placeholder="Новый тег, Enter"
-            @keyup.enter="createTag"
-            @click.stop
-          />
-        </div>
-      </n-popover>
-
-      <span class="spacer" />
-
-      <!-- author → assignees: the creator (non-clickable) points at the
-           assignee(s). Author omitted when unknown (older tasks). -->
-      <div class="people">
-        <n-tooltip v-if="author">
+      <div class="pills">
+        <!-- priority -->
+        <n-popover trigger="click" placement="bottom-start">
           <template #trigger>
-            <span class="avatar author-ava" @click.stop>{{ initials(author.name) }}</span>
-          </template>
-          {{ author.gl ? `Автор: @${author.login} (GitLab)` : `Автор: ${author.name}` }}
-        </n-tooltip>
-        <n-icon v-if="author" :component="ArrowForwardOutline" :size="11" class="people-arrow" />
-        <n-popover trigger="click" placement="bottom-end">
-          <template #trigger>
-            <button class="pill assignee-pill" @click.stop>
-              <n-tooltip v-for="u in assignees" :key="u.user_id">
-                <template #trigger>
-                  <span class="avatar">{{ initials(u.name) }}</span>
-                </template>
-                Исполнитель: {{ u.name }}
-              </n-tooltip>
-              <n-tooltip v-for="(g, i) in glAssignees" :key="`g${i}`">
-                <template #trigger>
-                  <span class="avatar ext-ava">{{ initials(g) }}</span>
-                </template>
-                Исполнитель: {{ g }} (GitLab)
-              </n-tooltip>
+            <button class="pill" :class="{ set: task.priority }" @click.stop>
               <n-icon
-                v-if="!assignees.length && !glAssignees.length"
-                :component="PersonAddOutline"
+                :component="FlagOutline"
                 :size="13"
+                :style="
+                  task.priority
+                    ? {
+                        color: PRIORITY_COLORS[task.priority],
+                        '--icon-grad': `url(#${flagGradId})`,
+                      }
+                    : {}
+                "
               />
             </button>
           </template>
           <div class="menu">
             <div
-              v-for="m in members"
-              :key="m.user_id"
-              class="menu-item assignee-item"
-              @click="toggleAssignee(m.user_id)"
+              v-for="o in priorityOptions"
+              :key="o.value"
+              class="menu-item"
+              @click="setPriority(o.value)"
             >
-              <span class="avatar sm">{{ initials(m.name) }}</span>
-              <span class="aname">{{ m.name }}</span>
-              <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
+              <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
+              {{ o.label }}
             </div>
           </div>
         </n-popover>
-      </div>
+
+        <!-- due date: opens the calendar directly -->
+        <n-popover trigger="click" placement="bottom-start">
+          <template #trigger>
+            <button class="pill" :class="{ set: due, overdue }" @click.stop>
+              <n-icon :component="CalendarClearOutline" :size="13" />
+              <span v-if="due" class="pill-text">{{ due }}</span>
+            </button>
+          </template>
+          <n-date-picker
+            panel
+            type="date"
+            :value="dueTs"
+            :first-day-of-week="firstDayOfWeek"
+            :format="dateFormat"
+            @update:value="setDue"
+          />
+        </n-popover>
+
+        <!-- tags: stacked when >1; hover previews full list, click opens picker -->
+        <n-popover trigger="click" placement="bottom-start">
+          <template #trigger>
+            <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
+              <template #trigger>
+                <button v-if="!taskTags.length" class="pill" @click.stop>
+                  <n-icon :component="PricetagOutline" :size="13" />
+                </button>
+                <button
+                  v-else
+                  class="pill tag-pill"
+                  :style="{
+                    border: '1px solid transparent',
+                    background: tagPillBg(taskTags[0].color),
+                    color: tagText(taskTags[0].color),
+                    boxShadow: stackShadow,
+                    marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
+                  }"
+                  @click.stop
+                >
+                  <span
+                    class="tname accent-grad-text"
+                    :style="{ '--grad': hueGrad(tagText(taskTags[0].color)) }"
+                    >{{ taskTags[0].name }}</span
+                  >
+                  <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
+                </button>
+              </template>
+              <div class="preview">
+                <span
+                  v-for="t in taskTags"
+                  :key="t.id"
+                  class="chip"
+                  :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
+                  >{{ t.name }}</span
+                >
+              </div>
+            </n-popover>
+          </template>
+          <div class="menu tagmenu">
+            <div class="chip-grid">
+              <button
+                v-for="t in tags"
+                :key="t.id"
+                class="tagchip"
+                :class="{ on: hasTag(t.id) }"
+                :style="
+                  hasTag(t.id)
+                    ? { background: hueGrad(t.color), color: '#fff', borderColor: 'transparent' }
+                    : {
+                        background: softFill(t.color),
+                        color: tagText(t.color),
+                        borderColor: (t.color || '#888') + '66',
+                      }
+                "
+                @click="toggleTag(t.id)"
+              >
+                {{ t.name }}
+              </button>
+            </div>
+            <n-input
+              v-model:value="newTagName"
+              size="tiny"
+              placeholder="Новый тег, Enter"
+              @keyup.enter="createTag"
+              @click.stop
+            />
+          </div>
+        </n-popover>
+
+        <span class="spacer" />
+
+        <!-- author → assignees: the creator (non-clickable) points at the
+           assignee(s). Author omitted when unknown (older tasks). -->
+        <div class="people">
+          <n-tooltip v-if="author">
+            <template #trigger>
+              <span class="avatar author-ava" @click.stop>{{ initials(author.name) }}</span>
+            </template>
+            {{ author.gl ? `Автор: @${author.login} (GitLab)` : `Автор: ${author.name}` }}
+          </n-tooltip>
+          <n-icon v-if="author" :component="ArrowForwardOutline" :size="11" class="people-arrow" />
+          <n-popover trigger="click" placement="bottom-end">
+            <template #trigger>
+              <button class="pill assignee-pill" @click.stop>
+                <n-tooltip v-for="u in assignees" :key="u.user_id">
+                  <template #trigger>
+                    <span class="avatar">{{ initials(u.name) }}</span>
+                  </template>
+                  Исполнитель: {{ u.name }}
+                </n-tooltip>
+                <n-tooltip v-for="(g, i) in glAssignees" :key="`g${i}`">
+                  <template #trigger>
+                    <span class="avatar ext-ava">{{ initials(g) }}</span>
+                  </template>
+                  Исполнитель: {{ g }} (GitLab)
+                </n-tooltip>
+                <n-icon
+                  v-if="!assignees.length && !glAssignees.length"
+                  :component="PersonAddOutline"
+                  :size="13"
+                />
+              </button>
+            </template>
+            <div class="menu">
+              <div
+                v-for="m in members"
+                :key="m.user_id"
+                class="menu-item assignee-item"
+                @click="toggleAssignee(m.user_id)"
+              >
+                <span class="avatar sm">{{ initials(m.name) }}</span>
+                <span class="aname">{{ m.name }}</span>
+                <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
+              </div>
+            </div>
+          </n-popover>
+        </div>
       </div>
     </div>
     <!-- /.card -->
@@ -613,7 +626,11 @@ async function submitAddSub() {
           <span class="check sm" @click.stop="toggleSubDone(s)">
             <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
           </span>
-          <span v-if="s.priority" class="pr-dot" :style="{ background: hueGradVert(PRIORITY_COLORS[s.priority]) }" />
+          <span
+            v-if="s.priority"
+            class="pr-dot"
+            :style="{ background: hueGradVert(PRIORITY_COLORS[s.priority]) }"
+          />
           <span class="sub-title">{{ s.title }}</span>
           <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
         </div>

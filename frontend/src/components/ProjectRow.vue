@@ -27,6 +27,7 @@ import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import ProjectIcon from './ProjectIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
+import ConfirmByName from './ConfirmByName.vue'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
@@ -123,7 +124,11 @@ async function updateField(patch) {
     message.error(e.message)
   }
 }
-async function remove() {
+const confirmDelete = ref(false)
+function remove() {
+  confirmDelete.value = true
+}
+async function doRemove() {
   try {
     await projApi.remove(props.project.id)
     await store.refresh()
@@ -297,15 +302,10 @@ async function addBoard() {
               <template #icon><n-icon :component="CreateOutline" /></template>
               Переименовать
             </n-button>
-            <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove">
-              <template #trigger>
-                <n-button type="error" ghost size="small">
-                  <template #icon><n-icon :component="TrashOutline" /></template>
-                  Удалить
-                </n-button>
-              </template>
-              Удалить проект со всеми досками?
-            </n-popconfirm>
+            <n-button type="error" ghost size="small" @click="remove">
+              <template #icon><n-icon :component="TrashOutline" /></template>
+              Удалить
+            </n-button>
           </div>
         </div>
       </n-popover>
@@ -346,7 +346,11 @@ async function addBoard() {
               <template #icon><n-icon :component="CreateOutline" /></template>
               Переименовать
             </n-button>
-            <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="removeBoard(b)">
+            <n-popconfirm
+              :positive-button-props="{ type: 'error' }"
+              positive-text="Удалить"
+              @positive-click="removeBoard(b)"
+            >
               <template #trigger>
                 <n-button type="error" ghost size="small" block>
                   <template #icon><n-icon :component="TrashOutline" /></template>
@@ -390,6 +394,14 @@ async function addBoard() {
       :options="bcOptions"
       @select="onBoardCtxSelect"
       @clickoutside="bcShow = false"
+    />
+
+    <ConfirmByName
+      v-model:show="confirmDelete"
+      :name="project.name"
+      title="Удалить проект"
+      message="Проект будет удалён со всеми досками и задачами. Действие необратимо."
+      @confirm="doRemove"
     />
   </div>
 </template>

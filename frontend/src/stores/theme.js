@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { darkTheme } from 'naive-ui'
 import { DARK, LIGHT } from '@/styles/tokens'
+import { users } from '@/api'
 
 // Multi-color accent schemes (a reference tracker-style). Default = purple.
 export const COLOR_THEMES = [
@@ -76,9 +77,39 @@ function textOnPrimary(hex) {
 }
 
 export const useThemeStore = defineStore('theme', () => {
-  const savedKey = localStorage.getItem('tessera_color') || 'purple'
-  const activeTheme = ref(COLOR_THEMES.find((t) => t.key === savedKey) ?? COLOR_THEMES[0])
-  const isDark = ref(localStorage.getItem('tessera_dark') === '1')
+  // Preferences live in the DB (per user) since web 0.56 / U1b; this store is
+  // the single client-side source of truth and persist point. localStorage is a
+  // first-paint cache so the theme doesn't flash before /auth/me hydrates it.
+  // Legacy keys (tessera_color / tessera_dark) are read once for back-compat.
+  const cached = JSON.parse(localStorage.getItem('tessera_prefs') || 'null') || {}
+  const legacyKey = localStorage.getItem('tessera_color')
+  const legacyDark = localStorage.getItem('tessera_dark')
+
+  const accentKey = cached.accent || legacyKey || 'purple'
+  const activeTheme = ref(COLOR_THEMES.find((t) => t.key === accentKey) ?? COLOR_THEMES[0])
+
+  // themeMode is the persisted preference (system | light | dark); isDark is the
+  // effective boolean it resolves to (system follows the OS).
+  const themeMode = ref(
+    cached.theme || (legacyDark === '1' ? 'dark' : legacyDark === '0' ? 'light' : 'system'),
+  )
+  const systemDark = ref(window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', (e) => {
+    systemDark.value = e.matches
+  })
+  const isDark = computed(
+    () => themeMode.value === 'dark' || (themeMode.value === 'system' && systemDark.value),
+  )
+
+  // Localizing + board-background preferences (drive date pickers / formats /
+  // — later — i18n, and the board canvas background).
+  const language = ref(cached.language || 'ru')
+  const timezone = ref(cached.timezone || '')
+  const country = ref(cached.country || '')
+  const timeFormat = ref(cached.time_format || '24h')
+  const dateFormat = ref(cached.date_format || 'dd.MM.yyyy')
+  const weekStart = ref(typeof cached.week_start === 'number' ? cached.week_start : 1)
+  const boardBackground = ref(cached.board_background || '')
 
   const palette = computed(() => (isDark.value ? DARK : LIGHT))
   const primaryColor = computed(() => activeTheme.value.primary)
@@ -182,13 +213,77 @@ export const useThemeStore = defineStore('theme', () => {
     }
   })
 
+  // The full preferences object as the server expects it (PUT replaces all).
+  function snapshot() {
+    return {
+      language: language.value,
+      timezone: timezone.value,
+      country: country.value,
+      time_format: timeFormat.value,
+      date_format: dateFormat.value,
+      week_start: weekStart.value,
+      theme: themeMode.value,
+      accent: activeTheme.value.key,
+      board_background: boardBackground.value,
+    }
+  }
+
+  // Cache locally (first-paint) and, when signed in, persist to the DB. Fire-and-
+  // forget: a failed write shouldn't block the UI from reflecting the choice.
+  function persist() {
+    const snap = snapshot()
+    localStorage.setItem('tessera_prefs', JSON.stringify(snap))
+    // Keep legacy keys in sync so an older cached client still first-paints right.
+    localStorage.setItem('tessera_color', snap.accent)
+    localStorage.setItem('tessera_dark', isDark.value ? '1' : '0')
+    if (localStorage.getItem('tessera_token')) {
+      users.updatePreferences(snap).catch(() => {})
+    }
+  }
+
+  // Apply server preferences (from /auth/me or an auth response) without
+  // re-persisting them.
+  function hydrate(prefs) {
+    if (!prefs) return
+    if (prefs.accent)
+      activeTheme.value = COLOR_THEMES.find((t) => t.key === prefs.accent) ?? activeTheme.value
+    if (prefs.theme) themeMode.value = prefs.theme
+    if (prefs.language) language.value = prefs.language
+    timezone.value = prefs.timezone ?? timezone.value
+    country.value = prefs.country ?? country.value
+    if (prefs.time_format) timeFormat.value = prefs.time_format
+    if (prefs.date_format) dateFormat.value = prefs.date_format
+    if (typeof prefs.week_start === 'number') weekStart.value = prefs.week_start
+    boardBackground.value = prefs.board_background ?? boardBackground.value
+    localStorage.setItem('tessera_prefs', JSON.stringify(snapshot()))
+    localStorage.setItem('tessera_color', activeTheme.value.key)
+    localStorage.setItem('tessera_dark', isDark.value ? '1' : '0')
+  }
+
   function selectColor(t) {
     activeTheme.value = t
-    localStorage.setItem('tessera_color', t.key)
+    persist()
+  }
+  function setThemeMode(mode) {
+    themeMode.value = mode
+    persist()
   }
   function toggle() {
-    isDark.value = !isDark.value
-    localStorage.setItem('tessera_dark', isDark.value ? '1' : '0')
+    setThemeMode(isDark.value ? 'light' : 'dark')
+  }
+  function setBoardBackground(v) {
+    boardBackground.value = v || ''
+    persist()
+  }
+  // Merge localizing fields (language/timezone/country/formats/week_start).
+  function setLocale(partial) {
+    if (partial.language !== undefined) language.value = partial.language
+    if (partial.timezone !== undefined) timezone.value = partial.timezone
+    if (partial.country !== undefined) country.value = partial.country
+    if (partial.time_format !== undefined) timeFormat.value = partial.time_format
+    if (partial.date_format !== undefined) dateFormat.value = partial.date_format
+    if (partial.week_start !== undefined) weekStart.value = partial.week_start
+    persist()
   }
 
   // Push palette + accent into CSS custom properties so plain (non-Naive)
@@ -211,15 +306,44 @@ export const useThemeStore = defineStore('theme', () => {
 
   watch([isDark, activeTheme], applyCssVars, { immediate: true })
 
+  // Reset to defaults on logout (drop the signed-in user's cached prefs).
+  function reset() {
+    activeTheme.value = COLOR_THEMES[0]
+    themeMode.value = 'system'
+    language.value = 'ru'
+    timezone.value = ''
+    country.value = ''
+    timeFormat.value = '24h'
+    dateFormat.value = 'dd.MM.yyyy'
+    weekStart.value = 1
+    boardBackground.value = ''
+    localStorage.removeItem('tessera_prefs')
+  }
+
   return {
     activeTheme,
     isDark,
+    themeMode,
     palette,
     primaryColor,
     onPrimaryColor,
     naiveTheme,
     themeOverrides,
+    // localizing + board background
+    language,
+    timezone,
+    country,
+    timeFormat,
+    dateFormat,
+    weekStart,
+    boardBackground,
+    // actions
     selectColor,
+    setThemeMode,
     toggle,
+    setBoardBackground,
+    setLocale,
+    hydrate,
+    reset,
   }
 })

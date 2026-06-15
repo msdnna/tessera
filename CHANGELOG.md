@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.56.0] — 2026-06-15
+User-management phase U1b (web) — consumes backend 0.30.0.
+- **Settings page** (`/settings`, from the sidebar account menu): edit the profile
+  (display name, split legal name Фамилия/Имя/Отчество, bio, company, job title;
+  email read-only), upload/remove an **avatar**, and change the password.
+- **Appearance moved from localStorage to the account (DB)**: accent, theme
+  (system/light/dark) and a new **board background** (CSS colour or image URL) now
+  persist server-side per user and are hydrated on sign-in (localStorage stays a
+  first-paint cache; legacy `tessera_color`/`tessera_dark` are migrated).
+- **Localization preferences** (language, timezone, country, time/date format,
+  week start) stored per user; date pickers now follow the chosen **week start**
+  and **date/time format**. (UI language switching itself comes later with i18n.)
+- **Inline member role editing** in the members modal — a role dropdown that PATCHes
+  the membership, replacing the old remove-and-re-add. Owner row is read-only.
+- **Type-to-confirm project deletion**: the project name must be typed before the
+  delete is allowed (reusable `ConfirmByName`).
+
 ### [0.55.0] — 2026-06-15
 - **Composer bar polish**: the inter-chip / inter-row gaps and the vertical
   padding now match the 8px side padding, so a multi-row (expanded / overflowing)

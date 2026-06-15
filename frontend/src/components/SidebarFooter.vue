@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { NButton, NIcon, NPopover, NTooltip, NAvatar } from 'naive-ui'
-import { LogOutOutline } from '@vicons/ionicons5'
+import { LogOutOutline, SettingsOutline } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -12,6 +12,11 @@ const props = defineProps({
 
 const authStore = useAuthStore()
 const router = useRouter()
+
+const avatarUrl = computed(() => authStore.user?.avatar_url || null)
+function openSettings() {
+  router.push('/settings')
+}
 
 const initials = computed(() => {
   const n = (authStore.user?.name || authStore.user?.email || '?').trim()
@@ -34,11 +39,15 @@ function logout() {
   <div class="sb-footer" :class="{ collapsed }">
     <n-popover v-if="compact" trigger="click" :placement="collapsed ? 'right-end' : 'top-start'">
       <template #trigger>
-        <n-avatar round :size="32" class="ava">{{ initials }}</n-avatar>
+        <n-avatar round :size="32" class="ava" :src="avatarUrl">{{ initials }}</n-avatar>
       </template>
       <div class="user-pop">
         <div class="up-name">{{ authStore.user?.name || 'Профиль' }}</div>
         <div class="up-mail">{{ authStore.user?.email }}</div>
+        <n-button size="small" block @click="openSettings">
+          <template #icon><n-icon :component="SettingsOutline" /></template>
+          Настройки
+        </n-button>
         <n-button size="small" block @click="logout">
           <template #icon><n-icon :component="LogOutOutline" /></template>
           Выйти
@@ -46,8 +55,18 @@ function logout() {
       </div>
     </n-popover>
     <div v-else class="user">
-      <n-avatar round :size="30" class="ava">{{ initials }}</n-avatar>
-      <span class="uname">{{ authStore.user?.name || 'Профиль' }}</span>
+      <n-avatar round :size="30" class="ava" :src="avatarUrl" @click="openSettings">{{
+        initials
+      }}</n-avatar>
+      <span class="uname" @click="openSettings">{{ authStore.user?.name || 'Профиль' }}</span>
+      <n-tooltip>
+        <template #trigger>
+          <n-button quaternary circle size="small" aria-label="Настройки" @click="openSettings">
+            <n-icon :component="SettingsOutline" />
+          </n-button>
+        </template>
+        Настройки
+      </n-tooltip>
       <n-tooltip>
         <template #trigger>
           <n-button quaternary circle size="small" aria-label="Выйти" @click="logout">

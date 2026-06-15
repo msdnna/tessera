@@ -24,6 +24,7 @@ import {
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useBoardViewStore } from '@/stores/boardView'
+import { useThemeStore } from '@/stores/theme'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { PRIORITY_LABELS } from '@/styles/tokens'
@@ -451,6 +452,16 @@ const colWidth = computed(() => {
   return Math.min(Math.max(w, COL_MIN), COL_MAX)
 })
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
+
+// User-chosen board background (preference): a CSS colour or an image URL.
+const themeStore = useThemeStore()
+const boardBgStyle = computed(() => {
+  const bg = themeStore.boardBackground
+  if (!bg) return {}
+  return /^https?:\/\//.test(bg)
+    ? { backgroundImage: `url("${bg}")`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : { background: bg }
+})
 
 // modals
 const selectedTaskId = ref(null)
@@ -1034,7 +1045,7 @@ watch(
         @changed="onChanged"
       />
 
-      <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
+      <div v-else ref="boardScroll" class="board-scroll" :style="[colStyleVars, boardBgStyle]">
         <draggable
           :list="colModel"
           group="columns"

@@ -48,6 +48,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue } from '@/utils/gradient'
 import { useThemeStore } from '@/stores/theme'
+import { useDateLocale } from '@/composables/useDateLocale'
 import { initials } from '@/utils/initials'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
@@ -64,6 +65,7 @@ const emit = defineEmits(['update:show', 'changed', 'open'])
 
 const store = useWorkspacesStore()
 const theme = useThemeStore()
+const { firstDayOfWeek, dateFormat } = useDateLocale()
 // Tag colour clamped for legible text on the active theme.
 const tagText = (c) => readableHue(c, theme.isDark)
 const auth = useAuthStore()
@@ -331,9 +333,7 @@ async function archiveTask(detachChildren) {
     message.error(e.message)
   }
 }
-const archiveHasSubs = computed(
-  () => (task.value?.subtasks?.length || 0) > 0,
-)
+const archiveHasSubs = computed(() => (task.value?.subtasks?.length || 0) > 0)
 async function handleArchiveNegative() {
   if (archiveHasSubs.value) await archiveTask(true)
 }
@@ -733,14 +733,24 @@ function eventText(e) {
                 <template #trigger>
                   <button class="val">{{ dueLabel || 'Не задан' }}</button>
                 </template>
-                <n-date-picker panel type="date" :value="dueTs" @update:value="setDue" />
+                <n-date-picker
+                  panel
+                  type="date"
+                  :value="dueTs"
+                  :first-day-of-week="firstDayOfWeek"
+                  :format="dateFormat"
+                  @update:value="setDue"
+                />
               </n-popover>
             </div>
 
             <!-- author (read-only) -->
             <div v-if="author" class="prow">
               <span class="plabel"><n-icon :component="PersonOutline" :size="15" /> Автор</span>
-              <div class="val static" :title="author.gl ? `@${author.login} · GitLab` : author.name">
+              <div
+                class="val static"
+                :title="author.gl ? `@${author.login} · GitLab` : author.name"
+              >
                 <span class="avatar">{{ initials(author.name) }}</span>
                 <span class="author-name">{{ author.name }}</span>
                 <span v-if="author.gl" class="author-gl">@{{ author.login }} · GitLab</span>
@@ -769,7 +779,9 @@ function eventText(e) {
                       :title="`${g} (GitLab)`"
                       >{{ initials(g) }}</span
                     >
-                    <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted">Никто</span>
+                    <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted"
+                      >Никто</span
+                    >
                   </button>
                 </template>
                 <div class="menu">
@@ -802,11 +814,16 @@ function eventText(e) {
                         v-for="t in tagObjs"
                         :key="t.id"
                         class="chip"
-                        :style="{ border: '1px solid transparent', background: tagPillBg(t.color, true) }"
+                        :style="{
+                          border: '1px solid transparent',
+                          background: tagPillBg(t.color, true),
+                        }"
                       >
-                        <span class="accent-grad-text" :style="{ '--grad': hueGrad(tagText(t.color)) }">{{
-                          t.name
-                        }}</span>
+                        <span
+                          class="accent-grad-text"
+                          :style="{ '--grad': hueGrad(tagText(t.color)) }"
+                          >{{ t.name }}</span
+                        >
                       </span>
                     </template>
                     <span v-else class="muted">Нет</span>
@@ -821,7 +838,11 @@ function eventText(e) {
                       :class="{ on: selectedTags.includes(t.id) }"
                       :style="
                         selectedTags.includes(t.id)
-                          ? { background: hueGrad(t.color), color: '#fff', borderColor: 'transparent' }
+                          ? {
+                              background: hueGrad(t.color),
+                              color: '#fff',
+                              borderColor: 'transparent',
+                            }
                           : {
                               background: softFill(t.color),
                               color: tagText(t.color),
@@ -909,14 +930,20 @@ function eventText(e) {
                   <span class="c-ava">{{ initials(c.author_name || c.gl_author_name) }}</span>
                   <div class="c-body">
                     <div class="c-head">
-                      <span class="c-author">{{ c.author_name || c.gl_author_name || 'Кто-то' }}</span>
+                      <span class="c-author">{{
+                        c.author_name || c.gl_author_name || 'Кто-то'
+                      }}</span>
                       <span v-if="!c.author_name && c.gl_author_name" class="c-gl">· GitLab</span>
                       <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
                       <span v-if="c.author_id === meId" class="c-acts">
                         <button class="c-act" title="Изменить" @click="startEditComment(c)">
                           ✎
                         </button>
-                        <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="deleteComment(c.id)">
+                        <n-popconfirm
+                          :positive-button-props="{ type: 'error' }"
+                          positive-text="Удалить"
+                          @positive-click="deleteComment(c.id)"
+                        >
                           <template #trigger>
                             <button class="c-act" title="Удалить">✕</button>
                           </template>
@@ -933,16 +960,13 @@ function eventText(e) {
                         @submit="saveComment"
                       />
                       <n-space :size="6" style="margin-top: 6px">
-                        <n-button size="tiny" type="primary" @click="saveComment">Сохранить</n-button>
+                        <n-button size="tiny" type="primary" @click="saveComment"
+                          >Сохранить</n-button
+                        >
                         <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
                       </n-space>
                     </template>
-                    <RichContent
-                      v-else
-                      class="c-text"
-                      :source="c.body"
-                      :members="mentionItems"
-                    />
+                    <RichContent v-else class="c-text" :source="c.body" :members="mentionItems" />
                   </div>
                 </div>
                 <div v-if="!comments.length" class="empty-hint">Комментариев пока нет</div>
@@ -979,7 +1003,11 @@ function eventText(e) {
                   :delay="250"
                 >
                   <template #trigger>
-                    <div class="subrow" :class="{ done: sub.completed_at }" @click="emit('open', sub.id)">
+                    <div
+                      class="subrow"
+                      :class="{ done: sub.completed_at }"
+                      @click="emit('open', sub.id)"
+                    >
                       <span class="check" @click.stop="toggleSubtask(sub)">
                         <n-icon
                           :component="sub.completed_at ? CheckmarkCircle : EllipseOutline"
@@ -997,7 +1025,9 @@ function eventText(e) {
                   </template>
                   <TaskMiniCard :task="sub" :tags-map="tagsById" :members-map="membersById" />
                 </n-popover>
-                <div v-if="!(task?.subtasks || []).length" class="empty-hint">Подзадач пока нет</div>
+                <div v-if="!(task?.subtasks || []).length" class="empty-hint">
+                  Подзадач пока нет
+                </div>
                 <n-input
                   v-model:value="newSubtask"
                   size="small"
@@ -1029,7 +1059,11 @@ function eventText(e) {
                     <span class="rel-num">#{{ r.related_number }}</span>
                     <span class="rel-title">{{ r.related_title }}</span>
                   </button>
-                  <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="removeRelation(r.id)">
+                  <n-popconfirm
+                    :positive-button-props="{ type: 'error' }"
+                    positive-text="Удалить"
+                    @positive-click="removeRelation(r.id)"
+                  >
                     <template #trigger>
                       <button class="c-act" title="Убрать связь">
                         <n-icon :component="CloseOutline" />
@@ -1105,7 +1139,11 @@ function eventText(e) {
                   <button class="c-act" title="Скачать" @click="downloadAttachment(a)">
                     <n-icon :component="DownloadOutline" />
                   </button>
-                  <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="deleteAttachment(a.id)">
+                  <n-popconfirm
+                    :positive-button-props="{ type: 'error' }"
+                    positive-text="Удалить"
+                    @positive-click="deleteAttachment(a.id)"
+                  >
                     <template #trigger>
                       <button class="c-act" title="Удалить">
                         <n-icon :component="TrashOutline" />
@@ -1154,7 +1192,11 @@ function eventText(e) {
                   <span class="fbtn-label">В архив</span>
                 </n-button>
               </template>
-              {{ archiveHasSubs ? 'У задачи есть подзадачи — что с ними сделать?' : 'Перенести задачу в архив?' }}
+              {{
+                archiveHasSubs
+                  ? 'У задачи есть подзадачи — что с ними сделать?'
+                  : 'Перенести задачу в архив?'
+              }}
             </n-popconfirm>
             <n-popconfirm
               :positive-button-props="{ type: 'error' }"

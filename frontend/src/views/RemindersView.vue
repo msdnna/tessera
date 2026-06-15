@@ -14,7 +14,9 @@ import {
 } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
 import { reminders as remApi } from '@/api'
+import { useDateLocale } from '@/composables/useDateLocale'
 
+const { firstDayOfWeek, dateTimeFormat } = useDateLocale()
 const message = useMessage()
 const list = ref([])
 const newMessage = ref('')
@@ -85,7 +87,13 @@ onMounted(load)
     <n-card size="small" class="add-card">
       <div class="add-row">
         <n-input v-model:value="newMessage" placeholder="О чём напомнить?" @keyup.enter="add" />
-        <n-date-picker v-model:value="newAt" type="datetime" clearable />
+        <n-date-picker
+          v-model:value="newAt"
+          type="datetime"
+          clearable
+          :first-day-of-week="firstDayOfWeek"
+          :format="dateTimeFormat"
+        />
         <n-button type="primary" @click="add">Добавить</n-button>
       </div>
     </n-card>
@@ -99,7 +107,11 @@ onMounted(load)
             {{ fmt(r.remind_at) }}<span v-if="overdue(r)"> · просрочено</span>
           </div>
         </div>
-        <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove(r)">
+        <n-popconfirm
+          :positive-button-props="{ type: 'error' }"
+          positive-text="Удалить"
+          @positive-click="remove(r)"
+        >
           <template #trigger>
             <n-button text size="tiny" type="error">
               <n-icon :component="TrashOutline" />
