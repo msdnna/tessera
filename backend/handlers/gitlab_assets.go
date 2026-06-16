@@ -39,6 +39,18 @@ func (h *API) assetProxyURL(wsID uuid.UUID, relPath string) string {
 		"&sig=" + h.signAsset(wsID, relPath)
 }
 
+// avatarProxyURL builds a same-origin signed proxy URL for an absolute GitLab
+// avatar URL. Clients with no direct GitLab access (e.g. the mobile app) load
+// the avatar from Tessera, which fetches it server-side. "" stays "".
+func (h *API) avatarProxyURL(wsID uuid.UUID, absURL string) string {
+	if absURL == "" {
+		return ""
+	}
+	return "/api/gitlab/avatar?ws=" + wsID.String() +
+		"&u=" + base64.RawURLEncoding.EncodeToString([]byte(absURL)) +
+		"&sig=" + h.signAsset(wsID, absURL)
+}
+
 // rewriteAssets rewrites GitLab project-relative "/uploads/…" links in markdown
 // (or inline HTML) to signed proxy URLs so they resolve in Tessera.
 func (h *API) rewriteAssets(body string, wsID uuid.UUID) string {
@@ -111,8 +123,89 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		}
 	}
 
-	// Older GitLab (< 17.4) has no such API and its web /uploads/ route ignores
-	// the token; redirect to it so the browser's own GitLab session serves the
-	// file (the user is logged into GitLab).
-	c.Redirect(http.StatusFound, base+"/"+projectPath+relPath)
+	// Older GitLab (< 17.4) has no uploads API. Stream the web /uploads/ route
+	// server-side (best-effort PRIVATE-TOKEN; works for public projects) instead
+	// of redirecting — a redirect to the GitLab host only resolves for a browser
+	// with a GitLab session, never for the mobile app. On failure fall through to
+	// 404 so the client shows its own fallback rather than a broken redirect.
+	webURL := base + "/" + projectPath + relPath
+	if req, rerr := http.NewRequestWithContext(c, http.MethodGet, webURL, nil); rerr == nil {
+		req.Header.Set("PRIVATE-TOKEN", token)
+		if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
+			defer func() { _ = resp.Body.Close() }()
+			ct := resp.Header.Get("Content-Type")
+			// A sign-in redirect serves HTML — only stream real binary content.
+			if resp.StatusCode == http.StatusOK && !strings.HasPrefix(ct, "text/html") {
+				if ct == "" {
+					ct = "application/octet-stream"
+				}
+				c.Header("Cache-Control", "private, max-age=3600")
+				c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+				return
+			}
+		}
+	}
+	c.Status(http.StatusNotFound)
+}
+
+// GitlabAvatar proxies a signed absolute GitLab avatar URL: it verifies the HMAC,
+// then streams the image so clients without direct GitLab access (the mobile app)
+// can show it. The integration owner's token is sent ONLY when the URL host is
+// the GitLab instance — never leaked to gravatar/external avatar hosts.
+func (h *API) GitlabAvatar(c *gin.Context) {
+	wsID, err := uuid.Parse(c.Query("ws"))
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	ub, err := base64.RawURLEncoding.DecodeString(c.Query("u"))
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	rawURL := string(ub)
+	if !hmac.Equal([]byte(c.Query("sig")), []byte(h.signAsset(wsID, rawURL))) {
+		c.Status(http.StatusForbidden)
+		return
+	}
+	target, err := url.Parse(rawURL)
+	if err != nil || (target.Scheme != "http" && target.Scheme != "https") {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
+	if err != nil || integ.OwnerUserID == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	req, rerr := http.NewRequestWithContext(c, http.MethodGet, rawURL, nil)
+	if rerr != nil {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	// Attach the owner's token only when fetching from the GitLab host itself.
+	if cred, cerr := h.q.GetGitlabCredential(c, *integ.OwnerUserID); cerr == nil {
+		if gb, gerr := url.Parse(cred.BaseUrl); gerr == nil && gb.Host == target.Host {
+			if token, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
+				req.Header.Set("PRIVATE-TOKEN", token)
+			}
+		}
+	}
+	resp, derr := gitlab.NewHTTPClient().Do(req)
+	if derr != nil {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		c.Status(http.StatusNotFound) // client falls back to initials
+		return
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "image/png"
+	}
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
 }

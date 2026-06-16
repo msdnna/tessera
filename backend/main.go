@@ -78,6 +78,7 @@ func main() {
 		// (public — an <img> can't send auth; HMAC-signed so only Tessera
 		// links work, fetched with the integration owner's token).
 		api.GET("/gitlab/asset", rh.GitlabAsset)
+		api.GET("/gitlab/avatar", rh.GitlabAvatar)
 
 		// Avatar blobs served publicly (an <img> can't send the bearer header);
 		// keyed by user UUID, low-sensitivity.

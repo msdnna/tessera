@@ -558,7 +558,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
 			LabelsHash: hashStr(labelsKey(issue.Labels)),
 			GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
-			GlAuthorAvatarUrl: issue.AuthorAvatar,
+			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, issue.AuthorAvatar),
 		}); cerr != nil {
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
@@ -594,7 +594,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			TitleHash:   hashStr(issue.Title), DescHash: hashStr(issue.Description),
 			LabelsHash: hashStr(labelsKey(issue.Labels)),
 			GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
-			GlAuthorAvatarUrl: issue.AuthorAvatar,
+			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, issue.AuthorAvatar),
 		}); uerr != nil {
 			log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
 			return uuid.Nil, false, false
@@ -616,7 +616,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 // manually.
 func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) {
 	h.reconcileTags(ctx, taskID, wsID, tags)
-	h.reconcileAssignees(ctx, taskID, issue.Assignees)
+	h.reconcileAssignees(ctx, wsID, taskID, issue.Assignees)
 	h.syncComments(ctx, taskID, wsID, issue.Notes)
 }
 
@@ -644,7 +644,7 @@ func (h *API) reconcileTags(ctx context.Context, taskID, wsID uuid.UUID, tags []
 // whose username maps to a Tessera user becomes a real (gitlab-sourced) assignee;
 // the rest are stored as external display-only assignees. Manual ('user')
 // assignees are left untouched.
-func (h *API) reconcileAssignees(ctx context.Context, taskID uuid.UUID, people []gitlab.Person) {
+func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, people []gitlab.Person) {
 	_ = h.q.DeleteTaskGitlabAssignees(ctx, taskID) // external set is fully rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))
 	for _, p := range people {
@@ -652,7 +652,10 @@ func (h *API) reconcileAssignees(ctx context.Context, taskID uuid.UUID, people [
 			_ = h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"})
 			tesseraIDs = append(tesseraIDs, uid)
 		} else {
-			_ = h.q.AddTaskGitlabAssignee(ctx, db.AddTaskGitlabAssigneeParams{TaskID: taskID, GlUsername: p.Login, GlName: p.Name, GlAvatarUrl: p.AvatarURL})
+			_ = h.q.AddTaskGitlabAssignee(ctx, db.AddTaskGitlabAssigneeParams{
+				TaskID: taskID, GlUsername: p.Login, GlName: p.Name,
+				GlAvatarUrl: h.avatarProxyURL(wsID, p.AvatarURL),
+			})
 		}
 	}
 	_ = h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs})

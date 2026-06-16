@@ -1070,6 +1070,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.33.1] — 2026-06-16
+- Fix: GitLab media now loads on clients without direct GitLab access (the mobile
+  app). GitLab **avatars** are routed through a new signed same-origin proxy
+  `GET /api/gitlab/avatar` (the server fetches the image; the integration owner's
+  token is sent only when the host is the GitLab instance, never to gravatar). The
+  **upload/attachment** proxy (`/api/gitlab/asset`) now streams the file
+  server-side on older GitLab (<17.4) instead of redirecting to the GitLab host (a
+  redirect only resolves for a browser with a GitLab session, never for the app);
+  on failure it 404s so the client shows its fallback. Avatar URLs are proxied at
+  sync time — a re-sync (manual or the worker) updates already-linked issues.
+
 ### [0.33.0] — 2026-06-16
 User-management phase U3a (global admin panel backend). All global-admin only,
 each handler re-checks `is_admin`; no migration.
