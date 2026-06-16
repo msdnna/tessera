@@ -1,6 +1,7 @@
 package website.msdnna.tessera.util
 
 import androidx.compose.ui.graphics.Color
+import kotlin.math.pow
 
 /** Parses a `#rrggbb` / `#aarrggbb` hex string; returns [fallback] on failure. */
 fun parseHexColor(hex: String?, fallback: Color): Color {
@@ -44,6 +45,18 @@ fun readableHue(base: Color, isDark: Boolean): Color {
     }
     val nl = if (isDark) maxOf(l, 0.62f) else minOf(l, 0.42f)
     return hslToColor(h, s, nl, base.alpha)
+}
+
+/**
+ * Readable text/icon colour to lay *on top of* a solid fill of [base] — picks
+ * near-black or white by the fill's relative luminance, so a label on a solid
+ * bright tag (e.g. yellow) stays legible. Unlike the theme's `onPrimary` (keyed
+ * to the accent), this keys to the tag's own colour. Web parity: `onColor`.
+ */
+fun onColor(base: Color): Color {
+    fun chan(v: Float): Float = if (v <= 0.03928f) v / 12.92f else ((v + 0.055f) / 1.055f).pow(2.4f)
+    val lum = 0.2126f * chan(base.red) + 0.7152f * chan(base.green) + 0.0722f * chan(base.blue)
+    return if (lum > 0.45f) Color(0xFF1F1F1F) else Color.White
 }
 
 private fun hslToColor(h: Float, s: Float, l: Float, alpha: Float): Color {

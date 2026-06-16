@@ -95,6 +95,7 @@ import website.msdnna.tessera.ui.theme.accentGradientTint
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.longDate
+import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
@@ -571,13 +572,32 @@ private fun TagsValue(taskTagIds: List<String>, tags: List<Tag>, onToggle: (Stri
             if (chosen.isEmpty()) {
                 Text("Нет", color = c.text3, fontSize = 14.sp)
             } else {
-                chosen.forEach { t ->
+                // Show as many whole pills as fit on one line; the rest collapse to
+                // a "+N" chip (no wrapping a tag name onto a second line).
+                val maxVisible = 3
+                chosen.take(maxVisible).forEach { t ->
                     val base = parseHexColor(t.color, c.text3)
                     val text = readableHue(base, c.isDark)
                     Box(
                         Modifier.clip(RoundedCornerShape(RadiusSm)).background(accentGradient(base.copy(alpha = 0.18f)))
                             .padding(horizontal = 8.dp, vertical = 2.dp),
-                    ) { Text(t.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(text))) }
+                    ) {
+                        Text(
+                            t.name,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            softWrap = false,
+                            style = TextStyle(brush = accentGradient(text)),
+                        )
+                    }
+                }
+                val extra = chosen.size - maxVisible
+                if (extra > 0) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(RadiusSm)).background(c.surfaceAlt)
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    ) { Text("+$extra", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
                 }
             }
         }
@@ -595,7 +615,7 @@ private fun TagsValue(taskTagIds: List<String>, tags: List<Tag>, onToggle: (Stri
                             .background(accentGradient(if (on) base else base.copy(alpha = 0.14f)))
                             .clickableNoRipple { onToggle(t.id) }
                             .padding(horizontal = 9.dp, vertical = 3.dp),
-                    ) { Text(t.name, color = if (on) c.onPrimary else readableHue(base, c.isDark), fontSize = 12.sp) }
+                    ) { Text(t.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp) }
                 }
             }
             Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).width(250.dp)) {

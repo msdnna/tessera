@@ -61,6 +61,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.isOverdue
+import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
@@ -461,7 +462,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
                             .clickableNoRipple { vm.toggleTag(task, tag.id) }
                             .padding(horizontal = 9.dp, vertical = 3.dp),
                     ) {
-                        Text(tag.name, color = if (on) Tessera.colors.onPrimary else readableHue(base, c.isDark), fontSize = 12.sp)
+                        Text(tag.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp)
                     }
                 }
             }

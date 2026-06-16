@@ -5,6 +5,15 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.13.1 — 2026-06-16
+- Fix: the task-modal tag row no longer wraps a tag name onto a second line — it
+  shows up to a few whole pills then a **+N** chip for the rest (matching the card).
+- Fix: a selected (solid-filled) tag in the tag pickers (task card + modal) now
+  uses a luminance-readable text colour (`onColor`, keyed to the tag's own colour)
+  instead of the theme's `onPrimary`, so labels on bright tags stay legible.
+- GitLab author/assignee avatars now load (they go through the backend's new
+  signed avatar proxy — backend 0.33.1 — since the app has no direct GitLab access).
+
 ## 0.13.0 — 2026-06-16
 User-management phase U3c (admin panel) — consumes backend 0.33.
 - **Администрирование** screen (sidebar entry shown only to admins): lists every
