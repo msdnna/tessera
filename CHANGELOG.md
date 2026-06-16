@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.65.0] — 2026-06-16
+- **Task due dates now carry a time** (prep for due-date notifications): the due
+  picker in the task modal and on the card is now a datetime picker (mirrors the
+  reminders picker). A missing/midnight time is treated as 00:00 and hidden in the
+  UI — date-only and legacy tasks stay terse, timed ones show the hour (12h/24h per
+  the locale setting). Due labels unified through a shared `formatDue` (task modal,
+  card, list view, home). The backend already stored a full timestamp — no schema
+  change.
+
 ### [0.64.0] — 2026-06-16
 - **Message-template editor** for notification channels (consumes backend 0.36): a
   separate modal with a syntax-highlighted editor ({{…}} actions highlighted via a

@@ -66,7 +66,7 @@ const emit = defineEmits(['update:show', 'changed', 'open'])
 
 const store = useWorkspacesStore()
 const theme = useThemeStore()
-const { firstDayOfWeek, dateFormat } = useDateLocale()
+const { firstDayOfWeek, dateTimeFormat, formatDue } = useDateLocale()
 // Tag colour clamped for legible text on the active theme.
 const tagText = (c) => readableHue(c, theme.isDark)
 const auth = useAuthStore()
@@ -197,15 +197,7 @@ const author = computed(() => {
   }
   return null
 })
-const dueLabel = computed(() =>
-  dueTs.value
-    ? new Date(dueTs.value).toLocaleDateString('ru-RU', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      })
-    : '',
-)
+const dueLabel = computed(() => (dueTs.value ? formatDue(new Date(dueTs.value).toISOString()) : ''))
 
 // Location breadcrumb: group chain → project → board (resolved from the store).
 const breadcrumb = computed(() => {
@@ -227,7 +219,7 @@ const breadcrumb = computed(() => {
 })
 
 function subDue(d) {
-  return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
+  return formatDue(d)
 }
 
 async function loadDetail() {
@@ -741,10 +733,10 @@ function eventText(e) {
                 </template>
                 <n-date-picker
                   panel
-                  type="date"
+                  type="datetime"
                   :value="dueTs"
                   :first-day-of-week="firstDayOfWeek"
-                  :format="dateFormat"
+                  :format="dateTimeFormat"
                   @update:value="setDue"
                 />
               </n-popover>

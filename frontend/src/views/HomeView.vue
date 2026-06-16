@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, readableHue } from '@/utils/gradient'
 import { useThemeStore } from '@/stores/theme'
+import { useDateLocale } from '@/composables/useDateLocale'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 
 const router = useRouter()
@@ -92,9 +93,7 @@ function openTask(t) {
 function initials(name) {
   return (name || '?').trim().slice(0, 2).toUpperCase()
 }
-function dueLabel(d) {
-  return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
-}
+const { formatDue: dueLabel } = useDateLocale()
 function isOverdue(t) {
   return t.due_date && !t.completed_at && new Date(t.due_date) < new Date()
 }

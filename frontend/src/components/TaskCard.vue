@@ -31,7 +31,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
 
 const theme = useThemeStore()
-const { firstDayOfWeek, dateFormat } = useDateLocale()
+const { firstDayOfWeek, dateTimeFormat, formatDue } = useDateLocale()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
 
@@ -96,16 +96,7 @@ const author = computed(() => {
   }
   return null
 })
-// Format a due date; include the year when it isn't the current year so a
-// far-off (or stale) date isn't mistaken for one in the current year.
-function fmtDue(dateStr) {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  const opts = { day: '2-digit', month: 'short' }
-  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
-  return d.toLocaleDateString('ru-RU', opts)
-}
-const due = computed(() => fmtDue(props.task.due_date))
+const due = computed(() => formatDue(props.task.due_date))
 // Overdue: due date in the past on a not-yet-done task.
 const overdue = computed(
   () => !!props.task.due_date && !done.value && Date.parse(props.task.due_date) < Date.now(),
@@ -332,7 +323,7 @@ async function onSubChange(evt) {
   }
 }
 function subDue(s) {
-  return fmtDue(s.due_date)
+  return formatDue(s.due_date)
 }
 async function toggleSubDone(s) {
   await tasksApi.update(s.id, {
@@ -455,10 +446,10 @@ async function submitAddSub() {
           </template>
           <n-date-picker
             panel
-            type="date"
+            type="datetime"
             :value="dueTs"
             :first-day-of-week="firstDayOfWeek"
-            :format="dateFormat"
+            :format="dateTimeFormat"
             @update:value="setDue"
           />
         </n-popover>

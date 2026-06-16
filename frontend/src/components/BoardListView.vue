@@ -3,6 +3,7 @@ import { NDropdown, NPopconfirm } from 'naive-ui'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
+import { useDateLocale } from '@/composables/useDateLocale'
 import { initials } from '@/utils/initials'
 
 const props = defineProps({
@@ -23,9 +24,7 @@ const menu = useTaskMenu({
   columns: () => props.statusColumns,
 })
 
-function fmtDue(d) {
-  return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
-}
+const { formatDue: fmtDue } = useDateLocale()
 function isOverdue(t) {
   return t.due_date && !t.completed_at && new Date(t.due_date) < new Date(new Date().toDateString())
 }

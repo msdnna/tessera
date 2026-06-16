@@ -11,5 +11,25 @@ export function useDateLocale() {
   const dateTimeFormat = computed(
     () => `${dateFormat.value} ${theme.timeFormat === '12h' ? 'hh:mm a' : 'HH:mm'}`,
   )
-  return { firstDayOfWeek, dateFormat, dateTimeFormat }
+
+  // formatDue renders a task due date compactly: day + month (+ year when not the
+  // current one), and the time only when it isn't midnight — so date-only tasks
+  // (and legacy rows, which default to 00:00) stay terse while timed ones show the
+  // hour. Honours the user's 12h/24h preference.
+  function formatDue(dateStr) {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    const locale = theme.language === 'en' ? 'en-GB' : 'ru-RU'
+    const opts = { day: '2-digit', month: 'short' }
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
+    if (d.getHours() !== 0 || d.getMinutes() !== 0) {
+      opts.hour = '2-digit'
+      opts.minute = '2-digit'
+      opts.hour12 = theme.timeFormat === '12h'
+      return d.toLocaleString(locale, opts)
+    }
+    return d.toLocaleDateString(locale, opts)
+  }
+
+  return { firstDayOfWeek, dateFormat, dateTimeFormat, formatDue }
 }
