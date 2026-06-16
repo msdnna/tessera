@@ -40,6 +40,13 @@ type BoardView struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type DueNotificationState struct {
+	TaskID      uuid.UUID `json:"task_id"`
+	UserID      uuid.UUID `json:"user_id"`
+	FiredDue    time.Time `json:"fired_due"`
+	LastFiredAt time.Time `json:"last_fired_at"`
+}
+
 type GitlabCredential struct {
 	UserID     uuid.UUID `json:"user_id"`
 	BaseUrl    string    `json:"base_url"`
@@ -141,6 +148,15 @@ type NotificationDelivery struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+type NotificationPref struct {
+	UserID           uuid.UUID `json:"user_id"`
+	DueEnabled       bool      `json:"due_enabled"`
+	DueLeadMinutes   int32     `json:"due_lead_minutes"`
+	DueRepeatMinutes int32     `json:"due_repeat_minutes"`
+	ReminderEnabled  bool      `json:"reminder_enabled"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 type NotificationRoute struct {
 	ID         uuid.UUID   `json:"id"`
 	UserID     uuid.UUID   `json:"user_id"`
@@ -187,13 +203,14 @@ type RefreshToken struct {
 }
 
 type Reminder struct {
-	ID        uuid.UUID  `json:"id"`
-	UserID    uuid.UUID  `json:"user_id"`
-	TaskID    *uuid.UUID `json:"task_id"`
-	RemindAt  time.Time  `json:"remind_at"`
-	Message   string     `json:"message"`
-	Done      bool       `json:"done"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID         uuid.UUID  `json:"id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	TaskID     *uuid.UUID `json:"task_id"`
+	RemindAt   time.Time  `json:"remind_at"`
+	Message    string     `json:"message"`
+	Done       bool       `json:"done"`
+	CreatedAt  time.Time  `json:"created_at"`
+	NotifiedAt *time.Time `json:"notified_at"`
 }
 
 type Tag struct {
@@ -205,21 +222,24 @@ type Tag struct {
 }
 
 type Task struct {
-	ID          uuid.UUID  `json:"id"`
-	BoardID     uuid.UUID  `json:"board_id"`
-	ColumnID    uuid.UUID  `json:"column_id"`
-	ParentID    *uuid.UUID `json:"parent_id"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Priority    int32      `json:"priority"`
-	DueDate     *time.Time `json:"due_date"`
-	Position    float64    `json:"position"`
-	CreatedBy   *uuid.UUID `json:"created_by"`
-	CompletedAt *time.Time `json:"completed_at"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	ArchivedAt  *time.Time `json:"archived_at"`
-	Number      *int64     `json:"number"`
+	ID               uuid.UUID  `json:"id"`
+	BoardID          uuid.UUID  `json:"board_id"`
+	ColumnID         uuid.UUID  `json:"column_id"`
+	ParentID         *uuid.UUID `json:"parent_id"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	Priority         int32      `json:"priority"`
+	DueDate          *time.Time `json:"due_date"`
+	Position         float64    `json:"position"`
+	CreatedBy        *uuid.UUID `json:"created_by"`
+	CompletedAt      *time.Time `json:"completed_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	ArchivedAt       *time.Time `json:"archived_at"`
+	Number           *int64     `json:"number"`
+	DueLeadMinutes   *int32     `json:"due_lead_minutes"`
+	DueRepeatMinutes *int32     `json:"due_repeat_minutes"`
+	DueNotifyEnabled *bool      `json:"due_notify_enabled"`
 }
 
 type TaskAssignee struct {

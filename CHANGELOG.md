@@ -1116,6 +1116,22 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.37.0] — 2026-06-16
+- **Due-date & reminder notifications** (Phase B, migration **0019**). A background
+  scanner (60s) emits notifications:
+  - **Due dates**: per the recipient's `notification_prefs` (lead minutes before due
+    + optional repeat-every-N), with a per-task override (`due_lead_minutes` /
+    `due_repeat_minutes` / `due_notify_enabled`, null = inherit). Recipients are the
+    task's assignees + creator. A per-(task,user) state dedups and drives the
+    repeat; it snapshots the due date it fired for, so editing the due date re-arms
+    it. Bounded scan window (≤31d ahead, ≤7d overdue).
+  - **Reminders**: routed to the user's channels once at `remind_at` (alongside the
+    Android local alarm), gated by `reminder_enabled`.
+  - Emitted notifications flow through the existing routing + outbox; the firing
+    decision (`dueShouldFire`) is unit-tested.
+  - New endpoints: `GET/PUT /notification-prefs` (per-user defaults),
+    `PATCH /tasks/:id/due-notify` (per-task override).
+
 ### [0.36.0] — 2026-06-16
 - **Go-template message templating per channel** (migration **0018**: `template`
   on `notification_channels`). Each channel can render its message from a Go

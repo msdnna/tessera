@@ -51,6 +51,9 @@ func main() {
 	// deliveries (email/telegram/webhook). Idle until a user configures channels.
 	go rh.RunNotificationWorker(context.Background())
 
+	// Background scanner — emits due-date + reminder notifications on schedule.
+	go rh.RunNotificationScanner(context.Background())
+
 	r := gin.Default()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)
@@ -218,6 +221,9 @@ func main() {
 			protected.DELETE("/notification-channels/:id", rh.DeleteNotificationChannel)
 			protected.POST("/notification-channels/:id/test", rh.TestNotificationChannel)
 			protected.POST("/notification-template-preview", rh.PreviewNotificationTemplate)
+			protected.GET("/notification-prefs", rh.GetMyNotificationPrefs)
+			protected.PUT("/notification-prefs", rh.UpdateMyNotificationPrefs)
+			protected.PATCH("/tasks/:id/due-notify", rh.SetTaskDueNotify)
 			protected.GET("/notification-routes", rh.ListNotificationRoutes)
 			protected.POST("/notification-routes", rh.CreateNotificationRoute)
 			protected.PATCH("/notification-routes/:id", rh.UpdateNotificationRoute)

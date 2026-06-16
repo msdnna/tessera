@@ -15,7 +15,7 @@ import (
 const createReminder = `-- name: CreateReminder :one
 INSERT INTO reminders (user_id, task_id, remind_at, message)
 VALUES ($1, $2, $3, $4)
-RETURNING id, user_id, task_id, remind_at, message, done, created_at
+RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at
 `
 
 type CreateReminderParams struct {
@@ -41,6 +41,7 @@ func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) 
 		&i.Message,
 		&i.Done,
 		&i.CreatedAt,
+		&i.NotifiedAt,
 	)
 	return i, err
 }
@@ -55,7 +56,7 @@ func (q *Queries) DeleteReminder(ctx context.Context, id uuid.UUID) error {
 }
 
 const getReminder = `-- name: GetReminder :one
-SELECT id, user_id, task_id, remind_at, message, done, created_at FROM reminders WHERE id = $1
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at FROM reminders WHERE id = $1
 `
 
 func (q *Queries) GetReminder(ctx context.Context, id uuid.UUID) (Reminder, error) {
@@ -69,12 +70,13 @@ func (q *Queries) GetReminder(ctx context.Context, id uuid.UUID) (Reminder, erro
 		&i.Message,
 		&i.Done,
 		&i.CreatedAt,
+		&i.NotifiedAt,
 	)
 	return i, err
 }
 
 const listReminders = `-- name: ListReminders :many
-SELECT id, user_id, task_id, remind_at, message, done, created_at FROM reminders WHERE user_id = $1 ORDER BY remind_at
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at FROM reminders WHERE user_id = $1 ORDER BY remind_at
 `
 
 func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]Reminder, error) {
@@ -94,6 +96,7 @@ func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]Remind
 			&i.Message,
 			&i.Done,
 			&i.CreatedAt,
+			&i.NotifiedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -109,7 +112,7 @@ const updateReminder = `-- name: UpdateReminder :one
 UPDATE reminders
 SET remind_at = $2, message = $3, done = $4
 WHERE id = $1
-RETURNING id, user_id, task_id, remind_at, message, done, created_at
+RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at
 `
 
 type UpdateReminderParams struct {
@@ -135,6 +138,7 @@ func (q *Queries) UpdateReminder(ctx context.Context, arg UpdateReminderParams) 
 		&i.Message,
 		&i.Done,
 		&i.CreatedAt,
+		&i.NotifiedAt,
 	)
 	return i, err
 }

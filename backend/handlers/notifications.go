@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 	"tessera/internal/mail"
@@ -472,6 +473,34 @@ func (h *API) DeleteNotificationRoute(c *gin.Context) {
 
 // ── dispatch (enqueue) ─────────────────────────────────────
 
+// deliverNotification persists a notification, pushes it live over the workspace
+// socket, and routes it to the user's external channels. actorID is nil for
+// system-generated notifications (the due/reminder scanner). Best-effort — used
+// both on the request path (via notify) and off it (the scanner).
+func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, taskID, actorID *uuid.UUID, kind, text string) {
+	n, err := h.q.CreateNotification(ctx, db.CreateNotificationParams{
+		UserID: userID, WorkspaceID: wsID, TaskID: taskID, ActorID: actorID, Kind: kind, Text: text,
+	})
+	if err != nil {
+		return
+	}
+	// Enrich the live payload with the task's board id + number so a freshly
+	// pushed notification is clickable (the list endpoint joins these in).
+	obj := gin.H{
+		"id": n.ID, "user_id": n.UserID, "workspace_id": n.WorkspaceID,
+		"task_id": n.TaskID, "actor_id": n.ActorID, "kind": n.Kind,
+		"text": n.Text, "read_at": n.ReadAt, "created_at": n.CreatedAt,
+	}
+	if taskID != nil {
+		if t, terr := h.q.GetTask(ctx, *taskID); terr == nil {
+			obj["task_board_id"] = t.BoardID
+			obj["task_number"] = t.Number
+		}
+	}
+	h.broadcast(wsID, "notification", gin.H{"user_id": userID, "notification": obj})
+	h.routeNotification(ctx, n)
+}
+
 // routeNotification evaluates a freshly created notification against the user's
 // routing rules and enqueues an outbox delivery per channel of the first matching
 // enabled rule (first-match-wins; a matching rule with mute=true drops it). The
@@ -664,6 +693,272 @@ func notifyTitle(kind string) string {
 	default:
 		return "Уведомление"
 	}
+}
+
+// ── due/reminder scanner (Phase B) ─────────────────────────
+
+const notifyScanTick = 60 * time.Second
+
+// RunNotificationScanner periodically emits notifications for upcoming/overdue
+// task due dates (per the user's lead/repeat prefs) and for reminders whose time
+// has arrived. The emitted notifications flow through the same routing + outbox as
+// any other. Blocks until ctx is done; start it in a goroutine.
+func (h *API) RunNotificationScanner(ctx context.Context) {
+	ticker := time.NewTicker(notifyScanTick)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			h.scanDueTasks(ctx)
+			h.scanReminders(ctx)
+		}
+	}
+}
+
+// defaultPrefs is the scheduling config for a user who hasn't customised it.
+func defaultPrefs(uid uuid.UUID) db.NotificationPref {
+	return db.NotificationPref{
+		UserID: uid, DueEnabled: true, DueLeadMinutes: 60, DueRepeatMinutes: 0, ReminderEnabled: true,
+	}
+}
+
+// scanDueTasks fires due-date notifications. For each candidate task and each of
+// its participants it resolves the effective (per-task override → user default)
+// enable/lead/repeat, then uses the per-(task,user) state to fire once at the lead
+// window and, when a repeat interval is set, again every interval. The state
+// snapshots the due_date it fired for, so editing the due date re-arms it.
+func (h *API) scanDueTasks(ctx context.Context) {
+	tasks, err := h.q.ListDueTasksForScan(ctx)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	prefsCache := map[uuid.UUID]db.NotificationPref{}
+	getPrefs := func(uid uuid.UUID) db.NotificationPref {
+		if p, ok := prefsCache[uid]; ok {
+			return p
+		}
+		p, perr := h.q.GetNotificationPrefs(ctx, uid)
+		if perr != nil {
+			p = defaultPrefs(uid)
+		}
+		prefsCache[uid] = p
+		return p
+	}
+	for _, t := range tasks {
+		if t.DueDate == nil {
+			continue
+		}
+		wsID, werr := h.q.WorkspaceIDForBoard(ctx, t.BoardID)
+		if werr != nil {
+			continue
+		}
+		for _, uid := range h.dueRecipients(ctx, t) {
+			p := getPrefs(uid)
+			enabled := p.DueEnabled
+			if t.DueNotifyEnabled != nil {
+				enabled = *t.DueNotifyEnabled
+			}
+			if !enabled {
+				continue
+			}
+			lead := p.DueLeadMinutes
+			if t.DueLeadMinutes != nil {
+				lead = *t.DueLeadMinutes
+			}
+			repeat := p.DueRepeatMinutes
+			if t.DueRepeatMinutes != nil {
+				repeat = *t.DueRepeatMinutes
+			}
+			var prior *db.DueNotificationState
+			if st, serr := h.q.GetDueNotificationState(ctx, db.GetDueNotificationStateParams{TaskID: t.ID, UserID: uid}); serr == nil {
+				prior = &st
+			}
+			if !dueShouldFire(now, *t.DueDate, lead, repeat, prior) {
+				continue
+			}
+			h.deliverNotification(ctx, uid, wsID, &t.ID, nil, "due_soon", dueText(t))
+			_ = h.q.UpsertDueNotificationState(ctx, db.UpsertDueNotificationStateParams{
+				TaskID: t.ID, UserID: uid, FiredDue: *t.DueDate,
+			})
+		}
+	}
+}
+
+// dueShouldFire decides whether a due-date notification should fire now, given the
+// effective lead/repeat (minutes), the task's due date, the prior per-(task,user)
+// state (nil = never fired), and the current time. It fires once when now enters
+// the lead window [due-lead, ∞); if the due date changed since the last fire it
+// re-arms; and with a positive repeat it fires again every repeat minutes.
+func dueShouldFire(now, due time.Time, lead, repeat int32, prior *db.DueNotificationState) bool {
+	if now.Before(due.Add(-time.Duration(lead) * time.Minute)) {
+		return false // not yet inside the lead window
+	}
+	if prior == nil || !prior.FiredDue.Equal(due) {
+		return true // never fired, or the due date moved → re-arm
+	}
+	if repeat <= 0 {
+		return false // one-shot, already fired
+	}
+	return !now.Before(prior.LastFiredAt.Add(time.Duration(repeat) * time.Minute))
+}
+
+// dueRecipients are the users who hear about a task's due date: its assignees plus
+// its creator, deduped.
+func (h *API) dueRecipients(ctx context.Context, t db.Task) []uuid.UUID {
+	seen := map[uuid.UUID]bool{}
+	var out []uuid.UUID
+	if as, err := h.q.ListTaskAssignees(ctx, t.ID); err == nil {
+		for _, a := range as {
+			if !seen[a.ID] {
+				seen[a.ID] = true
+				out = append(out, a.ID)
+			}
+		}
+	}
+	if t.CreatedBy != nil && !seen[*t.CreatedBy] {
+		out = append(out, *t.CreatedBy)
+	}
+	return out
+}
+
+// dueText is the default sentence for a due-date notification (templates can
+// reformat it via the channel template).
+func dueText(t db.Task) string {
+	return fmt.Sprintf("Приближается срок задачи #%s «%s»", taskRef(t.Number), t.Title)
+}
+
+// scanReminders routes reminders whose time has come to the user's channels (once,
+// alongside the Android local alarm). Each due reminder is marked processed so it
+// isn't reconsidered — toggling reminder delivery on later won't replay old ones.
+func (h *API) scanReminders(ctx context.Context) {
+	rs, err := h.q.ListDueReminders(ctx)
+	if err != nil {
+		return
+	}
+	for _, r := range rs {
+		p, perr := h.q.GetNotificationPrefs(ctx, r.UserID)
+		if perr != nil {
+			p = defaultPrefs(r.UserID)
+		}
+		if p.ReminderEnabled {
+			text := strings.TrimSpace(r.Message)
+			if text == "" {
+				text = "Напоминание"
+			}
+			h.deliverNotification(ctx, r.UserID, h.reminderWorkspace(ctx, r), r.TaskID, nil, "reminder", text)
+		}
+		_ = h.q.MarkReminderNotified(ctx, r.ID)
+	}
+}
+
+// reminderWorkspace resolves a workspace to scope a reminder notification to: the
+// linked task's workspace, else the user's first workspace (reminders aren't
+// workspace-scoped, but notifications carry a workspace id).
+func (h *API) reminderWorkspace(ctx context.Context, r db.Reminder) uuid.UUID {
+	if r.TaskID != nil {
+		if t, err := h.q.GetTask(ctx, *r.TaskID); err == nil {
+			if ws, werr := h.q.WorkspaceIDForBoard(ctx, t.BoardID); werr == nil {
+				return ws
+			}
+		}
+	}
+	if wss, err := h.q.ListWorkspacesForUser(ctx, r.UserID); err == nil && len(wss) > 0 {
+		return wss[0].ID
+	}
+	return uuid.Nil
+}
+
+// ── per-user scheduling prefs ──────────────────────────────
+
+type prefsView struct {
+	DueEnabled       bool  `json:"due_enabled"`
+	DueLeadMinutes   int32 `json:"due_lead_minutes"`
+	DueRepeatMinutes int32 `json:"due_repeat_minutes"`
+	ReminderEnabled  bool  `json:"reminder_enabled"`
+}
+
+func prefsViewOf(p db.NotificationPref) prefsView {
+	return prefsView{
+		DueEnabled: p.DueEnabled, DueLeadMinutes: p.DueLeadMinutes,
+		DueRepeatMinutes: p.DueRepeatMinutes, ReminderEnabled: p.ReminderEnabled,
+	}
+}
+
+// GetMyNotificationPrefs returns the current user's scheduling prefs (defaults when
+// never customised).
+func (h *API) GetMyNotificationPrefs(c *gin.Context) {
+	uid := middleware.CurrentUser(c)
+	p, err := h.q.GetNotificationPrefs(c, uid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		p = defaultPrefs(uid)
+	} else if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, prefsViewOf(p))
+}
+
+// UpdateMyNotificationPrefs upserts the current user's scheduling prefs.
+func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
+	var req prefsView
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.DueLeadMinutes < 0 {
+		req.DueLeadMinutes = 0
+	}
+	if req.DueRepeatMinutes < 0 {
+		req.DueRepeatMinutes = 0
+	}
+	p, err := h.q.UpsertNotificationPrefs(c, db.UpsertNotificationPrefsParams{
+		UserID: middleware.CurrentUser(c), DueEnabled: req.DueEnabled,
+		DueLeadMinutes: req.DueLeadMinutes, DueRepeatMinutes: req.DueRepeatMinutes,
+		ReminderEnabled: req.ReminderEnabled,
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, prefsViewOf(p))
+}
+
+// SetTaskDueNotify sets a task's per-task due-notification overrides (each field
+// null = inherit the user default). Driven by the card's due popover.
+func (h *API) SetTaskDueNotify(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	if _, _, ok := h.loadTask(c, id); !ok {
+		return
+	}
+	var req struct {
+		LeadMinutes   *int32 `json:"lead_minutes"`
+		RepeatMinutes *int32 `json:"repeat_minutes"`
+		Enabled       *bool  `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.LeadMinutes != nil && *req.LeadMinutes < 0 {
+		*req.LeadMinutes = 0
+	}
+	if req.RepeatMinutes != nil && *req.RepeatMinutes < 0 {
+		*req.RepeatMinutes = 0
+	}
+	t, err := h.q.SetTaskDueNotify(c, db.SetTaskDueNotifyParams{
+		ID: id, DueLeadMinutes: req.LeadMinutes, DueRepeatMinutes: req.RepeatMinutes, DueNotifyEnabled: req.Enabled,
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, t)
 }
 
 // ── helpers ────────────────────────────────────────────────

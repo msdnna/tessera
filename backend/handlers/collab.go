@@ -51,30 +51,8 @@ func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, 
 	if userID == actor {
 		return
 	}
-	n, err := h.q.CreateNotification(c, db.CreateNotificationParams{
-		UserID: userID, WorkspaceID: wsID, TaskID: taskID, ActorID: &actor, Kind: kind, Text: text,
-	})
-	if err != nil {
-		return
-	}
-	// Enrich the live payload with the task's board id + number so a freshly
-	// pushed notification is clickable (the list endpoint joins these in, but
-	// the raw inserted row doesn't carry them).
-	obj := gin.H{
-		"id": n.ID, "user_id": n.UserID, "workspace_id": n.WorkspaceID,
-		"task_id": n.TaskID, "actor_id": n.ActorID, "kind": n.Kind,
-		"text": n.Text, "read_at": n.ReadAt, "created_at": n.CreatedAt,
-	}
-	if taskID != nil {
-		if t, terr := h.q.GetTask(c, *taskID); terr == nil {
-			obj["task_board_id"] = t.BoardID
-			obj["task_number"] = t.Number
-		}
-	}
-	h.broadcast(wsID, "notification", gin.H{"user_id": userID, "notification": obj})
-	// Fan out to the user's external channels (email/telegram/webhook) per their
-	// routing rules. Best-effort, enqueue-only — the worker performs the sends.
-	h.routeNotification(c, n)
+	a := actor
+	h.deliverNotification(c, userID, wsID, taskID, &a, kind, text)
 }
 
 // notifyTaskParticipants notifies a task's assignees and creator (minus the

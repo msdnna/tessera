@@ -133,3 +133,11 @@ RETURNING *;
 
 -- name: DeleteTask :exec
 DELETE FROM tasks WHERE id = $1;
+
+-- SetTaskDueNotify sets a task's per-task due-notification overrides (NULL = inherit
+-- the user default). Used by the card's due popover.
+-- name: SetTaskDueNotify :one
+UPDATE tasks
+SET due_lead_minutes = $2, due_repeat_minutes = $3, due_notify_enabled = $4, updated_at = now()
+WHERE id = $1
+RETURNING *;
