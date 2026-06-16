@@ -232,6 +232,8 @@ export const notificationChannels = {
   remove: (id) => api.delete(`/notification-channels/${id}`),
   test: (id) => api.post(`/notification-channels/${id}/test`),
   previewTemplate: (template) => api.post('/notification-template-preview', { template }),
+  // Auto-register this client as a routable "device" channel (idempotent).
+  registerDevice: (data) => api.post('/notification-devices', data),
 }
 
 export const notificationRoutes = {

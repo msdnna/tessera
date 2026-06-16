@@ -1,6 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { notifications as api } from '@/api'
+import { getDeviceId, notificationsSupported } from '@/utils/device'
+
+// Human title for a native (OS) notification, by kind.
+const KIND_TITLE = {
+  assigned: 'Назначена задача',
+  comment: 'Новый комментарий',
+  mention: 'Вас упомянули',
+  due_soon: 'Скоро дедлайн',
+  reminder: 'Напоминание',
+}
 
 // notifications store — persistent, server-backed feed for the bell (feature
 // #3). New notifications also arrive live over the workspace socket.
@@ -25,9 +35,25 @@ export const useNotificationsStore = defineStore('notifications', () => {
     if (ev.type !== 'notification') return
     if (!ev.data || ev.data.user_id !== meId) return
     const n = ev.data.notification
-    if (!n || items.value.some((x) => x.id === n.id)) return
+    if (!n) return
+    // Raise a native OS notification if a routing rule targeted this device.
+    maybeNotifyDevice(ev.data.device_targets, n)
+    if (items.value.some((x) => x.id === n.id)) return
     items.value.unshift(n)
     if (items.value.length > 50) items.value.pop()
+  }
+
+  // Show a Web Notification when this browser's device id is among the event's
+  // targets and the user has granted permission. Best-effort.
+  function maybeNotifyDevice(targets, n) {
+    try {
+      if (!Array.isArray(targets) || !targets.includes(getDeviceId())) return
+      if (!notificationsSupported() || Notification.permission !== 'granted') return
+      const note = new Notification(KIND_TITLE[n.kind] || 'Tessera', { body: n.text, tag: n.id })
+      void note
+    } catch {
+      /* notifications unavailable — ignore */
+    }
   }
 
   async function markRead(id) {

@@ -10,12 +10,15 @@ import {
   CreateOutline,
   FlashOutline,
   ShareSocialOutline,
+  PhonePortraitOutline,
+  NotificationsOutline,
 } from '@vicons/ionicons5'
 import {
   notificationChannels as chApi,
   notificationRoutes as rtApi,
   notificationPrefs as prefsApi,
 } from '@/api'
+import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
@@ -43,8 +46,20 @@ const TYPE_META = {
   telegram: { label: 'Telegram', icon: PaperPlaneOutline },
   webhook: { label: 'Webhook', icon: GlobeOutline },
   shoutrrr: { label: 'Shoutrrr (любой сервис)', icon: ShareSocialOutline },
+  device: { label: 'Системные уведомления', icon: PhonePortraitOutline },
 }
-const typeOptions = Object.entries(TYPE_META).map(([value, m]) => ({ value, label: m.label }))
+// `device` channels auto-register per client and aren't manually addable.
+const typeOptions = Object.entries(TYPE_META)
+  .filter(([v]) => v !== 'device')
+  .map(([value, m]) => ({ value, label: m.label }))
+const allTypeOptions = Object.entries(TYPE_META).map(([value, m]) => ({ value, label: m.label }))
+
+const myDeviceId = getDeviceId()
+const notifPermission = ref(notificationsSupported() ? Notification.permission : 'unsupported')
+async function requestNotifPermission() {
+  if (!notificationsSupported()) return
+  notifPermission.value = await Notification.requestPermission()
+}
 
 const KIND_META = {
   assigned: 'Назначение задачи',
@@ -137,6 +152,10 @@ onMounted(() => {
 function channelName(id) {
   const c = channels.value.find((x) => x.id === id)
   return c ? c.label || TYPE_META[c.type]?.label || c.type : '—'
+}
+// This browser's own device channel (for the «это устройство» badge + permission).
+function isThisDevice(c) {
+  return c.type === 'device' && c.config?.device_id === myDeviceId
 }
 
 // ── channel editor ───────────────────────────────────────────
@@ -418,8 +437,20 @@ function wsSummary(r) {
               <n-tag v-if="c.verified" size="tiny" type="success" round :bordered="false">
                 проверен
               </n-tag>
+              <n-tag v-if="isThisDevice(c)" size="tiny" type="info" round :bordered="false">
+                это устройство
+              </n-tag>
             </div>
             <div class="item-sub">{{ TYPE_META[c.type]?.label || c.type }}</div>
+            <div
+              v-if="isThisDevice(c) && notifPermission !== 'granted'"
+              class="item-test bad"
+            >
+              <template v-if="notifPermission === 'denied'">
+                Уведомления запрещены в браузере — включите их в настройках сайта.
+              </template>
+              <template v-else>Нужно разрешение браузера на уведомления.</template>
+            </div>
             <div v-if="testState[c.id]" class="item-test" :class="testState[c.id].ok ? 'ok' : 'bad'">
               <template v-if="testState[c.id].pending">отправка…</template>
               <template v-else>{{ testState[c.id].msg }}</template>
@@ -427,7 +458,16 @@ function wsSummary(r) {
           </div>
           <div class="item-actions">
             <n-switch :value="c.enabled" size="small" @update:value="() => toggleChannel(c)" />
-            <n-button size="tiny" tertiary @click="testChannel(c)">
+            <n-button
+              v-if="isThisDevice(c) && notifPermission === 'default'"
+              size="tiny"
+              tertiary
+              @click="requestNotifPermission"
+            >
+              <template #icon><n-icon :component="NotificationsOutline" /></template>
+              Разрешить
+            </n-button>
+            <n-button v-if="c.type !== 'device'" size="tiny" tertiary @click="testChannel(c)">
               <template #icon><n-icon :component="FlashOutline" /></template>
               Тест
             </n-button>
@@ -557,7 +597,11 @@ function wsSummary(r) {
         <div class="form">
           <label class="field">
             <span>Тип</span>
-            <n-select v-model:value="chForm.type" :options="typeOptions" :disabled="!!chEditing" />
+            <n-select
+              v-model:value="chForm.type"
+              :options="chEditing ? allTypeOptions : typeOptions"
+              :disabled="!!chEditing"
+            />
           </label>
           <label class="field">
             <span>Название</span>
@@ -589,6 +633,14 @@ function wsSummary(r) {
             </label>
             <p class="hint">
               Создайте бота через @BotFather, отправьте ему сообщение и укажите свой chat_id.
+            </p>
+          </template>
+
+          <!-- device (auto-registered client) -->
+          <template v-else-if="chForm.type === 'device'">
+            <p class="hint">
+              Это устройство/браузер. Системные уведомления приходят, когда приложение открыто и
+              правило направляет события сюда. Можно переименовать, включить/выключить и удалить.
             </p>
           </template>
 

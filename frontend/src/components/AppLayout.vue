@@ -11,6 +11,8 @@ import {
 } from 'naive-ui'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
+import { notificationChannels } from '@/api'
+import { getDeviceId, deviceLabel } from '@/utils/device'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -52,10 +54,11 @@ function startDrag(e) {
 }
 onBeforeUnmount(stopDrag)
 
-// Live notifications for the bell (scoped to the current workspace, addressed
-// to the current user).
+// Live notifications for the bell + native device notifications, addressed to the
+// current user. Not scoped to the current workspace — onEvent filters by user, and
+// device notifications must fire wherever you are.
 useRealtime((ev) => {
-  if (ev.scope === ws.currentId) notes.onEvent(ev, authStore.user?.id)
+  notes.onEvent(ev, authStore.user?.id)
 })
 
 const drawerOpen = ref(false)
@@ -64,6 +67,16 @@ onMounted(async () => {
   await authStore.verify()
   await ws.loadWorkspaces()
   await notes.load()
+  // Register this browser as a routable "device" channel (best-effort).
+  try {
+    await notificationChannels.registerDevice({
+      device_id: getDeviceId(),
+      label: deviceLabel(),
+      platform: 'web',
+    })
+  } catch {
+    /* offline / unauthorized — non-fatal */
+  }
 })
 
 // Close the mobile drawer on navigation.

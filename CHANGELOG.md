@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.69.0] — 2026-06-16
+- **Browser device notifications** (consumes backend 0.40): this browser
+  auto-registers as a routable **device** channel, so routing rules can target it
+  specifically. When a notification is routed here and you've granted permission, it
+  shows as a **native browser notification** (foreground / open tab). Notification
+  settings list device channels with a «это устройство» badge and a «Разрешить»
+  permission button; `device` channels can be renamed / toggled / deleted but aren't
+  manually added (they self-register). The bell now also updates live across all
+  workspaces (not just the open one).
+
 ### [0.68.0] — 2026-06-16
 - **Digest** setting in notification settings (consumes backend 0.39): a
   «Группировать в сводку» window (off / 5 / 15 / 30 / 60 мин) that batches a burst
