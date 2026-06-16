@@ -68,12 +68,14 @@ func (s TelegramSender) Send(ctx context.Context, ch Channel, msg Message) error
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
-		return Permanent(err)
+		return Permanent(errors.New(redact(err.Error(), token)))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.client().Do(req)
 	if err != nil {
-		return err // network — transient
+		// The HTTP stack embeds the full request URL (which carries the bot token)
+		// in its error string — redact it before the error reaches the UI / logs.
+		return errors.New(redact(err.Error(), token)) // network — transient
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 == 2 {
@@ -126,7 +128,7 @@ func (s WebhookSender) Send(ctx context.Context, ch Channel, msg Message) error 
 	}
 	resp, err := s.client().Do(req)
 	if err != nil {
-		return err // network — transient
+		return errors.New(redact(err.Error(), ch.Secret["auth_header"])) // network — transient
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
@@ -151,4 +153,17 @@ func (s WebhookSender) client() *http.Client {
 // JSON-numeric chat_id back to a clean string).
 func trimFloat(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+// redact replaces secret substrings in a message with "***". Channel secrets
+// (a bot token, an auth header) can end up inside a transport's error string —
+// e.g. the HTTP client embeds the request URL, token and all — and those errors
+// surface in the UI and in last_error, so they must be scrubbed at the source.
+func redact(msg string, secrets ...string) string {
+	for _, s := range secrets {
+		if s = strings.TrimSpace(s); s != "" {
+			msg = strings.ReplaceAll(msg, s, "***")
+		}
+	}
+	return msg
 }

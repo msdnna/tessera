@@ -247,7 +247,7 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 	}
 	msg := notify.Message{
 		Kind:  "test",
-		Title: "Tessera — проверка канала",
+		Title: "Проверка канала",
 		Body:  "Это тестовое уведомление. Если вы его получили — канал настроен верно.",
 		Link:  h.publicURL,
 	}
@@ -551,19 +551,20 @@ func (h *API) messageFor(n db.Notification) notify.Message {
 	return notify.Message{Kind: n.Kind, Title: notifyTitle(n.Kind), Body: n.Text, Link: h.publicURL}
 }
 
-// notifyTitle maps a notification kind to a human subject line.
+// notifyTitle maps a notification kind to a human subject line. No app-name
+// prefix — the channel is fully app-managed, so the source is implicit.
 func notifyTitle(kind string) string {
 	switch kind {
 	case "assigned":
-		return "Tessera — назначена задача"
+		return "Назначена задача"
 	case "comment":
-		return "Tessera — новый комментарий"
+		return "Новый комментарий"
 	case "mention":
-		return "Tessera — вас упомянули"
+		return "Вас упомянули"
 	case "due_soon":
-		return "Tessera — скоро дедлайн"
+		return "Скоро дедлайн"
 	default:
-		return "Tessera — уведомление"
+		return "Уведомление"
 	}
 }
 

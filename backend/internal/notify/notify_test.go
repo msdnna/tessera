@@ -38,6 +38,33 @@ func TestMatcherMatches(t *testing.T) {
 	}
 }
 
+func TestRedact(t *testing.T) {
+	token := "123456:AA-realbottoken"
+	// Mimics the net/http timeout error that embeds the request URL (token and all).
+	msg := `Post "https://api.telegram.org/bot` + token + `/sendMessage": context deadline exceeded`
+	got := redact(msg, token)
+	if got == msg {
+		t.Fatal("redact did not change the message")
+	}
+	if contains := len(got) > 0 && (indexOf(got, token) >= 0); contains {
+		t.Fatalf("token leaked through redact: %q", got)
+	}
+	// Empty secrets are a no-op (and must not blank the whole string).
+	if redact("hello", "", "  ") != "hello" {
+		t.Fatal("empty secrets should be ignored")
+	}
+}
+
+// indexOf is a tiny strings.Index without importing strings into the test.
+func indexOf(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}
+
 func TestPermanentError(t *testing.T) {
 	base := errors.New("boom")
 	if IsPermanent(base) {

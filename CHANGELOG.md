@@ -1095,6 +1095,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.34.1] — 2026-06-16
+- **Security: redact channel secrets from delivery errors.** The Go HTTP client
+  embeds the full request URL — including the Telegram bot token (`/bot<token>/…`)
+  — in its timeout/network error string, which then surfaced verbatim in the
+  channel UI and `last_error`. Telegram/webhook senders now scrub the token / auth
+  header from any error before it leaves the transport. (Secrets were already
+  write-only at rest and never returned; this closes the error-text leak.)
+- Notification subjects no longer carry a «Tessera — » prefix — the channels are
+  fully app-managed, so the source is implicit (`Назначена задача`, `Новый
+  комментарий`, …).
+
 ### [0.34.0] — 2026-06-16
 Notification router phase A — user-configurable external notification channels +
 Alertmanager-style routing. Loose-coupled like the GitLab integration (own
