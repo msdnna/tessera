@@ -34,9 +34,17 @@ import (
 func buildSenders(mailer mail.Mailer) map[string]notify.Sender {
 	return map[string]notify.Sender{
 		"email":    emailSender{mailer: mailer},
-		"telegram": notify.TelegramSender{},
-		"webhook":  notify.WebhookSender{},
+		"telegram": notify.ShoutrrrSender{}, // friendly telegram, built into a shoutrrr URL
+		"webhook":  notify.WebhookSender{},  // flexible raw-JSON POST
+		"shoutrrr": notify.ShoutrrrSender{}, // generic: secret is a full shoutrrr URL
 	}
+}
+
+// requiredSecret maps a channel type to the secret field that must be present
+// (set on create, kept on edit). Other types have no mandatory secret.
+var requiredSecret = map[string]string{
+	"telegram": "bot_token",
+	"shoutrrr": "url",
 }
 
 // emailSender delivers via the server mailer (no-op-logs when SMTP is unset).
@@ -124,9 +132,9 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// Telegram needs a bot token; it's the only required secret on create.
-	if typ == "telegram" && strings.TrimSpace(req.Secret["bot_token"]) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "telegram канал требует bot_token"})
+	// Some types need a secret on create (telegram bot token, shoutrrr URL).
+	if k := requiredSecret[typ]; k != "" && strings.TrimSpace(req.Secret[k]) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("канал %q требует %s", typ, k)})
 		return
 	}
 	enc, err := h.sealSecret(req.Secret)
@@ -184,8 +192,8 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 			return
 		}
 	}
-	if row.Type == "telegram" && secEnc == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "telegram канал требует bot_token"})
+	if k := requiredSecret[row.Type]; k != "" && secEnc == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("канал %q требует %s", row.Type, k)})
 		return
 	}
 	enabled := row.Enabled
@@ -612,6 +620,8 @@ func validateChannel(typ string, cfg map[string]any) error {
 		if cfgString(cfg, "url") == "" {
 			return errors.New("webhook канал требует url")
 		}
+	case "shoutrrr":
+		// The service URL is a secret (it carries credentials) — validated there.
 	default:
 		return fmt.Errorf("неизвестный тип канала: %q", typ)
 	}

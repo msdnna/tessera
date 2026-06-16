@@ -9,6 +9,7 @@ import {
   TrashOutline,
   CreateOutline,
   FlashOutline,
+  ShareSocialOutline,
 } from '@vicons/ionicons5'
 import { notificationChannels as chApi, notificationRoutes as rtApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -27,6 +28,7 @@ const TYPE_META = {
   email: { label: 'Email', icon: MailOutline },
   telegram: { label: 'Telegram', icon: PaperPlaneOutline },
   webhook: { label: 'Webhook', icon: GlobeOutline },
+  shoutrrr: { label: 'Shoutrrr (любой сервис)', icon: ShareSocialOutline },
 }
 const typeOptions = Object.entries(TYPE_META).map(([value, m]) => ({ value, label: m.label }))
 
@@ -359,6 +361,23 @@ function wsSummary(r) {
             </label>
             <p class="hint">
               Создайте бота через @BotFather, отправьте ему сообщение и укажите свой chat_id.
+            </p>
+          </template>
+
+          <!-- shoutrrr (generic) -->
+          <template v-else-if="chForm.type === 'shoutrrr'">
+            <label class="field">
+              <span>Service URL</span>
+              <n-input
+                v-model:value="chForm.secret.url"
+                type="password"
+                show-password-on="click"
+                :placeholder="chEditing ? 'оставьте пустым, чтобы не менять' : 'slack://… · discord://… · ntfy://…'"
+              />
+            </label>
+            <p class="hint">
+              Любой сервис из shoutrrr: slack, discord, ntfy, gotify, matrix, pushover, teams и др.
+              Формат URL — см. документацию shoutrrr (containrrr.dev/shoutrrr/services).
             </p>
           </template>
 

@@ -65,6 +65,25 @@ func indexOf(s, sub string) int {
 	return -1
 }
 
+func TestShoutrrrURL(t *testing.T) {
+	// generic shoutrrr channel passes its secret URL through verbatim
+	if u, err := shoutrrrURL(Channel{Type: "shoutrrr", Secret: map[string]string{"url": "discord://tok@id"}}); err != nil || u != "discord://tok@id" {
+		t.Fatalf("shoutrrr passthrough = %q, %v", u, err)
+	}
+	// telegram builds a telegram:// URL from token + chat id
+	tg := Channel{Type: "telegram", Secret: map[string]string{"bot_token": "123:ABC"}, Config: map[string]any{"chat_id": "42"}}
+	if u, err := shoutrrrURL(tg); err != nil || u != "telegram://123:ABC@telegram/?chats=42" {
+		t.Fatalf("telegram url = %q, %v", u, err)
+	}
+	// missing required fields error out
+	if _, err := shoutrrrURL(Channel{Type: "telegram"}); err == nil {
+		t.Fatal("telegram without token/chat should error")
+	}
+	if _, err := shoutrrrURL(Channel{Type: "shoutrrr"}); err == nil {
+		t.Fatal("shoutrrr without url should error")
+	}
+}
+
 func TestPermanentError(t *testing.T) {
 	base := errors.New("boom")
 	if IsPermanent(base) {

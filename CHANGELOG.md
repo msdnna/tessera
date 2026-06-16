@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.63.0] — 2026-06-16
+- Notification channels: new **«Shoutrrr (любой сервис)»** type — a single masked
+  Service URL field that unlocks every shoutrrr service (slack, discord, ntfy,
+  gotify, matrix, …). Consumes backend 0.35.
+
 ### [0.62.0] — 2026-06-16
 Notification router phase A (web) — consumes backend 0.34.
 - **New «Уведомления» section in Settings**: configure external delivery channels
@@ -1094,6 +1099,16 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.35.0] — 2026-06-16
+- **shoutrrr transport integration.** Telegram is now delivered through the
+  [shoutrrr](https://github.com/containrrr/shoutrrr) library (built into a
+  `telegram://…` URL from the bot token + chat id), and a new generic **`shoutrrr`**
+  channel type accepts any shoutrrr service URL — slack / discord / ntfy / gotify /
+  matrix / pushover / teams / … — stored as an encrypted secret (the universal
+  escape hatch, so new providers need no code change). The `Sender` interface is
+  unchanged; email still uses the server SMTP mailer and `webhook` stays a flexible
+  raw-JSON POST. shoutrrr errors are redacted (they can embed the service URL).
 
 ### [0.34.1] — 2026-06-16
 - **Security: redact channel secrets from delivery errors.** The Go HTTP client

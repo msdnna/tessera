@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/containrrr/shoutrrr"
 )
 
 // Sender delivers one rendered message to one channel of a given type. A send
@@ -40,60 +43,52 @@ func IsPermanent(err error) bool {
 // timeout so a slow endpoint can't wedge the delivery worker.
 var defaultClient = &http.Client{Timeout: 15 * time.Second}
 
-// ── Telegram ───────────────────────────────────────────────
+// ── shoutrrr (telegram + the long tail) ────────────────────
 
-// TelegramSender posts to the Bot API using a per-channel bot token + chat id
-// (the Grafana/Alertmanager model: the user runs their own bot).
-type TelegramSender struct{ Client *http.Client }
+// ShoutrrrSender delivers through the shoutrrr library, which speaks a single
+// URL DSL for ~20 services (telegram, slack, discord, ntfy, gotify, matrix, …).
+// Two channel types use it: a friendly "telegram" (we build the URL from a bot
+// token + chat id), and a generic "shoutrrr" whose secret IS a full shoutrrr URL
+// — the universal escape hatch so new providers need no code change.
+type ShoutrrrSender struct{}
 
-// Send posts the message to the channel's chat via the Bot API.
-func (s TelegramSender) Send(ctx context.Context, ch Channel, msg Message) error {
-	token := strings.TrimSpace(ch.Secret["bot_token"])
-	chatID := ch.configString("chat_id")
-	if token == "" || chatID == "" {
-		return Permanent(errors.New("telegram channel needs a bot_token and chat_id"))
+// Send renders the message text and hands it to shoutrrr for the channel's URL.
+func (ShoutrrrSender) Send(_ context.Context, ch Channel, msg Message) error {
+	target, err := shoutrrrURL(ch)
+	if err != nil {
+		return Permanent(err)
 	}
 	text := msg.Body
-	if msg.Title != "" {
-		text = msg.Title + "\n" + msg.Body
-	}
 	if msg.Link != "" {
 		text += "\n" + msg.Link
 	}
-	payload, _ := json.Marshal(map[string]any{
-		"chat_id":                  chatID,
-		"text":                     text,
-		"disable_web_page_preview": true,
-	})
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return Permanent(errors.New(redact(err.Error(), token)))
+	if err := shoutrrr.Send(target, text); err != nil {
+		// shoutrrr errors can embed the service URL (token and all) — scrub it.
+		return errors.New(redact(err.Error(), target, ch.Secret["url"], ch.Secret["bot_token"]))
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client().Do(req)
-	if err != nil {
-		// The HTTP stack embeds the full request URL (which carries the bot token)
-		// in its error string — redact it before the error reaches the UI / logs.
-		return errors.New(redact(err.Error(), token)) // network — transient
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode/100 == 2 {
-		return nil
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	err = fmt.Errorf("telegram api %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
-		return Permanent(err) // bad token / chat id — won't fix itself
-	}
-	return err
+	return nil
 }
 
-func (s TelegramSender) client() *http.Client {
-	if s.Client != nil {
-		return s.Client
+// shoutrrrURL derives the shoutrrr service URL for a channel: the raw secret URL
+// for a generic "shoutrrr" channel, or a built telegram URL from token + chat.
+func shoutrrrURL(ch Channel) (string, error) {
+	switch ch.Type {
+	case "shoutrrr":
+		u := strings.TrimSpace(ch.Secret["url"])
+		if u == "" {
+			return "", errors.New("shoutrrr channel needs a service URL")
+		}
+		return u, nil
+	case "telegram":
+		token := strings.TrimSpace(ch.Secret["bot_token"])
+		chat := ch.configString("chat_id")
+		if token == "" || chat == "" {
+			return "", errors.New("telegram channel needs a bot_token and chat_id")
+		}
+		return fmt.Sprintf("telegram://%s@telegram/?chats=%s", token, url.QueryEscape(chat)), nil
+	default:
+		return "", fmt.Errorf("unsupported shoutrrr channel type %q", ch.Type)
 	}
-	return defaultClient
 }
 
 // ── Generic webhook ────────────────────────────────────────
