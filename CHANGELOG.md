@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.66.0] — 2026-06-16
+- **Due-date & reminder notification settings** (consumes backend 0.37): a new
+  «Дедлайны и напоминания» block in notification settings sets the per-user
+  defaults — notify on/off, how long before the deadline (lead), repeat interval,
+  and whether reminders are delivered to channels. The routing-rule editor gains a
+  **«Напоминания»** event kind.
+- **Per-task override** in the card's due popover (a reference tracker-style): under the
+  calendar, set this task's notifications (on/off), lead and repeat — each
+  defaulting to «По умолчанию» (inherit the user setting).
+
 ### [0.65.0] — 2026-06-16
 - **Task due dates now carry a time** (prep for due-date notifications): the due
   picker in the task modal and on the card is now a datetime picker (mirrors the

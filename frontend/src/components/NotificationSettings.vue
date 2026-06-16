@@ -11,7 +11,11 @@ import {
   FlashOutline,
   ShareSocialOutline,
 } from '@vicons/ionicons5'
-import { notificationChannels as chApi, notificationRoutes as rtApi } from '@/api'
+import {
+  notificationChannels as chApi,
+  notificationRoutes as rtApi,
+  notificationPrefs as prefsApi,
+} from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
 
@@ -37,7 +41,26 @@ const KIND_META = {
   comment: 'Комментарии',
   mention: 'Упоминания',
   due_soon: 'Скоро дедлайн',
+  reminder: 'Напоминания (по времени)',
 }
+
+// Minute presets for the due-date schedule selects.
+const LEAD_OPTIONS = [
+  { label: 'В момент дедлайна', value: 0 },
+  { label: 'За 15 минут', value: 15 },
+  { label: 'За 30 минут', value: 30 },
+  { label: 'За час', value: 60 },
+  { label: 'За 3 часа', value: 180 },
+  { label: 'За день', value: 1440 },
+  { label: 'За 2 дня', value: 2880 },
+]
+const REPEAT_OPTIONS = [
+  { label: 'Однократно', value: 0 },
+  { label: 'Каждый час', value: 60 },
+  { label: 'Каждые 3 часа', value: 180 },
+  { label: 'Каждые 6 часов', value: 360 },
+  { label: 'Каждый день', value: 1440 },
+]
 const kindOptions = Object.entries(KIND_META).map(([value, label]) => ({ value, label }))
 
 const wsOptions = computed(() => (wsStore.list || []).map((w) => ({ value: w.id, label: w.name })))
@@ -45,17 +68,41 @@ const channelOptions = computed(() =>
   channels.value.map((c) => ({ value: c.id, label: c.label || TYPE_META[c.type]?.label || c.type })),
 )
 
+// per-user scheduling defaults (due dates + reminders)
+const prefs = reactive({
+  due_enabled: true,
+  due_lead_minutes: 60,
+  due_repeat_minutes: 0,
+  reminder_enabled: true,
+})
+const prefsSaving = ref(false)
+const prefsSaved = ref(false)
+
 async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [c, r] = await Promise.all([chApi.list(), rtApi.list()])
+    const [c, r, p] = await Promise.all([chApi.list(), rtApi.list(), prefsApi.get()])
     channels.value = c.data || []
     routes.value = r.data || []
+    Object.assign(prefs, p.data || {})
   } catch (e) {
     loadError.value = e.response?.data?.error || e.message
   } finally {
     loading.value = false
+  }
+}
+async function savePrefs() {
+  prefsSaving.value = true
+  try {
+    const res = await prefsApi.update({ ...prefs })
+    Object.assign(prefs, res.data || {})
+    prefsSaved.value = true
+    setTimeout(() => (prefsSaved.value = false), 2000)
+  } catch (e) {
+    loadError.value = e.response?.data?.error || e.message
+  } finally {
+    prefsSaving.value = false
   }
 }
 onMounted(() => {
@@ -412,6 +459,43 @@ function wsSummary(r) {
           </div>
         </div>
       </div>
+
+      <!-- Scheduling defaults (due dates + reminders) -->
+      <div class="block">
+        <div class="block-head">
+          <span class="block-title">Дедлайны и напоминания</span>
+        </div>
+        <p class="hint sub">
+          Когда уведомлять о сроках задач. Можно переопределить для конкретной задачи —
+          кликом по дате на карточке. Дробить частоту без спама помогают тихие часы (silence).
+        </p>
+        <label class="sched-row">
+          <n-switch v-model:value="prefs.due_enabled" size="small" />
+          <span>Уведомлять о приближении дедлайна задач</span>
+        </label>
+        <div class="grid2">
+          <label class="field">
+            <span>Напоминать</span>
+            <n-select v-model:value="prefs.due_lead_minutes" :options="LEAD_OPTIONS" :disabled="!prefs.due_enabled" />
+          </label>
+          <label class="field">
+            <span>Повтор</span>
+            <n-select v-model:value="prefs.due_repeat_minutes" :options="REPEAT_OPTIONS" :disabled="!prefs.due_enabled" />
+          </label>
+        </div>
+        <label class="sched-row">
+          <n-switch v-model:value="prefs.reminder_enabled" size="small" />
+          <span>Доставлять напоминания (reminders) во внешние каналы</span>
+        </label>
+        <div class="row-end">
+          <transition name="fade">
+            <span v-if="prefsSaved" class="saved-tick">Сохранено</span>
+          </transition>
+          <n-button size="small" type="primary" :loading="prefsSaving" @click="savePrefs">
+            Сохранить
+          </n-button>
+        </div>
+      </div>
     </template>
 
     <!-- Channel editor modal -->
@@ -717,8 +801,38 @@ function wsSummary(r) {
 }
 .row-end {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 10px;
+}
+.sched-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--t-text1);
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.saved-tick {
+  font-size: 13px;
+  color: #18a058;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+@media (max-width: 560px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
 }
 .tpl-row {
   display: flex;

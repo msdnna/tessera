@@ -189,6 +189,8 @@ export const tasks = {
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),
   removeAssignee: (id, userId) => api.delete(`/tasks/${id}/assignees/${userId}`),
+  // Per-task due-notification override (null fields = inherit the user default).
+  dueNotify: (id, data) => api.patch(`/tasks/${id}/due-notify`, data),
   // Rich task detail (#8)
   events: (id) => api.get(`/tasks/${id}/events`),
   comments: (id) => api.get(`/tasks/${id}/comments`),
@@ -237,6 +239,12 @@ export const notificationRoutes = {
   create: (data) => api.post('/notification-routes', data),
   update: (id, data) => api.patch(`/notification-routes/${id}`, data),
   remove: (id) => api.delete(`/notification-routes/${id}`),
+}
+
+// Per-user notification scheduling defaults (lead/repeat before due, reminders).
+export const notificationPrefs = {
+  get: () => api.get('/notification-prefs'),
+  update: (data) => api.put('/notification-prefs', data),
 }
 
 export const gitlab = {
