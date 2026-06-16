@@ -4,13 +4,20 @@
 SELECT * FROM notification_prefs WHERE user_id = $1;
 
 -- name: UpsertNotificationPrefs :one
-INSERT INTO notification_prefs (user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled, updated_at)
-VALUES ($1, $2, $3, $4, $5, now())
+INSERT INTO notification_prefs (
+    user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled,
+    quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
 ON CONFLICT (user_id) DO UPDATE
 SET due_enabled = EXCLUDED.due_enabled,
     due_lead_minutes = EXCLUDED.due_lead_minutes,
     due_repeat_minutes = EXCLUDED.due_repeat_minutes,
     reminder_enabled = EXCLUDED.reminder_enabled,
+    quiet_enabled = EXCLUDED.quiet_enabled,
+    quiet_start_minutes = EXCLUDED.quiet_start_minutes,
+    quiet_end_minutes = EXCLUDED.quiet_end_minutes,
+    quiet_tz = EXCLUDED.quiet_tz,
     updated_at = now()
 RETURNING *;
 

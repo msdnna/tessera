@@ -18,9 +18,19 @@ import {
 } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useThemeStore } from '@/stores/theme'
 
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
+const theme = useThemeStore()
+
+// Half-hour time-of-day options (minutes since midnight) for the quiet window.
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const m = i * 30
+  const hh = String(Math.floor(m / 60)).padStart(2, '0')
+  const mm = String(m % 60).padStart(2, '0')
+  return { label: `${hh}:${mm}`, value: m }
+})
 
 const channels = ref([])
 const routes = ref([])
@@ -74,6 +84,10 @@ const prefs = reactive({
   due_lead_minutes: 60,
   due_repeat_minutes: 0,
   reminder_enabled: true,
+  quiet_enabled: false,
+  quiet_start_minutes: 1320,
+  quiet_end_minutes: 480,
+  quiet_tz: '',
 })
 const prefsSaving = ref(false)
 const prefsSaved = ref(false)
@@ -95,6 +109,8 @@ async function load() {
 async function savePrefs() {
   prefsSaving.value = true
   try {
+    // Track the user's timezone so the quiet window is evaluated in their local time.
+    prefs.quiet_tz = theme.timezone || prefs.quiet_tz
     const res = await prefsApi.update({ ...prefs })
     Object.assign(prefs, res.data || {})
     prefsSaved.value = true
@@ -487,6 +503,28 @@ function wsSummary(r) {
           <n-switch v-model:value="prefs.reminder_enabled" size="small" />
           <span>Доставлять напоминания (reminders) во внешние каналы</span>
         </label>
+        <label class="sched-row">
+          <n-switch v-model:value="prefs.quiet_enabled" size="small" />
+          <span>Тихие часы (не беспокоить)</span>
+        </label>
+        <template v-if="prefs.quiet_enabled">
+          <div class="grid2">
+            <label class="field">
+              <span>С</span>
+              <n-select v-model:value="prefs.quiet_start_minutes" :options="TIME_OPTIONS" />
+            </label>
+            <label class="field">
+              <span>До</span>
+              <n-select v-model:value="prefs.quiet_end_minutes" :options="TIME_OPTIONS" />
+            </label>
+          </div>
+          <p class="hint">
+            В это окно внешние уведомления придерживаются и приходят после его окончания.
+            Внутренние (колокольчик) — всегда. Время — по вашему часовому поясу{{
+              theme.timezone ? ` (${theme.timezone})` : ''
+            }}.
+          </p>
+        </template>
         <div class="row-end">
           <transition name="fade">
             <span v-if="prefsSaved" class="saved-tick">Сохранено</span>

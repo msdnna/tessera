@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.67.0] — 2026-06-16
+- **Quiet hours** in notification settings (consumes backend 0.38): a «Тихие часы»
+  toggle with start/end time selects. During the window external notifications are
+  held until it ends (the bell still updates immediately). The window is evaluated
+  in the user's timezone (sent along on save).
+
 ### [0.66.0] — 2026-06-16
 - **Due-date & reminder notification settings** (consumes backend 0.37): a new
   «Дедлайны и напоминания» block in notification settings sets the per-user
@@ -1125,6 +1131,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.38.0] — 2026-06-16
+- **Quiet hours / silence** (migration **0020**, on `notification_prefs`): a
+  per-user window (start/end minutes in an IANA timezone, may wrap past midnight)
+  during which **external** channel deliveries are held — at enqueue, a delivery
+  for a user currently in their quiet window is scheduled (`next_attempt_at`) to
+  the window's end instead of now, reusing the outbox. In-app notifications are
+  unaffected. The window math (`quietWindow`) is unit-tested; verified e2e (an
+  assignment during the window stayed undelivered while the in-app notice
+  appeared, then delivered once disabled). New prefs fields on `GET/PUT
+  /notification-prefs`.
 
 ### [0.37.0] — 2026-06-16
 - **Due-date & reminder notifications** (Phase B, migration **0019**). A background

@@ -122,6 +122,25 @@ func (q *Queries) CreateNotificationDelivery(ctx context.Context, arg CreateNoti
 	return err
 }
 
+const createNotificationDeliveryAt = `-- name: CreateNotificationDeliveryAt :exec
+INSERT INTO notification_deliveries (notification_id, channel_id, next_attempt_at)
+VALUES ($1, $2, $3)
+`
+
+type CreateNotificationDeliveryAtParams struct {
+	NotificationID uuid.UUID `json:"notification_id"`
+	ChannelID      uuid.UUID `json:"channel_id"`
+	NextAttemptAt  time.Time `json:"next_attempt_at"`
+}
+
+// CreateNotificationDeliveryAt enqueues a delivery that won't be claimed before
+// next_attempt_at — used to defer external delivery past the recipient's quiet
+// hours.
+func (q *Queries) CreateNotificationDeliveryAt(ctx context.Context, arg CreateNotificationDeliveryAtParams) error {
+	_, err := q.db.Exec(ctx, createNotificationDeliveryAt, arg.NotificationID, arg.ChannelID, arg.NextAttemptAt)
+	return err
+}
+
 const createNotificationRoute = `-- name: CreateNotificationRoute :one
 
 INSERT INTO notification_routes (user_id, position, matcher, channel_ids, options, enabled)

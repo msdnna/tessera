@@ -537,10 +537,16 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) {
 		if opts.Mute {
 			return // matched a mute rule — deliver nowhere
 		}
+		// Hold external delivery until the end of the user's quiet window (in-app
+		// already fired). Decided once per notification.
+		next := time.Now()
+		if until, quiet := h.quietDeferUntil(ctx, n.UserID); quiet {
+			next = until
+		}
 		for _, chID := range r.ChannelIds {
 			if enabled[chID] {
-				_ = h.q.CreateNotificationDelivery(ctx, db.CreateNotificationDeliveryParams{
-					NotificationID: n.ID, ChannelID: chID,
+				_ = h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
+					NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next,
 				})
 			}
 		}
@@ -721,7 +727,51 @@ func (h *API) RunNotificationScanner(ctx context.Context) {
 func defaultPrefs(uid uuid.UUID) db.NotificationPref {
 	return db.NotificationPref{
 		UserID: uid, DueEnabled: true, DueLeadMinutes: 60, DueRepeatMinutes: 0, ReminderEnabled: true,
+		QuietEnabled: false, QuietStartMinutes: 1320, QuietEndMinutes: 480,
 	}
+}
+
+// quietWindow reports whether now falls inside the user's quiet window and, if so,
+// the absolute time the window ends (so a deferred delivery resumes then). Bounds
+// are minutes-since-midnight in tz (IANA; "" = UTC); a window may wrap past
+// midnight (start > end, e.g. 22:00–08:00).
+func quietWindow(enabled bool, startMin, endMin int, tz string, now time.Time) (time.Time, bool) {
+	if !enabled || startMin == endMin {
+		return time.Time{}, false
+	}
+	loc := time.UTC
+	if tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			loc = l
+		}
+	}
+	lt := now.In(loc)
+	mins := lt.Hour()*60 + lt.Minute()
+	var inQuiet bool
+	if startMin < endMin {
+		inQuiet = mins >= startMin && mins < endMin
+	} else {
+		inQuiet = mins >= startMin || mins < endMin
+	}
+	if !inQuiet {
+		return time.Time{}, false
+	}
+	midnight := time.Date(lt.Year(), lt.Month(), lt.Day(), 0, 0, 0, 0, loc)
+	end := midnight.Add(time.Duration(endMin) * time.Minute)
+	if !end.After(lt) {
+		end = end.Add(24 * time.Hour) // end already passed today → resumes tomorrow
+	}
+	return end, true
+}
+
+// quietDeferUntil returns the time external delivery for a user should be held
+// until (and true) when they're currently in their quiet window.
+func (h *API) quietDeferUntil(ctx context.Context, userID uuid.UUID) (time.Time, bool) {
+	p, err := h.q.GetNotificationPrefs(ctx, userID)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, time.Now())
 }
 
 // scanDueTasks fires due-date notifications. For each candidate task and each of
@@ -874,17 +924,34 @@ func (h *API) reminderWorkspace(ctx context.Context, r db.Reminder) uuid.UUID {
 // ── per-user scheduling prefs ──────────────────────────────
 
 type prefsView struct {
-	DueEnabled       bool  `json:"due_enabled"`
-	DueLeadMinutes   int32 `json:"due_lead_minutes"`
-	DueRepeatMinutes int32 `json:"due_repeat_minutes"`
-	ReminderEnabled  bool  `json:"reminder_enabled"`
+	DueEnabled        bool   `json:"due_enabled"`
+	DueLeadMinutes    int32  `json:"due_lead_minutes"`
+	DueRepeatMinutes  int32  `json:"due_repeat_minutes"`
+	ReminderEnabled   bool   `json:"reminder_enabled"`
+	QuietEnabled      bool   `json:"quiet_enabled"`
+	QuietStartMinutes int32  `json:"quiet_start_minutes"`
+	QuietEndMinutes   int32  `json:"quiet_end_minutes"`
+	QuietTz           string `json:"quiet_tz"`
 }
 
 func prefsViewOf(p db.NotificationPref) prefsView {
 	return prefsView{
 		DueEnabled: p.DueEnabled, DueLeadMinutes: p.DueLeadMinutes,
 		DueRepeatMinutes: p.DueRepeatMinutes, ReminderEnabled: p.ReminderEnabled,
+		QuietEnabled: p.QuietEnabled, QuietStartMinutes: p.QuietStartMinutes,
+		QuietEndMinutes: p.QuietEndMinutes, QuietTz: p.QuietTz,
 	}
+}
+
+// clampMinuteOfDay keeps a minutes-since-midnight value in [0, 1439].
+func clampMinuteOfDay(m int32) int32 {
+	if m < 0 {
+		return 0
+	}
+	if m > 1439 {
+		return 1439
+	}
+	return m
 }
 
 // GetMyNotificationPrefs returns the current user's scheduling prefs (defaults when
@@ -917,7 +984,11 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 	p, err := h.q.UpsertNotificationPrefs(c, db.UpsertNotificationPrefsParams{
 		UserID: middleware.CurrentUser(c), DueEnabled: req.DueEnabled,
 		DueLeadMinutes: req.DueLeadMinutes, DueRepeatMinutes: req.DueRepeatMinutes,
-		ReminderEnabled: req.ReminderEnabled,
+		ReminderEnabled:   req.ReminderEnabled,
+		QuietEnabled:      req.QuietEnabled,
+		QuietStartMinutes: clampMinuteOfDay(req.QuietStartMinutes),
+		QuietEndMinutes:   clampMinuteOfDay(req.QuietEndMinutes),
+		QuietTz:           strings.TrimSpace(req.QuietTz),
 	})
 	if err != nil {
 		fail(c)

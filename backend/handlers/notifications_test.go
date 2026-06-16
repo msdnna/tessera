@@ -7,6 +7,37 @@ import (
 	"tessera/internal/db"
 )
 
+func TestQuietWindow(t *testing.T) {
+	at := func(h, m int) time.Time { return time.Date(2026, 6, 16, h, m, 0, 0, time.UTC) }
+
+	// disabled / empty window
+	if _, q := quietWindow(false, 1320, 480, "", at(23, 0)); q {
+		t.Fatal("disabled should never be quiet")
+	}
+	if _, q := quietWindow(true, 600, 600, "", at(10, 0)); q {
+		t.Fatal("start==end is no window")
+	}
+
+	// non-wrapping window 09:00–17:00
+	if end, q := quietWindow(true, 540, 1020, "", at(12, 0)); !q || end != at(17, 0) {
+		t.Fatalf("inside non-wrap: q=%v end=%v", q, end)
+	}
+	if _, q := quietWindow(true, 540, 1020, "", at(8, 0)); q {
+		t.Fatal("08:00 is outside 09:00–17:00")
+	}
+
+	// wrapping window 22:00–08:00
+	if end, q := quietWindow(true, 1320, 480, "", at(2, 0)); !q || end != at(8, 0) {
+		t.Fatalf("02:00 inside wrap → ends 08:00 today: q=%v end=%v", q, end)
+	}
+	if end, q := quietWindow(true, 1320, 480, "", at(23, 0)); !q || !end.Equal(at(8, 0).Add(24*time.Hour)) {
+		t.Fatalf("23:00 inside wrap → ends 08:00 tomorrow: q=%v end=%v", q, end)
+	}
+	if _, q := quietWindow(true, 1320, 480, "", at(12, 0)); q {
+		t.Fatal("12:00 is outside 22:00–08:00")
+	}
+}
+
 func TestDueShouldFire(t *testing.T) {
 	due := time.Date(2026, 6, 16, 18, 0, 0, 0, time.UTC)
 	state := func(firedDue time.Time, last time.Time) *db.DueNotificationState {

@@ -65,6 +65,13 @@ SELECT * FROM notifications WHERE id = $1;
 INSERT INTO notification_deliveries (notification_id, channel_id)
 VALUES ($1, $2);
 
+-- CreateNotificationDeliveryAt enqueues a delivery that won't be claimed before
+-- next_attempt_at — used to defer external delivery past the recipient's quiet
+-- hours.
+-- name: CreateNotificationDeliveryAt :exec
+INSERT INTO notification_deliveries (notification_id, channel_id, next_attempt_at)
+VALUES ($1, $2, $3);
+
 -- ClaimPendingDeliveries atomically grabs up to $1 due pending rows, marking them
 -- 'sending' and bumping the attempt counter, so concurrent/queued workers never
 -- pick the same row (FOR UPDATE SKIP LOCKED).
