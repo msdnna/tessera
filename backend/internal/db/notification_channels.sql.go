@@ -217,6 +217,37 @@ func (q *Queries) DeleteNotificationRoute(ctx context.Context, arg DeleteNotific
 	return err
 }
 
+const getDeviceChannel = `-- name: GetDeviceChannel :one
+SELECT id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at, template FROM notification_channels
+WHERE user_id = $1 AND type = 'device' AND config->>'device_id' = $2::text
+`
+
+type GetDeviceChannelParams struct {
+	UserID   uuid.UUID `json:"user_id"`
+	DeviceID string    `json:"device_id"`
+}
+
+// GetDeviceChannel finds a user's device channel by its stable device id (stored
+// in config). Used by auto-registration to upsert idempotently.
+func (q *Queries) GetDeviceChannel(ctx context.Context, arg GetDeviceChannelParams) (NotificationChannel, error) {
+	row := q.db.QueryRow(ctx, getDeviceChannel, arg.UserID, arg.DeviceID)
+	var i NotificationChannel
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Type,
+		&i.Label,
+		&i.Config,
+		&i.SecretEnc,
+		&i.Enabled,
+		&i.Verified,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Template,
+	)
+	return i, err
+}
+
 const getNotification = `-- name: GetNotification :one
 
 SELECT id, user_id, workspace_id, task_id, actor_id, kind, text, read_at, created_at FROM notifications WHERE id = $1

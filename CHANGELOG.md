@@ -1151,6 +1151,18 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.40.0] — 2026-06-16
+- **Device notification channels** (Phase C; no schema change — reuses
+  `notification_channels`). A new `device` channel type represents a connected
+  client (browser / Android / future desktop): it carries a stable `device_id` in
+  its config and is **not** sent to an external service — instead, when a routing
+  rule targets it, the live WS `notification` event carries `device_targets`
+  (the device ids to notify) so the matching client raises a native OS
+  notification. This is **per-device**, so rules can differ per client (e.g. only
+  `assigned` to the phone, everything to the browser + Telegram). Quiet hours
+  suppress device targets (they can't be deferred). New `POST /notification-devices`
+  auto-registers/updates a client's device channel idempotently by `device_id`.
+
 ### [0.39.0] — 2026-06-16
 - **Notification digest / grouping** (Phase C, migration **0021**). A per-user
   digest window (`digest_minutes`, 0 = off) holds external deliveries and combines

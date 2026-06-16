@@ -7,6 +7,18 @@ import (
 	"tessera/internal/db"
 )
 
+func TestDeviceIDOf(t *testing.T) {
+	if got := deviceIDOf(db.NotificationChannel{Config: []byte(`{"device_id":"abc","platform":"web"}`)}); got != "abc" {
+		t.Fatalf("device_id = %q, want abc", got)
+	}
+	if got := deviceIDOf(db.NotificationChannel{Config: []byte(`{}`)}); got != "" {
+		t.Fatalf("no device_id should be empty, got %q", got)
+	}
+	if got := deviceIDOf(db.NotificationChannel{Config: nil}); got != "" {
+		t.Fatalf("nil config should be empty, got %q", got)
+	}
+}
+
 func TestQuietWindow(t *testing.T) {
 	at := func(h, m int) time.Time { return time.Date(2026, 6, 16, h, m, 0, 0, time.UTC) }
 

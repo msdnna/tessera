@@ -220,6 +220,7 @@ func main() {
 			protected.PATCH("/notification-channels/:id", rh.UpdateNotificationChannel)
 			protected.DELETE("/notification-channels/:id", rh.DeleteNotificationChannel)
 			protected.POST("/notification-channels/:id/test", rh.TestNotificationChannel)
+			protected.POST("/notification-devices", rh.RegisterDeviceChannel)
 			protected.POST("/notification-template-preview", rh.PreviewNotificationTemplate)
 			protected.GET("/notification-prefs", rh.GetMyNotificationPrefs)
 			protected.PUT("/notification-prefs", rh.UpdateMyNotificationPrefs)

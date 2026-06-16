@@ -262,6 +262,50 @@ func (h *API) DeleteNotificationChannel(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// RegisterDeviceChannel upserts the calling client's "device" channel by its
+// stable device_id (auto-registration on app start). The channel then appears in
+// the channel list and can be targeted by routing rules — so a notification
+// flagged for this device shows as a native OS notification on it. Idempotent.
+func (h *API) RegisterDeviceChannel(c *gin.Context) {
+	var req struct {
+		DeviceID string `json:"device_id" binding:"required"`
+		Label    string `json:"label"`
+		Platform string `json:"platform"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	uid := middleware.CurrentUser(c)
+	label := strings.TrimSpace(req.Label)
+	if label == "" {
+		label = "Устройство"
+	}
+	cfg, _ := json.Marshal(map[string]string{"device_id": req.DeviceID, "platform": strings.TrimSpace(req.Platform)})
+
+	if existing, err := h.q.GetDeviceChannel(c, db.GetDeviceChannelParams{UserID: uid, DeviceID: req.DeviceID}); err == nil {
+		// Refresh the label/platform; keep enabled + template as the user set them.
+		updated, uerr := h.q.UpdateNotificationChannel(c, db.UpdateNotificationChannelParams{
+			ID: existing.ID, UserID: uid, Label: label, Config: cfg,
+			SecretEnc: existing.SecretEnc, Enabled: existing.Enabled, Template: existing.Template,
+		})
+		if uerr != nil {
+			fail(c)
+			return
+		}
+		c.JSON(http.StatusOK, channelViewOf(updated))
+		return
+	}
+	row, err := h.q.CreateNotificationChannel(c, db.CreateNotificationChannelParams{
+		UserID: uid, Type: "device", Label: label, Config: cfg, SecretEnc: "", Enabled: true, Template: "",
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusCreated, channelViewOf(row))
+}
+
 // TestNotificationChannel sends a sample message through the channel right now
 // (synchronously, off the outbox) and flips `verified` on success.
 func (h *API) TestNotificationChannel(c *gin.Context) {
@@ -484,6 +528,9 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 	if err != nil {
 		return
 	}
+	// Route first so the broadcast can carry which devices should raise a native
+	// notification (external channels are enqueued to the outbox in here).
+	deviceTargets := h.routeNotification(ctx, n)
 	// Enrich the live payload with the task's board id + number so a freshly
 	// pushed notification is clickable (the list endpoint joins these in).
 	obj := gin.H{
@@ -497,8 +544,9 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 			obj["task_number"] = t.Number
 		}
 	}
-	h.broadcast(wsID, "notification", gin.H{"user_id": userID, "notification": obj})
-	h.routeNotification(ctx, n)
+	h.broadcast(wsID, "notification", gin.H{
+		"user_id": userID, "notification": obj, "device_targets": deviceTargets,
+	})
 }
 
 // routeNotification evaluates a freshly created notification against the user's
@@ -507,20 +555,18 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 // in-app notification has already been created/broadcast by notify() — this only
 // gates external channels. Best-effort: a routing failure never breaks the
 // originating mutation.
-func (h *API) routeNotification(ctx context.Context, n db.Notification) {
+func (h *API) routeNotification(ctx context.Context, n db.Notification) []string {
 	routes, err := h.q.ListNotificationRoutes(ctx, n.UserID)
 	if err != nil || len(routes) == 0 {
-		return
+		return nil
 	}
 	chans, err := h.q.ListNotificationChannels(ctx, n.UserID)
 	if err != nil {
-		return
+		return nil
 	}
-	enabled := make(map[uuid.UUID]bool, len(chans))
+	chByID := make(map[uuid.UUID]db.NotificationChannel, len(chans))
 	for _, ch := range chans {
-		if ch.Enabled {
-			enabled[ch.ID] = true
-		}
+		chByID[ch.ID] = ch
 	}
 	ev := notify.Event{Kind: n.Kind, WorkspaceID: n.WorkspaceID}
 	for _, r := range routes {
@@ -535,7 +581,7 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) {
 		var opts notify.RouteOptions
 		_ = json.Unmarshal(orJSONObj(r.Options), &opts)
 		if opts.Mute {
-			return // matched a mute rule — deliver nowhere
+			return nil // matched a mute rule — deliver nowhere
 		}
 		// Resolve the user's prefs once for both quiet-hours deferral and digest
 		// batching. Quiet hours hold external delivery until the window ends; a
@@ -547,11 +593,25 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) {
 		}
 		now := time.Now()
 		base := now
-		if qEnd, inQuiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, now); inQuiet {
+		qEnd, inQuiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, now)
+		if inQuiet {
 			base = qEnd
 		}
+		var deviceTargets []string
 		for _, chID := range r.ChannelIds {
-			if !enabled[chID] {
+			ch, ok := chByID[chID]
+			if !ok || !ch.Enabled {
+				continue
+			}
+			// "device" channels aren't sent to an external service — they flag the
+			// live WS event so the matching client shows a native notification.
+			// Ephemeral, so quiet hours suppress them (can't be deferred).
+			if ch.Type == "device" {
+				if !inQuiet {
+					if did := deviceIDOf(ch); did != "" {
+						deviceTargets = append(deviceTargets, did)
+					}
+				}
 				continue
 			}
 			next, group := base, ""
@@ -565,8 +625,20 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) {
 				NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next, DigestGroup: group,
 			})
 		}
-		return // first matching rule wins
+		return deviceTargets // first matching rule wins
 	}
+	return nil
+}
+
+// deviceIDOf extracts the stable device id from a device channel's config.
+func deviceIDOf(ch db.NotificationChannel) string {
+	var m map[string]any
+	if json.Unmarshal(ch.Config, &m) == nil {
+		if s, ok := m["device_id"].(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 // ── delivery worker ────────────────────────────────────────
@@ -1140,6 +1212,10 @@ func validateChannel(typ string, cfg map[string]any) error {
 		}
 	case "shoutrrr":
 		// The service URL is a secret (it carries credentials) — validated there.
+	case "device":
+		if cfgString(cfg, "device_id") == "" {
+			return errors.New("device канал требует device_id")
+		}
 	default:
 		return fmt.Errorf("неизвестный тип канала: %q", typ)
 	}

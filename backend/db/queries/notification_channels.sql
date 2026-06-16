@@ -99,3 +99,9 @@ WHERE id = $1;
 
 -- name: MarkDeliveryFailed :exec
 UPDATE notification_deliveries SET status = 'failed', last_error = $2, updated_at = now() WHERE id = $1;
+
+-- GetDeviceChannel finds a user's device channel by its stable device id (stored
+-- in config). Used by auto-registration to upsert idempotently.
+-- name: GetDeviceChannel :one
+SELECT * FROM notification_channels
+WHERE user_id = $1 AND type = 'device' AND config->>'device_id' = @device_id::text;
