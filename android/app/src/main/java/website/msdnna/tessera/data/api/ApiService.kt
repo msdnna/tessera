@@ -374,6 +374,59 @@ interface ApiService {
     @POST("notifications/read-all")
     suspend fun markAllNotificationsRead()
 
+    // ── Notification router: channels / routes / prefs / device ──────────────
+    @GET("notification-channels")
+    suspend fun notificationChannels(): List<website.msdnna.tessera.data.model.NotificationChannel>?
+
+    @POST("notification-channels")
+    suspend fun createNotificationChannel(
+        @Body body: website.msdnna.tessera.data.model.ChannelRequest,
+    ): website.msdnna.tessera.data.model.NotificationChannel
+
+    @PATCH("notification-channels/{id}")
+    suspend fun updateNotificationChannel(
+        @Path("id") id: String,
+        @Body body: website.msdnna.tessera.data.model.ChannelRequest,
+    ): website.msdnna.tessera.data.model.NotificationChannel
+
+    @DELETE("notification-channels/{id}")
+    suspend fun deleteNotificationChannel(@Path("id") id: String)
+
+    @POST("notification-channels/{id}/test")
+    suspend fun testNotificationChannel(
+        @Path("id") id: String,
+    ): website.msdnna.tessera.data.model.TestChannelResult
+
+    @POST("notification-devices")
+    suspend fun registerDevice(
+        @Body body: website.msdnna.tessera.data.model.RegisterDeviceRequest,
+    ): website.msdnna.tessera.data.model.NotificationChannel
+
+    @GET("notification-routes")
+    suspend fun notificationRoutes(): List<website.msdnna.tessera.data.model.NotificationRoute>?
+
+    @POST("notification-routes")
+    suspend fun createNotificationRoute(
+        @Body body: website.msdnna.tessera.data.model.RouteRequest,
+    ): website.msdnna.tessera.data.model.NotificationRoute
+
+    @PATCH("notification-routes/{id}")
+    suspend fun updateNotificationRoute(
+        @Path("id") id: String,
+        @Body body: website.msdnna.tessera.data.model.RouteRequest,
+    ): website.msdnna.tessera.data.model.NotificationRoute
+
+    @DELETE("notification-routes/{id}")
+    suspend fun deleteNotificationRoute(@Path("id") id: String)
+
+    @GET("notification-prefs")
+    suspend fun notificationPrefs(): website.msdnna.tessera.data.model.NotificationPrefs
+
+    @PUT("notification-prefs")
+    suspend fun updateNotificationPrefs(
+        @Body body: website.msdnna.tessera.data.model.NotificationPrefs,
+    ): website.msdnna.tessera.data.model.NotificationPrefs
+
     // ── Reminders (#2) ────────────────────────────────────────────────────────
     @GET("reminders")
     suspend fun reminders(): List<website.msdnna.tessera.data.model.Reminder>?

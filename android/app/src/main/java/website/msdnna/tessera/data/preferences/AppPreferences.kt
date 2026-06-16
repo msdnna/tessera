@@ -44,6 +44,17 @@ class AppPreferences(private val context: Context) {
         val EXPANDED_GROUPS = stringSetPreferencesKey("expanded_groups")
         val EXPANDED_PROJECTS = stringSetPreferencesKey("expanded_projects")
         val LAST_DEST = stringPreferencesKey("last_dest")
+        val DEVICE_ID = stringPreferencesKey("device_id")
+    }
+
+    /** Stable per-install id for the notification "device" channel; generated and
+     *  persisted on first read so this device is routable. */
+    suspend fun ensureDeviceId(): String {
+        val existing = context.dataStore.data.first()[Keys.DEVICE_ID]
+        if (!existing.isNullOrBlank()) return existing
+        val id = "android-" + java.util.UUID.randomUUID().toString()
+        context.dataStore.edit { it[Keys.DEVICE_ID] = id }
+        return id
     }
 
     /** User-set server override; falls back to the build's default base URL. */

@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +46,7 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.User
+import website.msdnna.tessera.data.realtime.DeviceNotifier
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.Sidebar
@@ -65,6 +67,7 @@ sealed interface MainDest {
     data object Notes : MainDest
     data object Reminders : MainDest
     data object GitLabSettings : MainDest
+    data object Notifications : MainDest
     data object Settings : MainDest
     data object Admin : MainDest
     data class BoardView(val board: Board) : MainDest
@@ -161,11 +164,23 @@ fun MainScreen(
                 is MainDest.Notes -> "notes"
                 is MainDest.Reminders -> "reminders"
                 is MainDest.GitLabSettings -> "gitlab"
+                is MainDest.Notifications -> "notifications"
                 is MainDest.Settings -> "settings"
                 is MainDest.Admin -> "admin"
                 is MainDest.BoardView -> "board:${d.board.id}"
             },
         )
+    }
+
+    // This device's stable id, for the notification-settings «это устройство» badge.
+    var deviceId by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { deviceId = runCatching { AppContainer.prefs.ensureDeviceId() }.getOrDefault("") }
+
+    // Raise a system notification when the server routes one to this device (the
+    // device-channel path while the app is open). Context lives here, in the UI.
+    val pushContext = LocalContext.current
+    LaunchedEffect(Unit) {
+        notifVm.devicePush.collect { DeviceNotifier.show(pushContext, it) }
     }
 
     ModalNavigationDrawer(
@@ -194,6 +209,7 @@ fun MainScreen(
                         scope.launch { drawerState.close() }
                     },
                     onOpenGitlab = { navTo(MainDest.GitLabSettings) },
+                    onOpenNotifications = { navTo(MainDest.Notifications) },
                     onOpenSettings = { navTo(MainDest.Settings) },
                     onOpenAdmin = { navTo(MainDest.Admin) },
                     onOpenBoard = { board -> navTo(MainDest.BoardView(board)) },
@@ -256,6 +272,8 @@ fun MainScreen(
                             is MainDest.Reminders -> RemindersScreen()
 
                             is MainDest.GitLabSettings -> GitLabSettingsScreen(workspaceId = state.currentId)
+
+                            is MainDest.Notifications -> NotificationSettingsScreen(deviceId = deviceId)
 
                             is MainDest.Settings -> ProfileScreen()
 
@@ -449,6 +467,7 @@ private fun titleFor(dest: MainDest): String = when (dest) {
     is MainDest.Notes -> "Заметки"
     is MainDest.Reminders -> "Напоминания"
     is MainDest.GitLabSettings -> "GitLab"
+    is MainDest.Notifications -> "Уведомления"
     is MainDest.Settings -> "Настройки"
     is MainDest.Admin -> "Администрирование"
     is MainDest.BoardView -> dest.board.name
@@ -460,6 +479,7 @@ private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Notes -> "notes"
     is MainDest.Reminders -> "reminders"
     is MainDest.GitLabSettings -> "gitlab"
+    is MainDest.Notifications -> "notifications"
     is MainDest.Settings -> "settings"
     is MainDest.Admin -> "admin"
     is MainDest.BoardView -> "board"

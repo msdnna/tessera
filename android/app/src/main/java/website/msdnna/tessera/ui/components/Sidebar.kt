@@ -111,6 +111,7 @@ fun Sidebar(
     onOpenNotes: () -> Unit,
     onOpenMembers: () -> Unit,
     onOpenGitlab: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenAdmin: () -> Unit,
     onOpenBoard: (Board) -> Unit,
@@ -164,6 +165,7 @@ fun Sidebar(
                 Spacer(Modifier.width(10.dp))
                 Text("Tessera", color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 IonIconButton(Ion.GIT_BRANCH, onClick = onOpenGitlab)
+                IonIconButton(Ion.NOTIFICATIONS, onClick = onOpenNotifications)
                 IonIconButton(Ion.PEOPLE, onClick = onOpenMembers)
                 IonIconButton(Ion.PALETTE, onClick = { showTheme = true })
             }

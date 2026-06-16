@@ -17,6 +17,9 @@ import website.msdnna.tessera.data.api.RetrofitClient
 data class RealtimeEvent(
     @SerializedName("scope") val scope: String = "",
     @SerializedName("type") val type: String = "",
+    // The event payload — most consumers reload instead, but `notification` events
+    // carry the recipient + device_targets used to raise a system notification.
+    @SerializedName("data") val data: com.google.gson.JsonObject? = null,
 )
 
 /**

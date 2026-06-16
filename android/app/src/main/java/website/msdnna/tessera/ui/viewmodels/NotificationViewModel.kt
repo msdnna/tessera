@@ -2,14 +2,21 @@ package website.msdnna.tessera.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.JsonObject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Notification
+import website.msdnna.tessera.data.realtime.DevicePush
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.repository.NotificationRepository
@@ -38,9 +45,25 @@ class NotificationViewModel(
     private var realtime: RealtimeClient? = null
     private var reloadJob: Job? = null
 
+    // Device-targeted notifications to raise as a system notification (collected by
+    // the UI, which has a Context). deviceId/meId are cached for the WS filter.
+    private val _devicePush = MutableSharedFlow<DevicePush>(extraBufferCapacity = 8)
+    val devicePush: SharedFlow<DevicePush> = _devicePush.asSharedFlow()
+
+    @Volatile private var deviceId: String = ""
+
+    @Volatile private var meId: String = ""
+
     init {
         ensureRealtime()
         load()
+        viewModelScope.launch {
+            meId = runCatching { AppContainer.prefs.user.first()?.id ?: "" }.getOrDefault("")
+            deviceId = runCatching { AppContainer.prefs.ensureDeviceId() }.getOrDefault("")
+            if (deviceId.isNotBlank()) {
+                runCatching { repo.registerDevice(deviceId, android.os.Build.MODEL ?: "Android") }
+            }
+        }
     }
 
     fun load() = launchCatching {
@@ -67,11 +90,41 @@ class NotificationViewModel(
 
     private fun onRealtimeEvent(ev: RealtimeEvent) {
         if (ev.type != "notification") return
+        maybeDevicePush(ev.data)
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
             delay(REALTIME_DEBOUNCE_MS)
             load()
         }
+    }
+
+    /** Raise a system notification when this device is among the event's targets
+     *  and the notification is addressed to the current user. */
+    private fun maybeDevicePush(data: JsonObject?) {
+        if (data == null || deviceId.isBlank()) return
+        runCatching {
+            if (data.get("user_id")?.asString != meId) return
+            val targets = data.getAsJsonArray("device_targets") ?: return
+            val hit = (0 until targets.size()).any { i ->
+                val el = targets.get(i)
+                !el.isJsonNull && el.asString == deviceId
+            }
+            if (!hit) return
+            val n = data.getAsJsonObject("notification") ?: return
+            val kind = n.get("kind")?.takeUnless { it.isJsonNull }?.asString ?: ""
+            val text = n.get("text")?.takeUnless { it.isJsonNull }?.asString ?: ""
+            val taskId = n.get("task_id")?.takeUnless { it.isJsonNull }?.asString
+            _devicePush.tryEmit(DevicePush(titleForKind(kind), text, taskId))
+        }
+    }
+
+    private fun titleForKind(kind: String): String = when (kind) {
+        "assigned" -> "Назначена задача"
+        "comment" -> "Новый комментарий"
+        "mention" -> "Вас упомянули"
+        "due_soon" -> "Скоро дедлайн"
+        "reminder" -> "Напоминание"
+        else -> "Tessera"
     }
 
     override fun onCleared() {

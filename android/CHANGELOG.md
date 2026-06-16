@@ -5,6 +5,21 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.14.0 — 2026-06-16
+- **Notification settings** (new «Уведомления» screen, bell icon in the sidebar;
+  consumes backend 0.34–0.40). Mirrors the web settings (without the template
+  editor): manage delivery **channels** (email / telegram / webhook / shoutrrr —
+  add/edit/test/enable/delete, masked secrets), **routing rules** (event kinds +
+  workspace → channels, or mute), and the **schedule** (due lead/repeat, reminders
+  to channels, digest window, quiet hours).
+- **This device is a routable channel**: the app auto-registers a `device` channel
+  on launch, so rules can target the phone specifically (e.g. only `assigned` to
+  the phone, everything to Telegram). It shows «это устройство» in the channel list.
+- **System notifications while the app is open** (C2): when a rule routes a
+  notification to this device, it's posted as a system notification (new
+  «Уведомления» channel) — tap to open the task. Background push (FCM) is not
+  included.
+
 ## 0.13.2 — 2026-06-16
 - The brand loader (`TesseraLoader`) now **pulses** (gentle 0.86↔1 scale synced to
   the rotation) as well as spins, matching the web spinner.
