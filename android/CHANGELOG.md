@@ -5,6 +5,13 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.15.0 — 2026-06-16
+- **Message-template editor** in the channel editor (email/telegram/webhook/
+  shoutrrr): a multiline template field, tappable field tokens that insert into the
+  template (`{{.Text}}`, `{{.TaskTitle}}`, `{{.Actor}}`, …), and a **Предпросмотр**
+  button that renders the template server-side against sample data. Empty = the
+  built-in default. (Brings Android to parity with the web settings.)
+
 ## 0.14.0 — 2026-06-16
 - **Notification settings** (new «Уведомления» screen, bell icon in the sidebar;
   consumes backend 0.34–0.40). Mirrors the web settings (without the template

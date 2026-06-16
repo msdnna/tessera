@@ -7,6 +7,8 @@ import website.msdnna.tessera.data.model.NotificationPrefs
 import website.msdnna.tessera.data.model.NotificationRoute
 import website.msdnna.tessera.data.model.RegisterDeviceRequest
 import website.msdnna.tessera.data.model.RouteRequest
+import website.msdnna.tessera.data.model.TemplatePreviewRequest
+import website.msdnna.tessera.data.model.TemplatePreviewResult
 import website.msdnna.tessera.data.model.TestChannelResult
 import website.msdnna.tessera.data.model.Workspace
 
@@ -30,6 +32,9 @@ class NotificationSettingsRepository {
 
     suspend fun prefs(): NotificationPrefs = api.notificationPrefs()
     suspend fun savePrefs(p: NotificationPrefs): NotificationPrefs = api.updateNotificationPrefs(p)
+
+    suspend fun previewTemplate(template: String): TemplatePreviewResult =
+        api.previewNotificationTemplate(TemplatePreviewRequest(template))
 
     suspend fun workspaces(): List<Workspace> = api.workspaces().orEmpty()
 }

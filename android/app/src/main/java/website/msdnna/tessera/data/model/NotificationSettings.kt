@@ -33,6 +33,16 @@ data class TestChannelResult(
     @SerializedName("error") val error: String? = null,
 )
 
+data class TemplatePreviewRequest(
+    @SerializedName("template") val template: String,
+)
+
+data class TemplatePreviewResult(
+    @SerializedName("ok") val ok: Boolean = false,
+    @SerializedName("text") val text: String? = null,
+    @SerializedName("error") val error: String? = null,
+)
+
 data class RegisterDeviceRequest(
     @SerializedName("device_id") val deviceId: String,
     @SerializedName("label") val label: String,

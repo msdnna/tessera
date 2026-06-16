@@ -142,5 +142,18 @@ class NotificationSettingsViewModel : ViewModel() {
         }
     }
 
+    /** Renders [template] against sample data for the editor preview; returns
+     *  (text, error) via [onResult]. */
+    fun previewTemplate(template: String, onResult: (String?, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val r = repo.previewTemplate(template)
+                if (r.ok) onResult(r.text, null) else onResult(null, r.error)
+            } catch (e: Exception) {
+                onResult(null, errorMessage(e))
+            }
+        }
+    }
+
     fun clearMessage() = _state.update { it.copy(message = null, error = null) }
 }

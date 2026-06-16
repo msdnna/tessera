@@ -79,6 +79,9 @@ private val TIME_OPTIONS = (0 until 48).map { i ->
     val m = i * 30
     m to "%02d:%02d".format(m / 60, m % 60)
 }
+private val TEMPLATE_FIELDS = listOf(
+    "{{.Text}}", "{{.Title}}", "{{.TaskNumber}}", "{{.TaskTitle}}", "{{.Actor}}", "{{.Workspace}}", "{{.Link}}",
+)
 
 /** Notification settings: delivery channels, routing rules and per-user schedule.
  *  Mirrors the web `NotificationSettings.vue` (without the template editor). */
@@ -135,6 +138,7 @@ fun NotificationSettingsScreen(
             ChannelEditor(
                 edit = channelEdit!!,
                 saving = state.saving,
+                vm = vm,
                 onSave = { vm.saveChannel(channelEdit!!.id, channelEdit!!.toRequest()) { channelEdit = null } },
                 onCancel = { channelEdit = null },
             )
@@ -226,7 +230,13 @@ private fun ChannelRow(
 }
 
 @Composable
-private fun ChannelEditor(edit: ChannelEdit, saving: Boolean, onSave: () -> Unit, onCancel: () -> Unit) {
+private fun ChannelEditor(
+    edit: ChannelEdit,
+    saving: Boolean,
+    vm: NotificationSettingsViewModel,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+) {
     val c = Tessera.colors
     val isNew = edit.id == null
     TCard {
@@ -276,6 +286,10 @@ private fun ChannelEditor(edit: ChannelEdit, saving: Boolean, onSave: () -> Unit
                     color = c.text3, fontSize = 12.sp,
                 )
             }
+            if (edit.type != "device") {
+                Spacer(Modifier.height(10.dp))
+                TemplateEditor(edit, vm)
+            }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Включён", color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -287,6 +301,41 @@ private fun ChannelEditor(edit: ChannelEdit, saving: Boolean, onSave: () -> Unit
                 TButton("Сохранить", onClick = onSave, loading = saving, modifier = Modifier.weight(1f))
             }
         }
+    }
+}
+
+@Composable
+private fun TemplateEditor(edit: ChannelEdit, vm: NotificationSettingsViewModel) {
+    val c = Tessera.colors
+    var preview by remember { mutableStateOf<String?>(null) }
+    var previewErr by remember { mutableStateOf<String?>(null) }
+    Text("Шаблон сообщения (пусто = по умолчанию)", color = c.text2, fontSize = 13.sp)
+    Spacer(Modifier.height(6.dp))
+    TTextField(edit.template, { edit.template = it }, singleLine = false, placeholder = "{{.Text}}")
+    Spacer(Modifier.height(6.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        TEMPLATE_FIELDS.forEach { token -> ToggleChip(token, false) { edit.template += token } }
+    }
+    Spacer(Modifier.height(8.dp))
+    TButton(
+        "Предпросмотр", kind = TButtonKind.Secondary,
+        onClick = {
+            vm.previewTemplate(edit.template) { text, err ->
+                preview = text
+                previewErr = err
+            }
+        },
+    )
+    previewErr?.let {
+        Spacer(Modifier.height(6.dp))
+        TFormError(it)
+    }
+    preview?.let {
+        Spacer(Modifier.height(6.dp))
+        Box(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusSm)).background(c.surface)
+                .border(1.dp, c.border, RoundedCornerShape(RadiusSm)).padding(10.dp),
+        ) { Text(it, color = c.text1, fontSize = 13.sp) }
     }
 }
 
@@ -531,9 +580,9 @@ private class ChannelEdit(c: NotificationChannel?) {
     var botToken by mutableStateOf("")
     var authHeader by mutableStateOf("")
     var shoutrrrUrl by mutableStateOf("")
+    var template by mutableStateOf(c?.template ?: "")
     var enabled by mutableStateOf(c?.enabled ?: true)
     private val existingConfig = c?.config ?: emptyMap()
-    private val existingTemplate = c?.template ?: ""
 
     fun toRequest(): ChannelRequest {
         val config = mutableMapOf<String, String>()
@@ -556,7 +605,7 @@ private class ChannelEdit(c: NotificationChannel?) {
 
             "device" -> existingConfig.forEach { (k, v) -> config[k] = v } // keep device_id/platform
         }
-        return ChannelRequest(type, label.trim(), config, secret, existingTemplate, enabled)
+        return ChannelRequest(type, label.trim(), config, secret, template, enabled)
     }
 }
 

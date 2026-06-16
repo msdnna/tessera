@@ -402,6 +402,11 @@ interface ApiService {
         @Body body: website.msdnna.tessera.data.model.RegisterDeviceRequest,
     ): website.msdnna.tessera.data.model.NotificationChannel
 
+    @POST("notification-template-preview")
+    suspend fun previewNotificationTemplate(
+        @Body body: website.msdnna.tessera.data.model.TemplatePreviewRequest,
+    ): website.msdnna.tessera.data.model.TemplatePreviewResult
+
     @GET("notification-routes")
     suspend fun notificationRoutes(): List<website.msdnna.tessera.data.model.NotificationRoute>?
 
