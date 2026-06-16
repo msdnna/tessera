@@ -35,7 +35,7 @@ func (q *Queries) GetDueNotificationState(ctx context.Context, arg GetDueNotific
 
 const getNotificationPrefs = `-- name: GetNotificationPrefs :one
 
-SELECT user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled, updated_at, quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz FROM notification_prefs WHERE user_id = $1
+SELECT user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled, updated_at, quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, digest_minutes FROM notification_prefs WHERE user_id = $1
 `
 
 // Per-user scheduling prefs + the due/reminder scanner's queries (Phase B).
@@ -53,6 +53,7 @@ func (q *Queries) GetNotificationPrefs(ctx context.Context, userID uuid.UUID) (N
 		&i.QuietStartMinutes,
 		&i.QuietEndMinutes,
 		&i.QuietTz,
+		&i.DigestMinutes,
 	)
 	return i, err
 }
@@ -171,9 +172,9 @@ func (q *Queries) UpsertDueNotificationState(ctx context.Context, arg UpsertDueN
 const upsertNotificationPrefs = `-- name: UpsertNotificationPrefs :one
 INSERT INTO notification_prefs (
     user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled,
-    quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, updated_at
+    quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, digest_minutes, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
 ON CONFLICT (user_id) DO UPDATE
 SET due_enabled = EXCLUDED.due_enabled,
     due_lead_minutes = EXCLUDED.due_lead_minutes,
@@ -183,8 +184,9 @@ SET due_enabled = EXCLUDED.due_enabled,
     quiet_start_minutes = EXCLUDED.quiet_start_minutes,
     quiet_end_minutes = EXCLUDED.quiet_end_minutes,
     quiet_tz = EXCLUDED.quiet_tz,
+    digest_minutes = EXCLUDED.digest_minutes,
     updated_at = now()
-RETURNING user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled, updated_at, quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz
+RETURNING user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled, updated_at, quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, digest_minutes
 `
 
 type UpsertNotificationPrefsParams struct {
@@ -197,6 +199,7 @@ type UpsertNotificationPrefsParams struct {
 	QuietStartMinutes int32     `json:"quiet_start_minutes"`
 	QuietEndMinutes   int32     `json:"quiet_end_minutes"`
 	QuietTz           string    `json:"quiet_tz"`
+	DigestMinutes     int32     `json:"digest_minutes"`
 }
 
 func (q *Queries) UpsertNotificationPrefs(ctx context.Context, arg UpsertNotificationPrefsParams) (NotificationPref, error) {
@@ -210,6 +213,7 @@ func (q *Queries) UpsertNotificationPrefs(ctx context.Context, arg UpsertNotific
 		arg.QuietStartMinutes,
 		arg.QuietEndMinutes,
 		arg.QuietTz,
+		arg.DigestMinutes,
 	)
 	var i NotificationPref
 	err := row.Scan(
@@ -223,6 +227,7 @@ func (q *Queries) UpsertNotificationPrefs(ctx context.Context, arg UpsertNotific
 		&i.QuietStartMinutes,
 		&i.QuietEndMinutes,
 		&i.QuietTz,
+		&i.DigestMinutes,
 	)
 	return i, err
 }

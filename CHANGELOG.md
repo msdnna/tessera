@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.68.0] — 2026-06-16
+- **Digest** setting in notification settings (consumes backend 0.39): a
+  «Группировать в сводку» window (off / 5 / 15 / 30 / 60 мин) that batches a burst
+  of notifications into one per-channel message.
+
 ### [0.67.1] — 2026-06-16
 - Sidebar divider double-click now actually **animates** the rail collapse (forced an
   explicit width transition on the sider; Naive doesn't transition an externally
@@ -1145,6 +1150,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.39.0] — 2026-06-16
+- **Notification digest / grouping** (Phase C, migration **0021**). A per-user
+  digest window (`digest_minutes`, 0 = off) holds external deliveries and combines
+  those going to the same channel within the window into **one** message (e.g.
+  «Сводка — 3 уведомлений: • … • …»). Implemented on the outbox: a delivery gets a
+  `digest_group` at enqueue (v1 = channel id) and a deferred `next_attempt_at`
+  (max of the digest window and any quiet-hours hold, so a quiet-release burst is
+  combined too); the worker groups due same-group rows and sends once. The
+  `digest_group` column lets a future per-kind / per-rule grouping change the key
+  without a migration. New `digest_minutes` field on `GET/PUT /notification-prefs`.
 
 ### [0.38.0] — 2026-06-16
 - **Quiet hours / silence** (migration **0020**, on `notification_prefs`): a

@@ -66,11 +66,11 @@ INSERT INTO notification_deliveries (notification_id, channel_id)
 VALUES ($1, $2);
 
 -- CreateNotificationDeliveryAt enqueues a delivery that won't be claimed before
--- next_attempt_at — used to defer external delivery past the recipient's quiet
--- hours.
+-- next_attempt_at (used to defer past quiet hours / hold for a digest window). A
+-- non-empty digest_group makes it eligible for combining with same-group rows.
 -- name: CreateNotificationDeliveryAt :exec
-INSERT INTO notification_deliveries (notification_id, channel_id, next_attempt_at)
-VALUES ($1, $2, $3);
+INSERT INTO notification_deliveries (notification_id, channel_id, next_attempt_at, digest_group)
+VALUES ($1, $2, $3, $4);
 
 -- ClaimPendingDeliveries atomically grabs up to $1 due pending rows, marking them
 -- 'sending' and bumping the attempt counter, so concurrent/queued workers never

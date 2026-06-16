@@ -71,6 +71,13 @@ const REPEAT_OPTIONS = [
   { label: 'Каждые 6 часов', value: 360 },
   { label: 'Каждый день', value: 1440 },
 ]
+const DIGEST_OPTIONS = [
+  { label: 'Выключено (сразу)', value: 0 },
+  { label: 'Каждые 5 минут', value: 5 },
+  { label: 'Каждые 15 минут', value: 15 },
+  { label: 'Каждые 30 минут', value: 30 },
+  { label: 'Раз в час', value: 60 },
+]
 const kindOptions = Object.entries(KIND_META).map(([value, label]) => ({ value, label }))
 
 const wsOptions = computed(() => (wsStore.list || []).map((w) => ({ value: w.id, label: w.name })))
@@ -88,6 +95,7 @@ const prefs = reactive({
   quiet_start_minutes: 1320,
   quiet_end_minutes: 480,
   quiet_tz: '',
+  digest_minutes: 0,
 })
 const prefsSaving = ref(false)
 const prefsSaved = ref(false)
@@ -503,6 +511,13 @@ function wsSummary(r) {
           <n-switch v-model:value="prefs.reminder_enabled" size="small" />
           <span>Доставлять напоминания (reminders) во внешние каналы</span>
         </label>
+        <label class="field">
+          <span>Группировать в сводку (дайджест)</span>
+          <n-select v-model:value="prefs.digest_minutes" :options="DIGEST_OPTIONS" />
+        </label>
+        <p class="hint">
+          Уведомления за окно объединяются в одно сообщение на канал — меньше шума при всплесках.
+        </p>
         <label class="sched-row">
           <n-switch v-model:value="prefs.quiet_enabled" size="small" />
           <span>Тихие часы (не беспокоить)</span>

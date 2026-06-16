@@ -537,18 +537,33 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) {
 		if opts.Mute {
 			return // matched a mute rule — deliver nowhere
 		}
-		// Hold external delivery until the end of the user's quiet window (in-app
-		// already fired). Decided once per notification.
-		next := time.Now()
-		if until, quiet := h.quietDeferUntil(ctx, n.UserID); quiet {
-			next = until
+		// Resolve the user's prefs once for both quiet-hours deferral and digest
+		// batching. Quiet hours hold external delivery until the window ends; a
+		// digest window holds it long enough to combine a burst (whichever is later
+		// wins, so a quiet-release burst still gets combined).
+		p, perr := h.q.GetNotificationPrefs(ctx, n.UserID)
+		if perr != nil {
+			p = defaultPrefs(n.UserID)
+		}
+		now := time.Now()
+		base := now
+		if qEnd, inQuiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, now); inQuiet {
+			base = qEnd
 		}
 		for _, chID := range r.ChannelIds {
-			if enabled[chID] {
-				_ = h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
-					NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next,
-				})
+			if !enabled[chID] {
+				continue
 			}
+			next, group := base, ""
+			if p.DigestMinutes > 0 {
+				group = chID.String() // v1 group key — combine everything to this channel
+				if d := now.Add(time.Duration(p.DigestMinutes) * time.Minute); d.After(next) {
+					next = d
+				}
+			}
+			_ = h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
+				NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next, DigestGroup: group,
+			})
 		}
 		return // first matching rule wins
 	}
@@ -584,24 +599,78 @@ func (h *API) drainDeliveries(ctx context.Context) {
 	if err != nil || len(rows) == 0 {
 		return
 	}
+	// Digest rows (non-empty group) that fell due together are combined into one
+	// message per group; everything else delivers individually.
+	groups := map[string][]db.NotificationDelivery{}
 	for _, d := range rows {
-		err := h.deliverOne(ctx, d)
-		if err == nil {
-			_ = h.q.MarkDeliverySent(ctx, d.ID)
+		if d.DigestGroup == "" {
+			h.settleDelivery(ctx, d, h.deliverOne(ctx, d))
 			continue
 		}
-		// Claim already bumped attempts, so d.Attempts is this attempt's number.
-		if notify.IsPermanent(err) || int(d.Attempts) >= maxDeliveryAttempts {
-			_ = h.q.MarkDeliveryFailed(ctx, db.MarkDeliveryFailedParams{ID: d.ID, LastError: truncErr(err)})
-			log.Printf("notify: delivery %s gave up after %d attempt(s): %v", d.ID, d.Attempts, err)
-			continue
-		}
-		// Quadratic backoff: 1, 4, 9, 16 minutes.
-		next := time.Now().Add(time.Duration(d.Attempts*d.Attempts) * time.Minute)
-		_ = h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{
-			ID: d.ID, LastError: truncErr(err), NextAttemptAt: next,
-		})
+		groups[d.DigestGroup] = append(groups[d.DigestGroup], d)
 	}
+	for _, ds := range groups {
+		if len(ds) == 1 {
+			h.settleDelivery(ctx, ds[0], h.deliverOne(ctx, ds[0]))
+			continue
+		}
+		err := h.deliverGroup(ctx, ds)
+		for _, d := range ds {
+			h.settleDelivery(ctx, d, err)
+		}
+	}
+}
+
+// settleDelivery marks a delivery sent, retried (quadratic backoff) or failed
+// based on the send error. Claim already bumped attempts, so d.Attempts is this
+// attempt's number.
+func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err error) {
+	if err == nil {
+		_ = h.q.MarkDeliverySent(ctx, d.ID)
+		return
+	}
+	if notify.IsPermanent(err) || int(d.Attempts) >= maxDeliveryAttempts {
+		_ = h.q.MarkDeliveryFailed(ctx, db.MarkDeliveryFailedParams{ID: d.ID, LastError: truncErr(err)})
+		log.Printf("notify: delivery %s gave up after %d attempt(s): %v", d.ID, d.Attempts, err)
+		return
+	}
+	next := time.Now().Add(time.Duration(d.Attempts*d.Attempts) * time.Minute) // 1, 4, 9, 16 min
+	_ = h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{ID: d.ID, LastError: truncErr(err), NextAttemptAt: next})
+}
+
+// deliverGroup renders each notification in a digest group and sends one combined
+// message through the shared channel. All rows in a group share a channel.
+func (h *API) deliverGroup(ctx context.Context, ds []db.NotificationDelivery) error {
+	row, err := h.q.GetNotificationChannelByID(ctx, ds[0].ChannelID)
+	if err != nil {
+		return notify.Permanent(fmt.Errorf("channel gone: %w", err))
+	}
+	if !row.Enabled {
+		return notify.Permanent(errors.New("channel disabled"))
+	}
+	sender, ok := h.senders[row.Type]
+	if !ok {
+		return notify.Permanent(fmt.Errorf("no sender for channel type %q", row.Type))
+	}
+	ch, err := h.channelFromRow(row)
+	if err != nil {
+		return notify.Permanent(err)
+	}
+	parts := make([]string, 0, len(ds))
+	for _, d := range ds {
+		n, nerr := h.q.GetNotification(ctx, d.NotificationID)
+		if nerr != nil {
+			continue
+		}
+		if body, rerr := renderChannel(row.Template, h.templateData(ctx, n)); rerr == nil {
+			parts = append(parts, "• "+body)
+		}
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	combined := fmt.Sprintf("Сводка — %d уведомлений:\n\n%s", len(parts), strings.Join(parts, "\n\n"))
+	return sender.Send(ctx, ch, notify.Message{Kind: "digest", Title: "Сводка уведомлений", Body: combined, Link: h.publicURL})
 }
 
 // deliverOne sends a single outbox row. A missing notification/channel or a
@@ -764,15 +833,6 @@ func quietWindow(enabled bool, startMin, endMin int, tz string, now time.Time) (
 	return end, true
 }
 
-// quietDeferUntil returns the time external delivery for a user should be held
-// until (and true) when they're currently in their quiet window.
-func (h *API) quietDeferUntil(ctx context.Context, userID uuid.UUID) (time.Time, bool) {
-	p, err := h.q.GetNotificationPrefs(ctx, userID)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, time.Now())
-}
 
 // scanDueTasks fires due-date notifications. For each candidate task and each of
 // its participants it resolves the effective (per-task override → user default)
@@ -932,6 +992,7 @@ type prefsView struct {
 	QuietStartMinutes int32  `json:"quiet_start_minutes"`
 	QuietEndMinutes   int32  `json:"quiet_end_minutes"`
 	QuietTz           string `json:"quiet_tz"`
+	DigestMinutes     int32  `json:"digest_minutes"`
 }
 
 func prefsViewOf(p db.NotificationPref) prefsView {
@@ -939,7 +1000,7 @@ func prefsViewOf(p db.NotificationPref) prefsView {
 		DueEnabled: p.DueEnabled, DueLeadMinutes: p.DueLeadMinutes,
 		DueRepeatMinutes: p.DueRepeatMinutes, ReminderEnabled: p.ReminderEnabled,
 		QuietEnabled: p.QuietEnabled, QuietStartMinutes: p.QuietStartMinutes,
-		QuietEndMinutes: p.QuietEndMinutes, QuietTz: p.QuietTz,
+		QuietEndMinutes: p.QuietEndMinutes, QuietTz: p.QuietTz, DigestMinutes: p.DigestMinutes,
 	}
 }
 
@@ -989,6 +1050,7 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 		QuietStartMinutes: clampMinuteOfDay(req.QuietStartMinutes),
 		QuietEndMinutes:   clampMinuteOfDay(req.QuietEndMinutes),
 		QuietTz:           strings.TrimSpace(req.QuietTz),
+		DigestMinutes:     max(0, req.DigestMinutes),
 	})
 	if err != nil {
 		fail(c)

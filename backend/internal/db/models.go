@@ -146,6 +146,7 @@ type NotificationDelivery struct {
 	NextAttemptAt  time.Time `json:"next_attempt_at"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	DigestGroup    string    `json:"digest_group"`
 }
 
 type NotificationPref struct {
@@ -159,6 +160,7 @@ type NotificationPref struct {
 	QuietStartMinutes int32     `json:"quiet_start_minutes"`
 	QuietEndMinutes   int32     `json:"quiet_end_minutes"`
 	QuietTz           string    `json:"quiet_tz"`
+	DigestMinutes     int32     `json:"digest_minutes"`
 }
 
 type NotificationRoute struct {

@@ -22,7 +22,7 @@ WHERE id IN (
     LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, notification_id, channel_id, status, attempts, last_error, next_attempt_at, created_at, updated_at
+RETURNING id, notification_id, channel_id, status, attempts, last_error, next_attempt_at, created_at, updated_at, digest_group
 `
 
 // ClaimPendingDeliveries atomically grabs up to $1 due pending rows, marking them
@@ -47,6 +47,7 @@ func (q *Queries) ClaimPendingDeliveries(ctx context.Context, limit int32) ([]No
 			&i.NextAttemptAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DigestGroup,
 		); err != nil {
 			return nil, err
 		}
@@ -123,21 +124,27 @@ func (q *Queries) CreateNotificationDelivery(ctx context.Context, arg CreateNoti
 }
 
 const createNotificationDeliveryAt = `-- name: CreateNotificationDeliveryAt :exec
-INSERT INTO notification_deliveries (notification_id, channel_id, next_attempt_at)
-VALUES ($1, $2, $3)
+INSERT INTO notification_deliveries (notification_id, channel_id, next_attempt_at, digest_group)
+VALUES ($1, $2, $3, $4)
 `
 
 type CreateNotificationDeliveryAtParams struct {
 	NotificationID uuid.UUID `json:"notification_id"`
 	ChannelID      uuid.UUID `json:"channel_id"`
 	NextAttemptAt  time.Time `json:"next_attempt_at"`
+	DigestGroup    string    `json:"digest_group"`
 }
 
 // CreateNotificationDeliveryAt enqueues a delivery that won't be claimed before
-// next_attempt_at — used to defer external delivery past the recipient's quiet
-// hours.
+// next_attempt_at (used to defer past quiet hours / hold for a digest window). A
+// non-empty digest_group makes it eligible for combining with same-group rows.
 func (q *Queries) CreateNotificationDeliveryAt(ctx context.Context, arg CreateNotificationDeliveryAtParams) error {
-	_, err := q.db.Exec(ctx, createNotificationDeliveryAt, arg.NotificationID, arg.ChannelID, arg.NextAttemptAt)
+	_, err := q.db.Exec(ctx, createNotificationDeliveryAt,
+		arg.NotificationID,
+		arg.ChannelID,
+		arg.NextAttemptAt,
+		arg.DigestGroup,
+	)
 	return err
 }
 
