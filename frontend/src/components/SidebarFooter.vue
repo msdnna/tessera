@@ -29,9 +29,9 @@ const initials = computed(() => {
   return n.slice(0, 2).toUpperCase()
 })
 
-// On mobile (drawer) or when the rail is collapsed, show the avatar with a
-// popover instead of the inline name + logout button.
-const compact = computed(() => props.mobile || props.collapsed)
+// Only the collapsed desktop rail uses the avatar-popover; the mobile drawer is
+// wide enough for the inline name + icon buttons (settings / admin / logout).
+const compact = computed(() => props.collapsed)
 
 function logout() {
   authStore.logout()

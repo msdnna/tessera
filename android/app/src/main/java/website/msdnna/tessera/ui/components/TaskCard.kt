@@ -707,15 +707,17 @@ private fun CardAvatar(name: String, muted: Boolean, userId: String? = null, ava
                 .then(if (muted) Modifier.background(c.text3) else Modifier.background(accentGradient(c.primary))),
             contentAlignment = Alignment.Center,
         ) {
+            // Initials are the base layer; the image overlays them and shows
+            // through when it fails to load (e.g. a GitLab avatar the phone
+            // can't reach) instead of leaving an empty circle.
+            Text(
+                initials(name),
+                color = if (muted) Color.White else c.onPrimary,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             if (url != null) {
                 AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(21.dp).clip(CircleShape))
-            } else {
-                Text(
-                    initials(name),
-                    color = if (muted) Color.White else c.onPrimary,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
             }
         }
     }

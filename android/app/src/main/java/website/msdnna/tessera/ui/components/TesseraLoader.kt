@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -57,12 +58,24 @@ fun TesseraLoader(
         ),
         label = "tessera-loader-angle",
     )
+    // Gentle scale pulse synced to the rotation (0.86 → 1 → 0.86 per turn), so the
+    // tile breathes as it tumbles — matches the web TesseraSpinner.
+    val scale by transition.animateFloat(
+        initialValue = 0.86f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(750, easing = CubicBezierEasing(0.55f, 0.1f, 0.45f, 0.95f)),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "tessera-loader-scale",
+    )
 
     val fill: Brush = if (gradient) accentGradient(color) else SolidColor(color)
 
     Box(
         modifier
             .size(size)
+            .scale(scale)
             .rotate(angle)
             .background(fill, RoundedCornerShape(size * 0.30f)),
     )

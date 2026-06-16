@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.67.1] — 2026-06-16
+- Sidebar divider double-click now actually **animates** the rail collapse (forced an
+  explicit width transition on the sider; Naive doesn't transition an externally
+  bound `:width`).
+- Task modal loader is now the brand **Tessera spinner** (was the generic Naive
+  spinner), matching the board.
+- Mobile sidebar footer shows the inline name + icon buttons (Настройки /
+  Администрирование / Выйти) instead of collapsing into the avatar popover — the
+  drawer has the room.
+- Task modal: tag chips no longer shrink-wrap their text; capped at 3 + a `+N`
+  chip. Author avatar no longer squishes when the name is long (`flex: none`).
+- Mobile composer bar no longer jumps/wraps on expand — the search field always
+  sits on its own row, revealed by the height growth instead of a layout reflow.
+
 ### [0.67.0] — 2026-06-16
 - **Quiet hours** in notification settings (consumes backend 0.38): a «Тихие часы»
   toggle with start/end time selects. During the window external notifications are

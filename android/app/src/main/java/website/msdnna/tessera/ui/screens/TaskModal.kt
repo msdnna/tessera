@@ -516,10 +516,11 @@ private fun MemberAvatar(size: Dp, name: String, userId: String? = null, avatarU
             .background(if (muted) SolidColor(c.text3) else accentGradient(c.primary)),
         contentAlignment = Alignment.Center,
     ) {
+        // Initials underneath; the image overlays and shows through if it fails
+        // to load (e.g. an unreachable GitLab avatar) rather than leaving a blank.
+        Text(initials(name), color = if (muted) Color.White else c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(size).clip(CircleShape))
-        } else {
-            Text(initials(name), color = if (muted) Color.White else c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

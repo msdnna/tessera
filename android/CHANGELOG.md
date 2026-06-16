@@ -5,6 +5,13 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.13.2 — 2026-06-16
+- The brand loader (`TesseraLoader`) now **pulses** (gentle 0.86↔1 scale synced to
+  the rotation) as well as spins, matching the web spinner.
+- Fix: author/assignee avatars show **initials** again when the image can't load
+  (e.g. an unreachable GitLab avatar) — initials sit underneath and show through a
+  failed/loading image instead of leaving an empty circle.
+
 ## 0.13.1 — 2026-06-16
 - Fix: the task-modal tag row no longer wraps a tag name onto a second line — it
   shows up to a few whole pills then a **+N** chip for the rest (matching the card).

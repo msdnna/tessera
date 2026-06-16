@@ -54,6 +54,7 @@ import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
 import UserAvatar from './UserAvatar.vue'
+import TesseraSpinner from './TesseraSpinner.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -649,7 +650,8 @@ function eventText(e) {
 <template>
   <n-modal :show="show" @update:show="emit('update:show', $event)">
     <n-card style="width: 640px; max-width: 94vw" role="dialog" :bordered="false">
-      <n-spin :show="loading">
+      <n-spin :show="loading" :rotate="false">
+        <template #icon><TesseraSpinner /></template>
         <div class="form">
           <div class="modal-head">
             <n-popover trigger="click" placement="bottom-start">
@@ -816,7 +818,7 @@ function eventText(e) {
                   <button class="val">
                     <template v-if="tagObjs.length">
                       <span
-                        v-for="t in tagObjs"
+                        v-for="t in tagObjs.slice(0, 3)"
                         :key="t.id"
                         class="chip"
                         :style="{
@@ -830,6 +832,9 @@ function eventText(e) {
                           >{{ t.name }}</span
                         >
                       </span>
+                      <span v-if="tagObjs.length > 3" class="chip chip-more"
+                        >+{{ tagObjs.length - 3 }}</span
+                      >
                     </template>
                     <span v-else class="muted">Нет</span>
                   </button>
@@ -1385,8 +1390,15 @@ function eventText(e) {
   font-size: 11px;
   padding: 1px 8px;
   border-radius: 10px;
+  flex: none;
+  white-space: nowrap;
+}
+.chip-more {
+  color: var(--t-text3);
+  background: var(--t-surface-alt);
 }
 .avatar {
+  flex: none;
   width: 24px;
   height: 24px;
   border-radius: 50%;

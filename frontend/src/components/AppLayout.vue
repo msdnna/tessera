@@ -165,6 +165,11 @@ watch(
   background: var(--t-accent-grad-vert);
   height: 72px;
 }
+/* Animate the rail's width on toggle (Naive doesn't transition an externally
+   bound :width). */
+.app-layout :deep(.n-layout-sider) {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
 /* While dragging, the sider must track the cursor with no width animation. */
 .app-layout.resizing :deep(.n-layout-sider),
 .app-layout.resizing :deep(.n-layout-sider-scroll-container) {

@@ -1455,11 +1455,13 @@ watch(
     max-width: none;
     margin-left: 4px;
   }
-  /* When collapsed on mobile the wide search would force the chips onto a
-     second (clipped) row; hide it so the chip row stays centred in the bar.
-     Tapping the bar expands it and brings the search back. */
-  .composer.collapsed .composer-search {
-    display: none;
+  /* On mobile the search always sits on its own row below the chips (full
+     basis). When collapsed it's simply clipped by the bar's 40px max-height;
+     expanding reveals it via the height growth — no horizontal reflow, so the
+     bar no longer momentarily wraps/“jumps” on expand. */
+  .composer-search {
+    flex-basis: 100%;
+    min-width: 0;
   }
 }
 .vp {
