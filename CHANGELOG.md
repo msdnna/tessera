@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.70.0] — 2026-06-16
+- Notification routing rules can now target the additional event kinds
+  «Изменение задачи», «Перемещение задачи» and «Архивирование» (consumes backend
+  0.41); native/browser notification titles updated to match.
+
 ### [0.69.0] — 2026-06-16
 - **Browser device notifications** (consumes backend 0.40): this browser
   auto-registers as a routable **device** channel, so routing rules can target it
@@ -1160,6 +1165,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.41.0] — 2026-06-16
+- **More notification kinds + smarter context.** Archiving a task now notifies its
+  participants (`archived` kind); the existing `updated` / `moved` kinds are now
+  titled (so they read well in delivered messages and are routable). Notification
+  text **inlines short context** — a task title or comment body is quoted inline
+  only when it's ≤16 chars (e.g. «Починить чайник»); longer titles/comments and
+  description edits show just `#N` + what changed (`updated` already lists the
+  changed fields). Comments and @-mentions now carry the short comment body.
+- (Notes CRUD notifications are still out — they have no per-note recipient model;
+  deferred until a watchers/subscription concept exists.)
 
 ### [0.40.0] — 2026-06-16
 - **Device notification channels** (Phase C; no schema change — reuses

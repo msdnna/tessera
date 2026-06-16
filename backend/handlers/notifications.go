@@ -824,7 +824,6 @@ func (h *API) channelFromRow(row db.NotificationChannel) (notify.Channel, error)
 	return notify.Channel{Type: row.Type, Label: row.Label, Config: cfg, Secret: secret}, nil
 }
 
-// messageFor renders a notification into a deliverable message.
 // notifyTitle maps a notification kind to a human subject line. No app-name
 // prefix — the channel is fully app-managed, so the source is implicit.
 func notifyTitle(kind string) string {
@@ -835,8 +834,16 @@ func notifyTitle(kind string) string {
 		return "Новый комментарий"
 	case "mention":
 		return "Вас упомянули"
+	case "updated":
+		return "Задача изменена"
+	case "moved":
+		return "Задача перемещена"
+	case "archived":
+		return "Задача архивирована"
 	case "due_soon":
 		return "Скоро дедлайн"
+	case "reminder":
+		return "Напоминание"
 	default:
 		return "Уведомление"
 	}

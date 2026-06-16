@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -179,22 +181,24 @@ func (h *API) CreateComment(c *gin.Context) {
 	h.broadcast(wsID, "task.commented", gin.H{"task_id": id})
 
 	// @-mentions: notify each mentioned workspace member explicitly, then fall
-	// back to the generic "commented" notice for the remaining participants.
-	mentioned := h.notifyMentions(c, t, wsID, req.Mentions)
+	// back to the generic "commented" notice for the remaining participants. A
+	// short comment is inlined for context; a long one shows only the #N.
+	ctx := shortCtx(req.Body)
+	mentioned := h.notifyMentions(c, t, wsID, req.Mentions, ctx)
 	h.notifyTaskParticipantsExcept(c, t, wsID, "comment",
-		fmt.Sprintf("%s прокомментировал #%s", h.actorName(c), taskRef(t.Number)), mentioned)
+		fmt.Sprintf("%s прокомментировал #%s%s", h.actorName(c), taskRef(t.Number), ctx), mentioned)
 	c.JSON(http.StatusCreated, cm)
 }
 
 // notifyMentions sends a "mention" notification to each id that is a member of
 // the workspace (skipping duplicates and the actor, handled in notify). Returns
 // the set of users actually notified so the caller can avoid double-notifying.
-func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uuid.UUID) map[uuid.UUID]bool {
+func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uuid.UUID, ctx string) map[uuid.UUID]bool {
 	notified := map[uuid.UUID]bool{}
 	if len(ids) == 0 {
 		return notified
 	}
-	text := fmt.Sprintf("%s упомянул(а) вас в #%s", h.actorName(c), taskRef(t.Number))
+	text := fmt.Sprintf("%s упомянул(а) вас в #%s%s", h.actorName(c), taskRef(t.Number), ctx)
 	for _, uid := range ids {
 		if notified[uid] {
 			continue
@@ -424,4 +428,19 @@ func taskRef(n *int64) string {
 		return "?"
 	}
 	return fmt.Sprintf("%d", *n)
+}
+
+// shortContextLimit is the max length (runes) of content (a task title, a comment)
+// inlined into a notification; longer content is omitted so only the "#N + what"
+// summary shows.
+const shortContextLimit = 16
+
+// shortCtx returns a « quoted » suffix for s when it's short enough to inline,
+// else "" (the notification then shows only the #N reference + what changed).
+func shortCtx(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || utf8.RuneCountInString(s) > shortContextLimit {
+		return ""
+	}
+	return " «" + s + "»"
 }

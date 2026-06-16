@@ -477,7 +477,7 @@ func (h *API) ArchiveTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.loadTask(c, id)
+	t, wsID, ok := h.loadTask(c, id)
 	if !ok {
 		return
 	}
@@ -495,6 +495,8 @@ func (h *API) ArchiveTask(c *gin.Context) {
 		return
 	}
 	h.logEvent(c, id, "archived", nil)
+	h.notifyTaskParticipants(c, t, wsID, "archived",
+		fmt.Sprintf("%s архивировал(а) задачу #%s%s", h.actorName(c), taskRef(t.Number), shortCtx(t.Title)))
 	h.broadcast(wsID, "task.archived", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
@@ -641,7 +643,7 @@ func (h *API) AddTaskAssignee(c *gin.Context) {
 	t, _, _ := h.loadTask(c, id)
 	h.logEvent(c, id, "assigned", map[string]any{"user_id": req.UserID})
 	h.notify(c, req.UserID, wsID, &id, "assigned",
-		fmt.Sprintf("%s назначил вам задачу #%s «%s»", h.actorName(c), taskRef(t.Number), t.Title))
+		fmt.Sprintf("%s назначил вам задачу #%s%s", h.actorName(c), taskRef(t.Number), shortCtx(t.Title)))
 	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "user_id": req.UserID})
 	c.Status(http.StatusNoContent)
 }

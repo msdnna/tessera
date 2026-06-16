@@ -5,6 +5,10 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.15.1 — 2026-06-16
+- Routing rules can target the new event kinds (изменения / перемещения /
+  архивирование); system-notification titles updated to match (backend 0.41).
+
 ## 0.15.0 — 2026-06-16
 - **Message-template editor** in the channel editor (email/telegram/webhook/
   shoutrrr): a multiline template field, tappable field tokens that insert into the

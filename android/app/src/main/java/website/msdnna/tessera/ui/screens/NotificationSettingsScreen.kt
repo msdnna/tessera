@@ -66,6 +66,7 @@ private val ADDABLE_TYPES = listOf(
 )
 private val KIND_OPTIONS = listOf(
     "assigned" to "Назначения", "comment" to "Комментарии", "mention" to "Упоминания",
+    "updated" to "Изменения", "moved" to "Перемещения", "archived" to "Архивирование",
     "due_soon" to "Дедлайны", "reminder" to "Напоминания",
 )
 private val LEAD_OPTIONS = listOf(
