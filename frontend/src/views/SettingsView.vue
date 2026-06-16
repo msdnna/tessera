@@ -3,6 +3,7 @@ import { ref, reactive, computed } from 'vue'
 import { NInput, NButton, NSelect, NAvatar, NIcon } from 'naive-ui'
 import { CloudUploadOutline, TrashOutline, CheckmarkCircle } from '@vicons/ionicons5'
 import { users, accountFlows } from '@/api'
+import NotificationSettings from '@/components/NotificationSettings.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
@@ -261,6 +262,9 @@ async function resendVerify() {
         >
       </div>
     </section>
+
+    <!-- Notifications (channels + routing) -->
+    <NotificationSettings />
 
     <!-- Appearance -->
     <section class="card">

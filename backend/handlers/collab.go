@@ -72,6 +72,9 @@ func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, 
 		}
 	}
 	h.broadcast(wsID, "notification", gin.H{"user_id": userID, "notification": obj})
+	// Fan out to the user's external channels (email/telegram/webhook) per their
+	// routing rules. Best-effort, enqueue-only — the worker performs the sends.
+	h.routeNotification(c, n)
 }
 
 // notifyTaskParticipants notifies a task's assignees and creator (minus the

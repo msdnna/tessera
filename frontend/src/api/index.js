@@ -221,6 +221,23 @@ export const notifications = {
   markAllRead: () => api.post('/notifications/read-all'),
 }
 
+// Notification router: per-user delivery channels + Alertmanager-style routing
+// rules (email / telegram / webhook).
+export const notificationChannels = {
+  list: () => api.get('/notification-channels'),
+  create: (data) => api.post('/notification-channels', data),
+  update: (id, data) => api.patch(`/notification-channels/${id}`, data),
+  remove: (id) => api.delete(`/notification-channels/${id}`),
+  test: (id) => api.post(`/notification-channels/${id}/test`),
+}
+
+export const notificationRoutes = {
+  list: () => api.get('/notification-routes'),
+  create: (data) => api.post('/notification-routes', data),
+  update: (id, data) => api.patch(`/notification-routes/${id}`, data),
+  remove: (id) => api.delete(`/notification-routes/${id}`),
+}
+
 export const gitlab = {
   // Per-user GitLab connection (PAT).
   getConnection: () => api.get('/gitlab/connection'),

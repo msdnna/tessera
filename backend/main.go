@@ -47,6 +47,10 @@ func main() {
 	// positive sync interval).
 	go rh.RunSyncWorker(context.Background())
 
+	// Background notification delivery worker — drains the outbox of channel
+	// deliveries (email/telegram/webhook). Idle until a user configures channels.
+	go rh.RunNotificationWorker(context.Background())
+
 	r := gin.Default()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)
@@ -204,6 +208,19 @@ func main() {
 			protected.GET("/notifications/unread-count", rh.UnreadNotificationCount)
 			protected.POST("/notifications/:id/read", rh.MarkNotificationRead)
 			protected.POST("/notifications/read-all", rh.MarkAllNotificationsRead)
+
+			// Notification router: per-user delivery channels + routing rules
+			// (email/telegram/webhook). Top-level prefixes avoid colliding with
+			// the /notifications/:id param route above.
+			protected.GET("/notification-channels", rh.ListNotificationChannels)
+			protected.POST("/notification-channels", rh.CreateNotificationChannel)
+			protected.PATCH("/notification-channels/:id", rh.UpdateNotificationChannel)
+			protected.DELETE("/notification-channels/:id", rh.DeleteNotificationChannel)
+			protected.POST("/notification-channels/:id/test", rh.TestNotificationChannel)
+			protected.GET("/notification-routes", rh.ListNotificationRoutes)
+			protected.POST("/notification-routes", rh.CreateNotificationRoute)
+			protected.PATCH("/notification-routes/:id", rh.UpdateNotificationRoute)
+			protected.DELETE("/notification-routes/:id", rh.DeleteNotificationRoute)
 
 			protected.PATCH("/tags/:id", rh.UpdateTag)
 			protected.DELETE("/tags/:id", rh.DeleteTag)

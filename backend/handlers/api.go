@@ -15,6 +15,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/mail"
+	"tessera/internal/notify"
 	"tessera/internal/realtime"
 	"tessera/internal/secrets"
 	"tessera/middleware"
@@ -25,10 +26,11 @@ type API struct {
 	q         *db.Queries
 	hub       *realtime.Hub
 	uploadDir string
-	sealer    *secrets.Sealer // encrypts secrets at rest (GitLab PATs)
-	assetKey  []byte          // HMAC key for signed GitLab asset-proxy URLs
-	mailer    mail.Mailer     // transactional email (invitations); no-op when SMTP unset
-	publicURL string          // external base URL for links in emails
+	sealer    *secrets.Sealer          // encrypts secrets at rest (GitLab PATs, channel secrets)
+	assetKey  []byte                   // HMAC key for signed GitLab asset-proxy URLs
+	mailer    mail.Mailer              // transactional email (invitations); no-op when SMTP unset
+	publicURL string                   // external base URL for links in emails
+	senders   map[string]notify.Sender // notification channel transports, keyed by type
 }
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from
@@ -40,7 +42,10 @@ func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir, encryptionKey string, m
 		log.Fatalf("failed to init secret sealer: %v", err)
 	}
 	ak := sha256.Sum256([]byte(encryptionKey + ":gitlab-asset"))
-	return &API{q: q, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:], mailer: mailer, publicURL: publicURL}
+	return &API{
+		q: q, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:],
+		mailer: mailer, publicURL: publicURL, senders: buildSenders(mailer),
+	}
 }
 
 // positionGap is the spacing used when appending to the end of a list.

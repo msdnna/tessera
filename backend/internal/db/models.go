@@ -115,6 +115,43 @@ type Notification struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
+type NotificationChannel struct {
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Type      string    `json:"type"`
+	Label     string    `json:"label"`
+	Config    []byte    `json:"config"`
+	SecretEnc string    `json:"secret_enc"`
+	Enabled   bool      `json:"enabled"`
+	Verified  bool      `json:"verified"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type NotificationDelivery struct {
+	ID             uuid.UUID `json:"id"`
+	NotificationID uuid.UUID `json:"notification_id"`
+	ChannelID      uuid.UUID `json:"channel_id"`
+	Status         string    `json:"status"`
+	Attempts       int32     `json:"attempts"`
+	LastError      string    `json:"last_error"`
+	NextAttemptAt  time.Time `json:"next_attempt_at"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type NotificationRoute struct {
+	ID         uuid.UUID   `json:"id"`
+	UserID     uuid.UUID   `json:"user_id"`
+	Position   float64     `json:"position"`
+	Matcher    []byte      `json:"matcher"`
+	ChannelIds []uuid.UUID `json:"channel_ids"`
+	Options    []byte      `json:"options"`
+	Enabled    bool        `json:"enabled"`
+	CreatedAt  time.Time   `json:"created_at"`
+	UpdatedAt  time.Time   `json:"updated_at"`
+}
+
 type Project struct {
 	ID          uuid.UUID  `json:"id"`
 	WorkspaceID uuid.UUID  `json:"workspace_id"`

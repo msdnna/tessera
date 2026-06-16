@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.62.0] — 2026-06-16
+Notification router phase A (web) — consumes backend 0.34.
+- **New «Уведомления» section in Settings**: configure external delivery channels
+  (Email / Telegram / Webhook) and Alertmanager-style routing rules. In-app
+  notifications (bell / mobile) keep coming unconditionally; this only gates the
+  external channels.
+- **Channels**: add/edit/delete with type-specific fields (email address;
+  telegram chat_id + bot token; webhook url + method + optional Authorization
+  header), an enable toggle, a «Тест» button (synchronous send that flips the
+  «проверен» badge on success), and a masked-secret edit flow (leave the secret
+  blank to keep the stored one).
+- **Routing rules**: match by event kind(s) and/or workspace → deliver to a set of
+  channels, or «заглушить» to drop. Rules evaluate top-to-bottom, first match wins.
+- API client: `notificationChannels` + `notificationRoutes`.
+
 ### [0.61.0] — 2026-06-16
 - Sidebar divider: double-click now collapses the rail **smoothly** (the resizer
   follows the width animation; a drag only engages past a small move-threshold, so
@@ -1079,6 +1094,28 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.34.0] — 2026-06-16
+Notification router phase A — user-configurable external notification channels +
+Alertmanager-style routing. Loose-coupled like the GitLab integration (own
+`internal/notify` package, own tables, channel `type` a free string not an enum,
+secrets encrypted at rest via the same sealer). Migration **0017**.
+- **Channels** (`/api/notification-channels`, per-user CRUD + `…/:id/test`): a
+  delivery target of type `email` / `telegram` / `webhook`. Non-secret settings in
+  a `config` JSONB; secrets (telegram bot token, webhook auth header) AES-256-GCM
+  encrypted and never returned (only `has_secret`). The test endpoint sends a
+  sample message synchronously and flips `verified` on success.
+- **Routing rules** (`/api/notification-routes`, per-user CRUD): ordered rules with
+  a JSONB matcher (event kinds + workspace) → a set of channel ids, or `mute`.
+  First matching enabled rule wins; in-app notifications stay unconditional.
+- **Dispatch + outbox**: `notify()` now also routes each created notification —
+  the first matching rule enqueues a row per channel into `notification_deliveries`
+  (outbox). A background worker drains the outbox (claim with `FOR UPDATE SKIP
+  LOCKED`, quadratic backoff, fail after 5 attempts), so external delivery is
+  async, retried and survives restart.
+- **Transports**: telegram (Bot API) + generic webhook via `net/http`; email reuses
+  the server SMTP mailer (no-op-logs when unconfigured). Behind a `Sender`
+  interface so the Phase B provider long-tail can swap in a unified library.
 
 ### [0.33.2] — 2026-06-16
 - Fix: the GitLab avatar proxy (`/api/gitlab/avatar`) no longer breaks avatars when
