@@ -1080,6 +1080,16 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.33.2] — 2026-06-16
+- Fix: the GitLab avatar proxy (`/api/gitlab/avatar`) no longer breaks avatars when
+  the server can't fetch the image itself (gravatar egress blocked, an instance
+  avatar that needs a GitLab session rather than a PAT, or a redirect). It now
+  **streams** only a real image fetched directly (200, non-HTML) and otherwise
+  **redirects the client to the original URL** — which a browser loads as before
+  (desktop restored) and, for public/gravatar avatars, the mobile app too. Redirects
+  aren't auto-followed server-side, so the owner token never leaks cross-host. No
+  re-sync needed — redeploy the backend.
+
 ### [0.33.1] — 2026-06-16
 - Fix: GitLab media now loads on clients without direct GitLab access (the mobile
   app). GitLab **avatars** are routed through a new signed same-origin proxy

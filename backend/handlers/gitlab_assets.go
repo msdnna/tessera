@@ -174,38 +174,42 @@ func (h *API) GitlabAvatar(c *gin.Context) {
 		return
 	}
 
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
-	if err != nil || integ.OwnerUserID == nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
 	req, rerr := http.NewRequestWithContext(c, http.MethodGet, rawURL, nil)
 	if rerr != nil {
-		c.Status(http.StatusBadGateway)
+		c.Redirect(http.StatusFound, rawURL)
 		return
 	}
-	// Attach the owner's token only when fetching from the GitLab host itself.
-	if cred, cerr := h.q.GetGitlabCredential(c, *integ.OwnerUserID); cerr == nil {
-		if gb, gerr := url.Parse(cred.BaseUrl); gerr == nil && gb.Host == target.Host {
-			if token, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
-				req.Header.Set("PRIVATE-TOKEN", token)
+	// Attach the owner's token only when fetching from the GitLab host itself
+	// (never leak it to gravatar/external hosts). Best-effort — public avatars
+	// need no token.
+	if integ, ierr := h.q.GetGitlabIntegrationByWorkspace(c, wsID); ierr == nil && integ.OwnerUserID != nil {
+		if cred, cerr := h.q.GetGitlabCredential(c, *integ.OwnerUserID); cerr == nil {
+			if gb, gerr := url.Parse(cred.BaseUrl); gerr == nil && gb.Host == target.Host {
+				if token, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
+					req.Header.Set("PRIVATE-TOKEN", token)
+				}
 			}
 		}
 	}
-	resp, derr := gitlab.NewHTTPClient().Do(req)
-	if derr != nil {
-		c.Status(http.StatusBadGateway)
-		return
+	// Don't auto-follow redirects: a redirecting GitLab/gravatar URL would both
+	// leak the token cross-host and serve a sign-in HTML page; we handle non-image
+	// responses by bouncing the client to the original URL instead (below).
+	client := *gitlab.NewHTTPClient()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, derr := client.Do(req)
+	if derr == nil {
+		defer func() { _ = resp.Body.Close() }()
+		ct := resp.Header.Get("Content-Type")
+		// Stream only a real image fetched directly (200, non-HTML). Anything else
+		// (3xx, sign-in HTML, egress failure) falls through to the redirect.
+		if resp.StatusCode == http.StatusOK && ct != "" && !strings.HasPrefix(ct, "text/") {
+			c.Header("Cache-Control", "private, max-age=3600")
+			c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+			return
+		}
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		c.Status(http.StatusNotFound) // client falls back to initials
-		return
-	}
-	ct := resp.Header.Get("Content-Type")
-	if ct == "" {
-		ct = "image/png"
-	}
-	c.Header("Cache-Control", "private, max-age=3600")
-	c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+	// Couldn't fetch a usable image server-side — let the client load the original
+	// URL directly (works in a browser that can reach GitLab; the mobile app falls
+	// back to initials). This guarantees no regression vs. the pre-proxy behaviour.
+	c.Redirect(http.StatusFound, rawURL)
 }
