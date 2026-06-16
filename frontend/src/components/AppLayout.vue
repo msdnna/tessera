@@ -26,8 +26,16 @@ const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSiz
 const route = useRoute()
 
 // ── draggable sidebar divider ──
+// Drag only engages once the pointer actually moves past a small threshold, so a
+// double-click (to toggle the rail) never flips on the no-transition "resizing"
+// state — the toggle then animates smoothly like the expand.
 const dragging = ref(false)
+let pressX = 0
 function onDragMove(e) {
+  if (!dragging.value && Math.abs(e.clientX - pressX) < 4) return
+  dragging.value = true
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
   applyDragWidth(e.clientX)
 }
 function stopDrag() {
@@ -37,10 +45,8 @@ function stopDrag() {
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
 }
-function startDrag() {
-  dragging.value = true
-  document.body.style.cursor = 'col-resize'
-  document.body.style.userSelect = 'none'
+function startDrag(e) {
+  pressX = e.clientX
   window.addEventListener('pointermove', onDragMove)
   window.addEventListener('pointerup', stopDrag)
 }
@@ -139,6 +145,11 @@ watch(
   justify-content: center;
   cursor: col-resize;
   z-index: 6;
+  /* Follow the sider's width animation on toggle; no lag while dragging. */
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sider-resizer.active {
+  transition: none;
 }
 .rz-bar {
   width: 4px;

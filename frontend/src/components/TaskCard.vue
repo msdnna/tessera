@@ -23,7 +23,7 @@ import {
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
-import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue } from '@/utils/gradient'
+import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { pressMoved } from '@/utils/dnd'
 import { initials } from '@/utils/initials'
 import UserAvatar from './UserAvatar.vue'
@@ -511,7 +511,7 @@ async function submitAddSub() {
                 :class="{ on: hasTag(t.id) }"
                 :style="
                   hasTag(t.id)
-                    ? { background: hueGrad(t.color), color: '#fff', borderColor: 'transparent' }
+                    ? { background: hueGrad(t.color), color: onColor(t.color), borderColor: 'transparent' }
                     : {
                         background: softFill(t.color),
                         color: tagText(t.color),

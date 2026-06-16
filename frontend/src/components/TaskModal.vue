@@ -46,7 +46,7 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad, tagPillBg, softFill, readableHue } from '@/utils/gradient'
+import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { initials } from '@/utils/initials'
@@ -853,7 +853,7 @@ function eventText(e) {
                         selectedTags.includes(t.id)
                           ? {
                               background: hueGrad(t.color),
-                              color: '#fff',
+                              color: onColor(t.color),
                               borderColor: 'transparent',
                             }
                           : {

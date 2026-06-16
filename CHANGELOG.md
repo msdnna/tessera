@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.61.0] — 2026-06-16
+- Sidebar divider: double-click now collapses the rail **smoothly** (the resizer
+  follows the width animation; a drag only engages past a small move-threshold, so
+  the double-click no longer flips the no-transition resizing state).
+- Composer bar: the dimmed→active fade on expand/collapse (focus) now transitions
+  smoothly instead of snapping.
+- Fix: a selected (solid-filled) tag chip in the tag pickers (task card + modal)
+  now uses a luminance-readable text colour (`onColor`) instead of hardcoded white,
+  so labels on bright tags (e.g. yellow) stay legible.
+
 ### [0.60.0] — 2026-06-16
 User-management phase U3b (web admin panel) — consumes backend 0.33.
 - **Admin panel** at `/admin` (route + sidebar-footer entry, both gated by

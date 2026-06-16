@@ -1257,6 +1257,10 @@ watch(
    bar — fishing for a blank spot to expand a chip-filled bar was fiddly. Killing
    pointer events on the children lets the click fall through to .composer's
    expand handler; the children act normally once expanded. */
+/* Smoothly fade the dim in/out as the bar collapses/expands (focus). */
+.composer > * {
+  transition: opacity 0.25s ease;
+}
 .composer.collapsed > * {
   pointer-events: none;
   /* Dimmed while collapsed so it reads as one tap-to-expand surface (the chips

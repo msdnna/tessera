@@ -98,6 +98,21 @@ export function readableHue(hex, isDark) {
   return hslToHex(hsl)
 }
 
+// Readable text/icon colour to lay *on top of* a solid fill of `hex` (a selected
+// tag chip, a swatch). Picks near-black or white by the fill's relative luminance,
+// so a label on a solid bright tag (e.g. yellow) stays legible. Mirrors Android's
+// `onPrimary`.
+export function onColor(hex) {
+  const rgb = hexToRgb(hex)
+  if (!rgb) return '#fff'
+  const chan = (v) => {
+    const s = v / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  const lum = 0.2126 * chan(rgb.r) + 0.7152 * chan(rgb.g) + 0.0722 * chan(rgb.b)
+  return lum > 0.45 ? '#1f1f1f' : '#ffffff'
+}
+
 // Colour swatch fill — gradient for a real colour, a flat neutral for "default".
 // Always an *image* (a flat colour is expressed as a 2-stop gradient) so callers
 // can assign it to `background-image` (not the `background` shorthand, which
