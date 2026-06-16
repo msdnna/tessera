@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { NInput, NButton, NSelect, NSwitch, NIcon, NModal, NCard, NTag, NEmpty, NSpin } from 'naive-ui'
 import {
   MailOutline,
@@ -71,7 +71,7 @@ function channelName(id) {
 // ── channel editor ───────────────────────────────────────────
 const chModal = ref(false)
 const chEditing = ref(null) // null = create
-const chForm = reactive({ type: 'email', label: '', config: {}, secret: {}, enabled: true })
+const chForm = reactive({ type: 'email', label: '', config: {}, secret: {}, template: '', enabled: true })
 const chSaving = ref(false)
 const chErr = ref('')
 
@@ -82,6 +82,7 @@ function openChannelNew() {
     label: '',
     config: { address: auth.user?.email || '' },
     secret: {},
+    template: '',
     enabled: true,
   })
   chErr.value = ''
@@ -94,6 +95,7 @@ function openChannelEdit(c) {
     label: c.label || '',
     config: { ...(c.config || {}) },
     secret: {},
+    template: c.template || '',
     enabled: c.enabled,
   })
   chErr.value = ''
@@ -108,6 +110,7 @@ async function saveChannel() {
       label: chForm.label,
       config: chForm.config,
       secret: chForm.secret,
+      template: chForm.template,
       enabled: chForm.enabled,
     }
     if (chEditing.value) await chApi.update(chEditing.value.id, payload)
@@ -148,6 +151,94 @@ async function testChannel(c) {
     testState[c.id] = { ok: false, msg: e.response?.data?.error || e.message }
   }
 }
+
+// ── template editor (separate modal) ─────────────────────────
+const tplModal = ref(false)
+const tplDraft = ref('')
+const tplPreview = ref('')
+const tplError = ref('')
+const taRef = ref(null)
+const hlRef = ref(null)
+
+// Avoid literal {{ }} in the Vue template (it would be parsed as interpolation):
+// these strings are data, rendered verbatim.
+const templateDefaultHint = 'по умолчанию: {{.Text}} + ссылка'
+const syntaxHint = 'Синтаксис Go-шаблонов: {{.Field}}, {{if .X}}…{{end}}. Пусто = шаблон по умолчанию.'
+const TEMPLATE_FIELDS = [
+  { token: '{{.Text}}', desc: 'Готовый текст уведомления' },
+  { token: '{{.Title}}', desc: 'Заголовок по типу события' },
+  { token: '{{.Kind}}', desc: 'Тип события (assigned/comment/…)' },
+  { token: '{{.TaskNumber}}', desc: 'Номер задачи' },
+  { token: '{{.TaskTitle}}', desc: 'Заголовок задачи' },
+  { token: '{{.Actor}}', desc: 'Кто инициировал' },
+  { token: '{{.Workspace}}', desc: 'Название пространства' },
+  { token: '{{.Link}}', desc: 'Ссылка на приложение' },
+]
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+// Highlight {{ ... }} template actions over the (escaped) source for the backdrop.
+const highlighted = computed(() => {
+  const h = escapeHtml(tplDraft.value || '').replace(/\{\{[^}]*\}\}/g, (m) => `<span class="tok">${m}</span>`)
+  return h.endsWith('\n') ? h + ' ' : h // keep the last empty line visible
+})
+
+function syncScroll() {
+  if (hlRef.value && taRef.value) {
+    hlRef.value.scrollTop = taRef.value.scrollTop
+    hlRef.value.scrollLeft = taRef.value.scrollLeft
+  }
+}
+
+let tplTimer = null
+function schedulePreview() {
+  clearTimeout(tplTimer)
+  tplTimer = setTimeout(runPreview, 300)
+}
+async function runPreview() {
+  try {
+    const res = await chApi.previewTemplate(tplDraft.value)
+    if (res.data.ok) {
+      tplPreview.value = res.data.text
+      tplError.value = ''
+    } else {
+      tplError.value = res.data.error
+    }
+  } catch (e) {
+    tplError.value = e.response?.data?.error || e.message
+  }
+}
+
+function openTemplate() {
+  tplDraft.value = chForm.template || ''
+  tplPreview.value = ''
+  tplError.value = ''
+  tplModal.value = true
+  nextTick(runPreview)
+}
+function insertField(token) {
+  const ta = taRef.value
+  if (!ta) {
+    tplDraft.value += token
+    return
+  }
+  const s = ta.selectionStart ?? tplDraft.value.length
+  const e = ta.selectionEnd ?? s
+  tplDraft.value = tplDraft.value.slice(0, s) + token + tplDraft.value.slice(e)
+  nextTick(() => {
+    ta.focus()
+    ta.selectionStart = ta.selectionEnd = s + token.length
+  })
+}
+function applyTemplate() {
+  chForm.template = tplDraft.value
+  tplModal.value = false
+}
+function clearTemplate() {
+  tplDraft.value = ''
+}
+watch(tplDraft, schedulePreview)
 
 // ── route editor ─────────────────────────────────────────────
 const rtModal = ref(false)
@@ -402,12 +493,69 @@ function wsSummary(r) {
             </label>
           </template>
 
+          <div class="field">
+            <span>Шаблон сообщения</span>
+            <div class="tpl-row">
+              <code class="tpl-inline">{{ chForm.template || templateDefaultHint }}</code>
+              <n-button size="tiny" tertiary @click="openTemplate">Изменить</n-button>
+            </div>
+          </div>
+
           <div v-if="chErr" class="err">{{ chErr }}</div>
         </div>
         <template #footer>
           <div class="row-end">
             <n-button @click="chModal = false">Отмена</n-button>
             <n-button type="primary" :loading="chSaving" @click="saveChannel">Сохранить</n-button>
+          </div>
+        </template>
+      </n-card>
+    </n-modal>
+
+    <!-- Template editor modal -->
+    <n-modal v-model:show="tplModal">
+      <n-card class="modal tpl-modal" title="Шаблон сообщения" closable @close="tplModal = false">
+        <div class="tpl-grid">
+          <div class="tpl-left">
+            <div class="editor">
+              <!-- safe: `highlighted` HTML-escapes the source before wrapping {{…}} in spans -->
+              <!-- eslint-disable-next-line vue/no-v-html -->
+              <pre ref="hlRef" class="hl" v-html="highlighted"></pre>
+              <textarea
+                ref="taRef"
+                v-model="tplDraft"
+                class="ta"
+                spellcheck="false"
+                placeholder="Пусто — шаблон по умолчанию"
+                @scroll="syncScroll"
+              ></textarea>
+            </div>
+            <div class="tpl-preview">
+              <div class="tpl-preview-head">Предпросмотр (на примере данных)</div>
+              <div v-if="tplError" class="err mono">{{ tplError }}</div>
+              <pre v-else class="prev mono">{{ tplPreview }}</pre>
+            </div>
+          </div>
+          <div class="tpl-hints">
+            <div class="hints-title">Поля</div>
+            <button
+              v-for="f in TEMPLATE_FIELDS"
+              :key="f.token"
+              type="button"
+              class="hint-field"
+              @click="insertField(f.token)"
+            >
+              <code>{{ f.token }}</code>
+              <span>{{ f.desc }}</span>
+            </button>
+            <p class="hint">{{ syntaxHint }}</p>
+          </div>
+        </div>
+        <template #footer>
+          <div class="row-end">
+            <n-button quaternary @click="clearTemplate">Сбросить</n-button>
+            <n-button @click="tplModal = false">Отмена</n-button>
+            <n-button type="primary" @click="applyTemplate">Применить</n-button>
           </div>
         </template>
       </n-card>
@@ -571,5 +719,145 @@ function wsSummary(r) {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+.tpl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tpl-inline {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--t-text2);
+  background: var(--t-surface-alt);
+  border: 1px solid var(--t-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* template editor modal */
+.tpl-modal {
+  width: 720px;
+  max-width: 94vw;
+}
+.tpl-grid {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 14px;
+}
+.tpl-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.editor {
+  position: relative;
+  height: 170px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--t-surface-alt);
+}
+.hl,
+.ta {
+  margin: 0;
+  padding: 10px;
+  border: 0;
+  box-sizing: border-box;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  tab-size: 2;
+}
+.hl {
+  overflow: hidden;
+  color: var(--t-text1);
+  pointer-events: none;
+  z-index: 0;
+}
+.hl :deep(.tok) {
+  color: var(--t-primary);
+  font-weight: 600;
+}
+.ta {
+  overflow: auto;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--t-text1);
+  z-index: 1;
+}
+.tpl-preview {
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--t-surface);
+}
+.tpl-preview-head {
+  font-size: 11px;
+  color: var(--t-text3);
+  margin-bottom: 4px;
+}
+.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.prev {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--t-text1);
+  min-height: 18px;
+}
+.tpl-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hints-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-text1);
+}
+.hint-field {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  background: var(--t-surface-alt);
+  border: 1px solid var(--t-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.hint-field:hover {
+  border-color: var(--t-primary);
+}
+.hint-field code {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--t-primary);
+}
+.hint-field span {
+  font-size: 11px;
+  color: var(--t-text3);
+}
+@media (max-width: 560px) {
+  .tpl-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

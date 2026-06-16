@@ -56,11 +56,8 @@ func (s emailSender) Send(_ context.Context, ch notify.Channel, msg notify.Messa
 	if addr == "" {
 		return notify.Permanent(errors.New("email channel needs an address"))
 	}
-	body := msg.Body
-	if msg.Link != "" {
-		body += "\n\n" + msg.Link
-	}
-	return s.mailer.Send(addr, msg.Title, body)
+	// msg.Body is the fully rendered message (link included by the template).
+	return s.mailer.Send(addr, msg.Title, msg.Body)
 }
 
 // ── channel CRUD ───────────────────────────────────────────
@@ -72,6 +69,7 @@ type channelView struct {
 	Type      string          `json:"type"`
 	Label     string          `json:"label"`
 	Config    json.RawMessage `json:"config"`
+	Template  string          `json:"template"`
 	Enabled   bool            `json:"enabled"`
 	Verified  bool            `json:"verified"`
 	HasSecret bool            `json:"has_secret"`
@@ -84,7 +82,7 @@ func channelViewOf(r db.NotificationChannel) channelView {
 		cfg = json.RawMessage("{}")
 	}
 	return channelView{
-		ID: r.ID, Type: r.Type, Label: r.Label, Config: cfg,
+		ID: r.ID, Type: r.Type, Label: r.Label, Config: cfg, Template: r.Template,
 		Enabled: r.Enabled, Verified: r.Verified, HasSecret: r.SecretEnc != "",
 		CreatedAt: r.CreatedAt,
 	}
@@ -94,11 +92,31 @@ func channelViewOf(r db.NotificationChannel) channelView {
 // (bot_token, auth_header); on update it's optional — omitted/empty keeps the
 // stored secret, so the client never has to re-send it.
 type channelReq struct {
-	Type    string            `json:"type"`
-	Label   string            `json:"label"`
-	Config  json.RawMessage   `json:"config"`
-	Secret  map[string]string `json:"secret"`
-	Enabled *bool             `json:"enabled"`
+	Type     string            `json:"type"`
+	Label    string            `json:"label"`
+	Config   json.RawMessage   `json:"config"`
+	Secret   map[string]string `json:"secret"`
+	Template *string           `json:"template"` // nil on update = keep stored
+	Enabled  *bool             `json:"enabled"`
+}
+
+// maxTemplateLen caps a channel message template (a generous limit — these are
+// short notification bodies, not documents).
+const maxTemplateLen = 8192
+
+// validateTemplate rejects an over-long or unparseable template (it must render
+// against the sample data without error).
+func validateTemplate(tmpl string) error {
+	if strings.TrimSpace(tmpl) == "" {
+		return nil
+	}
+	if len(tmpl) > maxTemplateLen {
+		return fmt.Errorf("шаблон слишком длинный (макс %d символов)", maxTemplateLen)
+	}
+	if _, err := notify.Render(tmpl, notify.SampleData()); err != nil {
+		return fmt.Errorf("ошибка шаблона: %s", err.Error())
+	}
+	return nil
 }
 
 // ListNotificationChannels returns the current user's delivery channels.
@@ -137,6 +155,14 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("канал %q требует %s", typ, k)})
 		return
 	}
+	tmpl := ""
+	if req.Template != nil {
+		tmpl = *req.Template
+	}
+	if err := validateTemplate(tmpl); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	enc, err := h.sealSecret(req.Secret)
 	if err != nil {
 		fail(c)
@@ -149,7 +175,7 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 	cfgJSON, _ := json.Marshal(cfg)
 	row, err := h.q.CreateNotificationChannel(c, db.CreateNotificationChannelParams{
 		UserID: middleware.CurrentUser(c), Type: typ, Label: strings.TrimSpace(req.Label),
-		Config: cfgJSON, SecretEnc: enc, Enabled: enabled,
+		Config: cfgJSON, SecretEnc: enc, Enabled: enabled, Template: tmpl,
 	})
 	if err != nil {
 		fail(c)
@@ -196,6 +222,14 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("канал %q требует %s", row.Type, k)})
 		return
 	}
+	tmpl := row.Template
+	if req.Template != nil {
+		tmpl = *req.Template
+	}
+	if err := validateTemplate(tmpl); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	enabled := row.Enabled
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -203,7 +237,7 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 	cfgJSON, _ := json.Marshal(cfg)
 	updated, err := h.q.UpdateNotificationChannel(c, db.UpdateNotificationChannelParams{
 		ID: id, UserID: uid, Label: strings.TrimSpace(req.Label),
-		Config: cfgJSON, SecretEnc: secEnc, Enabled: enabled,
+		Config: cfgJSON, SecretEnc: secEnc, Enabled: enabled, Template: tmpl,
 	})
 	if err != nil {
 		fail(c)
@@ -253,12 +287,14 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неизвестный тип канала"})
 		return
 	}
-	msg := notify.Message{
-		Kind:  "test",
-		Title: "Проверка канала",
-		Body:  "Это тестовое уведомление. Если вы его получили — канал настроен верно.",
-		Link:  h.publicURL,
+	// Render through the channel's own template (with sample data) so the test
+	// reflects exactly what real messages will look like.
+	body, rerr := renderChannel(row.Template, notify.SampleData())
+	if rerr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "ошибка шаблона: " + rerr.Error()})
+		return
 	}
+	msg := notify.Message{Kind: "test", Title: "Проверка канала", Body: body, Link: h.publicURL}
 	if err := sender.Send(c, ch, msg); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error()})
 		return
@@ -271,6 +307,29 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 		resp["warning"] = "SMTP на сервере не настроен — письмо записано в лог, но не отправлено."
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// PreviewNotificationTemplate renders a template against sample data so the editor
+// can show a live preview. Parse/field errors come back as {ok:false,error} (200)
+// so the editor can display them inline rather than as a request failure.
+func (h *API) PreviewNotificationTemplate(c *gin.Context) {
+	var req struct {
+		Template string `json:"template"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.Template) > maxTemplateLen {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("шаблон слишком длинный (макс %d символов)", maxTemplateLen)})
+		return
+	}
+	out, err := renderChannel(req.Template, notify.SampleData())
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "text": out})
 }
 
 // ── route CRUD ─────────────────────────────────────────────
@@ -533,7 +592,42 @@ func (h *API) deliverOne(ctx context.Context, d db.NotificationDelivery) error {
 	if err != nil {
 		return notify.Permanent(err)
 	}
-	return sender.Send(ctx, ch, h.messageFor(n))
+	body, err := renderChannel(row.Template, h.templateData(ctx, n))
+	if err != nil {
+		// A broken template can't fix itself between retries.
+		return notify.Permanent(fmt.Errorf("template render: %w", err))
+	}
+	return sender.Send(ctx, ch, notify.Message{Kind: n.Kind, Title: notifyTitle(n.Kind), Body: body, Link: h.publicURL})
+}
+
+// renderChannel renders a channel's template (or the built-in default) against
+// the data.
+func renderChannel(tmpl string, data notify.TemplateData) (string, error) {
+	if strings.TrimSpace(tmpl) == "" {
+		tmpl = notify.DefaultTemplate
+	}
+	return notify.Render(tmpl, data)
+}
+
+// templateData enriches a notification into the data its channel templates render
+// against (task, actor and workspace looked up best-effort).
+func (h *API) templateData(ctx context.Context, n db.Notification) notify.TemplateData {
+	d := notify.TemplateData{Kind: n.Kind, Title: notifyTitle(n.Kind), Text: n.Text, Link: h.publicURL}
+	if n.TaskID != nil {
+		if t, err := h.q.GetTask(ctx, *n.TaskID); err == nil {
+			d.TaskTitle = t.Title
+			d.TaskNumber = t.Number
+		}
+	}
+	if n.ActorID != nil {
+		if u, err := h.q.GetUserByID(ctx, *n.ActorID); err == nil {
+			d.Actor = u.Name
+		}
+	}
+	if w, err := h.q.GetWorkspace(ctx, n.WorkspaceID); err == nil {
+		d.Workspace = w.Name
+	}
+	return d
 }
 
 // channelFromRow decodes a stored channel into the transport-facing form,
@@ -555,10 +649,6 @@ func (h *API) channelFromRow(row db.NotificationChannel) (notify.Channel, error)
 }
 
 // messageFor renders a notification into a deliverable message.
-func (h *API) messageFor(n db.Notification) notify.Message {
-	return notify.Message{Kind: n.Kind, Title: notifyTitle(n.Kind), Body: n.Text, Link: h.publicURL}
-}
-
 // notifyTitle maps a notification kind to a human subject line. No app-name
 // prefix — the channel is fully app-managed, so the source is implicit.
 func notifyTitle(kind string) string {

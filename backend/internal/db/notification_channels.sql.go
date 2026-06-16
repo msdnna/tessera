@@ -61,9 +61,9 @@ func (q *Queries) ClaimPendingDeliveries(ctx context.Context, limit int32) ([]No
 const createNotificationChannel = `-- name: CreateNotificationChannel :one
 
 
-INSERT INTO notification_channels (user_id, type, label, config, secret_enc, enabled)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at
+INSERT INTO notification_channels (user_id, type, label, config, secret_enc, enabled, template)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at, template
 `
 
 type CreateNotificationChannelParams struct {
@@ -73,6 +73,7 @@ type CreateNotificationChannelParams struct {
 	Config    []byte    `json:"config"`
 	SecretEnc string    `json:"secret_enc"`
 	Enabled   bool      `json:"enabled"`
+	Template  string    `json:"template"`
 }
 
 // Notification channels, routing rules and the delivery outbox (Phase A).
@@ -85,6 +86,7 @@ func (q *Queries) CreateNotificationChannel(ctx context.Context, arg CreateNotif
 		arg.Config,
 		arg.SecretEnc,
 		arg.Enabled,
+		arg.Template,
 	)
 	var i NotificationChannel
 	err := row.Scan(
@@ -98,6 +100,7 @@ func (q *Queries) CreateNotificationChannel(ctx context.Context, arg CreateNotif
 		&i.Verified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Template,
 	)
 	return i, err
 }
@@ -212,7 +215,7 @@ func (q *Queries) GetNotification(ctx context.Context, id uuid.UUID) (Notificati
 }
 
 const getNotificationChannel = `-- name: GetNotificationChannel :one
-SELECT id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at FROM notification_channels WHERE id = $1 AND user_id = $2
+SELECT id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at, template FROM notification_channels WHERE id = $1 AND user_id = $2
 `
 
 type GetNotificationChannelParams struct {
@@ -234,12 +237,13 @@ func (q *Queries) GetNotificationChannel(ctx context.Context, arg GetNotificatio
 		&i.Verified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Template,
 	)
 	return i, err
 }
 
 const getNotificationChannelByID = `-- name: GetNotificationChannelByID :one
-SELECT id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at FROM notification_channels WHERE id = $1
+SELECT id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at, template FROM notification_channels WHERE id = $1
 `
 
 // GetNotificationChannelByID fetches a channel without the owner check — used by
@@ -258,12 +262,13 @@ func (q *Queries) GetNotificationChannelByID(ctx context.Context, id uuid.UUID) 
 		&i.Verified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Template,
 	)
 	return i, err
 }
 
 const listNotificationChannels = `-- name: ListNotificationChannels :many
-SELECT id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at FROM notification_channels WHERE user_id = $1 ORDER BY created_at
+SELECT id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at, template FROM notification_channels WHERE user_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListNotificationChannels(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error) {
@@ -286,6 +291,7 @@ func (q *Queries) ListNotificationChannels(ctx context.Context, userID uuid.UUID
 			&i.Verified,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Template,
 		); err != nil {
 			return nil, err
 		}
@@ -392,9 +398,9 @@ func (q *Queries) SetNotificationChannelVerified(ctx context.Context, arg SetNot
 
 const updateNotificationChannel = `-- name: UpdateNotificationChannel :one
 UPDATE notification_channels
-SET label = $3, config = $4, secret_enc = $5, enabled = $6, updated_at = now()
+SET label = $3, config = $4, secret_enc = $5, enabled = $6, template = $7, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at
+RETURNING id, user_id, type, label, config, secret_enc, enabled, verified, created_at, updated_at, template
 `
 
 type UpdateNotificationChannelParams struct {
@@ -404,6 +410,7 @@ type UpdateNotificationChannelParams struct {
 	Config    []byte    `json:"config"`
 	SecretEnc string    `json:"secret_enc"`
 	Enabled   bool      `json:"enabled"`
+	Template  string    `json:"template"`
 }
 
 // UpdateNotificationChannel updates a channel in place. secret_enc is replaced
@@ -417,6 +424,7 @@ func (q *Queries) UpdateNotificationChannel(ctx context.Context, arg UpdateNotif
 		arg.Config,
 		arg.SecretEnc,
 		arg.Enabled,
+		arg.Template,
 	)
 	var i NotificationChannel
 	err := row.Scan(
@@ -430,6 +438,7 @@ func (q *Queries) UpdateNotificationChannel(ctx context.Context, arg UpdateNotif
 		&i.Verified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Template,
 	)
 	return i, err
 }

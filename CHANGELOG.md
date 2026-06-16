@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.64.0] — 2026-06-16
+- **Message-template editor** for notification channels (consumes backend 0.36): a
+  separate modal with a syntax-highlighted editor ({{…}} actions highlighted via a
+  backdrop overlay), a clickable field reference on the right (inserts at the
+  cursor), and a debounced **live preview** rendered server-side against sample
+  data (parse errors shown inline). Empty template = built-in default.
+
 ### [0.63.0] — 2026-06-16
 - Notification channels: new **«Shoutrrr (любой сервис)»** type — a single masked
   Service URL field that unlocks every shoutrrr service (slack, discord, ntfy,
@@ -1099,6 +1106,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.36.0] — 2026-06-16
+- **Go-template message templating per channel** (migration **0018**: `template`
+  on `notification_channels`). Each channel can render its message from a Go
+  `text/template`; empty = the built-in default (`{{.Text}}` + link). Template data
+  exposes `Kind / Title / Text / TaskNumber / TaskTitle / Actor / Workspace / Link`.
+  Channel create/update validate the template (length + parse against sample data);
+  the test send and delivery both render through it. New
+  `POST /notification-template-preview` renders a template against sample data for
+  the editor's live preview (parse/field errors returned as `{ok:false,error}`).
+  Senders no longer auto-append the link — the template owns the full message.
 
 ### [0.35.0] — 2026-06-16
 - **shoutrrr transport integration.** Telegram is now delivered through the

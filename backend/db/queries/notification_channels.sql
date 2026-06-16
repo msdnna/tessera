@@ -3,8 +3,8 @@
 -- ── Channels (per-user) ────────────────────────────────────
 
 -- name: CreateNotificationChannel :one
-INSERT INTO notification_channels (user_id, type, label, config, secret_enc, enabled)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO notification_channels (user_id, type, label, config, secret_enc, enabled, template)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: ListNotificationChannels :many
@@ -23,7 +23,7 @@ SELECT * FROM notification_channels WHERE id = $1;
 -- otherwise, so an edit that doesn't touch the secret keeps it).
 -- name: UpdateNotificationChannel :one
 UPDATE notification_channels
-SET label = $3, config = $4, secret_enc = $5, enabled = $6, updated_at = now()
+SET label = $3, config = $4, secret_enc = $5, enabled = $6, template = $7, updated_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 

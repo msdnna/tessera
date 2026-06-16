@@ -58,11 +58,9 @@ func (ShoutrrrSender) Send(_ context.Context, ch Channel, msg Message) error {
 	if err != nil {
 		return Permanent(err)
 	}
-	text := msg.Body
-	if msg.Link != "" {
-		text += "\n" + msg.Link
-	}
-	if err := shoutrrr.Send(target, text); err != nil {
+	// msg.Body is already the fully rendered message (the link is part of the
+	// template), so send it verbatim.
+	if err := shoutrrr.Send(target, msg.Body); err != nil {
 		// shoutrrr errors can embed the service URL (token and all) — scrub it.
 		return errors.New(redact(err.Error(), target, ch.Secret["url"], ch.Secret["bot_token"]))
 	}

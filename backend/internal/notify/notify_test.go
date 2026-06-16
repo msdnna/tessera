@@ -84,6 +84,30 @@ func TestShoutrrrURL(t *testing.T) {
 	}
 }
 
+func TestRender(t *testing.T) {
+	data := SampleData()
+	// default template = text + link
+	out, err := Render(DefaultTemplate, data)
+	if err != nil || !indexOfOK(out, data.Text) || !indexOfOK(out, data.Link) {
+		t.Fatalf("default render = %q, %v", out, err)
+	}
+	// custom template using the documented fields
+	out, err = Render("#{{.TaskNumber}} {{.TaskTitle}} — {{.Actor}}", data)
+	if err != nil || out != "#42 Починить чайник — Алиса" {
+		t.Fatalf("custom render = %q, %v", out, err)
+	}
+	// unknown field errors (so the editor preview can surface it)
+	if _, err := Render("{{.Nope}}", data); err == nil {
+		t.Fatal("unknown field should error")
+	}
+	// parse error surfaces too
+	if _, err := Render("{{.Text", data); err == nil {
+		t.Fatal("bad syntax should error")
+	}
+}
+
+func indexOfOK(s, sub string) bool { return indexOf(s, sub) >= 0 }
+
 func TestPermanentError(t *testing.T) {
 	base := errors.New("boom")
 	if IsPermanent(base) {

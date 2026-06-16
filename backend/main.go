@@ -217,6 +217,7 @@ func main() {
 			protected.PATCH("/notification-channels/:id", rh.UpdateNotificationChannel)
 			protected.DELETE("/notification-channels/:id", rh.DeleteNotificationChannel)
 			protected.POST("/notification-channels/:id/test", rh.TestNotificationChannel)
+			protected.POST("/notification-template-preview", rh.PreviewNotificationTemplate)
 			protected.GET("/notification-routes", rh.ListNotificationRoutes)
 			protected.POST("/notification-routes", rh.CreateNotificationRoute)
 			protected.PATCH("/notification-routes/:id", rh.UpdateNotificationRoute)

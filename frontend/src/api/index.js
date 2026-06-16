@@ -229,6 +229,7 @@ export const notificationChannels = {
   update: (id, data) => api.patch(`/notification-channels/${id}`, data),
   remove: (id) => api.delete(`/notification-channels/${id}`),
   test: (id) => api.post(`/notification-channels/${id}/test`),
+  previewTemplate: (template) => api.post('/notification-template-preview', { template }),
 }
 
 export const notificationRoutes = {
