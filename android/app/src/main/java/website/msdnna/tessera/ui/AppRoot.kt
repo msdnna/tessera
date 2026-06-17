@@ -2,13 +2,24 @@ package website.msdnna.tessera.ui
 
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -17,7 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.android.awaitFrame
@@ -29,16 +43,31 @@ import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.repository.AuthRepository
 import website.msdnna.tessera.data.repository.ProfileRepository
+import website.msdnna.tessera.ui.components.LoadingCaptions
+import website.msdnna.tessera.ui.components.MtLogo
 import website.msdnna.tessera.ui.components.TesseraLoader
+import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.screens.AuthScreen
 import website.msdnna.tessera.ui.screens.MainScreen
+import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.theme.accentByKey
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.isAuthError
 
-/** Upper bound on the startup session check before the splash proceeds anyway. */
+/** Upper bound on the startup session check before the splash gives up. */
 private const val VERIFY_TIMEOUT_MS = 30_000L
+
+private val BrandPurple = Color(0xFF7C6CFF)
+
+/** Outcome of the startup session check, driving the gate below. */
+private sealed interface Boot {
+    data object Loading : Boot
+    data object Done : Boot // proceed to auth or main per the token
+    data object ConnectError : Boot // the API server is unreachable
+    data object AuthError : Boot // session invalid / account deactivated
+}
 
 /**
  * Root of the Compose tree. Owns theme prefs, the session gate (splash →
@@ -61,7 +90,8 @@ fun AppRoot(
     val user by prefs.user.collectAsStateWithLifecycle(initialValue = null)
     val serverUrl by prefs.serverUrl.collectAsStateWithLifecycle(initialValue = AppContainer.serverUrl)
 
-    var ready by remember { mutableStateOf(false) }
+    var boot by remember { mutableStateOf<Boot>(Boot.Loading) }
+    var bootNonce by remember { mutableIntStateOf(0) }
 
     // Match the system status/navigation bar icon colours to the theme so they
     // stay legible (and don't glare) over the app background.
@@ -74,10 +104,15 @@ fun AppRoot(
         }
     }
 
-    // One-shot bootstrap: prime RetrofitClient + AppContainer from persisted
-    // state, then gate `ready` on the session check so the loading splash stays
-    // up while we confirm the server is reachable and the session is valid.
-    LaunchedEffect(Unit) {
+    // Bootstrap (re-runnable via `bootNonce` for the error screens' «Retry»):
+    // prime RetrofitClient + AppContainer from persisted state, then hold the
+    // loading splash while we confirm the server is reachable and the session is
+    // valid (bounded by a 30s timeout). The outcome drives the gate below:
+    //   • no token / valid session  → Done   (auth screen / board)
+    //   • unreachable or timed out   → ConnectError
+    //   • 401/403 (expired/blocked)  → AuthError
+    LaunchedEffect(bootNonce) {
+        boot = Boot.Loading
         val url = prefs.serverUrl.first()
         val access = prefs.authToken.first()
         val refresh = prefs.refreshToken.first()
@@ -85,17 +120,14 @@ fun AppRoot(
         RetrofitClient.authToken = access
         RetrofitClient.refreshToken = refresh
         if (access.isBlank()) {
-            // No stored session — nothing to verify, go straight to the auth screen.
-            ready = true
+            boot = Boot.Done
             return@LaunchedEffect
         }
-        // Stored session: hold the loading splash while we check API availability +
-        // session validity, bounded by a 30s timeout so a dead/slow server can't
-        // hang the splash forever. We then proceed regardless — a valid session
-        // opens the board; a 401 clears the token (→ auth screen) via onUnauthorized;
-        // an unreachable server still opens the board, which surfaces its own error.
-        runCatching { withTimeoutOrNull(VERIFY_TIMEOUT_MS) { authRepo.verify() } }
-        ready = true
+        boot = runCatching { withTimeoutOrNull(VERIFY_TIMEOUT_MS) { authRepo.verify() } }
+            .fold(
+                onSuccess = { if (it == null) Boot.ConnectError else Boot.Done },
+                onFailure = { if (isAuthError(it)) Boot.AuthError else Boot.ConnectError },
+            )
     }
 
     // Keep the network client's server URL in sync with prefs changes.
@@ -120,10 +152,33 @@ fun AppRoot(
         }
     }
 
+    fun exitApp() {
+        (view.context as? Activity)?.finish()
+    }
+
     TesseraTheme(accent = accentByKey(accentKey), isDark = isDark) {
         Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
             when {
-                !ready -> Splash()
+                boot is Boot.Loading -> BootLoading()
+
+                boot is Boot.ConnectError -> BootError(
+                    title = "Нет связи с сервером",
+                    message = "Не удалось подключиться к серверу API. Проверьте, что сервер доступен, и попробуйте снова.",
+                    primaryLabel = "Попробовать ещё раз",
+                    onPrimary = { bootNonce++ },
+                    onExit = ::exitApp,
+                )
+
+                boot is Boot.AuthError -> BootError(
+                    title = "Сессия завершена",
+                    message = "Похоже, сессия истекла или доступ к аккаунту закрыт. Войдите снова, чтобы продолжить.",
+                    primaryLabel = "Выполнить повторный вход",
+                    onPrimary = {
+                        scope.launch { authRepo.logout() }
+                        boot = Boot.Done
+                    },
+                    onExit = ::exitApp,
+                )
 
                 token.isBlank() -> AuthScreen(
                     serverUrl = serverUrl,
@@ -145,20 +200,83 @@ fun AppRoot(
     }
 }
 
+/** Full-bleed purple gradient — the shared backdrop for the launch splash and
+ *  its error screens. Fixed brand purple (not the user's accent), since the
+ *  accent pref may still be loading; reproduces the bundle's
+ *  #6D5FE0→#7C6CFF→#9183FF diagonal almost exactly. */
 @Composable
-private fun Splash() {
+private fun PurpleBackdrop(content: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(accentGradient(BrandPurple)),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+@Composable
+private fun BootLoading() {
     // Brief frame yield keeps the splash from flashing when prefs load instantly.
     LaunchedEffect(Unit) { awaitFrame() }
-    // Brand launch splash: a white tessera tile spinning on the purple gradient.
-    // The fixed brand purple (not the user's accent) is used here because the
-    // accent pref may still be loading at this point. accentGradient(#7C6CFF)
-    // reproduces the bundle's #6D5FE0→#7C6CFF→#9183FF diagonal almost exactly.
+    PurpleBackdrop {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            TesseraLoader(size = 72.dp, color = Color.White, gradient = false)
+            Spacer(Modifier.height(24.dp))
+            // Reassuring captions fade in only if the connect/verify drags past 5s.
+            LoadingCaptions(color = Color.White.copy(alpha = 0.82f))
+        }
+    }
+}
+
+/** A startup error on the purple backdrop: brand mark, a message, a white CTA,
+ *  and a ghost «Выход». Text/buttons are light to read on purple (login style). */
+@Composable
+private fun BootError(
+    title: String,
+    message: String,
+    primaryLabel: String,
+    onPrimary: () -> Unit,
+    onExit: () -> Unit,
+) {
+    PurpleBackdrop {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 36.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            MtLogo(size = 56.dp, tint = Color.White, gradient = false)
+            Spacer(Modifier.height(6.dp))
+            Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                message,
+                color = Color.White.copy(alpha = 0.78f),
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.widthIn(max = 320.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+            BootPrimaryButton(primaryLabel, onPrimary)
+            Box(
+                Modifier
+                    .clickableNoRipple(onClick = onExit)
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+            ) {
+                Text("Выход", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+/** The high-contrast white CTA (purple label) — primary action on purple. */
+@Composable
+private fun BootPrimaryButton(text: String, onClick: () -> Unit) {
     Box(
         Modifier
-            .fillMaxSize()
-            .background(accentGradient(Color(0xFF7C6CFF))),
+            .widthIn(min = 220.dp)
+            .background(Color.White, RoundedCornerShape(RadiusMd))
+            .clickableNoRipple(onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        TesseraLoader(size = 72.dp, color = Color.White, gradient = false)
+        Text(text, color = BrandPurple, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     }
 }

@@ -23,3 +23,10 @@ fun errorMessage(t: Throwable): String = when (t) {
 
     else -> t.message ?: "Неизвестная ошибка"
 }
+
+/**
+ * True when a call failed because the session is invalid/forbidden (expired,
+ * revoked, or the account was deactivated) — a 401/403 from the API. Used at
+ * startup to tell "re-login" apart from "server unreachable".
+ */
+fun isAuthError(t: Throwable): Boolean = t is HttpException && (t.code() == 401 || t.code() == 403)

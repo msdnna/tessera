@@ -34,8 +34,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.ui.components.ColorDot
+import website.msdnna.tessera.ui.components.ErrorState
+import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.TagChip
-import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -97,9 +98,12 @@ fun HomeScreen(
         Spacer(Modifier.height(12.dp))
 
         when {
-            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                TesseraLoader()
-            }
+            state.loading -> LoadingState()
+
+            state.error != null -> ErrorState(
+                message = state.error ?: "Ошибка",
+                onRetry = { vm.load(workspaceId, userId) },
+            )
 
             else -> {
                 val tasks = state.visibleTasks

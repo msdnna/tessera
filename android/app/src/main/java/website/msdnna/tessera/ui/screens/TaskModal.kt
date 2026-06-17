@@ -70,8 +70,10 @@ import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.components.DueDatePicker
+import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
+import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.MarkdownEditor
 import website.msdnna.tessera.ui.components.RichContent
 import website.msdnna.tessera.ui.components.TButton
@@ -176,10 +178,12 @@ fun TaskModal(
                 .clip(RoundedCornerShape(RadiusLg))
                 .background(c.surface),
         ) {
-            // ── scrollable body (loader centered in the body while it loads) ──
+            // ── scrollable body (loader/error centered in the body until loaded) ──
             if (state.loading && detail == null) {
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    TesseraLoader()
+                Box(Modifier.weight(1f).fillMaxWidth()) { LoadingState() }
+            } else if (state.error != null && detail == null) {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    ErrorState(message = state.error ?: "Ошибка", onRetry = { vm.load(currentId, workspaceId) })
                 }
             } else {
                 Column(

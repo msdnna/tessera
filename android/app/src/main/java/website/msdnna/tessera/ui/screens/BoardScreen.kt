@@ -42,12 +42,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.data.model.Board
+import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
+import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TTextField
-import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.softShadow
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -109,11 +110,12 @@ fun BoardScreen(
                 indicator = { BoardRefreshIndicator(distanceFraction = { ptrState.distanceFraction }, refreshing = state.refreshing) },
             ) {
                 when {
-                    state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        TesseraLoader()
-                    }
+                    state.loading -> LoadingState()
 
-                    state.error != null -> BoardEmpty(state.error ?: "Ошибка")
+                    state.error != null -> ErrorState(
+                        message = state.error ?: "Ошибка",
+                        onRetry = { vm.load(board.id, workspaceId) },
+                    )
 
                     state.columns.isEmpty() -> BoardEmpty("На этой доске пока нет колонок")
 

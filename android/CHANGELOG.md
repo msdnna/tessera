@@ -5,6 +5,22 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.17.0 — 2026-06-17
+- Splash is now just the white «mt» mark on the purple background — no badge at
+  all (mirrors `mark-white.svg`). Sidesteps the OEM splash-badge shape problem
+  entirely (MIUI drew both the baked rounded-rect and the OS icon-background as a
+  hard white square).
+- Startup loading splash now shows soft, fading captions under the loader after
+  5s («Пытаемся подключиться к серверу…» → «Это занимает чуть больше времени…»)
+  so a slow connect doesn't look frozen.
+- Startup failures get dedicated screens on the purple backdrop (light text +
+  white CTA, login styling): **server unreachable** → «Не удалось подключиться к
+  серверу API» with «Попробовать ещё раз» / «Выход»; **expired/blocked session**
+  (401/403) → «Выполнить повторный вход» / «Выход».
+- In-app loads (board, Home, task modal) show the same delayed captions while
+  fetching and a themed error state with a concrete message (e.g. «Ошибка 500»)
+  and a single «Попробовать ещё раз» on failure, instead of a bare empty view.
+
 ## 0.16.0 — 2026-06-17
 - Splash badge is rounded again: the white badge is baked into the splash drawable
   as a rounded-rect (radius 25) instead of relying on
