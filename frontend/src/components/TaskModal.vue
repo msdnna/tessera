@@ -175,32 +175,47 @@ const tagObjs = computed(() =>
   selectedTags.value.map((id) => props.tags.find((t) => t.id === id)).filter(Boolean),
 )
 
-// Tag chips in the (read-only trigger) row are clipped to one line; count how
-// many overflow so we can show a "+N" instead of spilling past the modal edge.
-// Measured (not a fixed cap) so the right number fits whatever the width is.
-const tagsClipEl = ref(null)
-const hiddenTagCount = ref(0)
+// The tags trigger shows as many WHOLE tag chips as fit on one line, then a
+// "+N". To pick the count without a render⇄measure feedback loop, an invisible
+// measurement row (natural widths, never sliced) is measured against the
+// trigger's width, reserving room for the +N chip when not everything fits.
+const tagsValEl = ref(null)
+const tagsMeasureEl = ref(null)
+const visibleTagCount = ref(99)
+const PLUS_N_W = 46 // reserved px for the "+N" chip (incl. gap)
 let tagsRO = null
+function fitCount(avail, widths, gap, reserve) {
+  let used = 0
+  let n = 0
+  for (let i = 0; i < widths.length; i++) {
+    const add = widths[i] + (i > 0 ? gap : 0)
+    if (used + add + reserve > avail) break
+    used += add
+    n++
+  }
+  return n
+}
 function measureTags() {
-  const clip = tagsClipEl.value
-  if (!clip) {
-    hiddenTagCount.value = 0
+  const val = tagsValEl.value
+  const measure = tagsMeasureEl.value
+  if (!val || !measure) return
+  const avail = val.clientWidth - 24 // button h-padding
+  const widths = [...measure.children].map((ch) => ch.offsetWidth)
+  if (!widths.length || avail <= 0) {
+    visibleTagCount.value = widths.length
     return
   }
-  const w = clip.clientWidth
-  let hidden = 0
-  for (const ch of clip.children) {
-    if (ch.offsetLeft + ch.offsetWidth > w + 1) hidden++
-  }
-  hiddenTagCount.value = hidden
+  let n = fitCount(avail, widths, 6, 0)
+  if (n < widths.length) n = fitCount(avail, widths, 6, PLUS_N_W) // make room for +N
+  visibleTagCount.value = Math.max(n, 1) // always show at least one
 }
 watch(
-  [tagObjs, tagsClipEl],
+  [tagObjs, tagsValEl],
   () => {
     nextTick(measureTags)
-    if (tagsClipEl.value && typeof ResizeObserver !== 'undefined' && !tagsRO) {
+    if (tagsValEl.value && typeof ResizeObserver !== 'undefined' && !tagsRO) {
       tagsRO = new ResizeObserver(() => measureTags())
-      tagsRO.observe(tagsClipEl.value)
+      tagsRO.observe(tagsValEl.value)
     }
   },
   { immediate: true },
@@ -847,28 +862,32 @@ function eventText(e) {
               <span class="plabel"><n-icon :component="PricetagOutline" :size="15" /> Теги</span>
               <n-popover trigger="click" placement="bottom-start">
                 <template #trigger>
-                  <button class="val tags-val">
+                  <button ref="tagsValEl" class="val tags-val">
                     <template v-if="tagObjs.length">
-                      <span ref="tagsClipEl" class="tags-clip">
-                        <span
-                          v-for="t in tagObjs"
-                          :key="t.id"
-                          class="chip"
-                          :style="{
-                            border: '1px solid transparent',
-                            background: tagPillBg(t.color, true),
-                          }"
-                        >
-                          <span
-                            class="accent-grad-text"
-                            :style="{ '--grad': hueGrad(tagText(t.color)) }"
-                            >{{ t.name }}</span
-                          >
-                        </span>
-                      </span>
-                      <span v-if="hiddenTagCount > 0" class="chip chip-more"
-                        >+{{ hiddenTagCount }}</span
+                      <span
+                        v-for="t in tagObjs.slice(0, visibleTagCount)"
+                        :key="t.id"
+                        class="chip"
+                        :style="{
+                          border: '1px solid transparent',
+                          background: tagPillBg(t.color, true),
+                        }"
                       >
+                        <span
+                          class="accent-grad-text"
+                          :style="{ '--grad': hueGrad(tagText(t.color)) }"
+                          >{{ t.name }}</span
+                        >
+                      </span>
+                      <span v-if="visibleTagCount < tagObjs.length" class="chip chip-more"
+                        >+{{ tagObjs.length - visibleTagCount }}</span
+                      >
+                      <!-- invisible measurement row: natural chip widths, never sliced -->
+                      <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
+                        <span v-for="t in tagObjs" :key="`m${t.id}`" class="chip">{{
+                          t.name
+                        }}</span>
+                      </span>
                     </template>
                     <span v-else class="muted">Нет</span>
                   </button>
@@ -1431,19 +1450,21 @@ function eventText(e) {
   color: var(--t-text3);
   background: var(--t-surface-alt);
 }
-/* Tags trigger: clip the chip row to one line and never spill past the modal;
-   overflowing chips are counted into the +N (measured in script). */
+/* Tags trigger: one line, never spilling past the modal. Only the chips that
+   wholly fit are rendered (+ a measured "+N"); the measurement row is invisible. */
 .tags-val {
   max-width: 100%;
   overflow: hidden;
+  flex-wrap: nowrap;
 }
-.tags-clip {
-  position: relative;
+.tags-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  left: -9999px;
   display: inline-flex;
-  align-items: center;
   gap: 6px;
-  min-width: 0;
-  overflow: hidden;
 }
 .avatar {
   flex: none;

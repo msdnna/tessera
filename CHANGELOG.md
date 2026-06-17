@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.70.2] — 2026-06-17
+- Fix: the task-modal tag `+N` no longer clips a half-shown second tag — only
+  chips that *wholly* fit are rendered (sized from an invisible measurement row,
+  reserving room for the `+N`), so it accounts for both tag and screen width.
+
 ### [0.70.1] — 2026-06-17
 - Task modal: tag chips in the trigger are clipped to one line and the overflow is
   **measured** into a `+N` chip (no more spilling past the modal edge; the count
