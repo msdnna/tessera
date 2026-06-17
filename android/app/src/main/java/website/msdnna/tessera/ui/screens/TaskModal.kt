@@ -2,6 +2,7 @@ package website.msdnna.tessera.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -164,6 +165,9 @@ fun TaskModal(
     fun close() = onClose(vm.state.value.changed)
 
     Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // Back off a non-default tab returns to the first tab; a second Back (now
+        // disabled) falls through to the Dialog's dismiss and closes the modal.
+        BackHandler(enabled = tab != 0) { tab = 0 }
         Column(
             Modifier
                 .popupAppear(TransformOrigin.Center)

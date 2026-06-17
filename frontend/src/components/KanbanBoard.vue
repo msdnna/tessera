@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, h } from 'vue'
 import { useRoute } from 'vue-router'
 import draggable from 'vuedraggable'
 import {
@@ -20,6 +20,8 @@ import {
   FolderOpenOutline,
   TrashOutline,
   AddOutline,
+  ChevronForwardOutline,
+  ChevronBackOutline,
 } from '@vicons/ionicons5'
 import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -27,6 +29,7 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { useThemeStore } from '@/stores/theme'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
+import { useOverlayBack } from '@/composables/useOverlayBack'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
@@ -232,6 +235,7 @@ const addOptions = computed(() => [
 // than fanning out side submenus that run off a narrow screen.
 const addShow = ref(false)
 const addLevel = ref(null) // null = top level; else the parent group's key
+const addDir = ref('down') // slide direction for the level transition ('down' = deeper)
 const addMenuOptions = computed(() => {
   if (!isMobile.value) return addOptions.value
   if (!addLevel.value) {
@@ -240,16 +244,40 @@ const addMenuOptions = computed(() => {
   }
   const parent = addOptions.value.find((o) => o.key === addLevel.value)
   return [
-    { label: '‹ Назад', key: 'nav.back' },
+    { label: 'Назад', key: 'nav.back' },
     { type: 'divider', key: 'nav.div' },
     ...(parent?.children || []),
   ]
 })
+// Custom row rendering on mobile: right-side drill arrows, a spaced «‹ Назад»
+// header, and a vertical slide that plays whenever the level changes (keys differ
+// between levels → the option nodes remount → the animation replays).
+function renderAddLabel(option) {
+  if (!isMobile.value) return option.label
+  const anim = `t-fdd-${addDir.value} .17s ease`
+  const key = option.key
+  if (key === 'nav.back') {
+    return h('span', { class: 't-fdd-row is-back', style: { animation: anim } }, [
+      h(NIcon, { component: ChevronBackOutline, size: 16 }),
+      h('span', { class: 't-fdd-txt' }, option.label),
+    ])
+  }
+  if (!addLevel.value && typeof key === 'string' && key.startsWith('nav.')) {
+    return h('span', { class: 't-fdd-row is-drill', style: { animation: anim } }, [
+      h('span', { class: 't-fdd-txt' }, option.label),
+      h(NIcon, { component: ChevronForwardOutline, size: 14, class: 't-fdd-arr' }),
+    ])
+  }
+  return h('span', { class: 't-fdd-row', style: { animation: anim } }, [
+    h('span', { class: 't-fdd-txt' }, option.label),
+  ])
+}
 // n-dropdown auto-closes on every select. While drilling we ignore that close
 // (keep the controlled menu open) so the sub-list shows instead of snapping shut.
 let addDrilling = false
 function onAddSelect(key) {
   if (key === 'nav.back' || key.startsWith('nav.')) {
+    addDir.value = key === 'nav.back' ? 'up' : 'down'
     addLevel.value = key === 'nav.back' ? null : key.slice(4)
     addDrilling = true
     nextTick(() => (addDrilling = false))
@@ -506,6 +534,11 @@ function openTask(id) {
   selectedTaskId.value = id
   showTaskModal.value = true
 }
+// Browser Back closes the open task modal instead of leaving the board.
+useOverlayBack(showTaskModal, () => (showTaskModal.value = false))
+// …and the board archive modal (shared via the store, rendered in two menus).
+const archiveOpen = computed(() => boardViewStore.archiveOpen)
+useOverlayBack(archiveOpen, () => (boardViewStore.archiveOpen = false))
 
 const dragging = ref(false) // reactive: also shown to cards for the nest dropzone
 let suppressReloadUntil = 0
@@ -954,6 +987,7 @@ watch(
             trigger="click"
             placement="bottom-start"
             :options="addMenuOptions"
+            :render-label="renderAddLabel"
             @update:show="onAddShow"
             @select="onAddSelect"
           >

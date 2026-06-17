@@ -19,6 +19,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
+import { useOverlayBack } from '@/composables/useOverlayBack'
 
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
@@ -62,6 +63,8 @@ useRealtime((ev) => {
 })
 
 const drawerOpen = ref(false)
+// Browser Back closes the mobile sidebar drawer instead of navigating.
+useOverlayBack(drawerOpen, () => (drawerOpen.value = false))
 
 onMounted(async () => {
   await authStore.verify()

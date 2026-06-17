@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,6 +60,10 @@ fun SearchOverlay(
 
     LaunchedEffect(workspaceId) { vm.bind(workspaceId) }
     LaunchedEffect(Unit) { focus.requestFocus() }
+
+    // This overlay is a plain Box (not a Dialog), so Back would otherwise fall
+    // through to the nav back-stack — intercept it to just close the search.
+    BackHandler { onClose() }
 
     Column(
         Modifier.popupAppear(TransformOrigin.Center).fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),

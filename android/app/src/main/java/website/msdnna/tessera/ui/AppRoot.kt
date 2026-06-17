@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Preferences
@@ -35,6 +36,9 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.theme.accentByKey
 import website.msdnna.tessera.ui.theme.accentGradient
+
+/** Upper bound on the startup session check before the splash proceeds anyway. */
+private const val VERIFY_TIMEOUT_MS = 30_000L
 
 /**
  * Root of the Compose tree. Owns theme prefs, the session gate (splash →
@@ -71,8 +75,8 @@ fun AppRoot(
     }
 
     // One-shot bootstrap: prime RetrofitClient + AppContainer from persisted
-    // state before flipping `ready`, so the session gate sees a consistent
-    // snapshot rather than the flow initial values.
+    // state, then gate `ready` on the session check so the loading splash stays
+    // up while we confirm the server is reachable and the session is valid.
     LaunchedEffect(Unit) {
         val url = prefs.serverUrl.first()
         val access = prefs.authToken.first()
@@ -80,9 +84,18 @@ fun AppRoot(
         AppContainer.serverUrl = url
         RetrofitClient.authToken = access
         RetrofitClient.refreshToken = refresh
+        if (access.isBlank()) {
+            // No stored session — nothing to verify, go straight to the auth screen.
+            ready = true
+            return@LaunchedEffect
+        }
+        // Stored session: hold the loading splash while we check API availability +
+        // session validity, bounded by a 30s timeout so a dead/slow server can't
+        // hang the splash forever. We then proceed regardless — a valid session
+        // opens the board; a 401 clears the token (→ auth screen) via onUnauthorized;
+        // an unreachable server still opens the board, which surfaces its own error.
+        runCatching { withTimeoutOrNull(VERIFY_TIMEOUT_MS) { authRepo.verify() } }
         ready = true
-        // Validate the stored session in the background (refreshes the profile).
-        if (access.isNotBlank()) runCatching { authRepo.verify() }
     }
 
     // Keep the network client's server URL in sync with prefs changes.

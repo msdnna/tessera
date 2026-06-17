@@ -472,3 +472,54 @@ body {
 .n-dropdown-menu--scrollable {
   max-height: 72vh;
 }
+
+/* Mobile composer "+" drill-in menu: full-width rows so the right-side drill
+   arrow («›») right-aligns, a roomier «‹ Назад» header, and a vertical slide
+   that plays whenever the menu changes level. Teleported to <body>, so these
+   live in global (non-scoped) CSS. */
+.t-fdd-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.t-fdd-row.is-drill {
+  justify-content: space-between;
+  gap: 12px;
+}
+.t-fdd-row.is-back {
+  gap: 9px;
+}
+.t-fdd-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-fdd-arr {
+  flex: none;
+  opacity: 0.42;
+}
+@keyframes t-fdd-down {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes t-fdd-up {
+  from {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-fdd-row {
+    animation: none !important;
+  }
+}

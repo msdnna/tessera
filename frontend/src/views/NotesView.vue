@@ -1,11 +1,12 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { NButton, NInput, NText, NEmpty, NPopconfirm, NIcon, useMessage } from 'naive-ui'
 import { ArrowBackOutline } from '@vicons/ionicons5'
 import { notes as notesApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useResponsive } from '@/composables/useResponsive'
+import { useOverlayBack } from '@/composables/useOverlayBack'
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
@@ -48,6 +49,10 @@ function newNote() {
 function backToList() {
   selected.value = null
 }
+
+// Browser Back closes the open note (deselects) instead of leaving /notes.
+const noteOpen = computed(() => selected.value != null)
+useOverlayBack(noteOpen, () => (selected.value = null))
 
 async function save() {
   const t = title.value.trim()

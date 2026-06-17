@@ -1,5 +1,8 @@
 package website.msdnna.tessera.ui.screens
 
+import android.app.Activity
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -26,6 +29,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -111,14 +115,49 @@ fun MainScreen(
     var boardArchiveOpen by remember { mutableStateOf(false) }
     var boardTagsOpen by remember { mutableStateOf(false) }
 
+    // Navigation back-stack of visited destinations (the current `dest` is the top,
+    // held separately). The system Back gesture pops this instead of closing the
+    // app; at the root it asks for a confirming second press. The initial-restore
+    // below sets `dest` directly so it doesn't seed a phantom Home entry.
+    val backStack = remember { mutableStateListOf<MainDest>() }
+    fun navTo(d: MainDest) {
+        if (d == dest) return
+        // Going back to the immediately-previous screen collapses the stack rather
+        // than growing it (A→B→A behaves like a Back), keeping history tidy.
+        if (backStack.isNotEmpty() && backStack.last() == d) backStack.removeAt(backStack.lastIndex)
+        else backStack.add(dest)
+        dest = d
+    }
+
     // Navigate to a task by board+task: fetch the board, switch to it, queue the open.
     fun openTask(boardId: String, taskId: String) {
         bellOpen = false
         searchOpen = false
         scope.launch {
             val board = runCatching { boardRepo.board(boardId) }.getOrNull() ?: return@launch
-            dest = MainDest.BoardView(board)
+            navTo(MainDest.BoardView(board))
             pendingTaskId = taskId
+        }
+    }
+
+    val backContext = LocalContext.current
+    var lastBackAt by remember { mutableStateOf(0L) }
+    // Drawer open → Back closes it. Otherwise Back pops the nav stack, and at the
+    // root it minimises the app on a confirming second press (with a hint toast),
+    // never killing it on the first gesture. Dialog-based modals (task/members/…)
+    // and the search/note overlays consume Back via their own handlers first.
+    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+    BackHandler(enabled = !drawerState.isOpen) {
+        if (backStack.isNotEmpty()) {
+            dest = backStack.removeAt(backStack.lastIndex)
+        } else {
+            val now = System.currentTimeMillis()
+            if (now - lastBackAt < 2000L) {
+                (backContext as? Activity)?.moveTaskToBack(true)
+            } else {
+                lastBackAt = now
+                Toast.makeText(backContext, "Нажмите «Назад» ещё раз для выхода", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -187,8 +226,9 @@ fun MainScreen(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = c.surface, modifier = Modifier.width(280.dp)) {
-                fun navTo(d: MainDest) {
-                    dest = d
+                // Sidebar navigation: push onto the back-stack and close the drawer.
+                fun go(d: MainDest) {
+                    navTo(d)
                     scope.launch { drawerState.close() }
                 }
                 Sidebar(
@@ -201,18 +241,18 @@ fun MainScreen(
                     onAccentChange = onAccentChange,
                     onToggleDark = onToggleDark,
                     onLogout = onLogout,
-                    onOpenHome = { navTo(MainDest.Home) },
-                    onOpenReminders = { navTo(MainDest.Reminders) },
-                    onOpenNotes = { navTo(MainDest.Notes) },
+                    onOpenHome = { go(MainDest.Home) },
+                    onOpenReminders = { go(MainDest.Reminders) },
+                    onOpenNotes = { go(MainDest.Notes) },
                     onOpenMembers = {
                         membersOpen = true
                         scope.launch { drawerState.close() }
                     },
-                    onOpenGitlab = { navTo(MainDest.GitLabSettings) },
-                    onOpenNotifications = { navTo(MainDest.Notifications) },
-                    onOpenSettings = { navTo(MainDest.Settings) },
-                    onOpenAdmin = { navTo(MainDest.Admin) },
-                    onOpenBoard = { board -> navTo(MainDest.BoardView(board)) },
+                    onOpenGitlab = { go(MainDest.GitLabSettings) },
+                    onOpenNotifications = { go(MainDest.Notifications) },
+                    onOpenSettings = { go(MainDest.Settings) },
+                    onOpenAdmin = { go(MainDest.Admin) },
+                    onOpenBoard = { board -> go(MainDest.BoardView(board)) },
                     updateVersion = updateAvailable?.let { "v${it.version}" },
                     onUpdate = {
                         scope.launch { drawerState.close() }
@@ -237,7 +277,7 @@ fun MainScreen(
                     projectBoards = (dest as? MainDest.BoardView)?.board
                         ?.let { state.boardsByProject[it.projectId] }
                         .orEmpty(),
-                    onSelectBoard = { board -> dest = MainDest.BoardView(board) },
+                    onSelectBoard = { board -> navTo(MainDest.BoardView(board)) },
                     onMenu = { scope.launch { drawerState.open() } },
                     onSearch = { searchOpen = true },
                     onBellToggle = { bellOpen = !bellOpen },
@@ -305,7 +345,7 @@ fun MainScreen(
                     onOpenTask = ::openTask,
                     onOpenNote = { noteId ->
                         notesPreselectId = noteId
-                        dest = MainDest.Notes
+                        navTo(MainDest.Notes)
                         searchOpen = false
                     },
                 )

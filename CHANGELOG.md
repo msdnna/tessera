@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.71.0] — 2026-06-17
+- Browser **Back** now closes an open overlay instead of leaving the page: the
+  task modal, the members/GitLab modals, the board archive modal, the mobile
+  sidebar drawer, and an open note all close on Back (new `useOverlayBack`
+  composable pushes a throwaway history entry while open and unwinds it on UI
+  close, so Back on the page underneath keeps working).
+- Collapsed subtask rows on a card now show a pointer cursor (not a text I-beam) —
+  they open the modal on click and were never inline-editable.
+- Mobile composer «+» menu: drill-in rows show a right-aligned «›» arrow again,
+  the «‹ Назад» header has a roomier gap, and changing level now slides
+  (down when drilling in, up when going back).
+
 ### [0.70.5] — 2026-06-17
 - Fix: GitLab task due dates (date-only) no longer show a +3h-shifted time — a pure
   UTC-midnight due is rendered as its calendar date in UTC with no time, so a GitLab

@@ -5,8 +5,9 @@
     <style name="Theme.Tessera" parent="android:Theme.DeviceDefault.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:windowSplashScreenBackground">@color/window_background</item>
+        <!-- The white rounded badge is baked into splash_icon itself, NOT drawn via
+             windowSplashScreenIconBackgroundColor (MIUI rendered that OS color as a
+             hard white square). See the drawable's comment. -->
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
-        <!-- White round badge behind the mt (a circle, drawn by the OS — never square). -->
-        <item name="android:windowSplashScreenIconBackgroundColor">#FFFFFFFF</item>
     </style>
 </resources>

@@ -1089,6 +1089,7 @@ async function submitAddSub() {
   border-radius: 6px;
   font-size: 13px;
   color: var(--t-text2);
+  cursor: pointer;
 }
 .subrow:hover {
   background: var(--t-hover);

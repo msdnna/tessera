@@ -26,6 +26,7 @@ import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useResponsive } from '@/composables/useResponsive'
+import { useOverlayBack } from '@/composables/useOverlayBack'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
 
@@ -41,6 +42,9 @@ const { isMobile } = useResponsive()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
+// Browser Back closes these modals instead of leaving the board.
+useOverlayBack(showMembers, () => (showMembers.value = false))
+useOverlayBack(showGitlab, () => (showGitlab.value = false))
 const integrationOptions = [
   { label: 'GitLab', key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
 ]

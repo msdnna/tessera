@@ -5,6 +5,22 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.16.0 — 2026-06-17
+- Splash badge is rounded again: the white badge is baked into the splash drawable
+  as a rounded-rect (radius 25) instead of relying on
+  `windowSplashScreenIconBackgroundColor`, which MIUI rendered as a hard white
+  square. Reads as a rounded square on such skins and a circle on stock Android.
+- Startup now holds the loading splash (spinning white tessera on the purple
+  gradient) while it checks the server is reachable and the session is valid,
+  bounded by a 30s timeout, before opening the board/initial screen. No stored
+  session skips straight to the auth screen.
+- Back gesture no longer closes the app from a sidebar-opened screen: a navigation
+  back-stack means Back returns to the previous (or initial) screen; at the root it
+  shows a «Нажмите Назад ещё раз» hint and minimises the app only on a confirming
+  second press. Back also closes the drawer, the search overlay, and an open note.
+- In the task modal, Back off a non-first tab returns to the first tab; a second
+  Back closes the modal.
+
 ## 0.15.5 — 2026-06-17
 - Splash badge is now reliably round (the white badge is drawn by the OS via
   windowSplashScreenIconBackgroundColor — a circle, never a square — with the

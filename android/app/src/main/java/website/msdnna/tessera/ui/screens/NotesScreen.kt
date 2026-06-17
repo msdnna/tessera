@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +70,10 @@ fun NotesScreen(
     }
 
     val editorOpen = state.selectedId != null || state.composingNew
+
+    // The note editor is an inline overlay (not a Dialog), so Back would fall
+    // through to the nav back-stack — intercept it to close the editor instead.
+    BackHandler(enabled = editorOpen) { vm.closeEditor() }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
