@@ -460,6 +460,14 @@ watch(
   gap: 8px 12px;
   align-items: center;
 }
+/* Grid children default to min-width:auto, letting a wide select/input push the
+   column past the modal edge — pin to 0 so fields shrink to fit. */
+.gl-grid > *,
+.gl-rrow > *,
+.gl-rule > *,
+.gl-rmap > * {
+  min-width: 0;
+}
 .gl-grid-top {
   margin-top: 12px;
 }
@@ -547,5 +555,31 @@ watch(
 .gl-footer-btns {
   display: flex;
   gap: 8px;
+}
+
+/* Narrow screens: stack label-over-field, tighten the rule grids so nothing
+   spills past the modal, and drop the footer text onto its own line above the
+   buttons (instead of squeezing it into a wrapping column). */
+@media (max-width: 560px) {
+  .gl-grid {
+    grid-template-columns: 104px 1fr;
+    gap: 8px;
+  }
+  .gl-rrow {
+    grid-template-columns: 1fr 80px 96px 22px;
+    gap: 6px;
+  }
+  .gl-rule,
+  .gl-rules-head {
+    grid-template-columns: 1fr 1fr 22px;
+  }
+  .gl-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .gl-footer-btns {
+    justify-content: flex-end;
+  }
 }
 </style>

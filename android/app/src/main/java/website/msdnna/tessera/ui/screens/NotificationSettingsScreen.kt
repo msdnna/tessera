@@ -314,7 +314,10 @@ private fun TemplateEditor(edit: ChannelEdit, vm: NotificationSettingsViewModel)
     Spacer(Modifier.height(6.dp))
     TTextField(edit.template, { edit.template = it }, singleLine = false, placeholder = "{{.Text}}")
     Spacer(Modifier.height(6.dp))
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         TEMPLATE_FIELDS.forEach { token -> ToggleChip(token, false) { edit.template += token } }
     }
     Spacer(Modifier.height(8.dp))
@@ -383,7 +386,10 @@ private fun RouteEditor(
         Column {
             Text("События (пусто = любые)", color = c.text2, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 KIND_OPTIONS.forEach { (k, label) ->
                     ToggleChip(label, edit.kinds.contains(k)) {
                         if (edit.kinds.contains(k)) edit.kinds.remove(k) else edit.kinds.add(k)
@@ -406,7 +412,10 @@ private fun RouteEditor(
                 Spacer(Modifier.height(10.dp))
                 Text("Каналы доставки", color = c.text2, fontSize = 13.sp)
                 Spacer(Modifier.height(6.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     channels.forEach { ch ->
                         val name = ch.label.ifBlank { TYPE_LABELS[ch.type] ?: ch.type }
                         ToggleChip(name, edit.channelIds.contains(ch.id)) {

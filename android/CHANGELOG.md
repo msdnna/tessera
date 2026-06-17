@@ -5,6 +5,11 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.15.2 — 2026-06-17
+- Notification template-token chips now have vertical spacing between rows (no
+  longer touching when they wrap).
+- Task modal loader is centred in the dialog body (was pinned near the top).
+
 ## 0.15.1 — 2026-06-16
 - Routing rules can target the new event kinds (изменения / перемещения /
   архивирование); system-notification titles updated to match (backend 0.41).

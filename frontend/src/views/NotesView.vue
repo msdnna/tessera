@@ -1,13 +1,16 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { NButton, NInput, NText, NEmpty, NPopconfirm, useMessage } from 'naive-ui'
+import { NButton, NInput, NText, NEmpty, NPopconfirm, NIcon, useMessage } from 'naive-ui'
+import { ArrowBackOutline } from '@vicons/ionicons5'
 import { notes as notesApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useResponsive } from '@/composables/useResponsive'
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
 const route = useRoute()
+const { isMobile } = useResponsive()
 
 const list = ref([])
 const selected = ref(null)
@@ -39,6 +42,11 @@ function newNote() {
   selected.value = { id: null }
   title.value = ''
   body.value = ''
+}
+
+// On mobile the list and editor are separate panes; go back to the list.
+function backToList() {
+  selected.value = null
 }
 
 async function save() {
@@ -84,8 +92,8 @@ watch(
 </script>
 
 <template>
-  <div class="notes">
-    <div class="list">
+  <div class="notes" :class="{ mobile: isMobile }">
+    <div v-show="!isMobile || !selected" class="list">
       <n-button type="primary" block size="small" @click="newNote">＋ Новая заметка</n-button>
       <div
         v-for="n in list"
@@ -100,7 +108,11 @@ watch(
       <n-empty v-if="!list.length" description="Заметок пока нет" size="small" />
     </div>
 
-    <div class="editor">
+    <div v-show="!isMobile || selected" class="editor">
+      <n-button v-if="isMobile && selected" quaternary size="small" class="back" @click="backToList">
+        <template #icon><n-icon :component="ArrowBackOutline" /></template>
+        К списку
+      </n-button>
       <template v-if="selected">
         <n-input v-model:value="title" placeholder="Заголовок" class="title" />
         <n-input
@@ -184,5 +196,17 @@ watch(
   align-items: center;
   justify-content: center;
   height: 100%;
+}
+.back {
+  align-self: flex-start;
+}
+/* Mobile: one pane at a time — the list, or the editor (tapping a note opens it,
+   «К списку» returns). Each fills the width. */
+@media (max-width: 768px) {
+  .notes.mobile .list,
+  .notes.mobile .editor {
+    width: 100%;
+    flex: 1;
+  }
 }
 </style>

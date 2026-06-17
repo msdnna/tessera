@@ -1455,13 +1455,15 @@ watch(
     max-width: none;
     margin-left: 4px;
   }
-  /* On mobile the search always sits on its own row below the chips (full
-     basis). When collapsed it's simply clipped by the bar's 40px max-height;
-     expanding reveals it via the height growth — no horizontal reflow, so the
-     bar no longer momentarily wraps/“jumps” on expand. */
+  /* On mobile the search is shrinkable (min-width:0) so it never forces a wrap
+     onto a second row: the collapsed bar stays one line (chips only — search
+     hidden), and expanding just reclaims the width freed by the hiding tools,
+     growing the bar rightward rather than down. */
   .composer-search {
-    flex-basis: 100%;
     min-width: 0;
+  }
+  .composer.collapsed .composer-search {
+    display: none;
   }
 }
 .vp {

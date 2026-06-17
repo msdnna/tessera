@@ -172,89 +172,91 @@ fun TaskModal(
                 .clip(RoundedCornerShape(RadiusLg))
                 .background(c.surface),
         ) {
-            // ── scrollable body ──
-            Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(18.dp),
-            ) {
-                if (state.loading && detail == null) {
-                    Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                        TesseraLoader()
-                    }
-                } else if (detail != null) {
-                    HeadRow(breadcrumb, detail.number, onTransfer = { showTransfer = true })
-                    Spacer(Modifier.height(10.dp))
-                    TitleField(title, onChange = { title = it })
-                    Spacer(Modifier.height(14.dp))
+            // ── scrollable body (loader centered in the body while it loads) ──
+            if (state.loading && detail == null) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TesseraLoader()
+                }
+            } else {
+                Column(
+                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(18.dp),
+                ) {
+                    if (detail != null) {
+                        HeadRow(breadcrumb, detail.number, onTransfer = { showTransfer = true })
+                        Spacer(Modifier.height(10.dp))
+                        TitleField(title, onChange = { title = it })
+                        Spacer(Modifier.height(14.dp))
 
-                    PropertyGrid(
-                        vm = vm,
-                        priority = detail.priority,
-                        dueIso = detail.dueDate,
-                        completed = detail.isCompleted,
-                        assignees = detail.assignees.map { it.id },
-                        gitlabAssignees = detail.gitlabAssignees,
-                        createdBy = detail.createdBy,
-                        gitlab = detail.gitlab,
-                        taskTagIds = detail.tags.map { it.id },
-                        parentId = detail.parentId,
-                        tags = tags,
-                        members = members,
-                        parentCandidates = parentCandidates,
-                    )
+                        PropertyGrid(
+                            vm = vm,
+                            priority = detail.priority,
+                            dueIso = detail.dueDate,
+                            completed = detail.isCompleted,
+                            assignees = detail.assignees.map { it.id },
+                            gitlabAssignees = detail.gitlabAssignees,
+                            createdBy = detail.createdBy,
+                            gitlab = detail.gitlab,
+                            taskTagIds = detail.tags.map { it.id },
+                            parentId = detail.parentId,
+                            tags = tags,
+                            members = members,
+                            parentCandidates = parentCandidates,
+                        )
 
-                    Spacer(Modifier.height(16.dp))
-                    Text("Описание", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(4.dp))
-                    MarkdownEditor(
-                        value = description,
-                        onValueChange = { description = it },
-                        placeholder = "Добавьте описание…",
-                        startInPreview = detail.description.isNotBlank(),
-                        onBlur = { vm.saveDescription(description) },
-                        uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
-                        mentions = members.map { it.name },
-                    )
+                        Spacer(Modifier.height(16.dp))
+                        Text("Описание", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(4.dp))
+                        MarkdownEditor(
+                            value = description,
+                            onValueChange = { description = it },
+                            placeholder = "Добавьте описание…",
+                            startInPreview = detail.description.isNotBlank(),
+                            onBlur = { vm.saveDescription(description) },
+                            uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
+                            mentions = members.map { it.name },
+                        )
 
-                    Spacer(Modifier.height(18.dp))
-                    UnderlineTabs(
-                        tabs = listOf(
-                            TabItem("Комментарии", state.comments.size),
-                            TabItem("Подзадачи", detail.subtasks.size),
-                            TabItem("Связи", state.relations.size),
-                            TabItem("Файлы", state.attachments.size),
-                            TabItem("История"),
-                        ),
-                        selected = tab,
-                        onSelect = { tab = it },
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    AnimatedContent(
-                        targetState = tab,
-                        transitionSpec = {
-                            // Slide toward the direction of travel (right when moving
-                            // to a later tab), with a quick cross-fade.
-                            val dir = if (targetState > initialState) 1 else -1
-                            (slideInHorizontally(tween(220)) { w -> dir * w / 8 } + fadeIn(tween(200))) togetherWith
-                                (slideOutHorizontally(tween(180)) { w -> -dir * w / 8 } + fadeOut(tween(160)))
-                        },
-                        label = "taskTab",
-                    ) { t ->
-                        when (t) {
-                            0 -> CommentsTab(vm, state.comments, members, me?.id)
+                        Spacer(Modifier.height(18.dp))
+                        UnderlineTabs(
+                            tabs = listOf(
+                                TabItem("Комментарии", state.comments.size),
+                                TabItem("Подзадачи", detail.subtasks.size),
+                                TabItem("Связи", state.relations.size),
+                                TabItem("Файлы", state.attachments.size),
+                                TabItem("История"),
+                            ),
+                            selected = tab,
+                            onSelect = { tab = it },
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        AnimatedContent(
+                            targetState = tab,
+                            transitionSpec = {
+                                // Slide toward the direction of travel (right when moving
+                                // to a later tab), with a quick cross-fade.
+                                val dir = if (targetState > initialState) 1 else -1
+                                (slideInHorizontally(tween(220)) { w -> dir * w / 8 } + fadeIn(tween(200))) togetherWith
+                                    (slideOutHorizontally(tween(180)) { w -> -dir * w / 8 } + fadeOut(tween(160)))
+                            },
+                            label = "taskTab",
+                        ) { t ->
+                            when (t) {
+                                0 -> CommentsTab(vm, state.comments, members, me?.id)
 
-                            1 -> SubtasksTab(vm, detail.columnId, detail.subtasks) { currentId = it }
+                                1 -> SubtasksTab(vm, detail.columnId, detail.subtasks) { currentId = it }
 
-                            2 -> RelationsTab(
-                                vm = vm,
-                                relations = state.relations,
-                                candidates = state.relationCandidates,
-                                currentTaskId = detail.id,
-                                onOpen = { currentId = it },
-                            )
+                                2 -> RelationsTab(
+                                    vm = vm,
+                                    relations = state.relations,
+                                    candidates = state.relationCandidates,
+                                    currentTaskId = detail.id,
+                                    onOpen = { currentId = it },
+                                )
 
-                            3 -> FilesTab(vm, state.attachments)
+                                3 -> FilesTab(vm, state.attachments)
 
-                            else -> HistoryTab(state.events)
+                                else -> HistoryTab(state.events)
+                            }
                         }
                     }
                 }

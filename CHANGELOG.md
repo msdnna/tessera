@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.70.1] — 2026-06-17
+- Task modal: tag chips in the trigger are clipped to one line and the overflow is
+  **measured** into a `+N` chip (no more spilling past the modal edge; the count
+  reflects what actually fits, not a fixed cap).
+- Mobile composer bar: expanding now grows the bar rightward over the (hiding)
+  tools on one line instead of wrapping the search onto a second row.
+- GitLab integration modal on mobile: fields no longer overflow the dialog (grid
+  children pinned to `min-width:0`, label columns + rule grids tightened), and the
+  footer drops the «Последняя синхронизация» line above the buttons instead of
+  squeezing it into a wrapping column.
+- Notes are single-pane on mobile: the list, then tapping a note opens the editor
+  full-width with a «К списку» back button (was a cramped two-pane split).
+
 ### [0.70.0] — 2026-06-16
 - Notification routing rules can now target the additional event kinds
   «Изменение задачи», «Перемещение задачи» and «Архивирование» (consumes backend
