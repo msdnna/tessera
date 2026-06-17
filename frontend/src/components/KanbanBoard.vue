@@ -245,24 +245,25 @@ const addMenuOptions = computed(() => {
     ...(parent?.children || []),
   ]
 })
+// n-dropdown auto-closes on every select. While drilling we ignore that close
+// (keep the controlled menu open) so the sub-list shows instead of snapping shut.
+let addDrilling = false
 function onAddSelect(key) {
-  if (key === 'nav.back') {
-    addLevel.value = null
-    nextTick(() => (addShow.value = true)) // n-dropdown auto-closes on select; reopen
-    return
-  }
-  if (key.startsWith('nav.')) {
-    addLevel.value = key.slice(4)
-    nextTick(() => (addShow.value = true))
+  if (key === 'nav.back' || key.startsWith('nav.')) {
+    addLevel.value = key === 'nav.back' ? null : key.slice(4)
+    addDrilling = true
+    nextTick(() => (addDrilling = false))
     return
   }
   onAddFacet(key)
   addShow.value = false
   addLevel.value = null
 }
-watch(addShow, (v) => {
-  if (!v) addLevel.value = null // reset drill state when the menu closes
-})
+function onAddShow(v) {
+  if (!v && addDrilling) return // swallow the select-triggered close mid-drill
+  addShow.value = v
+  if (!v) addLevel.value = null // reset drill state when the menu actually closes
+}
 function onAddFacet(key) {
   if (key === 'g.status') {
     groupMode.value = 'status'
@@ -953,7 +954,7 @@ watch(
             trigger="click"
             placement="bottom-start"
             :options="addMenuOptions"
-            @update:show="addShow = $event"
+            @update:show="onAddShow"
             @select="onAddSelect"
           >
             <button class="facet-add" title="Добавить группировку / сортировку / фильтр">

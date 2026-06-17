@@ -681,18 +681,13 @@ private fun CommentsTab(vm: TaskDetailViewModel, comments: List<website.msdnna.t
         }
         comments.forEach { cm ->
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Box(
-                    Modifier.size(26.dp).clip(CircleShape)
-                        .then(if (cm.isGitlab) Modifier.background(c.text3) else Modifier.background(accentGradient(c.primary))),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        initials(cm.displayName ?: "?"),
-                        color = if (cm.isGitlab) Color.White else c.onPrimary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                MemberAvatar(
+                    26.dp,
+                    cm.displayName ?: "?",
+                    userId = cm.authorId,
+                    avatarUrl = cm.glAuthorAvatarUrl,
+                    muted = cm.isGitlab,
+                )
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

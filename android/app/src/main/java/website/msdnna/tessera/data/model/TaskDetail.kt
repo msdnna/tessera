@@ -81,6 +81,7 @@ data class Comment(
     // GitLab note author (when the comment was synced from GitLab; author_id null).
     @SerializedName("gl_author_login") val glAuthorLogin: String? = null,
     @SerializedName("gl_author_name") val glAuthorName: String? = null,
+    @SerializedName("gl_author_avatar_url") val glAuthorAvatarUrl: String? = null,
 ) {
     /** Display name: the Tessera author, else the GitLab note author. */
     val displayName: String? get() = authorName ?: glAuthorName

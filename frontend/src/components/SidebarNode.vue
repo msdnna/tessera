@@ -13,6 +13,7 @@ import {
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
+const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
 import { workspaces as wsApi, groups as groupsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -52,7 +53,7 @@ const ctxOptions = [
   { label: 'Новая группа', key: 'add-group', icon: menuIcon(FolderOutline) },
   { type: 'divider', key: 'd1' },
   { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
-  { label: 'Удалить группу', key: 'delete', icon: menuIcon(TrashOutline), props: { style: 'color:#e0533d' } },
+  { label: 'Удалить группу', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
 ]
 function onCtx(e) {
   if (pressMoved()) return

@@ -21,6 +21,7 @@ import {
 
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
+const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
 import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
@@ -192,7 +193,7 @@ const ctxOptions = computed(() => {
       ? [{ label: 'Создать подзадачу', key: 'subtask', icon: menuIcon(GitBranchOutline) }]
       : []),
     { label: 'В архив', key: 'archive', icon: menuIcon(ArchiveOutline) },
-    { label: 'Удалить', key: 'delete', icon: menuIcon(TrashOutline), props: { style: 'color:#e0533d' } },
+    { label: 'Удалить', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
   ]
 })
 function baseOf(t) {

@@ -5,6 +5,12 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.15.4 — 2026-06-17
+- Splash badge has rounded corners again (was a square white badge).
+- Task-modal comments show the author's avatar — local users via
+  `/api/users/:id/avatar`, GitLab note authors via the proxied GL avatar
+  (backend 0.42) — falling back to initials.
+
 ## 0.15.3 — 2026-06-17
 - Splash screen (Android 12+) shows the «mt» monogram on a white badge over the
   purple background instead of the faint default launcher icon.

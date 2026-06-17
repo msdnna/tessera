@@ -529,19 +529,20 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 }
 
 const upsertGitlabComment = `-- name: UpsertGitlabComment :exec
-INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, created_at, updated_at)
-VALUES ($1, NULL, $2, $3, $4, $5, $6, $6)
+INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at)
+VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7)
 ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
-DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, updated_at = now()
+DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now()
 `
 
 type UpsertGitlabCommentParams struct {
-	TaskID        uuid.UUID `json:"task_id"`
-	Body          string    `json:"body"`
-	GlNoteID      *string   `json:"gl_note_id"`
-	GlAuthorLogin string    `json:"gl_author_login"`
-	GlAuthorName  string    `json:"gl_author_name"`
-	CreatedAt     time.Time `json:"created_at"`
+	TaskID            uuid.UUID `json:"task_id"`
+	Body              string    `json:"body"`
+	GlNoteID          *string   `json:"gl_note_id"`
+	GlAuthorLogin     string    `json:"gl_author_login"`
+	GlAuthorName      string    `json:"gl_author_name"`
+	GlAuthorAvatarUrl string    `json:"gl_author_avatar_url"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // ── synced comments (idempotent by GitLab note id) ─────────
@@ -552,6 +553,7 @@ func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabComme
 		arg.GlNoteID,
 		arg.GlAuthorLogin,
 		arg.GlAuthorName,
+		arg.GlAuthorAvatarUrl,
 		arg.CreatedAt,
 	)
 	return err

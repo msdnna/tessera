@@ -12,6 +12,7 @@ import {
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
+const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
 import { columns as columnsApi } from '@/api'
 
 const props = defineProps({
@@ -56,7 +57,7 @@ const ctxOptions = computed(() => [
     icon: menuIcon(CheckmarkDoneOutline),
   },
   { type: 'divider', key: 'd1' },
-  { label: 'Удалить колонку', key: 'delete', icon: menuIcon(TrashOutline), props: { style: 'color:#e0533d' } },
+  { label: 'Удалить колонку', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
 ])
 function onCtx(e) {
   if (!props.editable) return

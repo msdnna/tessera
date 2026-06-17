@@ -170,7 +170,7 @@ query($path: ID!, $username: String, $iids: [String!], $after: String) {
         author { username name avatarUrl }
         assignees { nodes { username name avatarUrl } }
         labels { nodes { title color } }
-        notes(first: 100) { nodes { id body system createdAt author { username name } } }
+        notes(first: 100) { nodes { id body system createdAt author { username name avatarUrl } } }
       }
     }
   }
@@ -268,8 +268,9 @@ type issueNode struct {
 			System    bool      `json:"system"`
 			CreatedAt time.Time `json:"createdAt"`
 			Author    *struct {
-				Username string `json:"username"`
-				Name     string `json:"name"`
+				Username  string `json:"username"`
+				Name      string `json:"name"`
+				AvatarURL string `json:"avatarUrl"`
 			} `json:"author"`
 		} `json:"nodes"`
 	} `json:"notes"`
@@ -314,7 +315,10 @@ func (n issueNode) toIssue(base string) Issue {
 		}
 		nt := Note{GlobalID: note.ID, Body: note.Body, CreatedAt: note.CreatedAt}
 		if note.Author != nil {
-			nt.Author = Person{Login: note.Author.Username, Name: note.Author.Name}
+			nt.Author = Person{
+				Login: note.Author.Username, Name: note.Author.Name,
+				AvatarURL: absAvatar(base, note.Author.AvatarURL),
+			}
 		}
 		issue.Notes = append(issue.Notes, nt)
 	}

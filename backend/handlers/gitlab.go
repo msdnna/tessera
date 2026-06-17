@@ -668,7 +668,8 @@ func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []
 		noteID := n.GlobalID
 		_ = h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
 			TaskID: taskID, Body: h.rewriteAssets(n.Body, wsID), GlNoteID: &noteID,
-			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name, CreatedAt: n.CreatedAt,
+			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name,
+			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, n.Author.AvatarURL), CreatedAt: n.CreatedAt,
 		})
 	}
 }

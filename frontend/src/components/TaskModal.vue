@@ -993,6 +993,7 @@ function eventText(e) {
                   <UserAvatar
                     class="c-ava"
                     :user-id="c.author_id || ''"
+                    :src="c.gl_author_avatar_url"
                     :name="c.author_name || c.gl_author_name || '?'"
                   />
                   <div class="c-body">

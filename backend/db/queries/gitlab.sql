@@ -128,7 +128,7 @@ SELECT gl_username, gl_name, gl_avatar_url FROM task_gitlab_assignees WHERE task
 
 -- ── synced comments (idempotent by GitLab note id) ─────────
 -- name: UpsertGitlabComment :exec
-INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, created_at, updated_at)
-VALUES ($1, NULL, $2, $3, $4, $5, $6, $6)
+INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at)
+VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7)
 ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
-DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, updated_at = now();
+DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now();

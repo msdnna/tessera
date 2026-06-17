@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.70.4] — 2026-06-17
+- Fix: the composer «+» menu's filter sub-lists now open on tap (the mobile
+  drill-down's reopen no longer fought the select-triggered close).
+- Context-menu delete actions are now fully red — the **icon** too, not just the label.
+- Task-modal comments show GitLab note authors' avatars (consumes backend 0.42),
+  local authors keep theirs; both fall back to initials.
+
 ### [0.70.3] — 2026-06-17
 - Composer «+» menu on mobile now drills into one sub-list at a time with a «‹ Назад»
   instead of fanning out side submenus that ran off the screen.
@@ -1195,6 +1202,12 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.42.0] — 2026-06-17
+- GitLab note authors' avatars are captured on sync (migration 0022:
+  `task_comments.gl_author_avatar_url`) and routed through the signed avatar proxy,
+  so synced comments can show the author's avatar like task cards. The notes
+  GraphQL query now selects `avatarUrl`.
 
 ### [0.41.0] — 2026-06-16
 - **More notification kinds + smarter context.** Archiving a task now notifies its

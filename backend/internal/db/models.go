@@ -266,15 +266,16 @@ type TaskAttachment struct {
 }
 
 type TaskComment struct {
-	ID            uuid.UUID  `json:"id"`
-	TaskID        uuid.UUID  `json:"task_id"`
-	AuthorID      *uuid.UUID `json:"author_id"`
-	Body          string     `json:"body"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	GlNoteID      *string    `json:"gl_note_id"`
-	GlAuthorLogin string     `json:"gl_author_login"`
-	GlAuthorName  string     `json:"gl_author_name"`
+	ID                uuid.UUID  `json:"id"`
+	TaskID            uuid.UUID  `json:"task_id"`
+	AuthorID          *uuid.UUID `json:"author_id"`
+	Body              string     `json:"body"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	GlNoteID          *string    `json:"gl_note_id"`
+	GlAuthorLogin     string     `json:"gl_author_login"`
+	GlAuthorName      string     `json:"gl_author_name"`
+	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
 }
 
 type TaskEvent struct {
