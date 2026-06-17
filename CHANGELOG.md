@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.70.5] — 2026-06-17
+- Fix: GitLab task due dates (date-only) no longer show a +3h-shifted time — a pure
+  UTC-midnight due is rendered as its calendar date in UTC with no time, so a GitLab
+  «26 июн.» issue date stays «26 июн.» instead of «26 июн., 03:00».
+
 ### [0.70.4] — 2026-06-17
 - Fix: the composer «+» menu's filter sub-lists now open on tap (the mobile
   drill-down's reopen no longer fought the select-triggered close).

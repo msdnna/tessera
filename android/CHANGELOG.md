@@ -5,6 +5,11 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.15.5 — 2026-06-17
+- Splash badge is now reliably round (the white badge is drawn by the OS via
+  windowSplashScreenIconBackgroundColor — a circle, never a square — with the
+  transparent-background mt on top).
+
 ## 0.15.4 — 2026-06-17
 - Splash badge has rounded corners again (was a square white badge).
 - Task-modal comments show the author's avatar — local users via

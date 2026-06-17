@@ -6,5 +6,7 @@
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:windowSplashScreenBackground">@color/window_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <!-- White round badge behind the mt (a circle, drawn by the OS — never square). -->
+        <item name="android:windowSplashScreenIconBackgroundColor">#FFFFFFFF</item>
     </style>
 </resources>

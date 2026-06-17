@@ -20,6 +20,15 @@ export function useDateLocale() {
     if (!dateStr) return ''
     const d = new Date(dateStr)
     const locale = theme.language === 'en' ? 'en-GB' : 'ru-RU'
+    // A pure UTC-midnight value is a date-only due (e.g. a GitLab issue/milestone
+    // date — no time of day). Render the calendar date in UTC so the local-tz
+    // offset doesn't push it to "03:00"; show no time. Manual dues anchor to local
+    // midnight (a non-zero UTC time), so they fall through to the logic below.
+    if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+      const o = { day: '2-digit', month: 'short', timeZone: 'UTC' }
+      if (d.getUTCFullYear() !== new Date().getUTCFullYear()) o.year = 'numeric'
+      return d.toLocaleDateString(locale, o)
+    }
     const opts = { day: '2-digit', month: 'short' }
     if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
     if (d.getHours() !== 0 || d.getMinutes() !== 0) {
