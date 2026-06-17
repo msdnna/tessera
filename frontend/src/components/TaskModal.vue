@@ -990,7 +990,11 @@ function eventText(e) {
               </template>
               <div class="comments">
                 <div v-for="c in comments" :key="c.id" class="comment">
-                  <span class="c-ava">{{ initials(c.author_name || c.gl_author_name) }}</span>
+                  <UserAvatar
+                    class="c-ava"
+                    :user-id="c.author_id || ''"
+                    :name="c.author_name || c.gl_author_name || '?'"
+                  />
                   <div class="c-body">
                     <div class="c-head">
                       <span class="c-author">{{

@@ -52,7 +52,7 @@ const ctxOptions = [
   { label: 'Новая группа', key: 'add-group', icon: menuIcon(FolderOutline) },
   { type: 'divider', key: 'd1' },
   { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
-  { label: 'Удалить группу', key: 'delete', icon: menuIcon(TrashOutline) },
+  { label: 'Удалить группу', key: 'delete', icon: menuIcon(TrashOutline), props: { style: 'color:#e0533d' } },
 ]
 function onCtx(e) {
   if (pressMoved()) return

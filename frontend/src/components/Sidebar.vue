@@ -96,8 +96,7 @@ async function createWorkspace() {
 <template>
   <div class="sidebar" :class="{ collapsed }">
     <div class="brand">
-      <img class="brand-mark" src="/favicon.svg" alt="Tessera" />
-      <span v-if="!collapsed" class="brand-name">Tessera</span>
+      <span class="brand-mark" role="img" aria-label="Tessera" />
       <!-- Tools live here (right of the logo) when expanded; when the rail is
            collapsed (desktop) they move to the header instead. -->
       <WorkspaceTools
@@ -245,11 +244,6 @@ async function createWorkspace() {
   padding: 14px 12px 4px;
   min-width: 0;
 }
-.brand-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .ws-switch > :first-child {
   flex: 1;
   min-width: 0;
@@ -287,18 +281,16 @@ async function createWorkspace() {
   gap: 4px;
   padding: 2px 0;
 }
+/* The "mt" monogram (no badge, no wordmark), filled with the accent gradient via
+   a mask — mirrors the Android MtLogo. The glyph is wider than tall (120×100). */
 .brand-mark {
   display: block;
-  width: 28px;
+  width: 34px;
   height: 28px;
-  border-radius: 8px;
-  object-fit: contain;
   flex: none;
-}
-.brand-name {
-  font-weight: 700;
-  font-size: 16px;
-  color: var(--t-text1);
+  background: var(--t-accent-grad);
+  -webkit-mask: url(/mark-white.svg) no-repeat center / contain;
+  mask: url(/mark-white.svg) no-repeat center / contain;
 }
 .ws-switch {
   display: flex;

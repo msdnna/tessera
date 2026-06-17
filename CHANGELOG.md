@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.70.3] — 2026-06-17
+- Composer «+» menu on mobile now drills into one sub-list at a time with a «‹ Назад»
+  instead of fanning out side submenus that ran off the screen.
+- Sidebar logo replaced with the accent-gradient «mt» monogram (no badge/wordmark,
+  mirrors Android), freeing header space; tooltips on the brand-row tool buttons are
+  suppressed on mobile (they overlapped the dropdowns they label).
+- Sidebar footer dropdown button labels are left-aligned.
+- Task-modal comments show the author's avatar (local via `/api/users/:id/avatar`,
+  GitLab authors fall back to initials).
+- Destructive items in context menus (delete board/project/group/column/task) are
+  now red, matching Android.
+
 ### [0.70.2] — 2026-06-17
 - Fix: the task-modal tag `+N` no longer clips a half-shown second tag — only
   chips that *wholly* fit are rendered (sized from an invisible measurement row,

@@ -25,6 +25,7 @@ import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useResponsive } from '@/composables/useResponsive'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
 
@@ -34,6 +35,9 @@ const theme = useThemeStore()
 const ws = useWorkspacesStore()
 const notes = useNotificationsStore()
 const router = useRouter()
+// On touch (mobile) tooltips fire on tap and overlap the dropdown/popover they
+// label — suppress them there.
+const { isMobile } = useResponsive()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
@@ -63,7 +67,7 @@ function fmtTime(d) {
 <template>
   <div class="tools">
     <!-- Members -->
-    <n-tooltip>
+    <n-tooltip :disabled="isMobile">
       <template #trigger>
         <n-button quaternary circle size="small" aria-label="Участники" @click="showMembers = true">
           <n-icon :component="PeopleOutline" />
@@ -79,7 +83,7 @@ function fmtTime(d) {
       :options="integrationOptions"
       @select="onIntegrationSelect"
     >
-      <n-tooltip>
+      <n-tooltip :disabled="isMobile">
         <template #trigger>
           <n-button quaternary circle size="small" aria-label="Интеграции">
             <n-icon :component="ExtensionPuzzleOutline" />
@@ -129,7 +133,7 @@ function fmtTime(d) {
     <!-- Appearance -->
     <n-popover trigger="click" :placement="placement">
       <template #trigger>
-        <n-tooltip>
+        <n-tooltip :disabled="isMobile">
           <template #trigger>
             <n-button quaternary circle size="small" aria-label="Оформление">
               <n-icon :component="ColorPaletteOutline" />

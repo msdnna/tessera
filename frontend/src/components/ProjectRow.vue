@@ -145,7 +145,7 @@ const pcOptions = [
   { label: 'Новая доска', key: 'add-board', icon: menuIcon(AddOutline) },
   { type: 'divider', key: 'd1' },
   { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
-  { label: 'Удалить проект', key: 'delete', icon: menuIcon(TrashOutline) },
+  { label: 'Удалить проект', key: 'delete', icon: menuIcon(TrashOutline), props: { style: 'color:#e0533d' } },
 ]
 function onProjectCtx(e) {
   if (pressMoved()) return
@@ -168,7 +168,7 @@ const bcTarget = ref(null)
 const bcOptions = [
   { label: 'Открыть', key: 'open', icon: menuIcon(OpenOutline) },
   { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
-  { label: 'Удалить доску', key: 'delete', icon: menuIcon(TrashOutline) },
+  { label: 'Удалить доску', key: 'delete', icon: menuIcon(TrashOutline), props: { style: 'color:#e0533d' } },
 ]
 function onBoardCtx(e, b) {
   bcTarget.value = b

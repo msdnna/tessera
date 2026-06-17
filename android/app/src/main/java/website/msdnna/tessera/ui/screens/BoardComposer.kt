@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.IntrinsicMeasurable
@@ -156,6 +157,9 @@ fun BoardComposerBar(
             Modifier
                 .fillMaxWidth()
                 .align(Alignment.Center)
+                // Dim the bar's content while collapsed/unfocused so it reads as one
+                // tap-to-expand surface (mirrors the web composer).
+                .alpha(if (expanded) 1f else 0.62f)
                 .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = if (clearable) 28.dp else 8.dp),
             maxLines = if (expanded) Int.MAX_VALUE else 1,
             overflow = FlowRowOverflow.Clip,

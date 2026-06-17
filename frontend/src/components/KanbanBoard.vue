@@ -228,6 +228,41 @@ const addOptions = computed(() => [
     children: dueOptions.filter((o) => o.value).map((o) => ({ label: o.label, key: `fd.${o.value}` })),
   },
 ])
+// Mobile: the "+" menu drills into one sub-list at a time (with a «Назад») rather
+// than fanning out side submenus that run off a narrow screen.
+const addShow = ref(false)
+const addLevel = ref(null) // null = top level; else the parent group's key
+const addMenuOptions = computed(() => {
+  if (!isMobile.value) return addOptions.value
+  if (!addLevel.value) {
+    // Top level as drill-in entries (no side submenu).
+    return addOptions.value.map((o) => ({ label: o.label, key: `nav.${o.key}` }))
+  }
+  const parent = addOptions.value.find((o) => o.key === addLevel.value)
+  return [
+    { label: '‹ Назад', key: 'nav.back' },
+    { type: 'divider', key: 'nav.div' },
+    ...(parent?.children || []),
+  ]
+})
+function onAddSelect(key) {
+  if (key === 'nav.back') {
+    addLevel.value = null
+    nextTick(() => (addShow.value = true)) // n-dropdown auto-closes on select; reopen
+    return
+  }
+  if (key.startsWith('nav.')) {
+    addLevel.value = key.slice(4)
+    nextTick(() => (addShow.value = true))
+    return
+  }
+  onAddFacet(key)
+  addShow.value = false
+  addLevel.value = null
+}
+watch(addShow, (v) => {
+  if (!v) addLevel.value = null // reset drill state when the menu closes
+})
 function onAddFacet(key) {
   if (key === 'g.status') {
     groupMode.value = 'status'
@@ -913,11 +948,13 @@ watch(
           </span>
 
           <n-dropdown
+            :show="addShow"
             scrollable
             trigger="click"
             placement="bottom-start"
-            :options="addOptions"
-            @select="onAddFacet"
+            :options="addMenuOptions"
+            @update:show="addShow = $event"
+            @select="onAddSelect"
           >
             <button class="facet-add" title="Добавить группировку / сортировку / фильтр">
               <n-icon :component="AddOutline" :size="14" />

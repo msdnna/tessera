@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ system splash: purple background with the mt-on-white badge
+         (instead of the default launcher icon, which read faint on purple). -->
+    <style name="Theme.Tessera" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowSplashScreenBackground">@color/window_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    </style>
+</resources>

@@ -5,6 +5,11 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.15.3 — 2026-06-17
+- Splash screen (Android 12+) shows the «mt» monogram on a white badge over the
+  purple background instead of the faint default launcher icon.
+- Composer bar is dimmed while collapsed/unfocused (mirrors the web composer).
+
 ## 0.15.2 — 2026-06-17
 - Notification template-token chips now have vertical spacing between rows (no
   longer touching when they wrap).

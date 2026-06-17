@@ -56,7 +56,7 @@ const ctxOptions = computed(() => [
     icon: menuIcon(CheckmarkDoneOutline),
   },
   { type: 'divider', key: 'd1' },
-  { label: 'Удалить колонку', key: 'delete', icon: menuIcon(TrashOutline) },
+  { label: 'Удалить колонку', key: 'delete', icon: menuIcon(TrashOutline), props: { style: 'color:#e0533d' } },
 ])
 function onCtx(e) {
   if (!props.editable) return

@@ -138,6 +138,11 @@ function logout() {
   flex-direction: column;
   gap: 8px;
 }
+/* Left-align the icon+label inside the block buttons (default is centred). */
+.user-pop :deep(.n-button__content) {
+  width: 100%;
+  justify-content: flex-start;
+}
 .up-name {
   font-weight: 600;
   color: var(--t-text1);

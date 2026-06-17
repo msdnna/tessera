@@ -192,7 +192,7 @@ const ctxOptions = computed(() => {
       ? [{ label: 'Создать подзадачу', key: 'subtask', icon: menuIcon(GitBranchOutline) }]
       : []),
     { label: 'В архив', key: 'archive', icon: menuIcon(ArchiveOutline) },
-    { label: 'Удалить', key: 'delete', icon: menuIcon(TrashOutline) },
+    { label: 'Удалить', key: 'delete', icon: menuIcon(TrashOutline), props: { style: 'color:#e0533d' } },
   ]
 })
 function baseOf(t) {
