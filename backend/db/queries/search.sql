@@ -1,5 +1,5 @@
 -- name: SearchTasks :many
-SELECT t.id, t.board_id, b.slug AS board_slug, t.number, t.title, t.parent_id, t.completed_at
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id

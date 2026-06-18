@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.73.0] — 2026-06-18
+- Board URLs are now nested: `/project/<project-slug>/board/<board-slug>` (e.g.
+  `/project/rabota/board/obshchie-zadachi`). This removes the confusing global
+  `-2`/`-3` suffixes that appeared when boards in different projects shared a name —
+  each project's «Общие задачи» is just `obshchie-zadachi`. Old `/board/<id>` links
+  (UUID or slug) still resolve and redirect to the nested canonical path.
+
 ### [0.72.0] — 2026-06-18
 - **Human-readable board URLs**: `/board/<slug>?task=<number>` instead of UUIDs
   (e.g. `/board/obshchie-zadachi?task=252`). Board links resolve a slug or a legacy
@@ -1235,6 +1242,14 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.44.0] — 2026-06-18
+- Board URLs nest under the project: projects gain a globally-unique `slug` and
+  board slugs become unique **per project** (migration 0025), so two projects can
+  each have a board «Общие задачи» → `obshchie-zadachi` with no global suffix.
+  New `GET /board-by-slug?project=&board=` resolves a project-slug + board-slug
+  pair. Board slugs are regenerated per-project at startup; `GET /boards/:id` still
+  takes a UUID (or a bare slug, best-effort) for legacy links.
 
 ### [0.43.0] — 2026-06-18
 - **Tags are now per-project, not per-workspace** (migration 0023). A workspace can

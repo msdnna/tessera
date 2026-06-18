@@ -116,6 +116,8 @@ func main() {
 			protected.GET("/workspaces/:id/search", rh.Search)
 			protected.GET("/workspaces/:id/tasks", rh.ListWorkspaceTasks)
 			protected.GET("/workspaces/:id/tasks/by-number/:number", rh.GetTaskByNumber)
+			// Resolve a /project/<slug>/board/<slug> pair to its board.
+			protected.GET("/board-by-slug", rh.ResolveBoardBySlug)
 			protected.GET("/workspaces/:id/summary", rh.WorkspaceSummary)
 			protected.GET("/workspaces/:id/members", rh.ListMembers)
 			protected.POST("/workspaces/:id/members", rh.AddMember)

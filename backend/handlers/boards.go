@@ -41,7 +41,7 @@ func (h *API) CreateBoard(c *gin.Context) {
 		return
 	}
 	b, err := h.q.CreateBoard(c, db.CreateBoardParams{
-		ProjectID: projectID, Name: req.Name, Slug: h.uniqueBoardSlug(c, req.Name),
+		ProjectID: projectID, Name: req.Name, Slug: h.uniqueBoardSlug(c, projectID, req.Name),
 		Position: positionBetween(&max, nil),
 	})
 	if err != nil {
@@ -130,6 +130,31 @@ func (h *API) ListBoards(c *gin.Context) {
 }
 
 // GetBoard returns a single board.
+// ResolveBoardBySlug resolves a /project/<projectSlug>/board/<boardSlug> pair to
+// its board (board slugs are unique only within a project).
+func (h *API) ResolveBoardBySlug(c *gin.Context) {
+	proj, err := h.q.GetProjectBySlug(c, c.Query("project"))
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, proj.WorkspaceID) {
+		return
+	}
+	b, err := h.q.GetBoardInProjectBySlug(c, db.GetBoardInProjectBySlugParams{ProjectID: proj.ID, Slug: c.Query("board")})
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, b)
+}
+
 func (h *API) GetBoard(c *gin.Context) {
 	// Accept either a UUID or a human-readable slug (/board/<slug> links).
 	param := c.Param("id")

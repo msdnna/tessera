@@ -154,7 +154,8 @@ func (h *API) CreateProject(c *gin.Context) {
 	}
 	p, err := h.q.CreateProject(c, db.CreateProjectParams{
 		WorkspaceID: wsID, GroupID: req.GroupID, Name: req.Name,
-		Color: req.Color, Icon: req.Icon, Position: positionBetween(&max, nil),
+		Color: req.Color, Icon: req.Icon, Slug: h.uniqueProjectSlug(c, req.Name),
+		Position: positionBetween(&max, nil),
 	})
 	if err != nil {
 		fail(c)

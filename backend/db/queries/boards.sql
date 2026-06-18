@@ -9,14 +9,19 @@ SELECT * FROM boards WHERE project_id = $1 ORDER BY position;
 -- name: GetBoard :one
 SELECT * FROM boards WHERE id = $1;
 
+-- GetBoardBySlug returns the first board with this slug (legacy global lookup,
+-- best-effort: board slugs are unique only per project now).
 -- name: GetBoardBySlug :one
-SELECT * FROM boards WHERE slug = $1;
+SELECT * FROM boards WHERE slug = $1 LIMIT 1;
 
--- name: BoardSlugExists :one
-SELECT EXISTS(SELECT 1 FROM boards WHERE slug = $1);
+-- name: GetBoardInProjectBySlug :one
+SELECT * FROM boards WHERE project_id = $1 AND slug = $2;
+
+-- name: BoardSlugExistsInProject :one
+SELECT EXISTS(SELECT 1 FROM boards WHERE project_id = $1 AND slug = $2);
 
 -- name: BoardsMissingSlug :many
-SELECT id, name FROM boards WHERE slug = '';
+SELECT id, project_id, name FROM boards WHERE slug = '';
 
 -- name: SetBoardSlug :exec
 UPDATE boards SET slug = $2 WHERE id = $1;

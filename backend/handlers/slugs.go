@@ -10,16 +10,32 @@ import (
 	"tessera/internal/slug"
 )
 
-// uniqueBoardSlug returns a globally-unique URL slug for a board name, appending
-// -2, -3, … on collision. Falls back to "board" when the name yields nothing.
-func (h *API) uniqueBoardSlug(ctx context.Context, name string) string {
+// uniqueProjectSlug returns a globally-unique URL slug for a project name.
+func (h *API) uniqueProjectSlug(ctx context.Context, name string) string {
+	base := slug.Make(name)
+	if base == "" {
+		base = "project"
+	}
+	s := base
+	for i := 2; ; i++ {
+		ex, err := h.q.ProjectSlugExists(ctx, s)
+		if err != nil || !ex {
+			return s
+		}
+		s = base + "-" + strconv.Itoa(i)
+	}
+}
+
+// uniqueBoardSlug returns a slug unique within the project for a board name,
+// appending -2, -3, … on collision. Falls back to "board" when empty.
+func (h *API) uniqueBoardSlug(ctx context.Context, projectID uuid.UUID, name string) string {
 	base := slug.Make(name)
 	if base == "" {
 		base = "board"
 	}
 	s := base
 	for i := 2; ; i++ {
-		ex, err := h.q.BoardSlugExists(ctx, s)
+		ex, err := h.q.BoardSlugExistsInProject(ctx, db.BoardSlugExistsInProjectParams{ProjectID: projectID, Slug: s})
 		if err != nil || !ex {
 			return s
 		}
@@ -43,12 +59,17 @@ func (h *API) uniqueNoteSlug(ctx context.Context, wsID uuid.UUID, title string) 
 	}
 }
 
-// BackfillSlugs assigns slugs to boards/notes that predate the slug column.
-// Idempotent: only rows with an empty slug are touched. Run once at startup.
+// BackfillSlugs assigns slugs to projects/boards/notes that lack one (rows that
+// predate the slug columns, or boards reset by the per-project re-scope).
+// Idempotent: only empty-slug rows are touched. Run once at startup.
 func (h *API) BackfillSlugs(ctx context.Context) {
+	projects, _ := h.q.ProjectsMissingSlug(ctx)
+	for _, p := range projects {
+		_ = h.q.SetProjectSlug(ctx, db.SetProjectSlugParams{ID: p.ID, Slug: h.uniqueProjectSlug(ctx, p.Name)})
+	}
 	boards, _ := h.q.BoardsMissingSlug(ctx)
 	for _, b := range boards {
-		_ = h.q.SetBoardSlug(ctx, db.SetBoardSlugParams{ID: b.ID, Slug: h.uniqueBoardSlug(ctx, b.Name)})
+		_ = h.q.SetBoardSlug(ctx, db.SetBoardSlugParams{ID: b.ID, Slug: h.uniqueBoardSlug(ctx, b.ProjectID, b.Name)})
 	}
 	notes, _ := h.q.NotesMissingSlug(ctx)
 	for _, n := range notes {

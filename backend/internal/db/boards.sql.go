@@ -11,24 +11,30 @@ import (
 	"github.com/google/uuid"
 )
 
-const boardSlugExists = `-- name: BoardSlugExists :one
-SELECT EXISTS(SELECT 1 FROM boards WHERE slug = $1)
+const boardSlugExistsInProject = `-- name: BoardSlugExistsInProject :one
+SELECT EXISTS(SELECT 1 FROM boards WHERE project_id = $1 AND slug = $2)
 `
 
-func (q *Queries) BoardSlugExists(ctx context.Context, slug string) (bool, error) {
-	row := q.db.QueryRow(ctx, boardSlugExists, slug)
+type BoardSlugExistsInProjectParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Slug      string    `json:"slug"`
+}
+
+func (q *Queries) BoardSlugExistsInProject(ctx context.Context, arg BoardSlugExistsInProjectParams) (bool, error) {
+	row := q.db.QueryRow(ctx, boardSlugExistsInProject, arg.ProjectID, arg.Slug)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
 }
 
 const boardsMissingSlug = `-- name: BoardsMissingSlug :many
-SELECT id, name FROM boards WHERE slug = ''
+SELECT id, project_id, name FROM boards WHERE slug = ''
 `
 
 type BoardsMissingSlugRow struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Name      string    `json:"name"`
 }
 
 func (q *Queries) BoardsMissingSlug(ctx context.Context) ([]BoardsMissingSlugRow, error) {
@@ -40,7 +46,7 @@ func (q *Queries) BoardsMissingSlug(ctx context.Context) ([]BoardsMissingSlugRow
 	var items []BoardsMissingSlugRow
 	for rows.Next() {
 		var i BoardsMissingSlugRow
-		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+		if err := rows.Scan(&i.ID, &i.ProjectID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -157,11 +163,38 @@ func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
 }
 
 const getBoardBySlug = `-- name: GetBoardBySlug :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE slug = $1
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE slug = $1 LIMIT 1
 `
 
+// GetBoardBySlug returns the first board with this slug (legacy global lookup,
+// best-effort: board slugs are unique only per project now).
 func (q *Queries) GetBoardBySlug(ctx context.Context, slug string) (Board, error) {
 	row := q.db.QueryRow(ctx, getBoardBySlug, slug)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DoneColumnID,
+		&i.Slug,
+	)
+	return i, err
+}
+
+const getBoardInProjectBySlug = `-- name: GetBoardInProjectBySlug :one
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE project_id = $1 AND slug = $2
+`
+
+type GetBoardInProjectBySlugParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Slug      string    `json:"slug"`
+}
+
+func (q *Queries) GetBoardInProjectBySlug(ctx context.Context, arg GetBoardInProjectBySlugParams) (Board, error) {
+	row := q.db.QueryRow(ctx, getBoardInProjectBySlug, arg.ProjectID, arg.Slug)
 	var i Board
 	err := row.Scan(
 		&i.ID,

@@ -53,7 +53,7 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Sea
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT t.id, t.board_id, b.slug AS board_slug, t.number, t.title, t.parent_id, t.completed_at
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
@@ -73,6 +73,7 @@ type SearchTasksRow struct {
 	ID          uuid.UUID  `json:"id"`
 	BoardID     uuid.UUID  `json:"board_id"`
 	BoardSlug   string     `json:"board_slug"`
+	ProjectSlug string     `json:"project_slug"`
 	Number      *int64     `json:"number"`
 	Title       string     `json:"title"`
 	ParentID    *uuid.UUID `json:"parent_id"`
@@ -92,6 +93,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Sea
 			&i.ID,
 			&i.BoardID,
 			&i.BoardSlug,
+			&i.ProjectSlug,
 			&i.Number,
 			&i.Title,
 			&i.ParentID,

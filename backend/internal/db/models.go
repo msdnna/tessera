@@ -187,6 +187,7 @@ type Project struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	Icon        string     `json:"icon"`
+	Slug        string     `json:"slug"`
 }
 
 type ProjectGroup struct {

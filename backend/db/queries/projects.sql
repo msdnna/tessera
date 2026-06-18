@@ -1,6 +1,6 @@
 -- name: CreateProject :one
-INSERT INTO projects (workspace_id, group_id, name, color, icon, position)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO projects (workspace_id, group_id, name, color, icon, slug, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: ListProjects :many
@@ -8,6 +8,18 @@ SELECT * FROM projects WHERE workspace_id = $1 ORDER BY position;
 
 -- name: GetProject :one
 SELECT * FROM projects WHERE id = $1;
+
+-- name: GetProjectBySlug :one
+SELECT * FROM projects WHERE slug = $1;
+
+-- name: ProjectSlugExists :one
+SELECT EXISTS(SELECT 1 FROM projects WHERE slug = $1);
+
+-- name: ProjectsMissingSlug :many
+SELECT id, name FROM projects WHERE slug = '';
+
+-- name: SetProjectSlug :exec
+UPDATE projects SET slug = $2 WHERE id = $1;
 
 -- name: MaxProjectPosition :one
 SELECT coalesce(max(position), 0)::double precision FROM projects WHERE workspace_id = $1;
