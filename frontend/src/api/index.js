@@ -5,9 +5,11 @@ import { reqStart, reqEnd, setOffline } from '@/composables/useConnection'
 const api = axios.create({ baseURL: '/api' })
 
 // Attach the access token on every request + track liveness for the connection
-// overlay (start now, paired end in the response/error handlers below).
+// overlay (start now, paired end in the response/error handlers below). Requests
+// flagged `skipLoader` (e.g. GitLab sync, which is intentionally long and shows
+// its own in-modal loader) are excluded from the global slow/offline overlay.
 api.interceptors.request.use((config) => {
-  reqStart()
+  if (!config.skipLoader) reqStart()
   const token = localStorage.getItem('tessera_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -40,15 +42,17 @@ async function refreshAccessToken() {
 
 api.interceptors.response.use(
   (res) => {
-    reqEnd(true)
+    if (!res.config?.skipLoader) reqEnd(true)
     return res
   },
   async (err) => {
     // A response (even an error one) means we reached the server; no response
     // at all (network/DNS/timeout) means we're offline.
     const reached = !!err.response
-    reqEnd(reached)
-    setOffline(!reached)
+    if (!err.config?.skipLoader) {
+      reqEnd(reached)
+      setOffline(!reached)
+    }
     const original = err.config
     const isUnauthorized = err.response?.status === 401
     const isRefreshCall = original?.url?.includes('/auth/refresh')
@@ -279,7 +283,9 @@ export const gitlab = {
   // Per-workspace integration config + manual sync.
   getIntegration: (wsId) => api.get(`/workspaces/${wsId}/gitlab/integration`),
   setIntegration: (wsId, data) => api.put(`/workspaces/${wsId}/gitlab/integration`, data),
-  sync: (wsId) => api.post(`/workspaces/${wsId}/gitlab/sync`),
+  // skipLoader: sync is intentionally long and shows its own in-modal loader, so
+  // it must not trigger the global slow/offline overlay.
+  sync: (wsId) => api.post(`/workspaces/${wsId}/gitlab/sync`, null, { skipLoader: true }),
 }
 
 export default api

@@ -324,16 +324,17 @@ watch(
 
 <template>
   <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <n-card
-      style="width: 580px; max-width: 94vw; max-height: 88vh; overflow-y: auto"
-      role="dialog"
-    >
+    <n-card class="gl-card" style="width: 580px; max-width: 94vw" role="dialog">
       <template #header>
         <span class="gl-title">
           <n-icon :component="LogoGitlab" class="grad-icon" /> GitLab
         </span>
       </template>
 
+      <!-- Body: an inner scroll area so the sync loader (below) can dim/blur it
+           without scrolling away — the loader's stage is the non-scrolling frame. -->
+      <div class="gl-stage">
+        <div class="gl-scroll">
       <!-- ACCOUNT -->
       <section class="gl-sec">
         <h4 class="gl-h">Аккаунт</h4>
@@ -501,14 +502,25 @@ watch(
           </div>
         </div>
       </section>
+        </div>
+        <!-- Branded loader while a sync runs — dims/blurs only the modal body. -->
+        <loader-overlay :show="syncing" contained :messages="SYNC_MESSAGES" :interval="2600" />
+      </div>
     </n-card>
   </n-modal>
-
-  <!-- Branded full-screen loader while a sync runs (sits above the modal). -->
-  <loader-overlay :show="syncing" :messages="SYNC_MESSAGES" :interval="2600" />
 </template>
 
 <style scoped>
+/* Body frame: gl-stage is the non-scrolling positioned ancestor for the sync
+   loader; gl-scroll holds the (scrollable) content. The loader fills gl-stage so
+   it dims/blurs the body in place rather than scrolling out of view. */
+.gl-stage {
+  position: relative;
+}
+.gl-scroll {
+  max-height: 76vh;
+  overflow-y: auto;
+}
 .gl-title {
   display: inline-flex;
   align-items: center;

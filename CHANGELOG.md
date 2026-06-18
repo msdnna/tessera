@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.76.1] — 2026-06-18
+- GitLab sync loader is now scoped to the modal: it dims/blurs only the modal
+  body (an inner scroll frame) with the centered TesseraSpinner, instead of
+  taking over the whole screen. The sync request also opts out of the global
+  slow/offline overlay (`skipLoader`), so a long-but-healthy sync no longer
+  surfaces the out-of-context "still waiting for the server…" full-screen state.
+
 ### [0.76.0] — 2026-06-18
 - **Branded loader on GitLab sync.** Starting a sync in the integration modal now
   shows the same pale-backdrop TesseraSpinner overlay (with friendly cross-fading

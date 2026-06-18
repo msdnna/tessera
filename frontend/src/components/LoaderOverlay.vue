@@ -13,6 +13,9 @@ const props = defineProps({
   messages: { type: Array, default: () => ['Загружаем…'] },
   size: { type: Number, default: 44 },
   interval: { type: Number, default: 3000 },
+  // contained: absolute-fill the nearest positioned ancestor (e.g. dim only a
+  // modal body) instead of covering the whole viewport.
+  contained: { type: Boolean, default: false },
 })
 
 const index = ref(0)
@@ -42,7 +45,7 @@ onUnmounted(stop)
 
 <template>
   <transition name="lo-fade">
-    <div v-if="show" class="lo-overlay">
+    <div v-if="show" class="lo-overlay" :class="{ contained }">
       <div class="lo-box">
         <tessera-spinner :size="size" />
         <transition name="lo-cap" mode="out-in">
@@ -64,6 +67,13 @@ onUnmounted(stop)
   padding: 24px;
   background: color-mix(in srgb, var(--t-bg) 72%, transparent);
   backdrop-filter: blur(6px);
+}
+/* In-modal: fill the positioned ancestor and dim/blur only that surface. */
+.lo-overlay.contained {
+  position: absolute;
+  z-index: 20;
+  background: color-mix(in srgb, var(--t-surface) 64%, transparent);
+  border-radius: inherit;
 }
 .lo-box {
   display: flex;
