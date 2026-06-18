@@ -242,7 +242,7 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     var menu by remember { mutableStateOf(false) }
     Box {
         FacetChip(label, group = true, onClick = { menu = true })
-        TDropdown(expanded = menu, onDismiss = { menu = false }) {
+        TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             CheckRow("По статусам", selected = !state.groupByTag) {
                 menu = false
                 vm.setGrouping(byTag = false)
@@ -279,7 +279,7 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                 .clickableNoRipple { menu = true },
             contentAlignment = Alignment.Center,
         ) { IonIcon(Ion.ADD, size = 14.dp, tint = c.primary, gradient = true) }
-        TDropdown(expanded = menu, onDismiss = { close() }) {
+        TDropdown(expanded = menu, onDismiss = { close() }, scrollable = true) {
             when (category) {
                 "sort" -> {
                     BackRow { category = null }

@@ -667,7 +667,7 @@ private fun TagsValue(
                 }
             }
         }
-        TDropdown(expanded = menu, onDismiss = { menu = false }) {
+        TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             // Group the chips by tag prefix; show headers only with >1 group (web parity).
             val groups = buildTagGroups(tags, prefixNames)
             val headers = groups.size > 1

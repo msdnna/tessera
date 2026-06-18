@@ -60,6 +60,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.onColor
@@ -448,22 +449,37 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
                 }
             }
         }
-        TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            FlowRow(
-                Modifier.width(240.dp).padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                state.tagList.forEach { tag ->
-                    val on = tag.id in task.tagIds
-                    val base = parseHexColor(tag.color, c.text3)
-                    Box(
-                        Modifier.clip(RoundedCornerShape(10.dp))
-                            .background(accentGradient(if (on) base else base.copy(alpha = 0.14f)))
-                            .clickableNoRipple { vm.toggleTag(task, tag.id) }
-                            .padding(horizontal = 9.dp, vertical = 3.dp),
-                    ) {
-                        Text(tag.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp)
+        TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
+            // Group the chips by tag prefix; headers only with >1 group (web parity).
+            val groups = buildTagGroups(state.tagList, state.prefixNames)
+            val headers = groups.size > 1
+            groups.forEach { g ->
+                if (headers) {
+                    Text(
+                        g.label.uppercase(),
+                        color = c.text3,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.4.sp,
+                        modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 2.dp),
+                    )
+                }
+                FlowRow(
+                    Modifier.width(240.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    g.tags.forEach { tag ->
+                        val on = tag.id in task.tagIds
+                        val base = parseHexColor(tag.color, c.text3)
+                        Box(
+                            Modifier.clip(RoundedCornerShape(10.dp))
+                                .background(accentGradient(if (on) base else base.copy(alpha = 0.14f)))
+                                .clickableNoRipple { vm.toggleTag(task, tag.id) }
+                                .padding(horizontal = 9.dp, vertical = 3.dp),
+                        ) {
+                            Text(tag.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp)
+                        }
                     }
                 }
             }

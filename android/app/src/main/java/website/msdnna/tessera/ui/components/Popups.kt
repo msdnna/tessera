@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -90,6 +93,10 @@ fun TDropdown(
     // selector), [bare] drops this popover's own surface/border/shadow so there
     // aren't two nested cards.
     bare: Boolean = false,
+    // Caps the popover height and makes its content vertically scrollable — for
+    // long menus (e.g. a tag filter / picker with many tags). Opt-in: contents
+    // that already self-scroll must leave this off to avoid nested scrolling.
+    scrollable: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (!expanded) return
@@ -112,6 +119,7 @@ fun TDropdown(
                     .border(1.dp, c.border, RoundedCornerShape(RadiusMd))
                     .width(IntrinsicSize.Max)
                     .widthIn(min = 140.dp, max = 320.dp)
+                    .then(if (scrollable) Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()) else Modifier)
                     .padding(vertical = 4.dp),
                 content = content,
             )

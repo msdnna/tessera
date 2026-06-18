@@ -5,6 +5,12 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.21.1 — 2026-06-19
+- **Tag grouping fixes** (follow-up to 0.21.0). The «Фильтр: тег» / grouping menus
+  now scroll when they exceed the screen height (long tag lists were clipped);
+  `TDropdown` gained an opt-in `scrollable` cap. The on-card tag picker is now
+  grouped by prefix with section headers too — previously only the task modal was.
+
 ## 0.21.0 — 2026-06-19
 - **Tag grouping by prefix** (web parity, web 0.74+). Tags following a
   `«префикс: значение»` / `«префикс::значение»` convention are now grouped under
