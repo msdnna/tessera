@@ -1,0 +1,15 @@
+# Tessera edge — automatic HTTPS (Let's Encrypt) + reverse proxy.
+# DOMAIN / ACME_EMAIL come from deploy/.env (passed into the caddy container).
+# Caddy terminates TLS and forwards everything to the frontend nginx, which
+# keeps its existing logic (SPA fallback, /api proxy, WebSocket upgrade, /apks).
+
+{
+	email {$ACME_EMAIL}
+	# Uncomment to test against staging before burning rate limits:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}

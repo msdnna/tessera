@@ -1,6 +1,10 @@
 # Env / secrets
 .env
 backend/.env
+deploy/.env
+
+# Prod image tarballs (built locally, shipped to the server)
+deploy/dist/
 
 # Go build artifacts
 backend/tessera

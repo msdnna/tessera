@@ -1,0 +1,115 @@
+# Tessera — production deployment (image-based, no build context).
+#
+# This compose runs on the SERVER. It references pre-built images by tag
+# (loaded from tar via `docker load`); the source tree is NOT present here.
+# Build + ship the images from the dev box with deploy/build-and-save.sh.
+#
+#   docker compose --env-file .env up -d
+#   docker compose exec backend /migrate      # apply migrations (distroless: binary exec, no shell)
+#
+# Naming: only Caddy publishes host ports (80/443). Postgres and backend have
+# NO host ports — they are reachable only inside the compose network. This is
+# the primary data-confidentiality boundary; do not add `ports:` to them.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tessera-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tessera}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-tessera}
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tessera-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tessera} -d ${POSTGRES_DB:-tessera}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No host port — only reachable inside the compose network.
+
+  backend:
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE (e.g. tessera-backend:0.45.0)}
+    container_name: tessera-backend
+    restart: unless-stopped
+    environment:
+      # Pass DB parts (not a pre-built URL) so the backend assembles a
+      # properly URL-escaped DATABASE_URL — passwords may contain / + = etc.
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-tessera}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-tessera}
+      - PORT=8080
+      - APP_ENV=production
+      - GIN_MODE=release
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?set ENCRYPTION_KEY}
+      - UPLOAD_DIR=/data/uploads
+      - PUBLIC_URL=${PUBLIC_URL:?set PUBLIC_URL}
+      - TZ=${TZ:-Europe/Moscow}
+      # SMTP — optional. Unset => mailer is a no-op and logs verification/
+      # invite/reset links instead of emailing them.
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+    expose:
+      - "8080"
+    volumes:
+      - backend_uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tessera-network
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?set FRONTEND_IMAGE (e.g. tessera-frontend:0.74.0)}
+    container_name: tessera-frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - backend
+    networks:
+      - tessera-network
+    # Android self-update store: drop signed APK + latest.json here to serve
+    # /apks/. Optional — remove if you don't publish Android builds from prod.
+    volumes:
+      - ./apks:/usr/share/nginx/html/apks:ro
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: tessera-caddy
+    restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL:?set ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # issued certificates — persist across recreate
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    networks:
+      - tessera-network
+
+volumes:
+  postgres_data:
+  backend_uploads:
+  caddy_data:
+  caddy_config:
+
+networks:
+  tessera-network:
+    driver: bridge
