@@ -5,6 +5,16 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.20.1 — 2026-06-19
+- **Due picker fixes.** New dues default to **00:00** instead of the current time;
+  a GitLab/legacy date-only due (UTC midnight) now opens at local 00:00 on the
+  right day instead of the tz-shifted «03:00». Recurrence header renamed «Повтор»
+  → «Повтор задачи». A one-off recurrence («Повторять всегда» off) highlights only
+  the single next occurrence on the calendar.
+- **Notification settings for tasks** (parity with web): the due picker now has
+  Уведомления / Напоминать / Повтор уведомления selectors, wired to the
+  `tasks/{id}/due-notify` endpoint, on both the card and the modal. (backend 0.47 / web 0.78.1)
+
 ## 0.20.0 — 2026-06-19
 - **Recurring tasks — full options** (extends 0.19). The due picker's recurrence
   section now matches the web: frequency День/Неделя/Месяц/Год/**Выборочно**

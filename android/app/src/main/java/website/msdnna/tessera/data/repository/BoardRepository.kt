@@ -6,6 +6,7 @@ import website.msdnna.tessera.data.model.AddTagRequest
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
+import website.msdnna.tessera.data.model.DueNotifyRequest
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
 import website.msdnna.tessera.data.model.Recurrence
@@ -47,6 +48,10 @@ class BoardRepository {
 
     suspend fun setParent(taskId: String, parentId: String?): Task =
         api.setTaskParent(taskId, SetParentRequest(parentId))
+
+    /** Per-task due-notification overrides (null = inherit the user default). */
+    suspend fun setDueNotify(taskId: String, lead: Int?, repeat: Int?, enabled: Boolean?): Task =
+        api.setDueNotify(taskId, DueNotifyRequest(lead, repeat, enabled))
 
     /** Full update — pass the task plus the fields you're changing. Recurrence
      *  defaults to the task's current rule so unrelated edits don't wipe it. */

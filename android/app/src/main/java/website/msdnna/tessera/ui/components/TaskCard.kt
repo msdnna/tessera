@@ -513,7 +513,11 @@ private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel) {
             initialIso = task.dueDate,
             initialRecurrence = task.recurrence,
             columns = state.sortedColumns,
+            notifyEnabled = task.dueNotifyEnabled,
+            notifyLead = task.dueLeadMinutes,
+            notifyRepeat = task.dueRepeatMinutes,
             onApply = { iso, rec -> vm.setDueAndRecurrence(task, iso, rec) },
+            onNotify = { lead, repeat, enabled -> vm.setDueNotify(task, lead, repeat, enabled) },
             onDismiss = { picker = false },
         )
     }

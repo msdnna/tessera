@@ -204,6 +204,9 @@ fun TaskModal(
                             dueIso = detail.dueDate,
                             recurrence = detail.recurrence,
                             columns = state.columns,
+                            notifyEnabled = detail.dueNotifyEnabled,
+                            notifyLead = detail.dueLeadMinutes,
+                            notifyRepeat = detail.dueRepeatMinutes,
                             completed = detail.isCompleted,
                             assignees = detail.assignees.map { it.id },
                             gitlabAssignees = detail.gitlabAssignees,
@@ -371,6 +374,9 @@ private fun PropertyGrid(
     dueIso: String?,
     recurrence: Recurrence?,
     columns: List<BoardColumn>,
+    notifyEnabled: Boolean?,
+    notifyLead: Int?,
+    notifyRepeat: Int?,
     completed: Boolean,
     assignees: List<String>,
     gitlabAssignees: List<GitlabAssignee>,
@@ -391,7 +397,11 @@ private fun PropertyGrid(
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PropRow(Ion.FLAG, "Приоритет") { PriorityValue(priority) { vm.setPriority(it) } }
         PropRow(Ion.CALENDAR, "Срок") {
-            DueValue(dueIso, recurrence, columns) { iso, rec -> vm.setDueAndRecurrence(iso, rec) }
+            DueValue(
+                dueIso, recurrence, columns, notifyEnabled, notifyLead, notifyRepeat,
+                onApply = { iso, rec -> vm.setDueAndRecurrence(iso, rec) },
+                onNotify = { lead, repeat, enabled -> vm.setDueNotify(lead, repeat, enabled) },
+            )
         }
         if (authorName != null) {
             PropRow(Ion.PERSON_ADD, "Автор") {
@@ -458,7 +468,16 @@ private fun PriorityValue(priority: Int, onPick: (Int) -> Unit) {
 }
 
 @Composable
-private fun DueValue(dueIso: String?, recurrence: Recurrence?, columns: List<BoardColumn>, onApply: (String?, Recurrence?) -> Unit) {
+private fun DueValue(
+    dueIso: String?,
+    recurrence: Recurrence?,
+    columns: List<BoardColumn>,
+    notifyEnabled: Boolean?,
+    notifyLead: Int?,
+    notifyRepeat: Int?,
+    onApply: (String?, Recurrence?) -> Unit,
+    onNotify: (Int?, Int?, Boolean?) -> Unit,
+) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
     val label = dueLabel(dueIso)
@@ -481,7 +500,11 @@ private fun DueValue(dueIso: String?, recurrence: Recurrence?, columns: List<Boa
             initialIso = dueIso,
             initialRecurrence = recurrence,
             columns = columns,
+            notifyEnabled = notifyEnabled,
+            notifyLead = notifyLead,
+            notifyRepeat = notifyRepeat,
             onApply = { iso, rec -> onApply(iso, rec) },
+            onNotify = { lead, repeat, enabled -> onNotify(lead, repeat, enabled) },
             onDismiss = { picker = false },
         )
     }

@@ -41,6 +41,10 @@ data class Task(
     @SerializedName("archived_at") val archivedAt: String? = null,
     @SerializedName("number") val number: Long? = null,
     @SerializedName("recurrence") val recurrence: Recurrence? = null,
+    // Per-task due-notification overrides (null = inherit the user default).
+    @SerializedName("due_lead_minutes") val dueLeadMinutes: Int? = null,
+    @SerializedName("due_repeat_minutes") val dueRepeatMinutes: Int? = null,
+    @SerializedName("due_notify_enabled") val dueNotifyEnabled: Boolean? = null,
     @SerializedName("tag_ids") val tagIds: List<String> = emptyList(),
     @SerializedName("assignee_ids") val assigneeIds: List<String> = emptyList(),
     // GitLab provenance (present when the card is mirrored from a GitLab issue).
@@ -78,6 +82,13 @@ data class UpdateTaskRequest(
     @SerializedName("due_date") val dueDate: String? = null,
     @SerializedName("completed") val completed: Boolean = false,
     @SerializedName("recurrence") val recurrence: Recurrence? = null,
+)
+
+/** Per-task due-notification overrides; null fields inherit the user default. */
+data class DueNotifyRequest(
+    @SerializedName("lead_minutes") val leadMinutes: Int? = null,
+    @SerializedName("repeat_minutes") val repeatMinutes: Int? = null,
+    @SerializedName("enabled") val enabled: Boolean? = null,
 )
 
 data class SetParentRequest(@SerializedName("parent_id") val parentId: String?)

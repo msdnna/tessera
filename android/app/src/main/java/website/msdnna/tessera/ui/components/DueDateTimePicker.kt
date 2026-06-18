@@ -69,6 +69,15 @@ private val FreqChips = listOf(
 private val TriggerOptions = listOf(
     "complete" to "При завершении", "column" to "При переходе в колонку", "schedule" to "По расписанию",
 )
+private val NotifyEnabledOpts = listOf<Pair<String?, String>>(
+    "inherit" to "По умолчанию", "on" to "Включены", "off" to "Выключены",
+)
+private val NotifyLeadOpts = listOf<Pair<String?, String>>(
+    "-1" to "По умолчанию", "0" to "В срок", "15" to "За 15 мин", "60" to "За час", "180" to "За 3 часа", "1440" to "За день",
+)
+private val NotifyRepeatOpts = listOf<Pair<String?, String>>(
+    "-1" to "По умолчанию", "0" to "Однократно", "60" to "Каждый час", "180" to "Каждые 3 часа", "1440" to "Каждый день",
+)
 private val UnitForms = mapOf(
     "daily" to listOf("день", "дня", "дней"),
     "weekly" to listOf("неделю", "недели", "недель"),
@@ -104,12 +113,16 @@ fun DueDateTimePicker(
     initialIso: String?,
     initialRecurrence: Recurrence?,
     columns: List<BoardColumn>,
+    notifyEnabled: Boolean?,
+    notifyLead: Int?,
+    notifyRepeat: Int?,
     onApply: (iso: String?, recurrence: Recurrence?) -> Unit,
+    onNotify: (lead: Int?, repeat: Int?, enabled: Boolean?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val c = Tessera.colors
     val ws = AppContainer.prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences()).value.weekStart
-    val initial = remember { localCal(parseInstantMillis(initialIso)) }
+    val initial = remember { initialDueCal(initialIso) }
     var year by remember { mutableIntStateOf(initial.get(Calendar.YEAR)) }
     var month by remember { mutableIntStateOf(initial.get(Calendar.MONTH)) }
     var day by remember { mutableIntStateOf(initial.get(Calendar.DAY_OF_MONTH)) }
@@ -126,6 +139,23 @@ fun DueDateTimePicker(
     var createNew by remember { mutableStateOf(initialRecurrence?.createNew ?: false) }
     var forever by remember { mutableStateOf(!(initialRecurrence?.once ?: false)) }
     var skipWeekends by remember { mutableStateOf(initialRecurrence?.skipWeekends ?: false) }
+
+    // Notification overrides (string sentinels; "-1"/"inherit" = user default).
+    var notifyEnabledSel by remember {
+        mutableStateOf(if (notifyEnabled == null) "inherit" else if (notifyEnabled) "on" else "off")
+    }
+    var notifyLeadSel by remember { mutableStateOf((notifyLead ?: -1).toString()) }
+    var notifyRepeatSel by remember { mutableStateOf((notifyRepeat ?: -1).toString()) }
+    fun emitNotify() {
+        val lead = notifyLeadSel.toIntOrNull()?.takeIf { it >= 0 }
+        val repeat = notifyRepeatSel.toIntOrNull()?.takeIf { it >= 0 }
+        val enabled = when (notifyEnabledSel) {
+            "on" -> true
+            "off" -> false
+            else -> null
+        }
+        onNotify(lead, repeat, enabled)
+    }
 
     fun stepMonth(delta: Int) {
         val m = month + delta
@@ -241,7 +271,7 @@ fun DueDateTimePicker(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IonIcon(Ion.REPEAT, size = 14.dp, tint = c.text3)
                 Spacer(Modifier.width(6.dp))
-                Text("Повтор", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text("Повтор задачи", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(8.dp))
             // Frequency chips wrap onto two rows.
@@ -309,6 +339,25 @@ fun DueDateTimePicker(
                 if (freq == "daily" || freq == "weekly") {
                     ToggleRow("Пропускать выходные", skipWeekends) { skipWeekends = it }
                 }
+            }
+
+            // ── notifications (shared with the card, like web) ──
+            Spacer(Modifier.height(14.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(SolidColor(c.border)))
+            Spacer(Modifier.height(12.dp))
+            SelectField("Уведомления", NotifyEnabledOpts, notifyEnabledSel) {
+                notifyEnabledSel = it ?: "inherit"
+                emitNotify()
+            }
+            Spacer(Modifier.height(8.dp))
+            SelectField("Напоминать", NotifyLeadOpts, notifyLeadSel) {
+                notifyLeadSel = it ?: "-1"
+                emitNotify()
+            }
+            Spacer(Modifier.height(8.dp))
+            SelectField("Повтор уведомления", NotifyRepeatOpts, notifyRepeatSel) {
+                notifyRepeatSel = it ?: "-1"
+                emitNotify()
             }
 
             Spacer(Modifier.height(14.dp))
@@ -506,10 +555,29 @@ private fun NavBtn(double: Boolean, forward: Boolean, onClick: () -> Unit) {
 
 // ── local-zone Calendar helpers (real instants, no java.time on minSdk 24) ──
 
-private fun localCal(millis: Long?): Calendar = Calendar.getInstance().apply {
-    if (millis != null) timeInMillis = millis else add(Calendar.MINUTE, 30)
-    set(Calendar.SECOND, 0)
-    set(Calendar.MILLISECOND, 0)
+// Initial picker state from the stored due ISO:
+//  - none → today at 00:00 (no surprise "current time");
+//  - a pure UTC-midnight value (GitLab/legacy date-only) → that calendar date at
+//    local 00:00 (not the tz-shifted 03:00 / wrong day);
+//  - otherwise a real instant → local zone.
+private fun initialDueCal(iso: String?): Calendar {
+    if (iso != null && iso.length >= 19 && iso.substring(11, 19) == "00:00:00") {
+        return Calendar.getInstance().apply {
+            clear()
+            set(iso.substring(0, 4).toInt(), iso.substring(5, 7).toInt() - 1, iso.substring(8, 10).toInt(), 0, 0, 0)
+        }
+    }
+    val millis = parseInstantMillis(iso)
+    return Calendar.getInstance().apply {
+        if (millis != null) {
+            timeInMillis = millis
+        } else {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+        }
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
 }
 
 private fun localCalOf(year: Int, month: Int, day: Int, hour: Int, minute: Int): Calendar =

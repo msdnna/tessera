@@ -101,7 +101,10 @@ fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
     }
 }
 
-/** Up to [n] upcoming occurrence day-keys (yyyy-MM-dd) starting at [fromMillis]. */
+/**
+ * Up to [n] upcoming occurrence day-keys (yyyy-MM-dd) starting at [fromMillis].
+ * A one-off rule (`once`) shows just the current due + the single next occurrence.
+ */
 fun occurrenceKeys(rule: Recurrence?, fromMillis: Long?, n: Int = 24): Set<String> {
     val keys = mutableSetOf<String>()
     if (fromMillis == null || rule == null || rule.freq.isBlank()) return keys
@@ -109,9 +112,10 @@ fun occurrenceKeys(rule: Recurrence?, fromMillis: Long?, n: Int = 24): Set<Strin
         rule.dates?.forEach { keys.add(it) }
         return keys
     }
+    val limit = if (rule.once) 1 else n
     var cur: Long = fromMillis
     keys.add(millisDayKey(cur))
-    repeat(n) {
+    repeat(limit) {
         val nx = nextOccurrence(rule, cur) ?: return keys
         keys.add(millisDayKey(nx))
         cur = nx

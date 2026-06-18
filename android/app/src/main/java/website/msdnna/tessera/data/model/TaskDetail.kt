@@ -20,6 +20,9 @@ data class TaskDetail(
     @SerializedName("completed_at") val completedAt: String? = null,
     @SerializedName("number") val number: Long? = null,
     @SerializedName("recurrence") val recurrence: Recurrence? = null,
+    @SerializedName("due_lead_minutes") val dueLeadMinutes: Int? = null,
+    @SerializedName("due_repeat_minutes") val dueRepeatMinutes: Int? = null,
+    @SerializedName("due_notify_enabled") val dueNotifyEnabled: Boolean? = null,
     // Nullable: the backend serialises empty slices as JSON `null`, and Gson
     // ignores Kotlin defaults — so these arrive null when the task has none.
     // Always read them through the non-null accessors below.

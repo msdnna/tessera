@@ -119,6 +119,12 @@ class TaskDetailViewModel(
         reloadDetail()
     }
 
+    fun setDueNotify(lead: Int?, repeat: Int?, enabled: Boolean?) = mutate {
+        val d = state.value.detail ?: return@mutate
+        boardRepo.setDueNotify(d.id, lead, repeat, enabled)
+        reloadDetail()
+    }
+
     fun setCompleted(completed: Boolean) = mutate {
         val d = state.value.detail ?: return@mutate
         boardRepo.updateTask(d.asTask(), completed = completed)

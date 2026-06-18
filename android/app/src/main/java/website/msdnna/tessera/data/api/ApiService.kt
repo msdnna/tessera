@@ -26,6 +26,7 @@ import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
+import website.msdnna.tessera.data.model.DueNotifyRequest
 import website.msdnna.tessera.data.model.EmailRequest
 import website.msdnna.tessera.data.model.Invitation
 import website.msdnna.tessera.data.model.InviteRequest
@@ -229,6 +230,9 @@ interface ApiService {
 
     @PATCH("tasks/{id}/parent")
     suspend fun setTaskParent(@Path("id") taskId: String, @Body body: SetParentRequest): Task
+
+    @PATCH("tasks/{id}/due-notify")
+    suspend fun setDueNotify(@Path("id") taskId: String, @Body body: DueNotifyRequest): Task
 
     @PATCH("tasks/{id}/archive")
     suspend fun archiveTask(@Path("id") taskId: String)

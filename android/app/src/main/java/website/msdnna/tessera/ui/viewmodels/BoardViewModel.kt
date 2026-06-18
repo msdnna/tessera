@@ -541,6 +541,11 @@ class BoardViewModel(
         refreshTasks()
     }
 
+    fun setDueNotify(task: Task, lead: Int?, repeat: Int?, enabled: Boolean?) = launchCatching {
+        repo.setDueNotify(task.id, lead, repeat, enabled)
+        refreshTasks()
+    }
+
     fun renameTask(task: Task, title: String) = launchCatching {
         repo.updateTask(task, title = title)
         refreshTasks()
