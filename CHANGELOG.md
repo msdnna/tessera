@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.76.2] — 2026-06-18
+- GitLab sync loader now dims/blurs the **whole** modal card (header and edges
+  included), not just the body inside the padding — the loader fills a
+  non-scrolling wrapper around the card while the body scrolls in its own frame.
+
 ### [0.76.1] — 2026-06-18
 - GitLab sync loader is now scoped to the modal: it dims/blurs only the modal
   body (an inner scroll frame) with the centered TesseraSpinner, instead of

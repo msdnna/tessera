@@ -324,16 +324,17 @@ watch(
 
 <template>
   <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <n-card class="gl-card" style="width: 580px; max-width: 94vw" role="dialog">
-      <template #header>
-        <span class="gl-title">
-          <n-icon :component="LogoGitlab" class="grad-icon" /> GitLab
-        </span>
-      </template>
+    <!-- Wrap is the non-scrolling positioned frame: the sync loader fills it to
+         dim/blur the WHOLE card (header + edges), while the card body scrolls in
+         its own inner gl-scroll. -->
+    <div class="gl-modal-wrap">
+      <n-card class="gl-card" style="width: 580px; max-width: 94vw" role="dialog">
+        <template #header>
+          <span class="gl-title">
+            <n-icon :component="LogoGitlab" class="grad-icon" /> GitLab
+          </span>
+        </template>
 
-      <!-- Body: an inner scroll area so the sync loader (below) can dim/blur it
-           without scrolling away — the loader's stage is the non-scrolling frame. -->
-      <div class="gl-stage">
         <div class="gl-scroll">
       <!-- ACCOUNT -->
       <section class="gl-sec">
@@ -503,19 +504,24 @@ watch(
         </div>
       </section>
         </div>
-        <!-- Branded loader while a sync runs — dims/blurs only the modal body. -->
-        <loader-overlay :show="syncing" contained :messages="SYNC_MESSAGES" :interval="2600" />
-      </div>
-    </n-card>
+      </n-card>
+      <!-- Branded loader while a sync runs — dims/blurs the whole modal card. -->
+      <loader-overlay :show="syncing" contained :messages="SYNC_MESSAGES" :interval="2600" />
+    </div>
   </n-modal>
 </template>
 
 <style scoped>
-/* Body frame: gl-stage is the non-scrolling positioned ancestor for the sync
-   loader; gl-scroll holds the (scrollable) content. The loader fills gl-stage so
-   it dims/blurs the body in place rather than scrolling out of view. */
-.gl-stage {
+/* Non-scrolling frame around the card: the sync loader fills it to cover the
+   whole card (the radius is shared so the overlay's rounded corners line up).
+   gl-scroll holds the scrollable body so the loader never scrolls out of view. */
+.gl-modal-wrap {
   position: relative;
+  max-width: 94vw;
+  border-radius: 12px;
+}
+.gl-card {
+  border-radius: 12px;
 }
 .gl-scroll {
   max-height: 76vh;
