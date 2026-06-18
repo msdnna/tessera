@@ -24,6 +24,10 @@ type Config struct {
 	SMTPPass  string
 	SMTPFrom  string
 	PublicURL string
+	// Origin allowed by the CORS middleware. In production defaults to
+	// PublicURL (lock the API to the web app's origin); in dev defaults to "*".
+	// Override explicitly with CORS_ORIGIN.
+	CORSOrigin string
 }
 
 // New reads configuration from the environment. In production
@@ -76,6 +80,18 @@ func New() *Config {
 		log.Println("WARNING: ENCRYPTION_KEY not set — using dev default (stored secrets won't decrypt in prod)")
 	}
 
+	// CORS origin: explicit CORS_ORIGIN wins; else lock to PublicURL in prod,
+	// or fall back to "*" for dev convenience.
+	publicURL := os.Getenv("PUBLIC_URL")
+	corsOrigin := os.Getenv("CORS_ORIGIN")
+	if corsOrigin == "" {
+		if prod && publicURL != "" {
+			corsOrigin = publicURL
+		} else {
+			corsOrigin = "*"
+		}
+	}
+
 	return &Config{
 		DatabaseURL:   dbURL,
 		Port:          getEnv("PORT", "8080"),
@@ -88,7 +104,8 @@ func New() *Config {
 		SMTPUser:      os.Getenv("SMTP_USER"),
 		SMTPPass:      os.Getenv("SMTP_PASS"),
 		SMTPFrom:      os.Getenv("SMTP_FROM"),
-		PublicURL:     os.Getenv("PUBLIC_URL"),
+		PublicURL:     publicURL,
+		CORSOrigin:    corsOrigin,
 	}
 }
 

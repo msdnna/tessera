@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.74.1] — 2026-06-18
+- nginx: raise `client_max_body_size` to 50m so attachment / avatar / inline-image
+  uploads aren't rejected with 413 behind the `/api` proxy (nginx default is 1m).
+  Prep for the public Docker deployment.
+
 ### [0.74.0] — 2026-06-18
 - **Friendly names for tag prefixes.** Tag prefixes (`S:`, `P:`, `effort::`, …) can
   now carry a human-readable name, configured per-project in the GitLab integration
@@ -1264,6 +1269,12 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.45.1] — 2026-06-18
+- CORS: the allowed origin is now configurable. In production (`APP_ENV=production`)
+  it defaults to `PUBLIC_URL` instead of `*`, locking the API to the web app's
+  origin; an explicit `CORS_ORIGIN` overrides, and dev still defaults to `*`.
+  Non-wildcard responses set `Vary: Origin`. Prep for the public Docker deployment.
 
 ### [0.45.0] — 2026-06-18
 - Tag-prefix display names: new `tag_prefixes` table (migration 0026) maps a

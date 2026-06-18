@@ -60,7 +60,7 @@ func main() {
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)
 	}
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg.CORSOrigin))
 
 	api := r.Group("/api")
 	{
