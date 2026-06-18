@@ -3,6 +3,16 @@ package website.msdnna.tessera.data.model
 import com.google.gson.annotations.SerializedName
 
 /**
+ * A recurrence rule on a task: repeat every [interval] [freq]-units. The backend
+ * also stores a day/month anchor for monthly/yearly rules, but the client only
+ * ever sends {freq, interval} and lets the server manage the anchor.
+ */
+data class Recurrence(
+    @SerializedName("freq") val freq: String = "",
+    @SerializedName("interval") val interval: Int = 1,
+)
+
+/**
  * A board card (top-level task) or subtask, with tag/assignee ids aggregated —
  * mirrors the backend `ListBoardTasksWithMeta` / `ListSubtasksWithMeta` rows.
  */
@@ -20,6 +30,7 @@ data class Task(
     @SerializedName("completed_at") val completedAt: String? = null,
     @SerializedName("archived_at") val archivedAt: String? = null,
     @SerializedName("number") val number: Long? = null,
+    @SerializedName("recurrence") val recurrence: Recurrence? = null,
     @SerializedName("tag_ids") val tagIds: List<String> = emptyList(),
     @SerializedName("assignee_ids") val assigneeIds: List<String> = emptyList(),
     // GitLab provenance (present when the card is mirrored from a GitLab issue).
@@ -56,6 +67,7 @@ data class UpdateTaskRequest(
     @SerializedName("priority") val priority: Int = 0,
     @SerializedName("due_date") val dueDate: String? = null,
     @SerializedName("completed") val completed: Boolean = false,
+    @SerializedName("recurrence") val recurrence: Recurrence? = null,
 )
 
 data class SetParentRequest(@SerializedName("parent_id") val parentId: String?)

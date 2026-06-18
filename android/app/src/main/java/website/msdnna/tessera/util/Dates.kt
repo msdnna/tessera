@@ -67,6 +67,46 @@ fun longDate(iso: String?): String {
 }
 
 /**
+ * A due-date label for the task modal/cards. Mirrors the web `formatDue`:
+ *  - a pure UTC-midnight value is a date-only due (GitLab/legacy) → render the raw
+ *    UTC calendar date, no time;
+ *  - otherwise it's a real instant → show the local date, plus the local time when
+ *    it isn't local-midnight.
+ * [withTime] = false forces the date-only form (for cramped card pills).
+ */
+fun dueLabel(iso: String?, withTime: Boolean = true): String {
+    if (iso.isNullOrBlank() || iso.length < 10) return ""
+    // Pure UTC-midnight → date-only; longDate reads the raw UTC clock.
+    if (iso.length >= 19 && iso.substring(11, 19) == "00:00:00") return longDate(iso)
+    val millis = parseInstantMillis(iso) ?: return longDate(iso)
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val day = cal.get(Calendar.DAY_OF_MONTH)
+    val month = months[cal.get(Calendar.MONTH)]
+    val year = cal.get(Calendar.YEAR)
+    val date = "$day $month. $year г."
+    val hh = cal.get(Calendar.HOUR_OF_DAY)
+    val mm = cal.get(Calendar.MINUTE)
+    return if (withTime && (hh != 0 || mm != 0)) "$date, %02d:%02d".format(hh, mm) else date
+}
+
+/** A compact due label for cards: `10 июн` plus `14:30` when a time is set. */
+fun dueShort(iso: String?): String {
+    if (iso.isNullOrBlank() || iso.length < 10) return ""
+    // Date-only (UTC midnight) stays terse, read off the raw UTC clock.
+    if (iso.length >= 19 && iso.substring(11, 19) == "00:00:00") return shortDate(iso)
+    val millis = parseInstantMillis(iso) ?: return shortDate(iso)
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val day = cal.get(Calendar.DAY_OF_MONTH)
+    val month = months[cal.get(Calendar.MONTH)]
+    val year = cal.get(Calendar.YEAR)
+    val suffix = if (year.toString() == currentYear()) "" else " $year"
+    val hh = cal.get(Calendar.HOUR_OF_DAY)
+    val mm = cal.get(Calendar.MINUTE)
+    val date = "$day $month$suffix"
+    return if (hh != 0 || mm != 0) "$date %02d:%02d".format(hh, mm) else date
+}
+
+/**
  * A `4 июн., 14:30` timestamp for comments / journal entries. The time is the
  * raw ISO (UTC) clock — good enough for an at-a-glance "when".
  */

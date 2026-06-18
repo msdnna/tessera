@@ -18,6 +18,7 @@ import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.data.model.BoardViewConfig
 import website.msdnna.tessera.data.model.BoardViewFilters
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.SortLevel
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
@@ -532,6 +533,11 @@ class BoardViewModel(
 
     fun setDue(task: Task, dueIso: String?) = launchCatching {
         repo.updateTask(task, dueDate = dueIso)
+        refreshTasks()
+    }
+
+    fun setDueAndRecurrence(task: Task, dueIso: String?, recurrence: Recurrence?) = launchCatching {
+        repo.updateTask(task, dueDate = dueIso, recurrence = recurrence)
         refreshTasks()
     }
 

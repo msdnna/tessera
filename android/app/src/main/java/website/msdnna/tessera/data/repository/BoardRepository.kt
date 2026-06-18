@@ -8,6 +8,7 @@ import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
+import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
@@ -47,7 +48,8 @@ class BoardRepository {
     suspend fun setParent(taskId: String, parentId: String?): Task =
         api.setTaskParent(taskId, SetParentRequest(parentId))
 
-    /** Full update — pass the task plus the fields you're changing. */
+    /** Full update — pass the task plus the fields you're changing. Recurrence
+     *  defaults to the task's current rule so unrelated edits don't wipe it. */
     suspend fun updateTask(
         task: Task,
         title: String = task.title,
@@ -55,7 +57,8 @@ class BoardRepository {
         priority: Int = task.priority,
         dueDate: String? = task.dueDate,
         completed: Boolean = task.isCompleted,
-    ): Task = api.updateTask(task.id, UpdateTaskRequest(title, description, priority, dueDate, completed))
+        recurrence: Recurrence? = task.recurrence,
+    ): Task = api.updateTask(task.id, UpdateTaskRequest(title, description, priority, dueDate, completed, recurrence))
 
     suspend fun archiveTask(taskId: String) = api.archiveTask(taskId)
     suspend fun deleteTask(taskId: String) = api.deleteTask(taskId)

@@ -19,6 +19,7 @@ data class TaskDetail(
     @SerializedName("created_by") val createdBy: String? = null,
     @SerializedName("completed_at") val completedAt: String? = null,
     @SerializedName("number") val number: Long? = null,
+    @SerializedName("recurrence") val recurrence: Recurrence? = null,
     // Nullable: the backend serialises empty slices as JSON `null`, and Gson
     // ignores Kotlin defaults — so these arrive null when the task has none.
     // Always read them through the non-null accessors below.
@@ -39,7 +40,7 @@ data class TaskDetail(
     fun asTask(): Task = Task(
         id = id, boardId = boardId, columnId = columnId, parentId = parentId,
         title = title, description = description, priority = priority, dueDate = dueDate,
-        createdBy = createdBy, completedAt = completedAt, number = number,
+        createdBy = createdBy, completedAt = completedAt, number = number, recurrence = recurrence,
         tagIds = tags.map { it.id }, assigneeIds = assignees.map { it.id },
     )
 }

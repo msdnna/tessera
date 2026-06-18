@@ -60,6 +60,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
@@ -487,7 +488,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
 private fun DuePill(task: Task, vm: BoardViewModel) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val due = shortDate(task.dueDate)
+    val due = dueShort(task.dueDate)
     // Overdue (past due, not done) → red tint, like the web.
     val overdue = !task.isCompleted && isOverdue(task.dueDate)
     val overdueColor = Color(0xFFE0533D)
@@ -502,14 +503,16 @@ private fun DuePill(task: Task, vm: BoardViewModel) {
             Spacer(Modifier.width(4.dp))
             Text(due, color = tint, fontSize = 11.sp)
         }
+        if (task.recurrence != null) {
+            Spacer(Modifier.width(4.dp))
+            IonIcon(Ion.REPEAT, size = 11.dp, tint = c.primary)
+        }
     }
     if (picker) {
-        DueDatePicker(
+        DueDateTimePicker(
             initialIso = task.dueDate,
-            onPick = { iso ->
-                vm.setDue(task, iso)
-                picker = false
-            },
+            initialRecurrence = task.recurrence,
+            onApply = { iso, rec -> vm.setDueAndRecurrence(task, iso, rec) },
             onDismiss = { picker = false },
         )
     }

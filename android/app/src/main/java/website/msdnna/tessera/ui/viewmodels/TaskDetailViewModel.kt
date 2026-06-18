@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Attachment
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.Relation
 import website.msdnna.tessera.data.model.TaskDetail
 import website.msdnna.tessera.data.model.TaskEvent
@@ -101,6 +102,13 @@ class TaskDetailViewModel(
     fun setDue(dueIso: String?) = mutate {
         val d = state.value.detail ?: return@mutate
         boardRepo.updateTask(d.asTask(), dueDate = dueIso)
+        reloadDetail()
+    }
+
+    /** Sets the due date and recurrence rule together (the due popover commits both). */
+    fun setDueAndRecurrence(dueIso: String?, recurrence: Recurrence?) = mutate {
+        val d = state.value.detail ?: return@mutate
+        boardRepo.updateTask(d.asTask(), dueDate = dueIso, recurrence = recurrence)
         reloadDetail()
     }
 

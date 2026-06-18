@@ -67,9 +67,10 @@ import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.GitlabAssignee
 import website.msdnna.tessera.data.model.GitlabLink
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
-import website.msdnna.tessera.ui.components.DueDatePicker
+import website.msdnna.tessera.ui.components.DueDateTimePicker
 import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -97,7 +98,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.theme.accentGradientTint
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
 import website.msdnna.tessera.util.Ion
-import website.msdnna.tessera.util.longDate
+import website.msdnna.tessera.util.dueLabel
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
@@ -200,6 +201,7 @@ fun TaskModal(
                             vm = vm,
                             priority = detail.priority,
                             dueIso = detail.dueDate,
+                            recurrence = detail.recurrence,
                             completed = detail.isCompleted,
                             assignees = detail.assignees.map { it.id },
                             gitlabAssignees = detail.gitlabAssignees,
@@ -365,6 +367,7 @@ private fun PropertyGrid(
     vm: TaskDetailViewModel,
     priority: Int,
     dueIso: String?,
+    recurrence: Recurrence?,
     completed: Boolean,
     assignees: List<String>,
     gitlabAssignees: List<GitlabAssignee>,
@@ -384,7 +387,9 @@ private fun PropertyGrid(
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PropRow(Ion.FLAG, "Приоритет") { PriorityValue(priority) { vm.setPriority(it) } }
-        PropRow(Ion.CALENDAR, "Срок") { DueValue(dueIso) { vm.setDue(it) } }
+        PropRow(Ion.CALENDAR, "Срок") {
+            DueValue(dueIso, recurrence) { iso, rec -> vm.setDueAndRecurrence(iso, rec) }
+        }
         if (authorName != null) {
             PropRow(Ion.PERSON_ADD, "Автор") {
                 AuthorValue(
@@ -450,21 +455,31 @@ private fun PriorityValue(priority: Int, onPick: (Int) -> Unit) {
 }
 
 @Composable
-private fun DueValue(dueIso: String?, onPick: (String?) -> Unit) {
+private fun DueValue(dueIso: String?, recurrence: Recurrence?, onApply: (String?, Recurrence?) -> Unit) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val label = longDate(dueIso)
-    Text(
-        label.ifBlank { "Не задан" },
-        color = if (label.isBlank()) c.text3 else c.text1,
-        fontSize = 14.sp,
-        modifier = Modifier.clickableNoRipple { picker = true },
-    )
+    val label = dueLabel(dueIso)
+    Row(
+        Modifier.clickableNoRipple { picker = true },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label.ifBlank { "Не задан" },
+            color = if (label.isBlank()) c.text3 else c.text1,
+            fontSize = 14.sp,
+        )
+        if (recurrence != null) {
+            Spacer(Modifier.width(6.dp))
+            IonIcon(Ion.REPEAT, size = 13.dp, tint = c.primary)
+        }
+    }
     if (picker) {
-        DueDatePicker(initialIso = dueIso, onPick = {
-            onPick(it)
-            picker = false
-        }, onDismiss = { picker = false })
+        DueDateTimePicker(
+            initialIso = dueIso,
+            initialRecurrence = recurrence,
+            onApply = { iso, rec -> onApply(iso, rec) },
+            onDismiss = { picker = false },
+        )
     }
 }
 
@@ -1187,6 +1202,7 @@ private fun eventText(kind: String): String = when (kind) {
     "due" -> "изменил(а) срок"
     "completed" -> "завершил(а) задачу"
     "reopened" -> "вернул(а) в работу"
+    "recurred" -> "перенёс(ла) повтор задачи"
     "moved" -> "переместил(а) задачу"
     "assigned" -> "назначил(а) исполнителя"
     "unassigned" -> "снял(а) исполнителя"

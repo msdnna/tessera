@@ -66,6 +66,7 @@ object Ion {
     const val GIT_BRANCH = "git_branch"
     const val SORT = "swap"
     const val REFRESH = "refresh"
+    const val REPEAT = "repeat"
     const val NOTIFICATIONS = "notifications"
     const val PEOPLE = "people"
     const val PERSON_ADD = "person_add"

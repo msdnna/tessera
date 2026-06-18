@@ -5,6 +5,19 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.19.0 — 2026-06-18
+- **Due dates now carry a time, and a recurrence rule.** The due picker is a new
+  date+time picker (the day's time is a real instant, local→UTC, matching web and
+  reminders — previously due was date-only at UTC-midnight). Below the calendar it
+  has a «Повтор» selector (День / Неделя / Месяц / Год + «каждые N»).
+- **Recurring tasks.** Completing a recurring task (the modal switch, the card's
+  done toggle, or a drag into the done column) reschedules it on the backend: the
+  due date advances one period (the 30th stays the 30th across February) and the
+  card returns to the board's first column. A repeat glyph marks recurring tasks
+  on the card's due pill and in the modal; new `recurred` journal entry.
+- Due labels show the time when set (modal and card). All task updates carry the
+  recurrence rule so quick-edits don't wipe it. (backend 0.46 / web 0.77)
+
 ## 0.18.0 — 2026-06-18
 - Tags are now per-project (backend 0.43): the board tag picker and tag creation
   read/write `/projects/:id/tags` scoped to the open board's project, matching web.

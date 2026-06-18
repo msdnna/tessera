@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Calendar
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Preferences
+import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -52,14 +54,45 @@ private val Weekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "�
 private fun weekdayLabels(weekStart: Int): List<String> =
     if (weekStart == 0) listOf(Weekdays.last()) + Weekdays.dropLast(1) else Weekdays
 
+// Recurrence frequency chips: empty value = no repeat.
+private val RecurChips = listOf(
+    "" to "Нет",
+    "daily" to "День",
+    "weekly" to "Неделя",
+    "monthly" to "Месяц",
+    "yearly" to "Год",
+)
+private val RecurUnits = mapOf(
+    "daily" to listOf("день", "дня", "дней"),
+    "weekly" to listOf("неделю", "недели", "недель"),
+    "monthly" to listOf("месяц", "месяца", "месяцев"),
+    "yearly" to listOf("год", "года", "лет"),
+)
+
+private fun ruPlural(n: Int, forms: List<String>): String {
+    val m10 = n % 10
+    val m100 = n % 100
+    return when {
+        m10 == 1 && m100 != 11 -> forms[0]
+        m10 in 2..4 && (m100 < 10 || m100 >= 20) -> forms[1]
+        else -> forms[2]
+    }
+}
+
 /**
- * Date + time picker for reminders. Like [DueDateTimePicker], a reminder is a
- * real instant: the user picks a *local* day and time,
- * and we emit a UTC ISO-8601 string for that wall-clock moment. Same visual
- * language as the due-date grid, plus hour/minute steppers.
+ * Due-date picker with a real time-of-day and a recurrence rule. The chosen
+ * day+time is a real instant emitted as a UTC ISO string (so a due date now
+ * carries a time, not just a date). Below the calendar/time it offers a
+ * «Повтор» frequency selector + interval stepper. «Готово» commits both the due
+ * date and recurrence; «Очистить» clears both.
  */
 @Composable
-fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+fun DueDateTimePicker(
+    initialIso: String?,
+    initialRecurrence: Recurrence?,
+    onApply: (iso: String?, recurrence: Recurrence?) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val c = Tessera.colors
     val ws = AppContainer.prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences()).value.weekStart
     val initial = remember { localCal(parseInstantMillis(initialIso)) }
@@ -68,6 +101,8 @@ fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDism
     var day by remember { mutableIntStateOf(initial.get(Calendar.DAY_OF_MONTH)) }
     var hour by remember { mutableIntStateOf(initial.get(Calendar.HOUR_OF_DAY)) }
     var minute by remember { mutableIntStateOf(initial.get(Calendar.MINUTE)) }
+    var freq by remember { mutableStateOf(initialRecurrence?.freq ?: "") }
+    var interval by remember { mutableIntStateOf(initialRecurrence?.interval?.coerceAtLeast(1) ?: 1) }
 
     fun stepMonth(delta: Int) {
         val m = month + delta
@@ -141,17 +176,98 @@ fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDism
                 Stepper(value = minute, onChange = { minute = Math.floorMod(it, 60) }, step = 5)
             }
 
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(14.dp))
+            // ── recurrence ──
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IonIcon(Ion.REPEAT, size = 14.dp, tint = c.text3)
+                Spacer(Modifier.width(6.dp))
+                Text("Повтор", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                RecurChips.forEach { (value, label) ->
+                    RecurChip(label = label, selected = freq == value, modifier = Modifier.weight(1f)) { freq = value }
+                }
+            }
+            if (freq.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("каждые", color = c.text3, fontSize = 13.sp)
+                    Spacer(Modifier.width(10.dp))
+                    IntervalStepper(value = interval, onChange = { interval = it.coerceIn(1, 99) })
+                    Spacer(Modifier.width(10.dp))
+                    Text(ruPlural(interval, RecurUnits.getValue(freq)), color = c.text3, fontSize = 13.sp)
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Очистить",
+                    color = c.text3,
+                    fontSize = 14.sp,
+                    modifier = Modifier.clickableNoRipple {
+                        onApply(null, null)
+                        onDismiss()
+                    },
+                )
+                Spacer(Modifier.weight(1f))
                 Text("Отмена", color = c.text3, fontSize = 14.sp, modifier = Modifier.clickableNoRipple { onDismiss() })
                 Spacer(Modifier.width(18.dp))
                 TButton("Готово", onClick = {
                     val millis = localCalOf(year, month, day, hour, minute).timeInMillis
-                    onPick(millisToUtcIso(millis))
+                    val rec = if (freq.isNotEmpty()) Recurrence(freq, interval.coerceAtLeast(1)) else null
+                    onApply(millisToUtcIso(millis), rec)
                     onDismiss()
                 })
             }
         }
+    }
+}
+
+@Composable
+private fun RecurChip(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val c = Tessera.colors
+    Box(
+        modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(RadiusSm))
+            .background(if (selected) accentGradient(c.primary) else SolidColor(c.surfaceAlt))
+            .clickableNoRipple(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (selected) c.onPrimary else c.text2,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
+}
+
+@Composable
+private fun IntervalStepper(value: Int, onChange: (Int) -> Unit) {
+    val c = Tessera.colors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        GlyphBtn("−") { onChange(value - 1) }
+        Box(
+            Modifier.size(width = 44.dp, height = 36.dp).clip(RoundedCornerShape(RadiusMd)).background(c.surfaceAlt),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(value.toString(), color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        GlyphBtn("+") { onChange(value + 1) }
+    }
+}
+
+@Composable
+private fun GlyphBtn(glyph: String, onClick: () -> Unit) {
+    val c = Tessera.colors
+    Box(
+        Modifier.size(34.dp).clip(RoundedCornerShape(RadiusSm)).clickableNoRipple(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(glyph, color = c.text2, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -254,7 +370,6 @@ private fun daysInMonth(year: Int, month: Int): Int =
         set(year, month, 1)
     }.getActualMaximum(Calendar.DAY_OF_MONTH)
 
-/** First grid cell (week-start on/before the 1st) for the given month, local zone. */
 private fun monthGridStart(year: Int, month: Int, weekStart: Int): Calendar {
     val first = Calendar.getInstance().apply {
         clear()
