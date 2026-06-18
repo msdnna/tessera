@@ -113,11 +113,3 @@ volumes:
 networks:
   tessera-network:
     driver: bridge
-    # IPv6 egress: the VDS provider blocks outbound IPv4 SMTP (25/465/587), but
-    # smtp.yandex.ru is reachable over IPv6. Without this the backend's mail send
-    # falls back to the blocked IPv4 and times out. Requires daemon ipv6 +
-    # ip6tables (see /etc/docker/daemon.json).
-    enable_ipv6: true
-    ipam:
-      config:
-        - subnet: fd00:beef:cafe::/64
