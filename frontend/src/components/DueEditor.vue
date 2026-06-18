@@ -37,14 +37,26 @@ function commit() {
 const theme = useThemeStore()
 const weekStart = computed(() => (theme.weekStart === 0 ? 0 : 1)) // 0=Sun, 1=Mon
 
+// A pure UTC-midnight due is a date-only value (GitLab/legacy) — present it as
+// local midnight of that calendar date so the time picker shows 00:00 (not the
+// tz-shifted "03:00") and the right day is selected.
+function normalizeDueIn(ms) {
+  if (ms == null) return null
+  const d = new Date(ms)
+  if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0).getTime()
+  }
+  return ms
+}
+
 // ── due date + time ──
-const localDue = ref(props.due)
+const localDue = ref(normalizeDueIn(props.due))
 watch(
   () => props.due,
   (v) => {
-    localDue.value = v
-    if (v != null) {
-      const d = new Date(v)
+    localDue.value = normalizeDueIn(v)
+    if (localDue.value != null) {
+      const d = new Date(localDue.value)
       viewY.value = d.getFullYear()
       viewM.value = d.getMonth()
     }
@@ -65,8 +77,8 @@ function setTime(ms) {
 
 // ── calendar view ──
 const today = new Date()
-const viewY = ref((props.due ? new Date(props.due) : today).getFullYear())
-const viewM = ref((props.due ? new Date(props.due) : today).getMonth())
+const viewY = ref((localDue.value != null ? new Date(localDue.value) : today).getFullYear())
+const viewM = ref((localDue.value != null ? new Date(localDue.value) : today).getMonth())
 function stepMonth(delta) {
   const m = viewM.value + delta
   viewY.value += Math.floor(m / 12)
@@ -146,7 +158,7 @@ watch(
     dates.value = r?.dates ? [...r.dates] : []
     trigger.value = r?.trigger || 'complete'
     triggerColumn.value = r?.trigger_column || null
-    targetColumn.value = r?.target_column || null
+    targetColumn.value = r?.target_column || ''
     createNew.value = !!r?.create_new
     recurForever.value = !r?.once
     skipWeekends.value = !!r?.skip_weekends
@@ -183,7 +195,8 @@ function toggleWeekday(d) {
 }
 
 const columnOptions = computed(() => props.columns.map((c) => ({ label: c.name, value: c.id })))
-const targetOptions = computed(() => [{ label: 'Первая колонка', value: null }, ...columnOptions.value])
+// '' = the board's first column (backend default); a real value routes elsewhere.
+const targetOptions = computed(() => [{ label: 'Первая колонка (по умолчанию)', value: '' }, ...columnOptions.value])
 
 // weekday chips, ordered by week-start; 0=Sun..6=Sat
 const weekdayChips = computed(() => {
@@ -221,7 +234,7 @@ const DUE_REPEAT_OPTS = [
       <div class="de-recur">
         <div class="de-recur-head">
           <n-icon :component="RepeatOutline" :size="15" />
-          <span>Повтор</span>
+          <span>Повтор задачи</span>
         </div>
         <n-select size="small" :value="freq" :options="FREQ_OPTIONS" @update:value="setFreq" />
 
@@ -525,9 +538,12 @@ const DUE_REPEAT_OPTS = [
 .de-day.out {
   color: var(--t-text3);
 }
+/* upcoming occurrences: a faint dimmed tint so the day number stays readable and
+   clearly secondary to the selected due day */
 .de-day.occ {
-  background: var(--t-accent-grad-subtle);
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
   color: var(--t-primary);
+  font-weight: 500;
 }
 .de-day.sel {
   background: var(--t-accent-grad);

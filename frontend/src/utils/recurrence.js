@@ -131,7 +131,8 @@ export function nextOccurrence(rule, from) {
 }
 
 // occurrences returns up to `n` date keys (YYYY-MM-DD) of upcoming occurrences,
-// starting at `fromTs` itself — for highlighting the calendar.
+// starting at `fromTs` itself — for highlighting the calendar. A one-off rule
+// (`once`) shows just the current due + the single next occurrence.
 export function occurrenceKeys(rule, fromTs, n = 24) {
   const keys = new Set()
   if (!fromTs || !rule || !rule.freq) return keys
@@ -139,9 +140,10 @@ export function occurrenceKeys(rule, fromTs, n = 24) {
     for (const s of rule.dates || []) keys.add(s)
     return keys
   }
+  const limit = rule.once ? 1 : n
   let cur = new Date(fromTs)
   keys.add(dayKey(cur))
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < limit; i++) {
     const nx = nextOccurrence(rule, cur)
     if (!nx) break
     keys.add(dayKey(nx))

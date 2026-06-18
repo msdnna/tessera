@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.78.1] — 2026-06-19
+- **Recurrence editor fixes.** Occurrence highlight on the calendar is now a faint
+  tint with a readable, dimmed day number (was a solid block hiding the number) —
+  clearly secondary to the selected due day. The «Переносить в» default no longer
+  shows the English «Please Select» placeholder: the default option has a real
+  value and reads «Первая колонка (по умолчанию)», with the board's columns listed
+  below it. Header renamed «Повтор» → «Повтор задачи» (vs «Повтор уведомления»).
+- A one-off recurrence («Повторять всегда» off) now highlights only the single
+  next occurrence on the calendar, matching the behaviour.
+- A pure UTC-midnight (GitLab/legacy date-only) due now opens at local 00:00 in the
+  picker instead of the tz-shifted «03:00».
+
 ### [0.78.0] — 2026-06-19
 - **Recurring tasks — full editor** (extends 0.77). New shared `DueEditor`
   component used by **both** the card due-popover and the task modal (consistent;
