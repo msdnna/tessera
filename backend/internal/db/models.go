@@ -231,6 +231,15 @@ type Tag struct {
 	ProjectID   uuid.UUID `json:"project_id"`
 }
 
+type TagPrefix struct {
+	ProjectID   uuid.UUID `json:"project_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Prefix      string    `json:"prefix"`
+	Label       string    `json:"label"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type Task struct {
 	ID               uuid.UUID  `json:"id"`
 	BoardID          uuid.UUID  `json:"board_id"`

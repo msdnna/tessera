@@ -22,7 +22,12 @@ function onChanged() {
           Теги
         </n-button>
       </template>
-      <TagManager :project-id="store.projectId" :tags="store.tagsList" @changed="onChanged" />
+      <TagManager
+        :project-id="store.projectId"
+        :tags="store.tagsList"
+        :prefix-names="store.prefixNames"
+        @changed="onChanged"
+      />
     </n-popover>
 
     <n-button size="small" quaternary @click="store.archiveOpen = true">

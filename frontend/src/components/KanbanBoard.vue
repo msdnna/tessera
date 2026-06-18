@@ -37,6 +37,7 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { PRIORITY_LABELS } from '@/styles/tokens'
+import { tagNamespace, prefixLabel, buildTagGroups } from '@/utils/tagGroups'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -87,16 +88,12 @@ function onDocPointerDown(e) {
 }
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
+// Friendly display names for tag prefixes (canonical prefix → label), loaded
+// per-project. Falls back to the raw prefix where no name is configured.
+const tagPrefixNames = reactive({})
 
-// Namespace of a tag name ("T: bug" → "T: ", "effort::small" → "effort::").
-function tagNamespace(name) {
-  const i = (name || '').indexOf('::')
-  if (i >= 0) return name.slice(0, i + 2)
-  const j = (name || '').indexOf(': ')
-  if (j >= 0) return name.slice(0, j + 2)
-  return ''
-}
-// Detected namespaces from the workspace tags, for the prefix picker.
+// Detected namespaces from the project tags, for the prefix picker. Labels use
+// the configured friendly name (else the raw prefix), sorted alphabetically.
 const tagPrefixOptions = computed(() => {
   const set = new Set()
   for (const t of tagsList.value) {
@@ -105,7 +102,9 @@ const tagPrefixOptions = computed(() => {
   }
   return [
     { label: 'Все теги', value: '' },
-    ...[...set].sort().map((p) => ({ label: p, value: p })),
+    ...[...set]
+      .map((p) => ({ label: prefixLabel(p, tagPrefixNames), value: p }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
   ]
 })
 // Tags that become columns in tag-grouping mode (filtered by the chosen prefix).
@@ -151,9 +150,21 @@ const priorityFilterOptions = PRIORITY_LABELS.map((label, value) => ({ label, va
 const memberFilterOptions = computed(() =>
   membersList.value.map((m) => ({ label: m.name, value: m.user_id })),
 )
-const tagFilterOptions = computed(() =>
-  tagsList.value.map((t) => ({ label: t.name, value: t.id })),
-)
+// Tag filter menu, grouped by prefix (friendly names). Naive `type:'group'`
+// renders inline section headers — works on desktop and the mobile drill alike.
+// A single prefix-less bucket stays flat (no redundant header).
+const tagFilterMenu = computed(() => {
+  const groups = buildTagGroups(tagsList.value, tagPrefixNames)
+  if (groups.length <= 1) {
+    return (groups[0]?.tags || []).map((t) => ({ label: t.name, key: `ft.${t.id}` }))
+  }
+  return groups.map((g) => ({
+    type: 'group',
+    label: g.label,
+    key: `ftg.${g.key}`,
+    children: g.tags.map((t) => ({ label: t.name, key: `ft.${t.id}` })),
+  }))
+})
 const activeFilterCount = computed(
   () =>
     filters.priorities.length +
@@ -179,7 +190,7 @@ const facetChips = computed(() => {
     kind: 'group',
     label:
       groupMode.value === 'tag'
-        ? `Группировка: теги${tagPrefix.value ? ` · ${tagPrefix.value}` : ''}`
+        ? `Группировка: теги${tagPrefix.value ? ` · ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
         : 'Группировка: статусы',
   })
   sortLevels.value.forEach((l, i) => {
@@ -230,7 +241,7 @@ const addOptions = computed(() => [
   {
     label: 'Фильтр: тег',
     key: 'ft',
-    children: tagFilterOptions.value.map((o) => ({ label: o.label, key: `ft.${o.value}` })),
+    children: tagFilterMenu.value,
   },
   {
     label: 'Фильтр: срок',
@@ -699,14 +710,21 @@ async function loadWorkspaceMeta() {
   const wsId = wsStore.currentId
   const projectId = board.value?.project_id
   if (!wsId || !projectId) return
-  // Tags are project-scoped; members stay workspace-scoped.
-  const [tg, mem] = await Promise.all([projectsApi.tags(projectId), wsApi.members(wsId)])
+  // Tags + prefix names are project-scoped; members stay workspace-scoped.
+  const [tg, mem, pfx] = await Promise.all([
+    projectsApi.tags(projectId),
+    wsApi.members(wsId),
+    projectsApi.tagPrefixes(projectId).catch(() => ({ data: [] })),
+  ])
   for (const k of Object.keys(tagsMap)) delete tagsMap[k]
   for (const t of tg.data || []) tagsMap[t.id] = t
   for (const k of Object.keys(membersMap)) delete membersMap[k]
   for (const m of mem.data || []) membersMap[m.user_id] = m
-  // Mirror tags + context to the store so the header Теги manager works.
+  for (const k of Object.keys(tagPrefixNames)) delete tagPrefixNames[k]
+  for (const p of pfx.data || []) tagPrefixNames[p.prefix] = p.label
+  // Mirror tags + prefix names + context to the store so the header Теги manager works.
   boardViewStore.setTags(tagsList.value)
+  boardViewStore.setPrefixNames({ ...tagPrefixNames })
   boardViewStore.setContext(props.boardId, wsId, projectId)
 }
 
@@ -1232,6 +1250,7 @@ watch(
                       :tags-map="tagsMap"
                       :members-map="membersMap"
                       :tags="tagsList"
+                      :tag-prefix-names="tagPrefixNames"
                       :members="membersList"
                       :ws-id="wsStore.currentId"
                       :project-id="board?.project_id"
@@ -1297,6 +1316,7 @@ watch(
       :ws-id="wsStore.currentId"
       :project-id="board?.project_id"
       :tags="tagsList"
+      :tag-prefix-names="tagPrefixNames"
       :members="membersList"
       @update:show="(v) => v || closeTask()"
       @changed="onChanged"

@@ -148,6 +148,9 @@ func main() {
 			protected.POST("/projects/:id/tags", rh.CreateTag)
 			protected.GET("/projects/:id/tags", rh.ListTags)
 			protected.GET("/workspaces/:id/tags", rh.ListWorkspaceTags)
+			// Tag-prefix display names (provider-neutral; GitLab modal is one editor).
+			protected.GET("/projects/:id/tag-prefixes", rh.ListTagPrefixes)
+			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
 
 			// Notes (workspace-scoped).
 			protected.POST("/workspaces/:id/notes", rh.CreateNote)

@@ -25,6 +25,7 @@ const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () 
 import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
+import { buildTagGroups } from '@/utils/tagGroups'
 import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
 import { useThemeStore } from '@/stores/theme'
@@ -50,11 +51,17 @@ const props = defineProps({
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tags: { type: Array, default: () => [] },
+  tagPrefixNames: { type: Object, default: () => ({}) },
   members: { type: Array, default: () => [] },
   wsId: { type: String, default: null },
   projectId: { type: String, default: null },
 })
 const emit = defineEmits(['open', 'changed'])
+
+// Picker tags grouped by prefix (friendly name); a single prefix-less bucket
+// renders flat without a header.
+const tagPickerGroups = computed(() => buildTagGroups(props.tags, props.tagPrefixNames))
+const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 
 const newTagName = ref('')
 const editingTitle = ref(false)
@@ -571,25 +578,30 @@ async function submitAddSub() {
             </n-popover>
           </template>
           <div class="menu tagmenu">
-            <div class="chip-grid">
-              <button
-                v-for="t in tags"
-                :key="t.id"
-                class="tagchip"
-                :class="{ on: hasTag(t.id) }"
-                :style="
-                  hasTag(t.id)
-                    ? { background: hueGrad(t.color), color: onColor(t.color), borderColor: 'transparent' }
-                    : {
-                        background: softFill(t.color),
-                        color: tagText(t.color),
-                        borderColor: (t.color || '#888') + '66',
-                      }
-                "
-                @click="toggleTag(t.id)"
-              >
-                {{ t.name }}
-              </button>
+            <div class="chip-groups">
+              <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
+                <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
+                <div class="chip-grid">
+                  <button
+                    v-for="t in g.tags"
+                    :key="t.id"
+                    class="tagchip"
+                    :class="{ on: hasTag(t.id) }"
+                    :style="
+                      hasTag(t.id)
+                        ? { background: hueGrad(t.color), color: onColor(t.color), borderColor: 'transparent' }
+                        : {
+                            background: softFill(t.color),
+                            color: tagText(t.color),
+                            borderColor: (t.color || '#888') + '66',
+                          }
+                    "
+                    @click="toggleTag(t.id)"
+                  >
+                    {{ t.name }}
+                  </button>
+                </div>
+              </div>
             </div>
             <n-input
               v-model:value="newTagName"
@@ -1035,6 +1047,16 @@ async function submitAddSub() {
   max-width: 80vw;
   max-height: 260px;
   overflow-y: auto;
+}
+.chip-grp-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+  margin: 6px 0 4px;
+}
+.chip-group:first-child .chip-grp-head {
+  margin-top: 0;
 }
 .chip-grid {
   display: flex;

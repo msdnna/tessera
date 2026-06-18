@@ -1,9 +1,10 @@
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { NInput, NButton, NText, NIcon, NPopconfirm, useMessage } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
 import { projects as projectsApi } from '@/api'
 import { hueGrad, readableHue } from '@/utils/gradient'
+import { buildTagGroups } from '@/utils/tagGroups'
 import { useThemeStore } from '@/stores/theme'
 
 const theme = useThemeStore()
@@ -12,7 +13,13 @@ const tagText = (c) => readableHue(c, theme.isDark)
 const props = defineProps({
   projectId: { type: String, default: null },
   tags: { type: Array, default: () => [] },
+  prefixNames: { type: Object, default: () => ({}) },
 })
+
+// Tags grouped by prefix (friendly name); a single prefix-less bucket renders
+// flat without a header.
+const groups = computed(() => buildTagGroups(props.tags, props.prefixNames))
+const showHeaders = computed(() => groups.value.length > 1)
 const emit = defineEmits(['changed'])
 
 const message = useMessage()
@@ -79,8 +86,10 @@ async function add() {
   <div class="tagmgr">
     <n-text depth="3" class="head">Теги проекта</n-text>
     <div class="list">
-      <div v-for="t in tags" :key="t.id" class="tag-block">
-        <div class="tag-row">
+      <template v-for="g in groups" :key="g.key">
+        <n-text v-if="showHeaders" depth="3" class="grp-head">{{ g.label }}</n-text>
+        <div v-for="t in g.tags" :key="t.id" class="tag-block">
+          <div class="tag-row">
           <n-input
             v-if="editingId === t.id"
             :ref="(el) => el && (nameInput = el)"
@@ -118,8 +127,9 @@ async function add() {
             @mousedown.prevent
             @click="setColor(t, s)"
           />
+          </div>
         </div>
-      </div>
+      </template>
       <n-text v-if="!tags.length" depth="3" class="empty">Тегов пока нет.</n-text>
     </div>
     <div class="add">
@@ -137,6 +147,17 @@ async function add() {
   display: block;
   font-size: 12px;
   margin-bottom: 8px;
+}
+.grp-head {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  margin: 6px 0 2px;
+}
+.grp-head:first-child {
+  margin-top: 0;
 }
 .list {
   display: flex;

@@ -135,6 +135,8 @@ export const projects = {
   createTag: (id, data) => api.post(`/projects/${id}/tags`, data),
   updateTag: (tagId, data) => api.patch(`/tags/${tagId}`, data),
   deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
+  tagPrefixes: (id) => api.get(`/projects/${id}/tag-prefixes`),
+  setTagPrefixes: (id, prefixes) => api.put(`/projects/${id}/tag-prefixes`, { prefixes }),
 }
 
 export const groups = {

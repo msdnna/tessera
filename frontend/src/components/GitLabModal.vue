@@ -14,6 +14,7 @@ import {
 } from 'naive-ui'
 import { TrashOutline, AddOutline, SyncOutline, LogoGitlab } from '@vicons/ionicons5'
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
+import { canonPrefix } from '@/utils/tagGroups'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PRIORITY_LABELS } from '@/styles/tokens'
@@ -70,6 +71,12 @@ const tagKeepPrefix = ref(true)
 // Generic rule list. Each: { match, match_type, action, keep_prefix, map:[{k,v}] }
 const rules = ref([])
 const boardOptions = ref([])
+const boardProject = ref({}) // board id → project id, for prefix-name targeting
+// Prefix display names loaded for the integration project (canonical → label).
+// Kept so save() can merge rule-bound names without clobbering names set for
+// prefixes that have no rule here.
+const loadedPrefixNames = ref({})
+const targetProjectId = computed(() => boardProject.value[boardId.value] || null)
 const columnOptions = ref([])
 const saving = ref(false)
 const syncing = ref(false)
@@ -125,15 +132,40 @@ const lastSyncedText = computed(() =>
 
 async function loadBoards() {
   const all = []
+  const bp = {}
   for (const p of ws.projects) {
     try {
       const bs = (await projApi.boards(p.id)).data || []
-      for (const b of bs) all.push({ label: `${p.name} / ${b.name}`, value: b.id })
+      for (const b of bs) {
+        all.push({ label: `${p.name} / ${b.name}`, value: b.id })
+        bp[b.id] = p.id
+      }
     } catch {
       /* skip a project we can't read */
     }
   }
   boardOptions.value = all
+  boardProject.value = bp
+}
+
+// Load the integration project's prefix display names and prefill each
+// prefix-rule's friendly name. Re-runs when the target board (→ project) changes.
+async function loadPrefixNames() {
+  loadedPrefixNames.value = {}
+  const pid = targetProjectId.value
+  if (pid) {
+    try {
+      const { data } = await projApi.tagPrefixes(pid)
+      const m = {}
+      for (const p of data || []) m[p.prefix] = p.label
+      loadedPrefixNames.value = m
+    } catch {
+      /* a fresh project may have none */
+    }
+  }
+  for (const rule of rules.value) {
+    if (rule.match_type === 'prefix') rule.label = loadedPrefixNames.value[canonPrefix(rule.match)] || ''
+  }
 }
 
 async function loadColumns(id) {
@@ -168,12 +200,14 @@ async function loadIntegration() {
       match_type: rule.match_type || 'prefix',
       action: rule.action || 'tag',
       keep_prefix: rule.keep_prefix !== false,
+      label: '', // friendly prefix name, filled by loadPrefixNames()
       map: Object.entries(rule.value_map || {}).map(([k, v]) => ({
         k,
         v: rule.action === 'priority' ? Number(v) : v,
       })),
     }))
     if (boardId.value) await loadColumns(boardId.value)
+    await loadPrefixNames()
   } catch (e) {
     message.error(e.message)
   }
@@ -182,10 +216,11 @@ async function loadIntegration() {
 function onBoardChange(id) {
   boardId.value = id
   loadColumns(id)
+  loadPrefixNames()
 }
 
 function addRule() {
-  rules.value.push({ match: '', match_type: 'prefix', action: 'tag', keep_prefix: true, map: [] })
+  rules.value.push({ match: '', match_type: 'prefix', action: 'tag', keep_prefix: true, label: '', map: [] })
 }
 function addMapRow(rule) {
   rule.map.push({ k: '', v: '' })
@@ -224,6 +259,25 @@ async function save() {
       label_rules,
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
+    // Persist friendly prefix names to the target project. Merge over the loaded
+    // set so prefixes without a rule here aren't dropped; a blanked name removes.
+    const pid = targetProjectId.value
+    if (pid) {
+      const merged = { ...loadedPrefixNames.value }
+      for (const rule of rules.value) {
+        if (rule.match_type !== 'prefix') continue
+        const k = canonPrefix(rule.match)
+        if (!k) continue
+        const label = (rule.label || '').trim()
+        if (label) merged[k] = label
+        else delete merged[k]
+      }
+      await projApi.setTagPrefixes(
+        pid,
+        Object.entries(merged).map(([prefix, label]) => ({ prefix, label })),
+      )
+      loadedPrefixNames.value = merged
+    }
     message.success('Настройки интеграции сохранены')
   } catch (e) {
     message.error(e.message)
@@ -379,6 +433,15 @@ watch(
               <n-icon :component="TrashOutline" />
             </n-button>
           </div>
+          <div v-if="rule.match_type === 'prefix'" class="gl-ropt">
+            <n-text depth="3" class="lbl">Понятное имя</n-text>
+            <n-input
+              v-model:value="rule.label"
+              size="small"
+              placeholder="напр. Статус"
+              class="gl-rname"
+            />
+          </div>
           <div v-if="rule.action === 'tag'" class="gl-ropt">
             <n-text depth="3" class="lbl">Сохранять префикс</n-text>
             <n-switch v-model:value="rule.keep_prefix" size="small" />
@@ -530,6 +593,10 @@ watch(
   align-items: center;
   gap: 10px;
   margin-top: 8px;
+}
+.gl-rname {
+  flex: 1;
+  max-width: 240px;
 }
 .gl-rmap {
   margin-top: 8px;

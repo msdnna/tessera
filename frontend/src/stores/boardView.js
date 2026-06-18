@@ -10,6 +10,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const wsId = ref(null)
   const projectId = ref(null) // the open board's project — scopes its tags
   const tagsList = ref([]) // for the header Теги manager
+  const prefixNames = ref({}) // canonical tag-prefix → friendly label
   const layout = ref('board') // 'board' | 'list' | 'calendar'
   const archiveOpen = ref(false)
   const reloadNonce = ref(0) // header-driven changes ask the board to reload
@@ -26,12 +27,16 @@ export const useBoardViewStore = defineStore('boardView', () => {
   function setTags(list) {
     tagsList.value = list || []
   }
+  function setPrefixNames(map) {
+    prefixNames.value = map || {}
+  }
   function reset() {
     active.value = false
     boardId.value = null
     wsId.value = null
     projectId.value = null
     tagsList.value = []
+    prefixNames.value = {}
     archiveOpen.value = false
   }
 
@@ -41,12 +46,14 @@ export const useBoardViewStore = defineStore('boardView', () => {
     wsId,
     projectId,
     tagsList,
+    prefixNames,
     layout,
     archiveOpen,
     reloadNonce,
     bumpReload,
     setContext,
     setTags,
+    setPrefixNames,
     reset,
   }
 })

@@ -47,6 +47,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
+import { buildTagGroups } from '@/utils/tagGroups'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
 import MarkdownEditor from './MarkdownEditor.vue'
@@ -61,6 +62,7 @@ const props = defineProps({
   wsId: { type: String, default: null },
   projectId: { type: String, default: null },
   tags: { type: Array, default: () => [] },
+  tagPrefixNames: { type: Object, default: () => ({}) },
   members: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:show', 'changed', 'open'])
@@ -174,6 +176,10 @@ const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value })
 const tagObjs = computed(() =>
   selectedTags.value.map((id) => props.tags.find((t) => t.id === id)).filter(Boolean),
 )
+// Picker tags grouped by prefix (friendly name); a single prefix-less bucket
+// renders flat without a header.
+const tagPickerGroups = computed(() => buildTagGroups(props.tags, props.tagPrefixNames))
+const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 
 // The tags trigger shows as many WHOLE tag chips as fit on one line, then a
 // "+N". To pick the count without a render⇄measure feedback loop, an invisible
@@ -894,29 +900,34 @@ function eventText(e) {
                   </button>
                 </template>
                 <div class="menu">
-                  <div class="chip-grid">
-                    <button
-                      v-for="t in tags"
-                      :key="t.id"
-                      class="tagchip"
-                      :class="{ on: selectedTags.includes(t.id) }"
-                      :style="
-                        selectedTags.includes(t.id)
-                          ? {
-                              background: hueGrad(t.color),
-                              color: onColor(t.color),
-                              borderColor: 'transparent',
-                            }
-                          : {
-                              background: softFill(t.color),
-                              color: tagText(t.color),
-                              borderColor: (t.color || '#888') + '66',
-                            }
-                      "
-                      @click="toggleTag(t.id)"
-                    >
-                      {{ t.name }}
-                    </button>
+                  <div class="chip-groups">
+                    <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
+                      <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
+                      <div class="chip-grid">
+                        <button
+                          v-for="t in g.tags"
+                          :key="t.id"
+                          class="tagchip"
+                          :class="{ on: selectedTags.includes(t.id) }"
+                          :style="
+                            selectedTags.includes(t.id)
+                              ? {
+                                  background: hueGrad(t.color),
+                                  color: onColor(t.color),
+                                  borderColor: 'transparent',
+                                }
+                              : {
+                                  background: softFill(t.color),
+                                  color: tagText(t.color),
+                                  borderColor: (t.color || '#888') + '66',
+                                }
+                          "
+                          @click="toggleTag(t.id)"
+                        >
+                          {{ t.name }}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <n-input
                     v-model:value="newTagName"
@@ -1577,6 +1588,21 @@ function eventText(e) {
 }
 .chk {
   color: var(--t-primary);
+}
+.chip-groups {
+  max-height: 320px;
+  overflow-y: auto;
+  max-width: 260px;
+}
+.chip-grp-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+  margin: 6px 0 4px;
+}
+.chip-group:first-child .chip-grp-head {
+  margin-top: 0;
 }
 .chip-grid {
   display: flex;

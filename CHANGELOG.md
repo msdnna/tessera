@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.74.0] — 2026-06-18
+- **Friendly names for tag prefixes.** Tag prefixes (`S:`, `P:`, `effort::`, …) can
+  now carry a human-readable name, configured per-project in the GitLab integration
+  modal next to each prefix rule (e.g. `S:` → «Статус»). Names are stored
+  provider-neutrally in the project, not in the GitLab rules — the GitLab modal is
+  just one editor (user-tag-prefix editing is a planned follow-up).
+- The board composer-bar shows the friendly name instead of the raw prefix:
+  grouping menu («По тегам · Статус»), the active-grouping chip, and the
+  «Фильтр: тег» menu, which is now split into sections per prefix.
+- Tag pickers are now **grouped by prefix** with section headers — on task cards,
+  in the task modal, and in the Теги-проекта manager. Tags are sorted within each
+  group; prefixes with no friendly name keep their raw prefix as the header, and
+  prefix-less tags fall under «Вне группы» (always last).
+
 ### [0.73.1] — 2026-06-18
 - Sidebar tree: removed the stray extra gap under a group. The empty group/project
   drop-zones now only claim their droppable height while a drag is in progress, so
@@ -1250,6 +1264,14 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.45.0] — 2026-06-18
+- Tag-prefix display names: new `tag_prefixes` table (migration 0026) maps a
+  canonical prefix (trimmed + lowercased, e.g. `s:`, `effort::`) to a friendly
+  label, scoped per-project (mirrors tags). Endpoints `GET /projects/:id/tag-prefixes`
+  and `PUT /projects/:id/tag-prefixes` (replace-all; canonicalises keys, drops blank
+  labels, dedups). Provider-neutral on purpose — the GitLab modal is one editor, but
+  the store carries no GitLab specifics. Broadcasts `tag_prefixes.updated`.
 
 ### [0.44.0] — 2026-06-18
 - Board URLs nest under the project: projects gain a globally-unique `slug` and
