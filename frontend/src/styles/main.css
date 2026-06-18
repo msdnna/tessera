@@ -240,8 +240,10 @@ body {
 .sb-ghost > * {
   visibility: hidden;
 }
-/* Keep empty group lists droppable (so a project can land in an empty group). */
-.sb-dropzone {
+/* Empty drop-zones need a droppable height only while a drag is active — at
+   rest that 6px is a stray gap under groups (the unused subgroups/projects
+   zone). .sb-dragging is toggled on the sidebar root during a drag. */
+.sb-dragging .sb-dropzone {
   min-height: 6px;
 }
 

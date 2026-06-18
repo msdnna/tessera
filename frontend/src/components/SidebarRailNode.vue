@@ -39,8 +39,17 @@ const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUp
         >
           <ProjectIcon :icon="node.icon" :initials="initials" :size="15" />
         </span>
-        <span v-else class="gicon">
-          <n-icon :component="FolderOutline" :size="18" />
+        <span
+          v-else
+          class="gicon"
+          :class="{ 'gicon-bare': !node.color || node.color === 'transparent' }"
+          :style="{
+            background:
+              node.color && node.color !== 'transparent' ? hueGrad(node.color) : 'transparent',
+          }"
+        >
+          <ProjectIcon v-if="node.icon" :icon="node.icon" :initials="initials" :size="15" />
+          <n-icon v-else :component="FolderOutline" :size="18" />
         </span>
       </button>
     </template>
@@ -87,6 +96,12 @@ const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUp
   justify-content: center;
   width: 26px;
   height: 26px;
+  border-radius: 6px;
+  color: #fff;
+  flex: none;
+}
+/* No coloured square — plain folder/glyph sits on the rail. */
+.gicon-bare {
   color: var(--t-text2);
 }
 .rail-pop {

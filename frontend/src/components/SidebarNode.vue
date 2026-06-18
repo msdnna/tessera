@@ -17,7 +17,12 @@ const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () 
 import { workspaces as wsApi, groups as groupsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
+import {
+  moveSidebarGroup,
+  moveSidebarProject,
+  onDragStart,
+  onDragEnd,
+} from '@/composables/useSidebarDnd'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
@@ -230,6 +235,8 @@ async function commitRename() {
         :delay="160"
         :delay-on-touch-only="true"
         :touch-start-threshold="6"
+        @start="onDragStart"
+        @end="onDragEnd"
         @change="onGrpChange"
       >
         <template #item="{ element }">
@@ -246,6 +253,8 @@ async function commitRename() {
         :delay="160"
         :delay-on-touch-only="true"
         :touch-start-threshold="6"
+        @start="onDragStart"
+        @end="onDragEnd"
         @change="onProjChange"
       >
         <template #item="{ element }">

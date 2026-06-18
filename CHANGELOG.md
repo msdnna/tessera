@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.73.1] — 2026-06-18
+- Sidebar tree: removed the stray extra gap under a group. The empty group/project
+  drop-zones now only claim their droppable height while a drag is in progress, so
+  at rest a group sits flush with its children (matching project→board and
+  group→group nesting).
+- Collapsed sidebar rail: groups now show their own custom icon/colour (same as the
+  expanded tree) instead of always rendering a generic folder glyph.
+
 ### [0.73.0] — 2026-06-18
 - Board URLs are now nested: `/project/<project-slug>/board/<board-slug>` (e.g.
   `/project/rabota/board/obshchie-zadachi`). This removes the confusing global

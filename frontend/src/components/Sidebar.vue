@@ -25,7 +25,13 @@ import {
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { moveSidebarGroup, moveSidebarProject } from '@/composables/useSidebarDnd'
+import {
+  moveSidebarGroup,
+  moveSidebarProject,
+  sidebarDragging,
+  onDragStart,
+  onDragEnd,
+} from '@/composables/useSidebarDnd'
 import SidebarNode from './SidebarNode.vue'
 import ProjectRow from './ProjectRow.vue'
 import SidebarFooter from './SidebarFooter.vue'
@@ -94,7 +100,7 @@ async function createWorkspace() {
 </script>
 
 <template>
-  <div class="sidebar" :class="{ collapsed }">
+  <div class="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
     <div class="brand">
       <span class="brand-mark" role="img" aria-label="Tessera" />
       <!-- Tools live here (right of the logo) when expanded; when the rail is
@@ -179,6 +185,8 @@ async function createWorkspace() {
         :delay="160"
         :delay-on-touch-only="true"
         :touch-start-threshold="6"
+        @start="onDragStart"
+        @end="onDragEnd"
         @change="onRootGrp"
       >
         <template #item="{ element }">
@@ -195,6 +203,8 @@ async function createWorkspace() {
         :delay="160"
         :delay-on-touch-only="true"
         :touch-start-threshold="6"
+        @start="onDragStart"
+        @end="onDragEnd"
         @change="onRootProj"
       >
         <template #item="{ element }">

@@ -1,4 +1,13 @@
+import { ref } from 'vue'
 import { projects as projApi, groups as groupsApi } from '@/api'
+
+// True while a sidebar drag is in progress. Empty drop-zones only need their
+// 6px droppable height during a drag — at rest that height is just a stray gap
+// under groups (the unused subgroups/projects zone). Toggled from every
+// draggable's @start/@end.
+export const sidebarDragging = ref(false)
+export const onDragStart = () => (sidebarDragging.value = true)
+export const onDragEnd = () => (sidebarDragging.value = false)
 
 // Shared vuedraggable @change handlers for the sidebar tree. `list` is the
 // mirror array already mutated by vuedraggable; newIndex points into it.
