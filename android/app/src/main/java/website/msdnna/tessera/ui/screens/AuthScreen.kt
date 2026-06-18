@@ -157,7 +157,7 @@ fun AuthScreen(
                                     serverDraft = it
                                     onServerUrlChange(it)
                                 },
-                                placeholder = "https://tessera.website.msdnna",
+                                placeholder = "https://tessera.msdnna.website",
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                             )

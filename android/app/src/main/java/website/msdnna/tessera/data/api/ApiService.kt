@@ -258,6 +258,11 @@ interface ApiService {
     @GET("projects/{id}/tags")
     suspend fun tags(@Path("id") projectId: String): List<Tag>?
 
+    // Read-only union of every project's tags in the workspace — for the Home
+    // ("Моя работа") dashboard, which spans projects. (Creation is per-project.)
+    @GET("workspaces/{id}/tags")
+    suspend fun workspaceTags(@Path("id") workspaceId: String): List<Tag>?
+
     @POST("projects/{id}/tags")
     suspend fun createTag(@Path("id") projectId: String, @Body body: CreateTagRequest): Tag
 

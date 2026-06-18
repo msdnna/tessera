@@ -11,5 +11,5 @@ class HomeRepository {
 
     suspend fun summary(workspaceId: String): WorkspaceSummary = api.workspaceSummary(workspaceId)
     suspend fun tasks(workspaceId: String): List<WorkspaceTask> = api.workspaceTasks(workspaceId).orEmpty()
-    suspend fun tags(workspaceId: String): List<Tag> = api.tags(workspaceId).orEmpty()
+    suspend fun tags(workspaceId: String): List<Tag> = api.workspaceTags(workspaceId).orEmpty()
 }

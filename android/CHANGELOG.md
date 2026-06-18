@@ -5,6 +5,25 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.21.2 — 2026-06-19
+- **GitLab-synced due dates no longer show a phantom time offset.** Date-only dues
+  (GitLab issues/milestones, legacy rows) were detected by a brittle string check
+  (`…T00:00:00`), which broke when the server serialises the same UTC-midnight
+  instant with its `+03:00` offset (`…T03:00:00+03:00`) — the card then rendered a
+  bogus «03:00». Detection now parses the instant and checks UTC-midnight (mirrors
+  the web `formatDue`), rendering such dues as date-only in the UTC calendar.
+- **Default server URL fixed** to `https://tessera.msdnna.website` (was a malformed
+  `tessera.website.msdnna`), in both the build default and the login hint.
+- **Friendly error messages.** Auth/API failures are now run through a
+  `humanizeError` map ported from the web client, so e.g. «invalid credentials»
+  shows «Неверный email или пароль» instead of the raw English sentinel.
+- **«Моя работа» no longer 404s.** The Home dashboard fetched tags from the
+  project-scoped `projects/{id}/tags` route using a *workspace* id (a leftover from
+  the per-project tags migration); it now uses the read-only workspace-scoped
+  `workspaces/{id}/tags` endpoint.
+- **Drawer header.** Dropped the «Tessera» wordmark next to the logo, leaving room
+  for future header controls.
+
 ## 0.21.1 — 2026-06-19
 - **Tag grouping fixes** (follow-up to 0.21.0). The «Фильтр: тег» / grouping menus
   now scroll when they exceed the screen height (long tag lists were clipped);

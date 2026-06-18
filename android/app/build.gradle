@@ -23,7 +23,7 @@ android {
         // Production server the app talks to by default. Overridable at
         // runtime (DataStore) from the login screen's advanced section so the
         // same APK can point at a dev/test backend.
-        buildConfigField "String", "DEFAULT_BASE_URL", "\"https://tessera.website.msdnna\""
+        buildConfigField "String", "DEFAULT_BASE_URL", "\"https://tessera.msdnna.website\""
     }
 
     buildFeatures {

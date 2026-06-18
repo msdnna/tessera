@@ -162,8 +162,9 @@ fun Sidebar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 MtLogo(size = 22.dp)
-                Spacer(Modifier.width(10.dp))
-                Text("Tessera", color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                // Brand wordmark intentionally omitted — the spacer reserves room
+                // for future header controls while keeping the icons right-aligned.
+                Spacer(Modifier.weight(1f))
                 IonIconButton(Ion.GIT_BRANCH, onClick = onOpenGitlab)
                 IonIconButton(Ion.NOTIFICATIONS, onClick = onOpenNotifications)
                 IonIconButton(Ion.PEOPLE, onClick = onOpenMembers)

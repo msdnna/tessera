@@ -76,9 +76,11 @@ fun longDate(iso: String?): String {
  */
 fun dueLabel(iso: String?, withTime: Boolean = true): String {
     if (iso.isNullOrBlank() || iso.length < 10) return ""
-    // Pure UTC-midnight → date-only; longDate reads the raw UTC clock.
-    if (iso.length >= 19 && iso.substring(11, 19) == "00:00:00") return longDate(iso)
     val millis = parseInstantMillis(iso) ?: return longDate(iso)
+    // A pure UTC-midnight instant is a date-only due (GitLab/legacy) — render the
+    // UTC calendar date, no time, so a server that serialises with a +03:00 offset
+    // (e.g. `…T03:00:00+03:00`) doesn't surface a phantom "03:00". Mirrors web.
+    if (isUtcMidnight(millis)) return utcLongDate(millis)
     val cal = Calendar.getInstance().apply { timeInMillis = millis }
     val day = cal.get(Calendar.DAY_OF_MONTH)
     val month = months[cal.get(Calendar.MONTH)]
@@ -92,9 +94,11 @@ fun dueLabel(iso: String?, withTime: Boolean = true): String {
 /** A compact due label for cards: `10 июн` plus `14:30` when a time is set. */
 fun dueShort(iso: String?): String {
     if (iso.isNullOrBlank() || iso.length < 10) return ""
-    // Date-only (UTC midnight) stays terse, read off the raw UTC clock.
-    if (iso.length >= 19 && iso.substring(11, 19) == "00:00:00") return shortDate(iso)
     val millis = parseInstantMillis(iso) ?: return shortDate(iso)
+    // A pure UTC-midnight instant is a date-only due (GitLab/legacy) — render the
+    // UTC calendar date, no time, so a +03:00 server offset doesn't push it to
+    // "03:00". A real timed/local-midnight due falls through to local rendering.
+    if (isUtcMidnight(millis)) return utcShortDate(millis)
     val cal = Calendar.getInstance().apply { timeInMillis = millis }
     val day = cal.get(Calendar.DAY_OF_MONTH)
     val month = months[cal.get(Calendar.MONTH)]
@@ -136,6 +140,33 @@ fun parseInstantMillis(iso: String?): Long? {
         }.getOrNull()?.let { return it.time }
     }
     return null
+}
+
+/** True when [millis] lands exactly on UTC midnight — i.e. a date-only due. */
+private fun isUtcMidnight(millis: Long): Boolean {
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
+    return cal.get(Calendar.HOUR_OF_DAY) == 0 &&
+        cal.get(Calendar.MINUTE) == 0 &&
+        cal.get(Calendar.SECOND) == 0
+}
+
+/** `10 июн` (+ year when not current) from the UTC calendar date of [millis]. */
+private fun utcShortDate(millis: Long): String {
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
+    val day = cal.get(Calendar.DAY_OF_MONTH)
+    val month = months[cal.get(Calendar.MONTH)]
+    val year = cal.get(Calendar.YEAR)
+    val suffix = if (year.toString() == currentYear()) "" else " $year"
+    return "$day $month$suffix"
+}
+
+/** `4 июн. 2026 г.` from the UTC calendar date of [millis]. */
+private fun utcLongDate(millis: Long): String {
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
+    val day = cal.get(Calendar.DAY_OF_MONTH)
+    val month = months[cal.get(Calendar.MONTH)]
+    val year = cal.get(Calendar.YEAR)
+    return "$day $month. $year г."
 }
 
 /** Epoch millis → UTC ISO-8601 (`yyyy-MM-dd'T'HH:mm:ss'Z'`) for sending to the backend. */
