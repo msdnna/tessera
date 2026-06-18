@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/recur"
 	"tessera/middleware"
 )
 
@@ -269,11 +271,12 @@ func (h *API) UpdateTask(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title       string     `json:"title" binding:"required"`
-		Description string     `json:"description"`
-		Priority    int32      `json:"priority"`
-		DueDate     *time.Time `json:"due_date"`
-		Completed   bool       `json:"completed"`
+		Title       string           `json:"title" binding:"required"`
+		Description string           `json:"description"`
+		Priority    int32            `json:"priority"`
+		DueDate     *time.Time       `json:"due_date"`
+		Completed   bool             `json:"completed"`
+		Recurrence  *json.RawMessage `json:"recurrence"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -290,13 +293,25 @@ func (h *API) UpdateTask(c *gin.Context) {
 		completedAt = nil
 	}
 
+	// Normalise the recurrence rule and manage its anchor (or NULL if invalid).
+	recurrence := recurrenceToStore(req.Recurrence, req.DueDate, t.Recurrence, t.DueDate)
+
 	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
 		ID: id, Title: req.Title, Description: req.Description,
 		Priority: req.Priority, DueDate: req.DueDate, CompletedAt: completedAt,
+		Recurrence: recurrence,
 	})
 	if err != nil {
 		fail(c)
 		return
+	}
+
+	// A recurring task that just entered the completed state is rescheduled: its
+	// due date advances one period and it returns to the board's first column.
+	if t.CompletedAt == nil && updated.CompletedAt != nil {
+		if rescheduled, ok := h.recurOnComplete(c, updated, wsID); ok {
+			updated = rescheduled
+		}
 	}
 	// A manual due-date change on a GitLab-linked task wins over the sync.
 	if !sameTime(t.DueDate, updated.DueDate) {
@@ -406,14 +421,21 @@ func (h *API) MoveTask(c *gin.Context) {
 			if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
 				ID: updated.ID, Title: updated.Title, Description: updated.Description,
 				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
+				Recurrence: updated.Recurrence,
 			}); derr == nil {
 				updated = done
 				h.logEvent(c, id, "completed", nil)
+				// A recurring task bounces straight back out of done with its due
+				// date advanced — overriding the column move the user just made.
+				if rescheduled, ok := h.recurOnComplete(c, updated, wsID); ok {
+					updated = rescheduled
+				}
 			}
 		case sourceIsDone && !targetIsDone && updated.CompletedAt != nil:
 			if reopened, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
 				ID: updated.ID, Title: updated.Title, Description: updated.Description,
 				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: nil,
+				Recurrence: updated.Recurrence,
 			}); derr == nil {
 				updated = reopened
 				h.logEvent(c, id, "reopened", nil)
@@ -759,6 +781,75 @@ func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID
 		next = &t.Position
 	}
 	return prev, next, true
+}
+
+// recurrenceToStore validates a client-supplied recurrence rule and returns its
+// canonical JSON form (or nil for an absent/invalid rule). For monthly/yearly it
+// manages the day-of-month anchor: the anchor is re-derived from the due date
+// when the user changes the due date or the frequency, and otherwise carried over
+// from the previously stored rule — so unrelated edits don't reset an anchor that
+// a short-month clamp has temporarily moved (e.g. the 30th showing as Feb 28).
+func recurrenceToStore(reqRaw *json.RawMessage, reqDue *time.Time, prevRaw *json.RawMessage, prevDue *time.Time) *json.RawMessage {
+	rule, ok := recur.Parse(reqRaw)
+	if !ok {
+		return nil
+	}
+	if rule.Freq == recur.FreqMonthly || rule.Freq == recur.FreqYearly {
+		if prev, hadPrev := recur.Parse(prevRaw); hadPrev && prev.Freq == rule.Freq && sameTime(reqDue, prevDue) {
+			rule.Day, rule.Month = prev.Day, prev.Month
+		} else if reqDue != nil {
+			rule = rule.WithAnchor(*reqDue)
+		}
+	}
+	canon, _ := rule.Marshal()
+	return canon
+}
+
+// recurOnComplete reschedules a recurring task that has just been completed: its
+// due date advances one period (from the due date, not "now", so closing it late
+// keeps the cadence), it returns to the board's first column with completion
+// cleared, and its direct subtasks are reopened. Returns the rescheduled task and
+// true when it acted; (t, false) for a non-recurring task or one without a due
+// date (nothing to advance).
+func (h *API) recurOnComplete(c *gin.Context, t db.Task, wsID uuid.UUID) (db.Task, bool) {
+	rule, ok := recur.Parse(t.Recurrence)
+	if !ok || t.DueDate == nil {
+		return t, false
+	}
+	next := rule.Next(*t.DueDate)
+
+	// Advance the due date and reopen the task (clear completion).
+	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
+		ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
+		DueDate: &next, CompletedAt: nil, Recurrence: t.Recurrence,
+	})
+	if err != nil {
+		return t, false
+	}
+
+	// Bounce it back to the board's first ("to do") column.
+	if cols, cerr := h.q.ListColumns(c, t.BoardID); cerr == nil && len(cols) > 0 {
+		first := cols[0]
+		if first.ID != updated.ColumnID {
+			max, merr := h.q.MaxTaskPositionInColumn(c, first.ID)
+			if merr == nil {
+				if moved, mverr := h.q.MoveTask(c, db.MoveTaskParams{
+					ID: updated.ID, ColumnID: first.ID, Position: positionBetween(&max, nil),
+				}); mverr == nil {
+					updated = moved
+				}
+			}
+		}
+	}
+
+	// Reset the checklist: reopen any completed direct subtasks.
+	_ = h.q.ReopenSubtasks(c, &t.ID)
+
+	h.logEvent(c, t.ID, "recurred", map[string]any{"due": next})
+	h.notifyTaskParticipants(c, updated, wsID, "recurred",
+		fmt.Sprintf("Повторяемая задача #%s перенесена на %s",
+			taskRef(updated.Number), next.Format("02.01.2006")))
+	return updated, true
 }
 
 func orEmptyTags(tags []db.Tag) []db.Tag {

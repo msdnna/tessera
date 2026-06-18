@@ -118,9 +118,16 @@ FROM tasks WHERE column_id = $1 AND parent_id IS NULL;
 
 -- name: UpdateTask :one
 UPDATE tasks
-SET title = $2, description = $3, priority = $4, due_date = $5, completed_at = $6, updated_at = now()
+SET title = $2, description = $3, priority = $4, due_date = $5, completed_at = $6,
+    recurrence = $7, updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- ReopenSubtasks clears the completion of a recurring task's direct subtasks when
+-- the parent recurs, so a checklist starts fresh for the next occurrence.
+-- name: ReopenSubtasks :exec
+UPDATE tasks SET completed_at = NULL, updated_at = now()
+WHERE parent_id = $1 AND completed_at IS NOT NULL;
 
 -- name: UpdateTaskDueDate :exec
 UPDATE tasks SET due_date = $2, updated_at = now() WHERE id = $1;

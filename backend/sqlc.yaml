@@ -29,3 +29,10 @@ sql:
             go_type:
               type: "time.Time"
               pointer: true
+          # Recurrence is raw JSON: as *json.RawMessage it round-trips through pgx
+          # and serialises as real JSON in task responses (not base64 like []byte).
+          - column: "tasks.recurrence"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true

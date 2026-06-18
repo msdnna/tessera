@@ -5,6 +5,7 @@
 package db
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -241,24 +242,25 @@ type TagPrefix struct {
 }
 
 type Task struct {
-	ID               uuid.UUID  `json:"id"`
-	BoardID          uuid.UUID  `json:"board_id"`
-	ColumnID         uuid.UUID  `json:"column_id"`
-	ParentID         *uuid.UUID `json:"parent_id"`
-	Title            string     `json:"title"`
-	Description      string     `json:"description"`
-	Priority         int32      `json:"priority"`
-	DueDate          *time.Time `json:"due_date"`
-	Position         float64    `json:"position"`
-	CreatedBy        *uuid.UUID `json:"created_by"`
-	CompletedAt      *time.Time `json:"completed_at"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	ArchivedAt       *time.Time `json:"archived_at"`
-	Number           *int64     `json:"number"`
-	DueLeadMinutes   *int32     `json:"due_lead_minutes"`
-	DueRepeatMinutes *int32     `json:"due_repeat_minutes"`
-	DueNotifyEnabled *bool      `json:"due_notify_enabled"`
+	ID               uuid.UUID        `json:"id"`
+	BoardID          uuid.UUID        `json:"board_id"`
+	ColumnID         uuid.UUID        `json:"column_id"`
+	ParentID         *uuid.UUID       `json:"parent_id"`
+	Title            string           `json:"title"`
+	Description      string           `json:"description"`
+	Priority         int32            `json:"priority"`
+	DueDate          *time.Time       `json:"due_date"`
+	Position         float64          `json:"position"`
+	CreatedBy        *uuid.UUID       `json:"created_by"`
+	CompletedAt      *time.Time       `json:"completed_at"`
+	CreatedAt        time.Time        `json:"created_at"`
+	UpdatedAt        time.Time        `json:"updated_at"`
+	ArchivedAt       *time.Time       `json:"archived_at"`
+	Number           *int64           `json:"number"`
+	DueLeadMinutes   *int32           `json:"due_lead_minutes"`
+	DueRepeatMinutes *int32           `json:"due_repeat_minutes"`
+	DueNotifyEnabled *bool            `json:"due_notify_enabled"`
+	Recurrence       *json.RawMessage `json:"recurrence"`
 }
 
 type TaskAssignee struct {

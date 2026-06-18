@@ -1319,6 +1319,23 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.46.0] — 2026-06-18
+- **Recurring tasks.** A task can carry an optional recurrence rule
+  (`tasks.recurrence` jsonb: `{freq: daily|weekly|monthly|yearly, interval}`).
+  When a recurring task enters the completed state — toggled via `PATCH /tasks/:id`
+  (`completed`) or dragged into the board's done column — it is rescheduled rather
+  than left done: its due date advances **one period from the due date** (not from
+  the close time, so closing late keeps the cadence), completion is cleared, the
+  task returns to the board's first column, and its direct subtasks are reopened.
+  Overdue never auto-advances (the shift only happens on close). New `recurred`
+  journal event + participant notification.
+- Monthly/yearly rules keep a server-managed **day-of-month anchor** so the 30th
+  stays the 30th: a Feb clamp to the 28th doesn't permanently drift the cadence,
+  and the anchor survives unrelated edits (re-derived only when the user changes
+  the due date or frequency). `internal/recur` package with unit tests.
+- `UpdateTask` now accepts/persists `recurrence`; recurrence is update-only
+  (task creation and GitLab sync are unchanged). Added `ReopenSubtasks` query.
+
 ### [0.45.6] — 2026-06-18
 - **Encode email bodies as quoted-printable** instead of raw `8bit`. `net/smtp`
   never negotiates `8BITMIME`, so a Cyrillic UTF-8 body declared `8bit` was the
