@@ -73,12 +73,18 @@ if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
 
-echo "==> [8/9] Docker daemon log rotation"
+echo "==> [8/9] Docker daemon: log rotation + IPv6 egress"
+# IPv6 is needed because some VDS providers (Timeweb) block outbound IPv4 SMTP
+# (25/465/587); mail servers like smtp.yandex.ru are reachable over IPv6. With
+# ipv6 + ip6tables the container's ULA is masqueraded to the host's global IPv6.
 mkdir -p /etc/docker
 cat > /etc/docker/daemon.json <<'EOF'
 {
   "log-driver": "json-file",
-  "log-opts": { "max-size": "10m", "max-file": "3" }
+  "log-opts": { "max-size": "10m", "max-file": "3" },
+  "ipv6": true,
+  "fixed-cidr-v6": "fd00:dead:beef::/64",
+  "ip6tables": true
 }
 EOF
 systemctl restart docker
