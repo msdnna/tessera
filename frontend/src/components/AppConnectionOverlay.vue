@@ -1,16 +1,16 @@
 <script setup>
 // Full-screen connection state, mirroring the Android LoadingState/ErrorState:
-//   • slow    — server reachable but a request has dragged on: the branded
-//               TesseraSpinner with reassuring captions that cross-fade.
+//   • slow    — server reachable but a request has dragged on: the shared branded
+//               LoaderOverlay (TesseraSpinner + cross-fading captions).
 //   • offline — a request couldn't reach the server: an error glyph, a line,
 //               and a single retry that reloads the app.
 // Driven by the shared `connection` reactive (api interceptors feed it). Offline
 // wins over slow. Nothing renders on the common fast path.
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import { NIcon, NButton } from 'naive-ui'
 import { CloudOfflineOutline, RefreshOutline } from '@vicons/ionicons5'
 import { connection } from '@/composables/useConnection'
-import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import LoaderOverlay from '@/components/LoaderOverlay.vue'
 
 const CAPTIONS = [
   'Пытаемся связаться с сервером…',
@@ -18,32 +18,7 @@ const CAPTIONS = [
   'Всё ещё ждём ответ сервера…',
 ]
 
-const show = computed(() => connection.offline || connection.slow)
-const offline = computed(() => connection.offline)
-
-// Captions advance on a timer while the slow loader is visible, settling on the
-// last one. Reset whenever the loader (re)appears.
-const captionIndex = ref(0)
-let timer = null
-function startCaptions() {
-  stopCaptions()
-  captionIndex.value = 0
-  timer = setInterval(() => {
-    if (captionIndex.value < CAPTIONS.length - 1) captionIndex.value += 1
-    else stopCaptions()
-  }, 3500)
-}
-function stopCaptions() {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
-  }
-}
-watch(
-  () => connection.slow && !connection.offline,
-  (slow) => (slow ? startCaptions() : stopCaptions()),
-)
-onUnmounted(stopCaptions)
+const slow = computed(() => connection.slow && !connection.offline)
 
 function retry() {
   window.location.reload()
@@ -51,26 +26,22 @@ function retry() {
 </script>
 
 <template>
+  <!-- Server reachable but slow. -->
+  <loader-overlay :show="slow" :messages="CAPTIONS" :interval="3500" />
+
+  <!-- Server unreachable — error + retry. -->
   <transition name="conn-fade">
-    <div v-if="show" class="conn-overlay">
+    <div v-if="connection.offline" class="conn-overlay">
       <div class="conn-box">
-        <template v-if="offline">
-          <span class="conn-disc">
-            <n-icon :component="CloudOfflineOutline" class="conn-icon" />
-          </span>
-          <div class="conn-title">Нет связи с сервером</div>
-          <div class="conn-sub">Проверьте подключение к интернету и попробуйте снова.</div>
-          <n-button type="primary" class="conn-retry" @click="retry">
-            <template #icon><n-icon :component="RefreshOutline" /></template>
-            Попробовать ещё раз
-          </n-button>
-        </template>
-        <template v-else>
-          <tessera-spinner :size="44" />
-          <transition name="conn-cap" mode="out-in">
-            <div :key="captionIndex" class="conn-cap">{{ CAPTIONS[captionIndex] }}</div>
-          </transition>
-        </template>
+        <span class="conn-disc">
+          <n-icon :component="CloudOfflineOutline" class="conn-icon" />
+        </span>
+        <div class="conn-title">Нет связи с сервером</div>
+        <div class="conn-sub">Проверьте подключение к интернету и попробуйте снова.</div>
+        <n-button type="primary" class="conn-retry" @click="retry">
+          <template #icon><n-icon :component="RefreshOutline" /></template>
+          Попробовать ещё раз
+        </n-button>
       </div>
     </div>
   </transition>
@@ -80,7 +51,7 @@ function retry() {
 .conn-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9000;
+  z-index: 9001;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -119,12 +90,6 @@ function retry() {
   line-height: 1.5;
   color: var(--t-text3);
 }
-.conn-cap {
-  font-size: 13px;
-  color: var(--t-text3);
-  min-height: 18px;
-  max-width: 280px;
-}
 .conn-retry {
   margin-top: 4px;
 }
@@ -136,19 +101,5 @@ function retry() {
 .conn-fade-enter-from,
 .conn-fade-leave-to {
   opacity: 0;
-}
-.conn-cap-enter-active,
-.conn-cap-leave-active {
-  transition: opacity 0.5s ease;
-}
-.conn-cap-enter-from,
-.conn-cap-leave-to {
-  opacity: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .conn-cap-enter-active,
-  .conn-cap-leave-active {
-    transition: none;
-  }
 }
 </style>

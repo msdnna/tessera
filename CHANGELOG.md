@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.76.0] — 2026-06-18
+- **Branded loader on GitLab sync.** Starting a sync in the integration modal now
+  shows the same pale-backdrop TesseraSpinner overlay (with friendly cross-fading
+  captions) as the connection overlay. The sync endpoint is a single blocking
+  call (totals return only at the end), so the captions are reassuring text, not
+  live per-task progress — that would need backend streaming. Extracted the
+  overlay into a reusable `LoaderOverlay` shared with the connection overlay.
+
 ### [0.75.0] — 2026-06-18
 - **Auth UX pass.** Landing-page text on verify-email / recover / forgot-password
   is now centred (single-line notes no longer drift left of the mark).

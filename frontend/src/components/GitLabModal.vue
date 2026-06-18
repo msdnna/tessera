@@ -15,6 +15,7 @@ import {
 import { TrashOutline, AddOutline, SyncOutline, LogoGitlab } from '@vicons/ionicons5'
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
+import LoaderOverlay from '@/components/LoaderOverlay.vue'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PRIORITY_LABELS } from '@/styles/tokens'
@@ -80,6 +81,15 @@ const targetProjectId = computed(() => boardProject.value[boardId.value] || null
 const columnOptions = ref([])
 const saving = ref(false)
 const syncing = ref(false)
+// The sync endpoint is a single blocking call (totals only come back at the end),
+// so we can't stream live per-task progress — friendly cross-fading captions
+// instead, on the same branded LoaderOverlay used by the connection overlay.
+const SYNC_MESSAGES = [
+  'Подключаемся к GitLab…',
+  'Загружаем задачи из проектов…',
+  'Сопоставляем метки и обновляем доски…',
+  'Почти готово…',
+]
 
 const intervalOptions = [
   { label: 'Вручную (выкл.)', value: 0 },
@@ -493,6 +503,9 @@ watch(
       </section>
     </n-card>
   </n-modal>
+
+  <!-- Branded full-screen loader while a sync runs (sits above the modal). -->
+  <loader-overlay :show="syncing" :messages="SYNC_MESSAGES" :interval="2600" />
 </template>
 
 <style scoped>
