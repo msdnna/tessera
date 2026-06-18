@@ -1270,6 +1270,12 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.45.4] — 2026-06-18
+- Reword the password-reset email to «Восстановление доступа», dropping the
+  «Сброс пароля»/«пароль» wording. Yandex's content filter was rejecting only the
+  reset mail as spam (registration/verification went through), pointing at those
+  keywords. Applies to both the self-service and admin-initiated reset mails.
+
 ### [0.45.3] — 2026-06-18
 - **Email deliverability:** outgoing messages are now RFC-compliant — added a
   `Date` header, a unique `Message-ID`, RFC 2047 encoding for the (Cyrillic)
