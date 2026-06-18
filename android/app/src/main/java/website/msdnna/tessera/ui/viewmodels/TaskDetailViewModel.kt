@@ -53,10 +53,12 @@ class TaskDetailViewModel(
 
     private var taskId: String = ""
     private var workspaceId: String = ""
+    private var projectId: String = "" // the task's project — scopes new tags
 
-    fun load(taskId: String, workspaceId: String) {
+    fun load(taskId: String, workspaceId: String, projectId: String) {
         this.taskId = taskId
         this.workspaceId = workspaceId
+        this.projectId = projectId
         _state.update { TaskDetailUiState(loading = true) }
         launchCatching {
             val detail = taskRepo.detail(taskId)
@@ -117,7 +119,7 @@ class TaskDetailViewModel(
     /** Creates a tag with a random palette colour and attaches it; returns it via reload. */
     fun createTagAndAdd(name: String, onTagsChanged: () -> Unit) = mutate {
         val d = state.value.detail ?: return@mutate
-        val tag = boardRepo.createTag(workspaceId, name.trim(), TagPalette.random())
+        val tag = boardRepo.createTag(projectId, name.trim(), TagPalette.random())
         boardRepo.addTag(d.id, tag.id)
         reloadDetail()
         onTagsChanged()

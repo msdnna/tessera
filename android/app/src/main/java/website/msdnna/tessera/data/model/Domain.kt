@@ -53,7 +53,7 @@ data class BoardColumn(
 /** A workspace tag. Mirrors sqlc `Tag`. */
 data class Tag(
     @SerializedName("id") val id: String = "",
-    @SerializedName("workspace_id") val workspaceId: String = "",
+    @SerializedName("project_id") val projectId: String = "",
     @SerializedName("name") val name: String = "",
     @SerializedName("color") val color: String = "",
 )

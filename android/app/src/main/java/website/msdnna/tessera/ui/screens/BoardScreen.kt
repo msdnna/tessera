@@ -146,6 +146,7 @@ fun BoardScreen(
         TaskModal(
             initialTaskId = id,
             workspaceId = workspaceId,
+            projectId = board.projectId,
             tags = state.tagList,
             members = state.members,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },

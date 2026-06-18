@@ -35,7 +35,7 @@ class BoardRepository {
         api.setDoneColumn(boardId, website.msdnna.tessera.data.model.SetDoneColumnRequest(columnId))
     suspend fun tasks(boardId: String): List<Task> = api.boardTasks(boardId).orEmpty()
     suspend fun subtasks(boardId: String): List<Task> = api.boardSubtasks(boardId).orEmpty()
-    suspend fun tags(workspaceId: String): List<Tag> = api.tags(workspaceId).orEmpty()
+    suspend fun tags(projectId: String): List<Tag> = api.tags(projectId).orEmpty()
     suspend fun members(workspaceId: String): List<Member> = api.members(workspaceId).orEmpty()
 
     suspend fun createTask(boardId: String, columnId: String, title: String, parentId: String? = null): Task =
@@ -65,8 +65,8 @@ class BoardRepository {
     suspend fun addAssignee(taskId: String, userId: String) = api.addTaskAssignee(taskId, AddAssigneeRequest(userId))
     suspend fun removeAssignee(taskId: String, userId: String) = api.removeTaskAssignee(taskId, userId)
 
-    suspend fun createTag(workspaceId: String, name: String, color: String): Tag =
-        api.createTag(workspaceId, CreateTagRequest(name, color))
+    suspend fun createTag(projectId: String, name: String, color: String): Tag =
+        api.createTag(projectId, CreateTagRequest(name, color))
     suspend fun updateTag(tagId: String, name: String, color: String): Tag =
         api.updateTag(tagId, CreateTagRequest(name, color))
     suspend fun deleteTag(tagId: String) = api.deleteTag(tagId)

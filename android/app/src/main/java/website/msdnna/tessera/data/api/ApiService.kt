@@ -248,12 +248,12 @@ interface ApiService {
     @DELETE("tasks/{id}/assignees/{userId}")
     suspend fun removeTaskAssignee(@Path("id") taskId: String, @Path("userId") userId: String)
 
-    // ── Tags / members (workspace-scoped) ───────────────────────────────────
-    @GET("workspaces/{id}/tags")
-    suspend fun tags(@Path("id") workspaceId: String): List<Tag>?
+    // ── Tags (project-scoped) / members (workspace-scoped) ──────────────────
+    @GET("projects/{id}/tags")
+    suspend fun tags(@Path("id") projectId: String): List<Tag>?
 
-    @POST("workspaces/{id}/tags")
-    suspend fun createTag(@Path("id") workspaceId: String, @Body body: CreateTagRequest): Tag
+    @POST("projects/{id}/tags")
+    suspend fun createTag(@Path("id") projectId: String, @Body body: CreateTagRequest): Tag
 
     @GET("workspaces/{id}/members")
     suspend fun members(@Path("id") workspaceId: String): List<Member>?

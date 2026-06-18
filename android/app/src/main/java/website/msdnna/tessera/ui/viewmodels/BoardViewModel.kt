@@ -173,6 +173,7 @@ class BoardViewModel(
     private val gson = Gson()
     private var boardId: String = ""
     private var workspaceId: String = ""
+    private var projectId: String = "" // the board's project — scopes tags
 
     // Realtime: a live socket reloads the board on workspace-scoped events. A
     // suppress window after our own mutations avoids a redundant echo reload;
@@ -191,10 +192,11 @@ class BoardViewModel(
         launchCatching {
             val cfg = parseView(runCatching { AppContainer.prefs.boardViewJson(boardId) }.getOrDefault(""))
             val board = runCatching { repo.board(boardId) }.getOrNull()
+            projectId = board?.projectId ?: ""
             val columns = repo.columns(boardId)
             val tasks = repo.tasks(boardId)
             val subtasks = repo.subtasks(boardId)
-            val tags = if (workspaceId.isNotBlank()) runCatching { repo.tags(workspaceId) }.getOrDefault(emptyList()) else emptyList()
+            val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
             _state.update {
                 val base = it.copy(
@@ -264,10 +266,11 @@ class BoardViewModel(
     private suspend fun silentReload() {
         if (boardId.isBlank()) return
         val board = runCatching { repo.board(boardId) }.getOrNull()
+        projectId = board?.projectId ?: projectId
         val columns = repo.columns(boardId)
         val tasks = repo.tasks(boardId)
         val subtasks = repo.subtasks(boardId)
-        val tags = if (workspaceId.isNotBlank()) runCatching { repo.tags(workspaceId) }.getOrDefault(emptyList()) else emptyList()
+        val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
         _state.update {
             it.copy(
                 doneColumnId = board?.doneColumnId,
@@ -440,12 +443,12 @@ class BoardViewModel(
     }
 
     fun createTagStandalone(name: String, color: String) = launchCatching {
-        repo.createTag(workspaceId, name, color)
+        repo.createTag(projectId, name, color)
         refreshTagsAndTasks()
     }
 
     private suspend fun refreshTagsAndTasks() {
-        val tags = repo.tags(workspaceId)
+        val tags = repo.tags(projectId)
         _state.update { it.copy(tags = tags.associateBy { t -> t.id }, tagList = tags, tasks = repo.tasks(boardId)) }
         markLocalChange()
     }
@@ -544,9 +547,9 @@ class BoardViewModel(
 
     fun createTagAndAdd(task: Task, name: String) = launchCatching {
         val color = TagPalette.random()
-        val tag = repo.createTag(workspaceId, name, color)
+        val tag = repo.createTag(projectId, name, color)
         repo.addTag(task.id, tag.id)
-        val tags = repo.tags(workspaceId)
+        val tags = repo.tags(projectId)
         _state.update { it.copy(tags = tags.associateBy { t -> t.id }, tagList = tags) }
         refreshTasks()
     }

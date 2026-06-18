@@ -5,6 +5,11 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.18.0 — 2026-06-18
+- Tags are now per-project (backend 0.43): the board tag picker and tag creation
+  read/write `/projects/:id/tags` scoped to the open board's project, matching web.
+  Existing tags live in one project; recreate the ones you need in others.
+
 ## 0.17.0 — 2026-06-17
 - Splash is now just the white «mt» mark on the purple background — no badge at
   all (mirrors `mark-white.svg`). Sidesteps the OEM splash-badge shape problem

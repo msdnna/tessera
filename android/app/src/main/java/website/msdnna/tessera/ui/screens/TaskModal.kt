@@ -138,6 +138,7 @@ private fun openDownloadedFile(ctx: android.content.Context, file: java.io.File,
 fun TaskModal(
     initialTaskId: String,
     workspaceId: String,
+    projectId: String,
     tags: List<Tag>,
     members: List<Member>,
     parentCandidates: List<Task>,
@@ -150,7 +151,7 @@ fun TaskModal(
     val me by AppContainer.prefs.user.collectAsStateWithLifecycle(initialValue = null)
 
     var currentId by remember { mutableStateOf(initialTaskId) }
-    LaunchedEffect(currentId) { vm.load(currentId, workspaceId) }
+    LaunchedEffect(currentId) { vm.load(currentId, workspaceId, projectId) }
 
     val detail = state.detail
     var title by remember(detail?.id) { mutableStateOf(detail?.title ?: "") }
@@ -183,7 +184,7 @@ fun TaskModal(
                 Box(Modifier.weight(1f).fillMaxWidth()) { LoadingState() }
             } else if (state.error != null && detail == null) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    ErrorState(message = state.error ?: "Ошибка", onRetry = { vm.load(currentId, workspaceId) })
+                    ErrorState(message = state.error ?: "Ошибка", onRetry = { vm.load(currentId, workspaceId, projectId) })
                 }
             } else {
                 Column(
