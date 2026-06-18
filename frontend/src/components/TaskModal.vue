@@ -5,7 +5,6 @@ import {
   NModal,
   NCard,
   NInput,
-  NDatePicker,
   NSwitch,
   NButton,
   NSpace,
@@ -15,7 +14,6 @@ import {
   NTabs,
   NTabPane,
   NSelect,
-  NInputNumber,
   NBadge,
   NPopconfirm,
   useMessage,
@@ -52,6 +50,7 @@ import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/grad
 import { buildTagGroups } from '@/utils/tagGroups'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
+import DueEditor from './DueEditor.vue'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
@@ -71,7 +70,7 @@ const emit = defineEmits(['update:show', 'changed', 'open'])
 
 const store = useWorkspacesStore()
 const theme = useThemeStore()
-const { firstDayOfWeek, dateTimeFormat, formatDue } = useDateLocale()
+const { formatDue } = useDateLocale()
 // Tag colour clamped for legible text on the active theme.
 const tagText = (c) => readableHue(c, theme.isDark)
 const auth = useAuthStore()
@@ -167,8 +166,8 @@ const title = ref('')
 const description = ref('')
 const priority = ref(0)
 const dueTs = ref(null)
-const recurFreq = ref('') // '' | daily | weekly | monthly | yearly
-const recurInterval = ref(1)
+const recurrence = ref(null) // full recurrence rule object | null
+const columns = ref([]) // board columns, for the recurrence trigger/target selects
 const completed = ref(false)
 const selectedTags = ref([])
 const selectedAssignees = ref([])
@@ -257,36 +256,15 @@ const author = computed(() => {
 })
 const dueLabel = computed(() => (dueTs.value ? formatDue(new Date(dueTs.value).toISOString()) : ''))
 
-// ── recurrence ──
-const RECUR_OPTIONS = [
-  { label: 'Без повтора', value: '' },
-  { label: 'Ежедневно', value: 'daily' },
-  { label: 'Еженедельно', value: 'weekly' },
-  { label: 'Ежемесячно', value: 'monthly' },
-  { label: 'Ежегодно', value: 'yearly' },
-]
-// Plural unit shown after "каждые N" — keyed by frequency.
-const RECUR_UNITS = {
-  daily: ['день', 'дня', 'дней'],
-  weekly: ['неделю', 'недели', 'недель'],
-  monthly: ['месяц', 'месяца', 'месяцев'],
-  yearly: ['год', 'года', 'лет'],
-}
-function plural(n, [one, few, many]) {
-  const m10 = n % 10
-  const m100 = n % 100
-  if (m10 === 1 && m100 !== 11) return one
-  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few
-  return many
-}
-const recurUnitLabel = computed(() =>
-  recurFreq.value ? plural(recurInterval.value, RECUR_UNITS[recurFreq.value]) : '',
-)
-// A compact "Повтор: каждые 2 недели" summary, or '' when off.
-const recurLabel = computed(() => {
-  if (!recurFreq.value) return ''
-  const n = recurInterval.value
-  return n > 1 ? `каждые ${n} ${recurUnitLabel.value}` : RECUR_OPTIONS.find((o) => o.value === recurFreq.value)?.label
+// Per-task due-notification selectors (sentinel -1 / 'inherit' = user default),
+// passed to the shared DueEditor.
+const dueNotify = computed(() => {
+  const t = task.value || {}
+  return {
+    enabled: t.due_notify_enabled == null ? 'inherit' : t.due_notify_enabled ? 'on' : 'off',
+    lead: t.due_lead_minutes ?? -1,
+    repeat: t.due_repeat_minutes ?? -1,
+  }
 })
 
 // Location breadcrumb: group chain → project → board (resolved from the store).
@@ -324,19 +302,20 @@ async function loadDetail() {
     descInitialMode.value = t.description ? 'preview' : 'write'
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
-    recurFreq.value = t.recurrence?.freq || ''
-    recurInterval.value = t.recurrence?.interval || 1
+    recurrence.value = t.recurrence || null
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
     selectedAssignees.value = (t.assignees || []).map((x) => x.id)
     try {
       const b = await boardsApi.get(t.board_id)
       boardInfo.value = { name: b.data.name, projectId: b.data.project_id }
-      const bt = await boardsApi.tasks(t.board_id)
+      const [bt, cols] = await Promise.all([boardsApi.tasks(t.board_id), boardsApi.columns(t.board_id)])
       parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
+      columns.value = (cols.data || []).map((c) => ({ id: c.id, name: c.name }))
     } catch {
       boardInfo.value = null
       parentCandidates.value = []
+      columns.value = []
     }
     loadExtras()
   } catch (e) {
@@ -378,9 +357,7 @@ function buildPayload() {
     description: description.value,
     priority: priority.value,
     due_date: dueTs.value ? new Date(dueTs.value).toISOString() : null,
-    recurrence: recurFreq.value
-      ? { freq: recurFreq.value, interval: Math.max(1, recurInterval.value || 1) }
-      : null,
+    recurrence: recurrence.value,
     completed: completed.value,
   }
 }
@@ -402,20 +379,29 @@ function setPriority(p) {
   priority.value = p
   applyMeta()
 }
-function setDue(ts) {
-  dueTs.value = ts
+// DueEditor commits due + recurrence together.
+function onDueApply(patch) {
+  dueTs.value = patch.due_date ? new Date(patch.due_date).getTime() : null
+  recurrence.value = patch.recurrence
   applyMeta()
 }
-function setRecurFreq(freq) {
-  recurFreq.value = freq
-  if (freq && !Number.isInteger(recurInterval.value)) recurInterval.value = 1
-  // Recurrence needs a due date to advance from — anchor to now if unset.
-  if (freq && !dueTs.value) dueTs.value = Date.now()
-  applyMeta()
-}
-function setRecurInterval(n) {
-  recurInterval.value = Math.max(1, Math.round(n || 1))
-  if (recurFreq.value) applyMeta()
+async function onDueNotify(patch) {
+  const n = dueNotify.value
+  const lead = patch.lead ?? n.lead
+  const repeat = patch.repeat ?? n.repeat
+  const enabled = patch.enabled ?? n.enabled
+  try {
+    await tasksApi.dueNotify(props.taskId, {
+      lead_minutes: lead === -1 ? null : lead,
+      repeat_minutes: repeat === -1 ? null : repeat,
+      enabled: enabled === 'inherit' ? null : enabled === 'on',
+    })
+    const res = await tasksApi.get(props.taskId)
+    task.value = res.data
+    emit('changed')
+  } catch (e) {
+    void e
+  }
 }
 function setCompleted(v) {
   completed.value = v
@@ -846,53 +832,22 @@ function eventText(e) {
                   <button class="val">
                     <span>{{ dueLabel || 'Не задан' }}</span>
                     <n-icon
-                      v-if="recurFreq"
+                      v-if="recurrence"
                       :component="RepeatOutline"
                       :size="14"
                       class="recur-mark"
-                      :title="`Повтор: ${recurLabel}`"
+                      title="Повторяемая задача"
                     />
                   </button>
                 </template>
-                <div class="due-pop">
-                  <n-date-picker
-                    panel
-                    type="datetime"
-                    default-time="00:00:00"
-                    :value="dueTs"
-                    :first-day-of-week="firstDayOfWeek"
-                    :format="dateTimeFormat"
-                    @update:value="setDue"
-                  />
-                  <div class="recur-box">
-                    <div class="recur-row">
-                      <n-icon :component="RepeatOutline" :size="14" />
-                      <span class="recur-title">Повтор</span>
-                      <n-select
-                        size="small"
-                        class="recur-select"
-                        :value="recurFreq"
-                        :options="RECUR_OPTIONS"
-                        @update:value="setRecurFreq"
-                      />
-                    </div>
-                    <div v-if="recurFreq" class="recur-row recur-every">
-                      <span class="muted small">каждые</span>
-                      <n-input-number
-                        size="small"
-                        class="recur-num"
-                        :value="recurInterval"
-                        :min="1"
-                        :max="99"
-                        @update:value="setRecurInterval"
-                      />
-                      <span class="muted small">{{ recurUnitLabel }}</span>
-                    </div>
-                    <div v-if="recurFreq" class="recur-hint muted small">
-                      После завершения задача вернётся в первую колонку со сдвигом срока.
-                    </div>
-                  </div>
-                </div>
+                <DueEditor
+                  :due="dueTs"
+                  :recurrence="recurrence"
+                  :notify="dueNotify"
+                  :columns="columns"
+                  @apply="onDueApply"
+                  @notify="onDueNotify"
+                />
               </n-popover>
             </div>
 
@@ -1531,42 +1486,6 @@ function eventText(e) {
 /* recurrence repeat glyph on the due value */
 .recur-mark {
   color: var(--t-primary);
-}
-/* due popover: calendar panel + recurrence controls stacked */
-.due-pop {
-  display: flex;
-  flex-direction: column;
-}
-.recur-box {
-  border-top: 1px solid var(--t-border);
-  padding: 10px 12px 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.recur-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--t-text2);
-}
-.recur-title {
-  font-size: 13px;
-  flex: 0 0 auto;
-}
-.recur-select {
-  flex: 1;
-  min-width: 130px;
-}
-.recur-every {
-  padding-left: 22px;
-}
-.recur-num {
-  width: 80px;
-}
-.recur-hint {
-  padding-left: 22px;
-  line-height: 1.35;
 }
 /* Read-only value (Author): no hover affordance, default cursor. */
 .val.static {

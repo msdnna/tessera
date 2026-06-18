@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.78.0] — 2026-06-19
+- **Recurring tasks — full editor** (extends 0.77). New shared `DueEditor`
+  component used by **both** the card due-popover and the task modal (consistent;
+  the modal regained the notification settings the card had). It has a custom
+  calendar grid (week-start aware, time picker) with **upcoming occurrences
+  highlighted**, and a recurrence side-panel beside the calendar: frequency
+  (daily/weekly/monthly/yearly/**выборочно** — pick dates on the calendar),
+  «каждые N», weekly weekday chips, the trigger («При завершении / переходе в
+  колонку / по расписанию») + trigger column, the target column («Переносить в»),
+  and «Создавать дубликат / Повторять всегда / Пропускать выходные» toggles.
+- Recurrence is now configurable from the card too (was modal-only). Due + rule
+  commit together in one PATCH (no clobber). Removed the old per-surface due
+  popovers and the cramped recurrence row that stretched the dropdown.
+- `utils/recurrence.js` mirrors the backend advance logic to preview occurrences.
+
 ### [0.77.0] — 2026-06-18
 - **Recurring tasks.** The due-date popover now has a «Повтор» control (Без
   повтора / Ежедневно / Еженедельно / Ежемесячно / Ежегодно + «каждые N»). When a

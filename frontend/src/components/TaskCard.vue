@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, h } from 'vue'
 import draggable from 'vuedraggable'
-import { NIcon, NPopover, NTooltip, NDatePicker, NInput, NDropdown, NPopconfirm, NSelect } from 'naive-ui'
+import { NIcon, NPopover, NTooltip, NInput, NDropdown, NPopconfirm } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
@@ -29,11 +29,12 @@ import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from 
 import { buildTagGroups } from '@/utils/tagGroups'
 import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
+import DueEditor from './DueEditor.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
 
 const theme = useThemeStore()
-const { firstDayOfWeek, dateTimeFormat, formatDue } = useDateLocale()
+const { formatDue } = useDateLocale()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
 
@@ -269,30 +270,7 @@ async function doCtxArchive() {
     /* surfaced by the board's reload path */
   }
 }
-const setDue = (ts) => apply({ due_date: ts ? new Date(ts).toISOString() : null })
-
-// Per-task due-notification override (a reference tracker-style, under the calendar). Sentinel
-// -1 / 'inherit' = use the user default (sent as null).
-const DUE_ENABLED_OPTS = [
-  { label: 'По умолчанию', value: 'inherit' },
-  { label: 'Включены', value: 'on' },
-  { label: 'Выключены', value: 'off' },
-]
-const DUE_LEAD_OPTS = [
-  { label: 'По умолчанию', value: -1 },
-  { label: 'В срок', value: 0 },
-  { label: 'За 15 мин', value: 15 },
-  { label: 'За час', value: 60 },
-  { label: 'За 3 часа', value: 180 },
-  { label: 'За день', value: 1440 },
-]
-const DUE_REPEAT_OPTS = [
-  { label: 'По умолчанию', value: -1 },
-  { label: 'Однократно', value: 0 },
-  { label: 'Каждый час', value: 60 },
-  { label: 'Каждые 3 часа', value: 180 },
-  { label: 'Каждый день', value: 1440 },
-]
+// Per-task due-notification override sentinels (-1 / 'inherit' = user default).
 const dueEnabledSel = computed(() => {
   const v = props.task.due_notify_enabled
   return v == null ? 'inherit' : v ? 'on' : 'off'
@@ -507,46 +485,14 @@ async function submitAddSub() {
               />
             </button>
           </template>
-          <div class="due-pop" @click.stop>
-            <n-date-picker
-              panel
-              type="datetime"
-              default-time="00:00:00"
-              :value="dueTs"
-              :first-day-of-week="firstDayOfWeek"
-              :format="dateTimeFormat"
-              @update:value="setDue"
-            />
-            <div v-if="dueTs" class="due-notify">
-              <div class="dn-row">
-                <span>Уведомления</span>
-                <n-select
-                  size="tiny"
-                  :value="dueEnabledSel"
-                  :options="DUE_ENABLED_OPTS"
-                  @update:value="(v) => saveDueNotify({ enabled: v })"
-                />
-              </div>
-              <div class="dn-row">
-                <span>Напоминать</span>
-                <n-select
-                  size="tiny"
-                  :value="dueLeadSel"
-                  :options="DUE_LEAD_OPTS"
-                  @update:value="(v) => saveDueNotify({ lead: v })"
-                />
-              </div>
-              <div class="dn-row">
-                <span>Повтор</span>
-                <n-select
-                  size="tiny"
-                  :value="dueRepeatSel"
-                  :options="DUE_REPEAT_OPTS"
-                  @update:value="(v) => saveDueNotify({ repeat: v })"
-                />
-              </div>
-            </div>
-          </div>
+          <DueEditor
+            :due="dueTs"
+            :recurrence="task.recurrence"
+            :notify="{ enabled: dueEnabledSel, lead: dueLeadSel, repeat: dueRepeatSel }"
+            :columns="columns"
+            @apply="apply"
+            @notify="saveDueNotify"
+          />
         </n-popover>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
@@ -1162,31 +1108,6 @@ async function submitAddSub() {
 .sub-due {
   font-size: 11px;
   color: var(--t-text3);
-}
-.due-pop {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.due-notify {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--t-border);
-}
-.dn-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.dn-row > span {
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.dn-row :deep(.n-select) {
-  width: 150px;
 }
 .sub-add-input {
   margin-top: 6px;
