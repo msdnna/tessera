@@ -658,6 +658,7 @@ async function submitAddSub() {
             :task="s"
             :subtasks="[]"
             :nested="true"
+            :columns="columns"
             :tags-map="tagsMap"
             :members-map="membersMap"
             :tags="tags"

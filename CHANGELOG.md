@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.78.2] — 2026-06-19
+- **Recurrence columns on subtasks.** The recursive subtask card wasn't passing
+  the board's `columns`, so a subtask's recurrence «Колонка-триггер» / «Переносить
+  в» selects had no options and displayed the raw column UUID instead of the name.
+  Now subtask cards receive the columns like top-level cards.
+- **Due time defaults to 00:00**, not 9:00 / the current time, when picking a date
+  on a task with no prior due (and when enabling a repeat without a due date).
+
 ### [0.78.1] — 2026-06-19
 - **Recurrence editor fixes.** Occurrence highlight on the calendar is now a faint
   tint with a readable, dimmed day number (was a solid block hiding the number) —

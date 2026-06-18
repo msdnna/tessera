@@ -127,14 +127,17 @@ function onDayClick(d) {
     // Due = earliest selected custom date (keep time of day).
     if (dates.value.length) {
       const [yy, mm, dd] = dates.value[0].split('-').map(Number)
-      const base = localDue.value != null ? new Date(localDue.value) : new Date()
-      localDue.value = new Date(yy, mm - 1, dd, base.getHours(), base.getMinutes(), 0, 0).getTime()
+      const base = localDue.value != null ? new Date(localDue.value) : null
+      localDue.value = new Date(yy, mm - 1, dd, base ? base.getHours() : 0, base ? base.getMinutes() : 0, 0, 0).getTime()
     }
     commit()
     return
   }
-  const base = localDue.value != null ? new Date(localDue.value) : new Date(0, 0, 0, 9, 0)
-  emitDue(new Date(d.getFullYear(), d.getMonth(), d.getDate(), base.getHours(), base.getMinutes(), 0, 0).getTime())
+  // Default a fresh due to local midnight (00:00), not the current time.
+  const base = localDue.value != null ? new Date(localDue.value) : null
+  const hh = base ? base.getHours() : 0
+  const mm = base ? base.getMinutes() : 0
+  emitDue(new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm, 0, 0).getTime())
 }
 
 // ── recurrence rule (local mirror of props.recurrence) ──
@@ -182,8 +185,11 @@ function buildRule() {
 }
 function setFreq(v) {
   freq.value = v
-  // A recurrence needs a due date to advance from — anchor to now if unset.
-  if (v && localDue.value == null) emitDue(Date.now())
+  // A recurrence needs a due date to advance from — anchor to today at 00:00 if unset.
+  if (v && localDue.value == null) {
+    const t = new Date()
+    localDue.value = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 0, 0, 0, 0).getTime()
+  }
   commit()
 }
 function toggleWeekday(d) {
