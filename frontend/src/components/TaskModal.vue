@@ -15,6 +15,7 @@ import {
   NTabs,
   NTabPane,
   NSelect,
+  NInputNumber,
   NBadge,
   NPopconfirm,
   useMessage,
@@ -32,6 +33,7 @@ import {
   ArchiveOutline,
   GitMergeOutline,
   LogoGitlab,
+  RepeatOutline,
   AttachOutline,
   TrashOutline,
   DownloadOutline,
@@ -165,6 +167,8 @@ const title = ref('')
 const description = ref('')
 const priority = ref(0)
 const dueTs = ref(null)
+const recurFreq = ref('') // '' | daily | weekly | monthly | yearly
+const recurInterval = ref(1)
 const completed = ref(false)
 const selectedTags = ref([])
 const selectedAssignees = ref([])
@@ -253,6 +257,38 @@ const author = computed(() => {
 })
 const dueLabel = computed(() => (dueTs.value ? formatDue(new Date(dueTs.value).toISOString()) : ''))
 
+// ── recurrence ──
+const RECUR_OPTIONS = [
+  { label: 'Без повтора', value: '' },
+  { label: 'Ежедневно', value: 'daily' },
+  { label: 'Еженедельно', value: 'weekly' },
+  { label: 'Ежемесячно', value: 'monthly' },
+  { label: 'Ежегодно', value: 'yearly' },
+]
+// Plural unit shown after "каждые N" — keyed by frequency.
+const RECUR_UNITS = {
+  daily: ['день', 'дня', 'дней'],
+  weekly: ['неделю', 'недели', 'недель'],
+  monthly: ['месяц', 'месяца', 'месяцев'],
+  yearly: ['год', 'года', 'лет'],
+}
+function plural(n, [one, few, many]) {
+  const m10 = n % 10
+  const m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return one
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few
+  return many
+}
+const recurUnitLabel = computed(() =>
+  recurFreq.value ? plural(recurInterval.value, RECUR_UNITS[recurFreq.value]) : '',
+)
+// A compact "Повтор: каждые 2 недели" summary, or '' when off.
+const recurLabel = computed(() => {
+  if (!recurFreq.value) return ''
+  const n = recurInterval.value
+  return n > 1 ? `каждые ${n} ${recurUnitLabel.value}` : RECUR_OPTIONS.find((o) => o.value === recurFreq.value)?.label
+})
+
 // Location breadcrumb: group chain → project → board (resolved from the store).
 const breadcrumb = computed(() => {
   const parts = []
@@ -288,6 +324,8 @@ async function loadDetail() {
     descInitialMode.value = t.description ? 'preview' : 'write'
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
+    recurFreq.value = t.recurrence?.freq || ''
+    recurInterval.value = t.recurrence?.interval || 1
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
     selectedAssignees.value = (t.assignees || []).map((x) => x.id)
@@ -340,6 +378,9 @@ function buildPayload() {
     description: description.value,
     priority: priority.value,
     due_date: dueTs.value ? new Date(dueTs.value).toISOString() : null,
+    recurrence: recurFreq.value
+      ? { freq: recurFreq.value, interval: Math.max(1, recurInterval.value || 1) }
+      : null,
     completed: completed.value,
   }
 }
@@ -348,6 +389,10 @@ async function applyMeta() {
   try {
     const res = await tasksApi.update(props.taskId, buildPayload())
     task.value = res.data
+    // The server may have rescheduled a recurring task (completing it bounces it
+    // back out of done with an advanced due date) — resync from the response.
+    completed.value = !!res.data.completed_at
+    dueTs.value = res.data.due_date ? new Date(res.data.due_date).getTime() : null
     emit('changed')
   } catch (e) {
     message.error(e.message)
@@ -360,6 +405,17 @@ function setPriority(p) {
 function setDue(ts) {
   dueTs.value = ts
   applyMeta()
+}
+function setRecurFreq(freq) {
+  recurFreq.value = freq
+  if (freq && !Number.isInteger(recurInterval.value)) recurInterval.value = 1
+  // Recurrence needs a due date to advance from — anchor to now if unset.
+  if (freq && !dueTs.value) dueTs.value = Date.now()
+  applyMeta()
+}
+function setRecurInterval(n) {
+  recurInterval.value = Math.max(1, Math.round(n || 1))
+  if (recurFreq.value) applyMeta()
 }
 function setCompleted(v) {
   completed.value = v
@@ -513,6 +569,7 @@ async function toggleSubtask(sub) {
       description: sub.description || '',
       priority: sub.priority || 0,
       due_date: sub.due_date || null,
+      recurrence: sub.recurrence || null,
       completed: !sub.completed_at,
     })
     await loadDetail()
@@ -678,6 +735,8 @@ function eventText(e) {
       return 'отметил(а) выполненной'
     case 'reopened':
       return 'вернул(а) в работу'
+    case 'recurred':
+      return 'перенёс(ла) повтор задачи'
     case 'moved':
       return `переместил(а)${d.to ? ` → «${d.to}»` : ''}`
     case 'assigned':
@@ -784,17 +843,56 @@ function eventText(e) {
               >
               <n-popover trigger="click" placement="bottom-start">
                 <template #trigger>
-                  <button class="val">{{ dueLabel || 'Не задан' }}</button>
+                  <button class="val">
+                    <span>{{ dueLabel || 'Не задан' }}</span>
+                    <n-icon
+                      v-if="recurFreq"
+                      :component="RepeatOutline"
+                      :size="14"
+                      class="recur-mark"
+                      :title="`Повтор: ${recurLabel}`"
+                    />
+                  </button>
                 </template>
-                <n-date-picker
-                  panel
-                  type="datetime"
-                  default-time="00:00:00"
-                  :value="dueTs"
-                  :first-day-of-week="firstDayOfWeek"
-                  :format="dateTimeFormat"
-                  @update:value="setDue"
-                />
+                <div class="due-pop">
+                  <n-date-picker
+                    panel
+                    type="datetime"
+                    default-time="00:00:00"
+                    :value="dueTs"
+                    :first-day-of-week="firstDayOfWeek"
+                    :format="dateTimeFormat"
+                    @update:value="setDue"
+                  />
+                  <div class="recur-box">
+                    <div class="recur-row">
+                      <n-icon :component="RepeatOutline" :size="14" />
+                      <span class="recur-title">Повтор</span>
+                      <n-select
+                        size="small"
+                        class="recur-select"
+                        :value="recurFreq"
+                        :options="RECUR_OPTIONS"
+                        @update:value="setRecurFreq"
+                      />
+                    </div>
+                    <div v-if="recurFreq" class="recur-row recur-every">
+                      <span class="muted small">каждые</span>
+                      <n-input-number
+                        size="small"
+                        class="recur-num"
+                        :value="recurInterval"
+                        :min="1"
+                        :max="99"
+                        @update:value="setRecurInterval"
+                      />
+                      <span class="muted small">{{ recurUnitLabel }}</span>
+                    </div>
+                    <div v-if="recurFreq" class="recur-hint muted small">
+                      После завершения задача вернётся в первую колонку со сдвигом срока.
+                    </div>
+                  </div>
+                </div>
               </n-popover>
             </div>
 
@@ -1429,6 +1527,46 @@ function eventText(e) {
 }
 .val:hover {
   background: var(--t-hover);
+}
+/* recurrence repeat glyph on the due value */
+.recur-mark {
+  color: var(--t-primary);
+}
+/* due popover: calendar panel + recurrence controls stacked */
+.due-pop {
+  display: flex;
+  flex-direction: column;
+}
+.recur-box {
+  border-top: 1px solid var(--t-border);
+  padding: 10px 12px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.recur-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--t-text2);
+}
+.recur-title {
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+.recur-select {
+  flex: 1;
+  min-width: 130px;
+}
+.recur-every {
+  padding-left: 22px;
+}
+.recur-num {
+  width: 80px;
+}
+.recur-hint {
+  padding-left: 22px;
+  line-height: 1.35;
 }
 /* Read-only value (Author): no hover affordance, default cursor. */
 .val.static {

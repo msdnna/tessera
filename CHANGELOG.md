@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.77.0] — 2026-06-18
+- **Recurring tasks.** The due-date popover now has a «Повтор» control (Без
+  повтора / Ежедневно / Еженедельно / Ежемесячно / Ежегодно + «каждые N»). When a
+  recurring task is completed — the modal switch, the card's done toggle, or a
+  drag into the done column — the backend reschedules it: the due date advances one
+  period (anchored to the chosen day-of-month, so the 30th survives February) and
+  the card returns to the board's first column. Enabling a repeat with no due date
+  anchors it to now. A repeat glyph marks recurring tasks on the card's due pill
+  and in the modal; new `recurred` journal entry.
+- All full-replace task update payloads (card quick-edits, context menu, subtask
+  toggles, modal) now carry `recurrence`, so unrelated edits don't wipe a rule.
+
 ### [0.76.2] — 2026-06-18
 - GitLab sync loader now dims/blurs the **whole** modal card (header and edges
   included), not just the body inside the padding — the loader fills a

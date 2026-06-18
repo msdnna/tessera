@@ -17,6 +17,7 @@ import {
   ArchiveOutline,
   TrashOutline,
   LogoGitlab,
+  RepeatOutline,
 } from '@vicons/ionicons5'
 
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
@@ -149,6 +150,7 @@ function base() {
     description: props.task.description || '',
     priority: props.task.priority || 0,
     due_date: props.task.due_date || null,
+    recurrence: props.task.recurrence || null,
     completed: done.value,
   }
 }
@@ -209,6 +211,7 @@ function baseOf(t) {
     description: t.description || '',
     priority: t.priority || 0,
     due_date: t.due_date || null,
+    recurrence: t.recurrence || null,
     completed: !!t.completed_at,
   }
 }
@@ -383,6 +386,7 @@ async function toggleSubDone(s) {
     description: s.description || '',
     priority: s.priority || 0,
     due_date: s.due_date || null,
+    recurrence: s.recurrence || null,
     completed: !s.completed_at,
   })
   emit('changed')
@@ -494,6 +498,13 @@ async function submitAddSub() {
             <button class="pill" :class="{ set: due, overdue }" @click.stop>
               <n-icon :component="CalendarClearOutline" :size="13" />
               <span v-if="due" class="pill-text">{{ due }}</span>
+              <n-icon
+                v-if="task.recurrence"
+                :component="RepeatOutline"
+                :size="11"
+                class="pill-recur"
+                title="Повторяемая задача"
+              />
             </button>
           </template>
           <div class="due-pop" @click.stop>
@@ -941,6 +952,10 @@ async function submitAddSub() {
 .pill.set {
   border-style: solid;
   color: var(--t-text2);
+}
+/* repeat glyph on a recurring task's due pill */
+.pill-recur {
+  color: var(--t-primary);
 }
 /* overdue due-date pill: soft red tint (like a warning tag) */
 .pill.overdue {
