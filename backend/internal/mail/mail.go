@@ -6,12 +6,14 @@
 package mail
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
 	"strings"
@@ -163,7 +165,14 @@ func buildMessage(from, to, subject, body string) []byte {
 	fmt.Fprintf(&b, "Message-ID: <%s@%s>\r\n", hex.EncodeToString(idRaw[:]), domain)
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
-	b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
-	b.WriteString(body)
+	// Quoted-printable, not raw 8bit: net/smtp never negotiates 8BITMIME, so a
+	// body of raw UTF-8 bytes declared as 8bit reads as spam to strict relays
+	// (Yandex 554). QP is 7-bit-safe and universally accepted.
+	b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	var qp bytes.Buffer
+	qw := quotedprintable.NewWriter(&qp)
+	_, _ = qw.Write([]byte(body))
+	_ = qw.Close()
+	b.Write(qp.Bytes())
 	return []byte(b.String())
 }

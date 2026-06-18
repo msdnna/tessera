@@ -1275,6 +1275,14 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.45.6] — 2026-06-18
+- **Encode email bodies as quoted-printable** instead of raw `8bit`. `net/smtp`
+  never negotiates `8BITMIME`, so a Cyrillic UTF-8 body declared `8bit` was the
+  real reason Yandex rejected mail as spam (`554`) — confirmed by a direct SMTP
+  test where the same content with an encoded body was accepted. This is the
+  actual fix for reset-email delivery (the 0.45.4/0.45.5 wording/URL changes,
+  while kept as improvements, weren't the cause).
+
 ### [0.45.5] — 2026-06-18
 - Reset email link now points at `/recover` instead of `/reset-password`. The
   «reset-password»/«password» substring in the URL was the actual trigger for
