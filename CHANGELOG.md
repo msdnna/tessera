@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.74.2] — 2026-06-18
+- Password-reset page is now served at `/recover` (with `/reset-password` kept as
+  an alias for old links). The «reset-password» URL was tripping Yandex's spam
+  filter on reset emails; the neutral path goes with the backend link change.
+
 ### [0.74.1] — 2026-06-18
 - nginx: raise `client_max_body_size` to 50m so attachment / avatar / inline-image
   uploads aren't rejected with 413 behind the `/api` proxy (nginx default is 1m).
@@ -1269,6 +1274,12 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.45.5] — 2026-06-18
+- Reset email link now points at `/recover` instead of `/reset-password`. The
+  «reset-password»/«password» substring in the URL was the actual trigger for
+  Yandex's spam rejection of reset mails (the prose rewording in 0.45.4 wasn't
+  enough). Self-service and admin reset flows both updated.
 
 ### [0.45.4] — 2026-06-18
 - Reword the password-reset email to «Восстановление доступа», dropping the

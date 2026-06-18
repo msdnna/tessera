@@ -123,7 +123,7 @@ func (h *API) CreateUserResetLink(c *gin.Context) {
 		fail(c)
 		return
 	}
-	link := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
+	link := fmt.Sprintf("%s/recover?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
 	// Best-effort email too, so the user gets it directly when SMTP is configured.
 	mail.SendAsync(h.mailer, user.Email, "Восстановление доступа — Tessera",
 		fmt.Sprintf("Администратор создал ссылку для восстановления доступа. Перейдите по ссылке (действует час): %s", link))

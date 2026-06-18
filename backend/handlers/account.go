@@ -103,7 +103,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 			if _, e := h.q.CreateUserToken(c, db.CreateUserTokenParams{
 				UserID: user.ID, Kind: "reset", TokenHash: hash, ExpiresAt: time.Now().Add(resetTokenTTL),
 			}); e == nil {
-				link := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
+				link := fmt.Sprintf("%s/recover?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
 				mail.SendAsync(h.mailer, user.Email, "Восстановление доступа — Tessera",
 					"Вы запросили восстановление доступа к аккаунту Tessera. Чтобы продолжить, перейдите по ссылке:\n\n"+link+"\n\nСсылка действует 1 час. Если вы не запрашивали восстановление — просто проигнорируйте это письмо.")
 			}

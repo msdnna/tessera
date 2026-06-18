@@ -14,7 +14,10 @@ const routes = [
     meta: { open: true },
   },
   {
-    path: '/reset-password',
+    // Neutral path: the «reset-password» URL tripped a recipient spam filter
+    // (Yandex) on reset emails. /reset-password kept as an alias for old links.
+    path: '/recover',
+    alias: '/reset-password',
     component: () => import('@/views/ResetPasswordView.vue'),
     meta: { open: true },
   },
