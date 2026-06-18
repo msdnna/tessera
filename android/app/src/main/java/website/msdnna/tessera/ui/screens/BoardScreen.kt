@@ -148,6 +148,7 @@ fun BoardScreen(
             workspaceId = workspaceId,
             projectId = board.projectId,
             tags = state.tagList,
+            prefixNames = state.prefixNames,
             members = state.members,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
             breadcrumb = breadcrumb,

@@ -120,6 +120,25 @@ data class CreateTagRequest(
     @SerializedName("color") val color: String,
 )
 
+/** A project's friendly display name for a tag prefix (mirrors backend `db.TagPrefix`).
+ *  `prefix` is the canonical key (trimmed + lowercased) the backend stores. */
+data class TagPrefix(
+    @SerializedName("project_id") val projectId: String = "",
+    @SerializedName("workspace_id") val workspaceId: String = "",
+    @SerializedName("prefix") val prefix: String = "",
+    @SerializedName("label") val label: String = "",
+)
+
+/** PUT body: the complete desired set of prefix display names (replace-all). */
+data class SetTagPrefixesRequest(
+    @SerializedName("prefixes") val prefixes: List<TagPrefixEntry>,
+)
+
+data class TagPrefixEntry(
+    @SerializedName("prefix") val prefix: String,
+    @SerializedName("label") val label: String,
+)
+
 data class UpdateColumnRequest(
     @SerializedName("name") val name: String,
     @SerializedName("color") val color: String = "",

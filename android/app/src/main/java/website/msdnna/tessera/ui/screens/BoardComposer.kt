@@ -67,6 +67,9 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.DueFilter
 import website.msdnna.tessera.ui.viewmodels.SortField
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.prefixLabel
+import website.msdnna.tessera.util.tagNamespace
 
 private val DueChipLabels = mapOf(
     DueFilter.Overdue to "Просроченные",
@@ -112,15 +115,6 @@ private fun Modifier.zeroIntrinsicWidth(): Modifier = this.then(
             measurable.maxIntrinsicHeight(width)
     },
 )
-
-/** Namespace of a tag name ("S: bug" → "S: ", "effort::small" → "effort::"). */
-private fun tagNamespace(name: String): String {
-    val i = name.indexOf("::")
-    if (i >= 0) return name.substring(0, i + 2)
-    val j = name.indexOf(": ")
-    if (j >= 0) return name.substring(0, j + 2)
-    return ""
-}
 
 /**
  * The board composer bar (web `KanbanBoard` parity): grouping / multi-level sort /
@@ -232,11 +226,16 @@ private fun hasClearable(state: BoardUiState): Boolean = state.sortLevels.isNotE
 /** The always-present grouping chip; its dropdown picks status / all tags / a namespace. */
 @Composable
 private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
-    val namespaces = remember(state.tagList) {
-        state.tagList.mapNotNull { tagNamespace(it.name).ifEmpty { null } }.distinct().sorted()
+    // Distinct namespaces present in the tags, labelled by their friendly name and
+    // sorted by that label (web `tagPrefixOptions`).
+    val namespaces = remember(state.tagList, state.prefixNames) {
+        state.tagList.mapNotNull { tagNamespace(it.name).ifEmpty { null } }.distinct()
+            .map { it to prefixLabel(it, state.prefixNames) }
+            .sortedBy { it.second.lowercase() }
     }
     val label = if (state.groupByTag) {
-        "Группировка: теги" + (if (state.tagPrefix.isNotEmpty()) " · ${state.tagPrefix}" else "")
+        "Группировка: теги" +
+            (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(state.tagPrefix, state.prefixNames)}" else "")
     } else {
         "Группировка: статусы"
     }
@@ -252,8 +251,8 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
                 menu = false
                 vm.setGrouping(byTag = true, prefix = "")
             }
-            namespaces.forEach { ns ->
-                CheckRow("По тегам · $ns", selected = state.groupByTag && state.tagPrefix == ns) {
+            namespaces.forEach { (ns, nsLabel) ->
+                CheckRow("По тегам · $nsLabel", selected = state.groupByTag && state.tagPrefix == ns) {
                     menu = false
                     vm.setGrouping(byTag = true, prefix = ns)
                 }
@@ -316,11 +315,18 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
 
                 "ft" -> {
                     BackRow { category = null }
-                    state.tagList.filter { it.id !in f.tagIds }.forEach { tag ->
-                        TMenuItem(tag.name, onClick = {
-                            vm.setFilter(f.copy(tagIds = f.tagIds + tag.id))
-                            close()
-                        })
+                    // Group the pickable tags by prefix; show section headers only
+                    // when more than one group exists (web «Фильтр: тег»).
+                    val groups = buildTagGroups(state.tagList.filter { it.id !in f.tagIds }, state.prefixNames)
+                    val headers = groups.size > 1
+                    groups.forEach { g ->
+                        if (headers) MenuSectionHeader(g.label)
+                        g.tags.forEach { tag ->
+                            TMenuItem(tag.name, onClick = {
+                                vm.setFilter(f.copy(tagIds = f.tagIds + tag.id))
+                                close()
+                            })
+                        }
                     }
                 }
 
@@ -354,6 +360,19 @@ private fun CheckRow(label: String, selected: Boolean, onClick: () -> Unit) {
         trailing = {
             if (selected) IonIcon(Ion.CHECK, size = 16.dp, tint = Tessera.colors.primary, gradient = true)
         },
+    )
+}
+
+/** A non-interactive section caption inside a dropdown (groups tags by prefix). */
+@Composable
+private fun MenuSectionHeader(label: String) {
+    Text(
+        label.uppercase(),
+        color = Tessera.colors.text3,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.4.sp,
+        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 2.dp),
     )
 }
 

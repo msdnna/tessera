@@ -5,6 +5,18 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.21.0 — 2026-06-19
+- **Tag grouping by prefix** (web parity, web 0.74+). Tags following a
+  `«префикс: значение»` / `«префикс::значение»` convention are now grouped under
+  friendly display names everywhere: the composer-bar grouping chip and the
+  «Фильтр: тег» menu show section headers, and the tag pickers in the task modal
+  and the «Управление тегами» modal are grouped the same way (headers appear only
+  when more than one group exists; the prefix-less «Вне группы» bucket is last).
+- **Friendly prefix names in GitLab settings.** Prefix-type label rules gained a
+  «Понятное имя» field; on save it's merged into the project's provider-neutral
+  tag-prefix store (`projects/{id}/tag-prefixes`, backend 0.45) without clobbering
+  prefixes managed elsewhere — the source the grouped menus/pickers read.
+
 ## 0.20.1 — 2026-06-19
 - **Due picker fixes.** New dues default to **00:00** instead of the current time;
   a GitLab/legacy date-only due (UTC midnight) now opens at local 00:00 on the

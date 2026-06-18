@@ -40,6 +40,17 @@ class BoardRepository {
     suspend fun tags(projectId: String): List<Tag> = api.tags(projectId).orEmpty()
     suspend fun members(workspaceId: String): List<Member> = api.members(workspaceId).orEmpty()
 
+    /** A project's prefix→label display names (canonical prefix keys). */
+    suspend fun tagPrefixes(projectId: String): List<website.msdnna.tessera.data.model.TagPrefix> =
+        api.tagPrefixes(projectId).orEmpty()
+
+    /** Replace-all: send the complete merged set (blank labels are dropped server-side). */
+    suspend fun setTagPrefixes(
+        projectId: String,
+        prefixes: List<website.msdnna.tessera.data.model.TagPrefixEntry>,
+    ): List<website.msdnna.tessera.data.model.TagPrefix> =
+        api.setTagPrefixes(projectId, website.msdnna.tessera.data.model.SetTagPrefixesRequest(prefixes)).orEmpty()
+
     suspend fun createTask(boardId: String, columnId: String, title: String, parentId: String? = null): Task =
         api.createTask(boardId, CreateTaskRequest(columnId = columnId, title = title, parentId = parentId))
 

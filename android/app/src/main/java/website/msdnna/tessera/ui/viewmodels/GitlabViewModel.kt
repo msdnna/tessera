@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.GitlabIntegration
 import website.msdnna.tessera.data.model.GitlabSetIntegrationRequest
+import website.msdnna.tessera.data.model.TagPrefixEntry
 import website.msdnna.tessera.data.repository.BoardOption
 import website.msdnna.tessera.data.repository.GitlabRepository
 import website.msdnna.tessera.util.errorMessage
@@ -26,6 +27,9 @@ data class GitlabUiState(
     val integration: GitlabIntegration? = null,
     val boards: List<BoardOption> = emptyList(),
     val columns: List<String> = emptyList(),
+    /** The target project's loaded tag-prefix display names (canonical → label),
+     *  for the prefix-rule "понятное имя" editor + merge-on-save. */
+    val prefixNames: Map<String, String> = emptyMap(),
     val saving: Boolean = false,
     val syncing: Boolean = false,
 )
@@ -45,14 +49,22 @@ class GitlabViewModel : ViewModel() {
                 val boards = repo.workspaceBoards(workspaceId)
                 var integ: GitlabIntegration? = null
                 var cols: List<String> = emptyList()
+                var prefixNames: Map<String, String> = emptyMap()
                 if (conn.connected) {
                     integ = repo.integration(workspaceId)
-                    integ.boardId?.let { cols = runCatching { repo.columnNames(it) }.getOrDefault(emptyList()) }
+                    integ.boardId?.let { bid ->
+                        cols = runCatching { repo.columnNames(bid) }.getOrDefault(emptyList())
+                        boards.find { it.id == bid }?.projectId?.takeIf { it.isNotBlank() }?.let { pid ->
+                            prefixNames = runCatching { repo.tagPrefixes(pid).associate { p -> p.prefix to p.label } }
+                                .getOrDefault(emptyMap())
+                        }
+                    }
                 }
                 _state.update {
                     it.copy(
                         loading = false, connected = conn.connected, baseUrl = conn.baseUrl,
-                        glUsername = conn.glUsername, integration = integ, boards = boards, columns = cols,
+                        glUsername = conn.glUsername, integration = integ, boards = boards,
+                        columns = cols, prefixNames = prefixNames,
                     )
                 }
             } catch (e: Exception) {
@@ -97,10 +109,40 @@ class GitlabViewModel : ViewModel() {
         }
     }
 
-    fun save(workspaceId: String, req: GitlabSetIntegrationRequest) {
+    /** Loads the prefix display names of the project that owns [boardId] — invoked
+     *  when the user picks a different target board so the rule editor prefills. */
+    fun loadPrefixNamesForBoard(boardId: String?) {
+        val pid = _state.value.boards.find { it.id == boardId }?.projectId
+        if (pid.isNullOrBlank()) {
+            _state.update { it.copy(prefixNames = emptyMap()) }
+            return
+        }
+        viewModelScope.launch {
+            val names = runCatching { repo.tagPrefixes(pid).associate { it.prefix to it.label } }.getOrDefault(emptyMap())
+            _state.update { it.copy(prefixNames = names) }
+        }
+    }
+
+    /**
+     * Saves the integration. [ruleLabels] (canonical prefix → label, blank = remove)
+     * is merged into the project's existing prefix display names and PUT first — the
+     * editor only manages prefixes that have a rule, so unmanaged ones survive (web
+     * GitLabModal merge-save). [projectId] is the target board's project.
+     */
+    fun save(workspaceId: String, projectId: String?, ruleLabels: Map<String, String>, req: GitlabSetIntegrationRequest) {
         viewModelScope.launch {
             _state.update { it.copy(saving = true, error = null) }
             try {
+                if (!projectId.isNullOrBlank()) {
+                    val merged = _state.value.prefixNames.toMutableMap()
+                    ruleLabels.forEach { (key, raw) ->
+                        if (key.isBlank()) return@forEach
+                        val label = raw.trim()
+                        if (label.isNotBlank()) merged[key] = label else merged.remove(key)
+                    }
+                    runCatching { repo.setTagPrefixes(projectId, merged.map { TagPrefixEntry(it.key, it.value) }) }
+                        .onSuccess { _state.update { st -> st.copy(prefixNames = merged) } }
+                }
                 val integ = repo.setIntegration(workspaceId, req)
                 _state.update { it.copy(saving = false, integration = integ, message = "Настройки сохранены") }
             } catch (e: Exception) {

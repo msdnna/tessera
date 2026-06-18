@@ -70,6 +70,9 @@ data class BoardUiState(
     val subtasks: List<Task> = emptyList(),
     val tags: Map<String, Tag> = emptyMap(),
     val tagList: List<Tag> = emptyList(),
+    /** Canonical tag-prefix → friendly label (project-scoped). Drives the grouped
+     *  group/filter menus and tag pickers; empty when none are configured. */
+    val prefixNames: Map<String, String> = emptyMap(),
     val members: List<Member> = emptyList(),
     val viewMode: BoardViewMode = BoardViewMode.Kanban,
     val groupByTag: Boolean = false,
@@ -198,6 +201,7 @@ class BoardViewModel(
             val tasks = repo.tasks(boardId)
             val subtasks = repo.subtasks(boardId)
             val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
+            val prefixNames = loadPrefixNames()
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
             _state.update {
                 val base = it.copy(
@@ -208,6 +212,7 @@ class BoardViewModel(
                     subtasks = subtasks,
                     tags = tags.associateBy { t -> t.id },
                     tagList = tags,
+                    prefixNames = prefixNames,
                     members = members,
                 )
                 if (cfg != null) base.applyConfig(cfg) else base
@@ -272,6 +277,7 @@ class BoardViewModel(
         val tasks = repo.tasks(boardId)
         val subtasks = repo.subtasks(boardId)
         val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
+        val prefixNames = loadPrefixNames()
         _state.update {
             it.copy(
                 doneColumnId = board?.doneColumnId,
@@ -280,9 +286,18 @@ class BoardViewModel(
                 subtasks = subtasks,
                 tags = tags.associateBy { t -> t.id },
                 tagList = tags,
+                prefixNames = prefixNames,
             )
         }
     }
+
+    /** Loads the project's canonical prefix → label map (best-effort, empty on failure). */
+    private suspend fun loadPrefixNames(): Map<String, String> =
+        if (projectId.isBlank()) {
+            emptyMap()
+        } else {
+            runCatching { repo.tagPrefixes(projectId).associate { it.prefix to it.label } }.getOrDefault(emptyMap())
+        }
 
     /** Marks a window during which incoming echoes of our own change are ignored. */
     private fun markLocalChange() {

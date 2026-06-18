@@ -56,6 +56,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.DueFilter
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.parseHexColor
 
 private val TagPalette = listOf(
@@ -152,15 +153,29 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
             if (state.tagList.isEmpty()) {
                 Text("Тегов пока нет", color = c.text3, fontSize = 13.sp)
             } else {
+                val groups = buildTagGroups(state.tagList, state.prefixNames)
+                val showHeaders = groups.size > 1
                 Column(Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())) {
-                    state.tagList.forEach { tag ->
-                        TagRow(
-                            tag,
-                            vm,
-                            editing = editingId == tag.id,
-                            onEdit = { editingId = tag.id },
-                            onDone = { editingId = null },
-                        )
+                    groups.forEach { g ->
+                        if (showHeaders) {
+                            Text(
+                                g.label.uppercase(),
+                                color = c.text3,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.4.sp,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+                            )
+                        }
+                        g.tags.forEach { tag ->
+                            TagRow(
+                                tag,
+                                vm,
+                                editing = editingId == tag.id,
+                                onEdit = { editingId = tag.id },
+                                onDone = { editingId = null },
+                            )
+                        }
                     }
                 }
             }

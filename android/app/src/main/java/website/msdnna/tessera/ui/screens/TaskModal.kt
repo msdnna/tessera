@@ -99,6 +99,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.theme.accentGradientTint
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.dueLabel
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
@@ -142,6 +143,7 @@ fun TaskModal(
     workspaceId: String,
     projectId: String,
     tags: List<Tag>,
+    prefixNames: Map<String, String>,
     members: List<Member>,
     parentCandidates: List<Task>,
     breadcrumb: List<String>,
@@ -215,6 +217,7 @@ fun TaskModal(
                             taskTagIds = detail.tags.map { it.id },
                             parentId = detail.parentId,
                             tags = tags,
+                            prefixNames = prefixNames,
                             members = members,
                             parentCandidates = parentCandidates,
                         )
@@ -385,6 +388,7 @@ private fun PropertyGrid(
     taskTagIds: List<String>,
     parentId: String?,
     tags: List<Tag>,
+    prefixNames: Map<String, String>,
     members: List<Member>,
     parentCandidates: List<Task>,
 ) {
@@ -417,7 +421,9 @@ private fun PropertyGrid(
         if (gitlab != null) {
             PropRow(Ion.GITLAB, "GitLab") { GitlabLinkValue(gitlab) }
         }
-        PropRow(Ion.PRICETAG, "Теги") { TagsValue(taskTagIds, tags, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} }) }
+        PropRow(Ion.PRICETAG, "Теги") {
+            TagsValue(taskTagIds, tags, prefixNames, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} })
+        }
         PropRow(Ion.CHECK, "Выполнено") { TSwitch(checked = completed, onCheckedChange = { vm.setCompleted(it) }) }
         PropRow(Ion.GIT_MERGE, "Родитель") {
             ParentValue(parentId, parentCandidates, onAttach = { vm.attachToParent(it) }, onDetach = { vm.detachFromParent() })
@@ -613,7 +619,13 @@ private fun GitlabLinkValue(gitlab: GitlabLink) {
 }
 
 @Composable
-private fun TagsValue(taskTagIds: List<String>, tags: List<Tag>, onToggle: (String) -> Unit, onCreate: (String) -> Unit) {
+private fun TagsValue(
+    taskTagIds: List<String>,
+    tags: List<Tag>,
+    prefixNames: Map<String, String>,
+    onToggle: (String) -> Unit,
+    onCreate: (String) -> Unit,
+) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     val chosen = tags.filter { it.id in taskTagIds }
@@ -656,20 +668,35 @@ private fun TagsValue(taskTagIds: List<String>, tags: List<Tag>, onToggle: (Stri
             }
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            FlowRow(
-                Modifier.width(250.dp).padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                tags.forEach { t ->
-                    val on = t.id in taskTagIds
-                    val base = parseHexColor(t.color, c.text3)
-                    Box(
-                        Modifier.clip(RoundedCornerShape(10.dp))
-                            .background(accentGradient(if (on) base else base.copy(alpha = 0.14f)))
-                            .clickableNoRipple { onToggle(t.id) }
-                            .padding(horizontal = 9.dp, vertical = 3.dp),
-                    ) { Text(t.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp) }
+            // Group the chips by tag prefix; show headers only with >1 group (web parity).
+            val groups = buildTagGroups(tags, prefixNames)
+            val headers = groups.size > 1
+            groups.forEach { g ->
+                if (headers) {
+                    Text(
+                        g.label.uppercase(),
+                        color = c.text3,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.4.sp,
+                        modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 2.dp),
+                    )
+                }
+                FlowRow(
+                    Modifier.width(250.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    g.tags.forEach { t ->
+                        val on = t.id in taskTagIds
+                        val base = parseHexColor(t.color, c.text3)
+                        Box(
+                            Modifier.clip(RoundedCornerShape(10.dp))
+                                .background(accentGradient(if (on) base else base.copy(alpha = 0.14f)))
+                                .clickableNoRipple { onToggle(t.id) }
+                                .padding(horizontal = 9.dp, vertical = 3.dp),
+                        ) { Text(t.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp) }
+                    }
                 }
             }
             Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).width(250.dp)) {

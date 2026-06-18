@@ -54,6 +54,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.GitlabViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.canonPrefix
 import website.msdnna.tessera.util.localDateTimeLabel
 
 private val IntervalOptions = listOf(
@@ -155,6 +156,11 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
     var defaultAction by remember(integ) { mutableStateOf(integ.labelRules.defaultAction) }
     var tagKeepPrefix by remember(integ) { mutableStateOf(integ.labelRules.tagKeepPrefix) }
     val rules = remember(integ) { mutableStateListOf<EditRule>().apply { addAll(integ.labelRules.rules.map { EditRule(it) }) } }
+    // Prefill each prefix rule's friendly name from the loaded store (web GitLabModal
+    // loadPrefixNames). Re-runs when the target project's names load / change.
+    LaunchedEffect(state.prefixNames, rules) {
+        rules.forEach { r -> if (r.matchType == "prefix") r.label = state.prefixNames[canonPrefix(r.match)] ?: "" }
+    }
 
     SectionLabel("Интеграция пространства")
     Field("Проект GitLab") { TTextField(projectPath, { projectPath = it }, placeholder = "group/project") }
@@ -165,6 +171,7 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
             onSelect = {
                 boardId = it
                 vm.loadColumns(it)
+                vm.loadPrefixNamesForBoard(it)
             },
         )
     }
@@ -217,8 +224,13 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
             onClick = {
                 val bid = boardId
                 if (projectPath.isNotBlank() && bid != null) {
+                    val pid = state.boards.find { it.id == bid }?.projectId
+                    // Prefix rules carry friendly names → merged into the project's
+                    // tag-prefix store on save (canonical key, blank = remove).
+                    val ruleLabels = rules.filter { it.matchType == "prefix" }
+                        .associate { canonPrefix(it.match) to it.label }
                     vm.save(
-                        workspaceId,
+                        workspaceId, pid, ruleLabels,
                         GitlabSetIntegrationRequest(
                             projectPath.trim(), bid, enabled, interval, dueSource,
                             GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
@@ -252,6 +264,10 @@ private fun RuleCard(rule: EditRule, columns: List<String>, boards: List<Pair<St
                     val act = ActionOptions.find { it.first == rule.action }?.second ?: "—"
                     TSelect(act, ActionOptions) { rule.action = it }
                 }
+            }
+            if (rule.matchType == "prefix") {
+                Spacer(Modifier.height(8.dp))
+                TTextField(rule.label, { rule.label = it }, label = "Понятное имя", placeholder = "напр. Статус")
             }
             if (rule.action == "tag") {
                 Spacer(Modifier.height(8.dp))
@@ -354,6 +370,10 @@ private class EditRule(rule: GitlabRule) {
     var matchType by mutableStateOf(rule.matchType.ifBlank { "prefix" })
     var action by mutableStateOf(rule.action.ifBlank { "tag" })
     var keepPrefix by mutableStateOf(rule.keepPrefix)
+
+    /** Friendly display name for a prefix rule. Not part of [GitlabRule] — it lives
+     *  in the project's tag-prefix store; prefilled from / merged into it on save. */
+    var label by mutableStateOf("")
     val map = mutableStateListOf<MapEntry>().apply {
         addAll((rule.valueMap ?: emptyMap()).map { MapEntry(it.key, it.value) })
     }

@@ -50,7 +50,9 @@ import website.msdnna.tessera.data.model.SaveBoardViewRequest
 import website.msdnna.tessera.data.model.SetActiveRequest
 import website.msdnna.tessera.data.model.SetAdminRequest
 import website.msdnna.tessera.data.model.SetParentRequest
+import website.msdnna.tessera.data.model.SetTagPrefixesRequest
 import website.msdnna.tessera.data.model.Tag
+import website.msdnna.tessera.data.model.TagPrefix
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
 import website.msdnna.tessera.data.model.TaskEvent
@@ -258,6 +260,12 @@ interface ApiService {
 
     @POST("projects/{id}/tags")
     suspend fun createTag(@Path("id") projectId: String, @Body body: CreateTagRequest): Tag
+
+    @GET("projects/{id}/tag-prefixes")
+    suspend fun tagPrefixes(@Path("id") projectId: String): List<TagPrefix>?
+
+    @PUT("projects/{id}/tag-prefixes")
+    suspend fun setTagPrefixes(@Path("id") projectId: String, @Body body: SetTagPrefixesRequest): List<TagPrefix>?
 
     @GET("workspaces/{id}/members")
     suspend fun members(@Path("id") workspaceId: String): List<Member>?

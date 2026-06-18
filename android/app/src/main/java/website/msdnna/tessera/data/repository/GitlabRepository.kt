@@ -7,8 +7,10 @@ import website.msdnna.tessera.data.model.GitlabIntegration
 import website.msdnna.tessera.data.model.GitlabSetIntegrationRequest
 import website.msdnna.tessera.data.model.GitlabSyncResult
 
-/** A workspace board flattened for a picker: `id` + a `Project / Board` label. */
-data class BoardOption(val id: String, val label: String)
+/** A workspace board flattened for a picker: `id` + a `Project / Board` label.
+ *  [projectId] lets the integration editor resolve the target project for the
+ *  project-scoped tag-prefix display names. */
+data class BoardOption(val id: String, val label: String, val projectId: String)
 
 /** GitLab integration: per-user connection, per-workspace config + manual sync,
  *  plus the board/column lookups the config editor needs. */
@@ -30,7 +32,7 @@ class GitlabRepository {
         val out = mutableListOf<BoardOption>()
         for (project in api.projects(workspaceId).orEmpty()) {
             for (board in api.boards(project.id).orEmpty()) {
-                out.add(BoardOption(board.id, "${project.name} / ${board.name}"))
+                out.add(BoardOption(board.id, "${project.name} / ${board.name}", project.id))
             }
         }
         return out
@@ -39,4 +41,14 @@ class GitlabRepository {
     /** The column names of a board (for the status / default-column pickers). */
     suspend fun columnNames(boardId: String): List<String> =
         api.columns(boardId).orEmpty().map { it.name }
+
+    /** A project's tag-prefix display names (for the GitLab rule editor). */
+    suspend fun tagPrefixes(projectId: String): List<website.msdnna.tessera.data.model.TagPrefix> =
+        api.tagPrefixes(projectId).orEmpty()
+
+    suspend fun setTagPrefixes(
+        projectId: String,
+        prefixes: List<website.msdnna.tessera.data.model.TagPrefixEntry>,
+    ): List<website.msdnna.tessera.data.model.TagPrefix> =
+        api.setTagPrefixes(projectId, website.msdnna.tessera.data.model.SetTagPrefixesRequest(prefixes)).orEmpty()
 }
