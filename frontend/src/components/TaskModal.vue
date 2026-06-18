@@ -49,7 +49,6 @@ import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
-import { initials } from '@/utils/initials'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
@@ -60,6 +59,7 @@ const props = defineProps({
   show: { type: Boolean, default: false },
   taskId: { type: String, default: null },
   wsId: { type: String, default: null },
+  projectId: { type: String, default: null },
   tags: { type: Array, default: () => [] },
   members: { type: Array, default: () => [] },
 })
@@ -457,7 +457,7 @@ async function createTag() {
   if (!n) return
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
   try {
-    const res = await wsApi.createTag(props.wsId, {
+    const res = await projApi.createTag(props.projectId, {
       name: n,
       color: palette[Math.floor(Math.random() * palette.length)],
     })
@@ -783,6 +783,7 @@ function eventText(e) {
                 <n-date-picker
                   panel
                   type="datetime"
+                  default-time="00:00:00"
                   :value="dueTs"
                   :first-day-of-week="firstDayOfWeek"
                   :format="dateTimeFormat"
@@ -1232,7 +1233,7 @@ function eventText(e) {
             <n-tab-pane name="history" tab="История">
               <div class="history">
                 <div v-for="e in events" :key="e.id" class="histrow">
-                  <span class="h-ava">{{ initials(e.actor_name) }}</span>
+                  <UserAvatar class="h-ava" :user-id="e.actor_id" :name="e.actor_name" />
                   <span class="h-text">
                     <b>{{ e.actor_name || 'Кто-то' }}</b> {{ eventText(e) }}
                   </span>

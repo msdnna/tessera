@@ -61,13 +61,13 @@ function close() {
 function gotoTask(t) {
   open.value = false
   q.value = ''
-  router.push(`/board/${t.board_id}?task=${t.id}`)
+  router.push(`/board/${t.board_slug || t.board_id}?task=${t.number ?? t.id}`)
 }
 
 function gotoNote(n) {
   open.value = false
   q.value = ''
-  router.push(`/notes?note=${n.id}`)
+  router.push(`/notes?note=${n.slug || n.id}`)
 }
 </script>
 
@@ -151,7 +151,10 @@ function gotoNote(n) {
   padding: 6px;
   max-height: 60vh;
   overflow-y: auto;
-  z-index: 50;
+  /* Above kanban cards: a card with subtasks is positioned at z-index 50 and
+     would otherwise overlap this dropdown (a plain card stays in the auto layer
+     and renders behind it). */
+  z-index: 60;
 }
 .loading {
   display: flex;

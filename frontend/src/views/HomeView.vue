@@ -10,6 +10,7 @@ import { hueGrad, readableHue } from '@/utils/gradient'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const router = useRouter()
 const wsStore = useWorkspacesStore()
@@ -90,9 +91,6 @@ async function load() {
 function openTask(t) {
   router.push(`/board/${t.board_id}?task=${t.id}`)
 }
-function initials(name) {
-  return (name || '?').trim().slice(0, 2).toUpperCase()
-}
 const { formatDue: dueLabel } = useDateLocale()
 function isOverdue(t) {
   return t.due_date && !t.completed_at && new Date(t.due_date) < new Date()
@@ -159,14 +157,14 @@ watch(() => wsStore.currentId, load)
             {{ dueLabel(t.due_date) }}
           </span>
           <span class="t-avas">
-            <span
+            <UserAvatar
               v-for="uid in (t.assignee_ids || []).slice(0, 3)"
               :key="uid"
               class="t-ava"
+              :user-id="uid"
+              :name="membersMap[uid]?.name"
               :title="membersMap[uid]?.name"
-            >
-              {{ initials(membersMap[uid]?.name) }}
-            </span>
+            />
           </span>
         </div>
 

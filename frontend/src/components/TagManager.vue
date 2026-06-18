@@ -2,7 +2,7 @@
 import { ref, nextTick } from 'vue'
 import { NInput, NButton, NText, NIcon, NPopconfirm, useMessage } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
-import { workspaces as wsApi } from '@/api'
+import { projects as projectsApi } from '@/api'
 import { hueGrad, readableHue } from '@/utils/gradient'
 import { useThemeStore } from '@/stores/theme'
 
@@ -10,7 +10,7 @@ const theme = useThemeStore()
 const tagText = (c) => readableHue(c, theme.isDark)
 
 const props = defineProps({
-  wsId: { type: String, default: null },
+  projectId: { type: String, default: null },
   tags: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['changed'])
@@ -48,7 +48,7 @@ async function setColor(t, c) {
 }
 async function patch(t, fields) {
   try {
-    await wsApi.updateTag(t.id, { name: t.name, color: t.color || '', ...fields })
+    await projectsApi.updateTag(t.id, { name: t.name, color: t.color || '', ...fields })
     emit('changed')
   } catch (e) {
     message.error(e.message)
@@ -56,7 +56,7 @@ async function patch(t, fields) {
 }
 async function remove(t) {
   try {
-    await wsApi.deleteTag(t.id)
+    await projectsApi.deleteTag(t.id)
     emit('changed')
   } catch (e) {
     message.error(e.message)
@@ -66,7 +66,7 @@ async function add() {
   const n = newName.value.trim()
   if (!n) return
   try {
-    await wsApi.createTag(props.wsId, { name: n, color: swatches[0] })
+    await projectsApi.createTag(props.projectId, { name: n, color: swatches[0] })
     newName.value = ''
     emit('changed')
   } catch (e) {
@@ -77,7 +77,7 @@ async function add() {
 
 <template>
   <div class="tagmgr">
-    <n-text depth="3" class="head">Теги пространства</n-text>
+    <n-text depth="3" class="head">Теги проекта</n-text>
     <div class="list">
       <div v-for="t in tags" :key="t.id" class="tag-block">
         <div class="tag-row">

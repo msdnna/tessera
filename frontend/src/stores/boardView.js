@@ -8,6 +8,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const active = ref(false) // a board is currently open
   const boardId = ref(null)
   const wsId = ref(null)
+  const projectId = ref(null) // the open board's project — scopes its tags
   const tagsList = ref([]) // for the header Теги manager
   const layout = ref('board') // 'board' | 'list' | 'calendar'
   const archiveOpen = ref(false)
@@ -16,9 +17,10 @@ export const useBoardViewStore = defineStore('boardView', () => {
   function bumpReload() {
     reloadNonce.value++
   }
-  function setContext(b, w) {
+  function setContext(b, w, p) {
     boardId.value = b
     wsId.value = w
+    projectId.value = p
     active.value = true
   }
   function setTags(list) {
@@ -28,6 +30,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     active.value = false
     boardId.value = null
     wsId.value = null
+    projectId.value = null
     tagsList.value = []
     archiveOpen.value = false
   }
@@ -36,6 +39,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     active,
     boardId,
     wsId,
+    projectId,
     tagsList,
     layout,
     archiveOpen,

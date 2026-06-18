@@ -4,7 +4,7 @@ import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
-import { initials } from '@/utils/initials'
+import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({
   // Grouped, filtered, sorted columns from KanbanBoard: [{ key, name, color }]
@@ -74,14 +74,14 @@ function isOverdue(t) {
         </span>
 
         <span class="lv-ava-row">
-          <span
+          <UserAvatar
             v-for="uid in t.assignee_ids || []"
             :key="uid"
             class="lv-ava"
+            :user-id="uid"
+            :name="membersMap[uid]?.name"
             :title="membersMap[uid]?.name"
-          >
-            {{ initials(membersMap[uid]?.name) }}
-          </span>
+          />
         </span>
       </div>
 

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, h } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import draggable from 'vuedraggable'
 import {
   NSpin,
@@ -23,7 +23,13 @@ import {
   ChevronForwardOutline,
   ChevronBackOutline,
 } from '@vicons/ionicons5'
-import { boards, tasks as tasksApi, workspaces as wsApi, columns as columnsApi } from '@/api'
+import {
+  boards,
+  tasks as tasksApi,
+  workspaces as wsApi,
+  columns as columnsApi,
+  projects as projectsApi,
+} from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useThemeStore } from '@/stores/theme'
@@ -47,6 +53,7 @@ const boardViewStore = useBoardViewStore()
 // `layout` lives in the store so the header switcher and the board stay in sync.
 const { layout } = storeToRefs(boardViewStore)
 const route = useRoute()
+const router = useRouter()
 const { isMobile } = useResponsive()
 
 const loading = ref(false)
@@ -530,12 +537,37 @@ const boardBgStyle = computed(() => {
 // modals
 const selectedTaskId = ref(null)
 const showTaskModal = ref(false)
+// The open task is reflected in the URL (?task=<id>) so it's shareable and a
+// refresh re-opens it. Opening pushes a history entry (so Back closes the modal);
+// closing strips the param. The route.query.task watcher keeps state in sync,
+// including when the browser Back button pops the entry.
+// The URL carries the readable task number (#252), not the UUID. numberOf maps a
+// task UUID to its number from the loaded board data.
+function numberOf(id) {
+  const t = allTasks.value.find((x) => x.id === id)
+  if (t?.number != null) return t.number
+  for (const arr of Object.values(subtasksByParent.value)) {
+    const s = arr.find((x) => x.id === id)
+    if (s?.number != null) return s.number
+  }
+  return null
+}
 function openTask(id) {
   selectedTaskId.value = id
   showTaskModal.value = true
+  const param = numberOf(id) ?? id
+  if (String(route.query.task ?? '') !== String(param)) {
+    router.push({ query: { ...route.query, task: param } })
+  }
 }
-// Browser Back closes the open task modal instead of leaving the board.
-useOverlayBack(showTaskModal, () => (showTaskModal.value = false))
+function closeTask() {
+  showTaskModal.value = false
+  if (route.query.task) {
+    const q = { ...route.query }
+    delete q.task
+    router.replace({ query: q })
+  }
+}
 // …and the board archive modal (shared via the store, rendered in two menus).
 const archiveOpen = computed(() => boardViewStore.archiveOpen)
 useOverlayBack(archiveOpen, () => (boardViewStore.archiveOpen = false))
@@ -665,15 +697,17 @@ async function load(id) {
 
 async function loadWorkspaceMeta() {
   const wsId = wsStore.currentId
-  if (!wsId) return
-  const [tg, mem] = await Promise.all([wsApi.tags(wsId), wsApi.members(wsId)])
+  const projectId = board.value?.project_id
+  if (!wsId || !projectId) return
+  // Tags are project-scoped; members stay workspace-scoped.
+  const [tg, mem] = await Promise.all([projectsApi.tags(projectId), wsApi.members(wsId)])
   for (const k of Object.keys(tagsMap)) delete tagsMap[k]
   for (const t of tg.data || []) tagsMap[t.id] = t
   for (const k of Object.keys(membersMap)) delete membersMap[k]
   for (const m of mem.data || []) membersMap[m.user_id] = m
   // Mirror tags + context to the store so the header Теги manager works.
   boardViewStore.setTags(tagsList.value)
-  boardViewStore.setContext(props.boardId, wsId)
+  boardViewStore.setContext(props.boardId, wsId, projectId)
 }
 
 // Due-date predicate for the "Срок" filter.
@@ -906,10 +940,37 @@ watch(
   () => onChanged(),
 )
 
-// Open a task when arriving via a search deep-link (?task=<id>).
-function applyTaskQuery() {
-  const id = route.query.task
-  if (id) openTask(String(id))
+// Sync the open task to the URL's ?task= (a number, or a legacy UUID). Resolves
+// a number to its task, then canonicalizes the URL to the number form.
+async function applyTaskQuery() {
+  const q = route.query.task
+  if (!q) {
+    if (showTaskModal.value) closeTask()
+    return
+  }
+  const s = String(q)
+  // Already showing this task (opened from a card / just canonicalized)? No work.
+  if (
+    showTaskModal.value &&
+    selectedTaskId.value &&
+    (s === selectedTaskId.value || s === String(numberOf(selectedTaskId.value) ?? ''))
+  ) {
+    return
+  }
+  let id = s
+  if (/^\d+$/.test(s)) {
+    try {
+      id = (await wsApi.taskByNumber(wsStore.currentId, s)).data.id
+    } catch {
+      return // unknown number — leave the board as-is
+    }
+  }
+  selectedTaskId.value = id
+  showTaskModal.value = true
+  const num = numberOf(id)
+  if (num != null && String(route.query.task) !== String(num)) {
+    router.replace({ query: { ...route.query, task: num } })
+  }
 }
 
 onMounted(async () => {
@@ -1173,6 +1234,7 @@ watch(
                       :tags="tagsList"
                       :members="membersList"
                       :ws-id="wsStore.currentId"
+                      :project-id="board?.project_id"
                       @open="openTask"
                       @changed="onChanged"
                     />
@@ -1230,11 +1292,13 @@ watch(
     </div>
 
     <TaskModal
-      v-model:show="showTaskModal"
+      :show="showTaskModal"
       :task-id="selectedTaskId"
       :ws-id="wsStore.currentId"
+      :project-id="board?.project_id"
       :tags="tagsList"
       :members="membersList"
+      @update:show="(v) => v || closeTask()"
       @changed="onChanged"
       @open="openTask"
     />

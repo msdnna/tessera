@@ -22,11 +22,10 @@ import {
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
-import { tasks as tasksApi, workspaces as wsApi, boards as boardsApi } from '@/api'
+import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { pressMoved } from '@/utils/dnd'
-import { initials } from '@/utils/initials'
 import UserAvatar from './UserAvatar.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
@@ -53,6 +52,7 @@ const props = defineProps({
   tags: { type: Array, default: () => [] },
   members: { type: Array, default: () => [] },
   wsId: { type: String, default: null },
+  projectId: { type: String, default: null },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -314,7 +314,7 @@ async function createTag() {
   const n = newTagName.value.trim()
   if (!n) return
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
-  const res = await wsApi.createTag(props.wsId, {
+  const res = await projectsApi.createTag(props.projectId, {
     name: n,
     color: palette[Math.floor(Math.random() * palette.length)],
   })
@@ -493,6 +493,7 @@ async function submitAddSub() {
             <n-date-picker
               panel
               type="datetime"
+              default-time="00:00:00"
               :value="dueTs"
               :first-day-of-week="firstDayOfWeek"
               :format="dateTimeFormat"
@@ -647,7 +648,7 @@ async function submitAddSub() {
                 class="menu-item assignee-item"
                 @click="toggleAssignee(m.user_id)"
               >
-                <span class="avatar sm">{{ initials(m.name) }}</span>
+                <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
                 <span class="aname">{{ m.name }}</span>
                 <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
               </div>
@@ -692,6 +693,7 @@ async function submitAddSub() {
             :tags="tags"
             :members="members"
             :ws-id="wsId"
+            :project-id="projectId"
             @open="emit('open', $event)"
             @changed="emit('changed')"
           />

@@ -116,11 +116,12 @@ export const workspaces = {
   createProject: (id, data) => api.post(`/workspaces/${id}/projects`, data),
   search: (id, q) => api.get(`/workspaces/${id}/search`, { params: { q } }),
   tasks: (id, params) => api.get(`/workspaces/${id}/tasks`, { params }),
+  // Resolve a per-workspace task number (#252) to its task — for /board/<slug>?task=<number> links.
+  taskByNumber: (id, number) => api.get(`/workspaces/${id}/tasks/by-number/${number}`),
   summary: (id) => api.get(`/workspaces/${id}/summary`),
+  // Every tag across the workspace's projects — read-only, for cross-project
+  // views (Home). Tags are created/listed per-project (see `projects` below).
   tags: (id) => api.get(`/workspaces/${id}/tags`),
-  createTag: (id, data) => api.post(`/workspaces/${id}/tags`, data),
-  updateTag: (tagId, data) => api.patch(`/tags/${tagId}`, data),
-  deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
 }
 
 export const projects = {
@@ -130,6 +131,10 @@ export const projects = {
   remove: (id) => api.delete(`/projects/${id}`),
   boards: (id) => api.get(`/projects/${id}/boards`),
   createBoard: (id, data) => api.post(`/projects/${id}/boards`, data),
+  tags: (id) => api.get(`/projects/${id}/tags`),
+  createTag: (id, data) => api.post(`/projects/${id}/tags`, data),
+  updateTag: (tagId, data) => api.patch(`/tags/${tagId}`, data),
+  deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
 }
 
 export const groups = {

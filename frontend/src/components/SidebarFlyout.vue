@@ -34,7 +34,7 @@ onMounted(() => {
 })
 
 function openBoard(b) {
-  router.push(`/board/${b.id}`)
+  router.push(`/board/${b.slug || b.id}`)
   emit('navigate')
 }
 </script>

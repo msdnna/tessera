@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NButton, NInput, NText, NEmpty, NPopconfirm, NIcon, useMessage } from 'naive-ui'
 import { ArrowBackOutline } from '@vicons/ionicons5'
 import { notes as notesApi } from '@/api'
@@ -11,6 +11,7 @@ import { useOverlayBack } from '@/composables/useOverlayBack'
 const message = useMessage()
 const wsStore = useWorkspacesStore()
 const route = useRoute()
+const router = useRouter()
 const { isMobile } = useResponsive()
 
 const list = ref([])
@@ -25,7 +26,8 @@ async function loadList() {
     list.value = res.data || []
     const wanted = route.query.note
     if (wanted) {
-      const found = list.value.find((n) => n.id === String(wanted))
+      // Accept a readable slug or a (legacy) UUID.
+      const found = list.value.find((n) => n.slug === String(wanted) || n.id === String(wanted))
       if (found) select(found)
     }
   } catch (e) {
@@ -37,6 +39,11 @@ function select(note) {
   selected.value = note
   title.value = note.title
   body.value = note.body || ''
+  // Reflect the open note in the URL by its readable slug (shareable + survives refresh).
+  const param = note.slug || note.id
+  if (param && String(route.query.note ?? '') !== String(param)) {
+    router.replace({ query: { ...route.query, note: param } })
+  }
 }
 
 function newNote() {

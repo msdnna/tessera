@@ -67,7 +67,7 @@ function onChanged() {
 
   <n-modal v-model:show="tagsOpen">
     <n-card title="Теги" style="max-width: 360px" role="dialog">
-      <TagManager :ws-id="store.wsId" :tags="store.tagsList" @changed="onChanged" />
+      <TagManager :project-id="store.projectId" :tags="store.tagsList" @changed="onChanged" />
     </n-card>
   </n-modal>
 
