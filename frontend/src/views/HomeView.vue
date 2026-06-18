@@ -1,8 +1,10 @@
 <script setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NEmpty, NSpin } from 'naive-ui'
+import { NSpin } from 'naive-ui'
+import { CheckmarkDoneOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
+import EmptyState from '@/components/EmptyState.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
@@ -168,9 +170,10 @@ watch(() => wsStore.currentId, load)
           </span>
         </div>
 
-        <n-empty
+        <empty-state
           v-if="!visibleTasks.length && !loading"
-          description="Здесь пока пусто"
+          :icon="CheckmarkDoneOutline"
+          text="Здесь пока пусто"
           style="margin-top: 40px"
         />
       </div>

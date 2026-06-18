@@ -1,12 +1,13 @@
 <script setup>
 import { ref, watch } from 'vue'
-import { NInput, NIcon, NSpin, NText, NEmpty } from 'naive-ui'
+import { NInput, NIcon, NSpin, NText } from 'naive-ui'
 import {
   SearchOutline,
   CheckmarkCircle,
   EllipseOutline,
   DocumentTextOutline,
 } from '@vicons/ionicons5'
+import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -129,7 +130,7 @@ function gotoNote(n) {
           </div>
         </template>
         <div v-else class="empty">
-          <n-empty description="Ничего не найдено" size="small" />
+          <empty-state :icon="SearchOutline" text="Ничего не найдено" size="small" />
         </div>
       </template>
       <div class="hint">

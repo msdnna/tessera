@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
-import { NInput, NButton, NSelect, NSwitch, NIcon, NModal, NCard, NTag, NEmpty, NSpin } from 'naive-ui'
+import { NInput, NButton, NSelect, NSwitch, NIcon, NModal, NCard, NTag, NSpin } from 'naive-ui'
 import {
   MailOutline,
   PaperPlaneOutline,
@@ -20,6 +20,7 @@ import {
 } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { useAuthStore } from '@/stores/auth'
+import EmptyState from '@/components/EmptyState.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
 
@@ -431,7 +432,12 @@ function wsSummary(r) {
             Добавить канал
           </n-button>
         </div>
-        <n-empty v-if="!channels.length" description="Каналов пока нет" size="small" />
+        <empty-state
+          v-if="!channels.length"
+          :icon="NotificationsOutline"
+          text="Каналов пока нет"
+          size="small"
+        />
         <div v-for="c in channels" :key="c.id" class="item" :class="{ off: !c.enabled }">
           <n-icon :component="TYPE_META[c.type]?.icon || GlobeOutline" class="item-ico" />
           <div class="item-main">
@@ -497,9 +503,10 @@ function wsSummary(r) {
           Правила проверяются сверху вниз — срабатывает первое подходящее. Уведомление уходит в его
           каналы (или никуда, если правило «заглушает»).
         </p>
-        <n-empty
+        <empty-state
           v-if="!routes.length"
-          description="Правил нет — внешние каналы не получают уведомления"
+          :icon="ShareSocialOutline"
+          text="Правил нет — внешние каналы не получают уведомления"
           size="small"
         />
         <div v-for="r in routes" :key="r.id" class="item" :class="{ off: !r.enabled }">

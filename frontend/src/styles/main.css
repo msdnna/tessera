@@ -351,11 +351,33 @@ body {
 /* ── Auth screens (login / register) ────────────────────────────────────────
    The form sits directly on the brand gradient (no card), Android-style. The
    form is slotted into AuthLayout, so its controls are styled here globally. */
+/* Notes (verify / recover / forgot landing text) were left-aligned inside the
+   360px column and read as "off-centre" next to the centred mark — centre them. */
+.auth .note {
+  text-align: center;
+}
 .auth-foot {
   margin-top: 18px;
   text-align: center;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.8);
+}
+/* Inline form-error banner over the gradient (login/register). */
+.auth-error {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(229, 72, 77, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+/* Per-field validation feedback stays readable over the purple gradient. */
+.auth .n-form-item-feedback__line,
+.auth .n-form-item-feedback {
+  color: #ffd4d4 !important;
 }
 .auth-foot a {
   color: #fff;

@@ -43,9 +43,13 @@ defineProps({
 }
 
 /* ── Airy drifting aurora ────────────────────────────────────────────────────
-   Three large, soft, blurred blobs of neighbouring brand hues that slowly drift
-   and breathe over the base gradient. Blended `screen` so they only ever lighten
-   the purple — never muddy it — keeping the look bright and on-brand. */
+   Three large, soft, light-lavender blobs that slowly drift and breathe over the
+   base gradient. They use plain source-over (NOT mix-blend-mode: screen) and a
+   smaller blur: `screen` + a 60px blur forced the GPU to re-blur AND re-blend the
+   full-viewport layer against the backdrop every frame, which pegged the CPU/GPU
+   (fans spinning up). With normal compositing the blurred bitmap is rasterised
+   once and only cheaply re-transformed per frame. The blobs are light tints that
+   fade to transparent, so source-over still only lightens the purple. */
 .auth-aurora {
   position: absolute;
   inset: 0;
@@ -56,9 +60,8 @@ defineProps({
 .auth-aurora .blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.55;
-  mix-blend-mode: screen;
+  filter: blur(44px);
+  opacity: 0.5;
   will-change: transform;
 }
 .auth-aurora .b1 {
@@ -66,7 +69,7 @@ defineProps({
   height: 60vmax;
   top: -22vmax;
   left: -16vmax;
-  background: radial-gradient(circle at 50% 50%, #a99bff 0%, rgba(169, 155, 255, 0) 68%);
+  background: radial-gradient(circle at 50% 50%, #b3a6ff 0%, rgba(179, 166, 255, 0) 68%);
   animation: auth-drift-1 26s ease-in-out infinite alternate;
 }
 .auth-aurora .b2 {
@@ -74,7 +77,7 @@ defineProps({
   height: 52vmax;
   bottom: -20vmax;
   right: -14vmax;
-  background: radial-gradient(circle at 50% 50%, #6a55e6 0%, rgba(106, 85, 230, 0) 66%);
+  background: radial-gradient(circle at 50% 50%, #9787ff 0%, rgba(151, 135, 255, 0) 66%);
   animation: auth-drift-2 32s ease-in-out infinite alternate;
 }
 .auth-aurora .b3 {
@@ -82,7 +85,7 @@ defineProps({
   height: 44vmax;
   top: 28%;
   left: 36%;
-  background: radial-gradient(circle at 50% 50%, #c3b8ff 0%, rgba(195, 184, 255, 0) 64%);
+  background: radial-gradient(circle at 50% 50%, #cfc6ff 0%, rgba(207, 198, 255, 0) 64%);
   animation: auth-drift-3 38s ease-in-out infinite alternate;
 }
 @keyframes auth-drift-1 {

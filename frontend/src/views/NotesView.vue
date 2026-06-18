@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NInput, NText, NEmpty, NPopconfirm, NIcon, useMessage } from 'naive-ui'
-import { ArrowBackOutline } from '@vicons/ionicons5'
+import { NButton, NInput, NText, NPopconfirm, NIcon, useMessage } from 'naive-ui'
+import { ArrowBackOutline, DocumentTextOutline } from '@vicons/ionicons5'
 import { notes as notesApi } from '@/api'
+import EmptyState from '@/components/EmptyState.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
@@ -117,7 +118,12 @@ watch(
         <div class="ni-title">{{ n.title }}</div>
         <div class="ni-snippet">{{ (n.body || '').slice(0, 60) }}</div>
       </div>
-      <n-empty v-if="!list.length" description="Заметок пока нет" size="small" />
+      <empty-state
+        v-if="!list.length"
+        :icon="DocumentTextOutline"
+        text="Заметок пока нет"
+        size="small"
+      />
     </div>
 
     <div v-show="!isMobile || selected" class="editor">

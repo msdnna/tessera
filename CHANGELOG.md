@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.75.0] — 2026-06-18
+- **Auth UX pass.** Landing-page text on verify-email / recover / forgot-password
+  is now centred (single-line notes no longer drift left of the mark).
+- **Inline form validation.** Login / register / forgot-password validate fields
+  on the form (per-field feedback + a banner) instead of throwing raw backend
+  errors at a toast. A central error humaniser translates backend sentinels and
+  gin/validator gibberish (`Key: 'Email' Error:Field validation…`, `invalid
+  credentials`, …) into friendly Russian for every `message.error` caller.
+- **Branded connection overlay.** When the server is slow (>4s) a full-screen
+  TesseraSpinner with cross-fading captions appears; on a network failure an
+  error state with a retry — mirrors the Android LoadingState/ErrorState.
+- **Custom empty states.** Replaced Naive's `<n-empty>` (broken-image glyph) with
+  a branded `EmptyState` (ionicons5 glyph on a tinted disc + caption) across
+  reminders, notes, search, archive, home, notifications and the notes feed.
+- **404 page.** Added a catch-all branded NotFound view instead of a blank screen
+  on unknown routes.
+- Subtask collapse/expand on the board now cross-fades between compact rows and
+  full cards instead of snapping.
+- Lighter auth background: the drifting aurora dropped `mix-blend-mode: screen`
+  and a heavy blur (which forced a full-viewport re-blur+re-composite every frame
+  and pegged the CPU/GPU); it now uses plain compositing the GPU can cache.
+- Removed the obsolete "push delivery arrives with the mobile app (Phase 8)" hint
+  from reminders.
+
 ### [0.74.2] — 2026-06-18
 - Password-reset page is now served at `/recover` (with `/reset-password` kept as
   an alias for old links). The «reset-password» URL was tripping Yandex's spam

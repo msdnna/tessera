@@ -8,9 +8,21 @@ import AuthLayout from '@/components/AuthLayout.vue'
 const email = ref('')
 const loading = ref(false)
 const sent = ref(false)
+const emailError = ref('')
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 async function submit() {
-  if (!email.value.trim()) return
+  const v = email.value.trim()
+  if (!v) {
+    emailError.value = 'Укажите email'
+    return
+  }
+  if (!EMAIL_RE.test(v)) {
+    emailError.value = 'Введите корректный email'
+    return
+  }
+  emailError.value = ''
   loading.value = true
   try {
     await accountFlows.forgotPassword(email.value.trim())
@@ -28,8 +40,17 @@ async function submit() {
   <auth-layout subtitle="Восстановление пароля">
     <template v-if="!sent">
       <n-form @submit.prevent="submit">
-        <n-form-item label="Email">
-          <n-input v-model:value="email" placeholder="you@example.com" @keyup.enter="submit" />
+        <n-form-item
+          label="Email"
+          :validation-status="emailError ? 'error' : undefined"
+          :feedback="emailError"
+        >
+          <n-input
+            v-model:value="email"
+            placeholder="you@example.com"
+            @input="emailError = ''"
+            @keyup.enter="submit"
+          />
         </n-form-item>
         <n-button type="primary" block :loading="loading" @click="submit"
           >Отправить ссылку</n-button

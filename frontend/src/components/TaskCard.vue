@@ -675,6 +675,7 @@ async function submitAddSub() {
          can be dropped to nest even on a childless card. Renders as a fanned
          stack (expanded) or an emerging list card (collapsed); empty → a dashed
          drop hint while a board drag is in progress. -->
+    <transition name="sub-morph" mode="out-in">
     <draggable
       v-if="!nested"
       :key="subtasksExpanded ? 'stack' : 'list'"
@@ -730,6 +731,7 @@ async function submitAddSub() {
         </div>
       </template>
     </draggable>
+    </transition>
 
     <template v-if="!nested">
       <div v-if="addingSub" class="sub-add-input" @click.stop>
@@ -1200,6 +1202,29 @@ async function submitAddSub() {
 @media (hover: none) {
   .add-sub {
     opacity: 0.55;
+  }
+}
+/* Subtask collapse/expand: cross-fade + slight slide when the board toggles
+   between the compact rows ("list") and full property cards ("stack"). The
+   keyed draggable swaps under <transition mode="out-in">. */
+.sub-morph-enter-active,
+.sub-morph-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+.sub-morph-enter-from {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.sub-morph-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sub-morph-enter-active,
+  .sub-morph-leave-active {
+    transition: none;
   }
 }
 </style>

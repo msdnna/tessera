@@ -10,6 +10,7 @@ import {
 } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 import { PRIORITY_COLORS } from '@/styles/tokens'
+import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
 
 const theme = useThemeStore()
 const router = useRouter()
@@ -73,5 +74,7 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
         </transition>
       </router-view>
     </n-message-provider>
+    <!-- Global "server slow / unreachable" overlay (branded loader + retry). -->
+    <app-connection-overlay />
   </n-config-provider>
 </template>

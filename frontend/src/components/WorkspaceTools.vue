@@ -8,7 +8,6 @@ import {
   NTooltip,
   NSwitch,
   NText,
-  NEmpty,
   NDropdown,
 } from 'naive-ui'
 import {
@@ -20,6 +19,7 @@ import {
   ExtensionPuzzleOutline,
   LogoGitlab,
 } from '@vicons/ionicons5'
+import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { hueGrad } from '@/utils/gradient'
@@ -130,7 +130,12 @@ function fmtTime(d) {
           <span class="ft">{{ it.text }}</span>
           <span class="fa">{{ fmtTime(it.created_at) }}</span>
         </button>
-        <n-empty v-if="!notes.items.length" description="Пока тихо" size="small" />
+        <empty-state
+          v-if="!notes.items.length"
+          :icon="NotificationsOutline"
+          text="Пока тихо"
+          size="small"
+        />
       </div>
     </n-popover>
 

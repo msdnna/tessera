@@ -1,8 +1,9 @@
 <script setup>
 import { ref, watch } from 'vue'
-import { NModal, NCard, NButton, NEmpty, NPopconfirm, NIcon, useMessage } from 'naive-ui'
-import { TrashOutline, ArrowUndoOutline } from '@vicons/ionicons5'
+import { NModal, NCard, NButton, NPopconfirm, NIcon, useMessage } from 'naive-ui'
+import { TrashOutline, ArrowUndoOutline, ArchiveOutline } from '@vicons/ionicons5'
 import { boards as boardsApi, tasks as tasksApi } from '@/api'
+import EmptyState from '@/components/EmptyState.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -66,7 +67,7 @@ watch(
             Удалить навсегда? Действие необратимо.
           </n-popconfirm>
         </div>
-        <n-empty v-if="!list.length" description="Архив пуст" />
+        <empty-state v-if="!list.length" :icon="ArchiveOutline" text="Архив пуст" />
       </div>
     </n-card>
   </n-modal>

@@ -47,6 +47,13 @@ const routes = [
       },
     ],
   },
+  // Catch-all 404 — branded page instead of a blank screen. Open so the guard
+  // never bounces it to /login.
+  {
+    path: '/:pathMatch(.*)*',
+    component: () => import('@/views/NotFoundView.vue'),
+    meta: { open: true },
+  },
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })

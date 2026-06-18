@@ -5,15 +5,14 @@ import {
   NInput,
   NDatePicker,
   NCheckbox,
-  NEmpty,
   NCard,
-  NText,
   NPopconfirm,
   NIcon,
   useMessage,
 } from 'naive-ui'
-import { TrashOutline } from '@vicons/ionicons5'
+import { TrashOutline, AlarmOutline } from '@vicons/ionicons5'
 import { reminders as remApi } from '@/api'
+import EmptyState from '@/components/EmptyState.vue'
 import { useDateLocale } from '@/composables/useDateLocale'
 
 const { firstDayOfWeek, dateTimeFormat } = useDateLocale()
@@ -120,12 +119,8 @@ onMounted(load)
           Удалить напоминание?
         </n-popconfirm>
       </div>
-      <n-empty v-if="!list.length" description="Напоминаний нет" />
+      <empty-state v-if="!list.length" :icon="AlarmOutline" text="Напоминаний пока нет" />
     </div>
-
-    <n-text depth="3" class="hint">
-      Доставка push-уведомлений появится с мобильным приложением (Фаза 8).
-    </n-text>
   </div>
 </template>
 
@@ -180,10 +175,5 @@ onMounted(load)
 .rem-at {
   font-size: 12px;
   color: var(--t-text3);
-}
-.hint {
-  display: block;
-  margin-top: 16px;
-  font-size: 12px;
 }
 </style>

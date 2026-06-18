@@ -1,9 +1,13 @@
 import axios from 'axios'
+import { humanizeError } from '@/utils/errors'
+import { reqStart, reqEnd, setOffline } from '@/composables/useConnection'
 
 const api = axios.create({ baseURL: '/api' })
 
-// Attach the access token on every request.
+// Attach the access token on every request + track liveness for the connection
+// overlay (start now, paired end in the response/error handlers below).
 api.interceptors.request.use((config) => {
+  reqStart()
   const token = localStorage.getItem('tessera_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -35,8 +39,16 @@ async function refreshAccessToken() {
 }
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    reqEnd(true)
+    return res
+  },
   async (err) => {
+    // A response (even an error one) means we reached the server; no response
+    // at all (network/DNS/timeout) means we're offline.
+    const reached = !!err.response
+    reqEnd(reached)
+    setOffline(!reached)
     const original = err.config
     const isUnauthorized = err.response?.status === 401
     const isRefreshCall = original?.url?.includes('/auth/refresh')
@@ -55,8 +67,8 @@ api.interceptors.response.use(
       localStorage.removeItem('tessera_user')
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }
-    const msg = err.response?.data?.error || err.message || 'Ошибка запроса'
-    return Promise.reject(new Error(msg))
+    const raw = err.response?.data?.error || err.message || 'Ошибка запроса'
+    return Promise.reject(new Error(humanizeError(raw)))
   },
 )
 
