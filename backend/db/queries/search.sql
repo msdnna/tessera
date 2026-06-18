@@ -1,5 +1,5 @@
 -- name: SearchTasks :many
-SELECT t.id, t.board_id, t.number, t.title, t.parent_id, t.completed_at
+SELECT t.id, t.board_id, b.slug AS board_slug, t.number, t.title, t.parent_id, t.completed_at
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
@@ -10,7 +10,7 @@ ORDER BY t.number DESC
 LIMIT 25;
 
 -- name: SearchNotes :many
-SELECT id, title
+SELECT id, title, slug
 FROM notes
 WHERE workspace_id = $1
   AND (title ILIKE '%' || $2 || '%' OR body ILIKE '%' || $2 || '%')

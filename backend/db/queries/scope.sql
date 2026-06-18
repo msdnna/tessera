@@ -4,6 +4,9 @@
 -- name: WorkspaceIDForProject :one
 SELECT workspace_id FROM projects WHERE id = $1;
 
+-- name: ProjectIDForBoard :one
+SELECT project_id FROM boards WHERE id = $1;
+
 -- name: WorkspaceIDForBoard :one
 SELECT p.workspace_id
 FROM boards b JOIN projects p ON p.id = b.project_id

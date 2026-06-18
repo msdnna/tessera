@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.72.0] — 2026-06-18
+- **Human-readable board URLs**: `/board/<slug>?task=<number>` instead of UUIDs
+  (e.g. `/board/obshchie-zadachi?task=252`). Board links resolve a slug or a legacy
+  UUID and the URL is canonicalized to the slug; the open task is reflected as its
+  number; notes open as `?note=<slug>`. Search results link by slug/number.
+- **Tags are per-project**: the board tag picker and the Теги manager create/list
+  tags in the board's project (`/projects/:id/tags`); Home still shows all
+  workspace tags for its cross-project list.
+- Fix: setting a due date defaults the time to 00:00 (hidden on the card) instead
+  of the current wall-clock time — pick a time only when you need one.
+- Fix: a kanban card with subtasks no longer overlaps the global search dropdown.
+- Fix: closing a task opened via a link now clears `?task=` from the URL (a refresh
+  no longer reopens it); the open task/note is reflected in the URL.
+- Fix: avatars (not initials) now render in the assignee picker, task history,
+  the Home recent-tasks list, and the board list view.
+
 ### [0.71.0] — 2026-06-17
 - Browser **Back** now closes an open overlay instead of leaving the page: the
   task modal, the members/GitLab modals, the board archive modal, the mobile
@@ -1219,6 +1235,28 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.43.0] — 2026-06-18
+- **Tags are now per-project, not per-workspace** (migration 0023). A workspace can
+  hold unrelated projects whose tag vocabularies shouldn't mix. `tags` gain a
+  `project_id` (unique on `(project_id, name)`); existing tags are consolidated into
+  the «Неолант Тенакс» project (or each workspace's oldest project) and leaked
+  cross-project associations are pruned. Tag create/list move to `/projects/:id/tags`;
+  `GET /workspaces/:id/tags` stays as a read-only all-tags-in-workspace endpoint for
+  cross-project views (Home). GitLab synced labels attach to the integration board's
+  project.
+- **Human-readable URL slugs** (migration 0024). Boards and notes gain a `slug`
+  (transliterated from the name, e.g. «Общие задачи» → `obshchie-zadachi`), backfilled
+  at startup and unique (boards globally, notes per workspace). `GET /boards/:id`
+  accepts a slug or a UUID. New `GET /workspaces/:id/tasks/by-number/:number` resolves
+  the per-workspace task number for `?task=<number>` deep links.
+- Fix: device notification channels no longer lose their custom name on
+  re-registration — the auto-generated label only seeds a new channel; an existing one
+  keeps the name the user set.
+- Fix: the GitLab attachment proxy falls back to a redirect (like the avatar proxy)
+  when it can't stream the file server-side, so GL-hosted images in synced comments
+  load again in the browser instead of 404ing.
+- Task activity events now expose `actor_id` so clients can show the actor's avatar.
 
 ### [0.42.0] — 2026-06-17
 - GitLab note authors' avatars are captured on sync (migration 0022:

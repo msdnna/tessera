@@ -11,6 +11,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const projectIDForBoard = `-- name: ProjectIDForBoard :one
+SELECT project_id FROM boards WHERE id = $1
+`
+
+func (q *Queries) ProjectIDForBoard(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, projectIDForBoard, id)
+	var project_id uuid.UUID
+	err := row.Scan(&project_id)
+	return project_id, err
+}
+
 const workspaceIDForBoard = `-- name: WorkspaceIDForBoard :one
 SELECT p.workspace_id
 FROM boards b JOIN projects p ON p.id = b.project_id

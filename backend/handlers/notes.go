@@ -32,6 +32,7 @@ func (h *API) CreateNote(c *gin.Context) {
 		AuthorID:    &uid,
 		Title:       req.Title,
 		Body:        req.Body,
+		Slug:        h.uniqueNoteSlug(c, wsID, req.Title),
 	})
 	if err != nil {
 		fail(c)

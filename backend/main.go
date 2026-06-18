@@ -42,6 +42,8 @@ func main() {
 	wsHandler := handlers.NewWSHandler(hub)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, mailer, cfg.PublicURL)
 	rh := handlers.NewAPI(queries, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL)
+	// Give boards/notes that predate the slug column a human-readable slug.
+	rh.BackfillSlugs(context.Background())
 
 	// Background GitLab auto-sync worker (idle until an integration sets a
 	// positive sync interval).
@@ -113,6 +115,7 @@ func main() {
 			protected.DELETE("/workspaces/:id", rh.DeleteWorkspace)
 			protected.GET("/workspaces/:id/search", rh.Search)
 			protected.GET("/workspaces/:id/tasks", rh.ListWorkspaceTasks)
+			protected.GET("/workspaces/:id/tasks/by-number/:number", rh.GetTaskByNumber)
 			protected.GET("/workspaces/:id/summary", rh.WorkspaceSummary)
 			protected.GET("/workspaces/:id/members", rh.ListMembers)
 			protected.POST("/workspaces/:id/members", rh.AddMember)
@@ -138,9 +141,11 @@ func main() {
 			protected.POST("/workspaces/:id/projects", rh.CreateProject)
 			protected.GET("/workspaces/:id/projects", rh.ListProjects)
 
-			// Tags (workspace-scoped).
-			protected.POST("/workspaces/:id/tags", rh.CreateTag)
-			protected.GET("/workspaces/:id/tags", rh.ListTags)
+			// Tags: project-scoped create/list; workspace-wide read for
+			// cross-project views (Home).
+			protected.POST("/projects/:id/tags", rh.CreateTag)
+			protected.GET("/projects/:id/tags", rh.ListTags)
+			protected.GET("/workspaces/:id/tags", rh.ListWorkspaceTags)
 
 			// Notes (workspace-scoped).
 			protected.POST("/workspaces/:id/notes", rh.CreateNote)

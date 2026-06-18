@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -231,6 +232,30 @@ func (h *API) GetTask(c *gin.Context) {
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
 		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id),
 	})
+}
+
+// GetTaskByNumber resolves a per-workspace task number (the #252 on cards) to
+// its task — backs human-readable deep links (?task=<number>). Returns the task
+// row; the client then opens it (which loads full detail by id).
+func (h *API) GetTaskByNumber(c *gin.Context) {
+	wsID, ok := parseID(c, "id")
+	if !ok || !h.requireMember(c, wsID) {
+		return
+	}
+	n, err := strconv.ParseInt(c.Param("number"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task number"})
+		return
+	}
+	t, err := h.q.GetTaskByNumber(c, db.GetTaskByNumberParams{WorkspaceID: wsID, Number: &n})
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, t)
 }
 
 // UpdateTask edits a task's fields. `completed` toggles completed_at.

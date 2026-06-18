@@ -40,19 +40,25 @@ func (q *Queries) AddTaskTag(ctx context.Context, arg AddTaskTagParams) error {
 }
 
 const createTag = `-- name: CreateTag :one
-INSERT INTO tags (workspace_id, name, color)
-VALUES ($1, $2, $3)
-RETURNING id, workspace_id, name, color, created_at
+INSERT INTO tags (workspace_id, project_id, name, color)
+VALUES ($1, $2, $3, $4)
+RETURNING id, workspace_id, name, color, created_at, project_id
 `
 
 type CreateTagParams struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
+	ProjectID   uuid.UUID `json:"project_id"`
 	Name        string    `json:"name"`
 	Color       string    `json:"color"`
 }
 
 func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error) {
-	row := q.db.QueryRow(ctx, createTag, arg.WorkspaceID, arg.Name, arg.Color)
+	row := q.db.QueryRow(ctx, createTag,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.Name,
+		arg.Color,
+	)
 	var i Tag
 	err := row.Scan(
 		&i.ID,
@@ -60,6 +66,7 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (Tag, erro
 		&i.Name,
 		&i.Color,
 		&i.CreatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -74,25 +81,31 @@ func (q *Queries) DeleteTag(ctx context.Context, id uuid.UUID) error {
 }
 
 const ensureTag = `-- name: EnsureTag :one
-INSERT INTO tags (workspace_id, name, color)
-VALUES ($1, $2, $3)
-ON CONFLICT (workspace_id, name) DO UPDATE
+INSERT INTO tags (workspace_id, project_id, name, color)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (project_id, name) DO UPDATE
 SET color = COALESCE(NULLIF(EXCLUDED.color, ''), tags.color)
-RETURNING id, workspace_id, name, color, created_at
+RETURNING id, workspace_id, name, color, created_at, project_id
 `
 
 type EnsureTagParams struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
+	ProjectID   uuid.UUID `json:"project_id"`
 	Name        string    `json:"name"`
 	Color       string    `json:"color"`
 }
 
-// EnsureTag returns the workspace tag with this name, creating it (with the
-// given color) if absent. On conflict it refreshes the colour only when a
-// non-empty one is supplied, so the GitLab sync keeps label colours current
-// without wiping a colour set elsewhere. Used by the GitLab sync.
+// EnsureTag returns the project tag with this name, creating it (with the given
+// color) if absent. On conflict it refreshes the colour only when a non-empty
+// one is supplied, so the GitLab sync keeps label colours current without wiping
+// a colour set elsewhere. Used by the GitLab sync.
 func (q *Queries) EnsureTag(ctx context.Context, arg EnsureTagParams) (Tag, error) {
-	row := q.db.QueryRow(ctx, ensureTag, arg.WorkspaceID, arg.Name, arg.Color)
+	row := q.db.QueryRow(ctx, ensureTag,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.Name,
+		arg.Color,
+	)
 	var i Tag
 	err := row.Scan(
 		&i.ID,
@@ -100,12 +113,13 @@ func (q *Queries) EnsureTag(ctx context.Context, arg EnsureTagParams) (Tag, erro
 		&i.Name,
 		&i.Color,
 		&i.CreatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
 
 const getTag = `-- name: GetTag :one
-SELECT id, workspace_id, name, color, created_at FROM tags WHERE id = $1
+SELECT id, workspace_id, name, color, created_at, project_id FROM tags WHERE id = $1
 `
 
 func (q *Queries) GetTag(ctx context.Context, id uuid.UUID) (Tag, error) {
@@ -117,16 +131,17 @@ func (q *Queries) GetTag(ctx context.Context, id uuid.UUID) (Tag, error) {
 		&i.Name,
 		&i.Color,
 		&i.CreatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
 
 const listTags = `-- name: ListTags :many
-SELECT id, workspace_id, name, color, created_at FROM tags WHERE workspace_id = $1 ORDER BY name
+SELECT id, workspace_id, name, color, created_at, project_id FROM tags WHERE project_id = $1 ORDER BY name
 `
 
-func (q *Queries) ListTags(ctx context.Context, workspaceID uuid.UUID) ([]Tag, error) {
-	rows, err := q.db.Query(ctx, listTags, workspaceID)
+func (q *Queries) ListTags(ctx context.Context, projectID uuid.UUID) ([]Tag, error) {
+	rows, err := q.db.Query(ctx, listTags, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +155,7 @@ func (q *Queries) ListTags(ctx context.Context, workspaceID uuid.UUID) ([]Tag, e
 			&i.Name,
 			&i.Color,
 			&i.CreatedAt,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -186,7 +202,7 @@ func (q *Queries) ListTaskAssignees(ctx context.Context, taskID uuid.UUID) ([]Li
 }
 
 const listTaskTags = `-- name: ListTaskTags :many
-SELECT t.id, t.workspace_id, t.name, t.color, t.created_at
+SELECT t.id, t.workspace_id, t.name, t.color, t.created_at, t.project_id
 FROM tags t
 JOIN task_tags tt ON tt.tag_id = t.id
 WHERE tt.task_id = $1
@@ -208,6 +224,40 @@ func (q *Queries) ListTaskTags(ctx context.Context, taskID uuid.UUID) ([]Tag, er
 			&i.Name,
 			&i.Color,
 			&i.CreatedAt,
+			&i.ProjectID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceTags = `-- name: ListWorkspaceTags :many
+SELECT id, workspace_id, name, color, created_at, project_id FROM tags WHERE workspace_id = $1 ORDER BY name
+`
+
+// ListWorkspaceTags returns every tag across all projects in a workspace, for
+// read-only views that span projects (Home, cross-project task lists).
+func (q *Queries) ListWorkspaceTags(ctx context.Context, workspaceID uuid.UUID) ([]Tag, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceTags, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Tag
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Color,
+			&i.CreatedAt,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -248,7 +298,7 @@ func (q *Queries) RemoveTaskTag(ctx context.Context, arg RemoveTaskTagParams) er
 }
 
 const updateTag = `-- name: UpdateTag :one
-UPDATE tags SET name = $2, color = $3 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at
+UPDATE tags SET name = $2, color = $3 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at, project_id
 `
 
 type UpdateTagParams struct {
@@ -266,6 +316,7 @@ func (q *Queries) UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, erro
 		&i.Name,
 		&i.Color,
 		&i.CreatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }

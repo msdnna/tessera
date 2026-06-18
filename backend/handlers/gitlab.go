@@ -541,6 +541,12 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate *time.Time, actorID uuid.UUID) (uuid.UUID, bool, bool) {
 	// Resolve GitLab-relative attachment links to signed proxy URLs.
 	issue.Description = h.rewriteAssets(issue.Description, wsID)
+	// Synced labels become tags scoped to the integration board's project.
+	projectID, perr := h.q.ProjectIDForBoard(ctx, boardID)
+	if perr != nil {
+		log.Printf("gitlab sync: resolve project for board failed: %v", perr)
+		return uuid.Nil, false, false
+	}
 	link, lerr := h.q.GetGitlabLinkByGlobalID(ctx, db.GetGitlabLinkByGlobalIDParams{
 		IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
 	})
@@ -563,7 +569,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
 		}
-		h.reconcileTaskMeta(ctx, t.ID, wsID, issue, res.Tags)
+		h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 		h.broadcast(wsID, "task.created", t)
 		return t.ID, true, true
@@ -604,7 +610,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate})
 			t.DueDate = dueDate
 		}
-		h.reconcileTaskMeta(ctx, link.TaskID, wsID, issue, res.Tags)
+		h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
 		h.broadcast(wsID, "task.updated", t)
 		return link.TaskID, false, true
 	}
@@ -614,8 +620,8 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 // Tessera task. Each is "mixed": the sync owns the gitlab-sourced set (added,
 // refreshed and pruned to match GitLab) and never touches what the user added
 // manually.
-func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) {
-	h.reconcileTags(ctx, taskID, wsID, tags)
+func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID, projectID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) {
+	h.reconcileTags(ctx, taskID, wsID, projectID, tags)
 	h.reconcileAssignees(ctx, wsID, taskID, issue.Assignees)
 	h.syncComments(ctx, taskID, wsID, issue.Notes)
 }
@@ -623,14 +629,14 @@ func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID uuid.UUID, iss
 // reconcileTags ensures each resolved tag exists (with the GitLab colour or a
 // stable auto-colour), attaches it as gitlab-sourced, and prunes gitlab-sourced
 // tags GitLab no longer has. Manual ('user') tags are left untouched.
-func (h *API) reconcileTags(ctx context.Context, taskID, wsID uuid.UUID, tags []gitlab.Tag) {
+func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UUID, tags []gitlab.Tag) {
 	ids := make([]uuid.UUID, 0, len(tags))
 	for _, t := range tags {
 		color := t.Color
 		if color == "" {
 			color = autoTagColor(t.Name)
 		}
-		tag, err := h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, Name: t.Name, Color: color})
+		tag, err := h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, ProjectID: projectID, Name: t.Name, Color: color})
 		if err != nil {
 			continue
 		}

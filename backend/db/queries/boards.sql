@@ -1,6 +1,6 @@
 -- name: CreateBoard :one
-INSERT INTO boards (project_id, name, position)
-VALUES ($1, $2, $3)
+INSERT INTO boards (project_id, name, slug, position)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: ListBoards :many
@@ -8,6 +8,18 @@ SELECT * FROM boards WHERE project_id = $1 ORDER BY position;
 
 -- name: GetBoard :one
 SELECT * FROM boards WHERE id = $1;
+
+-- name: GetBoardBySlug :one
+SELECT * FROM boards WHERE slug = $1;
+
+-- name: BoardSlugExists :one
+SELECT EXISTS(SELECT 1 FROM boards WHERE slug = $1);
+
+-- name: BoardsMissingSlug :many
+SELECT id, name FROM boards WHERE slug = '';
+
+-- name: SetBoardSlug :exec
+UPDATE boards SET slug = $2 WHERE id = $1;
 
 -- name: MaxBoardPosition :one
 SELECT coalesce(max(position), 0)::double precision FROM boards WHERE project_id = $1;

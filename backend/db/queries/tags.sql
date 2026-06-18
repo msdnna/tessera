@@ -1,22 +1,27 @@
 -- name: CreateTag :one
-INSERT INTO tags (workspace_id, name, color)
-VALUES ($1, $2, $3)
+INSERT INTO tags (workspace_id, project_id, name, color)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: ListTags :many
+SELECT * FROM tags WHERE project_id = $1 ORDER BY name;
+
+-- ListWorkspaceTags returns every tag across all projects in a workspace, for
+-- read-only views that span projects (Home, cross-project task lists).
+-- name: ListWorkspaceTags :many
 SELECT * FROM tags WHERE workspace_id = $1 ORDER BY name;
 
 -- name: GetTag :one
 SELECT * FROM tags WHERE id = $1;
 
--- EnsureTag returns the workspace tag with this name, creating it (with the
--- given color) if absent. On conflict it refreshes the colour only when a
--- non-empty one is supplied, so the GitLab sync keeps label colours current
--- without wiping a colour set elsewhere. Used by the GitLab sync.
+-- EnsureTag returns the project tag with this name, creating it (with the given
+-- color) if absent. On conflict it refreshes the colour only when a non-empty
+-- one is supplied, so the GitLab sync keeps label colours current without wiping
+-- a colour set elsewhere. Used by the GitLab sync.
 -- name: EnsureTag :one
-INSERT INTO tags (workspace_id, name, color)
-VALUES ($1, $2, $3)
-ON CONFLICT (workspace_id, name) DO UPDATE
+INSERT INTO tags (workspace_id, project_id, name, color)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (project_id, name) DO UPDATE
 SET color = COALESCE(NULLIF(EXCLUDED.color, ''), tags.color)
 RETURNING *;
 

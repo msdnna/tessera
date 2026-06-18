@@ -41,7 +41,8 @@ func (h *API) CreateBoard(c *gin.Context) {
 		return
 	}
 	b, err := h.q.CreateBoard(c, db.CreateBoardParams{
-		ProjectID: projectID, Name: req.Name, Position: positionBetween(&max, nil),
+		ProjectID: projectID, Name: req.Name, Slug: h.uniqueBoardSlug(c, req.Name),
+		Position: positionBetween(&max, nil),
 	})
 	if err != nil {
 		fail(c)
@@ -130,11 +131,15 @@ func (h *API) ListBoards(c *gin.Context) {
 
 // GetBoard returns a single board.
 func (h *API) GetBoard(c *gin.Context) {
-	id, ok := parseID(c, "id")
-	if !ok {
-		return
+	// Accept either a UUID or a human-readable slug (/board/<slug> links).
+	param := c.Param("id")
+	var b db.Board
+	var err error
+	if id, perr := uuid.Parse(param); perr == nil {
+		b, err = h.q.GetBoard(c, id)
+	} else {
+		b, err = h.q.GetBoardBySlug(c, param)
 	}
-	wsID, err := h.q.WorkspaceIDForBoard(c, id)
 	if notFound(c, err) {
 		return
 	}
@@ -142,12 +147,12 @@ func (h *API) GetBoard(c *gin.Context) {
 		fail(c)
 		return
 	}
-	if !h.requireMember(c, wsID) {
-		return
-	}
-	b, err := h.q.GetBoard(c, id)
+	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
 	if err != nil {
 		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
 		return
 	}
 	c.JSON(http.StatusOK, b)

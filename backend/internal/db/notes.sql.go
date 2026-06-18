@@ -12,9 +12,9 @@ import (
 )
 
 const createNote = `-- name: CreateNote :one
-INSERT INTO notes (workspace_id, project_id, author_id, title, body)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at
+INSERT INTO notes (workspace_id, project_id, author_id, title, body, slug)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug
 `
 
 type CreateNoteParams struct {
@@ -23,6 +23,7 @@ type CreateNoteParams struct {
 	AuthorID    *uuid.UUID `json:"author_id"`
 	Title       string     `json:"title"`
 	Body        string     `json:"body"`
+	Slug        string     `json:"slug"`
 }
 
 func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, error) {
@@ -32,6 +33,7 @@ func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, e
 		arg.AuthorID,
 		arg.Title,
 		arg.Body,
+		arg.Slug,
 	)
 	var i Note
 	err := row.Scan(
@@ -43,6 +45,7 @@ func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, e
 		&i.Body,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Slug,
 	)
 	return i, err
 }
@@ -57,7 +60,7 @@ func (q *Queries) DeleteNote(ctx context.Context, id uuid.UUID) error {
 }
 
 const getNote = `-- name: GetNote :one
-SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at FROM notes WHERE id = $1
+SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug FROM notes WHERE id = $1
 `
 
 func (q *Queries) GetNote(ctx context.Context, id uuid.UUID) (Note, error) {
@@ -72,12 +75,13 @@ func (q *Queries) GetNote(ctx context.Context, id uuid.UUID) (Note, error) {
 		&i.Body,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Slug,
 	)
 	return i, err
 }
 
 const listNotes = `-- name: ListNotes :many
-SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at FROM notes WHERE workspace_id = $1 ORDER BY updated_at DESC
+SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug FROM notes WHERE workspace_id = $1 ORDER BY updated_at DESC
 `
 
 func (q *Queries) ListNotes(ctx context.Context, workspaceID uuid.UUID) ([]Note, error) {
@@ -98,6 +102,7 @@ func (q *Queries) ListNotes(ctx context.Context, workspaceID uuid.UUID) ([]Note,
 			&i.Body,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Slug,
 		); err != nil {
 			return nil, err
 		}
@@ -109,11 +114,71 @@ func (q *Queries) ListNotes(ctx context.Context, workspaceID uuid.UUID) ([]Note,
 	return items, nil
 }
 
+const noteSlugExists = `-- name: NoteSlugExists :one
+SELECT EXISTS(SELECT 1 FROM notes WHERE workspace_id = $1 AND slug = $2)
+`
+
+type NoteSlugExistsParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Slug        string    `json:"slug"`
+}
+
+func (q *Queries) NoteSlugExists(ctx context.Context, arg NoteSlugExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, noteSlugExists, arg.WorkspaceID, arg.Slug)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const notesMissingSlug = `-- name: NotesMissingSlug :many
+SELECT id, workspace_id, title FROM notes WHERE slug = ''
+`
+
+type NotesMissingSlugRow struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Title       string    `json:"title"`
+}
+
+func (q *Queries) NotesMissingSlug(ctx context.Context) ([]NotesMissingSlugRow, error) {
+	rows, err := q.db.Query(ctx, notesMissingSlug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []NotesMissingSlugRow
+	for rows.Next() {
+		var i NotesMissingSlugRow
+		if err := rows.Scan(&i.ID, &i.WorkspaceID, &i.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setNoteSlug = `-- name: SetNoteSlug :exec
+UPDATE notes SET slug = $2 WHERE id = $1
+`
+
+type SetNoteSlugParams struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+}
+
+func (q *Queries) SetNoteSlug(ctx context.Context, arg SetNoteSlugParams) error {
+	_, err := q.db.Exec(ctx, setNoteSlug, arg.ID, arg.Slug)
+	return err
+}
+
 const updateNote = `-- name: UpdateNote :one
 UPDATE notes
 SET title = $2, body = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at
+RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug
 `
 
 type UpdateNoteParams struct {
@@ -134,6 +199,7 @@ func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, e
 		&i.Body,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Slug,
 	)
 	return i, err
 }

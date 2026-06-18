@@ -107,6 +107,7 @@ type taskEventResp struct {
 	Kind      string          `json:"kind"`
 	Data      json.RawMessage `json:"data"`
 	CreatedAt time.Time       `json:"created_at"`
+	ActorID   *uuid.UUID      `json:"actor_id"`
 	ActorName *string         `json:"actor_name"`
 }
 
@@ -130,7 +131,7 @@ func (h *API) ListTaskEvents(c *gin.Context) {
 			data = json.RawMessage("{}")
 		}
 		out = append(out, taskEventResp{
-			ID: e.ID, Kind: e.Kind, Data: data, CreatedAt: e.CreatedAt, ActorName: e.ActorName,
+			ID: e.ID, Kind: e.Kind, Data: data, CreatedAt: e.CreatedAt, ActorID: e.ActorID, ActorName: e.ActorName,
 		})
 	}
 	c.JSON(http.StatusOK, out)

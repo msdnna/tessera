@@ -145,7 +145,11 @@ func (h *API) GitlabAsset(c *gin.Context) {
 			}
 		}
 	}
-	c.Status(http.StatusNotFound)
+	// Couldn't stream the file server-side (no uploads API, session-gated web
+	// route, egress failure). Bounce the client to the GitLab web URL — a browser
+	// with a GitLab session loads it directly, mirroring the avatar proxy's
+	// fallback. (The mobile app can't follow this, but it had no access either.)
+	c.Redirect(http.StatusFound, webURL)
 }
 
 // GitlabAvatar proxies a signed absolute GitLab avatar URL: it verifies the HMAC,

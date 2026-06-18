@@ -8,10 +8,21 @@ import (
 	"tessera/internal/db"
 )
 
-// CreateTag adds a workspace-scoped tag.
+// CreateTag adds a project-scoped tag.
 func (h *API) CreateTag(c *gin.Context) {
-	wsID, ok := parseID(c, "id")
-	if !ok || !h.requireMember(c, wsID) {
+	projectID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForProject(c, projectID)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
 		return
 	}
 	var req struct {
@@ -22,7 +33,7 @@ func (h *API) CreateTag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	tag, err := h.q.CreateTag(c, db.CreateTagParams{WorkspaceID: wsID, Name: req.Name, Color: req.Color})
+	tag, err := h.q.CreateTag(c, db.CreateTagParams{WorkspaceID: wsID, ProjectID: projectID, Name: req.Name, Color: req.Color})
 	if err != nil {
 		fail(c)
 		return
@@ -31,13 +42,39 @@ func (h *API) CreateTag(c *gin.Context) {
 	c.JSON(http.StatusCreated, tag)
 }
 
-// ListTags lists a workspace's tags.
+// ListTags lists a project's tags.
 func (h *API) ListTags(c *gin.Context) {
+	projectID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForProject(c, projectID)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	tags, err := h.q.ListTags(c, projectID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, tags)
+}
+
+// ListWorkspaceTags lists every tag across all projects in a workspace — for
+// read-only views that span projects (Home, cross-project task lists).
+func (h *API) ListWorkspaceTags(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
-	tags, err := h.q.ListTags(c, wsID)
+	tags, err := h.q.ListWorkspaceTags(c, wsID)
 	if err != nil {
 		fail(c)
 		return

@@ -13,7 +13,7 @@ import (
 )
 
 const searchNotes = `-- name: SearchNotes :many
-SELECT id, title
+SELECT id, title, slug
 FROM notes
 WHERE workspace_id = $1
   AND (title ILIKE '%' || $2 || '%' OR body ILIKE '%' || $2 || '%')
@@ -29,6 +29,7 @@ type SearchNotesParams struct {
 type SearchNotesRow struct {
 	ID    uuid.UUID `json:"id"`
 	Title string    `json:"title"`
+	Slug  string    `json:"slug"`
 }
 
 func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]SearchNotesRow, error) {
@@ -40,7 +41,7 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Sea
 	var items []SearchNotesRow
 	for rows.Next() {
 		var i SearchNotesRow
-		if err := rows.Scan(&i.ID, &i.Title); err != nil {
+		if err := rows.Scan(&i.ID, &i.Title, &i.Slug); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -52,7 +53,7 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Sea
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT t.id, t.board_id, t.number, t.title, t.parent_id, t.completed_at
+SELECT t.id, t.board_id, b.slug AS board_slug, t.number, t.title, t.parent_id, t.completed_at
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
@@ -71,6 +72,7 @@ type SearchTasksParams struct {
 type SearchTasksRow struct {
 	ID          uuid.UUID  `json:"id"`
 	BoardID     uuid.UUID  `json:"board_id"`
+	BoardSlug   string     `json:"board_slug"`
 	Number      *int64     `json:"number"`
 	Title       string     `json:"title"`
 	ParentID    *uuid.UUID `json:"parent_id"`
@@ -89,6 +91,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Sea
 		if err := rows.Scan(
 			&i.ID,
 			&i.BoardID,
+			&i.BoardSlug,
 			&i.Number,
 			&i.Title,
 			&i.ParentID,

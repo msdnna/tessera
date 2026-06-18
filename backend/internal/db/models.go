@@ -18,6 +18,7 @@ type Board struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	DoneColumnID *uuid.UUID `json:"done_column_id"`
+	Slug         string     `json:"slug"`
 }
 
 type BoardColumn struct {
@@ -108,6 +109,7 @@ type Note struct {
 	Body        string     `json:"body"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	Slug        string     `json:"slug"`
 }
 
 type Notification struct {
@@ -225,6 +227,7 @@ type Tag struct {
 	Name        string    `json:"name"`
 	Color       string    `json:"color"`
 	CreatedAt   time.Time `json:"created_at"`
+	ProjectID   uuid.UUID `json:"project_id"`
 }
 
 type Task struct {

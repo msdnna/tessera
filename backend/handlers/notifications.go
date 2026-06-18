@@ -284,9 +284,11 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 	cfg, _ := json.Marshal(map[string]string{"device_id": req.DeviceID, "platform": strings.TrimSpace(req.Platform)})
 
 	if existing, err := h.q.GetDeviceChannel(c, db.GetDeviceChannelParams{UserID: uid, DeviceID: req.DeviceID}); err == nil {
-		// Refresh the label/platform; keep enabled + template as the user set them.
+		// Refresh the platform/config only. Keep the label the user set (clients
+		// auto-register a generated name on every app start; overwriting it here
+		// would wipe a custom rename) — along with enabled + template.
 		updated, uerr := h.q.UpdateNotificationChannel(c, db.UpdateNotificationChannelParams{
-			ID: existing.ID, UserID: uid, Label: label, Config: cfg,
+			ID: existing.ID, UserID: uid, Label: existing.Label, Config: cfg,
 			SecretEnc: existing.SecretEnc, Enabled: existing.Enabled, Template: existing.Template,
 		})
 		if uerr != nil {

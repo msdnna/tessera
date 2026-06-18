@@ -11,20 +11,66 @@ import (
 	"github.com/google/uuid"
 )
 
+const boardSlugExists = `-- name: BoardSlugExists :one
+SELECT EXISTS(SELECT 1 FROM boards WHERE slug = $1)
+`
+
+func (q *Queries) BoardSlugExists(ctx context.Context, slug string) (bool, error) {
+	row := q.db.QueryRow(ctx, boardSlugExists, slug)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const boardsMissingSlug = `-- name: BoardsMissingSlug :many
+SELECT id, name FROM boards WHERE slug = ''
+`
+
+type BoardsMissingSlugRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+func (q *Queries) BoardsMissingSlug(ctx context.Context) ([]BoardsMissingSlugRow, error) {
+	rows, err := q.db.Query(ctx, boardsMissingSlug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BoardsMissingSlugRow
+	for rows.Next() {
+		var i BoardsMissingSlugRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createBoard = `-- name: CreateBoard :one
-INSERT INTO boards (project_id, name, position)
-VALUES ($1, $2, $3)
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id
+INSERT INTO boards (project_id, name, slug, position)
+VALUES ($1, $2, $3, $4)
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug
 `
 
 type CreateBoardParams struct {
 	ProjectID uuid.UUID `json:"project_id"`
 	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
 	Position  float64   `json:"position"`
 }
 
 func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board, error) {
-	row := q.db.QueryRow(ctx, createBoard, arg.ProjectID, arg.Name, arg.Position)
+	row := q.db.QueryRow(ctx, createBoard,
+		arg.ProjectID,
+		arg.Name,
+		arg.Slug,
+		arg.Position,
+	)
 	var i Board
 	err := row.Scan(
 		&i.ID,
@@ -34,6 +80,7 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DoneColumnID,
+		&i.Slug,
 	)
 	return i, err
 }
@@ -90,7 +137,7 @@ func (q *Queries) DeleteColumn(ctx context.Context, id uuid.UUID) error {
 }
 
 const getBoard = `-- name: GetBoard :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id FROM boards WHERE id = $1
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE id = $1
 `
 
 func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
@@ -104,6 +151,27 @@ func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DoneColumnID,
+		&i.Slug,
+	)
+	return i, err
+}
+
+const getBoardBySlug = `-- name: GetBoardBySlug :one
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE slug = $1
+`
+
+func (q *Queries) GetBoardBySlug(ctx context.Context, slug string) (Board, error) {
+	row := q.db.QueryRow(ctx, getBoardBySlug, slug)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DoneColumnID,
+		&i.Slug,
 	)
 	return i, err
 }
@@ -128,7 +196,7 @@ func (q *Queries) GetColumn(ctx context.Context, id uuid.UUID) (BoardColumn, err
 }
 
 const listBoards = `-- name: ListBoards :many
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id FROM boards WHERE project_id = $1 ORDER BY position
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE project_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board, error) {
@@ -148,6 +216,7 @@ func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DoneColumnID,
+			&i.Slug,
 		); err != nil {
 			return nil, err
 		}
@@ -236,7 +305,7 @@ const setBoardDoneColumn = `-- name: SetBoardDoneColumn :one
 UPDATE boards
 SET done_column_id = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug
 `
 
 type SetBoardDoneColumnParams struct {
@@ -255,15 +324,30 @@ func (q *Queries) SetBoardDoneColumn(ctx context.Context, arg SetBoardDoneColumn
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DoneColumnID,
+		&i.Slug,
 	)
 	return i, err
+}
+
+const setBoardSlug = `-- name: SetBoardSlug :exec
+UPDATE boards SET slug = $2 WHERE id = $1
+`
+
+type SetBoardSlugParams struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+}
+
+func (q *Queries) SetBoardSlug(ctx context.Context, arg SetBoardSlugParams) error {
+	_, err := q.db.Exec(ctx, setBoardSlug, arg.ID, arg.Slug)
+	return err
 }
 
 const updateBoard = `-- name: UpdateBoard :one
 UPDATE boards
 SET name = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug
 `
 
 type UpdateBoardParams struct {
@@ -283,6 +367,7 @@ func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DoneColumnID,
+		&i.Slug,
 	)
 	return i, err
 }
