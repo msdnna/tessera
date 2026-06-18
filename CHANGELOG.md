@@ -1270,6 +1270,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.45.2] — 2026-06-18
+- **Fix transactional email (verification / reset / invite).** The SMTP mailer
+  now supports implicit TLS (port 465 / SMTPS) in addition to STARTTLS — stdlib
+  `smtp.SendMail` only does STARTTLS, so a 465 server (e.g. smtp.yandex.ru) would
+  hang the request until the TCP timeout and silently drop the mail.
+- Sends are now **asynchronous** (`mail.SendAsync`) so registration /
+  `resend-verification` / forgot-password no longer block on the SMTP exchange,
+  and **failures are logged** (`mail: send to … failed: …`) instead of being
+  swallowed. Added a 20s end-to-end timeout and a startup line logging the
+  configured host/port/TLS mode.
+
 ### [0.45.1] — 2026-06-18
 - CORS: the allowed origin is now configurable. In production (`APP_ENV=production`)
   it defaults to `PUBLIC_URL` instead of `*`, locking the API to the web app's

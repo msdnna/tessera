@@ -10,6 +10,7 @@ import (
 
 	"tessera/internal/auth"
 	"tessera/internal/db"
+	"tessera/internal/mail"
 	"tessera/middleware"
 )
 
@@ -124,7 +125,7 @@ func (h *API) CreateUserResetLink(c *gin.Context) {
 	}
 	link := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
 	// Best-effort email too, so the user gets it directly when SMTP is configured.
-	_ = h.mailer.Send(user.Email, "Сброс пароля — Tessera",
+	mail.SendAsync(h.mailer, user.Email, "Сброс пароля — Tessera",
 		fmt.Sprintf("Администратор инициировал сброс пароля. Ссылка (действует час): %s", link))
 	c.JSON(http.StatusOK, gin.H{"link": link})
 }

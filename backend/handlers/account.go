@@ -10,6 +10,7 @@ import (
 
 	"tessera/internal/auth"
 	"tessera/internal/db"
+	"tessera/internal/mail"
 	"tessera/middleware"
 )
 
@@ -33,7 +34,7 @@ func (h *AuthHandler) sendVerification(c *gin.Context, user db.User) {
 		return
 	}
 	link := fmt.Sprintf("%s/verify-email?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
-	_ = h.mailer.Send(user.Email, "Подтверждение почты — Tessera",
+	mail.SendAsync(h.mailer, user.Email, "Подтверждение почты — Tessera",
 		"Подтвердите адрес, перейдя по ссылке:\n\n"+link+"\n\nСсылка действует 48 часов.")
 }
 
@@ -103,7 +104,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 				UserID: user.ID, Kind: "reset", TokenHash: hash, ExpiresAt: time.Now().Add(resetTokenTTL),
 			}); e == nil {
 				link := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
-				_ = h.mailer.Send(user.Email, "Сброс пароля — Tessera",
+				mail.SendAsync(h.mailer, user.Email, "Сброс пароля — Tessera",
 					"Чтобы задать новый пароль, перейдите по ссылке:\n\n"+link+"\n\nСсылка действует 1 час. Если вы не запрашивали сброс — проигнорируйте это письмо.")
 			}
 		}

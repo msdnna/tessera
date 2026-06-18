@@ -10,6 +10,7 @@ import (
 
 	"tessera/internal/auth"
 	"tessera/internal/db"
+	"tessera/internal/mail"
 	"tessera/middleware"
 )
 
@@ -66,7 +67,7 @@ func (h *API) CreateInvitation(c *gin.Context) {
 		return
 	}
 	link := fmt.Sprintf("%s/invite?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
-	_ = h.mailer.Send(inv.Email, "Приглашение в пространство — Tessera",
+	mail.SendAsync(h.mailer, inv.Email, "Приглашение в пространство — Tessera",
 		"Вас пригласили в рабочее пространство Tessera. Присоединиться:\n\n"+link+"\n\nСсылка действует 7 дней.")
 	out := invitationDTO(inv)
 	out["link"] = link

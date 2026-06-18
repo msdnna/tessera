@@ -6,11 +6,18 @@
 package mail
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/smtp"
 	"strings"
+	"time"
 )
+
+// smtpTimeout bounds the whole connect+send exchange so a misconfigured or
+// unreachable server can't hang a request (or a background goroutine) forever.
+const smtpTimeout = 20 * time.Second
 
 // Mailer sends a single plain-text email.
 type Mailer interface {
@@ -39,7 +46,23 @@ func New(cfg Config) Mailer {
 	if cfg.Port == "" {
 		cfg.Port = "587"
 	}
+	mode := "STARTTLS"
+	if cfg.Port == "465" {
+		mode = "implicit-TLS"
+	}
+	log.Printf("mail: SMTP enabled — %s:%s (%s), from=%s", cfg.Host, cfg.Port, mode, cfg.From)
 	return &smtpMailer{cfg: cfg}
+}
+
+// SendAsync delivers a message in the background, logging any error. Use it for
+// transactional mail (verification / reset / invite) so the HTTP request never
+// blocks on — or fails because of — the SMTP exchange.
+func SendAsync(m Mailer, to, subject, body string) {
+	go func() {
+		if err := m.Send(to, subject, body); err != nil {
+			log.Printf("mail: send to %s (%q) failed: %v", to, subject, err)
+		}
+	}()
 }
 
 type noop struct{}
@@ -58,12 +81,64 @@ type smtpMailer struct{ cfg Config }
 
 func (m *smtpMailer) Enabled() bool { return true }
 
+// Send delivers one message. Supports both implicit TLS (port 465, SMTPS) and
+// STARTTLS (587/25) — stdlib smtp.SendMail only does the latter, which is why a
+// 465 server would hang. Bounded by smtpTimeout end-to-end.
 func (m *smtpMailer) Send(to, subject, body string) error {
-	var auth smtp.Auth
-	if m.cfg.Username != "" {
-		auth = smtp.PlainAuth("", m.cfg.Username, m.cfg.Password, m.cfg.Host)
+	addr := m.cfg.Host + ":" + m.cfg.Port
+	dialer := &net.Dialer{Timeout: smtpTimeout}
+	tlsCfg := &tls.Config{ServerName: m.cfg.Host}
+
+	var conn net.Conn
+	var err error
+	if m.cfg.Port == "465" {
+		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsCfg) // implicit TLS
+	} else {
+		conn, err = dialer.Dial("tcp", addr)
 	}
-	return smtp.SendMail(m.cfg.Host+":"+m.cfg.Port, auth, m.cfg.From, []string{to}, buildMessage(m.cfg.From, to, subject, body))
+	if err != nil {
+		return fmt.Errorf("dial %s: %w", addr, err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(smtpTimeout))
+
+	client, err := smtp.NewClient(conn, m.cfg.Host)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	// On a plaintext connection (587/25), upgrade to TLS if offered.
+	if m.cfg.Port != "465" {
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(tlsCfg); err != nil {
+				return fmt.Errorf("starttls: %w", err)
+			}
+		}
+	}
+
+	if m.cfg.Username != "" {
+		if err := client.Auth(smtp.PlainAuth("", m.cfg.Username, m.cfg.Password, m.cfg.Host)); err != nil {
+			return fmt.Errorf("auth: %w", err)
+		}
+	}
+	if err := client.Mail(m.cfg.From); err != nil {
+		return fmt.Errorf("MAIL FROM %s: %w", m.cfg.From, err)
+	}
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("RCPT TO %s: %w", to, err)
+	}
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("DATA: %w", err)
+	}
+	if _, err := w.Write(buildMessage(m.cfg.From, to, subject, body)); err != nil {
+		return fmt.Errorf("write body: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close body: %w", err)
+	}
+	return client.Quit()
 }
 
 func buildMessage(from, to, subject, body string) []byte {
