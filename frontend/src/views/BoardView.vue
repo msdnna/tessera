@@ -1,34 +1,40 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { boards as boardsApi } from '@/api'
+import { boards as boardsApi, projects as projectsApi } from '@/api'
 import KanbanBoard from '@/components/KanbanBoard.vue'
 
 const route = useRoute()
 const router = useRouter()
 
-// The route param may be a human-readable slug or a (legacy) UUID. Resolve it to
-// the board's UUID — which KanbanBoard uses for all its calls — and canonicalize
-// the URL to the slug so it always reads cleanly, whatever the entry point.
+// Boards live at /project/<projectSlug>/board/<boardSlug>. This view resolves the
+// slug pair (or a legacy /board/<id> UUID/slug) to the board's UUID — which
+// KanbanBoard uses for all its calls — and canonicalizes the URL to the nested,
+// human-readable form whatever the entry point.
 const boardId = ref(null)
 
-async function resolve(param) {
-  if (!param) {
-    boardId.value = null
-    return
-  }
+async function resolve() {
+  const { projectSlug, boardSlug, id } = route.params
   try {
-    const { data } = await boardsApi.get(param)
-    boardId.value = data.id
-    if (data.slug && param !== data.slug) {
-      router.replace({ path: `/board/${data.slug}`, query: route.query })
+    let board
+    if (projectSlug && boardSlug) {
+      board = (await boardsApi.resolve(projectSlug, boardSlug)).data
+    } else if (id) {
+      board = (await boardsApi.get(id)).data // legacy: UUID or bare slug
+    } else {
+      boardId.value = null
+      return
     }
+    boardId.value = board.id
+    const pslug = projectSlug || (await projectsApi.get(board.project_id)).data.slug
+    const target = `/project/${pslug}/board/${board.slug}`
+    if (route.path !== target) router.replace({ path: target, query: route.query })
   } catch {
     boardId.value = null
   }
 }
 
-watch(() => route.params.id, resolve, { immediate: true })
+watch(() => route.params, resolve, { immediate: true, deep: true })
 </script>
 
 <template>

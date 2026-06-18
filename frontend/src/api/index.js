@@ -145,6 +145,9 @@ export const groups = {
 
 export const boards = {
   get: (id) => api.get(`/boards/${id}`),
+  // Resolve a /project/<slug>/board/<slug> pair to the board.
+  resolve: (projectSlug, boardSlug) =>
+    api.get('/board-by-slug', { params: { project: projectSlug, board: boardSlug } }),
   update: (id, data) => api.patch(`/boards/${id}`, data),
   setDoneColumn: (id, columnId) => api.patch(`/boards/${id}/done-column`, { column_id: columnId }),
   remove: (id) => api.delete(`/boards/${id}`),

@@ -61,7 +61,12 @@ function close() {
 function gotoTask(t) {
   open.value = false
   q.value = ''
-  router.push(`/board/${t.board_slug || t.board_id}?task=${t.number ?? t.id}`)
+  // Prefer the readable nested path; fall back to the legacy /board/<id> route.
+  const path =
+    t.project_slug && t.board_slug
+      ? `/project/${t.project_slug}/board/${t.board_slug}`
+      : `/board/${t.board_id}`
+  router.push(`${path}?task=${t.number ?? t.id}`)
 }
 
 function gotoNote(n) {

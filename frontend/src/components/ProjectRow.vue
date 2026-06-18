@@ -184,7 +184,7 @@ function onBoardCtxSelect(key) {
   const b = bcTarget.value
   bcShow.value = false
   if (!b) return
-  if (key === 'open') router.push(`/board/${b.slug || b.id}`)
+  if (key === 'open') router.push(`/project/${props.project.slug}/board/${b.slug}`)
   else if (key === 'rename') startBoardRename(b)
   else if (key === 'delete') removeBoard(b)
 }
@@ -324,8 +324,8 @@ async function addBoard() {
         v-for="b in boards"
         :key="b.id"
         class="row board-row"
-        :class="{ active: route.params.id === b.id }"
-        @click="editingBoardId !== b.id && router.push(`/board/${b.slug || b.id}`)"
+        :class="{ active: route.params.projectSlug === project.slug && route.params.boardSlug === b.slug }"
+        @click="editingBoardId !== b.id && router.push(`/project/${project.slug}/board/${b.slug}`)"
         @contextmenu.prevent.stop="onBoardCtx($event, b)"
         @touchstart.passive="bStart($event, b)"
         @touchend="bCancel"

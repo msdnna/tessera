@@ -34,7 +34,8 @@ onMounted(() => {
 })
 
 function openBoard(b) {
-  router.push(`/board/${b.slug || b.id}`)
+  // Boards render only under a project flyout, so props.node is that project.
+  router.push(`/project/${props.node.slug}/board/${b.slug}`)
   emit('navigate')
 }
 </script>
@@ -59,7 +60,7 @@ function openBoard(b) {
         v-for="b in boards"
         :key="b.id"
         class="fly-board"
-        :class="{ active: route.params.id === b.id }"
+        :class="{ active: route.params.projectSlug === node.slug && route.params.boardSlug === b.slug }"
         @click="openBoard(b)"
       >
         <n-icon :component="GridOutline" :size="14" />
