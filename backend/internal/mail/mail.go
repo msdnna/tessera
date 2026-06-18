@@ -6,9 +6,12 @@
 package mail
 
 import (
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"log"
+	"mime"
 	"net"
 	"net/smtp"
 	"strings"
@@ -142,12 +145,25 @@ func (m *smtpMailer) Send(to, subject, body string) error {
 }
 
 func buildMessage(from, to, subject, body string) []byte {
+	// A well-formed message: a Date and a unique Message-ID, the (Cyrillic)
+	// Subject and From display name RFC 2047-encoded, and an explicit transfer
+	// encoding. Missing these reads as spam to strict relays (e.g. Yandex 554).
+	domain := from
+	if i := strings.LastIndex(from, "@"); i >= 0 {
+		domain = from[i+1:]
+	}
+	var idRaw [16]byte
+	_, _ = rand.Read(idRaw[:])
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "From: %s\r\n", from)
+	fmt.Fprintf(&b, "From: %s <%s>\r\n", mime.QEncoding.Encode("utf-8", "Tessera"), from)
 	fmt.Fprintf(&b, "To: %s\r\n", to)
-	fmt.Fprintf(&b, "Subject: %s\r\n", subject)
+	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject))
+	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
+	fmt.Fprintf(&b, "Message-ID: <%s@%s>\r\n", hex.EncodeToString(idRaw[:]), domain)
 	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n\r\n")
+	b.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+	b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
 	b.WriteString(body)
 	return []byte(b.String())
 }

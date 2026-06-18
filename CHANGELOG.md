@@ -1270,6 +1270,12 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.45.3] — 2026-06-18
+- **Email deliverability:** outgoing messages are now RFC-compliant — added a
+  `Date` header, a unique `Message-ID`, RFC 2047 encoding for the (Cyrillic)
+  `Subject` and a `From` display name, and an explicit `Content-Transfer-Encoding`.
+  Their absence made strict relays (Yandex) reject the mail as spam (`554 5.7.1`).
+
 ### [0.45.2] — 2026-06-18
 - **Fix transactional email (verification / reset / invite).** The SMTP mailer
   now supports implicit TLS (port 465 / SMTPS) in addition to STARTTLS — stdlib
