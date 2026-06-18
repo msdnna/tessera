@@ -1331,6 +1331,25 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.47.0] — 2026-06-18
+- **Recurring tasks — full rule set** (extends 0.46). The recurrence rule now
+  carries: frequency `daily|weekly|monthly|yearly|custom` (custom = explicit
+  calendar-picked `dates`); `interval`; weekly `weekdays` (repeat on chosen days);
+  a `trigger` (`complete` / `column` / `schedule`) with `trigger_column`; a
+  `target_column` (where the task lands, default the board's first column);
+  `create_new` (duplicate instead of rescheduling — the original stays a completed
+  record, a fresh copy carries the rule forward); `once` (stop after one
+  recurrence); `skip_weekends` (push daily/weekly occurrences off Sat/Sun). Anchor
+  day/month for monthly/yearly preserved as before.
+- **Triggers:** `complete` fires on close (done column / completed toggle);
+  `column` fires when the task is moved into `trigger_column`; `schedule` advances
+  automatically once the due date passes, via a new background `RunRecurrenceWorker`
+  (skips occurrences missed during downtime). Custom-date recurrences end (rule
+  cleared) once the list is exhausted.
+- Cloning copies tags, assignees and recreates direct subtasks uncompleted.
+  `internal/recur` extended with weekday/custom/skip-weekend logic + tests. No
+  migration (still the `tasks.recurrence` jsonb column). Added `ListScheduleRecurDue`.
+
 ### [0.46.0] — 2026-06-18
 - **Recurring tasks.** A task can carry an optional recurrence rule
   (`tasks.recurrence` jsonb: `{freq: daily|weekly|monthly|yearly, interval}`).

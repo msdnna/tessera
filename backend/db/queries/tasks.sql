@@ -129,6 +129,17 @@ RETURNING *;
 UPDATE tasks SET completed_at = NULL, updated_at = now()
 WHERE parent_id = $1 AND completed_at IS NOT NULL;
 
+-- ListScheduleRecurDue returns active tasks whose recurrence fires on a schedule
+-- and whose due date has passed — the schedule worker advances each one.
+-- name: ListScheduleRecurDue :many
+SELECT * FROM tasks
+WHERE archived_at IS NULL
+  AND completed_at IS NULL
+  AND due_date IS NOT NULL
+  AND due_date <= now()
+  AND recurrence->>'trigger' = 'schedule'
+ORDER BY due_date;
+
 -- name: UpdateTaskDueDate :exec
 UPDATE tasks SET due_date = $2, updated_at = now() WHERE id = $1;
 

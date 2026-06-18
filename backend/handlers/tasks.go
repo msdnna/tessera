@@ -306,11 +306,11 @@ func (h *API) UpdateTask(c *gin.Context) {
 		return
 	}
 
-	// A recurring task that just entered the completed state is rescheduled: its
-	// due date advances one period and it returns to the board's first column.
+	// A recurring task whose trigger is "complete" advances when it enters the
+	// completed state (rescheduled, or duplicated, per its rule).
 	if t.CompletedAt == nil && updated.CompletedAt != nil {
-		if rescheduled, ok := h.recurOnComplete(c, updated, wsID); ok {
-			updated = rescheduled
+		if advanced, ok := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerComplete); ok {
+			updated = advanced
 		}
 	}
 	// A manual due-date change on a GitLab-linked task wins over the sync.
@@ -425,10 +425,10 @@ func (h *API) MoveTask(c *gin.Context) {
 			}); derr == nil {
 				updated = done
 				h.logEvent(c, id, "completed", nil)
-				// A recurring task bounces straight back out of done with its due
-				// date advanced — overriding the column move the user just made.
-				if rescheduled, ok := h.recurOnComplete(c, updated, wsID); ok {
-					updated = rescheduled
+				// A "complete"-triggered recurring task bounces straight back out of
+				// done with its due date advanced — overriding the move just made.
+				if advanced, ok := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerComplete); ok {
+					updated = advanced
 				}
 			}
 		case sourceIsDone && !targetIsDone && updated.CompletedAt != nil:
@@ -439,6 +439,17 @@ func (h *API) MoveTask(c *gin.Context) {
 			}); derr == nil {
 				updated = reopened
 				h.logEvent(c, id, "reopened", nil)
+			}
+		}
+	}
+
+	// Column-triggered recurrence: moving the task into its configured column
+	// advances it (independent of completion).
+	if t.ColumnID != req.ColumnID {
+		if rule, ok := recur.Parse(updated.Recurrence); ok &&
+			rule.Trigger == recur.TriggerColumn && rule.TriggerColumn == req.ColumnID.String() {
+			if advanced, acted := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerColumn); acted {
+				updated = advanced
 			}
 		}
 	}
@@ -803,53 +814,6 @@ func recurrenceToStore(reqRaw *json.RawMessage, reqDue *time.Time, prevRaw *json
 	}
 	canon, _ := rule.Marshal()
 	return canon
-}
-
-// recurOnComplete reschedules a recurring task that has just been completed: its
-// due date advances one period (from the due date, not "now", so closing it late
-// keeps the cadence), it returns to the board's first column with completion
-// cleared, and its direct subtasks are reopened. Returns the rescheduled task and
-// true when it acted; (t, false) for a non-recurring task or one without a due
-// date (nothing to advance).
-func (h *API) recurOnComplete(c *gin.Context, t db.Task, wsID uuid.UUID) (db.Task, bool) {
-	rule, ok := recur.Parse(t.Recurrence)
-	if !ok || t.DueDate == nil {
-		return t, false
-	}
-	next := rule.Next(*t.DueDate)
-
-	// Advance the due date and reopen the task (clear completion).
-	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
-		ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
-		DueDate: &next, CompletedAt: nil, Recurrence: t.Recurrence,
-	})
-	if err != nil {
-		return t, false
-	}
-
-	// Bounce it back to the board's first ("to do") column.
-	if cols, cerr := h.q.ListColumns(c, t.BoardID); cerr == nil && len(cols) > 0 {
-		first := cols[0]
-		if first.ID != updated.ColumnID {
-			max, merr := h.q.MaxTaskPositionInColumn(c, first.ID)
-			if merr == nil {
-				if moved, mverr := h.q.MoveTask(c, db.MoveTaskParams{
-					ID: updated.ID, ColumnID: first.ID, Position: positionBetween(&max, nil),
-				}); mverr == nil {
-					updated = moved
-				}
-			}
-		}
-	}
-
-	// Reset the checklist: reopen any completed direct subtasks.
-	_ = h.q.ReopenSubtasks(c, &t.ID)
-
-	h.logEvent(c, t.ID, "recurred", map[string]any{"due": next})
-	h.notifyTaskParticipants(c, updated, wsID, "recurred",
-		fmt.Sprintf("Повторяемая задача #%s перенесена на %s",
-			taskRef(updated.Number), next.Format("02.01.2006")))
-	return updated, true
 }
 
 func orEmptyTags(tags []db.Tag) []db.Tag {

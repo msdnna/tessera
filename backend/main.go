@@ -56,6 +56,10 @@ func main() {
 	// Background scanner — emits due-date + reminder notifications on schedule.
 	go rh.RunNotificationScanner(context.Background())
 
+	// Background worker — advances schedule-triggered recurring tasks once due.
+	// Idle until a task carries a "schedule"-trigger recurrence rule.
+	go rh.RunRecurrenceWorker(context.Background())
+
 	r := gin.Default()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)

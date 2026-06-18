@@ -409,6 +409,58 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID)
 	return items, nil
 }
 
+const listScheduleRecurDue = `-- name: ListScheduleRecurDue :many
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence FROM tasks
+WHERE archived_at IS NULL
+  AND completed_at IS NULL
+  AND due_date IS NOT NULL
+  AND due_date <= now()
+  AND recurrence->>'trigger' = 'schedule'
+ORDER BY due_date
+`
+
+// ListScheduleRecurDue returns active, undated... no — returns active tasks whose
+// recurrence fires on a schedule and whose due date has passed, for the worker.
+func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listScheduleRecurDue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.ColumnID,
+			&i.ParentID,
+			&i.Title,
+			&i.Description,
+			&i.Priority,
+			&i.DueDate,
+			&i.Position,
+			&i.CreatedBy,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ArchivedAt,
+			&i.Number,
+			&i.DueLeadMinutes,
+			&i.DueRepeatMinutes,
+			&i.DueNotifyEnabled,
+			&i.Recurrence,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSubtasks = `-- name: ListSubtasks :many
 SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence FROM tasks WHERE parent_id = $1 ORDER BY position
 `
