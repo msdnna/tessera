@@ -64,6 +64,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.GitlabAssignee
 import website.msdnna.tessera.data.model.GitlabLink
 import website.msdnna.tessera.data.model.Member
@@ -202,6 +203,7 @@ fun TaskModal(
                             priority = detail.priority,
                             dueIso = detail.dueDate,
                             recurrence = detail.recurrence,
+                            columns = state.columns,
                             completed = detail.isCompleted,
                             assignees = detail.assignees.map { it.id },
                             gitlabAssignees = detail.gitlabAssignees,
@@ -368,6 +370,7 @@ private fun PropertyGrid(
     priority: Int,
     dueIso: String?,
     recurrence: Recurrence?,
+    columns: List<BoardColumn>,
     completed: Boolean,
     assignees: List<String>,
     gitlabAssignees: List<GitlabAssignee>,
@@ -388,7 +391,7 @@ private fun PropertyGrid(
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PropRow(Ion.FLAG, "Приоритет") { PriorityValue(priority) { vm.setPriority(it) } }
         PropRow(Ion.CALENDAR, "Срок") {
-            DueValue(dueIso, recurrence) { iso, rec -> vm.setDueAndRecurrence(iso, rec) }
+            DueValue(dueIso, recurrence, columns) { iso, rec -> vm.setDueAndRecurrence(iso, rec) }
         }
         if (authorName != null) {
             PropRow(Ion.PERSON_ADD, "Автор") {
@@ -455,7 +458,7 @@ private fun PriorityValue(priority: Int, onPick: (Int) -> Unit) {
 }
 
 @Composable
-private fun DueValue(dueIso: String?, recurrence: Recurrence?, onApply: (String?, Recurrence?) -> Unit) {
+private fun DueValue(dueIso: String?, recurrence: Recurrence?, columns: List<BoardColumn>, onApply: (String?, Recurrence?) -> Unit) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
     val label = dueLabel(dueIso)
@@ -477,6 +480,7 @@ private fun DueValue(dueIso: String?, recurrence: Recurrence?, onApply: (String?
         DueDateTimePicker(
             initialIso = dueIso,
             initialRecurrence = recurrence,
+            columns = columns,
             onApply = { iso, rec -> onApply(iso, rec) },
             onDismiss = { picker = false },
         )

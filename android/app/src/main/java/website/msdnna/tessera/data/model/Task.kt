@@ -10,6 +10,16 @@ import com.google.gson.annotations.SerializedName
 data class Recurrence(
     @SerializedName("freq") val freq: String = "",
     @SerializedName("interval") val interval: Int = 1,
+    // Weekly: weekdays to repeat on (0=Sun … 6=Sat). Custom: explicit dates
+    // ("yyyy-MM-dd"). Both omitted (null) when not applicable.
+    @SerializedName("weekdays") val weekdays: List<Int>? = null,
+    @SerializedName("dates") val dates: List<String>? = null,
+    @SerializedName("trigger") val trigger: String? = null, // complete|column|schedule
+    @SerializedName("trigger_column") val triggerColumn: String? = null,
+    @SerializedName("target_column") val targetColumn: String? = null,
+    @SerializedName("create_new") val createNew: Boolean = false,
+    @SerializedName("once") val once: Boolean = false,
+    @SerializedName("skip_weekends") val skipWeekends: Boolean = false,
 )
 
 /**

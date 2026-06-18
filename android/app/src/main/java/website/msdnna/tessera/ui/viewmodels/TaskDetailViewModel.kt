@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Attachment
+import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Recurrence
@@ -32,6 +33,8 @@ data class TaskDetailUiState(
     val relations: List<Relation> = emptyList(),
     val attachments: List<Attachment> = emptyList(),
     val events: List<TaskEvent> = emptyList(),
+    /** The task's board columns — for the recurrence trigger/target selects. */
+    val columns: List<BoardColumn> = emptyList(),
     /** Cross-board task candidates for the relation autocomplete (lazy-loaded). */
     val relationCandidates: List<WorkspaceTask> = emptyList(),
     /** True once any mutation happened, so the host can refresh the board on close. */
@@ -64,6 +67,10 @@ class TaskDetailViewModel(
         launchCatching {
             val detail = taskRepo.detail(taskId)
             _state.update { it.copy(loading = false, detail = detail) }
+            // Board columns for the recurrence trigger/target selects (best-effort).
+            _state.update {
+                it.copy(columns = runCatching { boardRepo.columns(detail.boardId) }.getOrDefault(emptyList()))
+            }
             // Collab lists are best-effort and independent — a failure of one
             // shouldn't blank the modal.
             _state.update { it.copy(comments = runCatching { taskRepo.comments(taskId) }.getOrDefault(emptyList())) }

@@ -374,7 +374,7 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         PriorityPill(task, vm)
         Spacer(Modifier.width(6.dp))
-        DuePill(task, vm)
+        DuePill(task, state, vm)
         Spacer(Modifier.width(6.dp))
         TagsPill(task, state, vm)
         Spacer(Modifier.weight(1f))
@@ -485,7 +485,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
 }
 
 @Composable
-private fun DuePill(task: Task, vm: BoardViewModel) {
+private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
     val due = dueShort(task.dueDate)
@@ -512,6 +512,7 @@ private fun DuePill(task: Task, vm: BoardViewModel) {
         DueDateTimePicker(
             initialIso = task.dueDate,
             initialRecurrence = task.recurrence,
+            columns = state.sortedColumns,
             onApply = { iso, rec -> vm.setDueAndRecurrence(task, iso, rec) },
             onDismiss = { picker = false },
         )

@@ -5,6 +5,18 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.20.0 — 2026-06-19
+- **Recurring tasks — full options** (extends 0.19). The due picker's recurrence
+  section now matches the web: frequency День/Неделя/Месяц/Год/**Выборочно**
+  (custom = tap dates on the calendar), «каждые N», weekly weekday chips, the
+  trigger («При завершении / переходе в колонку / по расписанию») + trigger
+  column, the target column («Переносить в»), and Создавать дубликат / Повторять
+  всегда / Пропускать выходные toggles. Upcoming occurrences are **highlighted on
+  the calendar grid** as you configure the rule.
+- Available from both the card due-pill and the task modal (modal now loads the
+  board columns for the trigger/target selects). `util/Recurrence.kt` mirrors the
+  backend advance logic to preview occurrences. (backend 0.47 / web 0.78)
+
 ## 0.19.0 — 2026-06-18
 - **Due dates now carry a time, and a recurrence rule.** The due picker is a new
   date+time picker (the day's time is a real instant, local→UTC, matching web and
