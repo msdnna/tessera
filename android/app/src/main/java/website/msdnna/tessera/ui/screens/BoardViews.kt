@@ -1220,6 +1220,14 @@ private val TL_DAYS_H = 34.dp
 private val TL_HEAD_H = 54.dp // TL_MONTH_H + TL_DAYS_H
 private val TL_LANE_H = 30.dp
 
+// Compose packs a Constraints' max width+height into one Long, so a track wider
+// than ~32k px next to a tall body can't be represented and measuring throws
+// ("Can't represent a width of … and height of …"). Cap the day window in px so a
+// board whose starts reach years back — e.g. GitLab `created` start dates — can't
+// blow the axis. Keep the recent/future end; older bars pin to the left edge.
+private const val TL_MAX_AXIS_PX = 30_000f
+private const val TL_MIN_DAYS = 30
+
 private fun tlDayFloor(ms: Long): Long =
     Calendar.getInstance().apply {
         timeInMillis = ms
@@ -1271,12 +1279,23 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     }
     lo -= 3 * TL_DAY_MS
     hi += 14 * TL_DAY_MS
+    val dayWpx = with(density) { dayW.toPx() }
+    // Cap the window so the track can't exceed Compose's Constraints limit; keep the
+    // recent/future end (anchored at hi) and drop the far past.
+    val maxDays = (TL_MAX_AXIS_PX / dayWpx).toInt().coerceAtLeast(TL_MIN_DAYS)
+    var rawCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
+    if (rawCount > maxDays) {
+        lo = hi - (maxDays - 1).toLong() * TL_DAY_MS
+        rawCount = maxDays
+    }
     val rangeStart = lo
-    val dayCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
-    fun dayIndex(ms: Long): Int = ((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()
+    val dayCount = rawCount
+
+    // Bars starting before the capped window pin to the left edge (still visible, no overflow).
+    fun dayIndex(ms: Long): Int =
+        (((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()).coerceIn(0, dayCount - 1)
     val axisW = dayW * dayCount
     val todayLeft = dayW * dayIndex(todayMs) + dayW * 0.5f
-    val dayWpx = with(density) { dayW.toPx() }
     val gridColor = c.border.copy(alpha = 0.45f)
 
     // Swimlanes follow the shared composer-bar grouping (status / tag[+prefix]) —
@@ -1523,12 +1542,23 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     }
     lo -= 3 * TL_DAY_MS
     hi += 14 * TL_DAY_MS
+    val dayWpx = with(density) { dayW.toPx() }
+    // Cap the window so the track (a single axisW×bodyH box + arrow Canvas) can't
+    // exceed Compose's Constraints limit; keep the recent/future end (anchored at hi).
+    val maxDays = (TL_MAX_AXIS_PX / dayWpx).toInt().coerceAtLeast(TL_MIN_DAYS)
+    var rawCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
+    if (rawCount > maxDays) {
+        lo = hi - (maxDays - 1).toLong() * TL_DAY_MS
+        rawCount = maxDays
+    }
     val rangeStart = lo
-    val dayCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
-    fun dayIndex(ms: Long): Int = ((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()
+    val dayCount = rawCount
+
+    // Bars starting before the capped window pin to the left edge (still visible, no overflow).
+    fun dayIndex(ms: Long): Int =
+        (((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()).coerceIn(0, dayCount - 1)
     val axisW = dayW * dayCount
     val todayLeft = dayW * dayIndex(todayMs) + dayW * 0.5f
-    val dayWpx = with(density) { dayW.toPx() }
     val gridColor = c.border.copy(alpha = 0.45f)
 
     fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
