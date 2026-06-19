@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, nextTick, watch } from 'vue'
-import { NSelect, NDropdown, NPopconfirm } from 'naive-ui'
+import { NDropdown, NPopconfirm } from 'naive-ui'
 import { useTaskMenu } from '@/composables/useTaskMenu'
+import { useDateLocale } from '@/composables/useDateLocale'
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
@@ -12,6 +13,10 @@ const props = defineProps({
   statusColumns: { type: Array, default: () => [] },
   membersMap: { type: Object, default: () => ({}) },
   tagsMap: { type: Object, default: () => ({}) },
+  // Swimlane grouping comes from the shared composer-bar (no duplicate control):
+  // 'status' | 'tag' (+ tagPrefix) | 'assignee' | 'none'.
+  groupMode: { type: String, default: 'assignee' },
+  tagPrefix: { type: String, default: '' },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -21,18 +26,19 @@ const menu = useTaskMenu({
   columns: () => props.statusColumns,
 })
 
-const DAY_W = 34 // px per day on the axis
 const DAY_MS = 86400000
 const LEFT_W = 224 // px of the fixed task/lane column
 
-// ── group-by (swimlanes) ──
-const groupBy = ref('assignee')
-const GROUP_OPTS = [
-  { label: 'По исполнителю', value: 'assignee' },
-  { label: 'По тегу', value: 'tag' },
-  { label: 'По статусу', value: 'status' },
-  { label: 'Без группировки', value: 'none' },
-]
+// ── zoom (px per day) ──
+const ZOOM = [12, 16, 22, 30, 40, 56, 76]
+const zoomIdx = ref(3) // → 30px/day
+const dayW = computed(() => ZOOM[zoomIdx.value])
+function zoomIn() {
+  zoomIdx.value = Math.min(ZOOM.length - 1, zoomIdx.value + 1)
+}
+function zoomOut() {
+  zoomIdx.value = Math.max(0, zoomIdx.value - 1)
+}
 
 // ── date helpers ──
 const startOfDay = (ms) => {
@@ -69,7 +75,7 @@ const range = computed(() => {
   const days = Math.round((hi - lo) / DAY_MS) + 1
   return { start: startOfDay(lo), days }
 })
-const axisW = computed(() => range.value.days * DAY_W)
+const axisW = computed(() => range.value.days * dayW.value)
 const dayIndex = (ms) => Math.round((startOfDay(ms) - range.value.start) / DAY_MS)
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
@@ -103,13 +109,18 @@ const monthBands = computed(() => {
   return out
 })
 
-// ── lanes (swimlanes) ──
+// ── lanes (swimlanes) — driven by the composer-bar's groupMode ──
 const lanes = computed(() => {
-  const mode = groupBy.value
+  const mode = props.groupMode
   const buckets = new Map()
   const ensure = (key, label, color) => {
     if (!buckets.has(key)) buckets.set(key, { key, label, color, tasks: [] })
     return buckets.get(key)
+  }
+  // For 'status' grouping, seed lanes in column order so empty columns still show
+  // and the lane order matches the board.
+  if (mode === 'status') {
+    for (const col of props.statusColumns) ensure(col.id, col.name, col.color)
   }
   for (const t of scheduled.value) {
     if (mode === 'assignee') {
@@ -117,20 +128,25 @@ const lanes = computed(() => {
       const m = id ? props.membersMap[id] : null
       ensure(id || '∅', m?.name || 'Не назначено').tasks.push(t)
     } else if (mode === 'tag') {
-      const id = (t.tag_ids || [])[0]
+      // Respect the prefix when grouping by a tag namespace.
+      const ids = (t.tag_ids || []).filter((id) => {
+        const tag = props.tagsMap[id]
+        return tag && (!props.tagPrefix || (tag.name || '').startsWith(props.tagPrefix))
+      })
+      const id = ids[0]
       const tag = id ? props.tagsMap[id] : null
       ensure(id || '∅', tag?.name || 'Без тега', tag?.color).tasks.push(t)
     } else if (mode === 'status') {
       const col = props.statusColumns.find((c) => c.id === t.column_id)
-      ensure(t.column_id || '∅', col?.name || '—').tasks.push(t)
+      ensure(t.column_id || '∅', col?.name || '—', col?.color).tasks.push(t)
     } else {
       ensure('all', 'Все задачи').tasks.push(t)
     }
   }
-  const arr = [...buckets.values()]
+  const arr = [...buckets.values()].filter((l) => l.tasks.length || mode === 'status')
   // Sort each lane's tasks by start, then keep "unassigned/empty" lanes last.
   for (const l of arr) l.tasks.sort((x, y) => spanOf(x).a - spanOf(y).a)
-  arr.sort((a, b) => (a.key === '∅' ? 1 : 0) - (b.key === '∅' ? 1 : 0))
+  if (mode !== 'status') arr.sort((a, b) => (a.key === '∅' ? 1 : 0) - (b.key === '∅' ? 1 : 0))
   return arr
 })
 
@@ -165,7 +181,7 @@ function onBarDown(e, t, mode) {
 function onMove(e) {
   const g = drag.value
   if (!g) return
-  const delta = Math.round((e.clientX - g.startX) / DAY_W)
+  const delta = Math.round((e.clientX - g.startX) / dayW.value)
   if (delta === 0) {
     preview.value = { id: g.id, start: g.baseStart, due: g.baseDue }
     return
@@ -234,42 +250,117 @@ function geom(t) {
   const i0 = Math.round((a - range.value.start) / DAY_MS)
   const i1 = Math.round((b - range.value.start) / DAY_MS)
   return {
-    left: i0 * DAY_W,
-    width: Math.max(1, i1 - i0 + 1) * DAY_W,
+    left: i0 * dayW.value,
+    width: Math.max(1, i1 - i0 + 1) * dayW.value,
     hasStart: s != null,
     hasDue: d != null,
   }
 }
-const todayLeft = computed(() => dayIndex(todayMs) * DAY_W + DAY_W / 2)
+const todayLeft = computed(() => dayIndex(todayMs) * dayW.value + dayW.value / 2)
 
 // ── scroll-to-today ──
 const scrollEl = ref(null)
 function centerToday() {
   const el = scrollEl.value
   if (!el) return
-  el.scrollLeft = Math.max(0, dayIndex(todayMs) * DAY_W - el.clientWidth / 2 + LEFT_W)
+  el.scrollLeft = Math.max(0, dayIndex(todayMs) * dayW.value - el.clientWidth / 2 + LEFT_W)
 }
 watch(scrollEl, (el) => el && nextTick(centerToday))
+// Keep today roughly in view across zoom changes.
+watch(dayW, () => nextTick(centerToday))
+
+// ── pan: middle-button anywhere, or left-drag on empty timeline space ──
+// (bars stop propagation on their own pointerdown, so a pointerdown that reaches
+// the scroll container is on empty space.)
+const pan = ref(null)
+function onPanDown(e) {
+  const middle = e.button === 1
+  const emptyLeft = e.button === 0 && e.target.closest('.tl-track') && !e.target.closest('.bar')
+  if (!middle && !emptyLeft) return
+  const el = scrollEl.value
+  if (!el) return
+  e.preventDefault()
+  pan.value = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop }
+  window.addEventListener('pointermove', onPanMove)
+  window.addEventListener('pointerup', onPanUp)
+}
+function onPanMove(e) {
+  const p = pan.value
+  const el = scrollEl.value
+  if (!p || !el) return
+  el.scrollLeft = p.sl - (e.clientX - p.x)
+  el.scrollTop = p.st - (e.clientY - p.y)
+}
+function onPanUp() {
+  pan.value = null
+  window.removeEventListener('pointermove', onPanMove)
+  window.removeEventListener('pointerup', onPanUp)
+}
+// Ctrl/Cmd + wheel zooms; keep the day under the cursor stable-ish by re-centering.
+function onWheel(e) {
+  if (!(e.ctrlKey || e.metaKey)) return
+  e.preventDefault()
+  if (e.deltaY < 0) zoomIn()
+  else zoomOut()
+}
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', onPanMove)
+  window.removeEventListener('pointerup', onPanUp)
+})
+
+// ── hover preview card ──
+const { formatDue } = useDateLocale()
+const hover = ref(null) // { task, x, y, above }
+let hoverTimer = null
+function onBarEnter(e, t) {
+  clearTimeout(hoverTimer)
+  const r = e.currentTarget.getBoundingClientRect()
+  const below = r.bottom + 8
+  const above = window.innerHeight - r.top + 8
+  const useAbove = window.innerHeight - r.bottom < 200
+  hover.value = {
+    task: t,
+    x: Math.min(Math.max(r.left, 12), window.innerWidth - 280),
+    y: useAbove ? above : below,
+    above: useAbove,
+  }
+}
+function onBarLeave() {
+  hoverTimer = setTimeout(() => (hover.value = null), 80)
+}
+const hoverTags = computed(() =>
+  hover.value ? (hover.value.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean) : [],
+)
+const hoverAssignees = computed(() =>
+  hover.value ? (hover.value.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean) : [],
+)
+function initials(name) {
+  const p = (name || '').trim().split(/\s+/)
+  return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
+}
 </script>
 
 <template>
   <div class="tl">
     <div class="tl-toolbar">
-      <n-select
-        size="small"
-        :value="groupBy"
-        :options="GROUP_OPTS"
-        style="width: 190px"
-        @update:value="(v) => (groupBy = v)"
-      />
       <button class="tl-today-btn" type="button" @click="centerToday">Сегодня</button>
+      <div class="tl-zoom">
+        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === 0" title="Уменьшить масштаб" @click="zoomOut">−</button>
+        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === ZOOM.length - 1" title="Увеличить масштаб" @click="zoomIn">+</button>
+      </div>
       <div class="tl-counters">
         <span v-if="overdueCount" class="tl-counter overdue">{{ overdueCount }} просрочено</span>
         <span v-if="unscheduled.length" class="tl-counter">{{ unscheduled.length }} без дат</span>
       </div>
     </div>
 
-    <div ref="scrollEl" class="tl-scroll">
+    <div
+      ref="scrollEl"
+      class="tl-scroll"
+      :class="{ panning: !!pan }"
+      @pointerdown="onPanDown"
+      @wheel="onWheel"
+    >
       <div class="tl-inner" :style="{ width: `${LEFT_W + axisW}px` }">
         <!-- header: month band + day band -->
         <div class="tl-head">
@@ -280,7 +371,7 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
                 v-for="(m, i) in monthBands"
                 :key="i"
                 class="tl-month"
-                :style="{ width: `${m.span * DAY_W}px` }"
+                :style="{ width: `${m.span * dayW}px` }"
               >
                 {{ m.label }}
               </div>
@@ -291,7 +382,7 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
                 :key="i"
                 class="tl-dayh"
                 :class="{ weekend: d.weekend, today: d.isToday }"
-                :style="{ width: `${DAY_W}px` }"
+                :style="{ width: `${dayW}px` }"
               >
                 <span class="dh-num">{{ d.day }}</span>
                 <span class="dh-wd">{{ d.dow }}</span>
@@ -311,7 +402,7 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
               <span class="lane-name">{{ lane.label }}</span>
               <span class="lane-count">{{ lane.tasks.length }}</span>
             </div>
-            <div class="tl-track laneband" :style="{ width: `${axisW}px` }">
+            <div class="tl-track laneband" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }">
               <div class="today-line" :style="{ left: `${todayLeft}px` }" />
             </div>
           </div>
@@ -321,7 +412,7 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
               <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[t.priority || 0]) }" />
               <span class="row-title" :class="{ done: t.completed_at }">{{ t.title }}</span>
             </div>
-            <div class="tl-track" :style="{ width: `${axisW}px` }">
+            <div class="tl-track" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }">
               <div class="today-line" :style="{ left: `${todayLeft}px` }" />
               <div
                 class="bar"
@@ -333,6 +424,8 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
                 }"
                 @pointerdown="onBarDown($event, t, 'move')"
                 @click="$emit('open', t.id)"
+                @mouseenter="onBarEnter($event, t)"
+                @mouseleave="onBarLeave"
                 @contextmenu.prevent.stop="menu.open($event, t)"
               >
                 <span class="handle l" @pointerdown.stop="onBarDown($event, t, 'start')" />
@@ -398,6 +491,40 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
       <template #trigger><span /></template>
       Перенести задачу в архив?
     </n-popconfirm>
+
+    <!-- hover preview: a compact task-card snapshot -->
+    <Teleport to="body">
+      <div
+        v-if="hover"
+        class="tl-preview"
+        :style="hover.above ? { left: `${hover.x}px`, bottom: `${hover.y}px` } : { left: `${hover.x}px`, top: `${hover.y}px` }"
+      >
+        <div class="pv-head">
+          <span
+            class="pv-flag"
+            :style="{ background: hueGrad(PRIORITY_COLORS[hover.task.priority || 0]) }"
+          />
+          <span class="pv-title" :class="{ done: hover.task.completed_at }">{{ hover.task.title }}</span>
+          <span v-if="hover.task.number != null" class="pv-num">#{{ hover.task.number }}</span>
+        </div>
+        <div v-if="hover.task.start_date || hover.task.due_date" class="pv-dates">
+          <span v-if="hover.task.start_date">{{ formatDue(hover.task.start_date) }}</span>
+          <span v-if="hover.task.start_date && hover.task.due_date" class="pv-arrow">→</span>
+          <span v-if="hover.task.due_date">{{ formatDue(hover.task.due_date) }}</span>
+        </div>
+        <div v-if="hoverTags.length" class="pv-tags">
+          <span
+            v-for="tg in hoverTags"
+            :key="tg.id"
+            class="pv-tag"
+            :style="{ color: tg.color || 'var(--t-primary)', borderColor: tg.color || 'var(--t-primary)' }"
+          >{{ tg.name }}</span>
+        </div>
+        <div v-if="hoverAssignees.length" class="pv-assignees">
+          <span v-for="m in hoverAssignees" :key="m.user_id" class="pv-av" :title="m.name">{{ initials(m.name) }}</span>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -423,6 +550,30 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
 .tl-today-btn:hover {
   background: var(--t-hover);
 }
+.tl-zoom {
+  display: flex;
+  gap: 4px;
+}
+.tl-zoom-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--t-border);
+  background: var(--t-surface);
+  color: var(--t-text2);
+  border-radius: 7px;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tl-zoom-btn:hover:not(:disabled) {
+  background: var(--t-hover);
+}
+.tl-zoom-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .tl-counters {
   display: flex;
   gap: 8px;
@@ -445,6 +596,10 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
   border: 1px solid var(--t-border);
   border-radius: 10px;
   max-height: calc(100vh - 220px);
+}
+.tl-scroll.panning {
+  cursor: grabbing;
+  user-select: none;
 }
 .tl-inner {
   position: relative;
@@ -615,13 +770,13 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
   flex: 0 0 auto;
   height: 36px;
   border-bottom: 1px solid color-mix(in srgb, var(--t-border) 60%, transparent);
-  /* faint day gridlines */
+  /* faint day gridlines (period follows the current zoom via --tl-day-w) */
   background-image: repeating-linear-gradient(
     90deg,
     transparent 0,
-    transparent calc(34px - 1px),
-    color-mix(in srgb, var(--t-border) 45%, transparent) calc(34px - 1px),
-    color-mix(in srgb, var(--t-border) 45%, transparent) 34px
+    transparent calc(var(--tl-day-w, 34px) - 1px),
+    color-mix(in srgb, var(--t-border) 45%, transparent) calc(var(--tl-day-w, 34px) - 1px),
+    color-mix(in srgb, var(--t-border) 45%, transparent) var(--tl-day-w, 34px)
   );
 }
 .today-line {
@@ -723,5 +878,86 @@ watch(scrollEl, (el) => el && nextTick(centerToday))
 .us-chip.done {
   text-decoration: line-through;
   color: var(--t-text3);
+}
+
+/* hover preview card */
+.tl-preview {
+  position: fixed;
+  z-index: 3000;
+  width: 264px;
+  background: var(--t-surface);
+  border: 1px solid var(--t-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  padding: 10px 12px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.pv-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.pv-flag {
+  width: 4px;
+  align-self: stretch;
+  min-height: 18px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+.pv-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
+  line-height: 1.3;
+  flex: 1;
+}
+.pv-title.done {
+  text-decoration: line-through;
+  color: var(--t-text3);
+}
+.pv-num {
+  font-size: 11px;
+  color: var(--t-text3);
+  flex: 0 0 auto;
+}
+.pv-dates {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text2);
+}
+.pv-arrow {
+  color: var(--t-text3);
+}
+.pv-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pv-tag {
+  font-size: 11px;
+  border: 1px solid;
+  border-radius: 6px;
+  padding: 1px 7px;
+  line-height: 1.5;
+}
+.pv-assignees {
+  display: flex;
+  gap: 4px;
+}
+.pv-av {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
 }
 </style>

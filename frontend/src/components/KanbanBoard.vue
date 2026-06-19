@@ -117,16 +117,29 @@ const groupTags = computed(() =>
 )
 // Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
 const sortLevels = ref([])
-const filters = reactive({ priorities: [], assignees: [], tags: [], due: '', q: '' })
+const filters = reactive({ priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' })
 const sortFieldOptions = [
   { label: 'Приоритет', value: 'priority' },
   { label: 'Срок', value: 'due' },
+  { label: 'Статус', value: 'status' },
   { label: 'Название', value: 'title' },
   { label: 'Номер', value: 'number' },
 ]
+// Status sort/filter is offered only on the timeline for now (the board already
+// groups by status into columns, so sorting/filtering by it there is redundant).
+const sortFieldsForMenu = computed(() =>
+  layout.value === 'timeline' ? sortFieldOptions : sortFieldOptions.filter((o) => o.value !== 'status'),
+)
+// column id → position, for the status sort.
+const colPos = computed(() => {
+  const m = {}
+  columns.value.forEach((c) => (m[c.id] = c.position))
+  return m
+})
 // One sort level's comparison (direction applied; due-less tasks always last).
 function cmpLevel(a, b, { field, dir }) {
   const d = dir === 'desc' ? -1 : 1
+  if (field === 'status') return d * ((colPos.value[a.column_id] ?? 0) - (colPos.value[b.column_id] ?? 0))
   if (field === 'due') {
     const av = a.due_date ? Date.parse(a.due_date) : null
     const bv = b.due_date ? Date.parse(b.due_date) : null
@@ -167,11 +180,14 @@ const tagFilterMenu = computed(() => {
     children: g.tags.map((t) => ({ label: t.name, key: `ft.${t.id}` })),
   }))
 })
+// Status filter = which board columns to show (timeline-only facet).
+const statusFilterOptions = computed(() => columns.value.map((c) => ({ label: c.name, value: c.id })))
 const activeFilterCount = computed(
   () =>
     filters.priorities.length +
     filters.assignees.length +
     filters.tags.length +
+    filters.statuses.length +
     (filters.due ? 1 : 0) +
     (filters.q.trim() ? 1 : 0),
 )
@@ -179,6 +195,7 @@ function resetFilters() {
   filters.priorities = []
   filters.assignees = []
   filters.tags = []
+  filters.statuses = []
   filters.due = ''
   filters.q = ''
 }
@@ -188,13 +205,7 @@ function resetFilters() {
 // the same refs. The search box lives in the bar too (filters.q).
 const facetChips = computed(() => {
   const out = []
-  out.push({
-    kind: 'group',
-    label:
-      groupMode.value === 'tag'
-        ? `Группировка: теги${tagPrefix.value ? ` · ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
-        : 'Группировка: статусы',
-  })
+  out.push({ kind: 'group', label: `Группировка: ${groupModeLabel.value}` })
   sortLevels.value.forEach((l, i) => {
     const f = sortFieldOptions.find((o) => o.value === l.field)?.label || l.field
     out.push({ kind: 'sort', i, label: `Сорт: ${f} ${l.dir === 'desc' ? '↓' : '↑'}` })
@@ -208,49 +219,69 @@ const facetChips = computed(() => {
   filters.tags.forEach((t) =>
     out.push({ kind: 'tag', value: t, label: `Тег: ${tagsMap[t]?.name || '—'}` }),
   )
+  filters.statuses.forEach((s) =>
+    out.push({ kind: 'status', value: s, label: `Статус: ${columns.value.find((c) => c.id === s)?.name || '—'}` }),
+  )
   if (filters.due) {
     out.push({ kind: 'due', label: `Срок: ${dueOptions.find((o) => o.value === filters.due)?.label || filters.due}` })
   }
   return out
 })
-const addOptions = computed(() => [
-  {
-    label: 'Группировка',
-    key: 'group',
-    children: [
-      { label: 'По статусам', key: 'g.status' },
-      { label: 'По тегам (все)', key: 'g.tag' },
-      ...tagPrefixOptions.value
-        .filter((o) => o.value)
-        .map((o) => ({ label: `По тегам · ${o.label}`, key: `g.tagp.${encodeURIComponent(o.value)}` })),
-    ],
-  },
-  {
-    label: 'Сортировка',
-    key: 'sort',
-    children: sortFieldOptions.map((o) => ({ label: o.label, key: `s.${o.value}` })),
-  },
-  {
-    label: 'Фильтр: приоритет',
-    key: 'fp',
-    children: priorityFilterOptions.map((o) => ({ label: o.label, key: `fp.${o.value}` })),
-  },
-  {
-    label: 'Фильтр: исполнитель',
-    key: 'fa',
-    children: memberFilterOptions.value.map((o) => ({ label: o.label, key: `fa.${o.value}` })),
-  },
-  {
-    label: 'Фильтр: тег',
-    key: 'ft',
-    children: tagFilterMenu.value,
-  },
-  {
-    label: 'Фильтр: срок',
-    key: 'fd',
-    children: dueOptions.filter((o) => o.value).map((o) => ({ label: o.label, key: `fd.${o.value}` })),
-  },
-])
+// Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
+const groupModeLabel = computed(() => {
+  if (groupMode.value === 'assignee') return 'исполнитель'
+  if (groupMode.value === 'none') return 'без группировки'
+  if (groupMode.value === 'tag')
+    return `теги${tagPrefix.value ? ` · ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
+  return 'статусы'
+})
+const addOptions = computed(() => {
+  const grouping = [
+    { label: 'По статусам', key: 'g.status' },
+    { label: 'По тегам (все)', key: 'g.tag' },
+    ...tagPrefixOptions.value
+      .filter((o) => o.value)
+      .map((o) => ({ label: `По тегам · ${o.label}`, key: `g.tagp.${encodeURIComponent(o.value)}` })),
+  ]
+  // Timeline swimlanes can also be per-assignee or ungrouped.
+  if (layout.value === 'timeline') {
+    grouping.push({ label: 'По исполнителю', key: 'g.assignee' }, { label: 'Без группировки', key: 'g.none' })
+  }
+  const opts = [
+    { label: 'Группировка', key: 'group', children: grouping },
+    {
+      label: 'Сортировка',
+      key: 'sort',
+      children: sortFieldsForMenu.value.map((o) => ({ label: o.label, key: `s.${o.value}` })),
+    },
+    {
+      label: 'Фильтр: приоритет',
+      key: 'fp',
+      children: priorityFilterOptions.map((o) => ({ label: o.label, key: `fp.${o.value}` })),
+    },
+    {
+      label: 'Фильтр: исполнитель',
+      key: 'fa',
+      children: memberFilterOptions.value.map((o) => ({ label: o.label, key: `fa.${o.value}` })),
+    },
+    { label: 'Фильтр: тег', key: 'ft', children: tagFilterMenu.value },
+    {
+      label: 'Фильтр: срок',
+      key: 'fd',
+      children: dueOptions.filter((o) => o.value).map((o) => ({ label: o.label, key: `fd.${o.value}` })),
+    },
+  ]
+  // Status (column) filter — timeline only, so the user can hide e.g. the «done»
+  // column's completed cards that otherwise crowd the chart.
+  if (layout.value === 'timeline') {
+    opts.splice(2, 0, {
+      label: 'Фильтр: статус',
+      key: 'fs',
+      children: statusFilterOptions.value.map((o) => ({ label: o.label, key: `fs.${o.value}` })),
+    })
+  }
+  return opts
+})
 // Mobile: the "+" menu drills into one sub-list at a time (with a «Назад») rather
 // than fanning out side submenus that run off a narrow screen.
 const addShow = ref(false)
@@ -322,6 +353,12 @@ function onAddFacet(key) {
   } else if (key.startsWith('g.tagp.')) {
     groupMode.value = 'tag'
     tagPrefix.value = decodeURIComponent(key.slice('g.tagp.'.length))
+  } else if (key === 'g.assignee') {
+    groupMode.value = 'assignee'
+    tagPrefix.value = ''
+  } else if (key === 'g.none') {
+    groupMode.value = 'none'
+    tagPrefix.value = ''
   } else if (key.startsWith('s.')) {
     const f = key.slice(2)
     if (!sortLevels.value.some((l) => l.field === f)) sortLevels.value.push({ field: f, dir: 'asc' })
@@ -334,6 +371,9 @@ function onAddFacet(key) {
   } else if (key.startsWith('ft.')) {
     const v = key.slice(3)
     if (!filters.tags.includes(v)) filters.tags.push(v)
+  } else if (key.startsWith('fs.')) {
+    const v = key.slice(3)
+    if (!filters.statuses.includes(v)) filters.statuses.push(v)
   } else if (key.startsWith('fd.')) {
     filters.due = key.slice(3)
   }
@@ -343,6 +383,7 @@ function removeChip(c) {
   else if (c.kind === 'priority') filters.priorities = filters.priorities.filter((x) => x !== c.value)
   else if (c.kind === 'assignee') filters.assignees = filters.assignees.filter((x) => x !== c.value)
   else if (c.kind === 'tag') filters.tags = filters.tags.filter((x) => x !== c.value)
+  else if (c.kind === 'status') filters.statuses = filters.statuses.filter((x) => x !== c.value)
   else if (c.kind === 'due') filters.due = ''
 }
 function onChipClick(c) {
@@ -361,23 +402,58 @@ function clearAll() {
   sortLevels.value = []
 }
 
-// ── per-board view persistence (localStorage, per device) ──
+// ── per-board, per-layout toolbar state (localStorage, per device) ──
+// Group/sort/filter state is kept independently per layout: switching board↔
+// timeline swaps the live refs in and out of `toolbarByLayout`, so each layout
+// remembers its own grouping/sort/filters (a status filter set on the timeline
+// doesn't leak into the board, where that facet isn't even offered).
 const viewKey = computed(() => `tessera_view_${props.boardId}`)
 let restoring = false
+let swapping = false
+const toolbarByLayout = {}
+
+function defaultToolbar(forLayout) {
+  return {
+    groupMode: forLayout === 'timeline' ? 'assignee' : 'status',
+    tagPrefix: '',
+    sortLevels: [],
+    subtasksExpanded: false,
+    filters: { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' },
+  }
+}
+function snapshotToolbar() {
+  return {
+    groupMode: groupMode.value,
+    tagPrefix: tagPrefix.value,
+    sortLevels: sortLevels.value.map((l) => ({ ...l })),
+    subtasksExpanded: subtasksExpanded.value,
+    filters: {
+      priorities: [...filters.priorities],
+      assignees: [...filters.assignees],
+      tags: [...filters.tags],
+      statuses: [...filters.statuses],
+      due: filters.due,
+      q: filters.q,
+    },
+  }
+}
+function loadToolbar(s) {
+  groupMode.value = s.groupMode || 'status'
+  tagPrefix.value = s.tagPrefix || ''
+  sortLevels.value = (s.sortLevels || []).map((l) => ({ ...l }))
+  subtasksExpanded.value = !!s.subtasksExpanded
+  Object.assign(
+    filters,
+    { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' },
+    s.filters || {},
+  )
+}
+
 function writeView() {
   if (restoring) return
   try {
-    localStorage.setItem(
-      viewKey.value,
-      JSON.stringify({
-        layout: layout.value,
-        groupMode: groupMode.value,
-        tagPrefix: tagPrefix.value,
-        sortLevels: sortLevels.value,
-        subtasksExpanded: subtasksExpanded.value,
-        filters,
-      }),
-    )
+    toolbarByLayout[layout.value] = snapshotToolbar()
+    localStorage.setItem(viewKey.value, JSON.stringify({ layout: layout.value, toolbars: toolbarByLayout }))
   } catch {
     /* storage full / disabled — non-fatal */
   }
@@ -387,7 +463,7 @@ function writeView() {
 // we persist once the user pauses, and flush on unmount so nothing is lost.
 let persistTimer = null
 function persistView() {
-  if (restoring) return
+  if (restoring || swapping) return
   if (persistTimer) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
     persistTimer = null
@@ -407,35 +483,55 @@ function restoreView() {
     const raw = localStorage.getItem(viewKey.value)
     if (raw) {
       const v = JSON.parse(raw)
-      if (v.layout) layout.value = v.layout
-      if (v.groupMode) groupMode.value = v.groupMode
-      if (typeof v.tagPrefix === 'string') tagPrefix.value = v.tagPrefix
-      subtasksExpanded.value = !!v.subtasksExpanded
-      if (Array.isArray(v.sortLevels)) sortLevels.value = v.sortLevels
-      else if (v.sortBy && v.sortBy !== 'position')
-        sortLevels.value = [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
-      if (v.filters) {
-        filters.priorities = v.filters.priorities || []
-        filters.assignees = v.filters.assignees || []
-        filters.tags = v.filters.tags || []
-        filters.due = v.filters.due || ''
-        filters.q = v.filters.q || ''
+      if (v.toolbars) {
+        Object.assign(toolbarByLayout, v.toolbars)
+        if (v.layout) layout.value = v.layout
+      } else {
+        // Migrate the old single-config format into the current layout's slot.
+        if (v.layout) layout.value = v.layout
+        toolbarByLayout[layout.value] = {
+          groupMode: v.groupMode || defaultToolbar(layout.value).groupMode,
+          tagPrefix: v.tagPrefix || '',
+          sortLevels: Array.isArray(v.sortLevels)
+            ? v.sortLevels
+            : v.sortBy && v.sortBy !== 'position'
+              ? [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
+              : [],
+          subtasksExpanded: !!v.subtasksExpanded,
+          filters: { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '', ...(v.filters || {}) },
+        }
       }
+      loadToolbar(toolbarByLayout[layout.value] || defaultToolbar(layout.value))
     } else {
-      resetFilters()
+      loadToolbar(defaultToolbar(layout.value))
     }
   } catch {
-    /* corrupt entry — ignore */
+    loadToolbar(defaultToolbar(layout.value))
   } finally {
     nextTick(() => (restoring = false))
   }
 }
-watch([layout, groupMode, tagPrefix, sortLevels, subtasksExpanded, filters], persistView, {
-  deep: true,
+// Swap the toolbar state when the layout changes (each layout keeps its own).
+watch(layout, (newL, oldL) => {
+  if (restoring || newL === oldL) return
+  swapping = true
+  toolbarByLayout[oldL] = snapshotToolbar()
+  loadToolbar(toolbarByLayout[newL] || defaultToolbar(newL))
+  nextTick(() => {
+    swapping = false
+    persistView()
+  })
 })
+watch([groupMode, tagPrefix, sortLevels, subtasksExpanded, filters], persistView, { deep: true })
 
 // ── saved views (per-user, server-side; cross-device) ──
 const savedViews = ref([])
+// Saved views are bound to a visualization: show only those for the current
+// layout (board views and timeline views are separate sets). Legacy views with
+// no stored layout default to 'board'.
+const viewsForLayout = computed(() =>
+  savedViews.value.filter((v) => (v.config?.layout || 'board') === layout.value),
+)
 const currentViewName = ref('')
 const newViewName = ref('')
 const showSaveView = ref(false)
@@ -469,7 +565,7 @@ function applyViewConfig(c) {
     sortLevels.value = [{ field: c.sortBy, dir: c.sortDir || 'asc' }]
   else sortLevels.value = []
   subtasksExpanded.value = !!c.subtasksExpanded
-  Object.assign(filters, { priorities: [], assignees: [], tags: [], due: '', q: '' }, c.filters || {})
+  Object.assign(filters, { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' }, c.filters || {})
 }
 async function saveView() {
   const name = (newViewName.value || currentViewName.value).trim()
@@ -486,9 +582,16 @@ async function saveView() {
   }
 }
 function applyView(v) {
+  // Guard the layout-swap watcher: applyViewConfig sets layout AND the toolbar
+  // fields itself, so the swap must not also fire and clobber them.
+  restoring = true
   applyViewConfig(v.config)
   currentViewName.value = v.name
   showLoadView.value = false
+  nextTick(() => {
+    restoring = false
+    persistView()
+  })
 }
 async function deleteView(v) {
   try {
@@ -754,6 +857,7 @@ const filteredTasks = computed(() => {
     arr = arr.filter((t) => (t.assignee_ids || []).some((a) => filters.assignees.includes(a)))
   if (filters.tags.length)
     arr = arr.filter((t) => (t.tag_ids || []).some((id) => filters.tags.includes(id)))
+  if (filters.statuses.length) arr = arr.filter((t) => filters.statuses.includes(t.column_id))
   if (filters.due) arr = arr.filter((t) => matchesDue(t, filters.due))
   const q = filters.q.trim().toLowerCase()
   if (q)
@@ -800,6 +904,9 @@ const displayColumns = computed(() => {
 })
 
 function rebuildLists() {
+  // 'assignee'/'none' are timeline-only swimlane modes; the board/list views only
+  // understand status/tag columns, so skip rebuilding for those (lists unused).
+  if (groupMode.value !== 'status' && groupMode.value !== 'tag') return
   const map = {}
   if (groupMode.value === 'status') {
     for (const col of columns.value) map[col.id] = []
@@ -1141,7 +1248,7 @@ watch(
             </n-tooltip>
             </template>
             <div class="views-pop">
-            <div v-for="v in savedViews" :key="v.id" class="view-row">
+            <div v-for="v in viewsForLayout" :key="v.id" class="view-row">
                 <button class="view-name" :class="{ active: v.name === currentViewName }" @click="applyView(v)">
                 {{ v.name }}
                 </button>
@@ -1156,7 +1263,7 @@ watch(
                 Удалить представление «{{ v.name }}»?
                 </n-popconfirm>
             </div>
-            <n-text v-if="!savedViews.length" depth="3" class="views-empty">
+            <n-text v-if="!viewsForLayout.length" depth="3" class="views-empty">
                 Нет сохранённых представлений
             </n-text>
             </div>
@@ -1180,10 +1287,10 @@ watch(
                 placeholder="Название представления"
                 @keyup.enter="saveView"
             />
-            <div v-if="savedViews.length" class="views-over">
+            <div v-if="viewsForLayout.length" class="views-over">
                 <n-text depth="3" class="views-lbl">Перезаписать:</n-text>
                 <button
-                v-for="v in savedViews"
+                v-for="v in viewsForLayout"
                 :key="v.id"
                 class="view-chip"
                 @click="newViewName = v.name"
@@ -1222,6 +1329,8 @@ watch(
         :status-columns="columns"
         :members-map="membersMap"
         :tags-map="tagsMap"
+        :group-mode="groupMode"
+        :tag-prefix="tagPrefix"
         @open="openTask"
         @changed="onChanged"
       />
