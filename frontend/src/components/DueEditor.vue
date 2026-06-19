@@ -550,8 +550,8 @@ const DUE_REPEAT_OPTS = [
   cursor: pointer;
 }
 .wd-chip.on {
-  background: var(--t-accent-grad-subtle);
-  border-color: transparent;
+  background: color-mix(in srgb, var(--t-primary) 12%, var(--t-surface));
+  border-color: color-mix(in srgb, var(--t-primary) 38%, transparent);
   color: var(--t-primary);
   font-weight: 600;
 }
@@ -564,11 +564,12 @@ const DUE_REPEAT_OPTS = [
   font-size: 13px;
 }
 
-/* calendar */
+/* calendar — fixed width so the day cells (aspect-ratio: 1) never rescale when the
+   start/due target switches and sibling content reflows ("jump in scale" bug). */
 .de-cal {
-  flex: 1;
+  flex: 0 0 256px;
+  width: 256px;
   padding: 12px;
-  min-width: 248px;
 }
 /* start / due target tabs */
 .de-targets {
@@ -606,9 +607,11 @@ const DUE_REPEAT_OPTS = [
 .de-tab.set .tt-val {
   color: var(--t-text1);
 }
+/* faint accent tint — NOT --t-accent-grad-subtle, which is a near-solid base-purple
+   fill and would swallow the (also-purple) label/value text. */
 .de-tab.active {
-  border-color: transparent;
-  background: var(--t-accent-grad-subtle);
+  border-color: color-mix(in srgb, var(--t-primary) 38%, transparent);
+  background: color-mix(in srgb, var(--t-primary) 12%, var(--t-surface));
 }
 .de-tab.active .tt-label {
   color: var(--t-primary);

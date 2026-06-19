@@ -41,11 +41,35 @@ const LEFT_W = 224 // px of the fixed task/lane column
 const ZOOM = [12, 16, 22, 30, 40, 56, 76]
 const zoomIdx = ref(3) // → 30px/day
 const dayW = computed(() => ZOOM[zoomIdx.value])
-function zoomIn() {
-  zoomIdx.value = Math.min(ZOOM.length - 1, zoomIdx.value + 1)
+// Re-zoom while keeping the day under `anchorClientX` (a viewport x; omit → centre
+// of the viewport) pinned in place. We read the day at the anchor BEFORE the width
+// changes, then on the next tick (once axisW has reflowed) set scrollLeft so that
+// same day lands back under the anchor — no more snapping to the earliest task.
+function applyZoom(newIdx, anchorClientX) {
+  newIdx = Math.max(0, Math.min(ZOOM.length - 1, newIdx))
+  if (newIdx === zoomIdx.value) return
+  const el = scrollEl.value
+  const oldW = ZOOM[zoomIdx.value]
+  const newW = ZOOM[newIdx]
+  let anchorX = null
+  let dayAtAnchor = null
+  if (el) {
+    const rect = el.getBoundingClientRect()
+    anchorX = anchorClientX != null ? anchorClientX - rect.left : el.clientWidth / 2
+    dayAtAnchor = (el.scrollLeft + anchorX - LEFT_W) / oldW
+  }
+  zoomIdx.value = newIdx
+  if (el && dayAtAnchor != null) {
+    nextTick(() => {
+      el.scrollLeft = Math.max(0, dayAtAnchor * newW + LEFT_W - anchorX)
+    })
+  }
 }
-function zoomOut() {
-  zoomIdx.value = Math.max(0, zoomIdx.value - 1)
+function zoomIn(anchorX) {
+  applyZoom(zoomIdx.value + 1, anchorX)
+}
+function zoomOut(anchorX) {
+  applyZoom(zoomIdx.value - 1, anchorX)
 }
 
 // ── date helpers ──
@@ -267,12 +291,36 @@ function geom(t) {
 const todayLeft = computed(() => dayIndex(todayMs) * dayW.value + dayW.value / 2)
 
 // ── scroll-to-today ──
+// rAF-driven so the glide is reliable: native `scrollTo({behavior:'smooth'})` on
+// this overflow container was a no-op in practice (jumped instantly).
 const scrollEl = ref(null)
+let scrollRaf = 0
+function animateScrollLeft(target) {
+  const el = scrollEl.value
+  if (!el) return
+  cancelAnimationFrame(scrollRaf)
+  const from = el.scrollLeft
+  const dist = target - from
+  if (Math.abs(dist) < 1) {
+    el.scrollLeft = target
+    return
+  }
+  const t0 = performance.now()
+  const dur = 340
+  const ease = (p) => 1 - Math.pow(1 - p, 3)
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur)
+    el.scrollLeft = from + dist * ease(p)
+    if (p < 1) scrollRaf = requestAnimationFrame(step)
+  }
+  scrollRaf = requestAnimationFrame(step)
+}
 function centerToday(smooth = true) {
   const el = scrollEl.value
   if (!el) return
   const left = Math.max(0, dayIndex(todayMs) * dayW.value - el.clientWidth / 2 + LEFT_W)
-  el.scrollTo({ left, behavior: smooth ? 'smooth' : 'auto' })
+  if (smooth === false) el.scrollLeft = left
+  else animateScrollLeft(left)
 }
 watch(scrollEl, (el) => el && nextTick(() => centerToday(false)))
 
@@ -303,14 +351,15 @@ function onPanUp() {
   window.removeEventListener('pointermove', onPanMove)
   window.removeEventListener('pointerup', onPanUp)
 }
-// Ctrl/Cmd + wheel zooms; keep the day under the cursor stable-ish by re-centering.
+// Ctrl/Cmd + wheel zooms, anchored on the day under the cursor.
 function onWheel(e) {
   if (!(e.ctrlKey || e.metaKey)) return
   e.preventDefault()
-  if (e.deltaY < 0) zoomIn()
-  else zoomOut()
+  if (e.deltaY < 0) zoomIn(e.clientX)
+  else zoomOut(e.clientX)
 }
 onBeforeUnmount(() => {
+  cancelAnimationFrame(scrollRaf)
   window.removeEventListener('pointermove', onPanMove)
   window.removeEventListener('pointerup', onPanUp)
 })
@@ -352,8 +401,8 @@ function initials(name) {
     <div class="tl-toolbar">
       <button class="tl-today-btn" type="button" @click="centerToday">Сегодня</button>
       <div class="tl-zoom">
-        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === 0" title="Уменьшить масштаб" @click="zoomOut">−</button>
-        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === ZOOM.length - 1" title="Увеличить масштаб" @click="zoomIn">+</button>
+        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === 0" title="Уменьшить масштаб" @click="zoomOut()">−</button>
+        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === ZOOM.length - 1" title="Увеличить масштаб" @click="zoomIn()">+</button>
       </div>
       <div class="tl-counters">
         <span v-if="overdueCount" class="tl-counter overdue">{{ overdueCount }} просрочено</span>
