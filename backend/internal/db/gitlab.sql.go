@@ -73,7 +73,7 @@ INSERT INTO gitlab_links (
     gl_author_avatar_url
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden
 `
 
 type CreateGitlabLinkParams struct {
@@ -126,6 +126,7 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		&i.GlAuthorName,
 		&i.DueOverridden,
 		&i.GlAuthorAvatarUrl,
+		&i.StartOverridden,
 	)
 	return i, err
 }
@@ -199,7 +200,7 @@ func (q *Queries) GetGitlabCredential(ctx context.Context, userID uuid.UUID) (Gi
 }
 
 const getGitlabIntegrationByWorkspace = `-- name: GetGitlabIntegrationByWorkspace :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source FROM gitlab_integrations WHERE workspace_id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source FROM gitlab_integrations WHERE workspace_id = $1
 `
 
 func (q *Queries) GetGitlabIntegrationByWorkspace(ctx context.Context, workspaceID uuid.UUID) (GitlabIntegration, error) {
@@ -218,13 +219,14 @@ func (q *Queries) GetGitlabIntegrationByWorkspace(ctx context.Context, workspace
 		&i.SyncIntervalSec,
 		&i.LastSyncedAt,
 		&i.DueSource,
+		&i.StartSource,
 	)
 	return i, err
 }
 
 const getGitlabLinkByGlobalID = `-- name: GetGitlabLinkByGlobalID :one
 
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
 `
 
 type GetGitlabLinkByGlobalIDParams struct {
@@ -253,12 +255,13 @@ func (q *Queries) GetGitlabLinkByGlobalID(ctx context.Context, arg GetGitlabLink
 		&i.GlAuthorName,
 		&i.DueOverridden,
 		&i.GlAuthorAvatarUrl,
+		&i.StartOverridden,
 	)
 	return i, err
 }
 
 const getGitlabLinkByTask = `-- name: GetGitlabLinkByTask :one
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url FROM gitlab_links WHERE task_id = $1
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden FROM gitlab_links WHERE task_id = $1
 `
 
 func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (GitlabLink, error) {
@@ -281,6 +284,7 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 		&i.GlAuthorName,
 		&i.DueOverridden,
 		&i.GlAuthorAvatarUrl,
+		&i.StartOverridden,
 	)
 	return i, err
 }
@@ -323,7 +327,7 @@ func (q *Queries) LinkedIidsForIntegration(ctx context.Context, integrationID uu
 }
 
 const listAutoSyncIntegrations = `-- name: ListAutoSyncIntegrations :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source FROM gitlab_integrations
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source FROM gitlab_integrations
 WHERE enabled
   AND sync_interval_sec > 0
   AND owner_user_id IS NOT NULL
@@ -355,6 +359,7 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 			&i.SyncIntervalSec,
 			&i.LastSyncedAt,
 			&i.DueSource,
+			&i.StartSource,
 		); err != nil {
 			return nil, err
 		}
@@ -404,6 +409,17 @@ UPDATE gitlab_links SET due_overridden = true WHERE task_id = $1
 // touching it. No-op when the task isn't linked.
 func (q *Queries) MarkGitlabDueOverridden(ctx context.Context, taskID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markGitlabDueOverridden, taskID)
+	return err
+}
+
+const markGitlabStartOverridden = `-- name: MarkGitlabStartOverridden :exec
+UPDATE gitlab_links SET start_overridden = true WHERE task_id = $1
+`
+
+// MarkGitlabStartOverridden flags a linked task's start as user-set so the sync
+// stops touching it. No-op when the task isn't linked.
+func (q *Queries) MarkGitlabStartOverridden(ctx context.Context, taskID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markGitlabStartOverridden, taskID)
 	return err
 }
 
@@ -481,7 +497,7 @@ SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
     gl_author = $8, gl_author_name = $9, gl_author_avatar_url = $10,
     last_synced_at = now()
 WHERE task_id = $1
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden
 `
 
 type UpdateGitlabLinkParams struct {
@@ -528,6 +544,7 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		&i.GlAuthorName,
 		&i.DueOverridden,
 		&i.GlAuthorAvatarUrl,
+		&i.StartOverridden,
 	)
 	return i, err
 }
@@ -610,8 +627,8 @@ func (q *Queries) UpsertGitlabCredential(ctx context.Context, arg UpsertGitlabCr
 
 const upsertGitlabIntegration = `-- name: UpsertGitlabIntegration :one
 
-INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, owner_user_id, sync_interval_sec, due_source, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, owner_user_id, sync_interval_sec, due_source, start_source, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
 ON CONFLICT (workspace_id) DO UPDATE
 SET project_path = EXCLUDED.project_path,
     board_id = EXCLUDED.board_id,
@@ -620,8 +637,9 @@ SET project_path = EXCLUDED.project_path,
     owner_user_id = EXCLUDED.owner_user_id,
     sync_interval_sec = EXCLUDED.sync_interval_sec,
     due_source = EXCLUDED.due_source,
+    start_source = EXCLUDED.start_source,
     updated_at = now()
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source
 `
 
 type UpsertGitlabIntegrationParams struct {
@@ -633,6 +651,7 @@ type UpsertGitlabIntegrationParams struct {
 	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
 	SyncIntervalSec int32      `json:"sync_interval_sec"`
 	DueSource       string     `json:"due_source"`
+	StartSource     string     `json:"start_source"`
 }
 
 // ── Per-workspace integration ──────────────────────────────
@@ -646,6 +665,7 @@ func (q *Queries) UpsertGitlabIntegration(ctx context.Context, arg UpsertGitlabI
 		arg.OwnerUserID,
 		arg.SyncIntervalSec,
 		arg.DueSource,
+		arg.StartSource,
 	)
 	var i GitlabIntegration
 	err := row.Scan(
@@ -661,6 +681,7 @@ func (q *Queries) UpsertGitlabIntegration(ctx context.Context, arg UpsertGitlabI
 		&i.SyncIntervalSec,
 		&i.LastSyncedAt,
 		&i.DueSource,
+		&i.StartSource,
 	)
 	return i, err
 }

@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.85.0] — 2026-06-20
+- **GitLab «Источник начала».** В модалке настроек интеграции — новый селект
+  рядом с «Источник срока»: `Дата создания задачи` (по умолчанию) / `Начало
+  Milestone` / `Не синхронизировать`. Гоняет `start_source` в `PUT
+  /workspaces/:id/gitlab/integration`, читает из ответа (фоллбэк `created`).
+
 ### [0.84.0] — 2026-06-20
 - **Оценка задач (estimation) — веб-клиент.** Поле оценки в карточке задачи, чип
   на карточке доски и агрегаты в лейн-хедерах таймлайна/Ганта, плюс редактор
@@ -1520,6 +1526,24 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.52.0] — 2026-06-20
+- **GitLab start-date sync** (migration **0031**, mirrors the due-date sync of
+  mig 0012). A synced task's `start_date` is now filled per a new per-integration
+  `start_source`:
+  - `created` (**default**) — the issue/task **creation date** (`createdAt`,
+    always present, so every synced task gets a meaningful start);
+  - `milestone` — the issue's milestone **Start date**;
+  - `off` — never sync the start.
+  GitLab issues carry no own start date, so we deliberately do **not** pull the
+  work-item `startAndDueDate` widget (would force a `workItems` query rewrite) —
+  `created`/`milestone` cover the need. The issues GraphQL query now also selects
+  `createdAt` and `milestone { startDate }`.
+- **Manual start wins over sync.** New `gitlab_links.start_overridden` flag
+  (mirror of `due_overridden`): editing a linked task's start on the board marks
+  it overridden, and the sync stops touching it — the override survives resyncs.
+- **Config endpoint** `GET/PUT /workspaces/:id/gitlab/integration` now carries
+  `start_source` (validated; unknown values fall back to `created`).
 
 ### [0.51.0] — 2026-06-19
 - **Task estimation — backend foundation** (migration **0030**). A task carries

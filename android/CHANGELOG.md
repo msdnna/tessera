@@ -5,6 +5,12 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.29.0 — 2026-06-20
+- **GitLab «Источник начала».** В настройках интеграции — новый селект рядом с
+  «Источник срока»: `Дата создания` (по умолчанию) / `Начало Milestone` / `Не
+  синхронизировать`. Поле `start_source` едет в запросе настроек и читается из
+  ответа (`GitlabIntegration`/`GitlabSetIntegrationRequest`, дефолт `created`).
+
 ## 0.28.0 — 2026-06-20
 - **Оценка задач (estimation).** Канон-значение `estimate` на задаче, единица
   которого резолвится из двухуровневого конфига (project override → workspace

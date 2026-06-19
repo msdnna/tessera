@@ -143,6 +143,9 @@ ORDER BY due_date;
 -- name: UpdateTaskDueDate :exec
 UPDATE tasks SET due_date = $2, updated_at = now() WHERE id = $1;
 
+-- name: UpdateTaskStartDate :exec
+UPDATE tasks SET start_date = $2, updated_at = now() WHERE id = $1;
+
 -- name: MoveTask :one
 UPDATE tasks
 SET column_id = $2, position = $3, updated_at = now()

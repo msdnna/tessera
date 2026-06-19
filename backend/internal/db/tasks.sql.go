@@ -1030,3 +1030,17 @@ func (q *Queries) UpdateTaskDueDate(ctx context.Context, arg UpdateTaskDueDatePa
 	_, err := q.db.Exec(ctx, updateTaskDueDate, arg.ID, arg.DueDate)
 	return err
 }
+
+const updateTaskStartDate = `-- name: UpdateTaskStartDate :exec
+UPDATE tasks SET start_date = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateTaskStartDateParams struct {
+	ID        uuid.UUID  `json:"id"`
+	StartDate *time.Time `json:"start_date"`
+}
+
+func (q *Queries) UpdateTaskStartDate(ctx context.Context, arg UpdateTaskStartDateParams) error {
+	_, err := q.db.Exec(ctx, updateTaskStartDate, arg.ID, arg.StartDate)
+	return err
+}

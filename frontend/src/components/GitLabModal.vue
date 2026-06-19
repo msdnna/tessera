@@ -65,6 +65,7 @@ const boardId = ref(null)
 const enabled = ref(true)
 const intervalSec = ref(0)
 const dueSource = ref('issue_milestone')
+const startSource = ref('created')
 const lastSynced = ref(null)
 const defaultColumn = ref('')
 const defaultAction = ref('tag')
@@ -125,6 +126,11 @@ const dueSourceOptions = [
   { label: 'Issue, иначе срок Milestone', value: 'issue_milestone' },
   { label: 'Только из Issue', value: 'issue' },
   { label: 'Только из Milestone', value: 'milestone' },
+  { label: 'Не синхронизировать', value: 'off' },
+]
+const startSourceOptions = [
+  { label: 'Дата создания задачи', value: 'created' },
+  { label: 'Начало Milestone', value: 'milestone' },
   { label: 'Не синхронизировать', value: 'off' },
 ]
 const priorityLevelOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
@@ -200,6 +206,7 @@ async function loadIntegration() {
     enabled.value = data.enabled !== false
     intervalSec.value = data.sync_interval_sec || 0
     dueSource.value = data.due_source || 'issue_milestone'
+    startSource.value = data.start_source || 'created'
     lastSynced.value = data.last_synced_at || null
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
@@ -266,6 +273,7 @@ async function save() {
       enabled: enabled.value,
       sync_interval_sec: Number(intervalSec.value),
       due_source: dueSource.value,
+      start_source: startSource.value,
       label_rules,
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
@@ -400,6 +408,9 @@ watch(
 
           <n-text depth="3" class="lbl">Источник срока</n-text>
           <n-select v-model:value="dueSource" :options="dueSourceOptions" size="small" />
+
+          <n-text depth="3" class="lbl">Источник начала</n-text>
+          <n-select v-model:value="startSource" :options="startSourceOptions" size="small" />
 
           <n-text depth="3" class="lbl">Включена</n-text>
           <div><n-switch v-model:value="enabled" /></div>

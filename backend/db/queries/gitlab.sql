@@ -22,8 +22,8 @@ DELETE FROM gitlab_credentials WHERE user_id = $1;
 -- ── Per-workspace integration ──────────────────────────────
 
 -- name: UpsertGitlabIntegration :one
-INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, owner_user_id, sync_interval_sec, due_source, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, owner_user_id, sync_interval_sec, due_source, start_source, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
 ON CONFLICT (workspace_id) DO UPDATE
 SET project_path = EXCLUDED.project_path,
     board_id = EXCLUDED.board_id,
@@ -32,6 +32,7 @@ SET project_path = EXCLUDED.project_path,
     owner_user_id = EXCLUDED.owner_user_id,
     sync_interval_sec = EXCLUDED.sync_interval_sec,
     due_source = EXCLUDED.due_source,
+    start_source = EXCLUDED.start_source,
     updated_at = now()
 RETURNING *;
 
@@ -39,6 +40,11 @@ RETURNING *;
 -- touching it. No-op when the task isn't linked.
 -- name: MarkGitlabDueOverridden :exec
 UPDATE gitlab_links SET due_overridden = true WHERE task_id = $1;
+
+-- MarkGitlabStartOverridden flags a linked task's start as user-set so the sync
+-- stops touching it. No-op when the task isn't linked.
+-- name: MarkGitlabStartOverridden :exec
+UPDATE gitlab_links SET start_overridden = true WHERE task_id = $1;
 
 -- name: GetGitlabIntegrationByWorkspace :one
 SELECT * FROM gitlab_integrations WHERE workspace_id = $1;

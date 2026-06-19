@@ -103,6 +103,7 @@ type gitlabIntegrationView struct {
 	Enabled         bool         `json:"enabled"`
 	SyncIntervalSec int32        `json:"sync_interval_sec"`
 	DueSource       string       `json:"due_source"`
+	StartSource     string       `json:"start_source"`
 	LastSyncedAt    *time.Time   `json:"last_synced_at"`
 	LabelRules      gitlab.Rules `json:"label_rules"`
 }
@@ -113,7 +114,7 @@ func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
 	return gitlabIntegrationView{
 		Configured: true, ProjectPath: integ.ProjectPath, BoardID: &bid,
 		Enabled: integ.Enabled, SyncIntervalSec: integ.SyncIntervalSec,
-		DueSource: integ.DueSource, LastSyncedAt: integ.LastSyncedAt,
+		DueSource: integ.DueSource, StartSource: integ.StartSource, LastSyncedAt: integ.LastSyncedAt,
 		LabelRules: parseRules(integ.LabelRules),
 	}
 }
@@ -155,6 +156,7 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		Enabled         bool            `json:"enabled"`
 		SyncIntervalSec int32           `json:"sync_interval_sec"`
 		DueSource       string          `json:"due_source"`
+		StartSource     string          `json:"start_source"`
 		LabelRules      json.RawMessage `json:"label_rules"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -175,6 +177,11 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 	default:
 		req.DueSource = "issue_milestone"
 	}
+	switch req.StartSource {
+	case "created", "milestone", "off":
+	default:
+		req.StartSource = "created"
+	}
 
 	rules := req.LabelRules
 	if len(rules) == 0 || string(rules) == "null" || string(rules) == "{}" {
@@ -194,6 +201,7 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		OwnerUserID:     &owner,
 		SyncIntervalSec: req.SyncIntervalSec,
 		DueSource:       req.DueSource,
+		StartSource:     req.StartSource,
 	})
 	if err != nil {
 		fail(c)
@@ -384,7 +392,8 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		res := rules.Resolve(issue.Labels)
 		bc, col, completedAt := resolveBoardCol(issue, res)
 		dueDate := effectiveDue(issue, integ.DueSource)
-		taskID, wasCreated, ok := h.syncOneIssue(ctx, integ, issue, res, wsID, bc.id, col.ID, nil, completedAt, dueDate, actorID)
+		startDate := effectiveStart(issue, integ.StartSource)
+		taskID, wasCreated, ok := h.syncOneIssue(ctx, integ, issue, res, wsID, bc.id, col.ID, nil, completedAt, dueDate, startDate, actorID)
 		if !ok {
 			continue
 		}
@@ -404,8 +413,9 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 					kdone = &now
 				}
 				kdue := effectiveDue(kid, integ.DueSource)
+				kstart := effectiveStart(kid, integ.StartSource)
 				parentID := taskID
-				if _, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, actorID); kok {
+				if _, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, actorID); kok {
 					if kc {
 						created++
 					} else {
@@ -483,7 +493,7 @@ func (h *API) resolveDoneColumn(ctx context.Context, board db.Board) *uuid.UUID 
 // syncCreateTask creates a mirrored task at the end of its target column (or its
 // parent's subtask list when parentID is set). The task has no Tessera creator
 // (created_by stays null) — the GitLab author is on the link instead.
-func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, issue gitlab.Issue, priority int32, completedAt, dueDate *time.Time) (db.Task, error) {
+func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, issue gitlab.Issue, priority int32, completedAt, dueDate, startDate *time.Time) (db.Task, error) {
 	var pos float64
 	if parentID != nil {
 		subs, err := h.q.ListSubtasks(ctx, parentID)
@@ -510,7 +520,7 @@ func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.U
 	t, err := h.q.CreateTask(ctx, db.CreateTaskParams{
 		BoardID: boardID, ColumnID: columnID, ParentID: parentID,
 		Title: issue.Title, Description: issue.Description, Priority: priority,
-		DueDate: dueDate, Position: pos, CreatedBy: nil, Number: &num,
+		DueDate: dueDate, StartDate: startDate, Position: pos, CreatedBy: nil, Number: &num,
 	})
 	if err != nil {
 		return db.Task{}, err
@@ -538,7 +548,7 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 // given board/column, optionally as a subtask of parentID, reconciling its link
 // and meta. Returns the task id, whether it was newly created, and ok=false on a
 // per-issue failure (logged, caller continues).
-func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate *time.Time, actorID uuid.UUID) (uuid.UUID, bool, bool) {
+func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate, startDate *time.Time, actorID uuid.UUID) (uuid.UUID, bool, bool) {
 	// Resolve GitLab-relative attachment links to signed proxy URLs.
 	issue.Description = h.rewriteAssets(issue.Description, wsID)
 	// Synced labels become tags scoped to the integration board's project.
@@ -552,7 +562,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 	})
 	switch {
 	case errors.Is(lerr, pgx.ErrNoRows):
-		t, cerr := h.syncCreateTask(ctx, wsID, boardID, columnID, parentID, issue, res.Priority, completedAt, dueDate)
+		t, cerr := h.syncCreateTask(ctx, wsID, boardID, columnID, parentID, issue, res.Priority, completedAt, dueDate, startDate)
 		if cerr != nil {
 			log.Printf("gitlab sync: create task for issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
@@ -609,6 +619,11 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		if !link.DueOverridden && dueDate != nil {
 			_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate})
 			t.DueDate = dueDate
+		}
+		// Likewise the start date: synced unless GitLab gives none or the user overrode.
+		if !link.StartOverridden && startDate != nil {
+			_ = h.q.UpdateTaskStartDate(ctx, db.UpdateTaskStartDateParams{ID: link.TaskID, StartDate: startDate})
+			t.StartDate = startDate
 		}
 		h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
 		h.broadcast(wsID, "task.updated", t)
@@ -696,6 +711,21 @@ func effectiveDue(issue gitlab.Issue, source string) *time.Time {
 			return issue.DueDate
 		}
 		return issue.MilestoneDue
+	}
+}
+
+// effectiveStart resolves the start date the sync should apply, per the
+// integration's start_source: the issue/task creation date, the milestone Start
+// date, or none. GitLab issues carry no own start date, so "created" (the default)
+// is the reliable source.
+func effectiveStart(issue gitlab.Issue, source string) *time.Time {
+	switch source {
+	case "milestone":
+		return issue.MilestoneStart
+	case "off":
+		return nil
+	default: // created
+		return issue.CreatedAt
 	}
 }
 

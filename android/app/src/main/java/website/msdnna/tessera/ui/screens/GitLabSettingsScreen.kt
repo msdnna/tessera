@@ -64,6 +64,9 @@ private val DueSourceOptions = listOf(
     "issue_milestone" to "Issue, иначе Milestone", "issue" to "Только Issue",
     "milestone" to "Только Milestone", "off" to "Не синхронизировать",
 )
+private val StartSourceOptions = listOf(
+    "created" to "Дата создания", "milestone" to "Начало Milestone", "off" to "Не синхронизировать",
+)
 private val ActionOptions = listOf(
     "status" to "Статус → колонка", "priority" to "Приоритет", "board" to "Доска",
     "tag" to "Тег", "group" to "Группировка", "ignore" to "Игнорировать",
@@ -152,6 +155,7 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
     var enabled by remember(integ) { mutableStateOf(integ.enabled) }
     var interval by remember(integ) { mutableStateOf(integ.syncIntervalSec) }
     var dueSource by remember(integ) { mutableStateOf(integ.dueSource) }
+    var startSource by remember(integ) { mutableStateOf(integ.startSource) }
     var defaultColumn by remember(integ) { mutableStateOf(integ.labelRules.defaultColumn) }
     var defaultAction by remember(integ) { mutableStateOf(integ.labelRules.defaultAction) }
     var tagKeepPrefix by remember(integ) { mutableStateOf(integ.labelRules.tagKeepPrefix) }
@@ -183,6 +187,9 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
     }
     Field("Источник срока") {
         TSelect(DueSourceOptions.find { it.first == dueSource }?.second ?: "—", DueSourceOptions) { dueSource = it }
+    }
+    Field("Источник начала") {
+        TSelect(StartSourceOptions.find { it.first == startSource }?.second ?: "—", StartSourceOptions) { startSource = it }
     }
     Field("Включена") { TSwitch(enabled, { enabled = it }) }
 
@@ -232,7 +239,7 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
                     vm.save(
                         workspaceId, pid, ruleLabels,
                         GitlabSetIntegrationRequest(
-                            projectPath.trim(), bid, enabled, interval, dueSource,
+                            projectPath.trim(), bid, enabled, interval, dueSource, startSource,
                             GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
                         ),
                     )

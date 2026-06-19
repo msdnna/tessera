@@ -72,6 +72,7 @@ type GitlabIntegration struct {
 	SyncIntervalSec int32      `json:"sync_interval_sec"`
 	LastSyncedAt    *time.Time `json:"last_synced_at"`
 	DueSource       string     `json:"due_source"`
+	StartSource     string     `json:"start_source"`
 }
 
 type GitlabLink struct {
@@ -91,6 +92,7 @@ type GitlabLink struct {
 	GlAuthorName      string     `json:"gl_author_name"`
 	DueOverridden     bool       `json:"due_overridden"`
 	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
+	StartOverridden   bool       `json:"start_overridden"`
 }
 
 type Membership struct {

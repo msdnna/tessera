@@ -43,6 +43,7 @@ data class GitlabIntegration(
     @SerializedName("enabled") val enabled: Boolean = true,
     @SerializedName("sync_interval_sec") val syncIntervalSec: Int = 0,
     @SerializedName("due_source") val dueSource: String = "issue_milestone",
+    @SerializedName("start_source") val startSource: String = "created",
     @SerializedName("last_synced_at") val lastSyncedAt: String? = null,
     @SerializedName("label_rules") val labelRules: GitlabRules = GitlabRules(),
 )
@@ -53,6 +54,7 @@ data class GitlabSetIntegrationRequest(
     @SerializedName("enabled") val enabled: Boolean,
     @SerializedName("sync_interval_sec") val syncIntervalSec: Int,
     @SerializedName("due_source") val dueSource: String,
+    @SerializedName("start_source") val startSource: String,
     @SerializedName("label_rules") val labelRules: GitlabRules,
 )
 

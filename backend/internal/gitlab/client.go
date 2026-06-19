@@ -140,10 +140,12 @@ type Issue struct {
 	Title        string
 	Description  string
 	WebURL       string
-	State        string // opened | closed
-	UpdatedAt    *time.Time
-	DueDate      *time.Time // issue's own due date (date-only), nil when unset
-	MilestoneDue *time.Time // due date (End date) of the issue's milestone, if any
+	State          string // opened | closed
+	UpdatedAt      *time.Time
+	CreatedAt      *time.Time // issue/task creation timestamp (always present)
+	DueDate        *time.Time // issue's own due date (date-only), nil when unset
+	MilestoneDue   *time.Time // due date (End date) of the issue's milestone, if any
+	MilestoneStart *time.Time // start date of the issue's milestone (date-only), if any
 	Labels       []Label
 	AuthorLogin  string // GitLab username of the issue author (may not be a Tessera user)
 	AuthorName   string
@@ -165,8 +167,9 @@ query($path: ID!, $username: String, $iids: [String!], $after: String) {
         webUrl
         state
         updatedAt
+        createdAt
         dueDate
-        milestone { dueDate }
+        milestone { startDate dueDate }
         author { username name avatarUrl }
         assignees { nodes { username name avatarUrl } }
         labels { nodes { title color } }
@@ -239,9 +242,11 @@ type issueNode struct {
 	WebURL      string     `json:"webUrl"`
 	State       string     `json:"state"`
 	UpdatedAt   *time.Time `json:"updatedAt"`
+	CreatedAt   *time.Time `json:"createdAt"`
 	DueDate     string     `json:"dueDate"`
 	Milestone   *struct {
-		DueDate string `json:"dueDate"`
+		StartDate string `json:"startDate"`
+		DueDate   string `json:"dueDate"`
 	} `json:"milestone"`
 	Author *struct {
 		Username  string `json:"username"`
@@ -294,9 +299,10 @@ func (n issueNode) toIssue(base string) Issue {
 	issue := Issue{
 		GlobalID: n.ID, IID: iid, Title: n.Title, Description: n.Description,
 		WebURL: n.WebURL, State: n.State, UpdatedAt: n.UpdatedAt,
-		DueDate: parseDate(n.DueDate), Labels: labels,
+		CreatedAt: n.CreatedAt, DueDate: parseDate(n.DueDate), Labels: labels,
 	}
 	if n.Milestone != nil {
+		issue.MilestoneStart = parseDate(n.Milestone.StartDate)
 		issue.MilestoneDue = parseDate(n.Milestone.DueDate)
 	}
 	if n.Author != nil {

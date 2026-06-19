@@ -324,6 +324,10 @@ func (h *API) UpdateTask(c *gin.Context) {
 	if !sameTime(t.DueDate, updated.DueDate) {
 		_ = h.q.MarkGitlabDueOverridden(c, id)
 	}
+	// Likewise a manual start-date change wins over the sync.
+	if !sameTime(t.StartDate, updated.StartDate) {
+		_ = h.q.MarkGitlabStartOverridden(c, id)
+	}
 	changes := h.journalUpdate(c, t, updated)
 	if len(changes) > 0 {
 		h.notifyTaskParticipants(c, updated, wsID, "updated",
