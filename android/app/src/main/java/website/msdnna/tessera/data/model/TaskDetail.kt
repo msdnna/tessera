@@ -109,6 +109,21 @@ data class Relation(
     @SerializedName("related_archived_at") val relatedArchivedAt: String? = null,
 )
 
+/**
+ * One blocking edge of a board's dependency graph (`GET /boards/:id/dependencies`).
+ * Raw relation row; the Gantt view normalises to blocker→blocked (kind='blocks' →
+ * taskId blocks relatedTaskId; 'blocked_by' → the reverse).
+ */
+data class BoardDependency(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("task_id") val taskId: String = "",
+    @SerializedName("related_task_id") val relatedTaskId: String = "",
+    @SerializedName("kind") val kind: String = "blocks",
+) {
+    val blockerId: String get() = if (kind == "blocked_by") relatedTaskId else taskId
+    val blockedId: String get() = if (kind == "blocked_by") taskId else relatedTaskId
+}
+
 /** A task attachment — mirrors `ListTaskAttachmentsRow`. */
 data class Attachment(
     @SerializedName("id") val id: String = "",

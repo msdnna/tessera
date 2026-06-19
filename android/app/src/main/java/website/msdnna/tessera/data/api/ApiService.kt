@@ -19,6 +19,7 @@ import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.AvatarResponse
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.BoardDependency
 import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.CreateCommentRequest
@@ -221,6 +222,10 @@ interface ApiService {
 
     @GET("boards/{id}/subtasks")
     suspend fun boardSubtasks(@Path("id") boardId: String): List<Task>?
+
+    // Whole-board blocking dependency graph (raw edge rows) for the Gantt view.
+    @GET("boards/{id}/dependencies")
+    suspend fun boardDependencies(@Path("id") boardId: String): List<BoardDependency>?
 
     @POST("boards/{id}/tasks")
     suspend fun createTask(@Path("id") boardId: String, @Body body: CreateTaskRequest): Task

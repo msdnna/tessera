@@ -275,9 +275,9 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
     val f = state.filter
     var menu by remember { mutableStateOf(false) }
     var category by remember { mutableStateOf<String?>(null) }
-    // Status sort/filter is offered only on the timeline (the board already groups
-    // by status into columns, so it's redundant there).
-    val timeline = state.viewMode == BoardViewMode.Timeline
+    // Status sort/filter is offered only on the time-axis views — timeline & gantt
+    // (the board already groups by status into columns, so it's redundant there).
+    val timeline = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
     val sortFields = SortField.entries.filter { sf ->
         state.sortLevels.none { it.field == sf.key } && (sf != SortField.Status || timeline)
     }

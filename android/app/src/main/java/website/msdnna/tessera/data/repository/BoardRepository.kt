@@ -38,6 +38,8 @@ class BoardRepository {
         api.setDoneColumn(boardId, website.msdnna.tessera.data.model.SetDoneColumnRequest(columnId))
     suspend fun tasks(boardId: String): List<Task> = api.boardTasks(boardId).orEmpty()
     suspend fun subtasks(boardId: String): List<Task> = api.boardSubtasks(boardId).orEmpty()
+    suspend fun dependencies(boardId: String): List<website.msdnna.tessera.data.model.BoardDependency> =
+        api.boardDependencies(boardId).orEmpty()
     suspend fun tags(projectId: String): List<Tag> = api.tags(projectId).orEmpty()
     suspend fun members(workspaceId: String): List<Member> = api.members(workspaceId).orEmpty()
 

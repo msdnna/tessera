@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,8 +67,10 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -1429,6 +1432,317 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                                         )
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── unscheduled ──
+        if (unscheduled.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Без дат", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                unscheduled.forEach { t ->
+                    val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                    Row(
+                        Modifier.padding(end = 6.dp).clip(RoundedCornerShape(RadiusSm))
+                            .background(c.surfaceAlt).clickableNoRipple { onOpenTask(t) }
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.width(3.dp).height(14.dp).clip(RoundedCornerShape(2.dp)).background(accentGradient(accent)))
+                        Spacer(Modifier.width(6.dp))
+                        Text(t.title, color = c.text1, fontSize = 12.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One dependency arrow, blocker's finish → blocked's start (positions in Dp). */
+private data class GanttArrow(val x1: Dp, val y1: Dp, val x2: Dp, val y2: Dp)
+
+/**
+ * Gantt view = the Timeline (time axis / bars / zoom / today-line / swimlanes)
+ * plus task **dependencies** drawn as finish-to-start arrows over the track.
+ * Unlike web there is no in-bar drag-to-link (board drag is 1D-lane-tuned, the
+ * h-scrolling track fights an h-drag — same call as the timeline/matrix): links
+ * are created/removed in the task modal's «Связи» tab (tap a bar to open it).
+ *
+ * Layout differs from the timeline so a single arrow Canvas can span every row:
+ * a fixed left task column and the scrolling track are two siblings that SHARE
+ * `vScroll` (move in lockstep), and the track's bars + arrow overlay share one
+ * vertical-scroll viewport.
+ */
+@Composable
+fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
+    val c = Tessera.colors
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var dayW by remember { mutableStateOf(TL_DAY_W) }
+    val zoom = rememberTransformableState { zoomChange, _, _ ->
+        dayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
+    }
+
+    val tasks = state.applyFilterSort(state.tasks)
+    val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
+    val unscheduled = tasks.filter { it.startDate == null && it.dueDate == null }
+
+    fun span(t: Task): Pair<Long, Long> {
+        val s = parseInstantMillis(t.startDate)
+        val d = parseInstantMillis(t.dueDate)
+        val a = s ?: d ?: 0L
+        val b = d ?: s ?: 0L
+        return tlDayFloor(a) to tlDayFloor(b)
+    }
+
+    val todayMs = tlDayFloor(System.currentTimeMillis())
+    var lo = todayMs
+    var hi = todayMs
+    scheduled.forEach {
+        val (a, b) = span(it)
+        lo = minOf(lo, a)
+        hi = maxOf(hi, b)
+    }
+    lo -= 3 * TL_DAY_MS
+    hi += 14 * TL_DAY_MS
+    val rangeStart = lo
+    val dayCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
+    fun dayIndex(ms: Long): Int = ((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()
+    val axisW = dayW * dayCount
+    val todayLeft = dayW * dayIndex(todayMs) + dayW * 0.5f
+    val dayWpx = with(density) { dayW.toPx() }
+    val gridColor = c.border.copy(alpha = 0.45f)
+
+    fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
+    val lanes = remember(scheduled, state.groupByTag, state.tagPrefix, state.tags, state.columns) {
+        val map = LinkedHashMap<String, Pair<Pair<String, Color?>, MutableList<Task>>>()
+        fun bucket(key: String, label: String, color: Color?) =
+            map.getOrPut(key) { (label to color) to mutableListOf() }.second
+        if (!state.groupByTag) {
+            for (col in state.sortedColumns) bucket(col.id, col.name, tagColor(col.color))
+        }
+        for (t in scheduled) {
+            if (state.groupByTag) {
+                val id = t.tagIds.firstOrNull { tid ->
+                    val tag = state.tags[tid]
+                    tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+                }
+                val tag = id?.let { state.tags[it] }
+                bucket(id ?: "∅", tag?.name ?: "Без тега", tagColor(tag?.color)).add(t)
+            } else {
+                val col = state.sortedColumns.find { it.id == t.columnId }
+                bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+            }
+        }
+        map.entries
+            .map { (k, v) -> TLane(k, v.first.first, v.first.second, v.second.toList()) }
+            .filter { it.tasks.isNotEmpty() || !state.groupByTag }
+            .sortedBy { if (it.key == "∅") 1 else 0 }
+    }
+
+    // Row-top (Dp) of every task, walking lanes in render order, so the arrow
+    // Canvas and the bar rows agree on geometry. bodyH = total scrollable height.
+    val rowTops = remember(lanes) {
+        val m = LinkedHashMap<String, Dp>()
+        var y = 0.dp
+        for (lane in lanes) {
+            y += TL_LANE_H
+            for (t in lane.tasks) {
+                m[t.id] = y
+                y += TL_ROW_H
+            }
+        }
+        m
+    }
+    val bodyH = run {
+        var y = 0.dp
+        for (lane in lanes) y += TL_LANE_H + TL_ROW_H * lane.tasks.size
+        y
+    }
+
+    // Normalise the board's blocking edges to blocker→blocked and project them to
+    // arrow endpoints (finish of blocker → start of blocked). Skip dangling edges.
+    val arrows = run {
+        val byId = scheduled.associateBy { it.id }
+        val seen = HashSet<String>()
+        state.dependencies.mapNotNull { d ->
+            val key = "${d.blockerId}>${d.blockedId}"
+            if (!seen.add(key)) return@mapNotNull null
+            val tb = byId[d.blockerId] ?: return@mapNotNull null
+            val tk = byId[d.blockedId] ?: return@mapNotNull null
+            val yb = rowTops[d.blockerId] ?: return@mapNotNull null
+            val yk = rowTops[d.blockedId] ?: return@mapNotNull null
+            val (ab, bb) = span(tb)
+            val (ak, _) = span(tk)
+            val i0b = dayIndex(ab)
+            val i1b = dayIndex(bb)
+            val i0k = dayIndex(ak)
+            GanttArrow(
+                x1 = dayW * (i1b + 1) - 2.dp, // blocker bar right edge
+                y1 = yb + 19.dp, // bar centre (top 7 + height/2 12)
+                x2 = dayW * i0k, // blocked bar left edge
+                y2 = yk + 19.dp,
+            )
+        }
+    }
+    val arrowColor = c.primary
+
+    val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
+    val hScroll = rememberScrollState()
+    val vScroll = rememberScrollState()
+
+    fun scrollToToday() {
+        val target = with(density) { (dayW * (dayIndex(todayMs) - 3)).toPx() }.toInt().coerceAtLeast(0)
+        scope.launch { hScroll.animateScrollTo(target) }
+    }
+    LaunchedEffect(rangeStart) {
+        val target = with(density) { (dayW * (dayIndex(todayMs) - 3)).toPx() }.toInt().coerceAtLeast(0)
+        hScroll.scrollTo(target)
+    }
+
+    Column(Modifier.fillMaxSize().background(c.bg).padding(horizontal = 8.dp, vertical = 6.dp)) {
+        // ── toolbar ──
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                    .clickableNoRipple { scrollToToday() }.padding(horizontal = 12.dp, vertical = 6.dp),
+            ) { Text("Сегодня", color = c.text2, fontSize = 13.sp) }
+            Spacer(Modifier.width(8.dp))
+            ZoomBtn("−") { dayW = (dayW - 6.dp).coerceAtLeast(TL_DAY_W_MIN) }
+            Spacer(Modifier.width(4.dp))
+            ZoomBtn("+") { dayW = (dayW + 6.dp).coerceAtMost(TL_DAY_W_MAX) }
+            Spacer(Modifier.weight(1f))
+            if (overdue > 0) {
+                TimelineCounter("$overdue просрочено", Color(0xFFE0533D), c.primary.copy(alpha = 0f))
+                Spacer(Modifier.width(6.dp))
+            }
+            if (arrows.isNotEmpty()) {
+                TimelineCounter("${arrows.size} связей", c.text3, c.surfaceAlt)
+                Spacer(Modifier.width(6.dp))
+            }
+            if (unscheduled.isNotEmpty()) TimelineCounter("${unscheduled.size} без дат", c.text3, c.surfaceAlt)
+        }
+        Spacer(Modifier.height(8.dp))
+
+        // ── header: sticky months + days (h-scrolls with the body) ──
+        Row {
+            Box(
+                Modifier.width(TL_LEFT_W).height(TL_HEAD_H).background(c.surfaceAlt)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                contentAlignment = Alignment.BottomStart,
+            ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+            Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                Column(Modifier.width(axisW)) {
+                    TimelineMonthBand(rangeStart, dayCount, dayW)
+                    TimelineDayRow(rangeStart, dayCount, todayMs, dayW)
+                }
+            }
+        }
+
+        if (lanes.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
+            }
+        } else {
+            // ── body: left fixed column + right track, sharing vScroll ──
+            Row(Modifier.weight(1f)) {
+                // left task column (lane headers + task names), v-scrolls in lockstep
+                Column(Modifier.width(TL_LEFT_W).verticalScroll(vScroll)) {
+                    lanes.forEach { lane ->
+                        Row(
+                            Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(accentGradient(lane.color ?: c.primary)))
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                maxLines = 1, modifier = Modifier.weight(1f, fill = false),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
+                        }
+                        lane.tasks.forEach { t ->
+                            val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                            Row(
+                                Modifier.fillMaxWidth().height(TL_ROW_H).clickableNoRipple { onOpenTask(t) }
+                                    .padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp)).background(accentGradient(accent)))
+                                Spacer(Modifier.width(7.dp))
+                                Text(
+                                    t.title, color = if (t.isCompleted) c.text3 else c.text1, fontSize = 13.sp, maxLines = 1,
+                                    textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
+                                )
+                            }
+                        }
+                    }
+                }
+                // right track: bars + arrow Canvas, both h-scroll(hScroll) & v-scroll(vScroll)
+                Box(
+                    Modifier.weight(1f).horizontalScroll(hScroll).verticalScroll(vScroll)
+                        .transformable(zoom, canPan = { false }),
+                ) {
+                    Box(Modifier.width(axisW).height(bodyH)) {
+                        Column(Modifier.fillMaxSize()) {
+                            lanes.forEach { lane ->
+                                Box(Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor)) {
+                                    Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
+                                }
+                                lane.tasks.forEach { t ->
+                                    val (a, b) = span(t)
+                                    val i0 = dayIndex(a)
+                                    val i1 = dayIndex(b)
+                                    val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                                    Box(Modifier.fillMaxWidth().height(TL_ROW_H).tlGrid(dayWpx, gridColor)) {
+                                        Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
+                                        Box(
+                                            Modifier.offset(x = dayW * i0, y = 7.dp)
+                                                .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .alpha(if (t.isCompleted) 0.5f else 1f)
+                                                .background(accentGradient(accent))
+                                                .clickableNoRipple { onOpenTask(t) }
+                                                .padding(horizontal = 7.dp),
+                                            contentAlignment = Alignment.CenterStart,
+                                        ) {
+                                            Text(t.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // dependency arrows, drawn over the whole track
+                        Canvas(Modifier.fillMaxSize()) {
+                            arrows.forEach { s ->
+                                val x1 = s.x1.toPx()
+                                val y1 = s.y1.toPx()
+                                val x2 = s.x2.toPx()
+                                val y2 = s.y2.toPx()
+                                val dx = maxOf(22.dp.toPx(), kotlin.math.abs(x2 - x1) * 0.4f)
+                                val path = Path().apply {
+                                    moveTo(x1, y1)
+                                    cubicTo(x1 + dx, y1, x2 - dx, y2, x2, y2)
+                                }
+                                drawPath(path, color = arrowColor.copy(alpha = 0.7f), style = Stroke(width = 1.6.dp.toPx()))
+                                val hw = 7.dp.toPx()
+                                val hh = 4.dp.toPx()
+                                val head = Path().apply {
+                                    moveTo(x2, y2)
+                                    lineTo(x2 - hw, y2 - hh)
+                                    lineTo(x2 - hw, y2 + hh)
+                                    close()
+                                }
+                                drawPath(head, color = arrowColor)
                             }
                         }
                     }

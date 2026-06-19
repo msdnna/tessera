@@ -28,7 +28,7 @@ import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.isoDateKey
 
-enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline }
+enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline, Gantt }
 
 enum class DueFilter { All, Overdue, Today, Week, Has, None }
 
@@ -71,6 +71,8 @@ data class BoardUiState(
     val columns: List<BoardColumn> = emptyList(),
     val tasks: List<Task> = emptyList(),
     val subtasks: List<Task> = emptyList(),
+    /** Whole-board blocking edges, drawn as arrows on the Gantt view. */
+    val dependencies: List<website.msdnna.tessera.data.model.BoardDependency> = emptyList(),
     val tags: Map<String, Tag> = emptyMap(),
     val tagList: List<Tag> = emptyList(),
     /** Canonical tag-prefix → friendly label (project-scoped). Drives the grouped
@@ -207,6 +209,7 @@ class BoardViewModel(
             val columns = repo.columns(boardId)
             val tasks = repo.tasks(boardId)
             val subtasks = repo.subtasks(boardId)
+            val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
             val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
             val prefixNames = loadPrefixNames()
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
@@ -217,6 +220,7 @@ class BoardViewModel(
                     columns = columns,
                     tasks = tasks,
                     subtasks = subtasks,
+                    dependencies = dependencies,
                     tags = tags.associateBy { t -> t.id },
                     tagList = tags,
                     prefixNames = prefixNames,
@@ -283,6 +287,7 @@ class BoardViewModel(
         val columns = repo.columns(boardId)
         val tasks = repo.tasks(boardId)
         val subtasks = repo.subtasks(boardId)
+        val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
         val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
         val prefixNames = loadPrefixNames()
         _state.update {
@@ -291,6 +296,7 @@ class BoardViewModel(
                 columns = columns,
                 tasks = tasks,
                 subtasks = subtasks,
+                dependencies = dependencies,
                 tags = tags.associateBy { t -> t.id },
                 tagList = tags,
                 prefixNames = prefixNames,
@@ -658,6 +664,7 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
         BoardViewMode.Calendar -> "calendar"
         BoardViewMode.Matrix -> "matrix"
         BoardViewMode.Timeline -> "timeline"
+        BoardViewMode.Gantt -> "gantt"
         BoardViewMode.Kanban -> "board"
     },
     groupMode = if (s.groupByTag) "tag" else "status",
@@ -681,6 +688,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
         "calendar" -> BoardViewMode.Calendar
         "matrix" -> BoardViewMode.Matrix
         "timeline" -> BoardViewMode.Timeline
+        "gantt" -> BoardViewMode.Gantt
         else -> BoardViewMode.Kanban
     },
     groupByTag = c.groupMode == "tag",
