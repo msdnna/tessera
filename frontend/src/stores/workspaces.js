@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { workspaces as wsApi, projects as projApi } from '@/api'
 import { useTreeExpand } from '@/composables/useTreeExpand'
+import { resolveEstimation } from '@/utils/estimation'
 
 // workspaces store — holds the list, the current selection, and the
 // groups/projects tree for the sidebar. Boards are loaded lazily per project.
@@ -73,6 +74,29 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
       .sort((a, b) => a.position - b.position)
   }
 
+  // Resolve the effective estimation config for a project: its override, else the
+  // current workspace default, else the built-in default. Drives the estimate
+  // input/chip unit everywhere a board is shown.
+  function estimationFor(projectId) {
+    const project = projects.value.find((p) => p.id === projectId) || null
+    return resolveEstimation(project, current.value)
+  }
+
+  // Patch a project's stored estimation in place (after a settings save / WS
+  // event) so open boards re-resolve without a full refresh.
+  function setProjectEstimation(projectId, estimation) {
+    projects.value = projects.value.map((p) =>
+      p.id === projectId ? { ...p, estimation } : p,
+    )
+  }
+
+  // Patch the current workspace's default estimation in place.
+  function setWorkspaceEstimation(workspaceId, estimation) {
+    list.value = list.value.map((w) =>
+      w.id === workspaceId ? { ...w, estimation } : w,
+    )
+  }
+
   return {
     list,
     currentId,
@@ -86,5 +110,8 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     loadBoards,
     childGroups,
     projectsInGroup,
+    estimationFor,
+    setProjectEstimation,
+    setWorkspaceEstimation,
   }
 })

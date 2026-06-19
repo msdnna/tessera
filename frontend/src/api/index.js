@@ -138,6 +138,8 @@ export const workspaces = {
   // Every tag across the workspace's projects — read-only, for cross-project
   // views (Home). Tags are created/listed per-project (see `projects` below).
   tags: (id) => api.get(`/workspaces/${id}/tags`),
+  // Workspace-wide default estimation config; `null` clears it to the built-in default.
+  setEstimation: (id, config) => api.put(`/workspaces/${id}/estimation`, config),
 }
 
 export const projects = {
@@ -153,6 +155,8 @@ export const projects = {
   deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
   tagPrefixes: (id) => api.get(`/projects/${id}/tag-prefixes`),
   setTagPrefixes: (id, prefixes) => api.put(`/projects/${id}/tag-prefixes`, { prefixes }),
+  // Per-project estimation override; `null` clears it to inherit the workspace default.
+  setEstimation: (id, config) => api.put(`/projects/${id}/estimation`, config),
 }
 
 export const groups = {

@@ -18,6 +18,7 @@ import {
   TrashOutline,
   LogoGitlab,
   RepeatOutline,
+  TimerOutline,
 } from '@vicons/ionicons5'
 
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
@@ -27,13 +28,16 @@ import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from 
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
+import { formatEstimate, sumEstimates } from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
 import { useThemeStore } from '@/stores/theme'
+import { useWorkspacesStore } from '@/stores/workspaces'
 import { useDateLocale } from '@/composables/useDateLocale'
 
 const theme = useThemeStore()
+const wsStore = useWorkspacesStore()
 const { formatDue } = useDateLocale()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
@@ -114,6 +118,16 @@ const overdue = computed(
 const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
 const startTs = computed(() => (props.task.start_date ? Date.parse(props.task.start_date) : null))
 const done = computed(() => !!props.task.completed_at)
+// Estimate chip: the task's own estimate, or — if unset — the rollup sum of its
+// subtasks (so a parent shows "Σ …"). Unit resolved from the project config.
+const estCfg = computed(() => wsStore.estimationFor(props.projectId))
+const ownEstimate = computed(() => props.task?.estimate ?? null)
+const rollupEstimate = computed(() => sumEstimates(props.subtasks))
+const estIsRollup = computed(() => ownEstimate.value == null && rollupEstimate.value != null)
+const estText = computed(() => {
+  const v = ownEstimate.value ?? rollupEstimate.value
+  return v != null ? formatEstimate(v, estCfg.value) : ''
+})
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
 // Stacked-cards effect: offset colored shadows behind the top tag pill.
 // Stacked-cards: each deeper layer peeks 5px further right and is a little
@@ -499,6 +513,16 @@ async function submitAddSub() {
             @notify="saveDueNotify"
           />
         </n-popover>
+
+        <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
+        <div
+          v-if="estText"
+          class="pill set est-pill"
+          :title="estIsRollup ? 'Сумма оценок подзадач' : 'Оценка'"
+        >
+          <n-icon :component="TimerOutline" :size="13" />
+          <span class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
+        </div>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
         <n-popover trigger="click" placement="bottom-start">

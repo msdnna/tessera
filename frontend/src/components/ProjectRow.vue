@@ -19,6 +19,7 @@ import {
   CreateOutline,
   TrashOutline,
   OpenOutline,
+  TimerOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -31,6 +32,8 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import ProjectIcon from './ProjectIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
 import ConfirmByName from './ConfirmByName.vue'
+import EstimationModal from './EstimationModal.vue'
+import { DEFAULT_ESTIMATION, resolveEstimation } from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
@@ -148,6 +151,7 @@ const pcOptions = [
   { label: 'Новая доска', key: 'add-board', icon: menuIcon(AddOutline) },
   { type: 'divider', key: 'd1' },
   { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+  { label: 'Оценка задач…', key: 'estimation', icon: menuIcon(TimerOutline) },
   { label: 'Удалить проект', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
 ]
 function onProjectCtx(e) {
@@ -161,8 +165,13 @@ function onProjectCtxSelect(key) {
   pcShow.value = false
   if (key === 'add-board') startAddBoard()
   else if (key === 'rename') startRename()
+  else if (key === 'estimation') estShow.value = true
   else if (key === 'delete') remove()
 }
+
+// Estimation override editor for this project (inherits the workspace default).
+const estShow = ref(false)
+const estInherited = computed(() => resolveEstimation(null, store.current) || DEFAULT_ESTIMATION)
 
 const bcShow = ref(false)
 const bcX = ref(0)
@@ -410,6 +419,15 @@ async function addBoard() {
       title="Удалить проект"
       message="Проект будет удалён со всеми досками и задачами. Действие необратимо."
       @confirm="doRemove"
+    />
+
+    <EstimationModal
+      v-model:show="estShow"
+      scope="project"
+      :target-id="project.id"
+      :name="project.name"
+      :value="project.estimation || null"
+      :inherited="estInherited"
     />
   </div>
 </template>

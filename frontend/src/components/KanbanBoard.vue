@@ -1335,6 +1335,7 @@ watch(
         :tags-map="tagsMap"
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
+        :project-id="board?.project_id"
         @open="openTask"
         @changed="onChanged"
       />
@@ -1348,6 +1349,7 @@ watch(
         :tags-map="tagsMap"
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
+        :project-id="board?.project_id"
         @open="openTask"
         @changed="onChanged"
       />

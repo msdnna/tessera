@@ -36,6 +36,7 @@ import {
   TrashOutline,
   DownloadOutline,
   CloseOutline,
+  TimerOutline,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -48,6 +49,13 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
+import {
+  formatEstimate,
+  parseEstimate,
+  scaleOptions,
+  estimatePlaceholder,
+  sumEstimates,
+} from '@/utils/estimation'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
 import DueEditor from './DueEditor.vue'
@@ -167,6 +175,8 @@ const description = ref('')
 const priority = ref(0)
 const dueTs = ref(null)
 const startTs = ref(null)
+const estimate = ref(null) // canonical estimate value | null
+const estInput = ref('') // free-text buffer for the estimate popover
 const recurrence = ref(null) // full recurrence rule object | null
 const columns = ref([]) // board columns, for the recurrence trigger/target selects
 const completed = ref(false)
@@ -176,6 +186,34 @@ const newSubtask = ref('')
 const newTagName = ref('')
 
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+
+// ── estimation ──────────────────────────────────────────────
+// Effective unit config for this task's project (project override → workspace
+// default → built-in). boardInfo.projectId is the reliable source once loaded.
+const estCfg = computed(() => store.estimationFor(props.projectId || boardInfo.value?.projectId))
+const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
+const estOptions = computed(() => scaleOptions(estCfg.value)) // non-empty only for points
+const estPlaceholder = computed(() => estimatePlaceholder(estCfg.value))
+// Rollup hint: sum of direct subtask estimates, shown when the task has children.
+const subtaskEstimate = computed(() => sumEstimates(task.value?.subtasks))
+const subtaskEstimateLabel = computed(() =>
+  subtaskEstimate.value != null ? formatEstimate(subtaskEstimate.value, estCfg.value) : '',
+)
+function setEstimate(val) {
+  estimate.value = val && val > 0 ? val : null
+  applyMeta()
+}
+function applyEstInput() {
+  setEstimate(parseEstimate(estInput.value, estCfg.value))
+}
+function clearEstimate() {
+  estInput.value = ''
+  setEstimate(null)
+}
+// Prefill the free-text buffer with the current value when the popover opens.
+function onEstShow(shown) {
+  if (shown) estInput.value = estLabel.value
+}
 
 const tagObjs = computed(() =>
   selectedTags.value.map((id) => props.tags.find((t) => t.id === id)).filter(Boolean),
@@ -310,6 +348,7 @@ async function loadDetail() {
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
     startTs.value = t.start_date ? new Date(t.start_date).getTime() : null
+    estimate.value = t.estimate ?? null
     recurrence.value = t.recurrence || null
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
@@ -366,6 +405,7 @@ function buildPayload() {
     priority: priority.value,
     due_date: dueTs.value ? new Date(dueTs.value).toISOString() : null,
     start_date: startTs.value ? new Date(startTs.value).toISOString() : null,
+    estimate: estimate.value,
     recurrence: recurrence.value,
     completed: completed.value,
   }
@@ -380,6 +420,7 @@ async function applyMeta() {
     completed.value = !!res.data.completed_at
     dueTs.value = res.data.due_date ? new Date(res.data.due_date).getTime() : null
     startTs.value = res.data.start_date ? new Date(res.data.start_date).getTime() : null
+    estimate.value = res.data.estimate ?? null
     emit('changed')
   } catch (e) {
     message.error(e.message)
@@ -861,6 +902,56 @@ function eventText(e) {
                   @apply="onDueApply"
                   @notify="onDueNotify"
                 />
+              </n-popover>
+            </div>
+
+            <!-- estimate -->
+            <div class="prow">
+              <span class="plabel"><n-icon :component="TimerOutline" :size="15" /> Оценка</span>
+              <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
+                <template #trigger>
+                  <button class="val">
+                    <span :class="{ muted: !estLabel }">{{ estLabel || 'Не задана' }}</span>
+                    <span
+                      v-if="subtaskEstimateLabel"
+                      class="est-rollup"
+                      title="Сумма оценок подзадач"
+                      >Σ {{ subtaskEstimateLabel }}</span
+                    >
+                  </button>
+                </template>
+                <!-- points: pick from the scale; time/custom: free-text parse -->
+                <div v-if="estOptions.length" class="menu est-menu">
+                  <div class="menu-item" @click="clearEstimate">
+                    <span class="grow muted">Не задана</span>
+                    <n-icon v-if="estimate == null" :component="CheckmarkOutline" class="chk" />
+                  </div>
+                  <div
+                    v-for="o in estOptions"
+                    :key="o.value"
+                    class="menu-item"
+                    @click="setEstimate(o.value)"
+                  >
+                    <span class="grow">{{ o.label }}</span>
+                    <n-icon
+                      v-if="estimate === o.value"
+                      :component="CheckmarkOutline"
+                      class="chk"
+                    />
+                  </div>
+                </div>
+                <div v-else class="est-edit">
+                  <n-input
+                    v-model:value="estInput"
+                    size="small"
+                    :placeholder="estPlaceholder"
+                    @keydown.enter.prevent="applyEstInput"
+                  />
+                  <div class="est-actions">
+                    <n-button size="tiny" tertiary @click="clearEstimate">Очистить</n-button>
+                    <n-button size="tiny" type="primary" @click="applyEstInput">ОК</n-button>
+                  </div>
+                </div>
               </n-popover>
             </div>
 
@@ -1658,6 +1749,27 @@ function eventText(e) {
 }
 .chk {
   color: var(--t-primary);
+}
+/* estimate rollup hint on the value + popover editor */
+.est-rollup {
+  color: var(--t-text3);
+  font-size: 12px;
+}
+.est-menu {
+  min-width: 160px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.est-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 220px;
+}
+.est-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 .chip-groups {
   max-height: 320px;

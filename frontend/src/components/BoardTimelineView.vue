@@ -7,6 +7,10 @@ import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, readableHue } from '@/utils/gradient'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { formatEstimate, sumEstimates } from '@/utils/estimation'
+
+const wsStore = useWorkspacesStore()
 
 const theme = useThemeStore()
 // Tag colours can be very light; on the preview card's surface they vanish unless
@@ -25,8 +29,17 @@ const props = defineProps({
   // 'status' | 'tag' (+ tagPrefix) | 'assignee' | 'none'.
   groupMode: { type: String, default: 'assignee' },
   tagPrefix: { type: String, default: '' },
+  projectId: { type: String, default: null },
 })
 const emit = defineEmits(['open', 'changed'])
+
+// Effort total per lane (sum of estimates), shown in the lane header. The unit
+// comes from the project's estimation config.
+const estCfg = computed(() => wsStore.estimationFor(props.projectId))
+function laneEffort(lane) {
+  const total = sumEstimates(lane.tasks)
+  return total != null ? formatEstimate(total, estCfg.value) : ''
+}
 
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
@@ -459,6 +472,7 @@ function initials(name) {
               />
               <span class="lane-name">{{ lane.label }}</span>
               <span class="lane-count">{{ lane.tasks.length }}</span>
+              <span v-if="laneEffort(lane)" class="lane-effort" title="Суммарная оценка">⏱ {{ laneEffort(lane) }}</span>
             </div>
             <div class="tl-track laneband" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }" />
           </div>
@@ -781,6 +795,11 @@ function initials(name) {
   border-radius: 20px;
   padding: 0 7px;
   margin-left: auto;
+}
+.lane-effort {
+  font-size: 11px;
+  color: var(--t-text2);
+  white-space: nowrap;
 }
 .laneband {
   position: relative;

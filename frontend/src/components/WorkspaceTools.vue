@@ -18,6 +18,7 @@ import {
   ColorPaletteOutline,
   ExtensionPuzzleOutline,
   LogoGitlab,
+  TimerOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
@@ -29,6 +30,8 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
+import EstimationModal from './EstimationModal.vue'
+import { DEFAULT_ESTIMATION } from '@/utils/estimation'
 
 defineProps({ placement: { type: String, default: 'bottom-end' } })
 
@@ -42,14 +45,22 @@ const { isMobile } = useResponsive()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
+const showEstimation = ref(false)
 // Browser Back closes these modals instead of leaving the board.
 useOverlayBack(showMembers, () => (showMembers.value = false))
 useOverlayBack(showGitlab, () => (showGitlab.value = false))
+useOverlayBack(showEstimation, () => (showEstimation.value = false))
 const integrationOptions = [
   { label: 'GitLab', key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
+  {
+    label: 'Оценка задач',
+    key: 'estimation',
+    icon: () => h(NIcon, null, { default: () => h(TimerOutline) }),
+  },
 ]
 function onIntegrationSelect(key) {
   if (key === 'gitlab') showGitlab.value = true
+  else if (key === 'estimation') showEstimation.value = true
 }
 
 function openNotification(n) {
@@ -175,6 +186,14 @@ function fmtTime(d) {
 
     <MembersModal v-model:show="showMembers" :ws-id="ws.currentId" />
     <GitLabModal v-model:show="showGitlab" :ws-id="ws.currentId" />
+    <EstimationModal
+      v-model:show="showEstimation"
+      scope="workspace"
+      :target-id="ws.currentId"
+      :name="ws.current?.name || ''"
+      :value="ws.current?.estimation || null"
+      :inherited="DEFAULT_ESTIMATION"
+    />
   </div>
 </template>
 

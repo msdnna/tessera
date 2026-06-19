@@ -6,6 +6,10 @@ import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { formatEstimate, sumEstimates } from '@/utils/estimation'
+
+const wsStore = useWorkspacesStore()
 
 // The Gantt view is the Timeline engine (axis / bars / zoom / pan / today-line /
 // drag-to-reschedule) plus task dependencies: blocking arrows between bars and
@@ -23,8 +27,16 @@ const props = defineProps({
   // 'assignee' | 'none'.
   groupMode: { type: String, default: 'assignee' },
   tagPrefix: { type: String, default: '' },
+  projectId: { type: String, default: null },
 })
 const emit = defineEmits(['open', 'changed'])
+
+// Effort total per lane (sum of estimates), shown in the lane header.
+const estCfg = computed(() => wsStore.estimationFor(props.projectId))
+function laneEffort(lane) {
+  const total = sumEstimates(lane.tasks)
+  return total != null ? formatEstimate(total, estCfg.value) : ''
+}
 
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
@@ -535,6 +547,7 @@ function onWheel(e) {
                 <span class="lane-dot" :style="{ background: lane.color ? hueGrad(lane.color) : 'var(--t-accent-grad)' }" />
                 <span class="lane-name">{{ lane.label }}</span>
                 <span class="lane-count">{{ lane.tasks.length }}</span>
+                <span v-if="laneEffort(lane)" class="lane-effort" title="Суммарная оценка">⏱ {{ laneEffort(lane) }}</span>
               </div>
               <div class="tl-track laneband" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }" />
             </div>
@@ -843,6 +856,11 @@ function onWheel(e) {
   border-radius: 20px;
   padding: 0 7px;
   margin-left: auto;
+}
+.lane-effort {
+  font-size: 11px;
+  color: var(--t-text2);
+  white-space: nowrap;
 }
 .laneband {
   position: relative;
