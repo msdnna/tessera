@@ -1496,6 +1496,30 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.51.0] — 2026-06-19
+- **Task estimation — backend foundation** (migration **0030**). A task carries
+  an optional `tasks.estimate` (nullable `double precision`) in a *canonical*
+  numeric form whose unit is **not** on the task — it is resolved from the
+  project's (or, failing that, the workspace's) estimation config, so one board
+  speaks one unit: `time` → minutes, `points` → the point number, `custom` →
+  a count. `estimate` rides on every `t.*` row (create response, board/​subtask
+  meta, task detail) and is accepted on `POST /boards/:id/tasks` and
+  `PATCH /tasks/:id`. Non-positive / non-finite values normalise to NULL. Like
+  `due_date`/`recurrence` the update is **full-replace** — a payload that omits
+  `estimate` clears it — and the field is carried through recurrence
+  advance/clone and the move-completion toggle so unrelated edits never wipe it.
+- **Two-level estimation config** (mirrors tag-prefixes, mig 0026): nullable
+  `workspaces.estimation` + `projects.estimation` jsonb. A workspace-wide default
+  that projects inherit, plus an optional per-project override; both NULL → the
+  built-in default `{"unit":"time","hours_per_day":8,"days_per_week":5}`. Edited
+  via own endpoints (a name edit never clobbers it): `PUT /workspaces/:id/estimation`
+  and `PUT /projects/:id/estimation`. Body is the config object directly;
+  `null`/`{}`/unit-less clears it. Provider-neutral, validated + canonicalised
+  server-side (unit ∈ time/points/custom; `hours_per_day` clamped 1–24,
+  `days_per_week` 1–7; `points_scale` ∈ fibonacci/tshirt/linear). The config
+  rides on the `workspaces`/`projects` rows (`SELECT *`); clients resolve
+  project → workspace → default and do all input parsing / output formatting.
+
 ### [0.50.0] — 2026-06-19
 - **Board dependency graph** — `GET /boards/:id/dependencies` returns every
   blocking edge (`blocks`/`blocked_by`) where **both** endpoints live on the

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -52,6 +53,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		Priority    int32      `json:"priority"`
 		DueDate     *time.Time `json:"due_date"`
 		StartDate   *time.Time `json:"start_date"`
+		Estimate    *float64   `json:"estimate"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -87,6 +89,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		Priority:    req.Priority,
 		DueDate:     req.DueDate,
 		StartDate:   req.StartDate,
+		Estimate:    normalizeEstimate(req.Estimate),
 		Position:    pos,
 		CreatedBy:   &uid,
 		Number:      &num,
@@ -278,6 +281,7 @@ func (h *API) UpdateTask(c *gin.Context) {
 		Priority    int32            `json:"priority"`
 		DueDate     *time.Time       `json:"due_date"`
 		StartDate   *time.Time       `json:"start_date"`
+		Estimate    *float64         `json:"estimate"`
 		Completed   bool             `json:"completed"`
 		Recurrence  *json.RawMessage `json:"recurrence"`
 	}
@@ -302,7 +306,7 @@ func (h *API) UpdateTask(c *gin.Context) {
 	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
 		ID: id, Title: req.Title, Description: req.Description,
 		Priority: req.Priority, DueDate: req.DueDate, CompletedAt: completedAt,
-		Recurrence: recurrence, StartDate: req.StartDate,
+		Recurrence: recurrence, StartDate: req.StartDate, Estimate: normalizeEstimate(req.Estimate),
 	})
 	if err != nil {
 		fail(c)
@@ -354,6 +358,10 @@ func (h *API) journalUpdate(c *gin.Context, before, after db.Task) []string {
 		h.logEvent(c, after.ID, "start", map[string]any{"set": after.StartDate != nil})
 		changed = append(changed, "начало")
 	}
+	if !sameEstimate(before.Estimate, after.Estimate) {
+		h.logEvent(c, after.ID, "estimate", map[string]any{"set": after.Estimate != nil})
+		changed = append(changed, "оценка")
+	}
 	switch {
 	case before.CompletedAt == nil && after.CompletedAt != nil:
 		h.logEvent(c, after.ID, "completed", nil)
@@ -370,6 +378,22 @@ func sameTime(a, b *time.Time) bool {
 		return a == b
 	}
 	return a.Equal(*b)
+}
+
+func sameEstimate(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// normalizeEstimate rejects non-positive / non-finite estimates, mapping them to
+// NULL (unestimated) so a stray 0 or negative never persists as a real value.
+func normalizeEstimate(v *float64) *float64 {
+	if v == nil || *v <= 0 || math.IsNaN(*v) || math.IsInf(*v, 0) {
+		return nil
+	}
+	return v
 }
 
 // MoveTask moves a task to a column and repositions it between neighbours.
@@ -428,7 +452,7 @@ func (h *API) MoveTask(c *gin.Context) {
 			if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
 				ID: updated.ID, Title: updated.Title, Description: updated.Description,
 				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
-				Recurrence: updated.Recurrence, StartDate: updated.StartDate,
+				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
 			}); derr == nil {
 				updated = done
 				h.logEvent(c, id, "completed", nil)
@@ -442,7 +466,7 @@ func (h *API) MoveTask(c *gin.Context) {
 			if reopened, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
 				ID: updated.ID, Title: updated.Title, Description: updated.Description,
 				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: nil,
-				Recurrence: updated.Recurrence, StartDate: updated.StartDate,
+				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
 			}); derr == nil {
 				updated = reopened
 				h.logEvent(c, id, "reopened", nil)

@@ -15,7 +15,7 @@ import (
 
 const listWorkspaceTasks = `-- name: ListWorkspaceTasks :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate,
     b.name AS board_name,
     p.name AS project_name,
     p.color AS project_color,
@@ -56,6 +56,7 @@ type ListWorkspaceTasksRow struct {
 	Recurrence         *json.RawMessage `json:"recurrence"`
 	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
 	StartDate          *time.Time       `json:"start_date"`
+	Estimate           *float64         `json:"estimate"`
 	BoardName          string           `json:"board_name"`
 	ProjectName        string           `json:"project_name"`
 	ProjectColor       string           `json:"project_color"`
@@ -99,6 +100,7 @@ func (q *Queries) ListWorkspaceTasks(ctx context.Context, workspaceID uuid.UUID)
 			&i.Recurrence,
 			&i.EisenhowerQuadrant,
 			&i.StartDate,
+			&i.Estimate,
 			&i.BoardName,
 			&i.ProjectName,
 			&i.ProjectColor,

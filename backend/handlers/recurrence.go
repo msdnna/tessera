@@ -62,7 +62,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 	// Reschedule the same task.
 	updated, err := h.q.UpdateTask(ctx, db.UpdateTaskParams{
 		ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
-		DueDate: &next, CompletedAt: nil, Recurrence: carry, StartDate: t.StartDate,
+		DueDate: &next, CompletedAt: nil, Recurrence: carry, StartDate: t.StartDate, Estimate: t.Estimate,
 	})
 	if err != nil {
 		return t, false
@@ -102,7 +102,7 @@ func (h *API) recurTargetColumn(ctx context.Context, t db.Task, rule recur.Rule)
 func (h *API) setTaskRecurrence(ctx context.Context, t db.Task, rule *json.RawMessage) (db.Task, error) {
 	return h.q.UpdateTask(ctx, db.UpdateTaskParams{
 		ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
-		DueDate: t.DueDate, CompletedAt: t.CompletedAt, Recurrence: rule, StartDate: t.StartDate,
+		DueDate: t.DueDate, CompletedAt: t.CompletedAt, Recurrence: rule, StartDate: t.StartDate, Estimate: t.Estimate,
 	})
 }
 
@@ -121,7 +121,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	clone, err := h.q.CreateTask(ctx, db.CreateTaskParams{
 		BoardID: src.BoardID, ColumnID: columnID, ParentID: nil,
 		Title: src.Title, Description: src.Description, Priority: src.Priority,
-		DueDate: &due, StartDate: src.StartDate, Position: positionBetween(&endPos, nil), CreatedBy: src.CreatedBy, Number: &num,
+		DueDate: &due, StartDate: src.StartDate, Estimate: src.Estimate, Position: positionBetween(&endPos, nil), CreatedBy: src.CreatedBy, Number: &num,
 	})
 	if err != nil {
 		return db.Task{}, err

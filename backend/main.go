@@ -156,6 +156,10 @@ func main() {
 			protected.GET("/projects/:id/tag-prefixes", rh.ListTagPrefixes)
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
 
+			// Two-level task-estimation config (workspace default + project override).
+			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)
+			protected.PUT("/projects/:id/estimation", rh.SetProjectEstimation)
+
 			// Notes (workspace-scoped).
 			protected.POST("/workspaces/:id/notes", rh.CreateNote)
 			protected.GET("/workspaces/:id/notes", rh.ListNotes)

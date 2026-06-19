@@ -92,7 +92,7 @@ func (q *Queries) ListDueReminders(ctx context.Context) ([]Reminder, error) {
 }
 
 const listDueTasksForScan = `-- name: ListDueTasksForScan :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date FROM tasks
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate FROM tasks
 WHERE due_date IS NOT NULL
   AND completed_at IS NULL
   AND archived_at IS NULL
@@ -134,6 +134,7 @@ func (q *Queries) ListDueTasksForScan(ctx context.Context) ([]Task, error) {
 			&i.Recurrence,
 			&i.EisenhowerQuadrant,
 			&i.StartDate,
+			&i.Estimate,
 		); err != nil {
 			return nil, err
 		}

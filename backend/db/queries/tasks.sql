@@ -1,8 +1,8 @@
 -- name: CreateTask :one
 INSERT INTO tasks (
-    board_id, column_id, parent_id, title, description, priority, due_date, start_date, position, created_by, number
+    board_id, column_id, parent_id, title, description, priority, due_date, start_date, estimate, position, created_by, number
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- name: GetTask :one
@@ -119,7 +119,7 @@ FROM tasks WHERE column_id = $1 AND parent_id IS NULL;
 -- name: UpdateTask :one
 UPDATE tasks
 SET title = $2, description = $3, priority = $4, due_date = $5, completed_at = $6,
-    recurrence = $7, start_date = $8, updated_at = now()
+    recurrence = $7, start_date = $8, estimate = $9, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

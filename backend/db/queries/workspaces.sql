@@ -22,6 +22,15 @@ SET name = $2, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- SetWorkspaceEstimation stores the workspace-wide default estimation config
+-- (NULL clears it back to the built-in default). Provider-neutral; its own
+-- endpoint so a name edit never clobbers it.
+-- name: SetWorkspaceEstimation :one
+UPDATE workspaces
+SET estimation = $2, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteWorkspace :exec
 DELETE FROM workspaces WHERE id = $1;
 

@@ -179,16 +179,17 @@ type NotificationRoute struct {
 }
 
 type Project struct {
-	ID          uuid.UUID  `json:"id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	GroupID     *uuid.UUID `json:"group_id"`
-	Name        string     `json:"name"`
-	Color       string     `json:"color"`
-	Position    float64    `json:"position"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Icon        string     `json:"icon"`
-	Slug        string     `json:"slug"`
+	ID          uuid.UUID        `json:"id"`
+	WorkspaceID uuid.UUID        `json:"workspace_id"`
+	GroupID     *uuid.UUID       `json:"group_id"`
+	Name        string           `json:"name"`
+	Color       string           `json:"color"`
+	Position    float64          `json:"position"`
+	CreatedAt   time.Time        `json:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
+	Icon        string           `json:"icon"`
+	Slug        string           `json:"slug"`
+	Estimation  *json.RawMessage `json:"estimation"`
 }
 
 type ProjectGroup struct {
@@ -263,6 +264,7 @@ type Task struct {
 	Recurrence         *json.RawMessage `json:"recurrence"`
 	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
 	StartDate          *time.Time       `json:"start_date"`
+	Estimate           *float64         `json:"estimate"`
 }
 
 type TaskAssignee struct {
@@ -376,12 +378,13 @@ type UserToken struct {
 }
 
 type Workspace struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	OwnerID     uuid.UUID `json:"owner_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	TaskCounter int64     `json:"task_counter"`
+	ID          uuid.UUID        `json:"id"`
+	Name        string           `json:"name"`
+	OwnerID     uuid.UUID        `json:"owner_id"`
+	CreatedAt   time.Time        `json:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
+	TaskCounter int64            `json:"task_counter"`
+	Estimation  *json.RawMessage `json:"estimation"`
 }
 
 type WorkspaceInvitation struct {

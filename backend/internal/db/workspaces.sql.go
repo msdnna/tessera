@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -40,7 +41,7 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 const createWorkspace = `-- name: CreateWorkspace :one
 INSERT INTO workspaces (name, owner_id)
 VALUES ($1, $2)
-RETURNING id, name, owner_id, created_at, updated_at, task_counter
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation
 `
 
 type CreateWorkspaceParams struct {
@@ -58,6 +59,7 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TaskCounter,
+		&i.Estimation,
 	)
 	return i, err
 }
@@ -108,7 +110,7 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (M
 }
 
 const getWorkspace = `-- name: GetWorkspace :one
-SELECT id, name, owner_id, created_at, updated_at, task_counter FROM workspaces WHERE id = $1
+SELECT id, name, owner_id, created_at, updated_at, task_counter, estimation FROM workspaces WHERE id = $1
 `
 
 func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, error) {
@@ -121,6 +123,7 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TaskCounter,
+		&i.Estimation,
 	)
 	return i, err
 }
@@ -166,7 +169,7 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 }
 
 const listWorkspacesForUser = `-- name: ListWorkspacesForUser :many
-SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter
+SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation
 FROM workspaces w
 JOIN memberships m ON m.workspace_id = w.id
 WHERE m.user_id = $1
@@ -189,6 +192,7 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.TaskCounter,
+			&i.Estimation,
 		); err != nil {
 			return nil, err
 		}
@@ -209,6 +213,36 @@ func (q *Queries) NextWorkspaceTaskNumber(ctx context.Context, id uuid.UUID) (in
 	var task_counter int64
 	err := row.Scan(&task_counter)
 	return task_counter, err
+}
+
+const setWorkspaceEstimation = `-- name: SetWorkspaceEstimation :one
+UPDATE workspaces
+SET estimation = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation
+`
+
+type SetWorkspaceEstimationParams struct {
+	ID         uuid.UUID        `json:"id"`
+	Estimation *json.RawMessage `json:"estimation"`
+}
+
+// SetWorkspaceEstimation stores the workspace-wide default estimation config
+// (NULL clears it back to the built-in default). Provider-neutral; its own
+// endpoint so a name edit never clobbers it.
+func (q *Queries) SetWorkspaceEstimation(ctx context.Context, arg SetWorkspaceEstimationParams) (Workspace, error) {
+	row := q.db.QueryRow(ctx, setWorkspaceEstimation, arg.ID, arg.Estimation)
+	var i Workspace
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TaskCounter,
+		&i.Estimation,
+	)
+	return i, err
 }
 
 const updateMembershipRole = `-- name: UpdateMembershipRole :one
@@ -240,7 +274,7 @@ const updateWorkspace = `-- name: UpdateWorkspace :one
 UPDATE workspaces
 SET name = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, name, owner_id, created_at, updated_at, task_counter
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation
 `
 
 type UpdateWorkspaceParams struct {
@@ -258,6 +292,7 @@ func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TaskCounter,
+		&i.Estimation,
 	)
 	return i, err
 }

@@ -36,3 +36,14 @@ sql:
               import: "encoding/json"
               type: "RawMessage"
               pointer: true
+          # Estimation config is raw JSON too (same round-trip as recurrence).
+          - column: "workspaces.estimation"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true
+          - column: "projects.estimation"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true

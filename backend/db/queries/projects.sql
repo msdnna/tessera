@@ -30,6 +30,14 @@ SET name = $2, color = $3, icon = $4, group_id = $5, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- SetProjectEstimation stores a project's estimation-config override (NULL =
+-- inherit the workspace default). Own endpoint, like the workspace one.
+-- name: SetProjectEstimation :one
+UPDATE projects
+SET estimation = $2, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: MoveProject :one
 UPDATE projects
 SET group_id = $2, position = $3, updated_at = now()

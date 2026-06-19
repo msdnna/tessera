@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -14,7 +15,7 @@ import (
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (workspace_id, group_id, name, color, icon, slug, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation
 `
 
 type CreateProjectParams struct {
@@ -49,6 +50,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.UpdatedAt,
 		&i.Icon,
 		&i.Slug,
+		&i.Estimation,
 	)
 	return i, err
 }
@@ -63,7 +65,7 @@ func (q *Queries) DeleteProject(ctx context.Context, id uuid.UUID) error {
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug FROM projects WHERE id = $1
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation FROM projects WHERE id = $1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error) {
@@ -80,12 +82,13 @@ func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 		&i.UpdatedAt,
 		&i.Icon,
 		&i.Slug,
+		&i.Estimation,
 	)
 	return i, err
 }
 
 const getProjectBySlug = `-- name: GetProjectBySlug :one
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug FROM projects WHERE slug = $1
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation FROM projects WHERE slug = $1
 `
 
 func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, error) {
@@ -102,12 +105,13 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 		&i.UpdatedAt,
 		&i.Icon,
 		&i.Slug,
+		&i.Estimation,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug FROM projects WHERE workspace_id = $1 ORDER BY position
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation FROM projects WHERE workspace_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListProjects(ctx context.Context, workspaceID uuid.UUID) ([]Project, error) {
@@ -130,6 +134,7 @@ func (q *Queries) ListProjects(ctx context.Context, workspaceID uuid.UUID) ([]Pr
 			&i.UpdatedAt,
 			&i.Icon,
 			&i.Slug,
+			&i.Estimation,
 		); err != nil {
 			return nil, err
 		}
@@ -156,7 +161,7 @@ const moveProject = `-- name: MoveProject :one
 UPDATE projects
 SET group_id = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation
 `
 
 type MoveProjectParams struct {
@@ -179,6 +184,7 @@ func (q *Queries) MoveProject(ctx context.Context, arg MoveProjectParams) (Proje
 		&i.UpdatedAt,
 		&i.Icon,
 		&i.Slug,
+		&i.Estimation,
 	)
 	return i, err
 }
@@ -223,6 +229,39 @@ func (q *Queries) ProjectsMissingSlug(ctx context.Context) ([]ProjectsMissingSlu
 	return items, nil
 }
 
+const setProjectEstimation = `-- name: SetProjectEstimation :one
+UPDATE projects
+SET estimation = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation
+`
+
+type SetProjectEstimationParams struct {
+	ID         uuid.UUID        `json:"id"`
+	Estimation *json.RawMessage `json:"estimation"`
+}
+
+// SetProjectEstimation stores a project's estimation-config override (NULL =
+// inherit the workspace default). Own endpoint, like the workspace one.
+func (q *Queries) SetProjectEstimation(ctx context.Context, arg SetProjectEstimationParams) (Project, error) {
+	row := q.db.QueryRow(ctx, setProjectEstimation, arg.ID, arg.Estimation)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.GroupID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Icon,
+		&i.Slug,
+		&i.Estimation,
+	)
+	return i, err
+}
+
 const setProjectSlug = `-- name: SetProjectSlug :exec
 UPDATE projects SET slug = $2 WHERE id = $1
 `
@@ -241,7 +280,7 @@ const updateProject = `-- name: UpdateProject :one
 UPDATE projects
 SET name = $2, color = $3, icon = $4, group_id = $5, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation
 `
 
 type UpdateProjectParams struct {
@@ -272,6 +311,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.UpdatedAt,
 		&i.Icon,
 		&i.Slug,
+		&i.Estimation,
 	)
 	return i, err
 }
