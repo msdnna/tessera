@@ -5,6 +5,23 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.22.1 — 2026-06-19
+- **Matrix view rework + polish.** Matrix cards are now a **compact** card (priority
+  bar + 2-line title + meta), not the full board `TaskCard` — which collapsed under
+  `weight` in the cramped 2×2 and wrapped titles/tags letter-by-letter. The accent
+  bar uses the board's rounded `leftAccentFrame`, and the quadrant blocks use the
+  columns' `topAccentFrame` (rounded, corner-wrapping accent strip).
+- Matrix shows only **open** tasks. The quick-add input sits **below** the list
+  (was buried at the bottom of a long scroll), with a soft fade of the list into it
+  (fixed: the fade now dissolves into the quadrant colour, not a grey/black smear).
+- A quadrant can be **expanded full-screen** (icon next to ＋; Back collapses), with
+  a fade+scale **animation**. A tap on empty matrix area **clears input focus**
+  (commits/cancels an open field). Moving a card between quadrants via the menu now
+  **animates** (fade out → fade in via `animateItem`).
+- **Subtasks restored on the mini-card**: an indicator (`≡ done/total`) is always
+  shown when a task has subtasks, and the subtasks render as compact rows when the
+  board's «развернуть подзадачи» toggle is on.
+
 ## 0.22.0 — 2026-06-19
 - **Матрица Эйзенхауэра — новое представление доски** (web parity, web 0.79).
   Четвёртый layout в свитчере (Доска/Список/Календарь/**Матрица**, иконка 2×2): сетка

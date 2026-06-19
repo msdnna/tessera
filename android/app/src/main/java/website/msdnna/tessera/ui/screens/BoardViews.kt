@@ -1,10 +1,17 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.calculateTargetValue
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.rememberSplineBasedDecay
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,7 +59,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -94,6 +104,7 @@ import website.msdnna.tessera.ui.components.dragDim
 import website.msdnna.tessera.ui.components.draggableColumn
 import website.msdnna.tessera.ui.components.dropColumn
 import website.msdnna.tessera.ui.components.fadeInOnAppear
+import website.msdnna.tessera.ui.components.leftAccentFrame
 import website.msdnna.tessera.ui.components.rememberBoardDragState
 import website.msdnna.tessera.ui.components.topAccentFrame
 import website.msdnna.tessera.ui.theme.PriorityColors
@@ -701,43 +712,92 @@ private fun quadrantOf(task: Task): Int = task.eisenhowerQuadrant ?: deriveQuadr
 
 /**
  * The Eisenhower matrix (mirrors the web `BoardMatrixView`): a 2×2 Важно×Срочно
- * grid. A card's quadrant is derived from priority + due-date proximity, or pinned
- * manually via the per-card menu («Вернуть на авто» clears the override).
+ * grid showing only OPEN tasks (the matrix is about what's left to do). A card's
+ * quadrant is derived from priority + due-date proximity, or pinned manually via the
+ * per-card menu («Вернуть на авто» clears the override). On the phone a quadrant can
+ * be expanded full-screen (they're cramped at 2×2).
  */
 @Composable
 fun BoardMatrixView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
     val c = Tessera.colors
-    val tasks = state.applyFilterSort(state.tasks)
+    val focusManager = LocalFocusManager.current
+    // Open tasks only — completed cards belong to «done», not the triage matrix.
+    val tasks = state.applyFilterSort(state.tasks).filter { !it.isCompleted }
     val byQuad = tasks.groupBy { quadrantOf(it) }
+    var expanded by remember { mutableStateOf<Int?>(null) }
+    BackHandler(enabled = expanded != null) { expanded = null }
 
-    Column(Modifier.fillMaxSize().padding(8.dp)) {
-        // Column headers: Срочно | Несрочно (offset past the row-label gutter).
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, bottom = 4.dp)) {
-            Text("Срочно", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-            Text("Несрочно", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-        }
-        listOf(Triple("Важно", 0, 1), Triple("Неважно", 2, 3)).forEach { (rowLabel, left, right) ->
-            Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 4.dp)) {
-                Box(Modifier.width(20.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                    Text(
-                        rowLabel,
-                        color = c.text2,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
-                        // Measure unconstrained then rotate, so the 20dp gutter
-                        // doesn't ellipsize the label before it's turned vertical.
-                        modifier = Modifier.requiredWidth(120.dp).rotate(270f),
-                        textAlign = TextAlign.Center,
+    Column(
+        Modifier.fillMaxSize().padding(8.dp)
+            // Tap on empty matrix area commits/cancels an open inline field (blur),
+            // mirroring the board's tap-away behaviour.
+            .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } },
+    ) {
+        AnimatedContent(
+            targetState = expanded,
+            transitionSpec = {
+                (fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.93f)) togetherWith fadeOut(tween(140))
+            },
+            label = "matrixExpand",
+        ) { focus ->
+            if (focus != null) {
+                Column(Modifier.fillMaxSize()) {
+                    QuadrantCell(
+                        EisenhowerQuads[focus], byQuad[focus].orEmpty(), state, vm, onOpenTask,
+                        expanded = true, onToggleExpand = { expanded = null },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
-                QuadrantCell(EisenhowerQuads[left], byQuad[left].orEmpty(), state, vm, onOpenTask, Modifier.weight(1f))
-                Spacer(Modifier.width(8.dp))
-                QuadrantCell(EisenhowerQuads[right], byQuad[right].orEmpty(), state, vm, onOpenTask, Modifier.weight(1f))
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    // Column headers: Срочно | Несрочно (offset past the row-label gutter).
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, bottom = 4.dp)) {
+                        MatrixColHeader("Срочно", c.text1, Modifier.weight(1f))
+                        MatrixColHeader("Несрочно", c.text2, Modifier.weight(1f))
+                    }
+                    listOf(Triple("Важно", 0, 1), Triple("Неважно", 2, 3)).forEach { (rowLabel, left, right) ->
+                        Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 4.dp)) {
+                            Box(Modifier.width(20.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    rowLabel,
+                                    color = c.text2,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    // Measure unconstrained then rotate, so the 20dp
+                                    // gutter doesn't ellipsize before it's vertical.
+                                    modifier = Modifier.requiredWidth(120.dp).rotate(270f),
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                            QuadrantCell(
+                                EisenhowerQuads[left], byQuad[left].orEmpty(), state, vm, onOpenTask,
+                                onToggleExpand = { expanded = left }, modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            QuadrantCell(
+                                EisenhowerQuads[right], byQuad[right].orEmpty(), state, vm, onOpenTask,
+                                onToggleExpand = { expanded = right }, modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun MatrixColHeader(text: String, color: Color, modifier: Modifier) {
+    Text(
+        text,
+        color = color,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -747,21 +807,33 @@ private fun QuadrantCell(
     state: BoardUiState,
     vm: BoardViewModel,
     onOpenTask: (Task) -> Unit,
+    onToggleExpand: () -> Unit,
     modifier: Modifier = Modifier,
+    expanded: Boolean = false,
 ) {
     val c = Tessera.colors
     var adding by remember { mutableStateOf(false) }
+    // The quadrant's actual background = a soft same-hue wash over the surface. Held
+    // as one flat colour so the bottom fade can dissolve INTO it (a gradient to a
+    // bare `Transparent` would pass through transparent-black → a grey/black smear).
+    val quadBg = quad.accent.copy(alpha = 0.06f).compositeOver(c.surface)
     Column(
         modifier.fillMaxHeight()
-            .clip(RoundedCornerShape(RadiusMd))
-            .background(c.surface)
-            // A soft same-hue wash over the surface (subtle, matches the calm palette).
-            .background(quad.accent.copy(alpha = 0.06f))
-            .border(1.dp, c.border, RoundedCornerShape(RadiusMd)),
+            .clip(RoundedCornerShape(RadiusLg))
+            // Same rounded top-accent frame the kanban columns use (corner-wrapping
+            // coloured strip + 1px border + surface fill).
+            .topAccentFrame(
+                accent = quad.accent,
+                surface = quadBg,
+                border = c.border,
+                barHeight = 3.dp,
+                radius = RadiusLg,
+                gradient = true,
+            ),
     ) {
-        Box(Modifier.fillMaxWidth().height(3.dp).background(accentGradient(quad.accent)))
+        Spacer(Modifier.height(4.dp)) // clear the coloured top strip drawn by the frame
         Row(
-            Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 4.dp),
+            Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -769,42 +841,145 @@ private fun QuadrantCell(
                 Text(quad.hint, color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text("${tasks.size}", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            IonIconButton(if (expanded) Ion.CLOSE else Ion.EXPAND, onClick = onToggleExpand, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
             IonIconButton(Ion.ADD, onClick = { adding = true }, boxSize = 30.dp, iconSize = 17.dp, tint = c.text3)
         }
-        LazyColumn(
-            Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(tasks, key = { it.id }) { task ->
-                MatrixCard(task, quadrantOf(task), state, vm, onOpenTask)
-            }
-            if (adding) {
-                item(key = "add") {
-                    InlineCreateField(
-                        placeholder = "Название задачи",
-                        onCommit = { title ->
-                            vm.createTaskInQuadrant(title, quad.index)
-                            adding = false
-                        },
-                        onDismiss = { adding = false },
-                    )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(tasks, key = { it.id }) { task ->
+                    // animateItem fades the card out of its old quadrant and into the
+                    // new one when its quadrant changes (the menu move) — the closest
+                    // thing to an animated move without cross-list DnD.
+                    MatrixCard(task, quadrantOf(task), state, vm, onOpenTask, Modifier.animateItem())
                 }
+            }
+            // When the quick-add is open below, fade the list's bottom cards into it
+            // (a soft dissolve, mirrors the web mask) instead of a hard cut edge.
+            if (adding) {
+                Box(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp)
+                        .background(Brush.verticalGradient(listOf(quadBg.copy(alpha = 0f), quadBg))),
+                )
+            }
+        }
+        // Quick-add sits BELOW the list (always visible, bordered), not buried at the
+        // scroll bottom of a long quadrant.
+        if (adding) {
+            Box(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp)) {
+                InlineCreateField(
+                    placeholder = "Название задачи",
+                    onCommit = { title ->
+                        vm.createTaskInQuadrant(title, quad.index)
+                        adding = false
+                    },
+                    onDismiss = { adding = false },
+                )
             }
         }
     }
 }
 
-/** A matrix card: the shared TaskCard plus a menu to move it between quadrants
- *  (Android has no cross-container drag; the menu is the override affordance). */
+/**
+ * A COMPACT matrix card (deliberately not the full board `TaskCard`, which is too
+ * wide for the cramped 2×2 grid and collapsed under weight). Priority bar + 2-line
+ * title + a small meta line, tap to open, kebab to move between quadrants.
+ */
 @Composable
-private fun MatrixCard(task: Task, currentQuad: Int, state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
+private fun MatrixCard(
+    task: Task,
+    currentQuad: Int,
+    state: BoardUiState,
+    vm: BoardViewModel,
+    onOpenTask: (Task) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = Tessera.colors
+    val accent = PriorityColors.getOrElse(task.priority) { PriorityColors[0] }
+    val subs = state.subtasksOf(task.id)
     var menu by remember { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.Top) {
-        TaskCard(task = task, state = state, vm = vm, onOpen = onOpenTask, modifier = Modifier.weight(1f))
+    val shape = RoundedCornerShape(RadiusMd)
+    Row(
+        modifier.fillMaxWidth()
+            .clip(shape)
+            // Same rounded accent frame the board cards use (corner-wrapping bar +
+            // 1px border drawn on the surface), not a flat straight-edged bar.
+            .leftAccentFrame(
+                accent = if (task.priority > 0) accent else c.border,
+                surface = c.cardSurface,
+                border = c.border,
+                barWidth = if (task.priority > 0) 3.dp else 1.dp,
+                topRadius = RadiusMd,
+                bottomRadius = RadiusMd,
+                gradient = task.priority > 0,
+            )
+            .clickableNoRipple { onOpenTask(task) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(start = 11.dp, end = 9.dp, top = 8.dp, bottom = 8.dp)) {
+            Text(
+                task.title,
+                color = if (task.isCompleted) c.text3 else c.text1,
+                fontSize = 13.sp,
+                lineHeight = 17.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
+            )
+            val due = shortDate(task.dueDate)
+            if (task.number != null || due.isNotEmpty() || subs.isNotEmpty()) {
+                Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    task.number?.let {
+                        Text("#$it", color = c.text3, fontSize = 11.sp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    if (due.isNotEmpty()) {
+                        IonIcon(Ion.CALENDAR, size = 11.dp, tint = c.text3)
+                        Spacer(Modifier.width(3.dp))
+                        Text(due, color = c.text3, fontSize = 11.sp)
+                        if (subs.isNotEmpty()) Spacer(Modifier.width(8.dp))
+                    }
+                    // Subtask indicator (always shown when the task has subtasks) so
+                    // it's clear at a glance the card has a checklist.
+                    if (subs.isNotEmpty()) {
+                        IonIcon(Ion.LIST, size = 12.dp, tint = c.text3)
+                        Spacer(Modifier.width(3.dp))
+                        Text("${subs.count { it.isCompleted }}/${subs.size}", color = c.text3, fontSize = 11.sp)
+                    }
+                }
+            }
+            // Expanded: list the subtasks as compact rows (mirrors the board's
+            // subtasks-expanded toggle).
+            if (state.subtasksExpanded && subs.isNotEmpty()) {
+                Column(Modifier.padding(top = 5.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    subs.forEach { sub ->
+                        Row(
+                            Modifier.fillMaxWidth().clickableNoRipple { onOpenTask(sub) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(7.dp).clip(CircleShape)
+                                    .background(if (sub.isCompleted) accentGradient(accent) else SolidColor(c.border)),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                sub.title,
+                                color = if (sub.isCompleted) c.text3 else c.text2,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textDecoration = if (sub.isCompleted) TextDecoration.LineThrough else null,
+                            )
+                        }
+                    }
+                }
+            }
+        }
         Box {
-            IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 28.dp, iconSize = 15.dp, tint = c.text3)
+            IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 30.dp, iconSize = 15.dp, tint = c.text3)
             TDropdown(expanded = menu, onDismiss = { menu = false }) {
                 EisenhowerQuads.forEach { q ->
                     TMenuItem(

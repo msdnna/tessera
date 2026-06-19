@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.79.1] — 2026-06-19
+- **Matrix view polish.** The matrix now shows only **open** tasks (completed cards
+  belong to «done», not the triage matrix; quadrant counts match). The per-quadrant
+  quick-add input got a visible border + solid surface (no longer melts into the
+  tinted quadrant) and is **focused on open** (the `ref=` inside the `v-for`
+  collected an array, so `.focus()` was a no-op — switched to a function ref); the
+  card list **fades** into it when it's open. The «вручную» (reset-to-auto) pin is
+  now hover-only so it doesn't sit on top of the task number. Reduced the matrix
+  height so the work area itself no longer shows a scrollbar.
+
 ### [0.79.0] — 2026-06-19
 - **Матрица Эйзенхауэра — новое представление доски** (4-й layout рядом с
   Доска/Список/Календарь). 2×2 сетка Важно×Срочно: каждый квадрант — зона со своим

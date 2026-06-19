@@ -45,6 +45,7 @@ object Ion {
     const val CHEVRON_FORWARD = "chevron_forward"
     const val ADD = "add"
     const val APPS = "apps"
+    const val EXPAND = "expand"
     const val ELLIPSIS_H = "ellipsis_h"
     const val ELLIPSIS_V = "ellipsis_v"
     const val LOGOUT = "logout"

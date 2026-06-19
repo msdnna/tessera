@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import draggable from 'vuedraggable'
 import { NIcon, NInput, useMessage } from 'naive-ui'
 import { CloseCircleOutline } from '@vicons/ionicons5'
@@ -63,7 +63,11 @@ function isPinned(t) {
 const buckets = ref([[], [], [], []])
 function rebuild() {
   const b = [[], [], [], []]
-  for (const t of props.tasks) b[quadrantOf(t)].push(t)
+  // Open tasks only — completed cards belong to «done», not the triage matrix.
+  for (const t of props.tasks) {
+    if (t.completed_at) continue
+    b[quadrantOf(t)].push(t)
+  }
   buckets.value = b
 }
 watch(() => props.tasks, rebuild, { immediate: true })
@@ -96,9 +100,17 @@ async function resetAuto(t) {
 // ── per-quadrant quick add (a reference tracker-style «＋») ──────────────────
 const addingIn = ref(-1)
 const newTitle = ref('')
+const addInput = ref(null)
+// A function ref — a static `ref=` inside the v-for would collect an array, so
+// `.focus()` would be called on the array, not the input.
+const setAddInput = (el) => {
+  addInput.value = el
+}
 function startAdd(qi) {
   addingIn.value = qi
   newTitle.value = ''
+  // Focus once the input mounts (n-input `autofocus` doesn't fire on a v-if mount).
+  nextTick(() => addInput.value?.focus())
 }
 function submitAdd(qi) {
   const title = newTitle.value.trim()
@@ -139,6 +151,7 @@ function submitAdd(qi) {
         group="eisenhower"
         item-key="id"
         class="m-list"
+        :class="{ 'fade-bottom': addingIn === q.i }"
         :animation="150"
         :delay="120"
         :delay-on-touch-only="true"
@@ -181,10 +194,10 @@ function submitAdd(qi) {
 
       <div v-if="addingIn === q.i" class="m-add-input">
         <n-input
+          :ref="setAddInput"
           v-model:value="newTitle"
           type="textarea"
           size="small"
-          autofocus
           :autosize="{ minRows: 1, maxRows: 4 }"
           placeholder="Название задачи, Enter — создать"
           @keyup.enter.prevent="submitAdd(q.i)"
@@ -203,10 +216,11 @@ function submitAdd(qi) {
   grid-template-rows: 26px 1fr 1fr;
   gap: 8px;
   /* Fill the content area below header + toolbar so quadrants scroll internally
-     (mirrors the kanban board-scroll height). */
-  height: calc(100vh - 140px);
-  height: calc(100dvh - 140px);
-  min-height: 420px;
+     (mirrors the kanban board-scroll height). Sized to clear the header (53) +
+     content padding (16×2) + composer bar so the work area itself doesn't scroll. */
+  height: calc(100vh - 156px);
+  height: calc(100dvh - 156px);
+  min-height: 360px;
 }
 .m-corner {
   grid-row: 1;
@@ -346,6 +360,12 @@ function submitAdd(qi) {
   flex-direction: column;
   gap: 8px;
 }
+/* When the quick-add input is open below, fade the last cards into it (no hard
+   overlap edge) — the card softly dissolves as it nears the input. */
+.m-list.fade-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
+}
 .m-card-wrap {
   position: relative;
 }
@@ -365,6 +385,19 @@ function submitAdd(qi) {
   border-radius: 999px;
   padding: 2px 6px 2px 4px;
   cursor: pointer;
+  /* Hidden until the card is hovered so it doesn't sit on top of the task
+     number; on touch (no hover) it stays visible. */
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.m-card-wrap:hover .m-pin,
+.m-pin:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .m-pin {
+    opacity: 1;
+  }
 }
 .m-pin:hover {
   color: var(--t-error, #e5484d);
@@ -372,5 +405,15 @@ function submitAdd(qi) {
 }
 .m-add-input {
   padding: 0 8px 10px;
+}
+/* A visible border + solid surface so the input doesn't melt into the tinted
+   quadrant background. */
+.m-add-input :deep(.n-input) {
+  background-color: var(--t-surface);
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px var(--t-border);
+}
+.m-add-input :deep(.n-input--focus) {
+  box-shadow: inset 0 0 0 1px var(--t-primary);
 }
 </style>
