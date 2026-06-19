@@ -1209,6 +1209,14 @@ private val TL_DAY_W = 30.dp
 private val TL_ROW_H = 38.dp
 private val TL_LEFT_W = 140.dp
 
+// Header = month band + day band; lane (group) header band. The left fixed column
+// and the right scrolling grid of every row must share the same height or the grid
+// "slides" out of alignment with the day numbers.
+private val TL_MONTH_H = 20.dp
+private val TL_DAYS_H = 34.dp
+private val TL_HEAD_H = 54.dp // TL_MONTH_H + TL_DAYS_H
+private val TL_LANE_H = 30.dp
+
 private fun tlDayFloor(ms: Long): Long =
     Calendar.getInstance().apply {
         timeInMillis = ms
@@ -1330,7 +1338,8 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         // ── header: sticky months + days (horizontal-scrolls with the body) ──
         Row {
             Box(
-                Modifier.width(TL_LEFT_W).background(c.surfaceAlt).padding(horizontal = 10.dp, vertical = 6.dp),
+                Modifier.width(TL_LEFT_W).height(TL_HEAD_H).background(c.surfaceAlt)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 contentAlignment = Alignment.BottomStart,
             ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
             Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
@@ -1354,8 +1363,8 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                     // lane header row
                     Row {
                         Row(
-                            Modifier.width(TL_LEFT_W).background(c.surfaceAlt)
-                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            Modifier.width(TL_LEFT_W).height(TL_LANE_H).background(c.surfaceAlt)
+                                .padding(horizontal = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(
@@ -1371,7 +1380,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                             Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
                         }
                         Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                            Box(Modifier.width(axisW).height(28.dp).background(c.surfaceAlt).tlGrid(dayWpx, gridColor)) {
+                            Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor)) {
                                 Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
                             }
                         }
@@ -1477,7 +1486,7 @@ private fun TimelineMonthBand(rangeStart: Long, dayCount: Int, dayW: androidx.co
         }
         out
     }
-    Row(Modifier.height(20.dp)) {
+    Row(Modifier.height(TL_MONTH_H)) {
         bands.forEach { (label, span) ->
             Box(
                 Modifier.width(dayW * span).fillMaxHeight().background(c.surfaceAlt)
@@ -1498,7 +1507,7 @@ private fun TimelineDayRow(rangeStart: Long, dayCount: Int, todayMs: Long, dayW:
             val weekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
             val isToday = tlDayFloor(cal.timeInMillis) == todayMs
             Column(
-                Modifier.width(dayW).height(34.dp)
+                Modifier.width(dayW).height(TL_DAYS_H)
                     .background(if (weekend) c.bg else c.surface),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
