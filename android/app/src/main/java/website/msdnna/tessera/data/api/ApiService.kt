@@ -29,6 +29,7 @@ import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.DueNotifyRequest
 import website.msdnna.tessera.data.model.EmailRequest
+import website.msdnna.tessera.data.model.EstimationConfig
 import website.msdnna.tessera.data.model.Invitation
 import website.msdnna.tessera.data.model.InviteRequest
 import website.msdnna.tessera.data.model.LinkResponse
@@ -280,6 +281,14 @@ interface ApiService {
 
     @PUT("projects/{id}/tag-prefixes")
     suspend fun setTagPrefixes(@Path("id") projectId: String, @Body body: SetTagPrefixesRequest): List<TagPrefix>?
+
+    // Two-level estimation config; body is the config object directly, or null to
+    // clear (workspace → built-in default, project → inherit workspace).
+    @PUT("workspaces/{id}/estimation")
+    suspend fun setWorkspaceEstimation(@Path("id") workspaceId: String, @Body body: EstimationConfig?): Workspace
+
+    @PUT("projects/{id}/estimation")
+    suspend fun setProjectEstimation(@Path("id") projectId: String, @Body body: EstimationConfig?): Project
 
     @GET("workspaces/{id}/members")
     suspend fun members(@Path("id") workspaceId: String): List<Member>?

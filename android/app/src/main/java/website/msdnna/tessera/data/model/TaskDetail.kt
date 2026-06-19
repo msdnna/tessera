@@ -17,6 +17,7 @@ data class TaskDetail(
     @SerializedName("priority") val priority: Int = 0,
     @SerializedName("due_date") val dueDate: String? = null,
     @SerializedName("start_date") val startDate: String? = null,
+    @SerializedName("estimate") val estimate: Double? = null,
     @SerializedName("created_by") val createdBy: String? = null,
     @SerializedName("completed_at") val completedAt: String? = null,
     @SerializedName("number") val number: Long? = null,
@@ -44,7 +45,7 @@ data class TaskDetail(
     fun asTask(): Task = Task(
         id = id, boardId = boardId, columnId = columnId, parentId = parentId,
         title = title, description = description, priority = priority, dueDate = dueDate,
-        startDate = startDate,
+        startDate = startDate, estimate = estimate,
         createdBy = createdBy, completedAt = completedAt, number = number, recurrence = recurrence,
         tagIds = tags.map { it.id }, assigneeIds = assignees.map { it.id },
     )

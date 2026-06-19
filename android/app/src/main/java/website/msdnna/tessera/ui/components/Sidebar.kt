@@ -123,6 +123,7 @@ fun Sidebar(
     val focus = LocalFocusManager.current
     var addWorkspace by remember { mutableStateOf(false) }
     var wsMenu by remember { mutableStateOf(false) }
+    var wsEstimating by remember { mutableStateOf(false) }
     var addMenu by remember { mutableStateOf(false) }
     var showTheme by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf<Creating?>(null) }
@@ -191,6 +192,13 @@ fun Sidebar(
                             TMenuItem(ws.name, onClick = {
                                 wsMenu = false
                                 vm.selectWorkspace(ws.id)
+                            })
+                        }
+                        if (state.current != null) {
+                            TMenuDivider()
+                            TMenuItem("Оценка задач…", icon = Ion.TIME, onClick = {
+                                wsMenu = false
+                                wsEstimating = true
                             })
                         }
                     }
@@ -287,6 +295,18 @@ fun Sidebar(
             },
             onDismiss = { addWorkspace = false },
         )
+    }
+    state.current?.let { ws ->
+        if (wsEstimating) {
+            EstimationDialog(
+                scope = "workspace",
+                name = ws.name,
+                current = ws.estimation,
+                inherited = website.msdnna.tessera.util.Estimation.DEFAULT,
+                onSave = { vm.setWorkspaceEstimation(ws.id, it) },
+                onDismiss = { wsEstimating = false },
+            )
+        }
     }
 }
 
@@ -399,6 +419,7 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
     val c = Tessera.colors
     val expanded = project.id in ctx.state.expandedProjects
     val node = SbNode(project.id, SbKind.PROJECT, depth, project.groupId, project.name, project.icon, project.color)
+    var estimating by remember { mutableStateOf(false) }
     TreeRow(
         node = node,
         expanded = expanded,
@@ -416,6 +437,10 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                 close()
                 ctx.setRenaming(project.id)
             })
+            TMenuItem("Оценка задач…", icon = Ion.TIME, onClick = {
+                close()
+                estimating = true
+            })
             TMenuDivider()
             ColumnScopePicker(
                 color = project.color,
@@ -428,6 +453,16 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
         onDelete = { ctx.vm.deleteProject(project.id) },
         confirmName = project.name,
     )
+    if (estimating) {
+        EstimationDialog(
+            scope = "project",
+            name = project.name,
+            current = project.estimation,
+            inherited = ctx.state.current?.estimation ?: website.msdnna.tessera.util.Estimation.DEFAULT,
+            onSave = { ctx.vm.setProjectEstimation(project.id, it) },
+            onDismiss = { estimating = false },
+        )
+    }
     if (expanded) {
         IndentedChildren {
             val boards = ctx.state.boardsByProject[project.id]

@@ -54,6 +54,17 @@ class WorkspaceRepository {
 
     suspend fun deleteProject(projectId: String) = api.deleteProject(projectId)
 
+    /** Two-level estimation config; null clears it (inherit). */
+    suspend fun setProjectEstimation(
+        projectId: String,
+        config: website.msdnna.tessera.data.model.EstimationConfig?,
+    ): Project = api.setProjectEstimation(projectId, config)
+
+    suspend fun setWorkspaceEstimation(
+        workspaceId: String,
+        config: website.msdnna.tessera.data.model.EstimationConfig?,
+    ): website.msdnna.tessera.data.model.Workspace = api.setWorkspaceEstimation(workspaceId, config)
+
     suspend fun boards(projectId: String): List<Board> = api.boards(projectId).orEmpty()
     suspend fun createBoard(projectId: String, name: String): Board = api.createBoard(projectId, NameRequest(name))
     suspend fun renameBoard(boardId: String, name: String): Board = api.updateBoard(boardId, NameRequest(name))

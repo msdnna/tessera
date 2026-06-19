@@ -78,6 +78,10 @@ data class BoardUiState(
     /** Canonical tag-prefix → friendly label (project-scoped). Drives the grouped
      *  group/filter menus and tag pickers; empty when none are configured. */
     val prefixNames: Map<String, String> = emptyMap(),
+    /** Resolved estimation unit config for this board's project (drives the
+     *  estimate input/chip/aggregates). Falls back to the built-in default. */
+    val estimation: website.msdnna.tessera.data.model.EstimationConfig =
+        website.msdnna.tessera.util.Estimation.DEFAULT,
     val members: List<Member> = emptyList(),
     val viewMode: BoardViewMode = BoardViewMode.Kanban,
     val groupByTag: Boolean = false,
@@ -212,6 +216,7 @@ class BoardViewModel(
             val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
             val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
             val prefixNames = loadPrefixNames()
+            val estimation = loadEstimation()
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
             _state.update {
                 val base = it.copy(
@@ -224,6 +229,7 @@ class BoardViewModel(
                     tags = tags.associateBy { t -> t.id },
                     tagList = tags,
                     prefixNames = prefixNames,
+                    estimation = estimation,
                     members = members,
                 )
                 if (cfg != null) base.applyConfig(cfg) else base
@@ -290,6 +296,8 @@ class BoardViewModel(
         val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
         val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
         val prefixNames = loadPrefixNames()
+        // Estimation config is loaded once on full load() — it rarely changes and
+        // would cost two extra list calls on every realtime echo here.
         _state.update {
             it.copy(
                 doneColumnId = board?.doneColumnId,
@@ -310,6 +318,15 @@ class BoardViewModel(
             emptyMap()
         } else {
             runCatching { repo.tagPrefixes(projectId).associate { it.prefix to it.label } }.getOrDefault(emptyMap())
+        }
+
+    /** Resolves the board's estimation unit config (best-effort, built-in default on failure). */
+    private suspend fun loadEstimation(): website.msdnna.tessera.data.model.EstimationConfig =
+        if (projectId.isBlank() || workspaceId.isBlank()) {
+            website.msdnna.tessera.util.Estimation.DEFAULT
+        } else {
+            runCatching { repo.estimationConfig(workspaceId, projectId) }
+                .getOrDefault(website.msdnna.tessera.util.Estimation.DEFAULT)
         }
 
     /** Marks a window during which incoming echoes of our own change are ignored. */

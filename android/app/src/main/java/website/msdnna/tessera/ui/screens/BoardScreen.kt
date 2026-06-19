@@ -155,6 +155,7 @@ fun BoardScreen(
             members = state.members,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
             breadcrumb = breadcrumb,
+            estimation = state.estimation,
             onClose = { changed ->
                 openTaskId = null
                 if (changed) vm.reload()

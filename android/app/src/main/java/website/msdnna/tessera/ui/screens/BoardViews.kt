@@ -1231,6 +1231,12 @@ private fun tlDayFloor(ms: Long): Long =
 
 private data class TLane(val key: String, val label: String, val color: Color?, val tasks: List<Task>)
 
+/** Summed estimate of a lane's tasks, formatted in the board's unit, or null when none set. */
+private fun laneEffort(lane: TLane, state: BoardUiState): String? {
+    val total = website.msdnna.tessera.util.Estimation.sum(lane.tasks.map { it.estimate }) ?: return null
+    return website.msdnna.tessera.util.Estimation.format(total, state.estimation).ifBlank { null }
+}
+
 @Composable
 fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
     val c = Tessera.colors
@@ -1381,6 +1387,10 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                             )
                             Spacer(Modifier.width(6.dp))
                             Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
+                            laneEffort(lane, state)?.let { eff ->
+                                Spacer(Modifier.width(6.dp))
+                                Text("⏱ $eff", color = c.text2, fontSize = 11.sp, maxLines = 1)
+                            }
                         }
                         Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
                             Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor)) {
@@ -1669,6 +1679,10 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                             )
                             Spacer(Modifier.width(6.dp))
                             Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
+                            laneEffort(lane, state)?.let { eff ->
+                                Spacer(Modifier.width(6.dp))
+                                Text("⏱ $eff", color = c.text2, fontSize = 11.sp, maxLines = 1)
+                            }
                         }
                         lane.tasks.forEach { t ->
                             val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }

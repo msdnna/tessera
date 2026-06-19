@@ -82,6 +82,7 @@ import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TDropdown
+import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TSwitch
 import website.msdnna.tessera.ui.components.TabItem
@@ -147,6 +148,8 @@ fun TaskModal(
     members: List<Member>,
     parentCandidates: List<Task>,
     breadcrumb: List<String>,
+    estimation: website.msdnna.tessera.data.model.EstimationConfig =
+        website.msdnna.tessera.util.Estimation.DEFAULT,
     onClose: (changed: Boolean) -> Unit,
 ) {
     val c = Tessera.colors
@@ -206,6 +209,9 @@ fun TaskModal(
                             dueIso = detail.dueDate,
                             startIso = detail.startDate,
                             recurrence = detail.recurrence,
+                            estimate = detail.estimate,
+                            estimation = estimation,
+                            subtasks = detail.subtasks,
                             columns = state.columns,
                             notifyEnabled = detail.dueNotifyEnabled,
                             notifyLead = detail.dueLeadMinutes,
@@ -378,6 +384,9 @@ private fun PropertyGrid(
     dueIso: String?,
     startIso: String?,
     recurrence: Recurrence?,
+    estimate: Double?,
+    estimation: website.msdnna.tessera.data.model.EstimationConfig,
+    subtasks: List<Task>,
     columns: List<BoardColumn>,
     notifyEnabled: Boolean?,
     notifyLead: Int?,
@@ -407,6 +416,15 @@ private fun PropertyGrid(
                 dueIso, startIso, recurrence, columns, notifyEnabled, notifyLead, notifyRepeat,
                 onApply = { iso, start, rec -> vm.setDueAndRecurrence(iso, start, rec) },
                 onNotify = { lead, repeat, enabled -> vm.setDueNotify(lead, repeat, enabled) },
+            )
+        }
+        PropRow(Ion.TIME, "Оценка") {
+            val rollup = website.msdnna.tessera.util.Estimation.sum(subtasks.map { it.estimate })
+            EstimateValue(
+                estimate = estimate,
+                cfg = estimation,
+                rollupText = if (rollup != null) website.msdnna.tessera.util.Estimation.format(rollup, estimation) else "",
+                onSet = { vm.setEstimate(it) },
             )
         }
         if (authorName != null) {
@@ -524,6 +542,83 @@ private fun DueValue(
             onNotify = { lead, repeat, enabled -> onNotify(lead, repeat, enabled) },
             onDismiss = { picker = false },
         )
+    }
+}
+
+@Composable
+private fun EstimateValue(
+    estimate: Double?,
+    cfg: website.msdnna.tessera.data.model.EstimationConfig,
+    rollupText: String,
+    onSet: (Double?) -> Unit,
+) {
+    val c = Tessera.colors
+    val scaleOptions = website.msdnna.tessera.util.Estimation.scaleOptions(cfg)
+    val isPoints = scaleOptions.isNotEmpty()
+    val label = website.msdnna.tessera.util.Estimation.format(estimate, cfg)
+    var menu by remember { mutableStateOf(false) }
+    var dialog by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.clickableNoRipple { if (isPoints) menu = true else dialog = true },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label.ifBlank { "Не задана" },
+                color = if (label.isBlank()) c.text3 else c.text1,
+                fontSize = 14.sp,
+            )
+            if (rollupText.isNotBlank()) {
+                Spacer(Modifier.width(8.dp))
+                Text("Σ $rollupText", color = c.text3, fontSize = 12.sp)
+            }
+            if (estimate != null) {
+                Spacer(Modifier.width(6.dp))
+                IonIcon(
+                    Ion.CLOSE,
+                    size = 13.dp,
+                    tint = c.text3,
+                    modifier = Modifier.clickableNoRipple { onSet(null) },
+                )
+            }
+        }
+        if (isPoints) {
+            TDropdown(expanded = menu, onDismiss = { menu = false }) {
+                EstOptionRow("Не задана") {
+                    menu = false
+                    onSet(null)
+                }
+                scaleOptions.forEach { (lbl, v) ->
+                    EstOptionRow(lbl) {
+                        menu = false
+                        onSet(v)
+                    }
+                }
+            }
+        }
+    }
+    if (dialog) {
+        TInputDialog(
+            title = "Оценка",
+            initial = label,
+            placeholder = website.msdnna.tessera.util.Estimation.placeholder(cfg),
+            onConfirm = {
+                dialog = false
+                onSet(website.msdnna.tessera.util.Estimation.parse(it, cfg))
+            },
+            onDismiss = { dialog = false },
+        )
+    }
+}
+
+@Composable
+private fun EstOptionRow(label: String, onClick: () -> Unit) {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth().clickableNoRipple(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = c.text1, fontSize = 14.sp)
     }
 }
 

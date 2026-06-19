@@ -178,6 +178,17 @@ class WorkspaceViewModel(
         refreshSilently()
     }
 
+    /** Two-level estimation config; null clears it (inherit). */
+    fun setProjectEstimation(projectId: String, config: website.msdnna.tessera.data.model.EstimationConfig?) = launchCatching {
+        repo.setProjectEstimation(projectId, config)
+        refreshSilently()
+    }
+
+    fun setWorkspaceEstimation(workspaceId: String, config: website.msdnna.tessera.data.model.EstimationConfig?) = launchCatching {
+        repo.setWorkspaceEstimation(workspaceId, config)
+        refreshSilently()
+    }
+
     fun renameGroup(group: ProjectGroup, name: String) = launchCatching {
         repo.updateGroup(group, name = name)
         refreshSilently()

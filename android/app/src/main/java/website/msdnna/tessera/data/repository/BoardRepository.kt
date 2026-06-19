@@ -43,6 +43,18 @@ class BoardRepository {
     suspend fun tags(projectId: String): List<Tag> = api.tags(projectId).orEmpty()
     suspend fun members(workspaceId: String): List<Member> = api.members(workspaceId).orEmpty()
 
+    /** Resolved estimation config for a project: project override → workspace
+     *  default → built-in. Best-effort (uses the list endpoints; the board has no
+     *  single project/workspace getter). */
+    suspend fun estimationConfig(
+        workspaceId: String,
+        projectId: String,
+    ): website.msdnna.tessera.data.model.EstimationConfig {
+        val ws = runCatching { api.workspaces().orEmpty().firstOrNull { it.id == workspaceId } }.getOrNull()
+        val proj = runCatching { api.projects(workspaceId).orEmpty().firstOrNull { it.id == projectId } }.getOrNull()
+        return website.msdnna.tessera.util.Estimation.resolve(proj, ws)
+    }
+
     /** A project's prefix→label display names (canonical prefix keys). */
     suspend fun tagPrefixes(projectId: String): List<website.msdnna.tessera.data.model.TagPrefix> =
         api.tagPrefixes(projectId).orEmpty()
@@ -53,6 +65,17 @@ class BoardRepository {
         prefixes: List<website.msdnna.tessera.data.model.TagPrefixEntry>,
     ): List<website.msdnna.tessera.data.model.TagPrefix> =
         api.setTagPrefixes(projectId, website.msdnna.tessera.data.model.SetTagPrefixesRequest(prefixes)).orEmpty()
+
+    /** Two-level estimation config; pass null to clear (inherit). */
+    suspend fun setWorkspaceEstimation(
+        workspaceId: String,
+        config: website.msdnna.tessera.data.model.EstimationConfig?,
+    ): website.msdnna.tessera.data.model.Workspace = api.setWorkspaceEstimation(workspaceId, config)
+
+    suspend fun setProjectEstimation(
+        projectId: String,
+        config: website.msdnna.tessera.data.model.EstimationConfig?,
+    ): website.msdnna.tessera.data.model.Project = api.setProjectEstimation(projectId, config)
 
     suspend fun createTask(boardId: String, columnId: String, title: String, parentId: String? = null): Task =
         api.createTask(boardId, CreateTaskRequest(columnId = columnId, title = title, parentId = parentId))
@@ -81,11 +104,12 @@ class BoardRepository {
         priority: Int = task.priority,
         dueDate: String? = task.dueDate,
         startDate: String? = task.startDate,
+        estimate: Double? = task.estimate,
         completed: Boolean = task.isCompleted,
         recurrence: Recurrence? = task.recurrence,
     ): Task = api.updateTask(
         task.id,
-        UpdateTaskRequest(title, description, priority, dueDate, startDate, completed, recurrence),
+        UpdateTaskRequest(title, description, priority, dueDate, startDate, estimate, completed, recurrence),
     )
 
     suspend fun archiveTask(taskId: String) = api.archiveTask(taskId)

@@ -36,6 +36,9 @@ data class Task(
     @SerializedName("priority") val priority: Int = 0,
     @SerializedName("due_date") val dueDate: String? = null,
     @SerializedName("start_date") val startDate: String? = null,
+    // Canonical estimate; its unit is resolved from the project/workspace config
+    // (time → minutes, points → point number, custom → count).
+    @SerializedName("estimate") val estimate: Double? = null,
     @SerializedName("position") val position: Double = 0.0,
     @SerializedName("created_by") val createdBy: String? = null,
     @SerializedName("completed_at") val completedAt: String? = null,
@@ -86,6 +89,7 @@ data class UpdateTaskRequest(
     @SerializedName("priority") val priority: Int = 0,
     @SerializedName("due_date") val dueDate: String? = null,
     @SerializedName("start_date") val startDate: String? = null,
+    @SerializedName("estimate") val estimate: Double? = null,
     @SerializedName("completed") val completed: Boolean = false,
     @SerializedName("recurrence") val recurrence: Recurrence? = null,
 )

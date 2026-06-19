@@ -131,6 +131,13 @@ class TaskDetailViewModel(
         reloadDetail()
     }
 
+    /** Sets the task's estimate (canonical value), or null to clear it. */
+    fun setEstimate(value: Double?) = mutate {
+        val d = state.value.detail ?: return@mutate
+        boardRepo.updateTask(d.asTask(), estimate = value)
+        reloadDetail()
+    }
+
     fun toggleTag(tagId: String) = mutate {
         val d = state.value.detail ?: return@mutate
         if (d.tags.any { it.id == tagId }) boardRepo.removeTag(d.id, tagId) else boardRepo.addTag(d.id, tagId)

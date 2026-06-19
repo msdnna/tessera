@@ -376,10 +376,32 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
         PriorityPill(task, vm)
         Spacer(Modifier.width(6.dp))
         DuePill(task, state, vm)
+        EstimatePill(task, state)
         Spacer(Modifier.width(6.dp))
         TagsPill(task, state, vm)
         Spacer(Modifier.weight(1f))
         AssigneesPill(task, state, vm)
+    }
+}
+
+/** Display-only estimate chip: the task's own estimate, or — when unset — the
+ *  rollup sum of its subtasks ("Σ …"). Editing happens in the task modal. */
+@Composable
+private fun EstimatePill(task: Task, state: BoardUiState) {
+    val c = Tessera.colors
+    val own = task.estimate
+    val rollup = website.msdnna.tessera.util.Estimation.sum(
+        state.subtasks.filter { it.parentId == task.id }.map { it.estimate },
+    )
+    val value = own ?: rollup
+    val text = website.msdnna.tessera.util.Estimation.format(value, state.estimation)
+    if (text.isBlank()) return
+    val isRollup = own == null && rollup != null
+    Spacer(Modifier.width(6.dp))
+    Pill(onClick = {}, set = true) {
+        IonIcon(Ion.TIME, size = 13.dp, tint = c.text2)
+        Spacer(Modifier.width(4.dp))
+        Text((if (isRollup) "Σ " else "") + text, color = c.text2, fontSize = 11.sp)
     }
 }
 
