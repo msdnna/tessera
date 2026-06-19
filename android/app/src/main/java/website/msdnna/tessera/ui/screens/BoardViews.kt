@@ -52,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -80,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import java.util.Calendar
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.components.BoardDragOverlay
@@ -110,11 +112,14 @@ import website.msdnna.tessera.ui.components.topAccentFrame
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
+import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.dueShort
+import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
@@ -1187,6 +1192,353 @@ private fun ColumnGhost(lane: Lane, state: BoardUiState, vm: BoardViewModel) {
         }
     }
 }
+
+// ── Timeline view ─────────────────────────────────────────────────────────
+// A horizontal time-axis (a reference tracker Timeline): swimlanes of start→due bars on a
+// scrollable day grid with a «today» line. Read + tap-to-open — rescheduling is
+// done in the task's due popover (which edits both start and due). In-bar drag is
+// deliberately skipped (same call as the matrix: the board drag system is 1D-lane
+// tuned, and a horizontally-scrolling track fights a horizontal drag gesture).
+
+private const val TL_DAY_MS = 86_400_000L
+private val TL_DAY_W = 30.dp
+private val TL_ROW_H = 38.dp
+private val TL_LEFT_W = 140.dp
+
+private fun tlDayFloor(ms: Long): Long =
+    Calendar.getInstance().apply {
+        timeInMillis = ms
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+private data class TLane(val key: String, val label: String, val color: Color?, val tasks: List<Task>)
+
+@Composable
+fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
+    val c = Tessera.colors
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var groupBy by remember { mutableStateOf("assignee") }
+
+    val tasks = state.applyFilterSort(state.tasks)
+    val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
+    val unscheduled = tasks.filter { it.startDate == null && it.dueDate == null }
+
+    // Effective day-floored span of a task (a one-ended task is a 1-day bar).
+    fun span(t: Task): Pair<Long, Long> {
+        val s = parseInstantMillis(t.startDate)
+        val d = parseInstantMillis(t.dueDate)
+        val a = s ?: d ?: 0L
+        val b = d ?: s ?: 0L
+        return tlDayFloor(a) to tlDayFloor(b)
+    }
+
+    val todayMs = tlDayFloor(System.currentTimeMillis())
+    var lo = todayMs
+    var hi = todayMs
+    scheduled.forEach {
+        val (a, b) = span(it)
+        lo = minOf(lo, a)
+        hi = maxOf(hi, b)
+    }
+    lo -= 3 * TL_DAY_MS
+    hi += 14 * TL_DAY_MS
+    val rangeStart = lo
+    val dayCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
+    fun dayIndex(ms: Long): Int = ((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()
+    val axisW = TL_DAY_W * dayCount
+    val todayLeft = TL_DAY_W * dayIndex(todayMs) + TL_DAY_W * 0.5f
+
+    // swimlanes
+    val lanes = remember(scheduled, groupBy, state.tags, state.members, state.columns) {
+        val map = LinkedHashMap<String, Pair<Pair<String, Color?>, MutableList<Task>>>()
+        fun bucket(key: String, label: String, color: Color?) =
+            map.getOrPut(key) { (label to color) to mutableListOf() }.second
+        for (t in scheduled) {
+            when (groupBy) {
+                "assignee" -> {
+                    val id = t.assigneeIds.firstOrNull()
+                    bucket(id ?: "∅", id?.let { state.membersMap[it]?.name } ?: "Не назначено", null).add(t)
+                }
+
+                "tag" -> {
+                    val id = t.tagIds.firstOrNull()
+                    val tag = id?.let { state.tags[it] }
+                    bucket(id ?: "∅", tag?.name ?: "Без тега", tag?.color?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }).add(t)
+                }
+
+                "status" -> {
+                    val col = state.sortedColumns.find { it.id == t.columnId }
+                    bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", col?.color?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }).add(t)
+                }
+
+                else -> bucket("all", "Все задачи", null).add(t)
+            }
+        }
+        map.entries
+            .map { (k, v) -> TLane(k, v.first.first, v.first.second, v.second.sortedBy { span(it).first }) }
+            .sortedBy { if (it.key == "∅") 1 else 0 }
+    }
+
+    val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
+    val hScroll = rememberScrollState()
+    val vScroll = rememberScrollState()
+
+    fun scrollToToday() {
+        val target = with(density) { (TL_DAY_W * (dayIndex(todayMs) - 3)).toPx() }.toInt().coerceAtLeast(0)
+        scope.launch { hScroll.animateScrollTo(target) }
+    }
+    LaunchedEffect(rangeStart) {
+        val target = with(density) { (TL_DAY_W * (dayIndex(todayMs) - 3)).toPx() }.toInt().coerceAtLeast(0)
+        hScroll.scrollTo(target)
+    }
+
+    Column(Modifier.fillMaxSize().background(c.bg).padding(horizontal = 8.dp, vertical = 6.dp)) {
+        // ── toolbar ──
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TimelineGroupPicker(groupBy) { groupBy = it }
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                    .clickableNoRipple { scrollToToday() }.padding(horizontal = 12.dp, vertical = 6.dp),
+            ) { Text("Сегодня", color = c.text2, fontSize = 13.sp) }
+            Spacer(Modifier.weight(1f))
+            if (overdue > 0) {
+                TimelineCounter("$overdue просрочено", Color(0xFFE0533D), c.primary.copy(alpha = 0f))
+                Spacer(Modifier.width(6.dp))
+            }
+            if (unscheduled.isNotEmpty()) TimelineCounter("${unscheduled.size} без дат", c.text3, c.surfaceAlt)
+        }
+        Spacer(Modifier.height(8.dp))
+
+        // ── header: sticky months + days (horizontal-scrolls with the body) ──
+        Row {
+            Box(
+                Modifier.width(TL_LEFT_W).background(c.surfaceAlt).padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.BottomStart,
+            ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+            Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                Column(Modifier.width(axisW)) {
+                    TimelineMonthBand(rangeStart, dayCount)
+                    TimelineDayRow(rangeStart, dayCount, todayMs)
+                }
+            }
+        }
+
+        // ── body ──
+        if (lanes.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
+            }
+        } else {
+            Column(Modifier.weight(1f).verticalScroll(vScroll)) {
+                lanes.forEach { lane ->
+                    // lane header row
+                    Row {
+                        Row(
+                            Modifier.width(TL_LEFT_W).background(c.surfaceAlt)
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(9.dp).clip(RoundedCornerShape(3.dp))
+                                    .background(accentGradient(lane.color ?: c.primary)),
+                            )
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                maxLines = 1, modifier = Modifier.weight(1f, fill = false),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
+                        }
+                        Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                            Box(Modifier.width(axisW).height(28.dp).background(c.surfaceAlt)) {
+                                Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
+                            }
+                        }
+                    }
+                    // task rows
+                    lane.tasks.forEach { t ->
+                        val (a, b) = span(t)
+                        val i0 = dayIndex(a)
+                        val i1 = dayIndex(b)
+                        val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                        Row {
+                            Row(
+                                Modifier.width(TL_LEFT_W).height(TL_ROW_H)
+                                    .clickableNoRipple { onOpenTask(t) }
+                                    .padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp))
+                                        .background(accentGradient(accent)),
+                                )
+                                Spacer(Modifier.width(7.dp))
+                                Text(
+                                    t.title,
+                                    color = if (t.isCompleted) c.text3 else c.text1,
+                                    fontSize = 13.sp, maxLines = 1,
+                                    textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
+                                )
+                            }
+                            Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                                Box(Modifier.width(axisW).height(TL_ROW_H)) {
+                                    Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
+                                    Box(
+                                        Modifier.offset(x = TL_DAY_W * i0, y = 7.dp)
+                                            .width((TL_DAY_W * (i1 - i0 + 1)) - 2.dp).height(24.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .alpha(if (t.isCompleted) 0.5f else 1f)
+                                            .background(accentGradient(accent))
+                                            .clickableNoRipple { onOpenTask(t) }
+                                            .padding(horizontal = 7.dp),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        Text(
+                                            t.title, color = Color.White, fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium, maxLines = 1,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── unscheduled ──
+        if (unscheduled.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Без дат", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                unscheduled.forEach { t ->
+                    val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                    Row(
+                        Modifier.padding(end = 6.dp).clip(RoundedCornerShape(RadiusSm))
+                            .background(c.surfaceAlt).clickableNoRipple { onOpenTask(t) }
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.width(3.dp).height(14.dp).clip(RoundedCornerShape(2.dp)).background(accentGradient(accent)))
+                        Spacer(Modifier.width(6.dp))
+                        Text(t.title, color = c.text1, fontSize = 12.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineGroupPicker(value: String, onPick: (String) -> Unit) {
+    val c = Tessera.colors
+    var open by remember { mutableStateOf(false) }
+    val opts = listOf(
+        "assignee" to "По исполнителю", "tag" to "По тегу",
+        "status" to "По статусу", "none" to "Без группировки",
+    )
+    val label = opts.firstOrNull { it.first == value }?.second ?: "Группировка"
+    Box {
+        Row(
+            Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                .clickableNoRipple { open = true }.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, color = c.text2, fontSize = 13.sp)
+            Spacer(Modifier.width(4.dp))
+            IonIcon(Ion.CHEVRON_DOWN, size = 13.dp, tint = c.text3)
+        }
+        TDropdown(expanded = open, onDismiss = { open = false }) {
+            opts.forEach { (v, l) ->
+                TMenuItem(l, onClick = {
+                    onPick(v)
+                    open = false
+                }, trailing = {
+                    if (v == value) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineCounter(text: String, fg: Color, bg: Color) {
+    Box(
+        Modifier.clip(RoundedCornerShape(20.dp))
+            .background(if (fg == Color(0xFFE0533D)) Color(0xFFE0533D).copy(alpha = 0.12f) else bg)
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+    ) { Text(text, color = fg, fontSize = 11.sp) }
+}
+
+@Composable
+private fun TimelineMonthBand(rangeStart: Long, dayCount: Int) {
+    val c = Tessera.colors
+    // group consecutive days by (year, month)
+    val bands = remember(rangeStart, dayCount) {
+        val out = mutableListOf<Pair<String, Int>>()
+        for (i in 0 until dayCount) {
+            val cal = Calendar.getInstance().apply { timeInMillis = rangeStart + i * TL_DAY_MS }
+            val label = "${TlMonths[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
+            if (out.isNotEmpty() && out.last().first == label) out[out.lastIndex] = label to (out.last().second + 1)
+            else out.add(label to 1)
+        }
+        out
+    }
+    Row(Modifier.height(20.dp)) {
+        bands.forEach { (label, span) ->
+            Box(
+                Modifier.width(TL_DAY_W * span).fillMaxHeight().background(c.surfaceAlt)
+                    .padding(horizontal = 6.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) { Text(label, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+        }
+    }
+}
+
+@Composable
+private fun TimelineDayRow(rangeStart: Long, dayCount: Int, todayMs: Long) {
+    val c = Tessera.colors
+    Row {
+        for (i in 0 until dayCount) {
+            val cal = Calendar.getInstance().apply { timeInMillis = rangeStart + i * TL_DAY_MS }
+            val dow = cal.get(Calendar.DAY_OF_WEEK)
+            val weekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
+            val isToday = tlDayFloor(cal.timeInMillis) == todayMs
+            Column(
+                Modifier.width(TL_DAY_W).height(34.dp)
+                    .background(if (weekend) c.bg else c.surface),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    Modifier.size(18.dp).then(
+                        if (isToday) Modifier.clip(CircleShape).background(accentGradient(c.primary)) else Modifier,
+                    ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "${cal.get(Calendar.DAY_OF_MONTH)}",
+                        color = if (isToday) c.onPrimary else c.text1, fontSize = 11.sp,
+                    )
+                }
+                Text(TlWeekdays[(dow + 5) % 7], color = c.text3, fontSize = 9.sp)
+            }
+        }
+    }
+}
+
+private val TlMonths = listOf("янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")
+private val TlWeekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "вс")
 
 @Composable
 fun BoardEmpty(message: String) {

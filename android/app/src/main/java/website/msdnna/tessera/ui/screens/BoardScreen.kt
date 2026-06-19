@@ -125,6 +125,7 @@ fun BoardScreen(
                             BoardViewMode.List -> BoardListView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
                             BoardViewMode.Calendar -> BoardCalendarView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
                             BoardViewMode.Matrix -> BoardMatrixView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+                            BoardViewMode.Timeline -> BoardTimelineView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
                         }
                     }
                 }

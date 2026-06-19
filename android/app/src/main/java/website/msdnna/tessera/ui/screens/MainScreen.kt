@@ -365,12 +365,14 @@ private val ViewModes = listOf(
     website.msdnna.tessera.ui.viewmodels.BoardViewMode.Kanban,
     website.msdnna.tessera.ui.viewmodels.BoardViewMode.List,
     website.msdnna.tessera.ui.viewmodels.BoardViewMode.Calendar,
+    website.msdnna.tessera.ui.viewmodels.BoardViewMode.Timeline,
     website.msdnna.tessera.ui.viewmodels.BoardViewMode.Matrix,
 )
 private val ViewSegments = listOf(
     website.msdnna.tessera.ui.components.SegmentOption("Доска", Ion.GRID),
     website.msdnna.tessera.ui.components.SegmentOption("Список", Ion.LIST),
     website.msdnna.tessera.ui.components.SegmentOption("Календарь", Ion.CALENDAR),
+    website.msdnna.tessera.ui.components.SegmentOption("Таймлайн", Ion.TIME),
     website.msdnna.tessera.ui.components.SegmentOption("Матрица", Ion.APPS),
 )
 

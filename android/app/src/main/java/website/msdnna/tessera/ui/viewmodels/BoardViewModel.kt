@@ -28,7 +28,7 @@ import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.isoDateKey
 
-enum class BoardViewMode { Kanban, List, Calendar, Matrix }
+enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline }
 
 enum class DueFilter { All, Overdue, Today, Week, Has, None }
 
@@ -650,6 +650,7 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
         BoardViewMode.List -> "list"
         BoardViewMode.Calendar -> "calendar"
         BoardViewMode.Matrix -> "matrix"
+        BoardViewMode.Timeline -> "timeline"
         BoardViewMode.Kanban -> "board"
     },
     groupMode = if (s.groupByTag) "tag" else "status",
@@ -671,6 +672,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
         "list" -> BoardViewMode.List
         "calendar" -> BoardViewMode.Calendar
         "matrix" -> BoardViewMode.Matrix
+        "timeline" -> BoardViewMode.Timeline
         else -> BoardViewMode.Kanban
     },
     groupByTag = c.groupMode == "tag",
