@@ -174,6 +174,8 @@ export const boards = {
   tasks: (id) => api.get(`/boards/${id}/tasks`),
   subtasks: (id) => api.get(`/boards/${id}/subtasks`),
   archive: (id) => api.get(`/boards/${id}/archive`),
+  // Whole-board blocking dependency graph for the Gantt view (raw edge rows).
+  dependencies: (id) => api.get(`/boards/${id}/dependencies`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
   // Per-user saved board views (layouts).
   views: (id) => api.get(`/boards/${id}/views`),

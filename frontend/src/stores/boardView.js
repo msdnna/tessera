@@ -11,7 +11,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const projectId = ref(null) // the open board's project — scopes its tags
   const tagsList = ref([]) // for the header Теги manager
   const prefixNames = ref({}) // canonical tag-prefix → friendly label
-  const layout = ref('board') // 'board' | 'list' | 'calendar' | 'matrix'
+  const layout = ref('board') // 'board' | 'list' | 'calendar' | 'timeline' | 'gantt' | 'matrix'
   const archiveOpen = ref(false)
   const reloadNonce = ref(0) // header-driven changes ask the board to reload
 

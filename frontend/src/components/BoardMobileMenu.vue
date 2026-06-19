@@ -8,6 +8,7 @@ import {
   CalendarClearOutline,
   AppsOutline,
   BarChartOutline,
+  GitNetworkOutline,
   PricetagsOutline,
   ArchiveOutline,
   CheckmarkOutline,
@@ -25,6 +26,7 @@ const layouts = [
   { key: 'layout:list', label: 'Список', icon: renderIcon(ListOutline) },
   { key: 'layout:calendar', label: 'Календарь', icon: renderIcon(CalendarClearOutline) },
   { key: 'layout:timeline', label: 'Таймлайн', icon: renderIcon(BarChartOutline) },
+  { key: 'layout:gantt', label: 'Гант', icon: renderIcon(GitNetworkOutline) },
   { key: 'layout:matrix', label: 'Матрица', icon: renderIcon(AppsOutline) },
 ]
 const options = computed(() => [

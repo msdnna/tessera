@@ -47,6 +47,7 @@ import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
 import BoardTimelineView from './BoardTimelineView.vue'
+import BoardGanttView from './BoardGanttView.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -55,6 +56,9 @@ const wsStore = useWorkspacesStore()
 const boardViewStore = useBoardViewStore()
 // `layout` lives in the store so the header switcher and the board stay in sync.
 const { layout } = storeToRefs(boardViewStore)
+// Timeline + Gantt share the same time-axis substrate (swimlanes, status sort/
+// filter, assignee/none grouping) — gate those facets on either.
+const timelineLike = computed(() => layout.value === 'timeline' || layout.value === 'gantt')
 const route = useRoute()
 const router = useRouter()
 const { isMobile } = useResponsive()
@@ -128,7 +132,7 @@ const sortFieldOptions = [
 // Status sort/filter is offered only on the timeline for now (the board already
 // groups by status into columns, so sorting/filtering by it there is redundant).
 const sortFieldsForMenu = computed(() =>
-  layout.value === 'timeline' ? sortFieldOptions : sortFieldOptions.filter((o) => o.value !== 'status'),
+  timelineLike.value ? sortFieldOptions : sortFieldOptions.filter((o) => o.value !== 'status'),
 )
 // column id → position, for the status sort.
 const colPos = computed(() => {
@@ -244,7 +248,7 @@ const addOptions = computed(() => {
       .map((o) => ({ label: `По тегам · ${o.label}`, key: `g.tagp.${encodeURIComponent(o.value)}` })),
   ]
   // Timeline swimlanes can also be per-assignee or ungrouped.
-  if (layout.value === 'timeline') {
+  if (timelineLike.value) {
     grouping.push({ label: 'По исполнителю', key: 'g.assignee' }, { label: 'Без группировки', key: 'g.none' })
   }
   const opts = [
@@ -273,7 +277,7 @@ const addOptions = computed(() => {
   ]
   // Status (column) filter — timeline only, so the user can hide e.g. the «done»
   // column's completed cards that otherwise crowd the chart.
-  if (layout.value === 'timeline') {
+  if (timelineLike.value) {
     opts.splice(2, 0, {
       label: 'Фильтр: статус',
       key: 'fs',
@@ -414,7 +418,7 @@ const toolbarByLayout = {}
 
 function defaultToolbar(forLayout) {
   return {
-    groupMode: forLayout === 'timeline' ? 'assignee' : 'status',
+    groupMode: forLayout === 'timeline' || forLayout === 'gantt' ? 'assignee' : 'status',
     tagPrefix: '',
     sortLevels: [],
     subtasksExpanded: false,
@@ -1325,6 +1329,19 @@ watch(
 
       <BoardTimelineView
         v-else-if="layout === 'timeline'"
+        :tasks="filteredTasks"
+        :status-columns="columns"
+        :members-map="membersMap"
+        :tags-map="tagsMap"
+        :group-mode="groupMode"
+        :tag-prefix="tagPrefix"
+        @open="openTask"
+        @changed="onChanged"
+      />
+
+      <BoardGanttView
+        v-else-if="layout === 'gantt'"
+        :board-id="boardId"
         :tasks="filteredTasks"
         :status-columns="columns"
         :members-map="membersMap"

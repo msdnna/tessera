@@ -6,6 +6,7 @@ import {
   CalendarClearOutline,
   AppsOutline,
   BarChartOutline,
+  GitNetworkOutline,
 } from '@vicons/ionicons5'
 import { useBoardViewStore } from '@/stores/boardView'
 
@@ -15,6 +16,7 @@ const opts = [
   { value: 'list', label: 'Список', icon: ListOutline },
   { value: 'calendar', label: 'Календарь', icon: CalendarClearOutline },
   { value: 'timeline', label: 'Таймлайн', icon: BarChartOutline },
+  { value: 'gantt', label: 'Гант', icon: GitNetworkOutline },
   { value: 'matrix', label: 'Матрица', icon: AppsOutline },
 ]
 </script>
