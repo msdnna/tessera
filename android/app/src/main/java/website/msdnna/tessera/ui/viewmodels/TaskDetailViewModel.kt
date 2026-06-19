@@ -113,9 +113,9 @@ class TaskDetailViewModel(
     }
 
     /** Sets the due date and recurrence rule together (the due popover commits both). */
-    fun setDueAndRecurrence(dueIso: String?, recurrence: Recurrence?) = mutate {
+    fun setDueAndRecurrence(dueIso: String?, startIso: String?, recurrence: Recurrence?) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), dueDate = dueIso, recurrence = recurrence)
+        boardRepo.updateTask(d.asTask(), dueDate = dueIso, startDate = startIso, recurrence = recurrence)
         reloadDetail()
     }
 

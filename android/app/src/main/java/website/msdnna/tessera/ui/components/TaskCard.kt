@@ -527,12 +527,13 @@ private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel) {
     if (picker) {
         DueDateTimePicker(
             initialIso = task.dueDate,
+            initialStartIso = task.startDate,
             initialRecurrence = task.recurrence,
             columns = state.sortedColumns,
             notifyEnabled = task.dueNotifyEnabled,
             notifyLead = task.dueLeadMinutes,
             notifyRepeat = task.dueRepeatMinutes,
-            onApply = { iso, rec -> vm.setDueAndRecurrence(task, iso, rec) },
+            onApply = { iso, start, rec -> vm.setDueAndRecurrence(task, iso, start, rec) },
             onNotify = { lead, repeat, enabled -> vm.setDueNotify(task, lead, repeat, enabled) },
             onDismiss = { picker = false },
         )

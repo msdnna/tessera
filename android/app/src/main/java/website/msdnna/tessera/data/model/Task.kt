@@ -35,6 +35,7 @@ data class Task(
     @SerializedName("description") val description: String = "",
     @SerializedName("priority") val priority: Int = 0,
     @SerializedName("due_date") val dueDate: String? = null,
+    @SerializedName("start_date") val startDate: String? = null,
     @SerializedName("position") val position: Double = 0.0,
     @SerializedName("created_by") val createdBy: String? = null,
     @SerializedName("completed_at") val completedAt: String? = null,
@@ -69,6 +70,7 @@ data class CreateTaskRequest(
     @SerializedName("description") val description: String = "",
     @SerializedName("priority") val priority: Int = 0,
     @SerializedName("due_date") val dueDate: String? = null,
+    @SerializedName("start_date") val startDate: String? = null,
 )
 
 data class MoveTaskRequest(
@@ -83,6 +85,7 @@ data class UpdateTaskRequest(
     @SerializedName("description") val description: String = "",
     @SerializedName("priority") val priority: Int = 0,
     @SerializedName("due_date") val dueDate: String? = null,
+    @SerializedName("start_date") val startDate: String? = null,
     @SerializedName("completed") val completed: Boolean = false,
     @SerializedName("recurrence") val recurrence: Recurrence? = null,
 )

@@ -565,8 +565,8 @@ class BoardViewModel(
         refreshTasks()
     }
 
-    fun setDueAndRecurrence(task: Task, dueIso: String?, recurrence: Recurrence?) = launchCatching {
-        repo.updateTask(task, dueDate = dueIso, recurrence = recurrence)
+    fun setDueAndRecurrence(task: Task, dueIso: String?, startIso: String?, recurrence: Recurrence?) = launchCatching {
+        repo.updateTask(task, dueDate = dueIso, startDate = startIso, recurrence = recurrence)
         refreshTasks()
     }
 

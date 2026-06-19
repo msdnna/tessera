@@ -204,6 +204,7 @@ fun TaskModal(
                             vm = vm,
                             priority = detail.priority,
                             dueIso = detail.dueDate,
+                            startIso = detail.startDate,
                             recurrence = detail.recurrence,
                             columns = state.columns,
                             notifyEnabled = detail.dueNotifyEnabled,
@@ -375,6 +376,7 @@ private fun PropertyGrid(
     vm: TaskDetailViewModel,
     priority: Int,
     dueIso: String?,
+    startIso: String?,
     recurrence: Recurrence?,
     columns: List<BoardColumn>,
     notifyEnabled: Boolean?,
@@ -402,8 +404,8 @@ private fun PropertyGrid(
         PropRow(Ion.FLAG, "Приоритет") { PriorityValue(priority) { vm.setPriority(it) } }
         PropRow(Ion.CALENDAR, "Срок") {
             DueValue(
-                dueIso, recurrence, columns, notifyEnabled, notifyLead, notifyRepeat,
-                onApply = { iso, rec -> vm.setDueAndRecurrence(iso, rec) },
+                dueIso, startIso, recurrence, columns, notifyEnabled, notifyLead, notifyRepeat,
+                onApply = { iso, start, rec -> vm.setDueAndRecurrence(iso, start, rec) },
                 onNotify = { lead, repeat, enabled -> vm.setDueNotify(lead, repeat, enabled) },
             )
         }
@@ -476,17 +478,25 @@ private fun PriorityValue(priority: Int, onPick: (Int) -> Unit) {
 @Composable
 private fun DueValue(
     dueIso: String?,
+    startIso: String?,
     recurrence: Recurrence?,
     columns: List<BoardColumn>,
     notifyEnabled: Boolean?,
     notifyLead: Int?,
     notifyRepeat: Int?,
-    onApply: (String?, Recurrence?) -> Unit,
+    onApply: (String?, String?, Recurrence?) -> Unit,
     onNotify: (Int?, Int?, Boolean?) -> Unit,
 ) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val label = dueLabel(dueIso)
+    val dueText = dueLabel(dueIso)
+    val startText = dueLabel(startIso)
+    // Show the bar as «начало → срок» when a start is set.
+    val label = when {
+        startText.isNotBlank() && dueText.isNotBlank() -> "$startText → $dueText"
+        startText.isNotBlank() -> "$startText →"
+        else -> dueText
+    }
     Row(
         Modifier.clickableNoRipple { picker = true },
         verticalAlignment = Alignment.CenterVertically,
@@ -504,12 +514,13 @@ private fun DueValue(
     if (picker) {
         DueDateTimePicker(
             initialIso = dueIso,
+            initialStartIso = startIso,
             initialRecurrence = recurrence,
             columns = columns,
             notifyEnabled = notifyEnabled,
             notifyLead = notifyLead,
             notifyRepeat = notifyRepeat,
-            onApply = { iso, rec -> onApply(iso, rec) },
+            onApply = { iso, start, rec -> onApply(iso, start, rec) },
             onNotify = { lead, repeat, enabled -> onNotify(lead, repeat, enabled) },
             onDismiss = { picker = false },
         )

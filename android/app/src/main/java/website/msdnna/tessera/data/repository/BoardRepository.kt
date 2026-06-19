@@ -69,17 +69,22 @@ class BoardRepository {
     suspend fun setDueNotify(taskId: String, lead: Int?, repeat: Int?, enabled: Boolean?): Task =
         api.setDueNotify(taskId, DueNotifyRequest(lead, repeat, enabled))
 
-    /** Full update — pass the task plus the fields you're changing. Recurrence
-     *  defaults to the task's current rule so unrelated edits don't wipe it. */
+    /** Full update — pass the task plus the fields you're changing. Recurrence and
+     *  start_date default to the task's current values so unrelated edits don't
+     *  wipe them (the backend update is full-replace, like web). */
     suspend fun updateTask(
         task: Task,
         title: String = task.title,
         description: String = task.description,
         priority: Int = task.priority,
         dueDate: String? = task.dueDate,
+        startDate: String? = task.startDate,
         completed: Boolean = task.isCompleted,
         recurrence: Recurrence? = task.recurrence,
-    ): Task = api.updateTask(task.id, UpdateTaskRequest(title, description, priority, dueDate, completed, recurrence))
+    ): Task = api.updateTask(
+        task.id,
+        UpdateTaskRequest(title, description, priority, dueDate, startDate, completed, recurrence),
+    )
 
     suspend fun archiveTask(taskId: String) = api.archiveTask(taskId)
     suspend fun deleteTask(taskId: String) = api.deleteTask(taskId)

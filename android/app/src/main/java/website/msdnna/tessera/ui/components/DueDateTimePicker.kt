@@ -1,6 +1,7 @@
 package website.msdnna.tessera.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.millisDayKey
 import website.msdnna.tessera.util.millisToUtcIso
 import website.msdnna.tessera.util.occurrenceKeys
@@ -111,23 +113,24 @@ private val WeekdayShort = listOf("Вс", "Пн", "Вт", "Ср", "Чт", "Пт"
 @Composable
 fun DueDateTimePicker(
     initialIso: String?,
+    initialStartIso: String?,
     initialRecurrence: Recurrence?,
     columns: List<BoardColumn>,
     notifyEnabled: Boolean?,
     notifyLead: Int?,
     notifyRepeat: Int?,
-    onApply: (iso: String?, recurrence: Recurrence?) -> Unit,
+    onApply: (dueIso: String?, startIso: String?, recurrence: Recurrence?) -> Unit,
     onNotify: (lead: Int?, repeat: Int?, enabled: Boolean?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val c = Tessera.colors
     val ws = AppContainer.prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences()).value.weekStart
-    val initial = remember { initialDueCal(initialIso) }
-    var year by remember { mutableIntStateOf(initial.get(Calendar.YEAR)) }
-    var month by remember { mutableIntStateOf(initial.get(Calendar.MONTH)) }
-    var day by remember { mutableIntStateOf(initial.get(Calendar.DAY_OF_MONTH)) }
-    var hour by remember { mutableIntStateOf(initial.get(Calendar.HOUR_OF_DAY)) }
-    var minute by remember { mutableIntStateOf(initial.get(Calendar.MINUTE)) }
+    // The calendar edits one endpoint at a time; `editTarget` says which. Each
+    // endpoint keeps its own working calendar (start = left bar edge, due = right).
+    val dueField = remember { DateField(initialDueCal(initialIso), initialIso != null) }
+    val startField = remember { DateField(initialDueCal(initialStartIso), initialStartIso != null) }
+    var editTarget by remember { mutableStateOf("due") } // 'start' | 'due'
+    val active = if (editTarget == "start") startField else dueField
 
     var freq by remember { mutableStateOf(initialRecurrence?.freq ?: "") }
     var interval by remember { mutableIntStateOf(initialRecurrence?.interval?.coerceAtLeast(1) ?: 1) }
@@ -158,11 +161,11 @@ fun DueDateTimePicker(
     }
 
     fun stepMonth(delta: Int) {
-        val m = month + delta
-        year += Math.floorDiv(m, 12)
-        month = Math.floorMod(m, 12)
-        val maxDay = daysInMonth(year, month)
-        if (day > maxDay) day = maxDay
+        val m = active.month + delta
+        active.year += Math.floorDiv(m, 12)
+        active.month = Math.floorMod(m, 12)
+        val maxDay = daysInMonth(active.year, active.month)
+        if (active.day > maxDay) active.day = maxDay
     }
 
     fun buildRule(): Recurrence? {
@@ -187,13 +190,34 @@ fun DueDateTimePicker(
         if (freq == "custom") {
             val first = customDates.minOrNull() ?: return null
             val (yy, mm, dd) = first.split("-").map { it.toInt() }
-            return localCalOf(yy, mm - 1, dd, hour, minute).timeInMillis
+            return localCalOf(yy, mm - 1, dd, dueField.hour, dueField.minute).timeInMillis
         }
-        return localCalOf(year, month, day, hour, minute).timeInMillis
+        if (!dueField.set) return null
+        return localCalOf(dueField.year, dueField.month, dueField.day, dueField.hour, dueField.minute).timeInMillis
+    }
+    fun startMillis(): Long? {
+        if (!startField.set) return null
+        return localCalOf(startField.year, startField.month, startField.day, startField.hour, startField.minute).timeInMillis
     }
 
     val occKeys = occurrenceKeys(buildRule(), dueMillis(), 24)
-    val selectedKey = if (freq != "custom") millisDayKey(localCalOf(year, month, day, hour, minute).timeInMillis) else ""
+    // The actively-edited endpoint is the filled "selected" day; the other endpoint
+    // is an outlined marker, with the days strictly between shaded as the bar span.
+    val isCustomDue = editTarget == "due" && freq == "custom"
+    val selectedKey = if (!isCustomDue && active.set) {
+        millisDayKey(localCalOf(active.year, active.month, active.day, active.hour, active.minute).timeInMillis)
+    } else {
+        ""
+    }
+    val startDayMs = startMillis()?.let { dayStartMs(it) }
+    val dueDayMs = dueMillis()?.let { dayStartMs(it) }
+    val rangeLo = if (startDayMs != null && dueDayMs != null) minOf(startDayMs, dueDayMs) else null
+    val rangeHi = if (startDayMs != null && dueDayMs != null) maxOf(startDayMs, dueDayMs) else null
+    val altKey = if (editTarget == "start") {
+        dueDayMs?.let { millisDayKey(it) } ?: ""
+    } else {
+        startDayMs?.let { millisDayKey(it) } ?: ""
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -205,17 +229,35 @@ fun DueDateTimePicker(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         ) {
+            // ── start / due target tabs ──
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TargetTab(
+                    label = "Начало",
+                    value = dueShort(startMillis()?.let { millisToUtcIso(it) }).ifBlank { "не задано" },
+                    active = editTarget == "start",
+                    modifier = Modifier.weight(1f),
+                ) { editTarget = "start" }
+                Text("→", color = c.text3, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 6.dp))
+                TargetTab(
+                    label = "Срок",
+                    value = dueShort(dueMillis()?.let { millisToUtcIso(it) }).ifBlank { "не задан" },
+                    active = editTarget == "due",
+                    modifier = Modifier.weight(1f),
+                ) { editTarget = "due" }
+            }
+            Spacer(Modifier.height(12.dp))
+
             // ── calendar header ──
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                NavBtn(double = true, forward = false) { year-- }
+                NavBtn(double = true, forward = false) { active.year-- }
                 NavBtn(double = false, forward = false) { stepMonth(-1) }
                 Text(
-                    "${MonthsFull[month]} $year",
+                    "${MonthsFull[active.month]} ${active.year}",
                     color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center, modifier = Modifier.weight(1f),
                 )
                 NavBtn(double = false, forward = true) { stepMonth(1) }
-                NavBtn(double = true, forward = true) { year++ }
+                NavBtn(double = true, forward = true) { active.year++ }
             }
             Spacer(Modifier.height(8.dp))
 
@@ -229,28 +271,35 @@ fun DueDateTimePicker(
             }
             Spacer(Modifier.height(4.dp))
 
-            val gridStart = monthGridStart(year, month, ws)
+            val gridStart = monthGridStart(active.year, active.month, ws)
             for (week in 0 until 6) {
                 Row(Modifier.fillMaxWidth()) {
                     for (dow in 0 until 7) {
                         val cell = (gridStart.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, week * 7 + dow) }
-                        val inMonth = cell.get(Calendar.MONTH) == month
+                        val inMonth = cell.get(Calendar.MONTH) == active.month
                         val cellDay = cell.get(Calendar.DAY_OF_MONTH)
                         val key = millisDayKey(cell.timeInMillis)
+                        val cellDayMs = dayStartMs(cell.timeInMillis)
                         val isSel = key == selectedKey
+                        val isEnd = !isSel && key.isNotEmpty() && key == altKey
+                        val isRange = !isSel && !isEnd && rangeLo != null && rangeHi != null &&
+                            cellDayMs > rangeLo && cellDayMs < rangeHi
                         DayCell(
                             day = cellDay,
                             inMonth = inMonth,
                             isSelected = isSel,
-                            isOccurrence = !isSel && occKeys.contains(key),
+                            isEndpoint = isEnd,
+                            isRange = isRange,
+                            isOccurrence = !isSel && !isEnd && occKeys.contains(key),
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                if (freq == "custom") {
+                                if (isCustomDue) {
                                     if (customDates.contains(key)) customDates.remove(key) else customDates.add(key)
                                 } else {
-                                    year = cell.get(Calendar.YEAR)
-                                    month = cell.get(Calendar.MONTH)
-                                    day = cellDay
+                                    active.year = cell.get(Calendar.YEAR)
+                                    active.month = cell.get(Calendar.MONTH)
+                                    active.day = cellDay
+                                    active.set = true
                                 }
                             },
                         )
@@ -261,9 +310,15 @@ fun DueDateTimePicker(
             Spacer(Modifier.height(12.dp))
             // ── time steppers ──
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Stepper(value = hour, onChange = { hour = Math.floorMod(it, 24) })
+                Stepper(value = active.hour, onChange = {
+                    active.hour = Math.floorMod(it, 24)
+                    active.set = true
+                })
                 Text(":", color = c.text1, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
-                Stepper(value = minute, onChange = { minute = Math.floorMod(it, 60) }, step = 5)
+                Stepper(value = active.minute, onChange = {
+                    active.minute = Math.floorMod(it, 60)
+                    active.set = true
+                }, step = 5)
             }
 
             Spacer(Modifier.height(14.dp))
@@ -363,10 +418,12 @@ fun DueDateTimePicker(
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Очистить", color = c.text3, fontSize = 14.sp,
+                    "Очистить ${if (editTarget == "start") "начало" else "срок"}",
+                    color = c.text3, fontSize = 14.sp,
                     modifier = Modifier.clickableNoRipple {
-                        onApply(null, null)
-                        onDismiss()
+                        // Clear only the actively-edited endpoint; stay open.
+                        active.set = false
+                        if (editTarget == "due" && freq == "custom") customDates.clear()
                     },
                 )
                 Spacer(Modifier.weight(1f))
@@ -374,8 +431,11 @@ fun DueDateTimePicker(
                 Spacer(Modifier.width(18.dp))
                 TButton("Готово", onClick = {
                     val rule = buildRule()
-                    val iso = dueMillis()?.let { millisToUtcIso(it) }
-                    onApply(iso, rule)
+                    onApply(
+                        dueMillis()?.let { millisToUtcIso(it) },
+                        startMillis()?.let { millisToUtcIso(it) },
+                        rule,
+                    )
                     onDismiss()
                 })
             }
@@ -507,14 +567,32 @@ private fun StepArrow(up: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DayCell(day: Int, inMonth: Boolean, isSelected: Boolean, isOccurrence: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun DayCell(
+    day: Int,
+    inMonth: Boolean,
+    isSelected: Boolean,
+    isEndpoint: Boolean,
+    isRange: Boolean,
+    isOccurrence: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     val c = Tessera.colors
     Box(modifier.aspectRatio(1f).clickableNoRipple(onClick = onClick), contentAlignment = Alignment.Center) {
         Box(
             Modifier.size(36.dp).clip(RoundedCornerShape(RadiusMd)).then(
                 when {
                     isSelected -> Modifier.background(accentGradient(c.primary))
+
+                    isEndpoint ->
+                        Modifier
+                            .background(SolidColor(c.primary.copy(alpha = 0.12f)))
+                            .border(1.5.dp, c.primary, RoundedCornerShape(RadiusMd))
+
+                    isRange -> Modifier.background(SolidColor(c.primary.copy(alpha = 0.09f)))
+
                     isOccurrence -> Modifier.background(SolidColor(c.primary.copy(alpha = 0.16f)))
+
                     else -> Modifier
                 },
             ),
@@ -524,16 +602,58 @@ private fun DayCell(day: Int, inMonth: Boolean, isSelected: Boolean, isOccurrenc
                 day.toString(),
                 color = when {
                     isSelected -> c.onPrimary
-                    isOccurrence -> c.primary
+                    isEndpoint || isOccurrence -> c.primary
                     !inMonth -> c.text3
                     else -> c.text1
                 },
                 fontSize = 14.sp,
-                fontWeight = if (isSelected || isOccurrence) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (isSelected || isEndpoint || isOccurrence) FontWeight.SemiBold else FontWeight.Normal,
             )
         }
     }
 }
+
+/** Small Start/Due tab over the calendar: label on top, current value below. */
+@Composable
+private fun TargetTab(label: String, value: String, active: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val c = Tessera.colors
+    Column(
+        modifier
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(if (active) SolidColor(c.primary.copy(alpha = 0.14f)) else SolidColor(c.surfaceAlt))
+            .clickableNoRipple(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(label, color = if (active) c.primary else c.text3, fontSize = 11.sp)
+        Text(
+            value,
+            color = if (active) c.primary else c.text2,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+/** A working calendar for one bar endpoint (start or due). `set` is whether the
+ *  endpoint currently has a value; year/month still default to today for display. */
+private class DateField(cal: Calendar, hasValue: Boolean) {
+    var year by mutableIntStateOf(cal.get(Calendar.YEAR))
+    var month by mutableIntStateOf(cal.get(Calendar.MONTH))
+    var day by mutableIntStateOf(cal.get(Calendar.DAY_OF_MONTH))
+    var hour by mutableIntStateOf(cal.get(Calendar.HOUR_OF_DAY))
+    var minute by mutableIntStateOf(cal.get(Calendar.MINUTE))
+    var set by mutableStateOf(hasValue)
+}
+
+/** Local-midnight epoch ms for the calendar day containing [millis]. */
+private fun dayStartMs(millis: Long): Long =
+    Calendar.getInstance().apply {
+        timeInMillis = millis
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
 
 @Composable
 private fun NavBtn(double: Boolean, forward: Boolean, onClick: () -> Unit) {
