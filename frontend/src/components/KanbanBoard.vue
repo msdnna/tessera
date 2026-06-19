@@ -46,6 +46,7 @@ import ColumnHeader from './ColumnHeader.vue'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
+import BoardTimelineView from './BoardTimelineView.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -1211,6 +1212,16 @@ watch(
         v-else-if="layout === 'calendar'"
         :tasks="filteredTasks"
         :status-columns="columns"
+        @open="openTask"
+        @changed="onChanged"
+      />
+
+      <BoardTimelineView
+        v-else-if="layout === 'timeline'"
+        :tasks="filteredTasks"
+        :status-columns="columns"
+        :members-map="membersMap"
+        :tags-map="tagsMap"
         @open="openTask"
         @changed="onChanged"
       />
