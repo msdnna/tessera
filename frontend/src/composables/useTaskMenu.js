@@ -79,6 +79,8 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
       description: t.description || '',
       priority: t.priority || 0,
       due_date: t.due_date || null,
+      start_date: t.start_date || null,
+      recurrence: t.recurrence || null,
       completed: !!t.completed_at,
     }
   }

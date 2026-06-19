@@ -112,6 +112,7 @@ const overdue = computed(
   () => !!props.task.due_date && !done.value && Date.parse(props.task.due_date) < Date.now(),
 )
 const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
+const startTs = computed(() => (props.task.start_date ? Date.parse(props.task.start_date) : null))
 const done = computed(() => !!props.task.completed_at)
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
 // Stacked-cards effect: offset colored shadows behind the top tag pill.
@@ -151,6 +152,7 @@ function base() {
     description: props.task.description || '',
     priority: props.task.priority || 0,
     due_date: props.task.due_date || null,
+    start_date: props.task.start_date || null,
     recurrence: props.task.recurrence || null,
     completed: done.value,
   }
@@ -212,6 +214,7 @@ function baseOf(t) {
     description: t.description || '',
     priority: t.priority || 0,
     due_date: t.due_date || null,
+    start_date: t.start_date || null,
     recurrence: t.recurrence || null,
     completed: !!t.completed_at,
   }
@@ -364,6 +367,7 @@ async function toggleSubDone(s) {
     description: s.description || '',
     priority: s.priority || 0,
     due_date: s.due_date || null,
+    start_date: s.start_date || null,
     recurrence: s.recurrence || null,
     completed: !s.completed_at,
   })
@@ -487,6 +491,7 @@ async function submitAddSub() {
           </template>
           <DueEditor
             :due="dueTs"
+            :start="startTs"
             :recurrence="task.recurrence"
             :notify="{ enabled: dueEnabledSel, lead: dueLeadSel, repeat: dueRepeatSel }"
             :columns="columns"

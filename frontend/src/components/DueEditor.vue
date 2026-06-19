@@ -18,18 +18,20 @@ import {
 
 const props = defineProps({
   due: { type: Number, default: null }, // ms
+  start: { type: Number, default: null }, // ms — left edge of the timeline bar
   recurrence: { type: Object, default: null },
   notify: { type: Object, default: () => ({ enabled: 'inherit', lead: -1, repeat: -1 }) },
   columns: { type: Array, default: () => [] }, // [{id,name}]
 })
-// `apply` carries due + recurrence together (one PATCH, no clobber); `notify`
-// is separate (different endpoint).
+// `apply` carries start + due + recurrence together (one PATCH, no clobber);
+// `notify` is separate (different endpoint).
 const emit = defineEmits(['apply', 'notify'])
 
-// commit sends the current due date + recurrence rule as one patch.
+// commit sends the current start/due dates + recurrence rule as one patch.
 function commit() {
   emit('apply', {
     due_date: localDue.value != null ? new Date(localDue.value).toISOString() : null,
+    start_date: localStart.value != null ? new Date(localStart.value).toISOString() : null,
     recurrence: buildRule(),
   })
 }
@@ -49,30 +51,51 @@ function normalizeDueIn(ms) {
   return ms
 }
 
-// ── due date + time ──
+// ── start / due dates + time ──
+// The calendar edits one endpoint at a time; `editTarget` says which. The popover
+// opens on 'due' (it's the "срок" pill) so existing muscle memory is unchanged —
+// the user taps «Начало» to set a start.
 const localDue = ref(normalizeDueIn(props.due))
+const localStart = ref(normalizeDueIn(props.start))
+const editTarget = ref('due') // 'start' | 'due'
 watch(
   () => props.due,
   (v) => {
     localDue.value = normalizeDueIn(v)
-    if (localDue.value != null) {
-      const d = new Date(localDue.value)
-      viewY.value = d.getFullYear()
-      viewM.value = d.getMonth()
-    }
+    if (editTarget.value === 'due') navTo(localDue.value)
   },
 )
-function emitDue(ms) {
-  localDue.value = ms
+watch(
+  () => props.start,
+  (v) => {
+    localStart.value = normalizeDueIn(v)
+    if (editTarget.value === 'start') navTo(localStart.value)
+  },
+)
+// The ms value of whichever endpoint the calendar is currently editing.
+const activeMs = computed(() => (editTarget.value === 'start' ? localStart.value : localDue.value))
+function writeActive(ms) {
+  if (editTarget.value === 'start') localStart.value = ms
+  else localDue.value = ms
   commit()
+}
+function navTo(ms) {
+  if (ms == null) return
+  const d = new Date(ms)
+  viewY.value = d.getFullYear()
+  viewM.value = d.getMonth()
+}
+function pickTarget(t) {
+  editTarget.value = t
+  navTo(activeMs.value)
 }
 function setTime(ms) {
   // n-time-picker gives a ms whose date part may be today; keep our date, take time.
   if (ms == null) return
   const t = new Date(ms)
-  const base = localDue.value != null ? new Date(localDue.value) : new Date()
+  const base = activeMs.value != null ? new Date(activeMs.value) : new Date()
   base.setHours(t.getHours(), t.getMinutes(), 0, 0)
-  emitDue(base.getTime())
+  writeActive(base.getTime())
 }
 
 // ── calendar view ──
@@ -98,7 +121,40 @@ const weekdayHeaders = computed(() => {
 const dayKey = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const todayKey = dayKey(today)
-const selectedKey = computed(() => (localDue.value != null ? dayKey(new Date(localDue.value)) : ''))
+const startKey = computed(() => (localStart.value != null ? dayKey(new Date(localStart.value)) : ''))
+const dueKey = computed(() => (localDue.value != null ? dayKey(new Date(localDue.value)) : ''))
+// The actively-edited endpoint is the "selected" (filled) day; the other endpoint
+// is an outlined marker, with the days strictly between shaded as the bar's span.
+const selectedKey = computed(() => (editTarget.value === 'start' ? startKey.value : dueKey.value))
+const altKey = computed(() => (editTarget.value === 'start' ? dueKey.value : startKey.value))
+const startOfDayMs = (ms) => {
+  const d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+function inRange(d) {
+  if (localStart.value == null || localDue.value == null) return false
+  const t = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const a = startOfDayMs(localStart.value)
+  const b = startOfDayMs(localDue.value)
+  return t > Math.min(a, b) && t < Math.max(a, b)
+}
+
+// short label for the start/due tabs
+function fmtTab(ms) {
+  if (ms == null) return ''
+  const d = new Date(ms)
+  const loc = theme.language === 'en' ? 'en-GB' : 'ru-RU'
+  const o = { day: '2-digit', month: 'short' }
+  if (d.getHours() !== 0 || d.getMinutes() !== 0) {
+    o.hour = '2-digit'
+    o.minute = '2-digit'
+    o.hour12 = theme.timeFormat === '12h'
+    return d.toLocaleString(loc, o)
+  }
+  return d.toLocaleDateString(loc, o)
+}
+const startTabLabel = computed(() => fmtTab(localStart.value))
+const dueTabLabel = computed(() => fmtTab(localDue.value))
 
 // 42-cell grid starting on the week-start on/before the 1st.
 const gridDays = computed(() => {
@@ -118,7 +174,8 @@ const gridDays = computed(() => {
 const occKeys = computed(() => occurrenceKeys(rule.value, localDue.value, 24))
 
 function onDayClick(d) {
-  if (freq.value === 'custom') {
+  // Custom-recurrence date-picking only applies to the due date.
+  if (editTarget.value === 'due' && freq.value === 'custom') {
     const k = dayKey(d)
     const set = new Set(dates.value)
     if (set.has(k)) set.delete(k)
@@ -133,11 +190,12 @@ function onDayClick(d) {
     commit()
     return
   }
-  // Default a fresh due to local midnight (00:00), not the current time.
-  const base = localDue.value != null ? new Date(localDue.value) : null
+  // Default a fresh date to local midnight (00:00), not the current time; keep the
+  // time of day already on the endpoint being edited.
+  const base = activeMs.value != null ? new Date(activeMs.value) : null
   const hh = base ? base.getHours() : 0
   const mm = base ? base.getMinutes() : 0
-  emitDue(new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm, 0, 0).getTime())
+  writeActive(new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm, 0, 0).getTime())
 }
 
 // ── recurrence rule (local mirror of props.recurrence) ──
@@ -333,6 +391,28 @@ const DUE_REPEAT_OPTS = [
 
       <!-- calendar (right) -->
       <div class="de-cal">
+        <!-- start / due target tabs -->
+        <div class="de-targets">
+          <button
+            type="button"
+            class="de-tab"
+            :class="{ active: editTarget === 'start', set: localStart != null }"
+            @click="pickTarget('start')"
+          >
+            <span class="tt-label">Начало</span>
+            <span class="tt-val">{{ startTabLabel || 'не задано' }}</span>
+          </button>
+          <span class="de-arrow">→</span>
+          <button
+            type="button"
+            class="de-tab"
+            :class="{ active: editTarget === 'due', set: localDue != null }"
+            @click="pickTarget('due')"
+          >
+            <span class="tt-label">Срок</span>
+            <span class="tt-val">{{ dueTabLabel || 'не задан' }}</span>
+          </button>
+        </div>
         <div class="de-cal-head">
           <button class="nav" type="button" @click="viewY--"><n-icon :component="PlayBackOutline" :size="13" /></button>
           <button class="nav" type="button" @click="stepMonth(-1)"><n-icon :component="ChevronBackOutline" :size="15" /></button>
@@ -352,7 +432,9 @@ const DUE_REPEAT_OPTS = [
             :class="{
               out: d.getMonth() !== viewM,
               sel: dayKey(d) === selectedKey,
-              occ: dayKey(d) !== selectedKey && occKeys.has(dayKey(d)),
+              endpt: dayKey(d) === altKey && dayKey(d) !== selectedKey,
+              range: inRange(d) && dayKey(d) !== selectedKey && dayKey(d) !== altKey,
+              occ: dayKey(d) !== selectedKey && dayKey(d) !== altKey && occKeys.has(dayKey(d)),
               today: dayKey(d) === todayKey,
             }"
             @click="onDayClick(d)"
@@ -364,11 +446,13 @@ const DUE_REPEAT_OPTS = [
           <n-time-picker
             size="small"
             format="HH:mm"
-            :value="localDue"
+            :value="activeMs"
             placeholder="Время"
             @update:value="setTime"
           />
-          <button class="de-link" type="button" @click="emitDue(null)">Очистить</button>
+          <button class="de-link" type="button" @click="writeActive(null)">
+            Очистить {{ editTarget === 'start' ? 'начало' : 'срок' }}
+          </button>
         </div>
       </div>
     </div>
@@ -486,6 +570,52 @@ const DUE_REPEAT_OPTS = [
   padding: 12px;
   min-width: 248px;
 }
+/* start / due target tabs */
+.de-targets {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.de-arrow {
+  align-self: center;
+  color: var(--t-text3);
+  font-size: 13px;
+}
+.de-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--t-border);
+  background: var(--t-surface);
+  cursor: pointer;
+  text-align: left;
+}
+.de-tab .tt-label {
+  font-size: 11px;
+  color: var(--t-text3);
+}
+.de-tab .tt-val {
+  font-size: 12px;
+  color: var(--t-text2);
+  font-weight: 500;
+}
+.de-tab.set .tt-val {
+  color: var(--t-text1);
+}
+.de-tab.active {
+  border-color: transparent;
+  background: var(--t-accent-grad-subtle);
+}
+.de-tab.active .tt-label {
+  color: var(--t-primary);
+}
+.de-tab.active .tt-val {
+  color: var(--t-primary);
+}
 .de-cal-head {
   display: flex;
   align-items: center;
@@ -550,6 +680,19 @@ const DUE_REPEAT_OPTS = [
   background: color-mix(in srgb, var(--t-primary) 16%, transparent);
   color: var(--t-primary);
   font-weight: 500;
+}
+/* the span between start and due */
+.de-day.range {
+  background: color-mix(in srgb, var(--t-primary) 9%, transparent);
+  color: var(--t-text1);
+  border-radius: 0;
+}
+/* the other (non-active) endpoint of the bar — outlined, not filled */
+.de-day.endpt {
+  background: color-mix(in srgb, var(--t-primary) 12%, transparent);
+  color: var(--t-primary);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1.5px var(--t-primary);
 }
 .de-day.sel {
   background: var(--t-accent-grad);

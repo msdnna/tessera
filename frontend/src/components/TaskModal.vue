@@ -166,6 +166,7 @@ const title = ref('')
 const description = ref('')
 const priority = ref(0)
 const dueTs = ref(null)
+const startTs = ref(null)
 const recurrence = ref(null) // full recurrence rule object | null
 const columns = ref([]) // board columns, for the recurrence trigger/target selects
 const completed = ref(false)
@@ -254,7 +255,13 @@ const author = computed(() => {
   }
   return null
 })
-const dueLabel = computed(() => (dueTs.value ? formatDue(new Date(dueTs.value).toISOString()) : ''))
+const dueLabel = computed(() => {
+  const d = dueTs.value ? formatDue(new Date(dueTs.value).toISOString()) : ''
+  const s = startTs.value ? formatDue(new Date(startTs.value).toISOString()) : ''
+  if (s && d) return `${s} → ${d}`
+  if (s) return `${s} →`
+  return d
+})
 
 // Per-task due-notification selectors (sentinel -1 / 'inherit' = user default),
 // passed to the shared DueEditor.
@@ -302,6 +309,7 @@ async function loadDetail() {
     descInitialMode.value = t.description ? 'preview' : 'write'
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
+    startTs.value = t.start_date ? new Date(t.start_date).getTime() : null
     recurrence.value = t.recurrence || null
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
@@ -357,6 +365,7 @@ function buildPayload() {
     description: description.value,
     priority: priority.value,
     due_date: dueTs.value ? new Date(dueTs.value).toISOString() : null,
+    start_date: startTs.value ? new Date(startTs.value).toISOString() : null,
     recurrence: recurrence.value,
     completed: completed.value,
   }
@@ -370,6 +379,7 @@ async function applyMeta() {
     // back out of done with an advanced due date) — resync from the response.
     completed.value = !!res.data.completed_at
     dueTs.value = res.data.due_date ? new Date(res.data.due_date).getTime() : null
+    startTs.value = res.data.start_date ? new Date(res.data.start_date).getTime() : null
     emit('changed')
   } catch (e) {
     message.error(e.message)
@@ -379,9 +389,10 @@ function setPriority(p) {
   priority.value = p
   applyMeta()
 }
-// DueEditor commits due + recurrence together.
+// DueEditor commits start + due + recurrence together.
 function onDueApply(patch) {
   dueTs.value = patch.due_date ? new Date(patch.due_date).getTime() : null
+  startTs.value = patch.start_date ? new Date(patch.start_date).getTime() : null
   recurrence.value = patch.recurrence
   applyMeta()
 }
@@ -555,6 +566,7 @@ async function toggleSubtask(sub) {
       description: sub.description || '',
       priority: sub.priority || 0,
       due_date: sub.due_date || null,
+      start_date: sub.start_date || null,
       recurrence: sub.recurrence || null,
       completed: !sub.completed_at,
     })
@@ -842,6 +854,7 @@ function eventText(e) {
                 </template>
                 <DueEditor
                   :due="dueTs"
+                  :start="startTs"
                   :recurrence="recurrence"
                   :notify="dueNotify"
                   :columns="columns"
