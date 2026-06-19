@@ -262,6 +262,7 @@ type Task struct {
 	DueNotifyEnabled   *bool            `json:"due_notify_enabled"`
 	Recurrence         *json.RawMessage `json:"recurrence"`
 	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
+	StartDate          *time.Time       `json:"start_date"`
 }
 
 type TaskAssignee struct {

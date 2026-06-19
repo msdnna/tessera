@@ -51,6 +51,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		Description string     `json:"description"`
 		Priority    int32      `json:"priority"`
 		DueDate     *time.Time `json:"due_date"`
+		StartDate   *time.Time `json:"start_date"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -85,6 +86,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		Description: req.Description,
 		Priority:    req.Priority,
 		DueDate:     req.DueDate,
+		StartDate:   req.StartDate,
 		Position:    pos,
 		CreatedBy:   &uid,
 		Number:      &num,
@@ -275,6 +277,7 @@ func (h *API) UpdateTask(c *gin.Context) {
 		Description string           `json:"description"`
 		Priority    int32            `json:"priority"`
 		DueDate     *time.Time       `json:"due_date"`
+		StartDate   *time.Time       `json:"start_date"`
 		Completed   bool             `json:"completed"`
 		Recurrence  *json.RawMessage `json:"recurrence"`
 	}
@@ -299,7 +302,7 @@ func (h *API) UpdateTask(c *gin.Context) {
 	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
 		ID: id, Title: req.Title, Description: req.Description,
 		Priority: req.Priority, DueDate: req.DueDate, CompletedAt: completedAt,
-		Recurrence: recurrence,
+		Recurrence: recurrence, StartDate: req.StartDate,
 	})
 	if err != nil {
 		fail(c)
@@ -346,6 +349,10 @@ func (h *API) journalUpdate(c *gin.Context, before, after db.Task) []string {
 	if !sameTime(before.DueDate, after.DueDate) {
 		h.logEvent(c, after.ID, "due", map[string]any{"set": after.DueDate != nil})
 		changed = append(changed, "срок")
+	}
+	if !sameTime(before.StartDate, after.StartDate) {
+		h.logEvent(c, after.ID, "start", map[string]any{"set": after.StartDate != nil})
+		changed = append(changed, "начало")
 	}
 	switch {
 	case before.CompletedAt == nil && after.CompletedAt != nil:
@@ -421,7 +428,7 @@ func (h *API) MoveTask(c *gin.Context) {
 			if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
 				ID: updated.ID, Title: updated.Title, Description: updated.Description,
 				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
-				Recurrence: updated.Recurrence,
+				Recurrence: updated.Recurrence, StartDate: updated.StartDate,
 			}); derr == nil {
 				updated = done
 				h.logEvent(c, id, "completed", nil)
@@ -435,7 +442,7 @@ func (h *API) MoveTask(c *gin.Context) {
 			if reopened, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
 				ID: updated.ID, Title: updated.Title, Description: updated.Description,
 				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: nil,
-				Recurrence: updated.Recurrence,
+				Recurrence: updated.Recurrence, StartDate: updated.StartDate,
 			}); derr == nil {
 				updated = reopened
 				h.logEvent(c, id, "reopened", nil)

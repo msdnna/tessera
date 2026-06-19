@@ -1391,6 +1391,18 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.49.0] — 2026-06-19
+- **Task start date** (migration **0029**: nullable `tasks.start_date` timestamptz).
+  A task previously had only `due_date` (the right edge of a bar); the upcoming
+  Timeline / Gantt views need an explicit left edge. `start_date` rides on every
+  `t.*` task row (create response, board list, task detail) and is accepted on
+  `POST /boards/:id/tasks` and `PATCH /tasks/:id` exactly like `due_date`. NULL =
+  no start. Like `due_date`/`recurrence` the update is **full-replace** — a
+  task-update payload that omits `start_date` clears it. The field is carried
+  through recurrence advance/clone and the move-completion toggle so unrelated
+  edits don't wipe it; a start change is journalled (`start`) and contributes
+  «начало» to the change summary. No GitLab sync source (start is user-set only).
+
 ### [0.48.0] — 2026-06-19
 - **Eisenhower-matrix quadrant override** (migration **0028**: nullable
   `tasks.eisenhower_quadrant`). The new matrix board view derives a task's quadrant
