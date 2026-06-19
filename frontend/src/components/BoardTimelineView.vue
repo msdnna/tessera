@@ -3,9 +3,17 @@ import { ref, computed, onBeforeUnmount, nextTick, watch } from 'vue'
 import { NDropdown, NPopconfirm } from 'naive-ui'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
+import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad } from '@/utils/gradient'
+import { hueGrad, readableHue } from '@/utils/gradient'
+
+const theme = useThemeStore()
+// Tag colours can be very light; on the preview card's surface they vanish unless
+// we pull them to a readable lightness for the current theme (mirrors the board).
+function readableTag(hex) {
+  return readableHue(hex || '#888', theme.isDark)
+}
 
 const props = defineProps({
   tasks: { type: Array, default: () => [] },
@@ -144,8 +152,8 @@ const lanes = computed(() => {
     }
   }
   const arr = [...buckets.values()].filter((l) => l.tasks.length || mode === 'status')
-  // Sort each lane's tasks by start, then keep "unassigned/empty" lanes last.
-  for (const l of arr) l.tasks.sort((x, y) => spanOf(x).a - spanOf(y).a)
+  // Lane tasks keep the incoming `props.tasks` order — which already reflects the
+  // composer's sort (e.g. «Сорт: Статус»); re-sorting by start here would override it.
   if (mode !== 'status') arr.sort((a, b) => (a.key === '∅' ? 1 : 0) - (b.key === '∅' ? 1 : 0))
   return arr
 })
@@ -260,14 +268,13 @@ const todayLeft = computed(() => dayIndex(todayMs) * dayW.value + dayW.value / 2
 
 // ── scroll-to-today ──
 const scrollEl = ref(null)
-function centerToday() {
+function centerToday(smooth = true) {
   const el = scrollEl.value
   if (!el) return
-  el.scrollLeft = Math.max(0, dayIndex(todayMs) * dayW.value - el.clientWidth / 2 + LEFT_W)
+  const left = Math.max(0, dayIndex(todayMs) * dayW.value - el.clientWidth / 2 + LEFT_W)
+  el.scrollTo({ left, behavior: smooth ? 'smooth' : 'auto' })
 }
-watch(scrollEl, (el) => el && nextTick(centerToday))
-// Keep today roughly in view across zoom changes.
-watch(dayW, () => nextTick(centerToday))
+watch(scrollEl, (el) => el && nextTick(() => centerToday(false)))
 
 // ── pan: middle-button anywhere, or left-drag on empty timeline space ──
 // (bars stop propagation on their own pointerdown, so a pointerdown that reaches
@@ -361,7 +368,7 @@ function initials(name) {
       @pointerdown="onPanDown"
       @wheel="onWheel"
     >
-      <div class="tl-inner" :style="{ width: `${LEFT_W + axisW}px` }">
+      <div class="tl-inner" :class="{ animate: !drag }" :style="{ width: `${LEFT_W + axisW}px` }">
         <!-- header: month band + day band -->
         <div class="tl-head">
           <div class="tl-corner" :style="{ width: `${LEFT_W}px` }">Задача</div>
@@ -391,8 +398,10 @@ function initials(name) {
           </div>
         </div>
 
-        <!-- swimlanes -->
-        <template v-for="lane in lanes" :key="lane.key">
+        <!-- swimlanes (one continuous today-line spans the whole body) -->
+        <div class="tl-body">
+          <div class="tl-today" :style="{ left: `${LEFT_W + todayLeft}px` }" />
+          <template v-for="lane in lanes" :key="lane.key">
           <div class="tl-lanehead">
             <div class="tl-left lane" :style="{ width: `${LEFT_W}px` }">
               <span
@@ -402,9 +411,7 @@ function initials(name) {
               <span class="lane-name">{{ lane.label }}</span>
               <span class="lane-count">{{ lane.tasks.length }}</span>
             </div>
-            <div class="tl-track laneband" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }">
-              <div class="today-line" :style="{ left: `${todayLeft}px` }" />
-            </div>
+            <div class="tl-track laneband" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }" />
           </div>
 
           <div v-for="t in lane.tasks" :key="t.id" class="tl-row">
@@ -413,7 +420,6 @@ function initials(name) {
               <span class="row-title" :class="{ done: t.completed_at }">{{ t.title }}</span>
             </div>
             <div class="tl-track" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }">
-              <div class="today-line" :style="{ left: `${todayLeft}px` }" />
               <div
                 class="bar"
                 :class="{ done: t.completed_at, point: !(geom(t).hasStart && geom(t).hasDue) }"
@@ -434,7 +440,8 @@ function initials(name) {
               </div>
             </div>
           </div>
-        </template>
+          </template>
+        </div>
 
         <div v-if="!lanes.length" class="tl-empty">Нет задач со сроками. Задайте срок или начало в карточке.</div>
       </div>
@@ -517,7 +524,7 @@ function initials(name) {
             v-for="tg in hoverTags"
             :key="tg.id"
             class="pv-tag"
-            :style="{ color: tg.color || 'var(--t-primary)', borderColor: tg.color || 'var(--t-primary)' }"
+            :style="{ color: readableTag(tg.color), borderColor: readableTag(tg.color) }"
           >{{ tg.name }}</span>
         </div>
         <div v-if="hoverAssignees.length" class="pv-assignees">
@@ -610,12 +617,13 @@ function initials(name) {
   display: flex;
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 6;
 }
 .tl-corner {
+  box-sizing: border-box;
   position: sticky;
   left: 0;
-  z-index: 6;
+  z-index: 7;
   flex: 0 0 auto;
   background: var(--t-surface-alt, var(--t-hover));
   border-right: 1px solid var(--t-border);
@@ -636,12 +644,14 @@ function initials(name) {
   border-bottom: 1px solid var(--t-border);
 }
 .tl-month {
+  box-sizing: border-box;
   flex: 0 0 auto;
   font-size: 12px;
   font-weight: 600;
   color: var(--t-text2);
   padding: 3px 8px;
   white-space: nowrap;
+  overflow: hidden;
   border-right: 1px solid var(--t-border);
   background: var(--t-surface-alt, var(--t-hover));
   text-transform: capitalize;
@@ -652,6 +662,9 @@ function initials(name) {
   border-bottom: 1px solid var(--t-border);
 }
 .tl-dayh {
+  /* border-box so a cell's total width == the inline `dayW`, keeping the day
+     headers aligned with the bar/gridline/today-line geometry (which use dayW). */
+  box-sizing: border-box;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -686,9 +699,10 @@ function initials(name) {
   display: flex;
 }
 .tl-left.lane {
+  box-sizing: border-box;
   position: sticky;
   left: 0;
-  z-index: 3;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -730,9 +744,10 @@ function initials(name) {
   display: flex;
 }
 .tl-left {
+  box-sizing: border-box;
   position: sticky;
   left: 0;
-  z-index: 2;
+  z-index: 4;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -779,7 +794,12 @@ function initials(name) {
     color-mix(in srgb, var(--t-border) 45%, transparent) var(--tl-day-w, 34px)
   );
 }
-.today-line {
+/* one continuous today-line spanning every lane + row (a child of .tl-body so it
+   scrolls horizontally with the content; hidden behind the sticky left column) */
+.tl-body {
+  position: relative;
+}
+.tl-today {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -787,6 +807,13 @@ function initials(name) {
   background: color-mix(in srgb, var(--t-primary) 70%, transparent);
   z-index: 1;
   pointer-events: none;
+}
+/* glide bars + today-line on zoom; never while dragging (would lag the cursor) */
+.tl-inner.animate .bar {
+  transition: left 0.18s ease, width 0.18s ease;
+}
+.tl-inner.animate .tl-today {
+  transition: left 0.18s ease;
 }
 
 .bar {
@@ -894,6 +921,17 @@ function initials(name) {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  animation: tl-pv-in 0.14s ease;
+}
+@keyframes tl-pv-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .pv-head {
   display: flex;
