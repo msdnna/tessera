@@ -920,36 +920,37 @@ function eventText(e) {
                     >
                   </button>
                 </template>
-                <!-- points: pick from the scale; time/custom: free-text parse -->
-                <div v-if="estOptions.length" class="menu est-menu">
-                  <div class="menu-item" @click="clearEstimate">
-                    <span class="grow muted">Не задана</span>
-                    <n-icon v-if="estimate == null" :component="CheckmarkOutline" class="chk" />
+                <div class="est-pop">
+                  <div v-if="estOptions.length" class="menu est-menu">
+                    <div class="menu-item" @click="clearEstimate">
+                      <span class="grow muted">Не задана</span>
+                      <n-icon v-if="estimate == null" :component="CheckmarkOutline" class="chk" />
+                    </div>
+                    <div
+                      v-for="o in estOptions"
+                      :key="o.value"
+                      class="menu-item"
+                      @click="setEstimate(o.value)"
+                    >
+                      <span class="grow">{{ o.label }}</span>
+                      <n-icon
+                        v-if="estimate === o.value"
+                        :component="CheckmarkOutline"
+                        class="chk"
+                      />
+                    </div>
                   </div>
-                  <div
-                    v-for="o in estOptions"
-                    :key="o.value"
-                    class="menu-item"
-                    @click="setEstimate(o.value)"
-                  >
-                    <span class="grow">{{ o.label }}</span>
-                    <n-icon
-                      v-if="estimate === o.value"
-                      :component="CheckmarkOutline"
-                      class="chk"
+                  <div v-else class="est-edit">
+                    <n-input
+                      v-model:value="estInput"
+                      size="small"
+                      :placeholder="estPlaceholder"
+                      @keydown.enter.prevent="applyEstInput"
                     />
-                  </div>
-                </div>
-                <div v-else class="est-edit">
-                  <n-input
-                    v-model:value="estInput"
-                    size="small"
-                    :placeholder="estPlaceholder"
-                    @keydown.enter.prevent="applyEstInput"
-                  />
-                  <div class="est-actions">
-                    <n-button size="tiny" tertiary @click="clearEstimate">Очистить</n-button>
-                    <n-button size="tiny" type="primary" @click="applyEstInput">ОК</n-button>
+                    <div class="est-actions">
+                      <n-button size="tiny" tertiary @click="clearEstimate">Очистить</n-button>
+                      <n-button size="tiny" type="primary" @click="applyEstInput">ОК</n-button>
+                    </div>
                   </div>
                 </div>
               </n-popover>
