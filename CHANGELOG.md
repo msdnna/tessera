@@ -1475,7 +1475,16 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
-### [0.49.0] — 2026-06-19
+### [0.50.0] — 2026-06-19
+- **Board dependency graph** — `GET /boards/:id/dependencies` returns every
+  blocking edge (`blocks`/`blocked_by`) where **both** endpoints live on the
+  board, as raw `{id, task_id, related_task_id, kind}` rows. The Gantt view
+  fetches the whole graph in one call to draw dependency arrows (the existing
+  per-task `/tasks/:id/relations` would need one round-trip per bar). Accepts a
+  board UUID or slug; member-gated. No new table — reuses the existing
+  `task_relations` (since migration 0006 it already carries `blocks`/`blocked_by`
+  kinds with full add/delete + the task-modal links UI). The client normalises
+  to blocker→blocked; the relation `id` lets it delete an edge directly.
 - **Task start date** (migration **0029**: nullable `tasks.start_date` timestamptz).
   A task previously had only `due_date` (the right edge of a bar); the upcoming
   Timeline / Gantt views need an explicit left edge. `start_date` rides on every

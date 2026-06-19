@@ -345,6 +345,41 @@ func (h *API) AddRelation(c *gin.Context) {
 	c.Status(http.StatusCreated)
 }
 
+// BoardDependencies returns every blocking edge among a board's tasks — the
+// Gantt view fetches the whole graph at once (the per-task /relations endpoint
+// would need one round-trip per bar). Accepts a board UUID or slug like GetBoard.
+func (h *API) BoardDependencies(c *gin.Context) {
+	param := c.Param("id")
+	var b db.Board
+	var err error
+	if id, perr := uuid.Parse(param); perr == nil {
+		b, err = h.q.GetBoard(c, id)
+	} else {
+		b, err = h.q.GetBoardBySlug(c, param)
+	}
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	rows, err := h.q.ListBoardDependencies(c, b.ID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, orEmpty(rows))
+}
+
 // inverseRelationKind flips a directed relation kind for the referenced task's
 // side (relates/duplicates are symmetric; blocks ⇄ blocked_by).
 func inverseRelationKind(kind string) string {

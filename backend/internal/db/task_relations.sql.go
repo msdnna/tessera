@@ -106,6 +106,52 @@ func (q *Queries) GetTaskRelation(ctx context.Context, id uuid.UUID) (TaskRelati
 	return i, err
 }
 
+const listBoardDependencies = `-- name: ListBoardDependencies :many
+SELECT r.id, r.task_id, r.related_task_id, r.kind
+FROM task_relations r
+JOIN tasks t  ON t.id  = r.task_id
+JOIN tasks rt ON rt.id = r.related_task_id
+WHERE t.board_id = $1 AND rt.board_id = $1
+  AND r.kind IN ('blocks', 'blocked_by')
+`
+
+type ListBoardDependenciesRow struct {
+	ID            uuid.UUID `json:"id"`
+	TaskID        uuid.UUID `json:"task_id"`
+	RelatedTaskID uuid.UUID `json:"related_task_id"`
+	Kind          string    `json:"kind"`
+}
+
+// Every blocking dependency where BOTH endpoints live on the given board — the
+// Gantt view's whole-board edge graph (drawn as arrows). Rows are returned raw
+// (task_id/related_task_id/kind); the client normalises to blocker→blocked
+// (kind='blocks' → task_id blocks related_task_id; 'blocked_by' → the reverse).
+// The relation id lets the client delete an edge directly.
+func (q *Queries) ListBoardDependencies(ctx context.Context, boardID uuid.UUID) ([]ListBoardDependenciesRow, error) {
+	rows, err := q.db.Query(ctx, listBoardDependencies, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBoardDependenciesRow
+	for rows.Next() {
+		var i ListBoardDependenciesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.RelatedTaskID,
+			&i.Kind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTaskRelations = `-- name: ListTaskRelations :many
 SELECT
     r.id, r.task_id, r.related_task_id, r.kind, r.created_at,

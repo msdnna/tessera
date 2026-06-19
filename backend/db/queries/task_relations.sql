@@ -24,6 +24,19 @@ JOIN tasks t ON t.id = r.related_task_id
 WHERE r.task_id = $1
 ORDER BY r.created_at;
 
+-- name: ListBoardDependencies :many
+-- Every blocking dependency where BOTH endpoints live on the given board — the
+-- Gantt view's whole-board edge graph (drawn as arrows). Rows are returned raw
+-- (task_id/related_task_id/kind); the client normalises to blocker→blocked
+-- (kind='blocks' → task_id blocks related_task_id; 'blocked_by' → the reverse).
+-- The relation id lets the client delete an edge directly.
+SELECT r.id, r.task_id, r.related_task_id, r.kind
+FROM task_relations r
+JOIN tasks t  ON t.id  = r.task_id
+JOIN tasks rt ON rt.id = r.related_task_id
+WHERE t.board_id = $1 AND rt.board_id = $1
+  AND r.kind IN ('blocks', 'blocked_by');
+
 -- name: GetTaskRelation :one
 SELECT * FROM task_relations WHERE id = $1;
 

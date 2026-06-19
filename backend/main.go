@@ -181,6 +181,7 @@ func main() {
 			protected.GET("/boards/:id/tasks", rh.ListBoardTasks)
 			protected.GET("/boards/:id/subtasks", rh.ListBoardSubtasks)
 			protected.GET("/boards/:id/archive", rh.ListBoardArchived)
+			protected.GET("/boards/:id/dependencies", rh.BoardDependencies)
 			protected.GET("/boards/:id/views", rh.ListBoardViews)
 			protected.POST("/boards/:id/views", rh.SaveBoardView)
 			protected.DELETE("/views/:id", rh.DeleteBoardView)
