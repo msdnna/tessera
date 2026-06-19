@@ -6,6 +6,7 @@ import {
   GridOutline,
   ListOutline,
   CalendarClearOutline,
+  AppsOutline,
   PricetagsOutline,
   ArchiveOutline,
   CheckmarkOutline,
@@ -22,6 +23,7 @@ const layouts = [
   { key: 'layout:board', label: 'Доска', icon: renderIcon(GridOutline) },
   { key: 'layout:list', label: 'Список', icon: renderIcon(ListOutline) },
   { key: 'layout:calendar', label: 'Календарь', icon: renderIcon(CalendarClearOutline) },
+  { key: 'layout:matrix', label: 'Матрица', icon: renderIcon(AppsOutline) },
 ]
 const options = computed(() => [
   { key: 'view', type: 'group', label: 'Представление', children: layouts },

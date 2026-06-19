@@ -10,6 +10,7 @@ import website.msdnna.tessera.data.model.DueNotifyRequest
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
 import website.msdnna.tessera.data.model.Recurrence
+import website.msdnna.tessera.data.model.SetEisenhowerRequest
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
@@ -59,6 +60,10 @@ class BoardRepository {
 
     suspend fun setParent(taskId: String, parentId: String?): Task =
         api.setTaskParent(taskId, SetParentRequest(parentId))
+
+    /** Pin a task to an Eisenhower quadrant (0-3), or null to derive it automatically. */
+    suspend fun setEisenhower(taskId: String, quadrant: Int?): Task =
+        api.setTaskEisenhower(taskId, SetEisenhowerRequest(quadrant))
 
     /** Per-task due-notification overrides (null = inherit the user default). */
     suspend fun setDueNotify(taskId: String, lead: Int?, repeat: Int?, enabled: Boolean?): Task =

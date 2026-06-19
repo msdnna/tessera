@@ -124,6 +124,7 @@ fun BoardScreen(
                             BoardViewMode.Kanban -> KanbanView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
                             BoardViewMode.List -> BoardListView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
                             BoardViewMode.Calendar -> BoardCalendarView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+                            BoardViewMode.Matrix -> BoardMatrixView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
                         }
                     }
                 }

@@ -729,6 +729,38 @@ func (h *API) RemoveTaskAssignee(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// SetTaskEisenhower pins a task to an Eisenhower-matrix quadrant (0-3), or clears
+// the override (quadrant null → the matrix derives it from priority + due-date).
+// Driven by the matrix view's drag-between-quadrants and «сбросить на авто».
+func (h *API) SetTaskEisenhower(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	var req struct {
+		Quadrant *int16 `json:"quadrant"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Quadrant != nil && (*req.Quadrant < 0 || *req.Quadrant > 3) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "quadrant must be 0-3 or null"})
+		return
+	}
+	t, err := h.q.SetTaskEisenhower(c, db.SetTaskEisenhowerParams{ID: id, EisenhowerQuadrant: req.Quadrant})
+	if err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.updated", t)
+	c.JSON(http.StatusOK, t)
+}
+
 // ── helpers ────────────────────────────────────────────────
 
 // loadTask fetches a task and authorizes the caller against its workspace.

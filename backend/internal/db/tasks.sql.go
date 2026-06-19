@@ -36,7 +36,7 @@ INSERT INTO tasks (
     board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, number
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant
 `
 
 type CreateTaskParams struct {
@@ -86,6 +86,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.DueRepeatMinutes,
 		&i.DueNotifyEnabled,
 		&i.Recurrence,
+		&i.EisenhowerQuadrant,
 	)
 	return i, err
 }
@@ -109,7 +110,7 @@ func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) error
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence FROM tasks WHERE id = $1
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant FROM tasks WHERE id = $1
 `
 
 func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
@@ -135,13 +136,14 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.DueRepeatMinutes,
 		&i.DueNotifyEnabled,
 		&i.Recurrence,
+		&i.EisenhowerQuadrant,
 	)
 	return i, err
 }
 
 const listBoardArchivedWithMeta = `-- name: ListBoardArchivedWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
 FROM tasks t
@@ -158,27 +160,28 @@ ORDER BY t.archived_at DESC
 `
 
 type ListBoardArchivedWithMetaRow struct {
-	ID               uuid.UUID        `json:"id"`
-	BoardID          uuid.UUID        `json:"board_id"`
-	ColumnID         uuid.UUID        `json:"column_id"`
-	ParentID         *uuid.UUID       `json:"parent_id"`
-	Title            string           `json:"title"`
-	Description      string           `json:"description"`
-	Priority         int32            `json:"priority"`
-	DueDate          *time.Time       `json:"due_date"`
-	Position         float64          `json:"position"`
-	CreatedBy        *uuid.UUID       `json:"created_by"`
-	CompletedAt      *time.Time       `json:"completed_at"`
-	CreatedAt        time.Time        `json:"created_at"`
-	UpdatedAt        time.Time        `json:"updated_at"`
-	ArchivedAt       *time.Time       `json:"archived_at"`
-	Number           *int64           `json:"number"`
-	DueLeadMinutes   *int32           `json:"due_lead_minutes"`
-	DueRepeatMinutes *int32           `json:"due_repeat_minutes"`
-	DueNotifyEnabled *bool            `json:"due_notify_enabled"`
-	Recurrence       *json.RawMessage `json:"recurrence"`
-	TagIds           []uuid.UUID      `json:"tag_ids"`
-	AssigneeIds      []uuid.UUID      `json:"assignee_ids"`
+	ID                 uuid.UUID        `json:"id"`
+	BoardID            uuid.UUID        `json:"board_id"`
+	ColumnID           uuid.UUID        `json:"column_id"`
+	ParentID           *uuid.UUID       `json:"parent_id"`
+	Title              string           `json:"title"`
+	Description        string           `json:"description"`
+	Priority           int32            `json:"priority"`
+	DueDate            *time.Time       `json:"due_date"`
+	Position           float64          `json:"position"`
+	CreatedBy          *uuid.UUID       `json:"created_by"`
+	CompletedAt        *time.Time       `json:"completed_at"`
+	CreatedAt          time.Time        `json:"created_at"`
+	UpdatedAt          time.Time        `json:"updated_at"`
+	ArchivedAt         *time.Time       `json:"archived_at"`
+	Number             *int64           `json:"number"`
+	DueLeadMinutes     *int32           `json:"due_lead_minutes"`
+	DueRepeatMinutes   *int32           `json:"due_repeat_minutes"`
+	DueNotifyEnabled   *bool            `json:"due_notify_enabled"`
+	Recurrence         *json.RawMessage `json:"recurrence"`
+	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
+	TagIds             []uuid.UUID      `json:"tag_ids"`
+	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
 }
 
 // ListBoardArchivedWithMeta returns a board's archived tasks: top-level ones
@@ -213,6 +216,7 @@ func (q *Queries) ListBoardArchivedWithMeta(ctx context.Context, boardID uuid.UU
 			&i.DueRepeatMinutes,
 			&i.DueNotifyEnabled,
 			&i.Recurrence,
+			&i.EisenhowerQuadrant,
 			&i.TagIds,
 			&i.AssigneeIds,
 		); err != nil {
@@ -228,7 +232,7 @@ func (q *Queries) ListBoardArchivedWithMeta(ctx context.Context, boardID uuid.UU
 
 const listBoardSubtasksWithMeta = `-- name: ListBoardSubtasksWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
 FROM tasks t
@@ -240,27 +244,28 @@ ORDER BY t.position
 `
 
 type ListBoardSubtasksWithMetaRow struct {
-	ID               uuid.UUID        `json:"id"`
-	BoardID          uuid.UUID        `json:"board_id"`
-	ColumnID         uuid.UUID        `json:"column_id"`
-	ParentID         *uuid.UUID       `json:"parent_id"`
-	Title            string           `json:"title"`
-	Description      string           `json:"description"`
-	Priority         int32            `json:"priority"`
-	DueDate          *time.Time       `json:"due_date"`
-	Position         float64          `json:"position"`
-	CreatedBy        *uuid.UUID       `json:"created_by"`
-	CompletedAt      *time.Time       `json:"completed_at"`
-	CreatedAt        time.Time        `json:"created_at"`
-	UpdatedAt        time.Time        `json:"updated_at"`
-	ArchivedAt       *time.Time       `json:"archived_at"`
-	Number           *int64           `json:"number"`
-	DueLeadMinutes   *int32           `json:"due_lead_minutes"`
-	DueRepeatMinutes *int32           `json:"due_repeat_minutes"`
-	DueNotifyEnabled *bool            `json:"due_notify_enabled"`
-	Recurrence       *json.RawMessage `json:"recurrence"`
-	TagIds           []uuid.UUID      `json:"tag_ids"`
-	AssigneeIds      []uuid.UUID      `json:"assignee_ids"`
+	ID                 uuid.UUID        `json:"id"`
+	BoardID            uuid.UUID        `json:"board_id"`
+	ColumnID           uuid.UUID        `json:"column_id"`
+	ParentID           *uuid.UUID       `json:"parent_id"`
+	Title              string           `json:"title"`
+	Description        string           `json:"description"`
+	Priority           int32            `json:"priority"`
+	DueDate            *time.Time       `json:"due_date"`
+	Position           float64          `json:"position"`
+	CreatedBy          *uuid.UUID       `json:"created_by"`
+	CompletedAt        *time.Time       `json:"completed_at"`
+	CreatedAt          time.Time        `json:"created_at"`
+	UpdatedAt          time.Time        `json:"updated_at"`
+	ArchivedAt         *time.Time       `json:"archived_at"`
+	Number             *int64           `json:"number"`
+	DueLeadMinutes     *int32           `json:"due_lead_minutes"`
+	DueRepeatMinutes   *int32           `json:"due_repeat_minutes"`
+	DueNotifyEnabled   *bool            `json:"due_notify_enabled"`
+	Recurrence         *json.RawMessage `json:"recurrence"`
+	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
+	TagIds             []uuid.UUID      `json:"tag_ids"`
+	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
 }
 
 // ListBoardSubtasksWithMeta returns every subtask on a board (parent_id set)
@@ -294,6 +299,7 @@ func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UU
 			&i.DueRepeatMinutes,
 			&i.DueNotifyEnabled,
 			&i.Recurrence,
+			&i.EisenhowerQuadrant,
 			&i.TagIds,
 			&i.AssigneeIds,
 		); err != nil {
@@ -309,7 +315,7 @@ func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UU
 
 const listBoardTasksWithMeta = `-- name: ListBoardTasksWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
     COALESCE(array_agg(DISTINCT ga.gl_name) FILTER (WHERE ga.gl_name IS NOT NULL), '{}')::text[] AS gitlab_assignees,
@@ -348,6 +354,7 @@ type ListBoardTasksWithMetaRow struct {
 	DueRepeatMinutes      *int32           `json:"due_repeat_minutes"`
 	DueNotifyEnabled      *bool            `json:"due_notify_enabled"`
 	Recurrence            *json.RawMessage `json:"recurrence"`
+	EisenhowerQuadrant    *int16           `json:"eisenhower_quadrant"`
 	TagIds                []uuid.UUID      `json:"tag_ids"`
 	AssigneeIds           []uuid.UUID      `json:"assignee_ids"`
 	GitlabAssignees       []string         `json:"gitlab_assignees"`
@@ -390,6 +397,7 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID)
 			&i.DueRepeatMinutes,
 			&i.DueNotifyEnabled,
 			&i.Recurrence,
+			&i.EisenhowerQuadrant,
 			&i.TagIds,
 			&i.AssigneeIds,
 			&i.GitlabAssignees,
@@ -410,7 +418,7 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID)
 }
 
 const listScheduleRecurDue = `-- name: ListScheduleRecurDue :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence FROM tasks
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant FROM tasks
 WHERE archived_at IS NULL
   AND completed_at IS NULL
   AND due_date IS NOT NULL
@@ -419,8 +427,8 @@ WHERE archived_at IS NULL
 ORDER BY due_date
 `
 
-// ListScheduleRecurDue returns active, undated... no — returns active tasks whose
-// recurrence fires on a schedule and whose due date has passed, for the worker.
+// ListScheduleRecurDue returns active tasks whose recurrence fires on a schedule
+// and whose due date has passed — the schedule worker advances each one.
 func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 	rows, err := q.db.Query(ctx, listScheduleRecurDue)
 	if err != nil {
@@ -450,6 +458,7 @@ func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 			&i.DueRepeatMinutes,
 			&i.DueNotifyEnabled,
 			&i.Recurrence,
+			&i.EisenhowerQuadrant,
 		); err != nil {
 			return nil, err
 		}
@@ -462,7 +471,7 @@ func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 }
 
 const listSubtasks = `-- name: ListSubtasks :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence FROM tasks WHERE parent_id = $1 ORDER BY position
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant FROM tasks WHERE parent_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task, error) {
@@ -494,6 +503,7 @@ func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task
 			&i.DueRepeatMinutes,
 			&i.DueNotifyEnabled,
 			&i.Recurrence,
+			&i.EisenhowerQuadrant,
 		); err != nil {
 			return nil, err
 		}
@@ -507,7 +517,7 @@ func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task
 
 const listSubtasksWithMeta = `-- name: ListSubtasksWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
 FROM tasks t
@@ -519,27 +529,28 @@ ORDER BY t.position
 `
 
 type ListSubtasksWithMetaRow struct {
-	ID               uuid.UUID        `json:"id"`
-	BoardID          uuid.UUID        `json:"board_id"`
-	ColumnID         uuid.UUID        `json:"column_id"`
-	ParentID         *uuid.UUID       `json:"parent_id"`
-	Title            string           `json:"title"`
-	Description      string           `json:"description"`
-	Priority         int32            `json:"priority"`
-	DueDate          *time.Time       `json:"due_date"`
-	Position         float64          `json:"position"`
-	CreatedBy        *uuid.UUID       `json:"created_by"`
-	CompletedAt      *time.Time       `json:"completed_at"`
-	CreatedAt        time.Time        `json:"created_at"`
-	UpdatedAt        time.Time        `json:"updated_at"`
-	ArchivedAt       *time.Time       `json:"archived_at"`
-	Number           *int64           `json:"number"`
-	DueLeadMinutes   *int32           `json:"due_lead_minutes"`
-	DueRepeatMinutes *int32           `json:"due_repeat_minutes"`
-	DueNotifyEnabled *bool            `json:"due_notify_enabled"`
-	Recurrence       *json.RawMessage `json:"recurrence"`
-	TagIds           []uuid.UUID      `json:"tag_ids"`
-	AssigneeIds      []uuid.UUID      `json:"assignee_ids"`
+	ID                 uuid.UUID        `json:"id"`
+	BoardID            uuid.UUID        `json:"board_id"`
+	ColumnID           uuid.UUID        `json:"column_id"`
+	ParentID           *uuid.UUID       `json:"parent_id"`
+	Title              string           `json:"title"`
+	Description        string           `json:"description"`
+	Priority           int32            `json:"priority"`
+	DueDate            *time.Time       `json:"due_date"`
+	Position           float64          `json:"position"`
+	CreatedBy          *uuid.UUID       `json:"created_by"`
+	CompletedAt        *time.Time       `json:"completed_at"`
+	CreatedAt          time.Time        `json:"created_at"`
+	UpdatedAt          time.Time        `json:"updated_at"`
+	ArchivedAt         *time.Time       `json:"archived_at"`
+	Number             *int64           `json:"number"`
+	DueLeadMinutes     *int32           `json:"due_lead_minutes"`
+	DueRepeatMinutes   *int32           `json:"due_repeat_minutes"`
+	DueNotifyEnabled   *bool            `json:"due_notify_enabled"`
+	Recurrence         *json.RawMessage `json:"recurrence"`
+	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
+	TagIds             []uuid.UUID      `json:"tag_ids"`
+	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
 }
 
 // ListSubtasksWithMeta returns a parent's subtasks with tag/assignee ids, so the
@@ -573,6 +584,7 @@ func (q *Queries) ListSubtasksWithMeta(ctx context.Context, parentID *uuid.UUID)
 			&i.DueRepeatMinutes,
 			&i.DueNotifyEnabled,
 			&i.Recurrence,
+			&i.EisenhowerQuadrant,
 			&i.TagIds,
 			&i.AssigneeIds,
 		); err != nil {
@@ -587,7 +599,7 @@ func (q *Queries) ListSubtasksWithMeta(ctx context.Context, parentID *uuid.UUID)
 }
 
 const listTasksByBoard = `-- name: ListTasksByBoard :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position
 `
 
 func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Task, error) {
@@ -619,6 +631,7 @@ func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Ta
 			&i.DueRepeatMinutes,
 			&i.DueNotifyEnabled,
 			&i.Recurrence,
+			&i.EisenhowerQuadrant,
 		); err != nil {
 			return nil, err
 		}
@@ -661,7 +674,7 @@ const moveTask = `-- name: MoveTask :one
 UPDATE tasks
 SET column_id = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant
 `
 
 type MoveTaskParams struct {
@@ -693,6 +706,7 @@ func (q *Queries) MoveTask(ctx context.Context, arg MoveTaskParams) (Task, error
 		&i.DueRepeatMinutes,
 		&i.DueNotifyEnabled,
 		&i.Recurrence,
+		&i.EisenhowerQuadrant,
 	)
 	return i, err
 }
@@ -722,7 +736,7 @@ const setTaskDueNotify = `-- name: SetTaskDueNotify :one
 UPDATE tasks
 SET due_lead_minutes = $2, due_repeat_minutes = $3, due_notify_enabled = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant
 `
 
 type SetTaskDueNotifyParams struct {
@@ -762,6 +776,49 @@ func (q *Queries) SetTaskDueNotify(ctx context.Context, arg SetTaskDueNotifyPara
 		&i.DueRepeatMinutes,
 		&i.DueNotifyEnabled,
 		&i.Recurrence,
+		&i.EisenhowerQuadrant,
+	)
+	return i, err
+}
+
+const setTaskEisenhower = `-- name: SetTaskEisenhower :one
+UPDATE tasks
+SET eisenhower_quadrant = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant
+`
+
+type SetTaskEisenhowerParams struct {
+	ID                 uuid.UUID `json:"id"`
+	EisenhowerQuadrant *int16    `json:"eisenhower_quadrant"`
+}
+
+// SetTaskEisenhower pins a task to an Eisenhower-matrix quadrant (NULL = derive the
+// quadrant automatically from priority + due-date). Used by the matrix view's drag.
+func (q *Queries) SetTaskEisenhower(ctx context.Context, arg SetTaskEisenhowerParams) (Task, error) {
+	row := q.db.QueryRow(ctx, setTaskEisenhower, arg.ID, arg.EisenhowerQuadrant)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.ColumnID,
+		&i.ParentID,
+		&i.Title,
+		&i.Description,
+		&i.Priority,
+		&i.DueDate,
+		&i.Position,
+		&i.CreatedBy,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ArchivedAt,
+		&i.Number,
+		&i.DueLeadMinutes,
+		&i.DueRepeatMinutes,
+		&i.DueNotifyEnabled,
+		&i.Recurrence,
+		&i.EisenhowerQuadrant,
 	)
 	return i, err
 }
@@ -770,7 +827,7 @@ const setTaskParent = `-- name: SetTaskParent :one
 UPDATE tasks
 SET parent_id = $2, board_id = $3, column_id = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant
 `
 
 type SetTaskParentParams struct {
@@ -808,6 +865,7 @@ func (q *Queries) SetTaskParent(ctx context.Context, arg SetTaskParentParams) (T
 		&i.DueRepeatMinutes,
 		&i.DueNotifyEnabled,
 		&i.Recurrence,
+		&i.EisenhowerQuadrant,
 	)
 	return i, err
 }
@@ -816,7 +874,7 @@ const transferTask = `-- name: TransferTask :one
 UPDATE tasks
 SET board_id = $2, column_id = $3, parent_id = NULL, position = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant
 `
 
 type TransferTaskParams struct {
@@ -854,6 +912,7 @@ func (q *Queries) TransferTask(ctx context.Context, arg TransferTaskParams) (Tas
 		&i.DueRepeatMinutes,
 		&i.DueNotifyEnabled,
 		&i.Recurrence,
+		&i.EisenhowerQuadrant,
 	)
 	return i, err
 }
@@ -863,7 +922,7 @@ UPDATE tasks
 SET title = $2, description = $3, priority = $4, due_date = $5, completed_at = $6,
     recurrence = $7, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant
 `
 
 type UpdateTaskParams struct {
@@ -907,6 +966,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.DueRepeatMinutes,
 		&i.DueNotifyEnabled,
 		&i.Recurrence,
+		&i.EisenhowerQuadrant,
 	)
 	return i, err
 }

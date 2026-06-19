@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.79.0] — 2026-06-19
+- **Матрица Эйзенхауэра — новое представление доски** (4-й layout рядом с
+  Доска/Список/Календарь). 2×2 сетка Важно×Срочно: каждый квадрант — зона со своим
+  мягким оттенком, заголовком-подсказкой («Сделать сейчас» / «Запланировать» /
+  «Делегировать» / «Может подождать»), счётчиком и «＋» для быстрого создания.
+- Квадрант задачи **выводится автоматически**: ось «Важно» — из приоритета
+  (high/urgent → важно), ось «Срочно» — из близости срока (просрочено или дедлайн в
+  пределах 7 дней → срочно). Задача без срока и без высокого приоритета попадает в
+  «Не срочно, не важно».
+- **Перетаскивание** карточки в другой квадрант фиксирует ручное размещение
+  (override, сохраняется на бэкенде); такие карточки несут метку «вручную» с кнопкой
+  возврата на авто-вычисление. Карточка везде сохраняет свой priority-бейдж (как в
+  a reference tracker). Реализовано на общем `TaskCard` + vuedraggable; новый `BoardMatrixView.vue`,
+  пункт «Матрица» в десктоп-свитчере и мобильном меню, `tasks.eisenhower` в API.
+
 ### [0.78.2] — 2026-06-19
 - **Recurrence columns on subtasks.** The recursive subtask card wasn't passing
   the board's `columns`, so a subtask's recurrence «Колонка-триггер» / «Переносить
@@ -1365,6 +1380,16 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.48.0] — 2026-06-19
+- **Eisenhower-matrix quadrant override** (migration **0028**: nullable
+  `tasks.eisenhower_quadrant`). The new matrix board view derives a task's quadrant
+  from priority + due-date, but a user can pin a card to a quadrant manually. New
+  `PATCH /tasks/:id/eisenhower` accepts `{quadrant: 0-3}` (0 = urgent+important …
+  3 = not-urgent+not-important) or `{quadrant: null}` to clear the override and
+  return to the derived placement; invalid values are rejected. The field rides on
+  the existing `t.*` task rows (board list + task detail), and a change broadcasts
+  `task.updated`. No serialization changes elsewhere — additive column only.
 
 ### [0.47.0] — 2026-06-18
 - **Recurring tasks — full rule set** (extends 0.46). The recurrence rule now

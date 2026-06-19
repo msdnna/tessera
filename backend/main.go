@@ -192,6 +192,7 @@ func main() {
 			protected.GET("/tasks/:id", rh.GetTask)
 			protected.PATCH("/tasks/:id", rh.UpdateTask)
 			protected.PATCH("/tasks/:id/move", rh.MoveTask)
+			protected.PATCH("/tasks/:id/eisenhower", rh.SetTaskEisenhower)
 			protected.PATCH("/tasks/:id/parent", rh.SetTaskParent)
 			protected.PATCH("/tasks/:id/transfer", rh.TransferTask)
 			protected.PATCH("/tasks/:id/archive", rh.ArchiveTask)

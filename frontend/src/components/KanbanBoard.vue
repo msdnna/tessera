@@ -45,6 +45,7 @@ import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
+import BoardMatrixView from './BoardMatrixView.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -946,6 +947,24 @@ function onChanged() {
   scheduleReload()
 }
 
+// Matrix view quick-add: create the task in the board's first column, then pin it
+// to the chosen Eisenhower quadrant (the matrix has no column to drop into).
+async function createInQuadrant({ title, quadrant }) {
+  const columnId = columns.value[0]?.id
+  if (!columnId) {
+    message.warning('Сначала создайте хотя бы одну колонку-статус')
+    return
+  }
+  suppress()
+  try {
+    const res = await boards.createTask(board.value.id, { column_id: columnId, title })
+    await tasksApi.eisenhower(res.data.id, quadrant)
+    await load(props.boardId)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
 useRealtime((ev) => {
   if (ev.scope !== wsStore.currentId) return
   if (dragging.value || Date.now() < suppressReloadUntil) return
@@ -1194,6 +1213,24 @@ watch(
         :status-columns="columns"
         @open="openTask"
         @changed="onChanged"
+      />
+
+      <BoardMatrixView
+        v-else-if="layout === 'matrix'"
+        :tasks="filteredTasks"
+        :subtasks-by-parent="subtasksByParent"
+        :subtasks-expanded="subtasksExpanded"
+        :columns="columns"
+        :tags-map="tagsMap"
+        :members-map="membersMap"
+        :tags="tagsList"
+        :tag-prefix-names="tagPrefixNames"
+        :members="membersList"
+        :ws-id="wsStore.currentId"
+        :project-id="board?.project_id"
+        @open="openTask"
+        @changed="onChanged"
+        @create="createInQuadrant"
       />
 
       <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">

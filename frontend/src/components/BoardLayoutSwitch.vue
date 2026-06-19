@@ -1,6 +1,6 @@
 <script setup>
 import { NButton, NIcon } from 'naive-ui'
-import { GridOutline, ListOutline, CalendarClearOutline } from '@vicons/ionicons5'
+import { GridOutline, ListOutline, CalendarClearOutline, AppsOutline } from '@vicons/ionicons5'
 import { useBoardViewStore } from '@/stores/boardView'
 
 const store = useBoardViewStore()
@@ -8,6 +8,7 @@ const opts = [
   { value: 'board', label: 'Доска', icon: GridOutline },
   { value: 'list', label: 'Список', icon: ListOutline },
   { value: 'calendar', label: 'Календарь', icon: CalendarClearOutline },
+  { value: 'matrix', label: 'Матрица', icon: AppsOutline },
 ]
 </script>
 

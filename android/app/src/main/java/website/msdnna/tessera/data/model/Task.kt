@@ -45,6 +45,9 @@ data class Task(
     @SerializedName("due_lead_minutes") val dueLeadMinutes: Int? = null,
     @SerializedName("due_repeat_minutes") val dueRepeatMinutes: Int? = null,
     @SerializedName("due_notify_enabled") val dueNotifyEnabled: Boolean? = null,
+    // Eisenhower-matrix override: pinned quadrant 0-3, or null = derive from
+    // priority + due-date (see the matrix view). Encoding matches the backend.
+    @SerializedName("eisenhower_quadrant") val eisenhowerQuadrant: Int? = null,
     @SerializedName("tag_ids") val tagIds: List<String> = emptyList(),
     @SerializedName("assignee_ids") val assigneeIds: List<String> = emptyList(),
     // GitLab provenance (present when the card is mirrored from a GitLab issue).
@@ -90,6 +93,9 @@ data class DueNotifyRequest(
     @SerializedName("repeat_minutes") val repeatMinutes: Int? = null,
     @SerializedName("enabled") val enabled: Boolean? = null,
 )
+
+/** Pin a task to an Eisenhower quadrant (0-3), or null to clear the override. */
+data class SetEisenhowerRequest(@SerializedName("quadrant") val quadrant: Int?)
 
 data class SetParentRequest(@SerializedName("parent_id") val parentId: String?)
 data class AddTagRequest(@SerializedName("tag_id") val tagId: String)

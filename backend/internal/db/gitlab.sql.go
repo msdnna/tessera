@@ -421,7 +421,7 @@ const syncUpdateTask = `-- name: SyncUpdateTask :one
 UPDATE tasks
 SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, board_id = $7, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant
 `
 
 type SyncUpdateTaskParams struct {
@@ -467,6 +467,7 @@ func (q *Queries) SyncUpdateTask(ctx context.Context, arg SyncUpdateTaskParams) 
 		&i.DueRepeatMinutes,
 		&i.DueNotifyEnabled,
 		&i.Recurrence,
+		&i.EisenhowerQuadrant,
 	)
 	return i, err
 }

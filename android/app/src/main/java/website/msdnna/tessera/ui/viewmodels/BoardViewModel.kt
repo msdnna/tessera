@@ -28,7 +28,7 @@ import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.isoDateKey
 
-enum class BoardViewMode { Kanban, List, Calendar }
+enum class BoardViewMode { Kanban, List, Calendar, Matrix }
 
 enum class DueFilter { All, Overdue, Today, Week, Has, None }
 
@@ -497,6 +497,20 @@ class BoardViewModel(
         refreshTasks()
     }
 
+    /** Pins a task to an Eisenhower quadrant (0-3), or null to derive it. (Matrix view.) */
+    fun setEisenhower(taskId: String, quadrant: Int?) = launchCatching {
+        repo.setEisenhower(taskId, quadrant)
+        refreshTasks()
+    }
+
+    /** Matrix quick-add: create in the board's first column, then pin the quadrant. */
+    fun createTaskInQuadrant(title: String, quadrant: Int) = launchCatching {
+        val columnId = _state.value.columns.firstOrNull()?.id ?: return@launchCatching
+        val task = repo.createTask(boardId, columnId, title)
+        repo.setEisenhower(task.id, quadrant)
+        refreshTasks()
+    }
+
     /** Resolves a drag drop: a subtask is detached to top-level first, then the
      *  task is positioned in the target column between before/after. */
     fun dropTask(task: Task, columnId: String, beforeId: String?, afterId: String?) = launchCatching {
@@ -635,6 +649,7 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
     layout = when (s.viewMode) {
         BoardViewMode.List -> "list"
         BoardViewMode.Calendar -> "calendar"
+        BoardViewMode.Matrix -> "matrix"
         BoardViewMode.Kanban -> "board"
     },
     groupMode = if (s.groupByTag) "tag" else "status",
@@ -655,6 +670,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
     viewMode = when (c.layout) {
         "list" -> BoardViewMode.List
         "calendar" -> BoardViewMode.Calendar
+        "matrix" -> BoardViewMode.Matrix
         else -> BoardViewMode.Kanban
     },
     groupByTag = c.groupMode == "tag",

@@ -5,6 +5,17 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.22.0 — 2026-06-19
+- **Матрица Эйзенхауэра — новое представление доски** (web parity, web 0.79).
+  Четвёртый layout в свитчере (Доска/Список/Календарь/**Матрица**, иконка 2×2): сетка
+  Важно×Срочно с подписанными осями, четырьмя квадрантами (свой мягкий оттенок,
+  заголовок-подсказка, счётчик, «＋» для быстрого создания) и общим `TaskCard`.
+- Квадрант **выводится автоматически** (важно = приоритет high/urgent; срочно = срок
+  в пределах 7 дней или просрочен), а **ручное размещение** задаётся через меню на
+  карточке («Переместить в…» + «Вернуть на авто») — на мобильном это надёжнее, чем
+  перетаскивание между квадрантами. Override хранится на бэкенде
+  (`tasks/{id}/eisenhower`, backend 0.48), карточка сохраняет priority-бейдж.
+
 ## 0.21.2 — 2026-06-19
 - **GitLab-synced due dates no longer show a phantom time offset.** Date-only dues
   (GitLab issues/milestones, legacy rows) were detected by a brittle string check

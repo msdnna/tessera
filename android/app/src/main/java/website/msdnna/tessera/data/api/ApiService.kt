@@ -49,6 +49,7 @@ import website.msdnna.tessera.data.model.RoleUpdate
 import website.msdnna.tessera.data.model.SaveBoardViewRequest
 import website.msdnna.tessera.data.model.SetActiveRequest
 import website.msdnna.tessera.data.model.SetAdminRequest
+import website.msdnna.tessera.data.model.SetEisenhowerRequest
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.SetTagPrefixesRequest
 import website.msdnna.tessera.data.model.Tag
@@ -232,6 +233,9 @@ interface ApiService {
 
     @PATCH("tasks/{id}/parent")
     suspend fun setTaskParent(@Path("id") taskId: String, @Body body: SetParentRequest): Task
+
+    @PATCH("tasks/{id}/eisenhower")
+    suspend fun setTaskEisenhower(@Path("id") taskId: String, @Body body: SetEisenhowerRequest): Task
 
     @PATCH("tasks/{id}/due-notify")
     suspend fun setDueNotify(@Path("id") taskId: String, @Body body: DueNotifyRequest): Task

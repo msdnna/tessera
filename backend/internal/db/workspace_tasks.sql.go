@@ -15,7 +15,7 @@ import (
 
 const listWorkspaceTasks = `-- name: ListWorkspaceTasks :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant,
     b.name AS board_name,
     p.name AS project_name,
     p.color AS project_color,
@@ -35,32 +35,33 @@ ORDER BY t.due_date NULLS LAST, t.created_at DESC
 `
 
 type ListWorkspaceTasksRow struct {
-	ID               uuid.UUID        `json:"id"`
-	BoardID          uuid.UUID        `json:"board_id"`
-	ColumnID         uuid.UUID        `json:"column_id"`
-	ParentID         *uuid.UUID       `json:"parent_id"`
-	Title            string           `json:"title"`
-	Description      string           `json:"description"`
-	Priority         int32            `json:"priority"`
-	DueDate          *time.Time       `json:"due_date"`
-	Position         float64          `json:"position"`
-	CreatedBy        *uuid.UUID       `json:"created_by"`
-	CompletedAt      *time.Time       `json:"completed_at"`
-	CreatedAt        time.Time        `json:"created_at"`
-	UpdatedAt        time.Time        `json:"updated_at"`
-	ArchivedAt       *time.Time       `json:"archived_at"`
-	Number           *int64           `json:"number"`
-	DueLeadMinutes   *int32           `json:"due_lead_minutes"`
-	DueRepeatMinutes *int32           `json:"due_repeat_minutes"`
-	DueNotifyEnabled *bool            `json:"due_notify_enabled"`
-	Recurrence       *json.RawMessage `json:"recurrence"`
-	BoardName        string           `json:"board_name"`
-	ProjectName      string           `json:"project_name"`
-	ProjectColor     string           `json:"project_color"`
-	ColumnName       string           `json:"column_name"`
-	ColumnColor      string           `json:"column_color"`
-	TagIds           []uuid.UUID      `json:"tag_ids"`
-	AssigneeIds      []uuid.UUID      `json:"assignee_ids"`
+	ID                 uuid.UUID        `json:"id"`
+	BoardID            uuid.UUID        `json:"board_id"`
+	ColumnID           uuid.UUID        `json:"column_id"`
+	ParentID           *uuid.UUID       `json:"parent_id"`
+	Title              string           `json:"title"`
+	Description        string           `json:"description"`
+	Priority           int32            `json:"priority"`
+	DueDate            *time.Time       `json:"due_date"`
+	Position           float64          `json:"position"`
+	CreatedBy          *uuid.UUID       `json:"created_by"`
+	CompletedAt        *time.Time       `json:"completed_at"`
+	CreatedAt          time.Time        `json:"created_at"`
+	UpdatedAt          time.Time        `json:"updated_at"`
+	ArchivedAt         *time.Time       `json:"archived_at"`
+	Number             *int64           `json:"number"`
+	DueLeadMinutes     *int32           `json:"due_lead_minutes"`
+	DueRepeatMinutes   *int32           `json:"due_repeat_minutes"`
+	DueNotifyEnabled   *bool            `json:"due_notify_enabled"`
+	Recurrence         *json.RawMessage `json:"recurrence"`
+	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
+	BoardName          string           `json:"board_name"`
+	ProjectName        string           `json:"project_name"`
+	ProjectColor       string           `json:"project_color"`
+	ColumnName         string           `json:"column_name"`
+	ColumnColor        string           `json:"column_color"`
+	TagIds             []uuid.UUID      `json:"tag_ids"`
+	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
 }
 
 // ListWorkspaceTasks returns every active top-level task across a workspace's
@@ -95,6 +96,7 @@ func (q *Queries) ListWorkspaceTasks(ctx context.Context, workspaceID uuid.UUID)
 			&i.DueRepeatMinutes,
 			&i.DueNotifyEnabled,
 			&i.Recurrence,
+			&i.EisenhowerQuadrant,
 			&i.BoardName,
 			&i.ProjectName,
 			&i.ProjectColor,

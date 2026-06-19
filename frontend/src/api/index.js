@@ -217,6 +217,9 @@ export const tasks = {
   removeAssignee: (id, userId) => api.delete(`/tasks/${id}/assignees/${userId}`),
   // Per-task due-notification override (null fields = inherit the user default).
   dueNotify: (id, data) => api.patch(`/tasks/${id}/due-notify`, data),
+  // Eisenhower-matrix quadrant override (quadrant 0-3, or null = derive from
+  // priority + due-date). Driven by the matrix view's drag-between-quadrants.
+  eisenhower: (id, quadrant) => api.patch(`/tasks/${id}/eisenhower`, { quadrant }),
   // Rich task detail (#8)
   events: (id) => api.get(`/tasks/${id}/events`),
   comments: (id) => api.get(`/tasks/${id}/comments`),

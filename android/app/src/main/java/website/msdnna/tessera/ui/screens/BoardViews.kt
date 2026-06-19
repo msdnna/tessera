@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -104,6 +106,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.parseHexColor
+import website.msdnna.tessera.util.parseInstantMillis
 import website.msdnna.tessera.util.shortDate
 
 /** A kanban lane: title, swatch, count, cards, and (status lanes) a + button. */
@@ -670,6 +673,162 @@ private fun CalChip(task: Task, onOpenTask: (Task) -> Unit) {
             textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
             modifier = Modifier.weight(1f).padding(vertical = 2.dp, horizontal = 2.dp),
         )
+    }
+}
+
+// ── Eisenhower matrix view ────────────────────────────────────────────────
+
+private class EisenQuad(val index: Int, val title: String, val hint: String, val accent: Color)
+
+private val EisenhowerQuads = listOf(
+    EisenQuad(0, "Срочно и важно", "Сделать сейчас", Color(0xFFEF5D5D)),
+    EisenQuad(1, "Важно, не срочно", "Запланировать", Color(0xFF5B8DEF)),
+    EisenQuad(2, "Срочно, не важно", "Делегировать", Color(0xFFE6A43B)),
+    EisenQuad(3, "Не срочно, не важно", "Может подождать", Color(0xFF9AA0AA)),
+)
+
+private const val EISEN_URGENT_DAYS = 7
+
+/** Derived quadrant (no override): importance from priority, urgency from due-date.
+ *  Encoding matches the backend (0 urgent+important … 3 not-urgent+not-important). */
+private fun deriveQuadrant(task: Task): Int {
+    val important = task.priority >= 3
+    val due = parseInstantMillis(task.dueDate)
+    val urgent = due != null && due <= System.currentTimeMillis() + EISEN_URGENT_DAYS * 86_400_000L
+    return if (important) (if (urgent) 0 else 1) else (if (urgent) 2 else 3)
+}
+private fun quadrantOf(task: Task): Int = task.eisenhowerQuadrant ?: deriveQuadrant(task)
+
+/**
+ * The Eisenhower matrix (mirrors the web `BoardMatrixView`): a 2×2 Важно×Срочно
+ * grid. A card's quadrant is derived from priority + due-date proximity, or pinned
+ * manually via the per-card menu («Вернуть на авто» clears the override).
+ */
+@Composable
+fun BoardMatrixView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
+    val c = Tessera.colors
+    val tasks = state.applyFilterSort(state.tasks)
+    val byQuad = tasks.groupBy { quadrantOf(it) }
+
+    Column(Modifier.fillMaxSize().padding(8.dp)) {
+        // Column headers: Срочно | Несрочно (offset past the row-label gutter).
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, bottom = 4.dp)) {
+            Text("Срочно", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+            Text("Несрочно", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+        }
+        listOf(Triple("Важно", 0, 1), Triple("Неважно", 2, 3)).forEach { (rowLabel, left, right) ->
+            Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 4.dp)) {
+                Box(Modifier.width(20.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Text(
+                        rowLabel,
+                        color = c.text2,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        // Measure unconstrained then rotate, so the 20dp gutter
+                        // doesn't ellipsize the label before it's turned vertical.
+                        modifier = Modifier.requiredWidth(120.dp).rotate(270f),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                QuadrantCell(EisenhowerQuads[left], byQuad[left].orEmpty(), state, vm, onOpenTask, Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                QuadrantCell(EisenhowerQuads[right], byQuad[right].orEmpty(), state, vm, onOpenTask, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuadrantCell(
+    quad: EisenQuad,
+    tasks: List<Task>,
+    state: BoardUiState,
+    vm: BoardViewModel,
+    onOpenTask: (Task) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = Tessera.colors
+    var adding by remember { mutableStateOf(false) }
+    Column(
+        modifier.fillMaxHeight()
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(c.surface)
+            // A soft same-hue wash over the surface (subtle, matches the calm palette).
+            .background(quad.accent.copy(alpha = 0.06f))
+            .border(1.dp, c.border, RoundedCornerShape(RadiusMd)),
+    ) {
+        Box(Modifier.fillMaxWidth().height(3.dp).background(accentGradient(quad.accent)))
+        Row(
+            Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(quad.title, color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(quad.hint, color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text("${tasks.size}", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            IonIconButton(Ion.ADD, onClick = { adding = true }, boxSize = 30.dp, iconSize = 17.dp, tint = c.text3)
+        }
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(tasks, key = { it.id }) { task ->
+                MatrixCard(task, quadrantOf(task), state, vm, onOpenTask)
+            }
+            if (adding) {
+                item(key = "add") {
+                    InlineCreateField(
+                        placeholder = "Название задачи",
+                        onCommit = { title ->
+                            vm.createTaskInQuadrant(title, quad.index)
+                            adding = false
+                        },
+                        onDismiss = { adding = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A matrix card: the shared TaskCard plus a menu to move it between quadrants
+ *  (Android has no cross-container drag; the menu is the override affordance). */
+@Composable
+private fun MatrixCard(task: Task, currentQuad: Int, state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
+    val c = Tessera.colors
+    var menu by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.Top) {
+        TaskCard(task = task, state = state, vm = vm, onOpen = onOpenTask, modifier = Modifier.weight(1f))
+        Box {
+            IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 28.dp, iconSize = 15.dp, tint = c.text3)
+            TDropdown(expanded = menu, onDismiss = { menu = false }) {
+                EisenhowerQuads.forEach { q ->
+                    TMenuItem(
+                        label = q.title,
+                        onClick = {
+                            vm.setEisenhower(task.id, q.index)
+                            menu = false
+                        },
+                        trailing = if (q.index == currentQuad) {
+                            { IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+                if (task.eisenhowerQuadrant != null) {
+                    TMenuDivider()
+                    TMenuItem(label = "Вернуть на авто", icon = Ion.REFRESH, onClick = {
+                        vm.setEisenhower(task.id, null)
+                        menu = false
+                    })
+                }
+            }
+        }
     }
 }
 

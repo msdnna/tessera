@@ -159,3 +159,11 @@ UPDATE tasks
 SET due_lead_minutes = $2, due_repeat_minutes = $3, due_notify_enabled = $4, updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- SetTaskEisenhower pins a task to an Eisenhower-matrix quadrant (NULL = derive the
+-- quadrant automatically from priority + due-date). Used by the matrix view's drag.
+-- name: SetTaskEisenhower :one
+UPDATE tasks
+SET eisenhower_quadrant = $2, updated_at = now()
+WHERE id = $1
+RETURNING *;
