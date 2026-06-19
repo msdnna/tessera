@@ -412,7 +412,9 @@ private fun BoardTitleSwitcher(
             website.msdnna.tessera.ui.components.IonIcon(Ion.CHEVRON_DOWN, size = 18.dp, tint = c.text2)
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            Column(Modifier.width(240.dp)) {
+            // Width grows with the number of view segments so labels («Календарь»,
+            // «Таймлайн») don't get squeezed into letter-by-letter wraps.
+            Column(Modifier.width((ViewSegments.size * 64).dp.coerceAtLeast(240.dp))) {
                 website.msdnna.tessera.ui.components.HSegmentedSelector(
                     options = ViewSegments,
                     selectedIndex = ViewModes.indexOf(st.viewMode).coerceAtLeast(0),

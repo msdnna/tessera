@@ -63,6 +63,7 @@ import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.BoardFilter
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
+import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.DueFilter
 import website.msdnna.tessera.ui.viewmodels.SortField
@@ -186,6 +187,12 @@ fun BoardComposerBar(
                     onRemove = { vm.setFilter(f.copy(tagIds = f.tagIds - id)) },
                 )
             }
+            f.statuses.forEach { id ->
+                FacetChip(
+                    "Статус: ${state.sortedColumns.find { it.id == id }?.name ?: "—"}",
+                    onRemove = { vm.setFilter(f.copy(statuses = f.statuses - id)) },
+                )
+            }
             if (f.due != DueFilter.All) {
                 FacetChip(
                     "Срок: ${DueChipLabels[f.due] ?: ""}",
@@ -221,7 +228,7 @@ fun BoardComposerBar(
 
 private fun hasClearable(state: BoardUiState): Boolean = state.sortLevels.isNotEmpty() ||
     state.filter.priorities.isNotEmpty() || state.filter.assigneeIds.isNotEmpty() ||
-    state.filter.tagIds.isNotEmpty() || state.filter.due != DueFilter.All
+    state.filter.tagIds.isNotEmpty() || state.filter.statuses.isNotEmpty() || state.filter.due != DueFilter.All
 
 /** The always-present grouping chip; its dropdown picks status / all tags / a namespace. */
 @Composable
@@ -268,7 +275,12 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
     val f = state.filter
     var menu by remember { mutableStateOf(false) }
     var category by remember { mutableStateOf<String?>(null) }
-    val sortFields = SortField.entries.filter { sf -> state.sortLevels.none { it.field == sf.key } }
+    // Status sort/filter is offered only on the timeline (the board already groups
+    // by status into columns, so it's redundant there).
+    val timeline = state.viewMode == BoardViewMode.Timeline
+    val sortFields = SortField.entries.filter { sf ->
+        state.sortLevels.none { it.field == sf.key } && (sf != SortField.Status || timeline)
+    }
     fun close() {
         menu = false
         category = null
@@ -340,8 +352,19 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                     }
                 }
 
+                "fs" -> {
+                    BackRow { category = null }
+                    state.sortedColumns.filter { it.id !in f.statuses }.forEach { col ->
+                        TMenuItem(col.name, onClick = {
+                            vm.setFilter(f.copy(statuses = f.statuses + col.id))
+                            close()
+                        })
+                    }
+                }
+
                 else -> {
                     if (sortFields.isNotEmpty()) ArrowRow("Сортировка") { category = "sort" }
+                    if (timeline && state.sortedColumns.isNotEmpty()) ArrowRow("Фильтр: статус") { category = "fs" }
                     ArrowRow("Фильтр: приоритет") { category = "fp" }
                     if (state.members.isNotEmpty()) ArrowRow("Фильтр: исполнитель") { category = "fa" }
                     if (state.tagList.isNotEmpty()) ArrowRow("Фильтр: тег") { category = "ft" }

@@ -1221,7 +1221,6 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val c = Tessera.colors
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    var groupBy by remember { mutableStateOf("assignee") }
 
     val tasks = state.applyFilterSort(state.tasks)
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
@@ -1252,34 +1251,33 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val axisW = TL_DAY_W * dayCount
     val todayLeft = TL_DAY_W * dayIndex(todayMs) + TL_DAY_W * 0.5f
 
-    // swimlanes
-    val lanes = remember(scheduled, groupBy, state.tags, state.members, state.columns) {
+    // Swimlanes follow the shared composer-bar grouping (status / tag[+prefix]) —
+    // no separate timeline control (mirrors web; avoids duplicate grouping).
+    fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
+    val lanes = remember(scheduled, state.groupByTag, state.tagPrefix, state.tags, state.columns) {
         val map = LinkedHashMap<String, Pair<Pair<String, Color?>, MutableList<Task>>>()
         fun bucket(key: String, label: String, color: Color?) =
             map.getOrPut(key) { (label to color) to mutableListOf() }.second
+        // Status grouping seeds lanes in column order so empty columns still show.
+        if (!state.groupByTag) {
+            for (col in state.sortedColumns) bucket(col.id, col.name, tagColor(col.color))
+        }
         for (t in scheduled) {
-            when (groupBy) {
-                "assignee" -> {
-                    val id = t.assigneeIds.firstOrNull()
-                    bucket(id ?: "∅", id?.let { state.membersMap[it]?.name } ?: "Не назначено", null).add(t)
+            if (state.groupByTag) {
+                val id = t.tagIds.firstOrNull { tid ->
+                    val tag = state.tags[tid]
+                    tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
                 }
-
-                "tag" -> {
-                    val id = t.tagIds.firstOrNull()
-                    val tag = id?.let { state.tags[it] }
-                    bucket(id ?: "∅", tag?.name ?: "Без тега", tag?.color?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }).add(t)
-                }
-
-                "status" -> {
-                    val col = state.sortedColumns.find { it.id == t.columnId }
-                    bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", col?.color?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }).add(t)
-                }
-
-                else -> bucket("all", "Все задачи", null).add(t)
+                val tag = id?.let { state.tags[it] }
+                bucket(id ?: "∅", tag?.name ?: "Без тега", tagColor(tag?.color)).add(t)
+            } else {
+                val col = state.sortedColumns.find { it.id == t.columnId }
+                bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
             }
         }
         map.entries
             .map { (k, v) -> TLane(k, v.first.first, v.first.second, v.second.sortedBy { span(it).first }) }
+            .filter { it.tasks.isNotEmpty() || !state.groupByTag }
             .sortedBy { if (it.key == "∅") 1 else 0 }
     }
 
@@ -1299,8 +1297,6 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     Column(Modifier.fillMaxSize().background(c.bg).padding(horizontal = 8.dp, vertical = 6.dp)) {
         // ── toolbar ──
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TimelineGroupPicker(groupBy) { groupBy = it }
-            Spacer(Modifier.width(8.dp))
             Box(
                 Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
                     .clickableNoRipple { scrollToToday() }.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -1434,38 +1430,6 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                         Text(t.title, color = c.text1, fontSize = 12.sp, maxLines = 1)
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimelineGroupPicker(value: String, onPick: (String) -> Unit) {
-    val c = Tessera.colors
-    var open by remember { mutableStateOf(false) }
-    val opts = listOf(
-        "assignee" to "По исполнителю", "tag" to "По тегу",
-        "status" to "По статусу", "none" to "Без группировки",
-    )
-    val label = opts.firstOrNull { it.first == value }?.second ?: "Группировка"
-    Box {
-        Row(
-            Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
-                .clickableNoRipple { open = true }.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(label, color = c.text2, fontSize = 13.sp)
-            Spacer(Modifier.width(4.dp))
-            IonIcon(Ion.CHEVRON_DOWN, size = 13.dp, tint = c.text3)
-        }
-        TDropdown(expanded = open, onDismiss = { open = false }) {
-            opts.forEach { (v, l) ->
-                TMenuItem(l, onClick = {
-                    onPick(v)
-                    open = false
-                }, trailing = {
-                    if (v == value) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
-                })
             }
         }
     }

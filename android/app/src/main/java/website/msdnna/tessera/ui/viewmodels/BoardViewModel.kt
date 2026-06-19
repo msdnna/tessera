@@ -36,6 +36,7 @@ enum class DueFilter { All, Overdue, Today, Week, Has, None }
 enum class SortField(val key: String, val label: String) {
     Priority("priority", "Приоритет"),
     Due("due", "Срок"),
+    Status("status", "Статус"),
     Title("title", "Название"),
     Number("number", "Номер"),
     ;
@@ -51,11 +52,13 @@ data class BoardFilter(
     val priorities: Set<Int> = emptySet(),
     val tagIds: Set<String> = emptySet(),
     val assigneeIds: Set<String> = emptySet(),
+    // Status = board column ids (timeline-only facet; lets you hide e.g. «done»).
+    val statuses: Set<String> = emptySet(),
     val due: DueFilter = DueFilter.All,
 ) {
     val isActive: Boolean
         get() = query.isNotBlank() || priorities.isNotEmpty() || tagIds.isNotEmpty() ||
-            assigneeIds.isNotEmpty() || due != DueFilter.All
+            assigneeIds.isNotEmpty() || statuses.isNotEmpty() || due != DueFilter.All
 }
 
 private val TagPalette = listOf(
@@ -113,6 +116,7 @@ data class BoardUiState(
             val matchesPriority = filter.priorities.isEmpty() || t.priority in filter.priorities
             val matchesTags = filter.tagIds.isEmpty() || t.tagIds.any { it in filter.tagIds }
             val matchesAssignees = filter.assigneeIds.isEmpty() || t.assigneeIds.any { it in filter.assigneeIds }
+            val matchesStatus = filter.statuses.isEmpty() || t.columnId in filter.statuses
             val due = isoDateKey(t.dueDate)
             val matchesDue = when (filter.due) {
                 DueFilter.All -> true
@@ -122,7 +126,7 @@ data class BoardUiState(
                 DueFilter.Today -> due == today
                 DueFilter.Week -> due.isNotEmpty() && due >= today && due < weekEnd
             }
-            matchesQuery && matchesPriority && matchesTags && matchesAssignees && matchesDue
+            matchesQuery && matchesPriority && matchesTags && matchesAssignees && matchesStatus && matchesDue
         }
         if (sortLevels.isEmpty()) return filtered.sortedBy { it.position }
         val comparator = sortLevels
@@ -134,8 +138,11 @@ data class BoardUiState(
     /** One sort level → a [Comparator] (web `cmpLevel`: due-less tasks always last). */
     private fun levelComparator(level: SortLevel): Comparator<Task> {
         val d = if (level.dir == "desc") -1 else 1
+        val colPos = columns.associate { it.id to it.position }
         return Comparator { a, b ->
             when (level.field) {
+                "status" -> d * (colPos[a.columnId] ?: 0.0).compareTo(colPos[b.columnId] ?: 0.0)
+
                 "due" -> {
                     val av = isoDateKey(a.dueDate).ifEmpty { null }
                     val bv = isoDateKey(b.dueDate).ifEmpty { null }
@@ -661,6 +668,7 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
         priorities = s.filter.priorities.toList(),
         assignees = s.filter.assigneeIds.toList(),
         tags = s.filter.tagIds.toList(),
+        statuses = s.filter.statuses.toList(),
         due = dueToWeb(s.filter.due),
         q = s.filter.query,
     ),
@@ -684,6 +692,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
         priorities = c.filters.priorities.toSet(),
         tagIds = c.filters.tags.toSet(),
         assigneeIds = c.filters.assignees.toSet(),
+        statuses = c.filters.statuses.toSet(),
         due = dueFromWeb(c.filters.due),
     ),
 )

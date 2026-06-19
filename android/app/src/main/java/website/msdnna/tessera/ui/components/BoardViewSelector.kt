@@ -69,7 +69,14 @@ fun HSegmentedSelector(
             ) {
                 IonIcon(opt.icon, size = 22.dp, tint = fg)
                 Spacer(Modifier.height(8.dp))
-                Text(opt.label, color = fg, fontSize = 9.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium)
+                Text(
+                    opt.label,
+                    color = fg,
+                    fontSize = 9.sp,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
         }
     }
