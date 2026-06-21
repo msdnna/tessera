@@ -148,6 +148,19 @@ object Estimation {
         else -> "напр. 3д 4ч, 90м, 1н"
     }
 
+    /**
+     * Convert a canonical estimate into a calendar-day span for the timeline/Gantt
+     * "ghost" envelope. Only the time unit has a duration meaning (points/custom are
+     * dimensionless → null). The estimate is taken as a fraction of a working week
+     * and mapped onto 7 calendar days, so 4 working weeks of effort reads as ~4
+     * calendar weeks on the axis. Mirrors web `estimateToDays`.
+     */
+    fun toDays(value: Double?, cfg: EstimationConfig): Double? {
+        if (value == null || value <= 0) return null
+        if (cfg.unit.ifEmpty { "time" } != "time") return null
+        return value / minutesPerWeek(cfg) * 7.0
+    }
+
     /** Sum a task list's estimates (rollup / lane total). Null when none are set. */
     fun sum(values: Iterable<Double?>): Double? {
         var total = 0.0

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, nextTick, watch } from 'vue'
-import { NDropdown, NPopconfirm } from 'naive-ui'
+import { NDropdown, NPopconfirm, NIcon } from 'naive-ui'
+import { TimerOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { useThemeStore } from '@/stores/theme'
@@ -8,7 +9,8 @@ import { tasks as tasksApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, readableHue } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { formatEstimate, sumEstimates } from '@/utils/estimation'
+import { formatEstimate, sumEstimates, estimateToDays } from '@/utils/estimation'
+import UserAvatar from './UserAvatar.vue'
 
 const wsStore = useWorkspacesStore()
 
@@ -54,6 +56,12 @@ const LEFT_W = 224 // px of the fixed task/lane column
 const ZOOM = [12, 16, 22, 30, 40, 56, 76]
 const zoomIdx = ref(3) // → 30px/day
 const dayW = computed(() => ZOOM[zoomIdx.value])
+// While the user is actively zooming (a burst of wheel ticks), bars/today/ghost
+// SNAP instead of CSS-transitioning — animating every intermediate step made the
+// chart jitter on multi-step zoom. `zooming` gates the `.animate` class; a short
+// debounce re-enables transitions once the scale has settled.
+const zooming = ref(false)
+let zoomSettle = 0
 // Re-zoom while keeping the day under `anchorClientX` (a viewport x; omit → centre
 // of the viewport) pinned in place. We read the day at the anchor BEFORE the width
 // changes, then on the next tick (once axisW has reflowed) set scrollLeft so that
@@ -71,6 +79,9 @@ function applyZoom(newIdx, anchorClientX) {
     anchorX = anchorClientX != null ? anchorClientX - rect.left : el.clientWidth / 2
     dayAtAnchor = (el.scrollLeft + anchorX - LEFT_W) / oldW
   }
+  zooming.value = true
+  clearTimeout(zoomSettle)
+  zoomSettle = setTimeout(() => (zooming.value = false), 200)
   zoomIdx.value = newIdx
   if (el && dayAtAnchor != null) {
     nextTick(() => {
@@ -301,6 +312,26 @@ function geom(t) {
     hasDue: d != null,
   }
 }
+
+// Ghost "estimate" envelope: a dashed bar starting at the task's span start and
+// extending for as many calendar days as the estimate implies — so you can see at
+// a glance whether the planned start→due window matches the effort estimate.
+// Only meaningful for the time unit (estimateToDays returns null otherwise).
+function ghostGeom(t) {
+  const days = estimateToDays(t.estimate, estCfg.value)
+  if (days == null) return null
+  let s = parse(t.start_date)
+  let d = parse(t.due_date)
+  if (preview.value && preview.value.id === t.id) {
+    s = preview.value.start
+    d = preview.value.due
+  }
+  if (s == null && d == null) return null
+  const anchor = startOfDay(s ?? d)
+  const i0 = Math.round((anchor - range.value.start) / DAY_MS)
+  // Frame the envelope with a 3px margin on the start/end too (matching the top/bottom inset).
+  return { left: i0 * dayW.value - 3, width: Math.max(dayW.value, days * dayW.value) + 6 }
+}
 const todayLeft = computed(() => dayIndex(todayMs) * dayW.value + dayW.value / 2)
 
 // ── scroll-to-today ──
@@ -373,6 +404,7 @@ function onWheel(e) {
 }
 onBeforeUnmount(() => {
   cancelAnimationFrame(scrollRaf)
+  clearTimeout(zoomSettle)
   window.removeEventListener('pointermove', onPanMove)
   window.removeEventListener('pointerup', onPanUp)
 })
@@ -403,10 +435,11 @@ const hoverTags = computed(() =>
 const hoverAssignees = computed(() =>
   hover.value ? (hover.value.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean) : [],
 )
-function initials(name) {
-  const p = (name || '').trim().split(/\s+/)
-  return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
-}
+// External GitLab assignees (no Tessera account) — shown by avatar URL.
+const hoverGlAssignees = computed(() => (hover.value ? hover.value.task.gitlab_assignees || [] : []))
+const hoverEstimate = computed(() =>
+  hover.value && hover.value.task.estimate != null ? formatEstimate(hover.value.task.estimate, estCfg.value) : '',
+)
 </script>
 
 <template>
@@ -430,7 +463,7 @@ function initials(name) {
       @pointerdown="onPanDown"
       @wheel="onWheel"
     >
-      <div class="tl-inner" :class="{ animate: !drag }" :style="{ width: `${LEFT_W + axisW}px` }">
+      <div class="tl-inner" :class="{ animate: !drag && !zooming }" :style="{ width: `${LEFT_W + axisW}px` }">
         <!-- header: month band + day band -->
         <div class="tl-head">
           <div class="tl-corner" :style="{ width: `${LEFT_W}px` }">Задача</div>
@@ -472,7 +505,9 @@ function initials(name) {
               />
               <span class="lane-name">{{ lane.label }}</span>
               <span class="lane-count">{{ lane.tasks.length }}</span>
-              <span v-if="laneEffort(lane)" class="lane-effort" title="Суммарная оценка">⏱ {{ laneEffort(lane) }}</span>
+              <span v-if="laneEffort(lane)" class="lane-effort" title="Суммарная оценка"
+                ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(lane) }}</span
+              >
             </div>
             <div class="tl-track laneband" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }" />
           </div>
@@ -483,6 +518,12 @@ function initials(name) {
               <span class="row-title" :class="{ done: t.completed_at }">{{ t.title }}</span>
             </div>
             <div class="tl-track" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }">
+              <div
+                v-if="ghostGeom(t)"
+                class="ghost"
+                :style="{ left: `${ghostGeom(t).left}px`, width: `${ghostGeom(t).width}px`, '--ghost-c': PRIORITY_COLORS[t.priority || 0] }"
+                title="Оценка"
+              />
               <div
                 class="bar"
                 :class="{ done: t.completed_at, point: !(geom(t).hasStart && geom(t).hasDue) }"
@@ -582,6 +623,9 @@ function initials(name) {
           <span v-if="hover.task.start_date && hover.task.due_date" class="pv-arrow">→</span>
           <span v-if="hover.task.due_date">{{ formatDue(hover.task.due_date) }}</span>
         </div>
+        <div v-if="hoverEstimate" class="pv-est">
+          <n-icon :component="TimerOutline" :size="13" class="pv-est-ic" /> Оценка: {{ hoverEstimate }}
+        </div>
         <div v-if="hoverTags.length" class="pv-tags">
           <span
             v-for="tg in hoverTags"
@@ -590,8 +634,23 @@ function initials(name) {
             :style="{ color: readableTag(tg.color), borderColor: readableTag(tg.color) }"
           >{{ tg.name }}</span>
         </div>
-        <div v-if="hoverAssignees.length" class="pv-assignees">
-          <span v-for="m in hoverAssignees" :key="m.user_id" class="pv-av" :title="m.name">{{ initials(m.name) }}</span>
+        <div v-if="hoverAssignees.length || hoverGlAssignees.length" class="pv-assignees">
+          <UserAvatar
+            v-for="m in hoverAssignees"
+            :key="m.user_id"
+            class="pv-av"
+            :user-id="m.user_id"
+            :name="m.name"
+            :title="m.name"
+          />
+          <UserAvatar
+            v-for="(g, i) in hoverGlAssignees"
+            :key="`g${i}`"
+            class="pv-av"
+            :src="g.avatar_url"
+            :name="g.name || g"
+            :title="g.name || g"
+          />
         </div>
       </div>
     </Teleport>
@@ -797,6 +856,9 @@ function initials(name) {
   margin-left: auto;
 }
 .lane-effort {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 11px;
   color: var(--t-text2);
   white-space: nowrap;
@@ -876,12 +938,26 @@ function initials(name) {
   z-index: 1;
   pointer-events: none;
 }
-/* glide bars + today-line on zoom; never while dragging (would lag the cursor) */
-.tl-inner.animate .bar {
+/* glide bars + today-line on zoom; never while dragging/zooming (would lag) */
+.tl-inner.animate .bar,
+.tl-inner.animate .ghost {
   transition: left 0.18s ease, width 0.18s ease;
 }
 .tl-inner.animate .tl-today {
   transition: left 0.18s ease;
+}
+
+/* ghost estimate envelope: dashed bar behind the real bar, sized to the estimate */
+.ghost {
+  position: absolute;
+  top: 3px;
+  height: 30px;
+  box-sizing: border-box;
+  border: 2px dashed color-mix(in srgb, var(--ghost-c, var(--t-primary)) 65%, transparent);
+  background: color-mix(in srgb, var(--ghost-c, var(--t-primary)) 12%, transparent);
+  border-radius: 7px;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .bar {
@@ -1038,6 +1114,16 @@ function initials(name) {
 }
 .pv-arrow {
   color: var(--t-text3);
+}
+.pv-est {
+  font-size: 12px;
+  color: var(--t-text2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.pv-est-ic {
+  font-size: 12px;
 }
 .pv-tags {
   display: flex;

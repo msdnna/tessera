@@ -1,13 +1,14 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
-import { NDropdown, NPopconfirm } from 'naive-ui'
+import { NDropdown, NPopconfirm, NIcon } from 'naive-ui'
+import { TimerOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { formatEstimate, sumEstimates } from '@/utils/estimation'
+import { formatEstimate, sumEstimates, estimateToDays } from '@/utils/estimation'
 
 const wsStore = useWorkspacesStore()
 
@@ -54,6 +55,10 @@ const BAR_CY = 18 // bar vertical centre within its row (top 6 + height 24 / 2)
 const ZOOM = [12, 16, 22, 30, 40, 56, 76]
 const zoomIdx = ref(3) // → 30px/day
 const dayW = computed(() => ZOOM[zoomIdx.value])
+// Snap bars/arrows/today/ghost during a zoom burst (CSS-transitioning every step
+// jittered); re-enable transitions once the scale settles (200ms debounce).
+const zooming = ref(false)
+let zoomSettle = 0
 function applyZoom(newIdx, anchorClientX) {
   newIdx = Math.max(0, Math.min(ZOOM.length - 1, newIdx))
   if (newIdx === zoomIdx.value) return
@@ -67,6 +72,9 @@ function applyZoom(newIdx, anchorClientX) {
     anchorX = anchorClientX != null ? anchorClientX - rect.left : el.clientWidth / 2
     dayAtAnchor = (el.scrollLeft + anchorX - LEFT_W) / oldW
   }
+  zooming.value = true
+  clearTimeout(zoomSettle)
+  zoomSettle = setTimeout(() => (zooming.value = false), 200)
   zoomIdx.value = newIdx
   if (el && dayAtAnchor != null) {
     nextTick(() => {
@@ -253,6 +261,24 @@ function geom(t) {
   }
 }
 
+// Ghost "estimate" envelope: dashed bar from the span start, length = the estimate
+// in calendar days (time unit only; null otherwise). Mirrors the timeline view.
+function ghostGeom(t) {
+  const days = estimateToDays(t.estimate, estCfg.value)
+  if (days == null) return null
+  let s = parse(t.start_date)
+  let d = parse(t.due_date)
+  if (preview.value && preview.value.id === t.id) {
+    s = preview.value.start
+    d = preview.value.due
+  }
+  if (s == null && d == null) return null
+  const anchor = startOfDay(s ?? d)
+  const i0 = Math.round((anchor - range.value.start) / DAY_MS)
+  // Frame the envelope with a 3px margin on the start/end too (matching the top/bottom inset).
+  return { left: i0 * dayW.value - 3, width: Math.max(dayW.value, days * dayW.value) + 6 }
+}
+
 // Arrow paths: blocker's finish → blocked's start (finish-to-start), an S-curve
 // with a horizontal stub on each end so the arrowhead enters the start cleanly.
 const arrows = computed(() => {
@@ -427,6 +453,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onLinkMove)
   window.removeEventListener('pointerup', onLinkUp)
   cancelAnimationFrame(scrollRaf)
+  clearTimeout(zoomSettle)
   window.removeEventListener('pointermove', onPanMove)
   window.removeEventListener('pointerup', onPanUp)
 })
@@ -515,7 +542,7 @@ function onWheel(e) {
     </div>
 
     <div ref="scrollEl" class="tl-scroll" :class="{ panning: !!pan, linking: !!link }" @pointerdown="onPanDown" @wheel="onWheel">
-      <div class="tl-inner" :class="{ animate: !drag && !link }" :style="{ width: `${LEFT_W + axisW}px` }">
+      <div class="tl-inner" :class="{ animate: !drag && !link && !zooming }" :style="{ width: `${LEFT_W + axisW}px` }">
         <!-- header -->
         <div class="tl-head">
           <div class="tl-corner" :style="{ width: `${LEFT_W}px` }">Задача</div>
@@ -547,7 +574,9 @@ function onWheel(e) {
                 <span class="lane-dot" :style="{ background: lane.color ? hueGrad(lane.color) : 'var(--t-accent-grad)' }" />
                 <span class="lane-name">{{ lane.label }}</span>
                 <span class="lane-count">{{ lane.tasks.length }}</span>
-                <span v-if="laneEffort(lane)" class="lane-effort" title="Суммарная оценка">⏱ {{ laneEffort(lane) }}</span>
+                <span v-if="laneEffort(lane)" class="lane-effort" title="Суммарная оценка"
+                  ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(lane) }}</span
+                >
               </div>
               <div class="tl-track laneband" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }" />
             </div>
@@ -558,6 +587,12 @@ function onWheel(e) {
                 <span class="row-title" :class="{ done: t.completed_at }">{{ t.title }}</span>
               </div>
               <div class="tl-track" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }">
+                <div
+                  v-if="ghostGeom(t)"
+                  class="ghost"
+                  :style="{ left: `${ghostGeom(t).left}px`, width: `${ghostGeom(t).width}px`, '--ghost-c': PRIORITY_COLORS[t.priority || 0] }"
+                  title="Оценка"
+                />
                 <div
                   class="bar"
                   :class="{ done: t.completed_at, point: !(geom(t).hasStart && geom(t).hasDue), linksrc: link && link.fromId === t.id }"
@@ -858,6 +893,9 @@ function onWheel(e) {
   margin-left: auto;
 }
 .lane-effort {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 11px;
   color: var(--t-text2);
   white-space: nowrap;
@@ -935,11 +973,25 @@ function onWheel(e) {
   z-index: 1;
   pointer-events: none;
 }
-.tl-inner.animate .bar {
+.tl-inner.animate .bar,
+.tl-inner.animate .ghost {
   transition: left 0.18s ease, width 0.18s ease;
 }
 .tl-inner.animate .tl-today {
   transition: left 0.18s ease;
+}
+
+/* ghost estimate envelope: dashed bar behind the real bar, sized to the estimate */
+.ghost {
+  position: absolute;
+  top: 3px;
+  height: 30px;
+  box-sizing: border-box;
+  border: 2px dashed color-mix(in srgb, var(--ghost-c, var(--t-primary)) 65%, transparent);
+  background: color-mix(in srgb, var(--ghost-c, var(--t-primary)) 12%, transparent);
+  border-radius: 7px;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .bar {

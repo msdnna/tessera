@@ -84,7 +84,9 @@ data class BoardUiState(
         website.msdnna.tessera.util.Estimation.DEFAULT,
     val members: List<Member> = emptyList(),
     val viewMode: BoardViewMode = BoardViewMode.Kanban,
-    val groupByTag: Boolean = false,
+    /** Swimlane/column grouping: "status" | "tag" | "assignee" | "none". Kanban only
+     *  honours status/tag (columns); assignee/none are timeline/Gantt-only (mirrors web). */
+    val groupMode: String = "status",
     /** When grouping by tag, only tags carrying this namespace prefix ("S: ",
      *  "effort::") become columns. Empty = every tag is a column. */
     val tagPrefix: String = "",
@@ -103,6 +105,9 @@ data class BoardUiState(
     val refreshing: Boolean = false,
 ) {
     val membersMap: Map<String, Member> get() = members.associateBy { it.userId }
+
+    /** Kanban grouping is binary (status vs tag columns); derived from [groupMode]. */
+    val groupByTag: Boolean get() = groupMode == "tag"
 
     /** Full column list, drag-position source — NOT filtered (DnD needs every card). */
     fun tasksIn(columnId: String): List<Task> =
@@ -377,14 +382,25 @@ class BoardViewModel(
         markLocalChange()
     }
 
+    /** Per-layout toolbar memory: each layout keeps its own group/sort/filter, swapped
+     *  on layout change (mirrors web's per-layout toolbar state, session-scoped). */
+    private val toolbarByLayout = mutableMapOf<String, BoardViewConfig>()
+
     fun setViewMode(mode: BoardViewMode) {
-        _state.update { it.copy(viewMode = mode) }
+        _state.update { s ->
+            // snapshot the leaving layout's toolbar, then restore the entered layout's
+            // (or coerce grouping the new layout can't show — e.g. assignee on Kanban).
+            toolbarByLayout[layoutKey(s.viewMode)] = configFromState(s)
+            val saved = toolbarByLayout[layoutKey(mode)]
+            if (saved != null) s.applyConfig(saved).copy(viewMode = mode)
+            else s.copy(viewMode = mode).coerceGroupingFor(mode)
+        }
         persistView()
     }
 
-    /** Sets the grouping: status, all-tags, or a tag namespace (e.g. "S: "). */
-    fun setGrouping(byTag: Boolean, prefix: String = "") {
-        _state.update { it.copy(groupByTag = byTag, tagPrefix = if (byTag) prefix else "") }
+    /** Sets the grouping mode (status | tag | assignee | none); prefix only for tag. */
+    fun setGrouping(mode: String, prefix: String = "") {
+        _state.update { it.copy(groupMode = mode, tagPrefix = if (mode == "tag") prefix else "") }
         persistView()
     }
 
@@ -674,17 +690,31 @@ private fun dateKey(days: Int): String {
 
 // ── view config ↔ board state (web schema; camelCase keys for cross-device) ──
 
+/** The web layout key for a view mode (Kanban = "board"). */
+private fun layoutKey(mode: BoardViewMode): String = when (mode) {
+    BoardViewMode.List -> "list"
+    BoardViewMode.Calendar -> "calendar"
+    BoardViewMode.Matrix -> "matrix"
+    BoardViewMode.Timeline -> "timeline"
+    BoardViewMode.Gantt -> "gantt"
+    BoardViewMode.Kanban -> "board"
+}
+
+/** Coerce a grouping the entered layout can't display (assignee/none → status off
+ *  the timeline/Gantt) so e.g. Kanban never inherits a swimlane-only grouping. */
+private fun BoardUiState.coerceGroupingFor(mode: BoardViewMode): BoardUiState {
+    val timelineLike = mode == BoardViewMode.Timeline || mode == BoardViewMode.Gantt
+    return if (!timelineLike && groupMode != "status" && groupMode != "tag") {
+        copy(groupMode = "status", tagPrefix = "")
+    } else {
+        this
+    }
+}
+
 /** Snapshots the toolbar state into a [BoardViewConfig] (web-compatible). */
 private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
-    layout = when (s.viewMode) {
-        BoardViewMode.List -> "list"
-        BoardViewMode.Calendar -> "calendar"
-        BoardViewMode.Matrix -> "matrix"
-        BoardViewMode.Timeline -> "timeline"
-        BoardViewMode.Gantt -> "gantt"
-        BoardViewMode.Kanban -> "board"
-    },
-    groupMode = if (s.groupByTag) "tag" else "status",
+    layout = layoutKey(s.viewMode),
+    groupMode = s.groupMode,
     tagPrefix = s.tagPrefix,
     sortLevels = s.sortLevels,
     subtasksExpanded = s.subtasksExpanded,
@@ -708,7 +738,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
         "gantt" -> BoardViewMode.Gantt
         else -> BoardViewMode.Kanban
     },
-    groupByTag = c.groupMode == "tag",
+    groupMode = c.groupMode.ifBlank { "status" },
     tagPrefix = if (c.groupMode == "tag") c.tagPrefix else "",
     sortLevels = c.sortLevels,
     subtasksExpanded = c.subtasksExpanded,

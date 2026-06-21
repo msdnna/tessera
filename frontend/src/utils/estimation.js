@@ -151,6 +151,17 @@ export function estimatePlaceholder(cfg) {
   return 'напр. 3д 4ч, 90м, 1н'
 }
 
+// Convert a canonical estimate into a calendar-day span for the timeline/Gantt
+// "ghost" envelope. Only the time unit has a duration meaning (points/custom are
+// dimensionless → null). The estimate is taken as a fraction of a working week and
+// mapped onto 7 calendar days, so e.g. 4 working weeks of effort reads as ~4
+// calendar weeks on the axis. Returns null for an empty/non-time estimate.
+export function estimateToDays(value, cfg) {
+  if (value == null || !(value > 0)) return null
+  if ((cfg?.unit || 'time') !== 'time') return null
+  return (value / minutesPerWeek(cfg)) * 7
+}
+
 // Sum the estimates of a task list (e.g. subtasks for a parent rollup, or a
 // timeline lane). Returns null when none are estimated. A board speaks one unit
 // (one project), so the sum is meaningful.

@@ -240,28 +240,40 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
             .map { it to prefixLabel(it, state.prefixNames) }
             .sortedBy { it.second.lowercase() }
     }
-    val label = if (state.groupByTag) {
-        "Группировка: теги" +
-            (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(state.tagPrefix, state.prefixNames)}" else "")
-    } else {
-        "Группировка: статусы"
+    // Assignee / no-grouping are only meaningful on the swimlane (timeline/Gantt) views.
+    val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
+    val label = "Группировка: " + when (state.groupMode) {
+        "tag" -> "теги" + (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(state.tagPrefix, state.prefixNames)}" else "")
+        "assignee" -> "исполнитель"
+        "none" -> "без"
+        else -> "статусы"
     }
     var menu by remember { mutableStateOf(false) }
     Box {
         FacetChip(label, group = true, onClick = { menu = true })
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
-            CheckRow("По статусам", selected = !state.groupByTag) {
+            CheckRow("По статусам", selected = state.groupMode == "status") {
                 menu = false
-                vm.setGrouping(byTag = false)
+                vm.setGrouping("status")
             }
-            CheckRow("По тегам (все)", selected = state.groupByTag && state.tagPrefix.isEmpty()) {
+            CheckRow("По тегам (все)", selected = state.groupMode == "tag" && state.tagPrefix.isEmpty()) {
                 menu = false
-                vm.setGrouping(byTag = true, prefix = "")
+                vm.setGrouping("tag", prefix = "")
             }
             namespaces.forEach { (ns, nsLabel) ->
-                CheckRow("По тегам · $nsLabel", selected = state.groupByTag && state.tagPrefix == ns) {
+                CheckRow("По тегам · $nsLabel", selected = state.groupMode == "tag" && state.tagPrefix == ns) {
                     menu = false
-                    vm.setGrouping(byTag = true, prefix = ns)
+                    vm.setGrouping("tag", prefix = ns)
+                }
+            }
+            if (timelineLike) {
+                CheckRow("По исполнителю", selected = state.groupMode == "assignee") {
+                    menu = false
+                    vm.setGrouping("assignee")
+                }
+                CheckRow("Без группировки", selected = state.groupMode == "none") {
+                    menu = false
+                    vm.setGrouping("none")
                 }
             }
         }

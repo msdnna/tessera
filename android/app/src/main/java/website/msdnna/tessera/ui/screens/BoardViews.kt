@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.calculateTargetValue
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -62,18 +63,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -1210,7 +1215,7 @@ private fun ColumnGhost(lane: Lane, state: BoardUiState, vm: BoardViewModel) {
 private const val TL_DAY_MS = 86_400_000L
 private val TL_DAY_W = 30.dp
 private val TL_ROW_H = 38.dp
-private val TL_LEFT_W = 140.dp
+private val TL_LEFT_W = 168.dp
 
 // Header = month band + day band; lane (group) header band. The left fixed column
 // and the right scrolling grid of every row must share the same height or the grid
@@ -1250,11 +1255,16 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val c = Tessera.colors
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    // px-per-day, pinch-zoomable (and via the −/+ buttons).
+    // px-per-day, pinch-zoomable (and via the −/+ buttons). `viewportPx` is the
+    // scrolling-track width and `anchorMs` is the absolute date kept under the
+    // viewport centre across a zoom (−1 = not set → centre today). Anchoring on a
+    // date (not a day index) survives the cap window shifting `rangeStart` on zoom.
     var dayW by remember { mutableStateOf(TL_DAY_W) }
-    val zoom = rememberTransformableState { zoomChange, _, _ ->
-        dayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
-    }
+    var viewportPx by remember { mutableStateOf(0) }
+    var anchorMs by remember { mutableStateOf(-1L) }
+    // Collapsible left task/group column — animated to 0 to give the chart full width.
+    var leftCollapsed by remember { mutableStateOf(false) }
+    val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
 
     val tasks = state.applyFilterSort(state.tasks)
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
@@ -1297,36 +1307,53 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val axisW = dayW * dayCount
     val todayLeft = dayW * dayIndex(todayMs) + dayW * 0.5f
     val gridColor = c.border.copy(alpha = 0.45f)
+    // Precompute day-cell metadata once per window — rebuilding Calendar objects for
+    // every day on each zoom frame was the main pinch-lag culprit.
+    val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
 
     // Swimlanes follow the shared composer-bar grouping (status / tag[+prefix]) —
     // no separate timeline control (mirrors web; avoids duplicate grouping).
     fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
-    val lanes = remember(scheduled, state.groupByTag, state.tagPrefix, state.tags, state.columns) {
+    val lanes = remember(scheduled, state.groupMode, state.tagPrefix, state.tags, state.columns, state.members) {
+        val mode = state.groupMode
+        val members = state.membersMap
         val map = LinkedHashMap<String, Pair<Pair<String, Color?>, MutableList<Task>>>()
         fun bucket(key: String, label: String, color: Color?) =
             map.getOrPut(key) { (label to color) to mutableListOf() }.second
         // Status grouping seeds lanes in column order so empty columns still show.
-        if (!state.groupByTag) {
+        if (mode == "status") {
             for (col in state.sortedColumns) bucket(col.id, col.name, tagColor(col.color))
         }
         for (t in scheduled) {
-            if (state.groupByTag) {
-                val id = t.tagIds.firstOrNull { tid ->
-                    val tag = state.tags[tid]
-                    tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+            when (mode) {
+                "tag" -> {
+                    val id = t.tagIds.firstOrNull { tid ->
+                        val tag = state.tags[tid]
+                        tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+                    }
+                    val tag = id?.let { state.tags[it] }
+                    bucket(id ?: "∅", tag?.name ?: "Без тега", tagColor(tag?.color)).add(t)
                 }
-                val tag = id?.let { state.tags[it] }
-                bucket(id ?: "∅", tag?.name ?: "Без тега", tagColor(tag?.color)).add(t)
-            } else {
-                val col = state.sortedColumns.find { it.id == t.columnId }
-                bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+
+                "assignee" -> {
+                    val id = t.assigneeIds.firstOrNull()
+                    val m = id?.let { members[it] }
+                    bucket(id ?: "∅", m?.name ?: "Не назначено", null).add(t)
+                }
+
+                "none" -> bucket("all", "Все задачи", null).add(t)
+
+                else -> {
+                    val col = state.sortedColumns.find { it.id == t.columnId }
+                    bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+                }
             }
         }
         // Lane tasks keep the incoming (composer-sorted) order; re-sorting by start
         // here would override an explicit «Сорт: Статус» etc. (mirrors web fix).
         map.entries
             .map { (k, v) -> TLane(k, v.first.first, v.first.second, v.second.toList()) }
-            .filter { it.tasks.isNotEmpty() || !state.groupByTag }
+            .filter { it.tasks.isNotEmpty() || mode == "status" }
             .sortedBy { if (it.key == "∅") 1 else 0 }
     }
 
@@ -1334,13 +1361,39 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val hScroll = rememberScrollState()
     val vScroll = rememberScrollState()
 
-    fun scrollToToday() {
-        val target = with(density) { (dayW * (dayIndex(todayMs) - 3)).toPx() }.toInt().coerceAtLeast(0)
-        scope.launch { hScroll.animateScrollTo(target) }
+    // Pinch-zoom: record the date under the viewport centre before rescaling, then
+    // re-centre it (LaunchedEffect below). canPan=false lets 1-finger scroll through.
+    val zoom = rememberTransformableState { zoomChange, _, _ ->
+        val oldPx = with(density) { dayW.toPx() }
+        val newDayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
+        if (newDayW != dayW) {
+            if (viewportPx > 0 && oldPx > 0f) {
+                val centerDay = (hScroll.value + viewportPx / 2f) / oldPx
+                anchorMs = rangeStart + (centerDay * TL_DAY_MS).toLong()
+            }
+            dayW = newDayW
+        }
     }
-    LaunchedEffect(rangeStart) {
-        val target = with(density) { (dayW * (dayIndex(todayMs) - 3)).toPx() }.toInt().coerceAtLeast(0)
-        hScroll.scrollTo(target)
+    // Re-anchor on scale / window-origin change (not on manual scroll → that stays put).
+    // Wait one frame so the track is measured: scrollTo clamps to maxValue, which is 0
+    // until layout runs → without this the initial scroll snapped to the far-left day.
+    LaunchedEffect(dayW, viewportPx, rangeStart) {
+        if (viewportPx <= 0) return@LaunchedEffect
+        withFrameNanos {}
+        val px = with(density) { dayW.toPx() }
+        val centerMs = if (anchorMs >= 0L) anchorMs else todayMs
+        val day = (centerMs - rangeStart).toFloat() / TL_DAY_MS
+        hScroll.scrollTo((day * px - viewportPx / 2f).roundToInt().coerceIn(0, hScroll.maxValue))
+    }
+
+    fun scrollToToday() {
+        anchorMs = todayMs
+        val px = with(density) { dayW.toPx() }
+        scope.launch {
+            withFrameNanos {}
+            val target = (dayIndex(todayMs) * px - viewportPx / 2f).roundToInt().coerceIn(0, hScroll.maxValue)
+            hScroll.animateScrollTo(target)
+        }
     }
 
     Column(Modifier.fillMaxSize().background(c.bg).padding(horizontal = 8.dp, vertical = 6.dp)) {
@@ -1354,6 +1407,19 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             ZoomBtn("−") { dayW = (dayW - 6.dp).coerceAtLeast(TL_DAY_W_MIN) }
             Spacer(Modifier.width(4.dp))
             ZoomBtn("+") { dayW = (dayW + 6.dp).coerceAtMost(TL_DAY_W_MAX) }
+            Spacer(Modifier.width(8.dp))
+            // collapse / expand the left task column (animated)
+            Box(
+                Modifier.size(28.dp).clip(RoundedCornerShape(RadiusSm))
+                    .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                    .clickableNoRipple { leftCollapsed = !leftCollapsed },
+                contentAlignment = Alignment.Center,
+            ) {
+                IonIcon(
+                    Ion.CHEVRON_FORWARD, size = 16.dp, tint = c.text2,
+                    modifier = if (!leftCollapsed) Modifier.rotate(180f) else Modifier,
+                )
+            }
             Spacer(Modifier.weight(1f))
             if (overdue > 0) {
                 TimelineCounter("$overdue просрочено", Color(0xFFE0533D), c.primary.copy(alpha = 0f))
@@ -1366,14 +1432,14 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         // ── header: sticky months + days (horizontal-scrolls with the body) ──
         Row {
             Box(
-                Modifier.width(TL_LEFT_W).height(TL_HEAD_H).background(c.surfaceAlt)
+                Modifier.width(leftW).height(TL_HEAD_H).background(c.surfaceAlt).clipToBounds()
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 contentAlignment = Alignment.BottomStart,
-            ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-            Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+            ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+            Box(Modifier.weight(1f).horizontalScroll(hScroll).onSizeChanged { viewportPx = it.width }) {
                 Column(Modifier.width(axisW)) {
                     TimelineMonthBand(rangeStart, dayCount, dayW)
-                    TimelineDayRow(rangeStart, dayCount, todayMs, dayW)
+                    TimelineDayRow(dayCells, dayW)
                 }
             }
         }
@@ -1391,7 +1457,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                     // lane header row
                     Row {
                         Row(
-                            Modifier.width(TL_LEFT_W).height(TL_LANE_H).background(c.surfaceAlt)
+                            Modifier.width(leftW).height(TL_LANE_H).background(c.surfaceAlt).clipToBounds()
                                 .padding(horizontal = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -1402,13 +1468,15 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                             Spacer(Modifier.width(7.dp))
                             Text(
                                 lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                                maxLines = 1, modifier = Modifier.weight(1f, fill = false),
+                                maxLines = 1, modifier = Modifier.weight(1f),
                             )
                             Spacer(Modifier.width(6.dp))
                             Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
                             laneEffort(lane, state)?.let { eff ->
                                 Spacer(Modifier.width(6.dp))
-                                Text("⏱ $eff", color = c.text2, fontSize = 11.sp, maxLines = 1)
+                                IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
+                                Spacer(Modifier.width(3.dp))
+                                Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
                             }
                         }
                         Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
@@ -1425,7 +1493,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                         val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
                         Row {
                             Row(
-                                Modifier.width(TL_LEFT_W).height(TL_ROW_H)
+                                Modifier.width(leftW).height(TL_ROW_H).clipToBounds()
                                     .clickableNoRipple { onOpenTask(t) }
                                     .padding(horizontal = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1445,6 +1513,9 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                             Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
                                 Box(Modifier.width(axisW).height(TL_ROW_H).tlGrid(dayWpx, gridColor)) {
                                     Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
+                                    website.msdnna.tessera.util.Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
+                                        GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent)
+                                    }
                                     Box(
                                         Modifier.offset(x = dayW * i0, y = 7.dp)
                                             .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
@@ -1515,10 +1586,14 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val c = Tessera.colors
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    // See BoardTimelineView for the pinch-zoom anchoring model (the `zoom`/anchor
+    // holder is defined below, once rangeStart is known).
     var dayW by remember { mutableStateOf(TL_DAY_W) }
-    val zoom = rememberTransformableState { zoomChange, _, _ ->
-        dayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
-    }
+    var viewportPx by remember { mutableStateOf(0) }
+    var anchorMs by remember { mutableStateOf(-1L) }
+    // Collapsible left task/group column — animated to 0 to give the chart full width.
+    var leftCollapsed by remember { mutableStateOf(false) }
+    val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
 
     val tasks = state.applyFilterSort(state.tasks)
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
@@ -1560,6 +1635,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val axisW = dayW * dayCount
     val todayLeft = dayW * dayIndex(todayMs) + dayW * 0.5f
     val gridColor = c.border.copy(alpha = 0.45f)
+    val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
 
     fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
     val lanes = remember(scheduled, state.groupByTag, state.tagPrefix, state.tags, state.columns) {
@@ -1639,13 +1715,39 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val hScroll = rememberScrollState()
     val vScroll = rememberScrollState()
 
-    fun scrollToToday() {
-        val target = with(density) { (dayW * (dayIndex(todayMs) - 3)).toPx() }.toInt().coerceAtLeast(0)
-        scope.launch { hScroll.animateScrollTo(target) }
+    // Pinch-zoom: record the date under the viewport centre before rescaling, then
+    // re-centre it (LaunchedEffect below). canPan=false lets 1-finger scroll through.
+    val zoom = rememberTransformableState { zoomChange, _, _ ->
+        val oldPx = with(density) { dayW.toPx() }
+        val newDayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
+        if (newDayW != dayW) {
+            if (viewportPx > 0 && oldPx > 0f) {
+                val centerDay = (hScroll.value + viewportPx / 2f) / oldPx
+                anchorMs = rangeStart + (centerDay * TL_DAY_MS).toLong()
+            }
+            dayW = newDayW
+        }
     }
-    LaunchedEffect(rangeStart) {
-        val target = with(density) { (dayW * (dayIndex(todayMs) - 3)).toPx() }.toInt().coerceAtLeast(0)
-        hScroll.scrollTo(target)
+    // Re-anchor on scale / window-origin change (not on manual scroll → that stays put).
+    // Wait one frame so the track is measured: scrollTo clamps to maxValue, which is 0
+    // until layout runs → without this the initial scroll snapped to the far-left day.
+    LaunchedEffect(dayW, viewportPx, rangeStart) {
+        if (viewportPx <= 0) return@LaunchedEffect
+        withFrameNanos {}
+        val px = with(density) { dayW.toPx() }
+        val centerMs = if (anchorMs >= 0L) anchorMs else todayMs
+        val day = (centerMs - rangeStart).toFloat() / TL_DAY_MS
+        hScroll.scrollTo((day * px - viewportPx / 2f).roundToInt().coerceIn(0, hScroll.maxValue))
+    }
+
+    fun scrollToToday() {
+        anchorMs = todayMs
+        val px = with(density) { dayW.toPx() }
+        scope.launch {
+            withFrameNanos {}
+            val target = (dayIndex(todayMs) * px - viewportPx / 2f).roundToInt().coerceIn(0, hScroll.maxValue)
+            hScroll.animateScrollTo(target)
+        }
     }
 
     Column(Modifier.fillMaxSize().background(c.bg).padding(horizontal = 8.dp, vertical = 6.dp)) {
@@ -1659,6 +1761,19 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
             ZoomBtn("−") { dayW = (dayW - 6.dp).coerceAtLeast(TL_DAY_W_MIN) }
             Spacer(Modifier.width(4.dp))
             ZoomBtn("+") { dayW = (dayW + 6.dp).coerceAtMost(TL_DAY_W_MAX) }
+            Spacer(Modifier.width(8.dp))
+            // collapse / expand the left task column (animated)
+            Box(
+                Modifier.size(28.dp).clip(RoundedCornerShape(RadiusSm))
+                    .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                    .clickableNoRipple { leftCollapsed = !leftCollapsed },
+                contentAlignment = Alignment.Center,
+            ) {
+                IonIcon(
+                    Ion.CHEVRON_FORWARD, size = 16.dp, tint = c.text2,
+                    modifier = if (!leftCollapsed) Modifier.rotate(180f) else Modifier,
+                )
+            }
             Spacer(Modifier.weight(1f))
             if (overdue > 0) {
                 TimelineCounter("$overdue просрочено", Color(0xFFE0533D), c.primary.copy(alpha = 0f))
@@ -1675,14 +1790,14 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         // ── header: sticky months + days (h-scrolls with the body) ──
         Row {
             Box(
-                Modifier.width(TL_LEFT_W).height(TL_HEAD_H).background(c.surfaceAlt)
+                Modifier.width(leftW).height(TL_HEAD_H).background(c.surfaceAlt).clipToBounds()
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 contentAlignment = Alignment.BottomStart,
-            ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-            Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+            ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+            Box(Modifier.weight(1f).horizontalScroll(hScroll).onSizeChanged { viewportPx = it.width }) {
                 Column(Modifier.width(axisW)) {
                     TimelineMonthBand(rangeStart, dayCount, dayW)
-                    TimelineDayRow(rangeStart, dayCount, todayMs, dayW)
+                    TimelineDayRow(dayCells, dayW)
                 }
             }
         }
@@ -1695,7 +1810,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
             // ── body: left fixed column + right track, sharing vScroll ──
             Row(Modifier.weight(1f)) {
                 // left task column (lane headers + task names), v-scrolls in lockstep
-                Column(Modifier.width(TL_LEFT_W).verticalScroll(vScroll)) {
+                Column(Modifier.width(leftW).clipToBounds().verticalScroll(vScroll)) {
                     lanes.forEach { lane ->
                         Row(
                             Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).padding(horizontal = 10.dp),
@@ -1705,13 +1820,15 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                             Spacer(Modifier.width(7.dp))
                             Text(
                                 lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                                maxLines = 1, modifier = Modifier.weight(1f, fill = false),
+                                maxLines = 1, modifier = Modifier.weight(1f),
                             )
                             Spacer(Modifier.width(6.dp))
                             Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
                             laneEffort(lane, state)?.let { eff ->
                                 Spacer(Modifier.width(6.dp))
-                                Text("⏱ $eff", color = c.text2, fontSize = 11.sp, maxLines = 1)
+                                IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
+                                Spacer(Modifier.width(3.dp))
+                                Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
                             }
                         }
                         lane.tasks.forEach { t ->
@@ -1749,6 +1866,9 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                                     val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
                                     Box(Modifier.fillMaxWidth().height(TL_ROW_H).tlGrid(dayWpx, gridColor)) {
                                         Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
+                                        website.msdnna.tessera.util.Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
+                                            GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent)
+                                        }
                                         Box(
                                             Modifier.offset(x = dayW * i0, y = 7.dp)
                                                 .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
@@ -1855,36 +1975,72 @@ private fun TimelineMonthBand(rangeStart: Long, dayCount: Int, dayW: androidx.co
     }
 }
 
+/** Precomputed per-day header metadata, built once per window (cheap zoom frames). */
+private data class TlDayCell(val dom: Int, val weekday: String, val weekend: Boolean, val isToday: Boolean)
+
+private fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long): List<TlDayCell> {
+    val out = ArrayList<TlDayCell>(dayCount)
+    val cal = Calendar.getInstance()
+    for (i in 0 until dayCount) {
+        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        val dow = cal.get(Calendar.DAY_OF_WEEK)
+        out.add(
+            TlDayCell(
+                dom = cal.get(Calendar.DAY_OF_MONTH),
+                weekday = TlWeekdays[(dow + 5) % 7],
+                weekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY,
+                isToday = tlDayFloor(cal.timeInMillis) == todayMs,
+            ),
+        )
+    }
+    return out
+}
+
 @Composable
-private fun TimelineDayRow(rangeStart: Long, dayCount: Int, todayMs: Long, dayW: androidx.compose.ui.unit.Dp) {
+private fun TimelineDayRow(cells: List<TlDayCell>, dayW: androidx.compose.ui.unit.Dp) {
     val c = Tessera.colors
     Row {
-        for (i in 0 until dayCount) {
-            val cal = Calendar.getInstance().apply { timeInMillis = rangeStart + i * TL_DAY_MS }
-            val dow = cal.get(Calendar.DAY_OF_WEEK)
-            val weekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
-            val isToday = tlDayFloor(cal.timeInMillis) == todayMs
+        cells.forEach { cell ->
             Column(
                 Modifier.width(dayW).height(TL_DAYS_H)
-                    .background(if (weekend) c.bg else c.surface),
+                    .background(if (cell.weekend) c.bg else c.surface),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(
                     Modifier.size(18.dp).then(
-                        if (isToday) Modifier.clip(CircleShape).background(accentGradient(c.primary)) else Modifier,
+                        if (cell.isToday) Modifier.clip(CircleShape).background(accentGradient(c.primary)) else Modifier,
                     ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "${cal.get(Calendar.DAY_OF_MONTH)}",
-                        color = if (isToday) c.onPrimary else c.text1, fontSize = 11.sp,
-                    )
+                    Text("${cell.dom}", color = if (cell.isToday) c.onPrimary else c.text1, fontSize = 11.sp)
                 }
-                Text(TlWeekdays[(dow + 5) % 7], color = c.text3, fontSize = 9.sp)
+                Text(cell.weekday, color = c.text3, fontSize = 9.sp)
             }
         }
     }
+}
+
+/**
+ * Ghost "estimate" envelope: a dashed bar starting at the task's span start and as
+ * wide as the estimate implies (calendar days), drawn behind the real bar so you
+ * can see whether the planned start→due window matches the effort. Mirrors web.
+ */
+@Composable
+private fun GhostBar(barLeft: androidx.compose.ui.unit.Dp, estWidth: androidx.compose.ui.unit.Dp, color: Color) {
+    val dash = remember { PathEffect.dashPathEffect(floatArrayOf(6f, 5f), 0f) }
+    // Frame the estimate envelope with a small margin on every side (matching the
+    // top/bottom inset over the bar), a touch more fill, and a slightly thicker dash.
+    Box(
+        Modifier.offset(x = barLeft - 3.dp, y = 4.dp).width(estWidth + 6.dp).height(30.dp).drawBehind {
+            val r = CornerRadius(7.dp.toPx(), 7.dp.toPx())
+            drawRoundRect(color = color.copy(alpha = 0.14f), cornerRadius = r)
+            drawRoundRect(
+                color = color.copy(alpha = 0.65f), cornerRadius = r,
+                style = Stroke(width = 2.dp.toPx(), pathEffect = dash),
+            )
+        },
+    )
 }
 
 private val TlMonths = listOf("янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")
