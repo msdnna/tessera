@@ -1283,8 +1283,8 @@ watch(
           {{ subtasksExpanded ? 'Свернуть подзадачи' : 'Развернуть подзадачи' }}
         </n-tooltip>
 
-        <!-- saved views: load (folder) + save (disk) — hidden on timeline/Gantt -->
-        <n-popover v-if="!timelineLike" v-model:show="showLoadView" trigger="click" placement="bottom-start">
+        <!-- saved views: load (folder) + save (disk) -->
+        <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
             <template #trigger>
             <n-tooltip>
                 <template #trigger>
@@ -1322,7 +1322,7 @@ watch(
             </div>
         </n-popover>
 
-        <n-popover v-if="!timelineLike" v-model:show="showSaveView" trigger="click" placement="bottom-start">
+        <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
             <template #trigger>
             <n-tooltip>
                 <template #trigger>

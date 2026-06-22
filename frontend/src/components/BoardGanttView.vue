@@ -1245,6 +1245,10 @@ function onWheel(e) {
   display: flex;
   align-items: center;
   padding: 0 8px;
+  /* border-box so the rendered width equals the date-span px exactly — without it
+     the 8px side padding pushed the visible right edge 16px past `geom.width`, and
+     the dependency arrows (anchored at geom.left+geom.width) started inside the bar. */
+  box-sizing: border-box;
   cursor: grab;
   z-index: 2;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);

@@ -1212,6 +1212,9 @@ function ghostTitle(t) {
   display: flex;
   align-items: center;
   padding: 0 8px;
+  /* border-box so the rendered width equals the date-span px exactly (matches the
+     Gantt bar); content-box let the side padding overshoot the due date by 16px. */
+  box-sizing: border-box;
   cursor: grab;
   overflow: hidden;
   z-index: 2;
