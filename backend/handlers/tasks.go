@@ -334,8 +334,24 @@ func (h *API) UpdateTask(c *gin.Context) {
 			fmt.Sprintf("%s изменил(а) задачу #%s: %s",
 				h.actorName(c), taskRef(updated.Number), strings.Join(changes, ", ")))
 	}
+	// Mirror user-side changes back to a linked GitLab issue (opt-in per integration).
+	actor := middleware.CurrentUser(c)
+	if (t.CompletedAt == nil) != (updated.CompletedAt == nil) {
+		h.enqueueWriteback(c, id, actor, "state", map[string]any{"state": issueState(updated.CompletedAt != nil)})
+	}
+	if t.Priority != updated.Priority {
+		h.enqueueWriteback(c, id, actor, "priority", map[string]any{"priority": updated.Priority})
+	}
 	h.broadcast(wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)
+}
+
+// issueState maps a completion flag to the GitLab issue state string.
+func issueState(completed bool) string {
+	if completed {
+		return "closed"
+	}
+	return "opened"
 }
 
 // journalUpdate records the field-level changes of a task edit into its journal
@@ -489,6 +505,11 @@ func (h *API) MoveTask(c *gin.Context) {
 		}
 	}
 
+	// Mirror a completion change (crossing the board's done boundary) back to GitLab.
+	if (t.CompletedAt == nil) != (updated.CompletedAt == nil) {
+		h.enqueueWriteback(c, id, middleware.CurrentUser(c), "state",
+			map[string]any{"state": issueState(updated.CompletedAt != nil)})
+	}
 	h.broadcast(wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }

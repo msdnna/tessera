@@ -73,6 +73,7 @@ type GitlabIntegration struct {
 	LastSyncedAt    *time.Time `json:"last_synced_at"`
 	DueSource       string     `json:"due_source"`
 	StartSource     string     `json:"start_source"`
+	Writeback       []byte     `json:"writeback"`
 }
 
 type GitlabLink struct {
@@ -93,6 +94,21 @@ type GitlabLink struct {
 	DueOverridden     bool       `json:"due_overridden"`
 	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
 	StartOverridden   bool       `json:"start_overridden"`
+	GlLastState       string     `json:"gl_last_state"`
+}
+
+type GitlabWriteback struct {
+	ID            uuid.UUID `json:"id"`
+	TaskID        uuid.UUID `json:"task_id"`
+	IntegrationID uuid.UUID `json:"integration_id"`
+	ChangeKind    string    `json:"change_kind"`
+	Payload       []byte    `json:"payload"`
+	Status        string    `json:"status"`
+	Attempts      int32     `json:"attempts"`
+	LastError     string    `json:"last_error"`
+	NextAttemptAt time.Time `json:"next_attempt_at"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Membership struct {

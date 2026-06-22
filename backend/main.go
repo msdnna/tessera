@@ -50,6 +50,10 @@ func main() {
 	// positive sync interval).
 	go rh.RunSyncWorker(context.Background())
 
+	// Background GitLab write-back worker — drains the outbox of task changes to
+	// push to linked issues. Idle until a user enables write-back on an integration.
+	go rh.RunGitlabWriteBackWorker(context.Background())
+
 	// Background notification delivery worker — drains the outbox of channel
 	// deliveries (email/telegram/webhook). Idle until a user configures channels.
 	go rh.RunNotificationWorker(context.Background())

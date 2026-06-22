@@ -9,7 +9,9 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -408,4 +410,88 @@ func parseGID(gid string) int64 {
 	}
 	n, _ := strconv.ParseInt(gid[i+1:], 10, 64)
 	return n
+}
+
+// ── write-back (REST) ──
+// Mutations go through the REST v4 API (not GraphQL): it takes label titles and
+// the state_event as plain strings, so there's no label-ID resolution step. The
+// caller (write-back worker) decides retry vs. give-up from *APIError.Status.
+
+// APIError is a non-2xx response from the GitLab REST API. Status carries the HTTP
+// status so the caller can classify permanent (4xx) vs. transient (5xx) failures.
+type APIError struct {
+	Status int
+	Body   string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("gitlab: http %d: %s", e.Status, strings.TrimSpace(e.Body))
+}
+
+// issuePath is the REST path for one issue, with the project path URL-encoded
+// ("group/project" → "group%2Fproject").
+func issuePath(projectPath string, iid int64) string {
+	return "projects/" + url.PathEscape(strings.Trim(projectPath, "/")) + "/issues/" + strconv.FormatInt(iid, 10)
+}
+
+// restForm sends a form-encoded request to <baseURL>/api/v4/<path> with the PAT,
+// returning the body on 2xx or an *APIError otherwise.
+func (c *Client) restForm(ctx context.Context, method, path string, form url.Values) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+"/api/v4/"+strings.TrimPrefix(path, "/"), strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{Status: resp.StatusCode, Body: string(body)}
+	}
+	return body, nil
+}
+
+// UpdateIssueState closes or reopens an issue. event is "close" or "reopen".
+func (c *Client) UpdateIssueState(ctx context.Context, projectPath string, iid int64, event string) error {
+	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid), url.Values{"state_event": {event}})
+	return err
+}
+
+// SetIssueLabels adds and/or removes labels (by title) on an issue. Empty slices
+// are skipped; a fully-empty call is a no-op.
+func (c *Client) SetIssueLabels(ctx context.Context, projectPath string, iid int64, add, remove []string) error {
+	form := url.Values{}
+	if len(add) > 0 {
+		form.Set("add_labels", strings.Join(add, ","))
+	}
+	if len(remove) > 0 {
+		form.Set("remove_labels", strings.Join(remove, ","))
+	}
+	if len(form) == 0 {
+		return nil
+	}
+	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid), form)
+	return err
+}
+
+// CreateIssueNote posts a comment (note) on an issue and returns the created
+// note's GraphQL global id ("gid://gitlab/Note/<id>"), so the caller can tag the
+// originating Tessera comment and the next pull dedups instead of duplicating.
+// Returns "" (with nil error) if the response id couldn't be read.
+func (c *Client) CreateIssueNote(ctx context.Context, projectPath string, iid int64, body string) (string, error) {
+	out, err := c.restForm(ctx, http.MethodPost, issuePath(projectPath, iid)+"/notes", url.Values{"body": {body}})
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		ID int64 `json:"id"`
+	}
+	if uerr := json.Unmarshal(out, &resp); uerr != nil || resp.ID == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("gid://gitlab/Note/%d", resp.ID), nil
 }

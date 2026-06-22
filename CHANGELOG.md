@@ -1644,6 +1644,34 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.53.0] — 2026-06-23
+- **GitLab write-back (phase B), opt-in.** Changes to a task linked to a GitLab
+  issue can now push back to GitLab. Strictly opt-in per integration via a new
+  `gitlab_integrations.writeback` JSONB (master `enabled` + per-kind `push_state`
+  / `push_priority` / `push_comments`, all default off). MVP pushes three kinds:
+  - **state** — entering/leaving the board's done column closes/reopens the issue
+    (`PUT issues/:iid state_event`).
+  - **priority** — a priority change swaps the `P:` label (`add_labels`/`remove_labels`),
+    only when the priority rule's label mapping is invertible (1:1).
+  - **comment** — a Tessera comment is posted as an issue note (`POST .../notes`);
+    the created note id is written back onto the comment so the next pull dedups
+    instead of duplicating.
+  Status write-back is **state-only** (the column→`S:`-label inverse is lossy); a
+  `column_label_bindings` config seam ships empty for a future explicit editor.
+  Title/description and assignees are deferred.
+- **Async outbox + worker** (migration **0032**): a `gitlab_writebacks` queue plus
+  `RunGitlabWriteBackWorker`, mirroring the notification outbox (claim `FOR UPDATE
+  SKIP LOCKED`, quadratic backoff, fail after 5 attempts). Pushes never block a task
+  mutation and survive a GitLab outage (retry). Pushes use the integration owner's
+  PAT (needs `api` write scope).
+- **Loop-guard**: write-back is enqueued only for user-originated mutations (the pull
+  uses a separate update path), never pushes a value GitLab already has (new
+  `gitlab_links.gl_last_state` baseline + the existing content hashes), and after a
+  successful push re-fetches that one issue to rewrite the link snapshot so the next
+  pull doesn't echo the change back. Rapid same-kind edits coalesce into one push.
+- REST mutation methods added to `internal/gitlab` (`UpdateIssueState` /
+  `SetIssueLabels` / `CreateIssueNote`); pull stays GraphQL.
+
 ### [0.52.0] — 2026-06-20
 - **GitLab start-date sync** (migration **0031**, mirrors the due-date sync of
   mig 0012). A synced task's `start_date` is now filled per a new per-integration

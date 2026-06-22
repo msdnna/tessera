@@ -104,8 +104,9 @@ type gitlabIntegrationView struct {
 	SyncIntervalSec int32        `json:"sync_interval_sec"`
 	DueSource       string       `json:"due_source"`
 	StartSource     string       `json:"start_source"`
-	LastSyncedAt    *time.Time   `json:"last_synced_at"`
-	LabelRules      gitlab.Rules `json:"label_rules"`
+	LastSyncedAt    *time.Time       `json:"last_synced_at"`
+	LabelRules      gitlab.Rules     `json:"label_rules"`
+	Writeback       gitlab.Writeback `json:"writeback"`
 }
 
 // integrationView projects a stored integration row into its JSON view.
@@ -116,6 +117,7 @@ func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
 		Enabled: integ.Enabled, SyncIntervalSec: integ.SyncIntervalSec,
 		DueSource: integ.DueSource, StartSource: integ.StartSource, LastSyncedAt: integ.LastSyncedAt,
 		LabelRules: parseRules(integ.LabelRules),
+		Writeback:  parseWriteback(integ.Writeback),
 	}
 }
 
@@ -158,6 +160,7 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		DueSource       string          `json:"due_source"`
 		StartSource     string          `json:"start_source"`
 		LabelRules      json.RawMessage `json:"label_rules"`
+		Writeback       json.RawMessage `json:"writeback"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -190,6 +193,10 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		rules = def
 	}
 
+	// Normalise write-back config through the typed struct (unknown/garbage → all
+	// off) so only the recognised flags are persisted.
+	wbRaw, _ := json.Marshal(parseWriteback(req.Writeback))
+
 	// The configuring user's credential drives unattended sync.
 	owner := middleware.CurrentUser(c)
 	integ, err := h.q.UpsertGitlabIntegration(c, db.UpsertGitlabIntegrationParams{
@@ -202,6 +209,7 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		SyncIntervalSec: req.SyncIntervalSec,
 		DueSource:       req.DueSource,
 		StartSource:     req.StartSource,
+		Writeback:       wbRaw,
 	})
 	if err != nil {
 		fail(c)
@@ -575,6 +583,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			LabelsHash: hashStr(labelsKey(issue.Labels)),
 			GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
 			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, issue.AuthorAvatar),
+			GlLastState:       issue.State,
 		}); cerr != nil {
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
@@ -611,6 +620,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			LabelsHash: hashStr(labelsKey(issue.Labels)),
 			GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
 			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, issue.AuthorAvatar),
+			GlLastState:       issue.State,
 		}); uerr != nil {
 			log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
 			return uuid.Nil, false, false
@@ -812,8 +822,21 @@ func parseRules(raw []byte) gitlab.Rules {
 	return r
 }
 
-// hashStr is a content snapshot helper (sha256 hex) for the link's *_hash
-// columns — unused in the pull-only slice but recorded for a future write-back.
+// parseWriteback decodes the JSONB write-back config, defaulting to all-off (no
+// write-back) when empty or invalid.
+func parseWriteback(raw []byte) gitlab.Writeback {
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
+		return gitlab.DefaultWriteback()
+	}
+	var w gitlab.Writeback
+	if err := json.Unmarshal(raw, &w); err != nil {
+		return gitlab.DefaultWriteback()
+	}
+	return w
+}
+
+// hashStr is a content snapshot helper (sha256 hex) for the link's *_hash columns:
+// the pull records them and the write-back loop-guard compares against them.
 func hashStr(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])

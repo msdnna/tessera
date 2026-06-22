@@ -183,6 +183,8 @@ func (h *API) CreateComment(c *gin.Context) {
 	}
 	h.logEvent(c, id, "comment", map[string]any{"comment_id": cm.ID})
 	h.broadcast(wsID, "task.commented", gin.H{"task_id": id})
+	// Mirror the comment to a linked GitLab issue as a note (opt-in per integration).
+	h.enqueueWriteback(c, id, uid, "comment", map[string]any{"comment_id": cm.ID.String(), "body": req.Body})
 
 	// @-mentions: notify each mentioned workspace member explicitly, then fall
 	// back to the generic "commented" notice for the remaining participants. A

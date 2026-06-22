@@ -22,8 +22,8 @@ DELETE FROM gitlab_credentials WHERE user_id = $1;
 -- ── Per-workspace integration ──────────────────────────────
 
 -- name: UpsertGitlabIntegration :one
-INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, owner_user_id, sync_interval_sec, due_source, start_source, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, owner_user_id, sync_interval_sec, due_source, start_source, writeback, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
 ON CONFLICT (workspace_id) DO UPDATE
 SET project_path = EXCLUDED.project_path,
     board_id = EXCLUDED.board_id,
@@ -33,6 +33,7 @@ SET project_path = EXCLUDED.project_path,
     sync_interval_sec = EXCLUDED.sync_interval_sec,
     due_source = EXCLUDED.due_source,
     start_source = EXCLUDED.start_source,
+    writeback = EXCLUDED.writeback,
     updated_at = now()
 RETURNING *;
 
@@ -75,9 +76,9 @@ SELECT * FROM gitlab_links WHERE task_id = $1;
 INSERT INTO gitlab_links (
     task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url,
     gl_updated_at, title_hash, desc_hash, labels_hash, gl_author, gl_author_name,
-    gl_author_avatar_url
+    gl_author_avatar_url, gl_last_state
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING *;
 
 -- name: UpdateGitlabLink :one
@@ -85,6 +86,7 @@ UPDATE gitlab_links
 SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
     title_hash = $5, desc_hash = $6, labels_hash = $7,
     gl_author = $8, gl_author_name = $9, gl_author_avatar_url = $10,
+    gl_last_state = $11,
     last_synced_at = now()
 WHERE task_id = $1
 RETURNING *;
