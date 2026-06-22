@@ -2215,20 +2215,20 @@ private fun Modifier.pinchZoom(onZoom: (zoom: Float, centroidX: Float, isStart: 
     return this.pointerInput(Unit) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            var pinching = false
+            // The focal anchor is computed ONCE, on the first applied 2-finger step of
+            // this gesture (isStart), and never again — even if the pressed count briefly
+            // dips below 2 (touch jitter). `anchored` latches for the whole gesture so the
+            // focal point stays put; recomputing it each frame made the timeline shudder.
+            var anchored = false
             do {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 if (event.changes.count { it.pressed } >= 2) {
                     val zoom = event.calculateZoom()
                     if (zoom != 1f) {
-                        // isStart = first applied step of this 2-finger sub-gesture → the
-                        // caller fixes the focal anchor once (no per-event drift).
-                        zoomFn.value(zoom, event.calculateCentroid().x, !pinching)
-                        pinching = true
+                        zoomFn.value(zoom, event.calculateCentroid().x, !anchored)
+                        anchored = true
                         event.changes.forEach { it.consume() }
                     }
-                } else {
-                    pinching = false
                 }
             } while (event.changes.any { it.pressed })
         }
