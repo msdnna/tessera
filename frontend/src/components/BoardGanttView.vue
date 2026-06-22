@@ -200,6 +200,14 @@ const overdueCount = computed(
   () => scheduled.value.filter((t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs).length,
 )
 
+// The lane-header row is content-driven (matches the timeline), so measure its
+// rendered height instead of assuming LANE_H — keeps the SVG arrow geometry exact.
+const laneH = ref(LANE_H)
+function measureLaneH() {
+  const h = bodyEl.value?.querySelector('.tl-lanehead')?.offsetHeight
+  if (h) laneH.value = h
+}
+
 // ── per-task row geometry (exact, computed from the lane model) ──
 // Each task occupies a fixed-height row; we walk lanes in render order to get the
 // vertical top of every task row, which the arrow overlay and link-drag reuse.
@@ -207,7 +215,7 @@ const positions = computed(() => {
   const map = {}
   let y = 0
   for (const lane of lanes.value) {
-    y += LANE_H
+    y += laneH.value
     for (const t of lane.tasks) {
       map[t.id] = y
       y += ROW_H
@@ -239,12 +247,17 @@ async function loadDeps() {
     deps.value = []
   }
 }
-onMounted(loadDeps)
+onMounted(() => {
+  loadDeps()
+  nextTick(measureLaneH)
+})
 // Refetch when the task set changes (a link added elsewhere, a task removed).
 watch(
   () => props.tasks.map((t) => t.id).join(','),
   () => loadDeps(),
 )
+// Re-measure the lane-header height when the lane set changes.
+watch(lanes, () => nextTick(measureLaneH))
 
 // Bar geometry for a task (honours an active reschedule preview).
 function geom(t) {
@@ -884,14 +897,13 @@ function onWheel(e) {
   position: sticky;
   left: 0;
   z-index: 5;
-  height: 32px;
   display: flex;
   align-items: center;
   gap: 7px;
   background: var(--t-surface-alt, var(--t-hover));
   border-right: 1px solid var(--t-border);
   border-bottom: 1px solid var(--t-border);
-  padding: 0 12px;
+  padding: 5px 12px;
 }
 .lane-dot {
   width: 9px;
@@ -929,7 +941,6 @@ function onWheel(e) {
   background: var(--t-surface-alt, var(--t-hover));
   border-bottom: 1px solid var(--t-border);
   flex: 0 0 auto;
-  height: 32px;
 }
 
 .tl-row {
