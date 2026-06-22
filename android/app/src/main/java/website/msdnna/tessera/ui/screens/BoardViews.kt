@@ -129,6 +129,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
+import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
@@ -1244,6 +1245,12 @@ private fun tlDayFloor(ms: Long): Long =
 
 private data class TLane(val key: String, val label: String, val color: Color?, val tasks: List<Task>)
 
+/** Flattened timeline body rows, so the body can virtualize via LazyColumn (only
+ *  visible rows compose — the ~200-task perf fix, mirrors the kanban cards). */
+private sealed interface TlBodyRow
+private data class TlLaneHeaderRow(val lane: TLane) : TlBodyRow
+private data class TlTaskRow(val task: Task) : TlBodyRow
+
 /** Summed estimate of a lane's tasks, formatted in the board's unit, or null when none set. */
 private fun laneEffort(lane: TLane, state: BoardUiState): String? {
     val total = website.msdnna.tessera.util.Estimation.sum(lane.tasks.map { it.estimate }) ?: return null
@@ -1286,9 +1293,13 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         val (a, b) = span(it)
         lo = minOf(lo, a)
         hi = maxOf(hi, b)
+        // The estimate ghost can reach past the due date — keep its end on-scale.
+        website.msdnna.tessera.util.Estimation.toDays(it.estimate, state.estimation)?.let { gd ->
+            hi = maxOf(hi, a + ceil(gd).toLong() * TL_DAY_MS)
+        }
     }
     lo -= 3 * TL_DAY_MS
-    hi += 14 * TL_DAY_MS
+    hi += 7 * TL_DAY_MS
     val dayWpx = with(density) { dayW.toPx() }
     // Cap the window so the track can't exceed Compose's Constraints limit; keep the
     // recent/future end (anchored at hi) and drop the far past.
@@ -1356,6 +1367,15 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             .filter { it.tasks.isNotEmpty() || mode == "status" }
             .sortedBy { if (it.key == "∅") 1 else 0 }
     }
+    // Flattened rows for the virtualized body (lane header + its task rows).
+    val bodyRows = remember(lanes) {
+        buildList {
+            for (lane in lanes) {
+                add(TlLaneHeaderRow(lane))
+                for (t in lane.tasks) add(TlTaskRow(t))
+            }
+        }
+    }
 
     val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
     val hScroll = rememberScrollState()
@@ -1375,11 +1395,13 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         }
     }
     // Re-anchor on scale / window-origin change (not on manual scroll → that stays put).
-    // Wait one frame so the track is measured: scrollTo clamps to maxValue, which is 0
-    // until layout runs → without this the initial scroll snapped to the far-left day.
+    // awaitTrackLayout waits for the track to measure so maxValue is valid (scrollTo
+    // clamps to it). The viewport (viewportPx) MUST be the visible width — its
+    // onSizeChanged sits BEFORE horizontalScroll, else it would report the content
+    // width and the centre offset would scale with zoom/filters (wrong month).
     LaunchedEffect(dayW, viewportPx, rangeStart) {
         if (viewportPx <= 0) return@LaunchedEffect
-        withFrameNanos {}
+        awaitTrackLayout(hScroll)
         val px = with(density) { dayW.toPx() }
         val centerMs = if (anchorMs >= 0L) anchorMs else todayMs
         val day = (centerMs - rangeStart).toFloat() / TL_DAY_MS
@@ -1390,7 +1412,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         anchorMs = todayMs
         val px = with(density) { dayW.toPx() }
         scope.launch {
-            withFrameNanos {}
+            awaitTrackLayout(hScroll)
             val target = (dayIndex(todayMs) * px - viewportPx / 2f).roundToInt().coerceIn(0, hScroll.maxValue)
             hScroll.animateScrollTo(target)
         }
@@ -1429,107 +1451,125 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         }
         Spacer(Modifier.height(8.dp))
 
-        // ── header: sticky months + days (horizontal-scrolls with the body) ──
-        Row {
-            Box(
-                Modifier.width(leftW).height(TL_HEAD_H).background(c.surfaceAlt).clipToBounds()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                contentAlignment = Alignment.BottomStart,
-            ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-            Box(Modifier.weight(1f).horizontalScroll(hScroll).onSizeChanged { viewportPx = it.width }) {
-                Column(Modifier.width(axisW)) {
-                    TimelineMonthBand(rangeStart, dayCount, dayW)
-                    TimelineDayRow(dayCells, dayW)
+        // ── chart area: rounded + bordered, like the web .tl-scroll ──
+        Column(
+            Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                .border(1.dp, c.border, RoundedCornerShape(12.dp)),
+        ) {
+            // ── header: sticky months + days (horizontal-scrolls with the body) ──
+            Row {
+                Box(
+                    Modifier.width(leftW).height(TL_HEAD_H).background(c.surfaceAlt).clipToBounds()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.BottomStart,
+                ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+                Box(Modifier.weight(1f).onSizeChanged { viewportPx = it.width }.horizontalScroll(hScroll)) {
+                    Column(Modifier.width(axisW)) {
+                        TimelineMonthBand(rangeStart, dayCount, dayW)
+                        TimelineDayRow(dayCells, dayW)
+                    }
                 }
             }
-        }
 
-        // ── body (pinch-to-zoom; canPan=false so 1-finger scroll passes through) ──
-        if (lanes.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
-            }
-        } else {
-            Column(
-                Modifier.weight(1f).transformable(zoom, canPan = { false }).verticalScroll(vScroll),
-            ) {
-                lanes.forEach { lane ->
-                    // lane header row
-                    Row {
-                        Row(
-                            Modifier.width(leftW).height(TL_LANE_H).background(c.surfaceAlt).clipToBounds()
-                                .padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                Modifier.size(9.dp).clip(RoundedCornerShape(3.dp))
-                                    .background(accentGradient(lane.color ?: c.primary)),
-                            )
-                            Spacer(Modifier.width(7.dp))
-                            Text(
-                                lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                                maxLines = 1, modifier = Modifier.weight(1f),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
-                            laneEffort(lane, state)?.let { eff ->
-                                Spacer(Modifier.width(6.dp))
-                                IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
-                                Spacer(Modifier.width(3.dp))
-                                Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
+            // ── body (pinch-to-zoom; canPan=false so 1-finger scroll passes through) ──
+            if (lanes.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
+                }
+            } else {
+                LazyColumn(Modifier.weight(1f).transformable(zoom, canPan = { false })) {
+                    items(
+                        bodyRows,
+                        key = { row ->
+                            when (row) {
+                                is TlLaneHeaderRow -> "L:${row.lane.key}"
+                                is TlTaskRow -> "T:${row.task.id}"
                             }
-                        }
-                        Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                            Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor)) {
-                                Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
-                            }
-                        }
-                    }
-                    // task rows
-                    lane.tasks.forEach { t ->
-                        val (a, b) = span(t)
-                        val i0 = dayIndex(a)
-                        val i1 = dayIndex(b)
-                        val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
-                        Row {
-                            Row(
-                                Modifier.width(leftW).height(TL_ROW_H).clipToBounds()
-                                    .clickableNoRipple { onOpenTask(t) }
-                                    .padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(
-                                    Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp))
-                                        .background(accentGradient(accent)),
-                                )
-                                Spacer(Modifier.width(7.dp))
-                                Text(
-                                    t.title,
-                                    color = if (t.isCompleted) c.text3 else c.text1,
-                                    fontSize = 13.sp, maxLines = 1,
-                                    textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
-                                )
-                            }
-                            Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                                Box(Modifier.width(axisW).height(TL_ROW_H).tlGrid(dayWpx, gridColor)) {
-                                    Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
-                                    website.msdnna.tessera.util.Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
-                                        GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent)
-                                    }
-                                    Box(
-                                        Modifier.offset(x = dayW * i0, y = 7.dp)
-                                            .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .alpha(if (t.isCompleted) 0.5f else 1f)
-                                            .background(accentGradient(accent))
-                                            .clickableNoRipple { onOpenTask(t) }
-                                            .padding(horizontal = 7.dp),
-                                        contentAlignment = Alignment.CenterStart,
+                        },
+                    ) { row ->
+                        when (row) {
+                            is TlLaneHeaderRow -> {
+                                val lane = row.lane
+                                Row {
+                                    Row(
+                                        Modifier.width(leftW).height(TL_LANE_H).background(c.surfaceAlt).clipToBounds()
+                                            .padding(horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Text(
-                                            t.title, color = Color.White, fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium, maxLines = 1,
+                                        Box(
+                                            Modifier.size(9.dp).clip(RoundedCornerShape(3.dp))
+                                                .background(accentGradient(lane.color ?: c.primary)),
                                         )
+                                        Spacer(Modifier.width(7.dp))
+                                        Text(
+                                            lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1, modifier = Modifier.weight(1f),
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
+                                        laneEffort(lane, state)?.let { eff ->
+                                            Spacer(Modifier.width(6.dp))
+                                            IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
+                                            Spacer(Modifier.width(3.dp))
+                                            Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
+                                        }
+                                    }
+                                    Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                                        Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
+                                            Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
+                                        }
+                                    }
+                                }
+                            }
+
+                            is TlTaskRow -> {
+                                val t = row.task
+                                val (a, b) = span(t)
+                                val i0 = dayIndex(a)
+                                val i1 = dayIndex(b)
+                                val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                                Row {
+                                    Row(
+                                        Modifier.width(leftW).height(TL_ROW_H).clipToBounds()
+                                            .clickableNoRipple { onOpenTask(t) }
+                                            .padding(horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Box(
+                                            Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp))
+                                                .background(accentGradient(accent)),
+                                        )
+                                        Spacer(Modifier.width(7.dp))
+                                        Text(
+                                            t.title,
+                                            color = if (t.isCompleted) c.text3 else c.text1,
+                                            fontSize = 13.sp, maxLines = 1,
+                                            textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
+                                        )
+                                    }
+                                    Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                                        Box(Modifier.width(axisW).height(TL_ROW_H).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
+                                            Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
+                                            Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
+                                                val lbl = Estimation.format(t.estimate, state.estimation)
+                                                GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
+                                            }
+                                            Box(
+                                                Modifier.offset(x = dayW * i0, y = 7.dp)
+                                                    .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .alpha(if (t.isCompleted) 0.5f else 1f)
+                                                    .background(accentGradient(accent))
+                                                    .clickableNoRipple { onOpenTask(t) }
+                                                    .padding(horizontal = 7.dp),
+                                                contentAlignment = Alignment.CenterStart,
+                                            ) {
+                                                Text(
+                                                    t.title, color = Color.White, fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium, maxLines = 1,
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1614,9 +1654,13 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         val (a, b) = span(it)
         lo = minOf(lo, a)
         hi = maxOf(hi, b)
+        // The estimate ghost can reach past the due date — keep its end on-scale.
+        website.msdnna.tessera.util.Estimation.toDays(it.estimate, state.estimation)?.let { gd ->
+            hi = maxOf(hi, a + ceil(gd).toLong() * TL_DAY_MS)
+        }
     }
     lo -= 3 * TL_DAY_MS
-    hi += 14 * TL_DAY_MS
+    hi += 7 * TL_DAY_MS
     val dayWpx = with(density) { dayW.toPx() }
     // Cap the window so the track (a single axisW×bodyH box + arrow Canvas) can't
     // exceed Compose's Constraints limit; keep the recent/future end (anchored at hi).
@@ -1729,11 +1773,13 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         }
     }
     // Re-anchor on scale / window-origin change (not on manual scroll → that stays put).
-    // Wait one frame so the track is measured: scrollTo clamps to maxValue, which is 0
-    // until layout runs → without this the initial scroll snapped to the far-left day.
+    // awaitTrackLayout waits for the track to measure so maxValue is valid (scrollTo
+    // clamps to it). The viewport (viewportPx) MUST be the visible width — its
+    // onSizeChanged sits BEFORE horizontalScroll, else it would report the content
+    // width and the centre offset would scale with zoom/filters (wrong month).
     LaunchedEffect(dayW, viewportPx, rangeStart) {
         if (viewportPx <= 0) return@LaunchedEffect
-        withFrameNanos {}
+        awaitTrackLayout(hScroll)
         val px = with(density) { dayW.toPx() }
         val centerMs = if (anchorMs >= 0L) anchorMs else todayMs
         val day = (centerMs - rangeStart).toFloat() / TL_DAY_MS
@@ -1744,7 +1790,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         anchorMs = todayMs
         val px = with(density) { dayW.toPx() }
         scope.launch {
-            withFrameNanos {}
+            awaitTrackLayout(hScroll)
             val target = (dayIndex(todayMs) * px - viewportPx / 2f).roundToInt().coerceIn(0, hScroll.maxValue)
             hScroll.animateScrollTo(target)
         }
@@ -1787,126 +1833,133 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         }
         Spacer(Modifier.height(8.dp))
 
-        // ── header: sticky months + days (h-scrolls with the body) ──
-        Row {
-            Box(
-                Modifier.width(leftW).height(TL_HEAD_H).background(c.surfaceAlt).clipToBounds()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                contentAlignment = Alignment.BottomStart,
-            ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-            Box(Modifier.weight(1f).horizontalScroll(hScroll).onSizeChanged { viewportPx = it.width }) {
-                Column(Modifier.width(axisW)) {
-                    TimelineMonthBand(rangeStart, dayCount, dayW)
-                    TimelineDayRow(dayCells, dayW)
+        // ── chart area: rounded + bordered, like the web .tl-scroll ──
+        Column(
+            Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                .border(1.dp, c.border, RoundedCornerShape(12.dp)),
+        ) {
+            // ── header: sticky months + days (h-scrolls with the body) ──
+            Row {
+                Box(
+                    Modifier.width(leftW).height(TL_HEAD_H).background(c.surfaceAlt).clipToBounds()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.BottomStart,
+                ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+                Box(Modifier.weight(1f).onSizeChanged { viewportPx = it.width }.horizontalScroll(hScroll)) {
+                    Column(Modifier.width(axisW)) {
+                        TimelineMonthBand(rangeStart, dayCount, dayW)
+                        TimelineDayRow(dayCells, dayW)
+                    }
                 }
             }
-        }
 
-        if (lanes.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
-            }
-        } else {
-            // ── body: left fixed column + right track, sharing vScroll ──
-            Row(Modifier.weight(1f)) {
-                // left task column (lane headers + task names), v-scrolls in lockstep
-                Column(Modifier.width(leftW).clipToBounds().verticalScroll(vScroll)) {
-                    lanes.forEach { lane ->
-                        Row(
-                            Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(accentGradient(lane.color ?: c.primary)))
-                            Spacer(Modifier.width(7.dp))
-                            Text(
-                                lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                                maxLines = 1, modifier = Modifier.weight(1f),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
-                            laneEffort(lane, state)?.let { eff ->
-                                Spacer(Modifier.width(6.dp))
-                                IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
-                                Spacer(Modifier.width(3.dp))
-                                Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
-                            }
-                        }
-                        lane.tasks.forEach { t ->
-                            val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+            if (lanes.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
+                }
+            } else {
+                // ── body: left fixed column + right track, sharing vScroll ──
+                Row(Modifier.weight(1f)) {
+                    // left task column (lane headers + task names), v-scrolls in lockstep
+                    Column(Modifier.width(leftW).clipToBounds().verticalScroll(vScroll)) {
+                        lanes.forEach { lane ->
                             Row(
-                                Modifier.fillMaxWidth().height(TL_ROW_H).clickableNoRipple { onOpenTask(t) }
-                                    .padding(horizontal = 10.dp),
+                                Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).padding(horizontal = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Box(Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp)).background(accentGradient(accent)))
+                                Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(accentGradient(lane.color ?: c.primary)))
                                 Spacer(Modifier.width(7.dp))
                                 Text(
-                                    t.title, color = if (t.isCompleted) c.text3 else c.text1, fontSize = 13.sp, maxLines = 1,
-                                    textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
+                                    lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, modifier = Modifier.weight(1f),
                                 )
+                                Spacer(Modifier.width(6.dp))
+                                Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
+                                laneEffort(lane, state)?.let { eff ->
+                                    Spacer(Modifier.width(6.dp))
+                                    IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
+                                    Spacer(Modifier.width(3.dp))
+                                    Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
+                                }
+                            }
+                            lane.tasks.forEach { t ->
+                                val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                                Row(
+                                    Modifier.fillMaxWidth().height(TL_ROW_H).clickableNoRipple { onOpenTask(t) }
+                                        .padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp)).background(accentGradient(accent)))
+                                    Spacer(Modifier.width(7.dp))
+                                    Text(
+                                        t.title, color = if (t.isCompleted) c.text3 else c.text1, fontSize = 13.sp, maxLines = 1,
+                                        textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
+                                    )
+                                }
                             }
                         }
                     }
-                }
-                // right track: bars + arrow Canvas, both h-scroll(hScroll) & v-scroll(vScroll)
-                Box(
-                    Modifier.weight(1f).horizontalScroll(hScroll).verticalScroll(vScroll)
-                        .transformable(zoom, canPan = { false }),
-                ) {
-                    Box(Modifier.width(axisW).height(bodyH)) {
-                        Column(Modifier.fillMaxSize()) {
-                            lanes.forEach { lane ->
-                                Box(Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor)) {
-                                    Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
-                                }
-                                lane.tasks.forEach { t ->
-                                    val (a, b) = span(t)
-                                    val i0 = dayIndex(a)
-                                    val i1 = dayIndex(b)
-                                    val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
-                                    Box(Modifier.fillMaxWidth().height(TL_ROW_H).tlGrid(dayWpx, gridColor)) {
-                                        Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
-                                        website.msdnna.tessera.util.Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
-                                            GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent)
-                                        }
-                                        Box(
-                                            Modifier.offset(x = dayW * i0, y = 7.dp)
-                                                .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .alpha(if (t.isCompleted) 0.5f else 1f)
-                                                .background(accentGradient(accent))
-                                                .clickableNoRipple { onOpenTask(t) }
-                                                .padding(horizontal = 7.dp),
-                                            contentAlignment = Alignment.CenterStart,
-                                        ) {
-                                            Text(t.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                    // right track: bars + arrow Canvas, both h-scroll(hScroll) & v-scroll(vScroll)
+                    Box(
+                        Modifier.weight(1f).horizontalScroll(hScroll).verticalScroll(vScroll)
+                            .transformable(zoom, canPan = { false }),
+                    ) {
+                        Box(Modifier.width(axisW).height(bodyH)) {
+                            Column(Modifier.fillMaxSize()) {
+                                lanes.forEach { lane ->
+                                    Box(Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
+                                        Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
+                                    }
+                                    lane.tasks.forEach { t ->
+                                        val (a, b) = span(t)
+                                        val i0 = dayIndex(a)
+                                        val i1 = dayIndex(b)
+                                        val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                                        Box(Modifier.fillMaxWidth().height(TL_ROW_H).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
+                                            Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
+                                            Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
+                                                val lbl = Estimation.format(t.estimate, state.estimation)
+                                                GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
+                                            }
+                                            Box(
+                                                Modifier.offset(x = dayW * i0, y = 7.dp)
+                                                    .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .alpha(if (t.isCompleted) 0.5f else 1f)
+                                                    .background(accentGradient(accent))
+                                                    .clickableNoRipple { onOpenTask(t) }
+                                                    .padding(horizontal = 7.dp),
+                                                contentAlignment = Alignment.CenterStart,
+                                            ) {
+                                                Text(t.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        // dependency arrows, drawn over the whole track
-                        Canvas(Modifier.fillMaxSize()) {
-                            arrows.forEach { s ->
-                                val x1 = s.x1.toPx()
-                                val y1 = s.y1.toPx()
-                                val x2 = s.x2.toPx()
-                                val y2 = s.y2.toPx()
-                                val dx = maxOf(22.dp.toPx(), kotlin.math.abs(x2 - x1) * 0.4f)
-                                val path = Path().apply {
-                                    moveTo(x1, y1)
-                                    cubicTo(x1 + dx, y1, x2 - dx, y2, x2, y2)
+                            // dependency arrows, drawn over the whole track
+                            Canvas(Modifier.fillMaxSize()) {
+                                arrows.forEach { s ->
+                                    val x1 = s.x1.toPx()
+                                    val y1 = s.y1.toPx()
+                                    val x2 = s.x2.toPx()
+                                    val y2 = s.y2.toPx()
+                                    val dx = maxOf(22.dp.toPx(), kotlin.math.abs(x2 - x1) * 0.4f)
+                                    val path = Path().apply {
+                                        moveTo(x1, y1)
+                                        cubicTo(x1 + dx, y1, x2 - dx, y2, x2, y2)
+                                    }
+                                    drawPath(path, color = arrowColor.copy(alpha = 0.7f), style = Stroke(width = 1.6.dp.toPx()))
+                                    val hw = 7.dp.toPx()
+                                    val hh = 4.dp.toPx()
+                                    val head = Path().apply {
+                                        moveTo(x2, y2)
+                                        lineTo(x2 - hw, y2 - hh)
+                                        lineTo(x2 - hw, y2 + hh)
+                                        close()
+                                    }
+                                    drawPath(head, color = arrowColor)
                                 }
-                                drawPath(path, color = arrowColor.copy(alpha = 0.7f), style = Stroke(width = 1.6.dp.toPx()))
-                                val hw = 7.dp.toPx()
-                                val hh = 4.dp.toPx()
-                                val head = Path().apply {
-                                    moveTo(x2, y2)
-                                    lineTo(x2 - hw, y2 - hh)
-                                    lineTo(x2 - hw, y2 + hh)
-                                    close()
-                                }
-                                drawPath(head, color = arrowColor)
                             }
                         }
                     }
@@ -1975,6 +2028,21 @@ private fun TimelineMonthBand(rangeStart: Long, dayCount: Int, dayW: androidx.co
     }
 }
 
+/**
+ * Wait until the horizontal track is laid out so [ScrollState.maxValue] is valid.
+ * A single `withFrameNanos` resumes BEFORE the frame's layout pass, so the very
+ * first scroll would see maxValue==0 and clamp to 0 (= the far-left day, which
+ * varies with zoom/filters — the reported "Сегодня jumps to 2025" bug). Poll a few
+ * frames; bail after 8 (a board that fits the viewport legitimately has maxValue 0).
+ */
+private suspend fun awaitTrackLayout(scroll: ScrollState) {
+    var tries = 0
+    while (scroll.maxValue == 0 && tries < 8) {
+        withFrameNanos {}
+        tries++
+    }
+}
+
 /** Precomputed per-day header metadata, built once per window (cheap zoom frames). */
 private data class TlDayCell(val dom: Int, val weekday: String, val weekend: Boolean, val isToday: Boolean)
 
@@ -2027,7 +2095,12 @@ private fun TimelineDayRow(cells: List<TlDayCell>, dayW: androidx.compose.ui.uni
  * can see whether the planned start→due window matches the effort. Mirrors web.
  */
 @Composable
-private fun GhostBar(barLeft: androidx.compose.ui.unit.Dp, estWidth: androidx.compose.ui.unit.Dp, color: Color) {
+private fun GhostBar(
+    barLeft: androidx.compose.ui.unit.Dp,
+    estWidth: androidx.compose.ui.unit.Dp,
+    color: Color,
+    label: String,
+) {
     val dash = remember { PathEffect.dashPathEffect(floatArrayOf(6f, 5f), 0f) }
     // Frame the estimate envelope with a small margin on every side (matching the
     // top/bottom inset over the bar), a touch more fill, and a slightly thicker dash.
@@ -2040,7 +2113,20 @@ private fun GhostBar(barLeft: androidx.compose.ui.unit.Dp, estWidth: androidx.co
                 style = Stroke(width = 2.dp.toPx(), pathEffect = dash),
             )
         },
-    )
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        // Estimate value + timer icon at the right edge of the dashed envelope.
+        if (label.isNotBlank()) {
+            Row(
+                Modifier.padding(end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IonIcon(Ion.TIME, size = 10.dp, tint = color)
+                Spacer(Modifier.width(2.dp))
+                Text(label, color = color, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+        }
+    }
 }
 
 private val TlMonths = listOf("янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")
@@ -2060,11 +2146,18 @@ private fun ZoomBtn(glyph: String, onClick: () -> Unit) {
     ) { Text(glyph, color = c.text2, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
 }
 
-/** Faint vertical day gridlines behind a timeline track (web parity). */
-private fun Modifier.tlGrid(dayWpx: Float, color: Color): Modifier = drawBehind {
+/**
+ * Faint vertical day gridlines behind a timeline track (web parity). Only the
+ * VISIBLE day window is drawn (the track is up to ~30k px wide; drawing every line
+ * across it was ~700 drawLine calls per row per frame). `scroll.value` is read in
+ * the draw phase (not composition) so scrolling re-draws but never recomposes.
+ */
+private fun Modifier.tlGrid(dayWpx: Float, color: Color, scroll: ScrollState, viewportPx: Int): Modifier = drawBehind {
     if (dayWpx <= 0f) return@drawBehind
-    var x = dayWpx
-    while (x <= size.width + 0.5f) {
+    val fromX = scroll.value.toFloat()
+    val end = minOf(fromX + viewportPx, size.width)
+    var x = ceil(fromX / dayWpx).toInt().coerceAtLeast(1) * dayWpx
+    while (x <= end + 0.5f) {
         drawLine(color, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
         x += dayWpx
     }
