@@ -9,11 +9,14 @@ import (
 	"tessera/internal/realtime"
 )
 
+// WSHandler upgrades HTTP requests to WebSocket connections and registers them
+// with the realtime hub.
 type WSHandler struct {
 	hub      *realtime.Hub
 	upgrader websocket.Upgrader
 }
 
+// NewWSHandler returns a WSHandler backed by the given hub.
 func NewWSHandler(hub *realtime.Hub) *WSHandler {
 	return &WSHandler{
 		hub: hub,

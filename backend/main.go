@@ -1,3 +1,4 @@
+// Command tessera is the backend API server (gin + pgx + WebSocket hub).
 package main
 
 import (

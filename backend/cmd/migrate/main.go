@@ -8,6 +8,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"strings"
 
@@ -21,6 +22,12 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	_ = godotenv.Load()
 
 	down := flag.Int("down", 0, "roll back N migration steps")
@@ -31,33 +38,34 @@ func main() {
 
 	src, err := iofs.New(migrations.FS, ".")
 	if err != nil {
-		log.Fatalf("load migrations: %v", err)
+		return fmt.Errorf("load migrations: %w", err)
 	}
 
 	m, err := migrate.NewWithSourceInstance("iofs", src, toPgx5(cfg.DatabaseURL))
 	if err != nil {
-		log.Fatalf("init migrate: %v", err)
+		return fmt.Errorf("init migrate: %w", err)
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	switch {
 	case *showVersion:
 		v, dirty, err := m.Version()
 		if err != nil && !errors.Is(err, migrate.ErrNilVersion) {
-			log.Fatalf("version: %v", err)
+			return fmt.Errorf("version: %w", err)
 		}
 		log.Printf("schema version: %d (dirty=%v)", v, dirty)
 	case *down > 0:
 		if err := m.Steps(-*down); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-			log.Fatalf("down: %v", err)
+			return fmt.Errorf("down: %w", err)
 		}
 		log.Printf("rolled back %d step(s)", *down)
 	default:
 		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-			log.Fatalf("up: %v", err)
+			return fmt.Errorf("up: %w", err)
 		}
 		log.Println("migrations applied")
 	}
+	return nil
 }
 
 // toPgx5 rewrites a postgres:// URL to the pgx5:// scheme that golang-migrate's

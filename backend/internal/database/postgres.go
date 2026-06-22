@@ -1,3 +1,4 @@
+// Package database opens and configures the pgx connection pool.
 package database
 
 import (

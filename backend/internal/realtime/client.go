@@ -21,6 +21,7 @@ type Client struct {
 	send chan Event
 }
 
+// NewClient wraps a WebSocket connection as a hub Client.
 func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 	return &Client{hub: hub, conn: conn, send: make(chan Event, 32)}
 }

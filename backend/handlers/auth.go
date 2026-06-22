@@ -15,6 +15,7 @@ import (
 	"tessera/middleware"
 )
 
+// AuthHandler serves the authentication endpoints (login, refresh, invites, reset).
 type AuthHandler struct {
 	q         *db.Queries
 	secret    string
@@ -22,6 +23,8 @@ type AuthHandler struct {
 	publicURL string
 }
 
+// NewAuthHandler returns an AuthHandler with the given queries, signing secret,
+// mailer, and public base URL.
 func NewAuthHandler(q *db.Queries, secret string, mailer mail.Mailer, publicURL string) *AuthHandler {
 	return &AuthHandler{q: q, secret: secret, mailer: mailer, publicURL: publicURL}
 }

@@ -1,3 +1,4 @@
+// Package middleware holds gin middleware (JWT auth, request context helpers).
 package middleware
 
 import (

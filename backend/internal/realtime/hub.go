@@ -19,6 +19,7 @@ type Event struct {
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 
+// Hub fans out Events to every connected client.
 type Hub struct {
 	mu         sync.RWMutex
 	clients    map[*Client]struct{}
@@ -27,6 +28,7 @@ type Hub struct {
 	broadcast  chan Event
 }
 
+// NewHub returns an initialised Hub ready to Run.
 func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]struct{}),

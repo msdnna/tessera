@@ -35,14 +35,14 @@ func (h *API) CreateBoard(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	max, err := h.q.MaxBoardPosition(c, projectID)
+	maxPos, err := h.q.MaxBoardPosition(c, projectID)
 	if err != nil {
 		fail(c)
 		return
 	}
 	b, err := h.q.CreateBoard(c, db.CreateBoardParams{
 		ProjectID: projectID, Name: req.Name, Slug: h.uniqueBoardSlug(c, projectID, req.Name),
-		Position: positionBetween(&max, nil),
+		Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
 		fail(c)
@@ -129,7 +129,6 @@ func (h *API) ListBoards(c *gin.Context) {
 	c.JSON(http.StatusOK, boards)
 }
 
-// GetBoard returns a single board.
 // ResolveBoardBySlug resolves a /project/<projectSlug>/board/<boardSlug> pair to
 // its board (board slugs are unique only within a project).
 func (h *API) ResolveBoardBySlug(c *gin.Context) {
@@ -155,6 +154,7 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 	c.JSON(http.StatusOK, b)
 }
 
+// GetBoard returns a single board by UUID or human-readable slug.
 func (h *API) GetBoard(c *gin.Context) {
 	// Accept either a UUID or a human-readable slug (/board/<slug> links).
 	param := c.Param("id")
@@ -315,13 +315,13 @@ func (h *API) CreateColumn(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	max, err := h.q.MaxColumnPosition(c, boardID)
+	maxPos, err := h.q.MaxColumnPosition(c, boardID)
 	if err != nil {
 		fail(c)
 		return
 	}
 	col, err := h.q.CreateColumn(c, db.CreateColumnParams{
-		BoardID: boardID, Name: req.Name, Color: req.Color, Position: positionBetween(&max, nil),
+		BoardID: boardID, Name: req.Name, Color: req.Color, Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
 		fail(c)

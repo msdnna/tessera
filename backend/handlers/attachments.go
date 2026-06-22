@@ -95,6 +95,7 @@ func (h *API) ServeUpload(c *gin.Context) {
 	c.File(p)
 }
 
+// ListAttachments returns the attachments on a task.
 func (h *API) ListAttachments(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -165,6 +166,7 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	c.JSON(http.StatusCreated, att)
 }
 
+// DownloadAttachment streams an attachment's stored file to the client.
 func (h *API) DownloadAttachment(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -189,6 +191,7 @@ func (h *API) DownloadAttachment(c *gin.Context) {
 	c.File(att.StoragePath)
 }
 
+// DeleteAttachment removes an attachment row and best-effort deletes its file.
 func (h *API) DeleteAttachment(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -219,12 +222,12 @@ func saveUploaded(fh *multipart.FileHeader, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	_, err = io.Copy(out, src)
 	return err
 }

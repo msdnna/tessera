@@ -111,6 +111,7 @@ type taskEventResp struct {
 	ActorName *string         `json:"actor_name"`
 }
 
+// ListTaskEvents returns the activity-log events for a task.
 func (h *API) ListTaskEvents(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -139,6 +140,7 @@ func (h *API) ListTaskEvents(c *gin.Context) {
 
 // ── comments ───────────────────────────────────────────────────
 
+// ListComments returns the comments on a task.
 func (h *API) ListComments(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -155,6 +157,7 @@ func (h *API) ListComments(c *gin.Context) {
 	c.JSON(http.StatusOK, orEmpty(comments))
 }
 
+// CreateComment adds a comment to a task.
 func (h *API) CreateComment(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -213,6 +216,7 @@ func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uu
 	return notified
 }
 
+// UpdateComment edits a comment's body.
 func (h *API) UpdateComment(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -248,6 +252,7 @@ func (h *API) UpdateComment(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
+// DeleteComment removes a comment.
 func (h *API) DeleteComment(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -277,6 +282,7 @@ func (h *API) DeleteComment(c *gin.Context) {
 
 // ── relations (referenced by #N) ───────────────────────────────
 
+// ListRelations returns a task's relations (blocks / blocked-by / relates / duplicates).
 func (h *API) ListRelations(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -293,6 +299,7 @@ func (h *API) ListRelations(c *gin.Context) {
 	c.JSON(http.StatusOK, orEmpty(rels))
 }
 
+// AddRelation links two tasks with a relation.
 func (h *API) AddRelation(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -393,6 +400,7 @@ func inverseRelationKind(kind string) string {
 	}
 }
 
+// DeleteRelation removes a task relation.
 func (h *API) DeleteRelation(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -418,6 +426,7 @@ func (h *API) DeleteRelation(c *gin.Context) {
 
 // ── notifications ───────────────────────────────────────────────
 
+// ListNotifications returns the current user's notifications.
 func (h *API) ListNotifications(c *gin.Context) {
 	items, err := h.q.ListNotifications(c, middleware.CurrentUser(c))
 	if err != nil {
@@ -427,6 +436,7 @@ func (h *API) ListNotifications(c *gin.Context) {
 	c.JSON(http.StatusOK, orEmpty(items))
 }
 
+// UnreadNotificationCount returns the current user's unread notification count.
 func (h *API) UnreadNotificationCount(c *gin.Context) {
 	n, err := h.q.CountUnreadNotifications(c, middleware.CurrentUser(c))
 	if err != nil {
@@ -436,6 +446,7 @@ func (h *API) UnreadNotificationCount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": n})
 }
 
+// MarkNotificationRead marks a single notification read.
 func (h *API) MarkNotificationRead(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -450,6 +461,7 @@ func (h *API) MarkNotificationRead(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// MarkAllNotificationsRead marks all of the current user's notifications read.
 func (h *API) MarkAllNotificationsRead(c *gin.Context) {
 	if err := h.q.MarkAllNotificationsRead(c, middleware.CurrentUser(c)); err != nil {
 		fail(c)

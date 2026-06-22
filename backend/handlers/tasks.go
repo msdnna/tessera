@@ -541,13 +541,13 @@ func (h *API) TransferTask(c *gin.Context) {
 		}
 		columnID = cols[0].ID
 	}
-	max, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
 	if err != nil {
 		fail(c)
 		return
 	}
 	updated, err := h.q.TransferTask(c, db.TransferTaskParams{
-		ID: id, BoardID: req.BoardID, ColumnID: columnID, Position: positionBetween(&max, nil),
+		ID: id, BoardID: req.BoardID, ColumnID: columnID, Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
 		fail(c)
@@ -833,11 +833,11 @@ func (h *API) nextTaskPosition(c *gin.Context, columnID uuid.UUID, parentID *uui
 		last := subs[len(subs)-1].Position
 		return positionBetween(&last, nil), nil
 	}
-	max, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
 	if err != nil {
 		return 0, err
 	}
-	return positionBetween(&max, nil), nil
+	return positionBetween(&maxPos, nil), nil
 }
 
 // neighborTaskPositions resolves the positions of the before/after tasks.

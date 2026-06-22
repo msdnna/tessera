@@ -1,3 +1,4 @@
+// Package config loads and validates runtime configuration from the environment.
 package config
 
 import (
@@ -8,6 +9,7 @@ import (
 	"strings"
 )
 
+// Config holds the runtime configuration loaded from the environment.
 type Config struct {
 	DatabaseURL   string
 	Port          string

@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Token lifetimes: a short-lived access token and a long-lived rotating refresh token.
 const (
 	AccessTokenTTL  = 15 * time.Minute
 	RefreshTokenTTL = 30 * 24 * time.Hour

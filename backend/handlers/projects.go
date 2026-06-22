@@ -25,13 +25,13 @@ func (h *API) CreateProjectGroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	max, err := h.q.MaxProjectGroupPosition(c, wsID)
+	maxPos, err := h.q.MaxProjectGroupPosition(c, wsID)
 	if err != nil {
 		fail(c)
 		return
 	}
 	g, err := h.q.CreateProjectGroup(c, db.CreateProjectGroupParams{
-		WorkspaceID: wsID, ParentID: req.ParentID, Name: req.Name, Position: positionBetween(&max, nil),
+		WorkspaceID: wsID, ParentID: req.ParentID, Name: req.Name, Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
 		fail(c)
@@ -147,7 +147,7 @@ func (h *API) CreateProject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	max, err := h.q.MaxProjectPosition(c, wsID)
+	maxPos, err := h.q.MaxProjectPosition(c, wsID)
 	if err != nil {
 		fail(c)
 		return
@@ -155,7 +155,7 @@ func (h *API) CreateProject(c *gin.Context) {
 	p, err := h.q.CreateProject(c, db.CreateProjectParams{
 		WorkspaceID: wsID, GroupID: req.GroupID, Name: req.Name,
 		Color: req.Color, Icon: req.Icon, Slug: h.uniqueProjectSlug(c, req.Name),
-		Position: positionBetween(&max, nil),
+		Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
 		fail(c)
