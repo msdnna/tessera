@@ -67,6 +67,11 @@ const intervalSec = ref(0)
 const dueSource = ref('issue_milestone')
 const startSource = ref('created')
 const lastSynced = ref(null)
+// ── write-back (Tessera → GitLab), opt-in; all off by default ──
+const wbEnabled = ref(false)
+const wbState = ref(false)
+const wbPriority = ref(false)
+const wbComments = ref(false)
 const defaultColumn = ref('')
 const defaultAction = ref('tag')
 const tagKeepPrefix = ref(true)
@@ -208,6 +213,11 @@ async function loadIntegration() {
     dueSource.value = data.due_source || 'issue_milestone'
     startSource.value = data.start_source || 'created'
     lastSynced.value = data.last_synced_at || null
+    const wb = data.writeback || {}
+    wbEnabled.value = wb.enabled === true
+    wbState.value = wb.push_state === true
+    wbPriority.value = wb.push_priority === true
+    wbComments.value = wb.push_comments === true
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
     defaultAction.value = r.default_action || 'tag'
@@ -275,6 +285,12 @@ async function save() {
       due_source: dueSource.value,
       start_source: startSource.value,
       label_rules,
+      writeback: {
+        enabled: wbEnabled.value,
+        push_state: wbState.value,
+        push_priority: wbPriority.value,
+        push_comments: wbComments.value,
+      },
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
     // Persist friendly prefix names to the target project. Merge over the loaded
@@ -415,6 +431,30 @@ watch(
           <n-text depth="3" class="lbl">Включена</n-text>
           <div><n-switch v-model:value="enabled" /></div>
         </div>
+
+        <!-- Write-back (Tessera → GitLab), opt-in; all off by default -->
+        <h4 class="gl-h gl-h-sub">Обратная запись в GitLab</h4>
+        <div class="gl-grid">
+          <n-text depth="3" class="lbl">Включить запись</n-text>
+          <div><n-switch v-model:value="wbEnabled" /></div>
+        </div>
+        <div v-if="wbEnabled" class="gl-grid">
+          <n-text depth="3" class="lbl">Статус (закрыть/открыть issue)</n-text>
+          <div><n-switch v-model:value="wbState" size="small" /></div>
+
+          <n-text depth="3" class="lbl">Приоритет (метка P:)</n-text>
+          <div><n-switch v-model:value="wbPriority" size="small" /></div>
+
+          <n-text depth="3" class="lbl">Комментарии (как заметки)</n-text>
+          <div><n-switch v-model:value="wbComments" size="small" /></div>
+        </div>
+        <p v-if="wbEnabled" class="gl-wb-hint">
+          <n-text depth="3">
+            Изменения линкованных задач отправляются в GitLab под токеном владельца
+            интеграции (нужен scope «api»). Статус — только открыть/закрыть issue по
+            границе колонки «Готово»; метки «S:» не трогаются.
+          </n-text>
+        </p>
 
         <!-- Generic rule engine -->
         <h4 class="gl-h gl-h-sub">Правила меток</h4>
@@ -575,6 +615,11 @@ watch(
 }
 .gl-grid-top {
   margin-top: 12px;
+}
+.gl-wb-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
 }
 .lbl {
   font-size: 12px;
