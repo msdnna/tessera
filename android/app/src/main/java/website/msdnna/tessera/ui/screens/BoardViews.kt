@@ -72,6 +72,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -1530,6 +1531,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             Row {
                 Box(
                     Modifier.width(leftW).height(headH).background(c.surfaceAlt).clipToBounds()
+                        .tlRowBorders(leftW, c.border, c.border)
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     contentAlignment = Alignment.BottomStart,
                 ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
@@ -1883,6 +1885,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
             Row {
                 Box(
                     Modifier.width(leftW).height(headH).background(c.surfaceAlt).clipToBounds()
+                        .tlRowBorders(leftW, c.border, c.border)
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     contentAlignment = Alignment.BottomStart,
                 ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
@@ -2061,6 +2064,8 @@ private fun TimelineAxisCanvas(
                 drawLine(c.border.copy(alpha = 0.55f), Offset(x0 + bw, bandTop), Offset(x0 + bw, size.height), strokeWidth = 1f)
                 canvas.drawText(b.label, maxOf(x0, 0f) + 6.dp.toPx(), ly, weekPaint)
             }
+            drawLine(c.border, Offset(0f, monthH), Offset(w, monthH), strokeWidth = 1f)
+            drawLine(c.border, Offset(0f, size.height - 0.5f), Offset(w, size.height - 0.5f), strokeWidth = 1f)
             return@Canvas
         }
 
@@ -2072,11 +2077,13 @@ private fun TimelineAxisCanvas(
         val circleR = 9.dp.toPx()
         val numCy = daysTop + daysH * 0.36f
         val wdCy = daysTop + daysH * 0.78f
+        val cellBorder = c.border.copy(alpha = 0.55f)
         for (i in from..to) {
             val cell = days[i]
             val x0 = i * dayWpx - scrollX
             val cx = x0 + dayWpx / 2f
             drawRect(if (cell.weekend) c.bg else c.surface, topLeft = Offset(x0, daysTop), size = Size(dayWpx, daysH))
+            drawLine(cellBorder, Offset(x0 + dayWpx, daysTop), Offset(x0 + dayWpx, daysTop + daysH), strokeWidth = 1f)
             if (cell.isToday) drawCircle(c.primary, radius = circleR, center = Offset(cx, numCy))
             val np = if (cell.isToday) dayNumToday else dayNum
             canvas.drawText("${cell.dom}", cx, numCy - (np.descent() + np.ascent()) / 2f, np)
@@ -2090,6 +2097,7 @@ private fun TimelineAxisCanvas(
                 val hourTop = daysTop + daysH
                 val hourCy = hourTop + (size.height - hourTop) / 2f - (weekday.descent() + weekday.ascent()) / 2f
                 drawRect(c.surface, topLeft = Offset(0f, hourTop), size = Size(w, size.height - hourTop))
+                drawLine(cellBorder, Offset(0f, hourTop), Offset(w, hourTop), strokeWidth = 1f)
                 for (i in from..to) {
                     var h = step
                     while (h < 24) {
@@ -2100,6 +2108,9 @@ private fun TimelineAxisCanvas(
                 }
             }
         }
+        // Header frame (web parity): month/day-band separator + the header's bottom border.
+        drawLine(c.border, Offset(0f, monthH), Offset(w, monthH), strokeWidth = 1f)
+        drawLine(c.border, Offset(0f, size.height - 0.5f), Offset(w, size.height - 0.5f), strokeWidth = 1f)
     }
 }
 
@@ -2152,7 +2163,7 @@ private fun LazyListScope.timelineBodyItems(
         when (row) {
             is TlLaneHeaderRow -> {
                 val lane = row.lane
-                Row {
+                Row(Modifier.tlRowBorders(leftW, c.border, c.border)) {
                     Row(
                         Modifier.width(leftW).height(TL_LANE_H).background(c.surfaceAlt).clipToBounds()
                             .padding(horizontal = 10.dp),
@@ -2188,7 +2199,7 @@ private fun LazyListScope.timelineBodyItems(
                 val t = row.task
                 val (barLeft, barWidth) = barGeom(t)
                 val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
-                Row {
+                Row(Modifier.tlRowBorders(leftW, c.border.copy(alpha = 0.6f), c.border)) {
                     Row(
                         Modifier.width(leftW).height(TL_ROW_H).clipToBounds()
                             .clickableNoRipple { onOpenTask(t) }
@@ -2440,6 +2451,21 @@ private fun Modifier.tlGrid(
         x += majorPx
     }
 }
+
+/**
+ * Web-parity row borders for a timeline/Gantt body row: a horizontal divider along the
+ * bottom (full row width) and a vertical divider at the fixed-column boundary, drawn ON
+ * TOP of the row content (`drawWithContent`) so the sticky column's opaque bg doesn't
+ * cover them. The faint per-day/-week gridlines (`tlGrid`) are separate guiding lines.
+ */
+private fun Modifier.tlRowBorders(leftW: androidx.compose.ui.unit.Dp, rowDivider: Color, colDivider: Color): Modifier =
+    drawWithContent {
+        drawContent()
+        val y = size.height - 0.5f
+        drawLine(rowDivider, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+        val lw = leftW.toPx()
+        if (lw > 0f) drawLine(colDivider, Offset(lw, 0f), Offset(lw, size.height), strokeWidth = 1f)
+    }
 
 @Composable
 fun BoardEmpty(message: String) {
