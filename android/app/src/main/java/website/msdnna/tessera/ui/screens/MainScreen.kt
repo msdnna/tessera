@@ -99,6 +99,9 @@ fun MainScreen(
 ) {
     val c = Tessera.colors
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    // Timeline/Gantt own pinch-zoom + horizontal pan → suppress the drawer edge-swipe
+    // there so it doesn't steal the gesture (set by BoardScreen).
+    var boardTimelineLike by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val state by wsVm.state.collectAsStateWithLifecycle()
     val notifState by notifVm.state.collectAsStateWithLifecycle()
@@ -224,6 +227,7 @@ fun MainScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = !boardTimelineLike || drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = c.surface, modifier = Modifier.width(280.dp)) {
                 // Sidebar navigation: push onto the back-stack and close the drawer.
@@ -328,6 +332,7 @@ fun MainScreen(
                                 tagsOpen = boardTagsOpen,
                                 onCloseArchive = { boardArchiveOpen = false },
                                 onCloseTags = { boardTagsOpen = false },
+                                onTimelineLikeChanged = { boardTimelineLike = it },
                             )
                         }
                     }

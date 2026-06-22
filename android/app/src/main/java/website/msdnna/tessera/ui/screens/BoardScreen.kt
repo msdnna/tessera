@@ -28,6 +28,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +75,7 @@ fun BoardScreen(
     tagsOpen: Boolean = false,
     onCloseArchive: () -> Unit = {},
     onCloseTags: () -> Unit = {},
+    onTimelineLikeChanged: (Boolean) -> Unit = {},
 ) {
     val vm: BoardViewModel = viewModel(key = "board-${board.id}")
     val state by vm.state.collectAsStateWithLifecycle()
@@ -81,6 +83,12 @@ fun BoardScreen(
     val wsState by wsVm.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(board.id, workspaceId) { vm.load(board.id, workspaceId) }
+
+    // Timeline/Gantt own pinch-zoom + horizontal pan; tell the host to suppress the
+    // pull-to-refresh and drawer-edge gestures so they don't steal the pinch.
+    val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
+    LaunchedEffect(timelineLike) { onTimelineLikeChanged(timelineLike) }
+    DisposableEffect(Unit) { onDispose { onTimelineLikeChanged(false) } }
 
     var openTaskId by remember(board.id) { mutableStateOf<String?>(null) }
     val ptrState = rememberPullToRefreshState()
@@ -102,13 +110,7 @@ fun BoardScreen(
         HorizontalDivider(color = Tessera.colors.border)
 
         Box(Modifier.fillMaxSize()) {
-            PullToRefreshBox(
-                isRefreshing = state.refreshing,
-                onRefresh = vm::pullRefresh,
-                modifier = Modifier.fillMaxSize(),
-                state = ptrState,
-                indicator = { BoardRefreshIndicator(distanceFraction = { ptrState.distanceFraction }, refreshing = state.refreshing) },
-            ) {
+            val boardContent: @Composable () -> Unit = {
                 when {
                     state.loading -> LoadingState()
 
@@ -130,6 +132,19 @@ fun BoardScreen(
                         }
                     }
                 }
+            }
+            // Pull-to-refresh everywhere except timeline/Gantt (its vertical drags
+            // would fight the pinch-zoom / horizontal pan).
+            if (timelineLike) {
+                Box(Modifier.fillMaxSize()) { boardContent() }
+            } else {
+                PullToRefreshBox(
+                    isRefreshing = state.refreshing,
+                    onRefresh = vm::pullRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                    state = ptrState,
+                    indicator = { BoardRefreshIndicator(distanceFraction = { ptrState.distanceFraction }, refreshing = state.refreshing) },
+                ) { boardContent() }
             }
             if (composerExpanded) {
                 Box(Modifier.fillMaxSize().clickableNoRipple { composerExpanded = false })
