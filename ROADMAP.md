@@ -3,8 +3,8 @@
 Источник истины для «что сделано / что дальше». Обновлять по ходу работы (и в том же
 изменении правда важнее красоты). Детали реализации — в коде, CHANGELOG и auto-memory.
 
-Текущие версии — `make version`. На 2026-06-23: backend `0.52.0` ·
-frontend `0.91.0` · android `0.33.0`. Следующая миграция — `0032`.
+Текущие версии — `make version`. На 2026-06-23: backend `0.53.2` ·
+frontend `0.92.0` · android `0.33.0`. Следующая миграция — `0033`.
 
 ## Статус фаз (0–10)
 
@@ -108,8 +108,12 @@ frontend `0.91.0` · android `0.33.0`. Следующая миграция — `
   сортировка/фильтры как удаляемые чипы в одном широком баре с «＋»-меню + инлайн-поиск
   (заменил кнопки Группировка/Сортировка/Фильтры); фикс **прокси вложений** (тянем через
   uploads API `/api/v4/projects/:id/uploads/:secret/:filename` по PAT, а не web-роут).
-- **Бэклог фазы B+:** write-back (action-bindings + loop-guard через снапшот-хэши, уже в схеме);
-  webhooks; OAuth/SSO.
+- **Фаза B — write-back — ✅ MVP СДЕЛАНО** (backend 0.53.0 / web 0.92.0, mig 0032, 2026-06-23):
+  state/priority/comment, opt-in, async-outbox, loop-guard. Подробности — в «Что дальше» ниже +
+  [[project-gitlab-writeback]]. Остаток (assignees/title-desc/`column_label_bindings`/webhooks/OAuth) — в бэклоге.
+- **Сопутствующие фиксы (2026-06-23):** статус-маппинг сделан **регистронезависимым** (backend 0.53.1 —
+  `S: In Progress`/`S: In Review` больше не уезжают в дефолт-колонку); HTTP-клиенты GL **fail-fast**
+  (backend 0.53.2 — 3с dial + 8с/15с таймауты, чтобы падение GL не вешало UI на прокси вложений/аватаров).
 
 ### 5. UI-полировка клиентов + критфикс — ✅ (Android 0.8.0, web 0.55.0, 2026-06-15)
 - **Анимации (web + Android):** login-aurora градиент, переходы маршрутов/поповеров/диалогов,
@@ -408,8 +412,22 @@ android-паритет суб-баров — в бэклоге). Заплани�
     контекст-меню проекта и меню воркспейса. **Оценка ≠ трекинг времени** (учёт затраченного — отдельный
     поздний кандидат). Смешанные единицы на одной доске не делаем: доска = один проект = одна единица.
 
-- **GitLab фаза B+** — write-back (action-bindings + loop-guard через снапшот-хэши, схема готова),
-  webhooks (вместо/в дополнение к polling), OAuth/SSO. Самый крупный оставшийся кусок бизнес-функционала.
+- **GitLab фаза B — write-back — ✅ MVP СДЕЛАНО** (backend 0.53.0 / web 0.92.0, миграция **0032**,
+  2026-06-23). Opt-in per-integration (`gitlab_integrations.writeback` jsonb, всё выкл по умолчанию);
+  пушим три вида: **state** (вход/выход из колонки «Готово» → close/reopen issue), **priority**
+  (смена приоритета → swap метки `P:` через `add_labels`/`remove_labels`, только если маппинг 1:1),
+  **comment** (комментарий Tessera → note в issue; note-id пишется на комментарий → следующий pull
+  дедупит). Транспорт — REST (pull остаётся GraphQL). Async-outbox `gitlab_writebacks` + воркер
+  `RunGitlabWriteBackWorker` (зеркало notification-outbox: claim SKIP LOCKED, квадратичный backoff,
+  5 попыток) — пуш не блокирует мутацию, переживает падение GL. Loop-guard: enqueue только на
+  user-мутациях (pull идёт отдельным путём), не пушим значение, которое в GL уже есть (`gl_last_state`
+  + контент-хэши), после пуша ре-фетч issue переписывает снапшот. Пуш — PAT владельца интеграции
+  (нужен scope `api`). Статус — **только open/close** (инверс колонка→`S:` лоссится; редактор явных
+  привязок `column_label_bindings` отложен, шов пустой). См. [[project-gitlab-writeback]].
+- **GitLab фаза B+ (остаток)** — write-back для **assignees** (ждёт OAuth — нужен надёжный
+  Tessera-user↔GL-user маппинг) и **title/description** (риск затирания, gated `push_title_desc`);
+  редактор `column_label_bindings` (колонка→метка `S:`); webhooks (вместо/в дополнение к polling);
+  OAuth/SSO.
 - **Android background push (FCM)** — device-канал поднимает уведомления только **пока приложение
   открыто** (C2); напоминания — локальный `AlarmManager`. Фоновый push при закрытом приложении (FCM)
   ещё не сделан — следующий кандидат для надёжной доставки (аналог Telegram-доставки в budget-go).
