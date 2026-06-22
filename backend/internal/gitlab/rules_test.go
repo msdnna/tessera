@@ -28,6 +28,17 @@ func TestResolve_StatusMapsToColumn(t *testing.T) {
 	}
 }
 
+func TestResolve_StatusCaseInsensitive(t *testing.T) {
+	// GitLab labels are "S: In Progress"/"S: In Review" (capitalised) while the
+	// value-map keys are "In progress"/"In review" — they must still map.
+	if got := DefaultRules().Resolve(labels("S: In Progress")); got.ColumnName != "В процессе" {
+		t.Errorf("In Progress → %q, want В процессе", got.ColumnName)
+	}
+	if got := DefaultRules().Resolve(labels("S: In Review")); got.ColumnName != "На рассмотрении" {
+		t.Errorf("In Review → %q, want На рассмотрении", got.ColumnName)
+	}
+}
+
 func TestResolve_PriorityMapsToField(t *testing.T) {
 	got := DefaultRules().Resolve(labels("P: Critical"))
 	if got.Priority != 4 {

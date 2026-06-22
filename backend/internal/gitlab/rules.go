@@ -104,6 +104,22 @@ func (r *Rule) matches(title string) (string, bool) {
 	return "", false
 }
 
+// lookup resolves a matched value against the rule's ValueMap. The match is
+// case-insensitive: GitLab label capitalisation ("S: In Progress") should still
+// hit a value-map key written in another case ("In progress"). Exact match wins;
+// otherwise the first case-insensitive key match.
+func (r *Rule) lookup(value string) (string, bool) {
+	if v, ok := r.ValueMap[value]; ok {
+		return v, true
+	}
+	for k, v := range r.ValueMap {
+		if strings.EqualFold(k, value) {
+			return v, true
+		}
+	}
+	return "", false
+}
+
 // Resolve maps an issue's labels to board state. Pure & deterministic in input
 // order. Each label takes the first rule that matches; status/priority/board are
 // first-match-wins across all labels.
@@ -143,13 +159,13 @@ func (rs Rules) Resolve(labels []Label) Resolution {
 			switch rule.Action {
 			case "status":
 				if !statusSet {
-					if col, ok := rule.ValueMap[value]; ok {
+					if col, ok := rule.lookup(value); ok {
 						res.ColumnName, statusSet = col, true
 					}
 				}
 			case "priority":
 				if !prioSet {
-					if lvl, ok := rule.ValueMap[value]; ok {
+					if lvl, ok := rule.lookup(value); ok {
 						if n, err := strconv.Atoi(lvl); err == nil {
 							res.Priority, prioSet = int32(n), true
 						}
@@ -157,7 +173,7 @@ func (rs Rules) Resolve(labels []Label) Resolution {
 				}
 			case "board":
 				if !boardSet {
-					if bid, ok := rule.ValueMap[value]; ok && bid != "" {
+					if bid, ok := rule.lookup(value); ok && bid != "" {
 						res.BoardID, boardSet = bid, true
 					}
 				}

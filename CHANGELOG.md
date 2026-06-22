@@ -1644,6 +1644,14 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.53.1] — 2026-06-23
+- **Fix: GitLab status mapping was case-sensitive.** A label like `S: In Progress`
+  / `S: In Review` (GitLab's capitalisation) never matched the rule `value_map`
+  keys `In progress` / `In review`, so those issues silently fell to the default
+  column instead of «В процессе» / «На рассмотрении». The status/priority/board
+  value-map lookup is now case-insensitive (exact match still wins), fixing
+  existing integrations without re-editing their rules.
+
 ### [0.53.0] — 2026-06-23
 - **GitLab write-back (phase B), opt-in.** Changes to a task linked to a GitLab
   issue can now push back to GitLab. Strictly opt-in per integration via a new
