@@ -19,10 +19,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +60,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -79,6 +81,7 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -1384,8 +1387,8 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val hScroll = rememberScrollState()
 
     // Pinch-zoom: record the date under the viewport centre before rescaling, then
-    // re-centre it (LaunchedEffect below). canPan=false lets 1-finger scroll through.
-    val zoom = rememberTransformableState { zoomChange, _, _ ->
+    // re-centre it (LaunchedEffect below). 1-finger scroll passes through (pinchZoom).
+    fun applyZoom(zoomChange: Float) {
         val oldPx = with(density) { dayW.toPx() }
         val newDayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
         if (newDayW != dayW) {
@@ -1479,7 +1482,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                     Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
                 }
             } else {
-                LazyColumn(Modifier.weight(1f).transformable(zoom, canPan = { false })) {
+                LazyColumn(Modifier.weight(1f).pinchZoom { applyZoom(it) }) {
                     timelineBodyItems(
                         bodyRows, leftW, dayW, axisW, dayWpx, todayLeft, gridColor,
                         hScroll, viewportPx, state, { span(it) }, { dayIndex(it) }, onOpenTask,
@@ -1686,8 +1689,8 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val hScroll = rememberScrollState()
 
     // Pinch-zoom: record the date under the viewport centre before rescaling, then
-    // re-centre it (LaunchedEffect below). canPan=false lets 1-finger scroll through.
-    val zoom = rememberTransformableState { zoomChange, _, _ ->
+    // re-centre it (LaunchedEffect below). 1-finger scroll passes through (pinchZoom).
+    fun applyZoom(zoomChange: Float) {
         val oldPx = with(density) { dayW.toPx() }
         val newDayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
         if (newDayW != dayW) {
@@ -1790,7 +1793,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                 val gLazy = rememberLazyListState()
                 Box(Modifier.weight(1f)) {
                     LazyColumn(
-                        Modifier.fillMaxSize().transformable(zoom, canPan = { false }),
+                        Modifier.fillMaxSize().pinchZoom { applyZoom(it) },
                         state = gLazy,
                     ) {
                         timelineBodyItems(
@@ -2131,6 +2134,34 @@ private fun ZoomBtn(glyph: String, onClick: () -> Unit) {
             .clickableNoRipple(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Text(glyph, color = c.text2, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+}
+
+/**
+ * Two-finger pinch zoom that coexists with nested scrolling. `transformable` keeps
+ * losing the gesture to the row's `horizontalScroll` / the LazyColumn's vertical
+ * scroll (two fingers get read as a pan). Here we watch the INITIAL pointer pass and,
+ * once ≥2 fingers are down, consume their changes ourselves — so the scrollables never
+ * see a drag for a pinch, while a 1-finger drag passes straight through to them.
+ * Direction-agnostic (zoom = ratio of the finger-distance change).
+ */
+@Composable
+private fun Modifier.pinchZoom(onZoom: (Float) -> Unit): Modifier {
+    val zoomFn = rememberUpdatedState(onZoom)
+    return this.pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (event.changes.count { it.pressed } >= 2) {
+                    val zoom = event.calculateZoom()
+                    if (zoom != 1f) {
+                        zoomFn.value(zoom)
+                        event.changes.forEach { it.consume() }
+                    }
+                }
+            } while (event.changes.any { it.pressed })
+        }
+    }
 }
 
 /**
