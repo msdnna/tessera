@@ -1586,6 +1586,38 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
 private data class GanttArrow(val x1: Dp, val y1: Dp, val x2: Dp, val y2: Dp)
 
 /**
+ * "Авто" ordering for the Gantt: a DFS pre-order over the blocking edges
+ * (`blocker → blocked`). Roots (no blocker) and a node's children are visited in
+ * the incoming order, so each task prints before its dependents; any cycle
+ * remainder is appended in incoming order. Mirrors web `utils/dependencyOrder`.
+ * [edges] are normalised (blocker, blocked) pairs; edges touching an absent task
+ * are ignored.
+ */
+private fun topoByDeps(tasks: List<Task>, edges: List<Pair<String, String>>): List<Task> {
+    if (tasks.isEmpty() || edges.isEmpty()) return tasks
+    val order = tasks.withIndex().associate { (i, t) -> t.id to i }
+    val byId = tasks.associateBy { it.id }
+    val adj = HashMap<String, MutableList<String>>().apply { tasks.forEach { put(it.id, mutableListOf()) } }
+    val indeg = HashMap<String, Int>().apply { tasks.forEach { put(it.id, 0) } }
+    for ((blocker, blocked) in edges) {
+        if (!byId.containsKey(blocker) || !byId.containsKey(blocked)) continue
+        adj[blocker]!!.add(blocked)
+        indeg[blocked] = indeg[blocked]!! + 1
+    }
+    adj.values.forEach { children -> children.sortBy { order[it] ?: 0 } }
+    val visited = HashSet<String>()
+    val out = ArrayList<Task>(tasks.size)
+    fun visit(id: String) {
+        if (!visited.add(id)) return
+        byId[id]?.let { out.add(it) }
+        adj[id]?.forEach { visit(it) }
+    }
+    for (t in tasks) if (indeg[t.id] == 0) visit(t.id)
+    for (t in tasks) visit(t.id) // remaining cycle members, in incoming order
+    return out
+}
+
+/**
  * Gantt view = the Timeline (time axis / bars / zoom / today-line / swimlanes)
  * plus task **dependencies** drawn as finish-to-start arrows over the track.
  * Unlike web there is no in-bar drag-to-link (board drag is 1D-lane-tuned, the
@@ -1692,30 +1724,58 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
     }
 
+    // Normalised blocking edges (blocker, blocked), deduped — drive both the "Авто"
+    // ordering and the dependency arrows.
+    val depEdges = remember(state.dependencies) {
+        val seen = HashSet<String>()
+        state.dependencies.mapNotNull { d ->
+            if (!seen.add("${d.blockerId}>${d.blockedId}")) null else d.blockerId to d.blockedId
+        }
+    }
+    // "Авто" order: rows follow the blocking-dependency graph (see topoByDeps).
+    val orderedScheduled = if (state.autoActive) topoByDeps(scheduled, depEdges) else scheduled
+
     fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
-    val lanes = remember(scheduled, state.groupByTag, state.tagPrefix, state.tags, state.columns) {
+    // Swimlanes follow the shared composer grouping (status / tag[+prefix] /
+    // assignee / none) — same as the timeline, so "Без группировки" (needed by Авто)
+    // and "По исполнителю" work on the Gantt too.
+    val lanes = remember(orderedScheduled, state.groupMode, state.tagPrefix, state.tags, state.columns, state.members) {
+        val mode = state.groupMode
+        val members = state.membersMap
         val map = LinkedHashMap<String, Pair<Pair<String, Color?>, MutableList<Task>>>()
         fun bucket(key: String, label: String, color: Color?) =
             map.getOrPut(key) { (label to color) to mutableListOf() }.second
-        if (!state.groupByTag) {
+        if (mode == "status") {
             for (col in state.sortedColumns) bucket(col.id, col.name, tagColor(col.color))
         }
-        for (t in scheduled) {
-            if (state.groupByTag) {
-                val id = t.tagIds.firstOrNull { tid ->
-                    val tag = state.tags[tid]
-                    tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+        for (t in orderedScheduled) {
+            when (mode) {
+                "tag" -> {
+                    val id = t.tagIds.firstOrNull { tid ->
+                        val tag = state.tags[tid]
+                        tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+                    }
+                    val tag = id?.let { state.tags[it] }
+                    bucket(id ?: "∅", tag?.name ?: "Без тега", tagColor(tag?.color)).add(t)
                 }
-                val tag = id?.let { state.tags[it] }
-                bucket(id ?: "∅", tag?.name ?: "Без тега", tagColor(tag?.color)).add(t)
-            } else {
-                val col = state.sortedColumns.find { it.id == t.columnId }
-                bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+
+                "assignee" -> {
+                    val id = t.assigneeIds.firstOrNull()
+                    val m = id?.let { members[it] }
+                    bucket(id ?: "∅", m?.name ?: "Не назначено", null).add(t)
+                }
+
+                "none" -> bucket("all", "Все задачи", null).add(t)
+
+                else -> {
+                    val col = state.sortedColumns.find { it.id == t.columnId }
+                    bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+                }
             }
         }
         map.entries
             .map { (k, v) -> TLane(k, v.first.first, v.first.second, v.second.toList()) }
-            .filter { it.tasks.isNotEmpty() || !state.groupByTag }
+            .filter { it.tasks.isNotEmpty() || mode == "status" }
             .sortedBy { if (it.key == "∅") 1 else 0 }
     }
 
@@ -1761,14 +1821,11 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     // arrow endpoints (finish of blocker → start of blocked). Skip dangling edges.
     val arrows = run {
         val byId = scheduled.associateBy { it.id }
-        val seen = HashSet<String>()
-        state.dependencies.mapNotNull { d ->
-            val key = "${d.blockerId}>${d.blockedId}"
-            if (!seen.add(key)) return@mapNotNull null
-            val tb = byId[d.blockerId] ?: return@mapNotNull null
-            val tk = byId[d.blockedId] ?: return@mapNotNull null
-            val yb = rowTops[d.blockerId] ?: return@mapNotNull null
-            val yk = rowTops[d.blockedId] ?: return@mapNotNull null
+        depEdges.mapNotNull { (blockerId, blockedId) ->
+            val tb = byId[blockerId] ?: return@mapNotNull null
+            val tk = byId[blockedId] ?: return@mapNotNull null
+            val yb = rowTops[blockerId] ?: return@mapNotNull null
+            val yk = rowTops[blockedId] ?: return@mapNotNull null
             val (lb, wb) = barGeom(tb)
             val (lk, _) = barGeom(tk)
             GanttArrow(

@@ -21,6 +21,7 @@ data class BoardViewConfig(
     @SerializedName("tagPrefix") val tagPrefix: String = "",
     @SerializedName("sortLevels") val sortLevels: List<SortLevel> = emptyList(),
     @SerializedName("subtasksExpanded") val subtasksExpanded: Boolean = false,
+    @SerializedName("autoSort") val autoSort: Boolean = false,
     @SerializedName("filters") val filters: BoardViewFilters = BoardViewFilters(),
 )
 

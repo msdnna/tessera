@@ -91,6 +91,9 @@ data class BoardUiState(
      *  "effort::") become columns. Empty = every tag is a column. */
     val tagPrefix: String = "",
     val subtasksExpanded: Boolean = false,
+    /** "Авто" (Gantt only): order rows by the blocking-dependency graph instead of
+     *  the list order. Only takes effect via [autoActive] (no grouping/sort). */
+    val autoSort: Boolean = false,
     val doneColumnId: String? = null,
     val filter: BoardFilter = BoardFilter(),
     /** Ordered multi-level sort. Empty = manual (position) order. */
@@ -108,6 +111,11 @@ data class BoardUiState(
 
     /** Kanban grouping is binary (status vs tag columns); derived from [groupMode]. */
     val groupByTag: Boolean get() = groupMode == "tag"
+
+    /** "Авто" is only honoured on the Gantt with no grouping/sort, so any manual
+     *  grouping or sort transparently turns it off (web `autoActive` parity). */
+    val autoActive: Boolean
+        get() = viewMode == BoardViewMode.Gantt && autoSort && groupMode == "none" && sortLevels.isEmpty()
 
     /** Full column list, drag-position source — NOT filtered (DnD needs every card). */
     fun tasksIn(columnId: String): List<Task> =
@@ -406,6 +414,26 @@ class BoardViewModel(
 
     fun toggleSubtasksExpanded() {
         _state.update { it.copy(subtasksExpanded = !it.subtasksExpanded) }
+        persistView()
+    }
+
+    /** Toggles "Авто" dependency-graph ordering (Gantt). Turning it on resets the
+     *  composer to the bare no-group/no-sort state it needs (web `toggleAuto`). */
+    fun toggleAutoSort() {
+        _state.update { s ->
+            if (s.autoActive) {
+                s.copy(autoSort = false)
+            } else {
+                s.copy(
+                    autoSort = true,
+                    groupMode = "none",
+                    tagPrefix = "",
+                    sortLevels = emptyList(),
+                    filter = BoardFilter(),
+                    currentViewName = null,
+                )
+            }
+        }
         persistView()
     }
     fun clearError() = _state.update { it.copy(error = null) }
@@ -718,6 +746,7 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
     tagPrefix = s.tagPrefix,
     sortLevels = s.sortLevels,
     subtasksExpanded = s.subtasksExpanded,
+    autoSort = s.autoSort,
     filters = BoardViewFilters(
         priorities = s.filter.priorities.toList(),
         assignees = s.filter.assigneeIds.toList(),
@@ -742,6 +771,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
     tagPrefix = if (c.groupMode == "tag") c.tagPrefix else "",
     sortLevels = c.sortLevels,
     subtasksExpanded = c.subtasksExpanded,
+    autoSort = c.autoSort,
     filter = BoardFilter(
         query = c.filters.q,
         priorities = c.filters.priorities.toSet(),

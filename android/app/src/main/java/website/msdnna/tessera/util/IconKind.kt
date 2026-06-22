@@ -66,6 +66,7 @@ object Ion {
     const val FILTER = "filter"
     const val ALBUMS = "albums"
     const val GIT_BRANCH = "git_branch"
+    const val GIT_NETWORK = "git_network"
     const val SORT = "swap"
     const val REFRESH = "refresh"
     const val REPEAT = "repeat"
