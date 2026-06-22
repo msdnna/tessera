@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
-import { NDropdown, NPopconfirm, NIcon } from 'naive-ui'
+import { NDropdown, NPopconfirm, NIcon, NTooltip } from 'naive-ui'
 import { TimerOutline, ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
@@ -9,7 +9,7 @@ import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { topoByDeps } from '@/utils/dependencyOrder'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { formatEstimate, formatEstimateFull, estimateDateRange, sumEstimates, estimateToDays } from '@/utils/estimation'
+import { formatEstimate, formatEstimateFull, estimateTooltip, sumEstimates, estimateToDays } from '@/utils/estimation'
 import {
   DAY_MS,
   HOUR_MS,
@@ -45,6 +45,9 @@ const props = defineProps({
   groupMode: { type: String, default: 'assignee' },
   tagPrefix: { type: String, default: '' },
   projectId: { type: String, default: null },
+  // { parentId: [subtask, …] } — scheduled subtasks render as thin sub-bars
+  // stacked inside their parent's row (no dependency arrows on subtasks).
+  subtasksByParent: { type: Object, default: () => ({}) },
   // "Авто": when on, rows are ordered by the blocking-dependency graph (DFS
   // pre-order) instead of the incoming list order. Only meaningful with no
   // grouping/sort, which the composer-bar enforces before setting this.
@@ -57,6 +60,11 @@ const estCfg = computed(() => wsStore.estimationFor(props.projectId))
 function laneEffort(lane) {
   const total = sumEstimates(lane.tasks)
   return total != null ? formatEstimate(total, estCfg.value) : ''
+}
+// Spelled-out lane total for the effort tooltip (a sum → no projected window).
+function laneEffortFull(lane) {
+  const total = sumEstimates(lane.tasks)
+  return total != null ? formatEstimateFull(total, estCfg.value) : ''
 }
 
 const menu = useTaskMenu({
@@ -84,6 +92,33 @@ function toggleLeft() {
 const LANE_H = 32 // lane-header row height (fixed, so SVG geometry is exact)
 const ROW_H = 36 // task row height
 const BAR_CY = 18 // bar vertical centre within its row (top 6 + height 24 / 2)
+// Subtask sub-bars stack below the parent bar within the same row; each adds
+// SUB_STEP to the row height. SUB_TOP0 sits just under the 24px parent bar (the
+// 14px sub-bar height lives in the .tl-subbar CSS). Arrows stay anchored to the
+// parent bar (BAR_CY), so taller rows don't disturb the dependency geometry.
+const SUB_STEP = 18 // sub-bar height (14) + gap (4)
+const SUB_TOP0 = 34 // first sub-bar top (parent bar bottom 30 + 4px gap)
+// Scheduled subtasks of a task (those with a start or due), drawn as sub-bars.
+function subBars(t) {
+  const subs = props.subtasksByParent[t.id]
+  if (!subs || !subs.length) return []
+  return subs.filter((s) => s.start_date || s.due_date)
+}
+// Row height grows by SUB_STEP per scheduled subtask (36 when none).
+function rowHeight(t) {
+  return ROW_H + SUB_STEP * subBars(t).length
+}
+// Resolve a task by id across top-level tasks AND subtasks — the drag-reschedule
+// save step needs it, since a dragged sub-bar's task lives in subtasksByParent.
+function findTask(id) {
+  const top = props.tasks.find((x) => x.id === id)
+  if (top) return top
+  for (const arr of Object.values(props.subtasksByParent)) {
+    const s = arr.find((x) => x.id === id)
+    if (s) return s
+  }
+  return null
+}
 
 // ── zoom (px per day) ──
 // Range spans week-grouping (out) → hour-precision (in); tierFor(dayW) picks the
@@ -251,7 +286,7 @@ const flatRows = computed(() => {
   }
   return out
 })
-const rowH = (r) => (r.t === 'lane' ? laneH.value : ROW_H)
+const rowH = (r) => (r.t === 'lane' ? laneH.value : rowHeight(r.task))
 const rowLayout = computed(() => {
   const rows = flatRows.value
   const tops = new Array(rows.length)
@@ -355,11 +390,10 @@ function ghostGeom(t) {
   // Frame the envelope with a 3px margin on the start/end too (matching the top/bottom inset).
   return { left: xAt(anchor, range.value.start, dayW.value) - 3, width: Math.max(dayW.value, days * dayW.value) + 6 }
 }
-// Tooltip on the ghost bar: full expansion + projected window.
+// Tooltip on the ghost bar: full expansion + projected window (the clock label
+// it hangs off already marks it as an estimate, so no "Оценка:" prefix).
 function ghostTitle(t) {
-  const full = formatEstimateFull(t.estimate, estCfg.value)
-  const range = estimateDateRange(t.start_date, t.estimate, estCfg.value)
-  return range ? `Оценка: ${full} (${range})` : `Оценка: ${full}`
+  return estimateTooltip(t.start_date, t.estimate, estCfg.value)
 }
 
 // Arrow paths: blocker's finish → blocked's start (finish-to-start), an S-curve
@@ -442,7 +476,7 @@ async function onUp() {
   const changed = p.start !== g.baseStart || p.due !== g.baseDue
   preview.value = null
   if (!changed) return
-  const t = props.tasks.find((x) => x.id === g.id)
+  const t = findTask(g.id)
   if (!t) return
   try {
     await tasksApi.update(t.id, {
@@ -635,6 +669,42 @@ function onWheel(e) {
   if (e.deltaY < 0) zoomIn(e.clientX)
   else zoomOut(e.clientX)
 }
+
+// ── hover cursor-line ──
+// A neutral vertical guide tracking the pointer over the chart, with a date/time
+// pill pinned to the top of the viewport — read off the exact date a bar's edge
+// lands on. Suppressed while dragging / panning / drawing a dependency link.
+const cursor = ref(null) // { axisX, ms } in content (axis) coords, or null
+const cursorPill = ref({ x: 0, top: 0 }) // fixed viewport coords for the date pill
+function onHoverMove(e) {
+  if (drag.value || pan.value || link.value) {
+    cursor.value = null
+    return
+  }
+  const el = scrollEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const xv = e.clientX - rect.left
+  if (xv < leftW.value || xv > el.clientWidth) {
+    cursor.value = null
+    return
+  }
+  const axisX = Math.max(0, Math.min(axisW.value, el.scrollLeft + xv - leftW.value))
+  cursor.value = { axisX, ms: range.value.start + (axisX / dayW.value) * DAY_MS }
+  cursorPill.value = { x: e.clientX, top: rect.top }
+}
+function onHoverLeave() {
+  cursor.value = null
+}
+const cursorLabel = computed(() => {
+  if (!cursor.value) return ''
+  const dt = new Date(cursor.value.ms)
+  const o = { day: '2-digit', month: 'short' }
+  if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric'
+  let s = dt.toLocaleDateString('ru-RU', o)
+  if (tier.value === 'hours') s += ` ${dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+  return s
+})
 </script>
 
 <template>
@@ -666,6 +736,8 @@ function onWheel(e) {
       class="tl-scroll"
       :class="{ panning: !!pan, linking: !!link }"
       @pointerdown="onPanDown"
+      @pointermove="onHoverMove"
+      @pointerleave="onHoverLeave"
       @wheel="onWheel"
       @scroll="onScroll"
     >
@@ -708,6 +780,7 @@ function onWheel(e) {
              full-height dependency-arrow SVG overlay on top -->
         <div ref="bodyEl" class="tl-body">
           <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
+          <div v-if="cursor" class="tl-cursor" :style="{ left: `${leftW + cursor.axisX}px` }" />
           <div class="tl-vspacer" :style="{ height: `${vwindow.top}px` }" />
           <template v-for="r in vwindow.rows" :key="r.key">
             <div v-if="r.t === 'lane'" class="tl-lanehead">
@@ -715,28 +788,42 @@ function onWheel(e) {
                 <span class="lane-dot" :style="{ background: r.lane.color ? hueGrad(r.lane.color) : 'var(--t-accent-grad)' }" />
                 <span class="lane-name">{{ r.lane.label }}</span>
                 <span class="lane-count">{{ r.lane.tasks.length }}</span>
-                <span v-if="laneEffort(r.lane)" class="lane-effort" title="Суммарная оценка"
-                  ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(r.lane) }}</span
-                >
+                <n-tooltip v-if="laneEffort(r.lane)">
+                  <template #trigger>
+                    <span class="lane-effort"
+                      ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(r.lane) }}</span
+                    >
+                  </template>
+                  Суммарная оценка: {{ laneEffortFull(r.lane) }}
+                </n-tooltip>
               </div>
               <div class="tl-track laneband" :style="{ width: `${axisW}px` }" />
             </div>
 
             <div v-else class="tl-row" :data-task-id="r.task.id">
-              <div class="tl-left" :style="{ width: `${leftW}px` }" :title="r.task.title" @click="$emit('open', r.task.id)">
+              <div
+                class="tl-left"
+                :style="{ width: `${leftW}px`, height: `${rowHeight(r.task)}px` }"
+                :title="r.task.title"
+                @click="$emit('open', r.task.id)"
+              >
                 <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }" />
                 <span class="row-title" :class="{ done: r.task.completed_at }">{{ r.task.title }}</span>
               </div>
-              <div class="tl-track" :style="{ width: `${axisW}px` }">
+              <div class="tl-track" :style="{ width: `${axisW}px`, height: `${rowHeight(r.task)}px` }">
                 <div
                   v-if="ghostGeom(r.task)"
                   class="ghost"
                   :style="{ left: `${ghostGeom(r.task).left}px`, width: `${ghostGeom(r.task).width}px`, '--ghost-c': PRIORITY_COLORS[r.task.priority || 0] }"
-                  :title="ghostTitle(r.task)"
                 >
-                  <span class="ghost-est"
-                    ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(r.task.estimate, estCfg) }}</span
-                  >
+                  <n-tooltip>
+                    <template #trigger>
+                      <span class="ghost-est"
+                        ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(r.task.estimate, estCfg) }}</span
+                      >
+                    </template>
+                    {{ ghostTitle(r.task) }}
+                  </n-tooltip>
                 </div>
                 <div
                   class="bar"
@@ -750,6 +837,28 @@ function onWheel(e) {
                   <span class="bar-title">{{ r.task.title }}</span>
                   <span class="handle r" @pointerdown.stop="onBarDown($event, r.task, 'due')" />
                   <span class="link-knob" title="Создать зависимость" @pointerdown="onLinkDown($event, r.task)" @click.stop />
+                </div>
+                <!-- subtask sub-bars stacked under the parent bar; draggable to
+                     reschedule (move / resize an edge). No dependency linking on
+                     subtasks (no link-knob). -->
+                <div
+                  v-for="(s, i) in subBars(r.task)"
+                  :key="s.id"
+                  class="tl-subbar"
+                  :class="{ done: s.completed_at, point: !(geom(s).hasStart && geom(s).hasDue) }"
+                  :style="{
+                    left: `${geom(s).left}px`,
+                    width: `${geom(s).width}px`,
+                    top: `${SUB_TOP0 + i * SUB_STEP}px`,
+                    '--bar-grad': hueGrad(PRIORITY_COLORS[s.priority || 0]),
+                  }"
+                  @pointerdown="onBarDown($event, s, 'move')"
+                  @click="$emit('open', s.id)"
+                  @contextmenu.prevent.stop="menu.open($event, s)"
+                >
+                  <span class="handle l" @pointerdown.stop="onBarDown($event, s, 'start')" />
+                  <span class="tl-subbar-title">{{ s.title }}</span>
+                  <span class="handle r" @pointerdown.stop="onBarDown($event, s, 'due')" />
                 </div>
               </div>
             </div>
@@ -830,6 +939,18 @@ function onWheel(e) {
       <template #trigger><span /></template>
       Перенести задачу в архив?
     </n-popconfirm>
+
+    <!-- cursor-line date pill: pinned to the top of the chart, following the
+         pointer's x (fixed, so vertical scroll never hides it) -->
+    <Teleport to="body">
+      <div
+        v-if="cursor"
+        class="tl-cursor-pill"
+        :style="{ left: `${cursorPill.x}px`, top: `${cursorPill.top + 4}px` }"
+      >
+        {{ cursorLabel }}
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -1108,6 +1229,12 @@ function onWheel(e) {
 .tl-left:hover {
   background: var(--t-hover);
 }
+/* task-row left column: top-align so the title stays beside the parent bar when
+   the row grows to fit subtask sub-bars (height comes from an inline style) */
+.tl-row .tl-left {
+  align-items: flex-start;
+  padding-top: 9px;
+}
 /* collapsible left column: clip content as the column shrinks; the toggle is
    instant (animating width across every sticky row thrashed layout) */
 .tl-corner,
@@ -1202,6 +1329,34 @@ function onWheel(e) {
   z-index: 1;
   pointer-events: none;
 }
+/* neutral pointer cursor-line: a faint grey dashed guide under the bars (z1) —
+   purely an auxiliary "read the date" aid */
+.tl-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--t-text3) 60%, transparent);
+  z-index: 1;
+  pointer-events: none;
+}
+/* date/time pill that rides the cursor-line, pinned to the chart's top edge —
+   a muted neutral chip, not an accent element */
+.tl-cursor-pill {
+  position: fixed;
+  z-index: 3500;
+  transform: translateX(-50%);
+  background: var(--t-surface);
+  color: var(--t-text2);
+  border: 1px solid var(--t-border);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+}
 .tl-inner.animate .bar,
 .tl-inner.animate .ghost {
   transition: left 0.18s ease, width 0.18s ease;
@@ -1234,6 +1389,9 @@ function onWheel(e) {
   font-weight: 600;
   white-space: nowrap;
   color: color-mix(in srgb, var(--ghost-c, var(--t-primary)) 80%, var(--t-text1));
+  /* the envelope is pointer-events:none (so the bar stays draggable); re-enable
+     events on the label itself so its estimate tooltip can trigger */
+  pointer-events: auto;
 }
 
 .bar {
@@ -1289,6 +1447,45 @@ function onWheel(e) {
 .handle.r {
   right: 0;
 }
+
+/* subtask sub-bar: a thinner bar below the parent, priority-coloured. The
+   surface-coloured border guarantees separation even when a child shares the
+   parent's priority colour. Named tl-subbar to avoid the board composer's .subbar. */
+.tl-subbar {
+  position: absolute;
+  height: 14px;
+  background: var(--bar-grad);
+  border: 1px solid var(--t-surface);
+  border-radius: 5px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  cursor: grab;
+  overflow: hidden;
+  z-index: 2;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+  user-select: none;
+}
+.tl-subbar:active {
+  cursor: grabbing;
+}
+.tl-subbar.done {
+  opacity: 0.5;
+}
+.tl-subbar-title {
+  font-size: 10px;
+  color: #fff;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.tl-subbar.done .tl-subbar-title {
+  text-decoration: line-through;
+}
+
 /* drag-to-link knob on the bar's right edge (reveal on hover) */
 .link-knob {
   position: absolute;

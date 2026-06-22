@@ -52,7 +52,7 @@ import { buildTagGroups } from '@/utils/tagGroups'
 import {
   formatEstimate,
   formatEstimateFull,
-  estimateDateRange,
+  estimateRangeShort,
   parseEstimate,
   scaleOptions,
   estimatePlaceholder,
@@ -193,10 +193,13 @@ const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value })
 // Effective unit config for this task's project (project override → workspace
 // default → built-in). boardInfo.projectId is the reliable source once loaded.
 const estCfg = computed(() => store.estimationFor(props.projectId || boardInfo.value?.projectId))
+// Compact estimate ("8н") — used to prefill the free-text editor, which parses
+// that same syntax.
 const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
-// Full spelled-out expansion + projected window (from start_date), for the row hint/tooltip.
+// Full spelled-out estimate ("8 недель"), shown as the row's value.
 const estFull = computed(() => formatEstimateFull(estimate.value, estCfg.value))
-const estRange = computed(() => estimateDateRange(task.value?.start_date, estimate.value, estCfg.value))
+// Projected window from start_date, free-form ("18 мая → 13 июл."), shown inline.
+const estRange = computed(() => estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value))
 const estOptions = computed(() => scaleOptions(estCfg.value)) // non-empty only for points
 const estPlaceholder = computed(() => estimatePlaceholder(estCfg.value))
 // Rollup hint: sum of direct subtask estimates, shown when the task has children.
@@ -915,8 +918,8 @@ function eventText(e) {
               <span class="plabel"><n-icon :component="TimerOutline" :size="15" /> Оценка</span>
               <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
                 <template #trigger>
-                  <button class="val" :title="estFull">
-                    <span :class="{ muted: !estLabel }">{{ estLabel || 'Не задана' }}</span>
+                  <button class="val">
+                    <span :class="{ muted: !estFull }">{{ estFull || 'Не задана' }}</span>
                     <span v-if="estRange" class="est-range">· {{ estRange }}</span>
                     <span
                       v-if="subtaskEstimateLabel"

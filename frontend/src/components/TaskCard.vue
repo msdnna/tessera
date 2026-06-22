@@ -28,7 +28,7 @@ import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from 
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
-import { formatEstimate, formatEstimateFull, estimateDateRange, sumEstimates } from '@/utils/estimation'
+import { formatEstimate, formatEstimateFull, estimateTooltip, sumEstimates } from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
@@ -133,9 +133,10 @@ const estTooltip = computed(() => {
   const v = ownEstimate.value ?? rollupEstimate.value
   if (v == null) return ''
   const prefix = estIsRollup.value ? 'Сумма оценок подзадач: ' : 'Оценка: '
-  const full = formatEstimateFull(v, estCfg.value)
-  const range = estIsRollup.value ? '' : estimateDateRange(props.task?.start_date, v, estCfg.value)
-  return range ? `${prefix}${full} (${range})` : `${prefix}${full}`
+  const body = estIsRollup.value
+    ? formatEstimateFull(v, estCfg.value)
+    : estimateTooltip(props.task?.start_date, v, estCfg.value)
+  return `${prefix}${body}`
 })
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
 // Stacked-cards effect: offset colored shadows behind the top tag pill.
@@ -524,14 +525,15 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
-        <div
-          v-if="estText"
-          class="pill set est-pill"
-          :title="estTooltip"
-        >
-          <n-icon :component="TimerOutline" :size="13" />
-          <span class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
-        </div>
+        <n-tooltip v-if="estText">
+          <template #trigger>
+            <div class="pill set est-pill">
+              <n-icon :component="TimerOutline" :size="13" />
+              <span class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
+            </div>
+          </template>
+          {{ estTooltip }}
+        </n-tooltip>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
         <n-popover trigger="click" placement="bottom-start">
@@ -933,6 +935,14 @@ async function submitAddSub() {
   background: transparent;
   color: var(--t-text3);
   cursor: pointer;
+}
+/* The estimate pill is a <div>, not a <button>: form controls get UA
+   `line-height: normal`, but a bare div inherits the card's taller line-height,
+   making it ~5px higher than the sibling pills. Pin its box model so it matches. */
+.est-pill {
+  box-sizing: border-box;
+  height: 22px;
+  line-height: 1;
 }
 .pill.set {
   border-style: solid;

@@ -182,17 +182,32 @@ export function formatEstimateFull(value, cfg) {
   return parts.join(' ') || plural(0, ['минута', 'минуты', 'минут'])
 }
 
-// "07.06.2026 – 02.08.2026": the projected window from a start date over the
-// estimate's calendar span. Returns '' without a start date or a time estimate.
-export function estimateDateRange(startISO, value, cfg) {
+// Free-form projected window for tooltips/hints: "18 мая → 13 июл." — day +
+// short month, the year appended only when it isn't the current one (mirrors the
+// due-date style). Returns '' without a start date or a time estimate.
+export function estimateRangeShort(startISO, value, cfg, locale = 'ru-RU') {
   const days = estimateToDays(value, cfg)
   if (days == null || !startISO) return ''
   const start = new Date(startISO)
   if (Number.isNaN(start.getTime())) return ''
   const end = new Date(start.getTime() + Math.round(days) * 86400000)
-  const fmt = (dt) =>
-    `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()}`
-  return `${fmt(start)} – ${fmt(end)}`
+  const nowY = new Date().getFullYear()
+  const fmt = (dt) => {
+    const o = { day: '2-digit', month: 'short' }
+    if (dt.getFullYear() !== nowY) o.year = 'numeric'
+    return dt.toLocaleDateString(locale, o)
+  }
+  return `${fmt(start)} → ${fmt(end)}`
+}
+
+// One-line tooltip body: spelled-out estimate + free-form projected window in
+// parens, e.g. "8 недель (18 мая → 13 июл.)". Without a start date (no window to
+// project) it degrades to just the estimate. Returns '' for an empty estimate.
+export function estimateTooltip(startISO, value, cfg, locale = 'ru-RU') {
+  const full = formatEstimateFull(value, cfg)
+  if (!full) return ''
+  const range = estimateRangeShort(startISO, value, cfg, locale)
+  return range ? `${full} (${range})` : full
 }
 
 // Convert a canonical estimate into a calendar-day span for the timeline/Gantt

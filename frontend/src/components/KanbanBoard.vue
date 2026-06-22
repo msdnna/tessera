@@ -1385,6 +1385,7 @@ watch(
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
         :project-id="board?.project_id"
+        :subtasks-by-parent="subtasksByParent"
         @open="openTask"
         @changed="onChanged"
       />
@@ -1400,6 +1401,7 @@ watch(
         :tag-prefix="tagPrefix"
         :project-id="board?.project_id"
         :auto-sort="autoActive"
+        :subtasks-by-parent="subtasksByParent"
         @open="openTask"
         @changed="onChanged"
       />
