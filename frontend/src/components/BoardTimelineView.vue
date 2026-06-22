@@ -10,6 +10,21 @@ import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, readableHue } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { formatEstimate, formatEstimateFull, estimateDateRange, sumEstimates, estimateToDays } from '@/utils/estimation'
+import {
+  DAY_MS,
+  HOUR_MS,
+  startOfDay,
+  isAllDayMs,
+  tierFor,
+  barSpan,
+  anchorMs,
+  xAt,
+  buildDays,
+  buildMonthBands,
+  buildWeekBands,
+  hourTicksInWindow,
+  hourStepFor,
+} from '@/utils/timeAxis'
 import UserAvatar from './UserAvatar.vue'
 
 const wsStore = useWorkspacesStore()
@@ -49,15 +64,28 @@ const menu = useTaskMenu({
   columns: () => props.statusColumns,
 })
 
-const DAY_MS = 86400000
 const LEFT_W = 224 // px of the fixed task/lane column (expanded)
-// Collapsible left column: width animates to 0 to give the chart full width.
+// Collapsible left column: collapses to a true 0 (padding + border are zeroed in
+// the .collapsed state) to give the chart full width. Toggle is instant —
+// animating width across every sticky row thrashed layout; `collapsing` suppresses
+// the today-line's left-transition for one frame so it snaps with the rest.
 const leftCollapsed = ref(false)
 const leftW = computed(() => (leftCollapsed.value ? 0 : LEFT_W))
+const collapsing = ref(false)
+let collapseSettle = 0
+function toggleLeft() {
+  collapsing.value = true
+  clearTimeout(collapseSettle)
+  collapseSettle = setTimeout(() => (collapsing.value = false), 60)
+  leftCollapsed.value = !leftCollapsed.value
+}
 
 // ── zoom (px per day) ──
-const ZOOM = [12, 16, 22, 30, 40, 56, 76]
-const zoomIdx = ref(3) // → 30px/day
+// The range spans week-grouping (zoomed out) through hour-precision (zoomed in);
+// `tierFor(dayW)` picks the axis granularity. Default sits in the days tier.
+// Stops land in each tier: weeks ≤18, days 24–112, hours ≥140 (≥3 hour ticks).
+const ZOOM = [6, 10, 14, 18, 24, 32, 44, 60, 84, 112, 140, 180, 230]
+const zoomIdx = ref(5) // → 32px/day (days tier)
 const dayW = computed(() => ZOOM[zoomIdx.value])
 // While the user is actively zooming (a burst of wheel ticks), bars/today/ghost
 // SNAP instead of CSS-transitioning — animating every intermediate step made the
@@ -99,13 +127,15 @@ function zoomOut(anchorX) {
   applyZoom(zoomIdx.value - 1, anchorX)
 }
 
-// ── date helpers ──
-const startOfDay = (ms) => {
-  const d = new Date(ms)
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-}
+// ── date helpers (pure axis math lives in utils/timeAxis) ──
 const todayMs = startOfDay(Date.now())
 const parse = (s) => (s ? Date.parse(s) : null)
+// Current axis granularity tier: 'weeks' | 'days' | 'hours'.
+const tier = computed(() => tierFor(dayW.value))
+// Horizontal scroll position + viewport width, rAF-throttled — drives the windowed
+// hour-tick rendering (only paints the visible slice).
+const scrollX = ref(0)
+const viewW = ref(0)
 
 // A task is "scheduled" when it has at least one of start/due.
 const scheduled = computed(() => props.tasks.filter((t) => t.start_date || t.due_date))
@@ -140,35 +170,23 @@ const range = computed(() => {
 const axisW = computed(() => range.value.days * dayW.value)
 const dayIndex = (ms) => Math.round((startOfDay(ms) - range.value.start) / DAY_MS)
 
-const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
-const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
-
-const days = computed(() => {
-  const out = []
-  for (let i = 0; i < range.value.days; i++) {
-    const d = new Date(range.value.start + i * DAY_MS)
-    const dow = d.getDay()
-    out.push({
-      ms: d.getTime(),
-      day: d.getDate(),
-      dow: WD[dow],
-      weekend: dow === 0 || dow === 6,
-      isToday: d.getTime() === todayMs,
-    })
-  }
-  return out
+// Axis header bands. Months always show; the second band is per-day (days/hours
+// tiers) or per-week (weeks tier); the hours tier adds an hour-tick row.
+const days = computed(() => buildDays(range.value.start, range.value.days, todayMs))
+const monthBands = computed(() => buildMonthBands(days.value))
+const weekBands = computed(() => (tier.value === 'weeks' ? buildWeekBands(days.value) : []))
+// Hour ticks only for the visible viewport slice (+ a margin) — "lazy lines" so a
+// wide board doesn't render thousands of header nodes in the hours tier.
+const hourTicks = computed(() => {
+  if (tier.value !== 'hours') return []
+  const lo = scrollX.value - leftW.value - 200
+  const hi = scrollX.value - leftW.value + viewW.value + 200
+  return hourTicksInWindow(range.value.days, dayW.value, lo, hi)
 })
-// Month label segments (consecutive days of the same month).
-const monthBands = computed(() => {
-  const out = []
-  for (const d of days.value) {
-    const dt = new Date(d.ms)
-    const key = `${dt.getFullYear()}-${dt.getMonth()}`
-    const last = out[out.length - 1]
-    if (last && last.key === key) last.span++
-    else out.push({ key, label: `${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`, span: 1 })
-  }
-  return out
+// Minor-gridline period (px): the hour-tick step in the hours tier, else one day.
+const subW = computed(() => {
+  const step = hourStepFor(dayW.value)
+  return tier.value === 'hours' && step ? (step / 24) * dayW.value : dayW.value
 })
 
 // ── lanes (swimlanes) — driven by the composer-bar's groupMode ──
@@ -243,12 +261,19 @@ function onBarDown(e, t, mode) {
 function onMove(e) {
   const g = drag.value
   if (!g) return
-  const delta = Math.round((e.clientX - g.startX) / dayW.value)
+  // Snap to the hour when zoomed into the hours tier AND the edited endpoint is a
+  // timed value; an all-day (UTC-midnight) endpoint keeps day snapping so it stays
+  // all-day. Day snapping everywhere else (current behaviour).
+  const base = g.mode === 'due' ? g.baseDue ?? g.baseStart : g.baseStart ?? g.baseDue
+  const hourSnap = tier.value === 'hours' && base != null && !isAllDayMs(base)
+  const unit = hourSnap ? HOUR_MS : DAY_MS
+  const unitPx = hourSnap ? dayW.value / 24 : dayW.value
+  const delta = Math.round((e.clientX - g.startX) / unitPx)
   if (delta === 0) {
     preview.value = { id: g.id, start: g.baseStart, due: g.baseDue }
     return
   }
-  const shift = delta * DAY_MS
+  const shift = delta * unit
   let start = g.baseStart
   let due = g.baseDue
   if (g.mode === 'move') {
@@ -299,7 +324,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onUp)
 })
 
-// Bar geometry for a task, honouring an active drag preview.
+// Bar geometry for a task, honouring an active drag preview. In the hours tier a
+// timed start/due sits at its real clock time (see barSpan).
 function geom(t) {
   let s = parse(t.start_date)
   let d = parse(t.due_date)
@@ -307,16 +333,7 @@ function geom(t) {
     s = preview.value.start
     d = preview.value.due
   }
-  const a = startOfDay(s ?? d)
-  const b = startOfDay(d ?? s)
-  const i0 = Math.round((a - range.value.start) / DAY_MS)
-  const i1 = Math.round((b - range.value.start) / DAY_MS)
-  return {
-    left: i0 * dayW.value,
-    width: Math.max(1, i1 - i0 + 1) * dayW.value,
-    hasStart: s != null,
-    hasDue: d != null,
-  }
+  return barSpan({ start: s, due: d, tier: tier.value, rangeStart: range.value.start, dayW: dayW.value })
 }
 
 // Ghost "estimate" envelope: a dashed bar starting at the task's span start and
@@ -333,12 +350,15 @@ function ghostGeom(t) {
     d = preview.value.due
   }
   if (s == null && d == null) return null
-  const anchor = startOfDay(s ?? d)
-  const i0 = Math.round((anchor - range.value.start) / DAY_MS)
+  const anchor = anchorMs(s ?? d, tier.value)
   // Frame the envelope with a 3px margin on the start/end too (matching the top/bottom inset).
-  return { left: i0 * dayW.value - 3, width: Math.max(dayW.value, days * dayW.value) + 6 }
+  return { left: xAt(anchor, range.value.start, dayW.value) - 3, width: Math.max(dayW.value, days * dayW.value) + 6 }
 }
-const todayLeft = computed(() => dayIndex(todayMs) * dayW.value + dayW.value / 2)
+// Today-line x: the real current time in the hours tier (sub-day precision), else
+// the centre of today's day cell.
+const todayLeft = computed(() =>
+  tier.value === 'hours' ? xAt(Date.now(), range.value.start, dayW.value) : dayIndex(todayMs) * dayW.value + dayW.value / 2,
+)
 
 // ── scroll-to-today ──
 // rAF-driven so the glide is reliable: native `scrollTo({behavior:'smooth'})` on
@@ -372,7 +392,23 @@ function centerToday(smooth = true) {
   if (smooth === false) el.scrollLeft = left
   else animateScrollLeft(left)
 }
-watch(scrollEl, (el) => el && nextTick(() => centerToday(false)))
+watch(scrollEl, (el) => el && nextTick(() => { centerToday(false); syncScroll() }))
+
+// rAF-throttled scroll/resize sync for the windowed hour ticks.
+let scrollRaf2 = 0
+function syncScroll() {
+  const el = scrollEl.value
+  if (!el) return
+  scrollX.value = el.scrollLeft
+  viewW.value = el.clientWidth
+}
+function onScroll() {
+  if (scrollRaf2) return
+  scrollRaf2 = requestAnimationFrame(() => {
+    scrollRaf2 = 0
+    syncScroll()
+  })
+}
 
 // ── pan: middle-button anywhere, or left-drag on empty timeline space ──
 // (bars stop propagation on their own pointerdown, so a pointerdown that reaches
@@ -410,7 +446,9 @@ function onWheel(e) {
 }
 onBeforeUnmount(() => {
   cancelAnimationFrame(scrollRaf)
+  cancelAnimationFrame(scrollRaf2)
   clearTimeout(zoomSettle)
+  clearTimeout(collapseSettle)
   window.removeEventListener('pointermove', onPanMove)
   window.removeEventListener('pointerup', onPanUp)
 })
@@ -468,7 +506,7 @@ function ghostTitle(t) {
           class="tl-zoom-btn"
           type="button"
           :title="leftCollapsed ? 'Показать колонку задач' : 'Свернуть колонку задач'"
-          @click="leftCollapsed = !leftCollapsed"
+          @click="toggleLeft"
         >
           <n-icon :component="leftCollapsed ? ChevronForwardOutline : ChevronBackOutline" :size="15" />
         </button>
@@ -485,9 +523,14 @@ function ghostTitle(t) {
       :class="{ panning: !!pan }"
       @pointerdown="onPanDown"
       @wheel="onWheel"
+      @scroll="onScroll"
     >
-      <div class="tl-inner" :class="{ animate: !drag && !zooming }" :style="{ width: `${leftW + axisW}px` }">
-        <!-- header: month band + day band -->
+      <div
+        class="tl-inner"
+        :class="[tier, { animate: !drag && !zooming && !collapsing, collapsed: leftCollapsed }]"
+        :style="{ width: `${leftW + axisW}px`, '--tl-day-w': `${dayW}px`, '--tl-week-w': `${dayW * 7}px`, '--tl-sub-w': `${subW}px` }"
+      >
+        <!-- header: month band + day/week band (+ hour ticks in the hours tier) -->
         <div class="tl-head">
           <div class="tl-corner" :style="{ width: `${leftW}px` }">Задача</div>
           <div class="tl-axis">
@@ -501,18 +544,28 @@ function ghostTitle(t) {
                 {{ m.label }}
               </div>
             </div>
-            <div class="tl-daysrow">
-              <div
-                v-for="(d, i) in days"
-                :key="i"
-                class="tl-dayh"
-                :class="{ weekend: d.weekend, today: d.isToday }"
-                :style="{ width: `${dayW}px` }"
-              >
-                <span class="dh-num">{{ d.day }}</span>
-                <span class="dh-wd">{{ d.dow }}</span>
+            <div v-if="tier === 'weeks'" class="tl-weeksrow">
+              <div v-for="w in weekBands" :key="w.key" class="tl-weekh" :style="{ width: `${w.span * dayW}px` }">
+                {{ w.label }}
               </div>
             </div>
+            <template v-else>
+              <div class="tl-daysrow">
+                <div
+                  v-for="(d, i) in days"
+                  :key="i"
+                  class="tl-dayh"
+                  :class="{ weekend: d.weekend, today: d.isToday }"
+                  :style="{ width: `${dayW}px` }"
+                >
+                  <span class="dh-num">{{ d.day }}</span>
+                  <span class="dh-wd">{{ d.dow }}</span>
+                </div>
+              </div>
+              <div v-if="tier === 'hours'" class="tl-hoursrow">
+                <span v-for="h in hourTicks" :key="h.key" class="tl-hourtick" :style="{ left: `${h.left}px` }">{{ h.label }}</span>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -532,7 +585,7 @@ function ghostTitle(t) {
                 ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(lane) }}</span
               >
             </div>
-            <div class="tl-track laneband" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }" />
+            <div class="tl-track laneband" :style="{ width: `${axisW}px` }" />
           </div>
 
           <div v-for="t in lane.tasks" :key="t.id" class="tl-row">
@@ -540,7 +593,7 @@ function ghostTitle(t) {
               <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[t.priority || 0]) }" />
               <span class="row-title" :class="{ done: t.completed_at }">{{ t.title }}</span>
             </div>
-            <div class="tl-track" :style="{ width: `${axisW}px`, '--tl-day-w': `${dayW}px` }">
+            <div class="tl-track" :style="{ width: `${axisW}px` }">
               <div
                 v-if="ghostGeom(t)"
                 class="ghost"
@@ -844,6 +897,39 @@ function ghostTitle(t) {
   font-size: 9px;
 }
 
+/* weeks tier: one cell per week, labelled by its first date */
+.tl-weeksrow {
+  display: flex;
+  background: var(--t-surface);
+  border-bottom: 1px solid var(--t-border);
+}
+.tl-weekh {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: var(--t-text2);
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 1px solid color-mix(in srgb, var(--t-border) 55%, transparent);
+}
+/* hours tier: thin row of hour labels positioned at their fraction of the day */
+.tl-hoursrow {
+  position: relative;
+  height: 14px;
+  background: var(--t-surface);
+  border-bottom: 1px solid var(--t-border);
+}
+.tl-hourtick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 9px;
+  line-height: 14px;
+  color: var(--t-text3);
+  pointer-events: none;
+}
+
 /* lanes */
 .tl-lanehead {
   display: flex;
@@ -920,12 +1006,22 @@ function ghostTitle(t) {
 .tl-left:hover {
   background: var(--t-hover);
 }
-/* collapsible left column: animate width, clip content as it shrinks to 0 */
+/* collapsible left column: clip content as the column shrinks; the toggle is
+   instant (animating width across every sticky row thrashed layout) */
 .tl-corner,
 .tl-left,
 .tl-left.lane {
-  transition: width 0.22s ease;
   overflow: hidden;
+}
+/* collapsed: zero the padding + right border so the column reaches a TRUE 0 width
+   (box-sizing:border-box otherwise floors it at padding+border ≈ 25px, leaving a
+   residual sliver) */
+.tl-inner.collapsed .tl-corner,
+.tl-inner.collapsed .tl-left,
+.tl-inner.collapsed .tl-left.lane {
+  padding-left: 0;
+  padding-right: 0;
+  border-right-width: 0;
 }
 .row-bar {
   width: 3px;
@@ -959,6 +1055,34 @@ function ghostTitle(t) {
     color-mix(in srgb, var(--t-border) 45%, transparent) calc(var(--tl-day-w, 34px) - 1px),
     color-mix(in srgb, var(--t-border) 45%, transparent) var(--tl-day-w, 34px)
   );
+}
+/* weeks tier: gridlines every week (daily lines would be too dense) */
+.tl-inner.weeks .tl-track {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(var(--tl-week-w) - 1px),
+    color-mix(in srgb, var(--t-border) 45%, transparent) calc(var(--tl-week-w) - 1px),
+    color-mix(in srgb, var(--t-border) 45%, transparent) var(--tl-week-w)
+  );
+}
+/* hours tier: faint hour-step minor lines under the stronger day lines */
+.tl-inner.hours .tl-track {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--tl-sub-w) - 1px),
+      color-mix(in srgb, var(--t-border) 22%, transparent) calc(var(--tl-sub-w) - 1px),
+      color-mix(in srgb, var(--t-border) 22%, transparent) var(--tl-sub-w)
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--tl-day-w) - 1px),
+      color-mix(in srgb, var(--t-border) 55%, transparent) calc(var(--tl-day-w) - 1px),
+      color-mix(in srgb, var(--t-border) 55%, transparent) var(--tl-day-w)
+    );
 }
 /* one continuous today-line spanning every lane + row (a child of .tl-body so it
    scrolls horizontally with the content; hidden behind the sticky left column) */
