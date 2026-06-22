@@ -28,7 +28,7 @@ import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from 
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
-import { formatEstimate, sumEstimates } from '@/utils/estimation'
+import { formatEstimate, formatEstimateFull, estimateDateRange, sumEstimates } from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
@@ -127,6 +127,15 @@ const estIsRollup = computed(() => ownEstimate.value == null && rollupEstimate.v
 const estText = computed(() => {
   const v = ownEstimate.value ?? rollupEstimate.value
   return v != null ? formatEstimate(v, estCfg.value) : ''
+})
+// Hover tooltip: full spelled-out estimate + projected window (own estimate only).
+const estTooltip = computed(() => {
+  const v = ownEstimate.value ?? rollupEstimate.value
+  if (v == null) return ''
+  const prefix = estIsRollup.value ? 'Сумма оценок подзадач: ' : 'Оценка: '
+  const full = formatEstimateFull(v, estCfg.value)
+  const range = estIsRollup.value ? '' : estimateDateRange(props.task?.start_date, v, estCfg.value)
+  return range ? `${prefix}${full} (${range})` : `${prefix}${full}`
 })
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
 // Stacked-cards effect: offset colored shadows behind the top tag pill.
@@ -518,7 +527,7 @@ async function submitAddSub() {
         <div
           v-if="estText"
           class="pill set est-pill"
-          :title="estIsRollup ? 'Сумма оценок подзадач' : 'Оценка'"
+          :title="estTooltip"
         >
           <n-icon :component="TimerOutline" :size="13" />
           <span class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>

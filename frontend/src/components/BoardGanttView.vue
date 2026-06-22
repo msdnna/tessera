@@ -1,14 +1,14 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
 import { NDropdown, NPopconfirm, NIcon } from 'naive-ui'
-import { TimerOutline } from '@vicons/ionicons5'
+import { TimerOutline, ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { formatEstimate, sumEstimates, estimateToDays } from '@/utils/estimation'
+import { formatEstimate, formatEstimateFull, estimateDateRange, sumEstimates, estimateToDays } from '@/utils/estimation'
 
 const wsStore = useWorkspacesStore()
 
@@ -46,7 +46,10 @@ const menu = useTaskMenu({
 })
 
 const DAY_MS = 86400000
-const LEFT_W = 224 // px of the fixed task column
+const LEFT_W = 224 // px of the fixed task column (expanded)
+// Collapsible left column: width animates to 0 to give the chart full width.
+const leftCollapsed = ref(false)
+const leftW = computed(() => (leftCollapsed.value ? 0 : LEFT_W))
 const LANE_H = 32 // lane-header row height (fixed, so SVG geometry is exact)
 const ROW_H = 36 // task row height
 const BAR_CY = 18 // bar vertical centre within its row (top 6 + height 24 / 2)
@@ -70,7 +73,7 @@ function applyZoom(newIdx, anchorClientX) {
   if (el) {
     const rect = el.getBoundingClientRect()
     anchorX = anchorClientX != null ? anchorClientX - rect.left : el.clientWidth / 2
-    dayAtAnchor = (el.scrollLeft + anchorX - LEFT_W) / oldW
+    dayAtAnchor = (el.scrollLeft + anchorX - leftW.value) / oldW
   }
   zooming.value = true
   clearTimeout(zoomSettle)
@@ -78,7 +81,7 @@ function applyZoom(newIdx, anchorClientX) {
   zoomIdx.value = newIdx
   if (el && dayAtAnchor != null) {
     nextTick(() => {
-      el.scrollLeft = Math.max(0, dayAtAnchor * newW + LEFT_W - anchorX)
+      el.scrollLeft = Math.max(0, dayAtAnchor * newW + leftW.value - anchorX)
     })
   }
 }
@@ -108,7 +111,7 @@ function spanOf(t) {
   return { a: startOfDay(a), b: startOfDay(b), hasStart: s != null, hasDue: d != null }
 }
 
-// ── axis range ──
+// ── axis range (covers every task incl. its estimate ghost end) ──
 const range = computed(() => {
   let lo = todayMs
   let hi = todayMs
@@ -116,9 +119,11 @@ const range = computed(() => {
     const { a, b } = spanOf(t)
     lo = Math.min(lo, a)
     hi = Math.max(hi, b)
+    const gd = estimateToDays(t.estimate, estCfg.value)
+    if (gd != null) hi = Math.max(hi, a + Math.ceil(gd) * DAY_MS)
   }
   lo -= 3 * DAY_MS
-  hi += 14 * DAY_MS
+  hi += 7 * DAY_MS
   const days = Math.round((hi - lo) / DAY_MS) + 1
   return { start: startOfDay(lo), days }
 })
@@ -278,6 +283,12 @@ function ghostGeom(t) {
   // Frame the envelope with a 3px margin on the start/end too (matching the top/bottom inset).
   return { left: i0 * dayW.value - 3, width: Math.max(dayW.value, days * dayW.value) + 6 }
 }
+// Tooltip on the ghost bar: full expansion + projected window.
+function ghostTitle(t) {
+  const full = formatEstimateFull(t.estimate, estCfg.value)
+  const range = estimateDateRange(t.start_date, t.estimate, estCfg.value)
+  return range ? `Оценка: ${full} (${range})` : `Оценка: ${full}`
+}
 
 // Arrow paths: blocker's finish → blocked's start (finish-to-start), an S-curve
 // with a horizontal stub on each end so the arrowhead enters the start cleanly.
@@ -291,9 +302,9 @@ const arrows = computed(() => {
     if (!tb || !tk) continue
     const gb = geom(tb)
     const gk = geom(tk)
-    const x1 = LEFT_W + gb.left + gb.width
+    const x1 = leftW.value + gb.left + gb.width
     const y1 = pos[e.blocker] + BAR_CY
-    const x2 = LEFT_W + gk.left
+    const x2 = leftW.value + gk.left
     const y2 = pos[e.blocked] + BAR_CY
     const dx = Math.max(22, Math.abs(x2 - x1) * 0.4)
     const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
@@ -388,7 +399,7 @@ function onLinkDown(e, t) {
   const c = bodyCoords(e)
   link.value = {
     fromId: t.id,
-    x1: LEFT_W + g.left + g.width,
+    x1: leftW.value + g.left + g.width,
     y1: positions.value.map[t.id] + BAR_CY,
     x: c.x,
     y: c.y,
@@ -486,7 +497,7 @@ function animateScrollLeft(target) {
 function centerToday(smooth = true) {
   const el = scrollEl.value
   if (!el) return
-  const left = Math.max(0, dayIndex(todayMs) * dayW.value - el.clientWidth / 2 + LEFT_W)
+  const left = Math.max(0, dayIndex(todayMs) * dayW.value - el.clientWidth / 2 + leftW.value)
   if (smooth === false) el.scrollLeft = left
   else animateScrollLeft(left)
 }
@@ -532,6 +543,14 @@ function onWheel(e) {
       <div class="tl-zoom">
         <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === 0" title="Уменьшить масштаб" @click="zoomOut()">−</button>
         <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === ZOOM.length - 1" title="Увеличить масштаб" @click="zoomIn()">+</button>
+        <button
+          class="tl-zoom-btn"
+          type="button"
+          :title="leftCollapsed ? 'Показать колонку задач' : 'Свернуть колонку задач'"
+          @click="leftCollapsed = !leftCollapsed"
+        >
+          <n-icon :component="leftCollapsed ? ChevronForwardOutline : ChevronBackOutline" :size="15" />
+        </button>
       </div>
       <span class="tl-hint">Тяните от правого края задачи к другой, чтобы создать зависимость</span>
       <div class="tl-counters">
@@ -542,10 +561,10 @@ function onWheel(e) {
     </div>
 
     <div ref="scrollEl" class="tl-scroll" :class="{ panning: !!pan, linking: !!link }" @pointerdown="onPanDown" @wheel="onWheel">
-      <div class="tl-inner" :class="{ animate: !drag && !link && !zooming }" :style="{ width: `${LEFT_W + axisW}px` }">
+      <div class="tl-inner" :class="{ animate: !drag && !link && !zooming }" :style="{ width: `${leftW + axisW}px` }">
         <!-- header -->
         <div class="tl-head">
-          <div class="tl-corner" :style="{ width: `${LEFT_W}px` }">Задача</div>
+          <div class="tl-corner" :style="{ width: `${leftW}px` }">Задача</div>
           <div class="tl-axis">
             <div class="tl-months">
               <div v-for="(m, i) in monthBands" :key="i" class="tl-month" :style="{ width: `${m.span * dayW}px` }">{{ m.label }}</div>
@@ -567,10 +586,10 @@ function onWheel(e) {
 
         <!-- body: lanes + rows, with the dependency-arrow SVG overlay on top -->
         <div ref="bodyEl" class="tl-body">
-          <div class="tl-today" :style="{ left: `${LEFT_W + todayLeft}px` }" />
+          <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
           <template v-for="lane in lanes" :key="lane.key">
             <div class="tl-lanehead">
-              <div class="tl-left lane" :style="{ width: `${LEFT_W}px` }">
+              <div class="tl-left lane" :style="{ width: `${leftW}px` }">
                 <span class="lane-dot" :style="{ background: lane.color ? hueGrad(lane.color) : 'var(--t-accent-grad)' }" />
                 <span class="lane-name">{{ lane.label }}</span>
                 <span class="lane-count">{{ lane.tasks.length }}</span>
@@ -582,7 +601,7 @@ function onWheel(e) {
             </div>
 
             <div v-for="t in lane.tasks" :key="t.id" class="tl-row" :data-task-id="t.id">
-              <div class="tl-left" :style="{ width: `${LEFT_W}px` }" :title="t.title" @click="$emit('open', t.id)">
+              <div class="tl-left" :style="{ width: `${leftW}px` }" :title="t.title" @click="$emit('open', t.id)">
                 <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[t.priority || 0]) }" />
                 <span class="row-title" :class="{ done: t.completed_at }">{{ t.title }}</span>
               </div>
@@ -591,8 +610,12 @@ function onWheel(e) {
                   v-if="ghostGeom(t)"
                   class="ghost"
                   :style="{ left: `${ghostGeom(t).left}px`, width: `${ghostGeom(t).width}px`, '--ghost-c': PRIORITY_COLORS[t.priority || 0] }"
-                  title="Оценка"
-                />
+                  :title="ghostTitle(t)"
+                >
+                  <span class="ghost-est"
+                    ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(t.estimate, estCfg) }}</span
+                  >
+                </div>
                 <div
                   class="bar"
                   :class="{ done: t.completed_at, point: !(geom(t).hasStart && geom(t).hasDue), linksrc: link && link.fromId === t.id }"
@@ -611,7 +634,7 @@ function onWheel(e) {
           </template>
 
           <!-- dependency arrows + live link preview -->
-          <svg class="g-arrows" :width="LEFT_W + axisW" :height="positions.height" :style="{ height: `${positions.height}px` }">
+          <svg class="g-arrows" :width="leftW + axisW" :height="positions.height" :style="{ height: `${positions.height}px` }">
             <defs>
               <marker id="g-arrowhead" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0 0 L8 4 L0 8 z" :fill="'var(--t-primary)'" />
@@ -930,6 +953,13 @@ function onWheel(e) {
 .tl-left:hover {
   background: var(--t-hover);
 }
+/* collapsible left column: animate width, clip content as it shrinks to 0 */
+.tl-corner,
+.tl-left,
+.tl-left.lane {
+  transition: width 0.22s ease;
+  overflow: hidden;
+}
 .row-bar {
   width: 3px;
   height: 18px;
@@ -992,6 +1022,19 @@ function onWheel(e) {
   border-radius: 7px;
   z-index: 1;
   pointer-events: none;
+}
+.ghost-est {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--ghost-c, var(--t-primary)) 80%, var(--t-text1));
 }
 
 .bar {

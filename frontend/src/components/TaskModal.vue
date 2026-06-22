@@ -51,6 +51,8 @@ import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/grad
 import { buildTagGroups } from '@/utils/tagGroups'
 import {
   formatEstimate,
+  formatEstimateFull,
+  estimateDateRange,
   parseEstimate,
   scaleOptions,
   estimatePlaceholder,
@@ -192,6 +194,9 @@ const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value })
 // default → built-in). boardInfo.projectId is the reliable source once loaded.
 const estCfg = computed(() => store.estimationFor(props.projectId || boardInfo.value?.projectId))
 const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
+// Full spelled-out expansion + projected window (from start_date), for the row hint/tooltip.
+const estFull = computed(() => formatEstimateFull(estimate.value, estCfg.value))
+const estRange = computed(() => estimateDateRange(task.value?.start_date, estimate.value, estCfg.value))
 const estOptions = computed(() => scaleOptions(estCfg.value)) // non-empty only for points
 const estPlaceholder = computed(() => estimatePlaceholder(estCfg.value))
 // Rollup hint: sum of direct subtask estimates, shown when the task has children.
@@ -910,8 +915,9 @@ function eventText(e) {
               <span class="plabel"><n-icon :component="TimerOutline" :size="15" /> Оценка</span>
               <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
                 <template #trigger>
-                  <button class="val">
+                  <button class="val" :title="estFull">
                     <span :class="{ muted: !estLabel }">{{ estLabel || 'Не задана' }}</span>
+                    <span v-if="estRange" class="est-range">· {{ estRange }}</span>
                     <span
                       v-if="subtaskEstimateLabel"
                       class="est-rollup"
@@ -1755,6 +1761,11 @@ function eventText(e) {
 .est-rollup {
   color: var(--t-text3);
   font-size: 12px;
+}
+.est-range {
+  color: var(--t-text3);
+  font-size: 12px;
+  white-space: nowrap;
 }
 .est-menu {
   min-width: 160px;

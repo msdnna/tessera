@@ -151,6 +151,50 @@ export function estimatePlaceholder(cfg) {
   return 'напр. 3д 4ч, 90м, 1н'
 }
 
+// Russian plural picker: forms = [one, few, many] (e.g. ['неделя','недели','недель']).
+function plural(n, forms) {
+  const a = Math.abs(n) % 100
+  const b = a % 10
+  const i = a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2
+  return `${n} ${forms[i]}`
+}
+
+// Full spelled-out expansion of a time estimate, e.g. 30h with an 8h day →
+// "3 дня 6 часов". Points/custom fall back to the compact formatEstimate.
+export function formatEstimateFull(value, cfg) {
+  if (value == null || !(value > 0)) return ''
+  if ((cfg?.unit || 'time') !== 'time') return formatEstimate(value, cfg)
+  const mpd = minutesPerDay(cfg)
+  const mpw = minutesPerWeek(cfg)
+  let rem = Math.round(value)
+  const w = Math.floor(rem / mpw)
+  rem -= w * mpw
+  const d = Math.floor(rem / mpd)
+  rem -= d * mpd
+  const h = Math.floor(rem / 60)
+  rem -= h * 60
+  const m = rem
+  const parts = []
+  if (w) parts.push(plural(w, ['неделя', 'недели', 'недель']))
+  if (d) parts.push(plural(d, ['день', 'дня', 'дней']))
+  if (h) parts.push(plural(h, ['час', 'часа', 'часов']))
+  if (m) parts.push(plural(m, ['минута', 'минуты', 'минут']))
+  return parts.join(' ') || plural(0, ['минута', 'минуты', 'минут'])
+}
+
+// "07.06.2026 – 02.08.2026": the projected window from a start date over the
+// estimate's calendar span. Returns '' without a start date or a time estimate.
+export function estimateDateRange(startISO, value, cfg) {
+  const days = estimateToDays(value, cfg)
+  if (days == null || !startISO) return ''
+  const start = new Date(startISO)
+  if (Number.isNaN(start.getTime())) return ''
+  const end = new Date(start.getTime() + Math.round(days) * 86400000)
+  const fmt = (dt) =>
+    `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()}`
+  return `${fmt(start)} – ${fmt(end)}`
+}
+
 // Convert a canonical estimate into a calendar-day span for the timeline/Gantt
 // "ghost" envelope. Only the time unit has a duration meaning (points/custom are
 // dimensionless → null). The estimate is taken as a fraction of a working week and
