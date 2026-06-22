@@ -129,6 +129,10 @@ const tier = computed(() => tierFor(dayW.value))
 // Horizontal scroll + viewport width (rAF-throttled) → windowed hour-tick render.
 const scrollX = ref(0)
 const viewW = ref(0)
+// Vertical scroll + viewport height + body y-offset (header height) → row windowing.
+const scrollY = ref(0)
+const viewH = ref(0)
+const bodyTop = ref(0)
 let scrollRaf2 = 0
 
 const scheduled = computed(() => props.tasks.filter((t) => t.start_date || t.due_date))
@@ -226,20 +230,56 @@ function measureLaneH() {
   if (h) laneH.value = h
 }
 
-// ── per-task row geometry (exact, computed from the lane model) ──
-// Each task occupies a fixed-height row; we walk lanes in render order to get the
-// vertical top of every task row, which the arrow overlay and link-drag reuse.
-const positions = computed(() => {
-  const map = {}
-  let y = 0
+// ── per-row layout + virtualization ──
+// Flat ordered list of visual rows (a lane header, then its task rows) matching the
+// document flow, so the windowing spacers stay pixel-exact.
+const flatRows = computed(() => {
+  const out = []
   for (const lane of lanes.value) {
-    y += laneH.value
-    for (const t of lane.tasks) {
-      map[t.id] = y
-      y += ROW_H
-    }
+    out.push({ t: 'lane', key: `L${lane.key}`, lane })
+    for (const task of lane.tasks) out.push({ t: 'task', key: task.id, task })
   }
-  return { map, height: y }
+  return out
+})
+const rowH = (r) => (r.t === 'lane' ? laneH.value : ROW_H)
+const rowLayout = computed(() => {
+  const rows = flatRows.value
+  const tops = new Array(rows.length)
+  let y = 0
+  for (let i = 0; i < rows.length; i++) {
+    tops[i] = y
+    y += rowH(rows[i])
+  }
+  return { tops, height: y }
+})
+// Vertical top of every task row (the arrow overlay + link-drag reuse this); derived
+// from the same layout so DOM windowing never shifts an arrow endpoint.
+const positions = computed(() => {
+  const rows = flatRows.value
+  const { tops, height } = rowLayout.value
+  const map = {}
+  for (let i = 0; i < rows.length; i++) if (rows[i].t === 'task') map[rows[i].task.id] = tops[i]
+  return { map, height }
+})
+// Window the body: render only rows intersecting the viewport (plus a margin), with
+// top/bottom spacers preserving the scroll height. The arrow SVG stays full-height,
+// so dependencies to off-screen tasks still draw correctly.
+const VMARGIN = 600 // px of off-screen rows kept rendered above/below the viewport
+const vwindow = computed(() => {
+  const rows = flatRows.value
+  const { tops, height } = rowLayout.value
+  const n = rows.length
+  if (!n) return { rows: [], top: 0, bottom: 0 }
+  const lo = scrollY.value - bodyTop.value - VMARGIN
+  const hi = scrollY.value - bodyTop.value + (viewH.value || 800) + VMARGIN
+  let start = 0
+  while (start < n && tops[start] + rowH(rows[start]) < lo) start++
+  if (start >= n) return { rows: [], top: height, bottom: 0 }
+  let end = start
+  while (end < n && tops[end] < hi) end++
+  if (end <= start) end = Math.min(n, start + 1)
+  const last = end - 1
+  return { rows: rows.slice(start, end), top: tops[start], bottom: height - (tops[last] + rowH(rows[last])) }
 })
 
 // ── dependencies (blocking edges) ──
@@ -542,6 +582,9 @@ function syncScroll() {
   if (!el) return
   scrollX.value = el.scrollLeft
   viewW.value = el.clientWidth
+  scrollY.value = el.scrollTop
+  viewH.value = el.clientHeight
+  if (bodyEl.value) bodyTop.value = bodyEl.value.offsetTop
 }
 function onScroll() {
   if (scrollRaf2) return
@@ -651,54 +694,57 @@ function onWheel(e) {
           </div>
         </div>
 
-        <!-- body: lanes + rows, with the dependency-arrow SVG overlay on top -->
+        <!-- body: windowed lanes + rows (spacers keep the scroll height), with the
+             full-height dependency-arrow SVG overlay on top -->
         <div ref="bodyEl" class="tl-body">
           <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
-          <template v-for="lane in lanes" :key="lane.key">
-            <div class="tl-lanehead">
+          <div class="tl-vspacer" :style="{ height: `${vwindow.top}px` }" />
+          <template v-for="r in vwindow.rows" :key="r.key">
+            <div v-if="r.t === 'lane'" class="tl-lanehead">
               <div class="tl-left lane" :style="{ width: `${leftW}px` }">
-                <span class="lane-dot" :style="{ background: lane.color ? hueGrad(lane.color) : 'var(--t-accent-grad)' }" />
-                <span class="lane-name">{{ lane.label }}</span>
-                <span class="lane-count">{{ lane.tasks.length }}</span>
-                <span v-if="laneEffort(lane)" class="lane-effort" title="Суммарная оценка"
-                  ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(lane) }}</span
+                <span class="lane-dot" :style="{ background: r.lane.color ? hueGrad(r.lane.color) : 'var(--t-accent-grad)' }" />
+                <span class="lane-name">{{ r.lane.label }}</span>
+                <span class="lane-count">{{ r.lane.tasks.length }}</span>
+                <span v-if="laneEffort(r.lane)" class="lane-effort" title="Суммарная оценка"
+                  ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(r.lane) }}</span
                 >
               </div>
               <div class="tl-track laneband" :style="{ width: `${axisW}px` }" />
             </div>
 
-            <div v-for="t in lane.tasks" :key="t.id" class="tl-row" :data-task-id="t.id">
-              <div class="tl-left" :style="{ width: `${leftW}px` }" :title="t.title" @click="$emit('open', t.id)">
-                <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[t.priority || 0]) }" />
-                <span class="row-title" :class="{ done: t.completed_at }">{{ t.title }}</span>
+            <div v-else class="tl-row" :data-task-id="r.task.id">
+              <div class="tl-left" :style="{ width: `${leftW}px` }" :title="r.task.title" @click="$emit('open', r.task.id)">
+                <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }" />
+                <span class="row-title" :class="{ done: r.task.completed_at }">{{ r.task.title }}</span>
               </div>
               <div class="tl-track" :style="{ width: `${axisW}px` }">
                 <div
-                  v-if="ghostGeom(t)"
+                  v-if="ghostGeom(r.task)"
                   class="ghost"
-                  :style="{ left: `${ghostGeom(t).left}px`, width: `${ghostGeom(t).width}px`, '--ghost-c': PRIORITY_COLORS[t.priority || 0] }"
-                  :title="ghostTitle(t)"
+                  :style="{ left: `${ghostGeom(r.task).left}px`, width: `${ghostGeom(r.task).width}px`, '--ghost-c': PRIORITY_COLORS[r.task.priority || 0] }"
+                  :title="ghostTitle(r.task)"
                 >
                   <span class="ghost-est"
-                    ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(t.estimate, estCfg) }}</span
+                    ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(r.task.estimate, estCfg) }}</span
                   >
                 </div>
                 <div
                   class="bar"
-                  :class="{ done: t.completed_at, point: !(geom(t).hasStart && geom(t).hasDue), linksrc: link && link.fromId === t.id }"
-                  :style="{ left: `${geom(t).left}px`, width: `${geom(t).width}px`, '--bar-grad': hueGrad(PRIORITY_COLORS[t.priority || 0]) }"
-                  @pointerdown="onBarDown($event, t, 'move')"
-                  @click="$emit('open', t.id)"
-                  @contextmenu.prevent.stop="menu.open($event, t)"
+                  :class="{ done: r.task.completed_at, point: !(geom(r.task).hasStart && geom(r.task).hasDue), linksrc: link && link.fromId === r.task.id }"
+                  :style="{ left: `${geom(r.task).left}px`, width: `${geom(r.task).width}px`, '--bar-grad': hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }"
+                  @pointerdown="onBarDown($event, r.task, 'move')"
+                  @click="$emit('open', r.task.id)"
+                  @contextmenu.prevent.stop="menu.open($event, r.task)"
                 >
-                  <span class="handle l" @pointerdown.stop="onBarDown($event, t, 'start')" />
-                  <span class="bar-title">{{ t.title }}</span>
-                  <span class="handle r" @pointerdown.stop="onBarDown($event, t, 'due')" />
-                  <span class="link-knob" title="Создать зависимость" @pointerdown="onLinkDown($event, t)" @click.stop />
+                  <span class="handle l" @pointerdown.stop="onBarDown($event, r.task, 'start')" />
+                  <span class="bar-title">{{ r.task.title }}</span>
+                  <span class="handle r" @pointerdown.stop="onBarDown($event, r.task, 'due')" />
+                  <span class="link-knob" title="Создать зависимость" @pointerdown="onLinkDown($event, r.task)" @click.stop />
                 </div>
               </div>
             </div>
           </template>
+          <div class="tl-vspacer" :style="{ height: `${vwindow.bottom}px` }" />
 
           <!-- dependency arrows + live link preview -->
           <svg class="g-arrows" :width="leftW + axisW" :height="positions.height" :style="{ height: `${positions.height}px` }">
@@ -1131,6 +1177,11 @@ function onWheel(e) {
 }
 .tl-body {
   position: relative;
+}
+/* virtualization spacers: reserve the height of the off-screen rows above/below the
+   rendered window so the scrollbar + arrow-overlay geometry stay correct */
+.tl-vspacer {
+  flex: 0 0 auto;
 }
 .tl-today {
   position: absolute;

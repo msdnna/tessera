@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
 import { NDropdown, NPopconfirm, NIcon } from 'naive-ui'
 import { TimerOutline, ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
@@ -136,6 +136,12 @@ const tier = computed(() => tierFor(dayW.value))
 // hour-tick rendering (only paints the visible slice).
 const scrollX = ref(0)
 const viewW = ref(0)
+// Vertical scroll + viewport height + the body's y-offset within the scroll content
+// (header height), rAF-throttled — drives row virtualization below.
+const scrollY = ref(0)
+const viewH = ref(0)
+const bodyTop = ref(0)
+const bodyEl = ref(null)
 
 // A task is "scheduled" when it has at least one of start/due.
 const scheduled = computed(() => props.tasks.filter((t) => t.start_date || t.due_date))
@@ -233,6 +239,59 @@ const lanes = computed(() => {
 const overdueCount = computed(
   () => scheduled.value.filter((t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs).length,
 )
+
+// ── row virtualization ──
+// The body renders one DOM row per lane-header and per task; on a board with 200+
+// tasks that (with per-row gridlines + bars) dominates the cost of every zoom and
+// scroll. We window it: only rows intersecting the viewport (plus a margin) render,
+// with top/bottom spacers that preserve the total scroll height. Bars are positioned
+// by pure axis math, so windowing changes nothing about their geometry.
+const ROW_H = 36
+const laneH = ref(30) // lane-header row height; measured once (styling is uniform)
+function measureLaneH() {
+  const h = bodyEl.value?.querySelector('.tl-lanehead')?.offsetHeight
+  if (h) laneH.value = h
+}
+// Flat ordered list of visual rows (lane header, then its task rows), matching the
+// document flow so spacer heights stay exact.
+const flatRows = computed(() => {
+  const out = []
+  for (const lane of lanes.value) {
+    out.push({ t: 'lane', key: `L${lane.key}`, lane })
+    for (const task of lane.tasks) out.push({ t: 'task', key: task.id, task })
+  }
+  return out
+})
+const rowH = (r) => (r.t === 'lane' ? laneH.value : ROW_H)
+const rowLayout = computed(() => {
+  const rows = flatRows.value
+  const tops = new Array(rows.length)
+  let y = 0
+  for (let i = 0; i < rows.length; i++) {
+    tops[i] = y
+    y += rowH(rows[i])
+  }
+  return { tops, height: y }
+})
+const VMARGIN = 600 // px of off-screen rows kept rendered above/below the viewport
+const vwindow = computed(() => {
+  const rows = flatRows.value
+  const { tops, height } = rowLayout.value
+  const n = rows.length
+  if (!n) return { rows: [], top: 0, bottom: 0 }
+  const lo = scrollY.value - bodyTop.value - VMARGIN
+  const hi = scrollY.value - bodyTop.value + (viewH.value || 800) + VMARGIN
+  let start = 0
+  while (start < n && tops[start] + rowH(rows[start]) < lo) start++
+  if (start >= n) return { rows: [], top: height, bottom: 0 }
+  let end = start
+  while (end < n && tops[end] < hi) end++
+  if (end <= start) end = Math.min(n, start + 1)
+  const last = end - 1
+  return { rows: rows.slice(start, end), top: tops[start], bottom: height - (tops[last] + rowH(rows[last])) }
+})
+onMounted(() => nextTick(measureLaneH))
+watch(lanes, () => nextTick(measureLaneH))
 
 // ── drag-to-reschedule (move whole bar / resize an edge) ──
 // During a drag we hold a transient preview so only the dragged bar re-renders.
@@ -401,6 +460,9 @@ function syncScroll() {
   if (!el) return
   scrollX.value = el.scrollLeft
   viewW.value = el.clientWidth
+  scrollY.value = el.scrollTop
+  viewH.value = el.clientHeight
+  if (bodyEl.value) bodyTop.value = bodyEl.value.offsetTop
 }
 function onScroll() {
   if (scrollRaf2) return
@@ -569,62 +631,65 @@ function ghostTitle(t) {
           </div>
         </div>
 
-        <!-- swimlanes (one continuous today-line spans the whole body) -->
-        <div class="tl-body">
+        <!-- swimlanes (windowed: only rows in/near the viewport render; spacers keep
+             the scroll height; one continuous today-line spans the whole body) -->
+        <div ref="bodyEl" class="tl-body">
           <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
-          <template v-for="lane in lanes" :key="lane.key">
-          <div class="tl-lanehead">
-            <div class="tl-left lane" :style="{ width: `${leftW}px` }">
-              <span
-                class="lane-dot"
-                :style="{ background: lane.color ? hueGrad(lane.color) : 'var(--t-accent-grad)' }"
-              />
-              <span class="lane-name">{{ lane.label }}</span>
-              <span class="lane-count">{{ lane.tasks.length }}</span>
-              <span v-if="laneEffort(lane)" class="lane-effort" title="Суммарная оценка"
-                ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(lane) }}</span
-              >
-            </div>
-            <div class="tl-track laneband" :style="{ width: `${axisW}px` }" />
-          </div>
-
-          <div v-for="t in lane.tasks" :key="t.id" class="tl-row">
-            <div class="tl-left" :style="{ width: `${leftW}px` }" :title="t.title" @click="$emit('open', t.id)">
-              <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[t.priority || 0]) }" />
-              <span class="row-title" :class="{ done: t.completed_at }">{{ t.title }}</span>
-            </div>
-            <div class="tl-track" :style="{ width: `${axisW}px` }">
-              <div
-                v-if="ghostGeom(t)"
-                class="ghost"
-                :style="{ left: `${ghostGeom(t).left}px`, width: `${ghostGeom(t).width}px`, '--ghost-c': PRIORITY_COLORS[t.priority || 0] }"
-                :title="ghostTitle(t)"
-              >
-                <span class="ghost-est"
-                  ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(t.estimate, estCfg) }}</span
+          <div class="tl-vspacer" :style="{ height: `${vwindow.top}px` }" />
+          <template v-for="r in vwindow.rows" :key="r.key">
+            <div v-if="r.t === 'lane'" class="tl-lanehead">
+              <div class="tl-left lane" :style="{ width: `${leftW}px` }">
+                <span
+                  class="lane-dot"
+                  :style="{ background: r.lane.color ? hueGrad(r.lane.color) : 'var(--t-accent-grad)' }"
+                />
+                <span class="lane-name">{{ r.lane.label }}</span>
+                <span class="lane-count">{{ r.lane.tasks.length }}</span>
+                <span v-if="laneEffort(r.lane)" class="lane-effort" title="Суммарная оценка"
+                  ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(r.lane) }}</span
                 >
               </div>
-              <div
-                class="bar"
-                :class="{ done: t.completed_at, point: !(geom(t).hasStart && geom(t).hasDue) }"
-                :style="{
-                  left: `${geom(t).left}px`,
-                  width: `${geom(t).width}px`,
-                  '--bar-grad': hueGrad(PRIORITY_COLORS[t.priority || 0]),
-                }"
-                @pointerdown="onBarDown($event, t, 'move')"
-                @click="$emit('open', t.id)"
-                @mouseenter="onBarEnter($event, t)"
-                @mouseleave="onBarLeave"
-                @contextmenu.prevent.stop="menu.open($event, t)"
-              >
-                <span class="handle l" @pointerdown.stop="onBarDown($event, t, 'start')" />
-                <span class="bar-title">{{ t.title }}</span>
-                <span class="handle r" @pointerdown.stop="onBarDown($event, t, 'due')" />
+              <div class="tl-track laneband" :style="{ width: `${axisW}px` }" />
+            </div>
+
+            <div v-else class="tl-row">
+              <div class="tl-left" :style="{ width: `${leftW}px` }" :title="r.task.title" @click="$emit('open', r.task.id)">
+                <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }" />
+                <span class="row-title" :class="{ done: r.task.completed_at }">{{ r.task.title }}</span>
+              </div>
+              <div class="tl-track" :style="{ width: `${axisW}px` }">
+                <div
+                  v-if="ghostGeom(r.task)"
+                  class="ghost"
+                  :style="{ left: `${ghostGeom(r.task).left}px`, width: `${ghostGeom(r.task).width}px`, '--ghost-c': PRIORITY_COLORS[r.task.priority || 0] }"
+                  :title="ghostTitle(r.task)"
+                >
+                  <span class="ghost-est"
+                    ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(r.task.estimate, estCfg) }}</span
+                  >
+                </div>
+                <div
+                  class="bar"
+                  :class="{ done: r.task.completed_at, point: !(geom(r.task).hasStart && geom(r.task).hasDue) }"
+                  :style="{
+                    left: `${geom(r.task).left}px`,
+                    width: `${geom(r.task).width}px`,
+                    '--bar-grad': hueGrad(PRIORITY_COLORS[r.task.priority || 0]),
+                  }"
+                  @pointerdown="onBarDown($event, r.task, 'move')"
+                  @click="$emit('open', r.task.id)"
+                  @mouseenter="onBarEnter($event, r.task)"
+                  @mouseleave="onBarLeave"
+                  @contextmenu.prevent.stop="menu.open($event, r.task)"
+                >
+                  <span class="handle l" @pointerdown.stop="onBarDown($event, r.task, 'start')" />
+                  <span class="bar-title">{{ r.task.title }}</span>
+                  <span class="handle r" @pointerdown.stop="onBarDown($event, r.task, 'due')" />
+                </div>
               </div>
             </div>
-          </div>
           </template>
+          <div class="tl-vspacer" :style="{ height: `${vwindow.bottom}px` }" />
         </div>
 
         <div v-if="!lanes.length" class="tl-empty">Нет задач со сроками. Задайте срок или начало в карточке.</div>
@@ -1088,6 +1153,11 @@ function ghostTitle(t) {
    scrolls horizontally with the content; hidden behind the sticky left column) */
 .tl-body {
   position: relative;
+}
+/* virtualization spacers: reserve the height of the off-screen rows above/below the
+   rendered window so the scrollbar + total height stay correct */
+.tl-vspacer {
+  flex: 0 0 auto;
 }
 .tl-today {
   position: absolute;
