@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui.screens
 
+import android.graphics.Paint
+import android.graphics.Typeface
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
@@ -73,6 +75,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -82,6 +85,8 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -93,6 +98,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -587,7 +593,8 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     var cursor by remember { mutableStateOf(today.get(Calendar.YEAR) to today.get(Calendar.MONTH)) }
     val (year, month) = cursor
 
-    val tasks = state.applyFilterSort(state.tasks)
+    // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
+    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
     val byDay = tasks.filter { !it.dueDate.isNullOrBlank() }.groupBy { isoDateKey(it.dueDate) }
     val undated = tasks.filter { it.dueDate.isNullOrBlank() }
     val cells = remember(year, month) { monthCells(year, month) }
@@ -1283,7 +1290,8 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     var leftCollapsed by remember { mutableStateOf(false) }
     val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
 
-    val tasks = state.applyFilterSort(state.tasks)
+    // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
+    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
     val unscheduled = tasks.filter { it.startDate == null && it.dueDate == null }
 
@@ -1297,19 +1305,23 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     }
 
     val todayMs = tlDayFloor(System.currentTimeMillis())
-    var lo = todayMs
-    var hi = todayMs
-    scheduled.forEach {
-        val (a, b) = span(it)
-        lo = minOf(lo, a)
-        hi = maxOf(hi, b)
-        // The estimate ghost can reach past the due date — keep its end on-scale.
-        website.msdnna.tessera.util.Estimation.toDays(it.estimate, state.estimation)?.let { gd ->
-            hi = maxOf(hi, a + ceil(gd).toLong() * TL_DAY_MS)
+    // Memoised: the span()/estimate loop parses date strings for every task — doing it
+    // each zoom frame (200 tasks) was a big hitch. Depends only on the task set, not dayW.
+    val (loBase, hiBase) = remember(scheduled, state.estimation, todayMs) {
+        var lo = todayMs
+        var hi = todayMs
+        scheduled.forEach {
+            val (a, b) = span(it)
+            lo = minOf(lo, a)
+            hi = maxOf(hi, b)
+            website.msdnna.tessera.util.Estimation.toDays(it.estimate, state.estimation)?.let { gd ->
+                hi = maxOf(hi, a + ceil(gd).toLong() * TL_DAY_MS)
+            }
         }
+        (lo - 3 * TL_DAY_MS) to (hi + 7 * TL_DAY_MS)
     }
-    lo -= 3 * TL_DAY_MS
-    hi += 7 * TL_DAY_MS
+    var lo = loBase
+    var hi = hiBase
     val dayWpx = with(density) { dayW.toPx() }
     // Cap the window so the track can't exceed Compose's Constraints limit; keep the
     // recent/future end (anchored at hi) and drop the far past.
@@ -1331,6 +1343,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     // Precompute day-cell metadata once per window — rebuilding Calendar objects for
     // every day on each zoom frame was the main pinch-lag culprit.
     val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
+    val monthBands = remember(rangeStart, dayCount) { buildMonthBands(rangeStart, dayCount) }
 
     // Swimlanes follow the shared composer-bar grouping (status / tag[+prefix]) —
     // no separate timeline control (mirrors web; avoids duplicate grouping).
@@ -1387,7 +1400,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         }
     }
 
-    val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
+    val overdue = remember(scheduled) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) } }
     val hScroll = rememberScrollState()
 
     // Pinch-zoom: on the FIRST step of a 2-finger gesture, fix the date under the
@@ -1477,11 +1490,8 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     contentAlignment = Alignment.BottomStart,
                 ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-                Box(Modifier.weight(1f).onSizeChanged { viewportPx = it.width }.horizontalScroll(hScroll)) {
-                    Column(Modifier.width(axisW)) {
-                        TimelineMonthBand(rangeStart, dayCount, dayW)
-                        TimelineDayRow(dayCells, dayW)
-                    }
+                Box(Modifier.weight(1f).height(TL_HEAD_H).onSizeChanged { viewportPx = it.width }.clipToBounds()) {
+                    TimelineAxisCanvas(dayCells, monthBands, dayW, hScroll, Modifier.fillMaxSize())
                 }
             }
 
@@ -1559,7 +1569,8 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     var leftCollapsed by remember { mutableStateOf(false) }
     val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
 
-    val tasks = state.applyFilterSort(state.tasks)
+    // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
+    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
     val unscheduled = tasks.filter { it.startDate == null && it.dueDate == null }
 
@@ -1572,19 +1583,23 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     }
 
     val todayMs = tlDayFloor(System.currentTimeMillis())
-    var lo = todayMs
-    var hi = todayMs
-    scheduled.forEach {
-        val (a, b) = span(it)
-        lo = minOf(lo, a)
-        hi = maxOf(hi, b)
-        // The estimate ghost can reach past the due date — keep its end on-scale.
-        website.msdnna.tessera.util.Estimation.toDays(it.estimate, state.estimation)?.let { gd ->
-            hi = maxOf(hi, a + ceil(gd).toLong() * TL_DAY_MS)
+    // Memoised: the span()/estimate loop parses date strings for every task — doing it
+    // each zoom frame (200 tasks) was a big hitch. Depends only on the task set, not dayW.
+    val (loBase, hiBase) = remember(scheduled, state.estimation, todayMs) {
+        var lo = todayMs
+        var hi = todayMs
+        scheduled.forEach {
+            val (a, b) = span(it)
+            lo = minOf(lo, a)
+            hi = maxOf(hi, b)
+            website.msdnna.tessera.util.Estimation.toDays(it.estimate, state.estimation)?.let { gd ->
+                hi = maxOf(hi, a + ceil(gd).toLong() * TL_DAY_MS)
+            }
         }
+        (lo - 3 * TL_DAY_MS) to (hi + 7 * TL_DAY_MS)
     }
-    lo -= 3 * TL_DAY_MS
-    hi += 7 * TL_DAY_MS
+    var lo = loBase
+    var hi = hiBase
     val dayWpx = with(density) { dayW.toPx() }
     // Cap the window so the track (a single axisW×bodyH box + arrow Canvas) can't
     // exceed Compose's Constraints limit; keep the recent/future end (anchored at hi).
@@ -1604,6 +1619,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val todayLeft = dayW * dayIndex(todayMs) + dayW * 0.5f
     val gridColor = c.border.copy(alpha = 0.45f)
     val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
+    val monthBands = remember(rangeStart, dayCount) { buildMonthBands(rangeStart, dayCount) }
 
     fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
     val lanes = remember(scheduled, state.groupByTag, state.tagPrefix, state.tags, state.columns) {
@@ -1697,7 +1713,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     }
     val arrowColor = c.primary
 
-    val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
+    val overdue = remember(scheduled) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) } }
     val hScroll = rememberScrollState()
 
     // Pinch-zoom: on the FIRST step of a 2-finger gesture, fix the date under the
@@ -1791,11 +1807,8 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     contentAlignment = Alignment.BottomStart,
                 ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-                Box(Modifier.weight(1f).onSizeChanged { viewportPx = it.width }.horizontalScroll(hScroll)) {
-                    Column(Modifier.width(axisW)) {
-                        TimelineMonthBand(rangeStart, dayCount, dayW)
-                        TimelineDayRow(dayCells, dayW)
-                    }
+                Box(Modifier.weight(1f).height(TL_HEAD_H).onSizeChanged { viewportPx = it.width }.clipToBounds()) {
+                    TimelineAxisCanvas(dayCells, monthBands, dayW, hScroll, Modifier.fillMaxSize())
                 }
             }
 
@@ -1889,27 +1902,87 @@ private fun TimelineCounter(text: String, fg: Color, bg: Color) {
     ) { Text(text, color = fg, fontSize = 11.sp) }
 }
 
-@Composable
-private fun TimelineMonthBand(rangeStart: Long, dayCount: Int, dayW: androidx.compose.ui.unit.Dp) {
-    val c = Tessera.colors
-    // group consecutive days by (year, month)
-    val bands = remember(rangeStart, dayCount) {
-        val out = mutableListOf<Pair<String, Int>>()
-        for (i in 0 until dayCount) {
-            val cal = Calendar.getInstance().apply { timeInMillis = rangeStart + i * TL_DAY_MS }
-            val label = "${TlMonths[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
-            if (out.isNotEmpty() && out.last().first == label) out[out.lastIndex] = label to (out.last().second + 1)
-            else out.add(label to 1)
-        }
-        out
+/** A month label spanning [span] consecutive day-cells starting at [startIdx]. */
+private data class TlMonthBand(val label: String, val startIdx: Int, val span: Int)
+
+private fun buildMonthBands(rangeStart: Long, dayCount: Int): List<TlMonthBand> {
+    val out = ArrayList<TlMonthBand>()
+    val cal = Calendar.getInstance()
+    for (i in 0 until dayCount) {
+        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        val label = "${TlMonths[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
+        val last = out.lastOrNull()
+        if (last != null && last.label == label) out[out.lastIndex] = last.copy(span = last.span + 1)
+        else out.add(TlMonthBand(label, i, 1))
     }
-    Row(Modifier.height(TL_MONTH_H)) {
-        bands.forEach { (label, span) ->
-            Box(
-                Modifier.width(dayW * span).fillMaxHeight().background(c.surfaceAlt)
-                    .padding(horizontal = 6.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) { Text(label, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+    return out
+}
+
+private fun axisPaint(color: Color, sizeSp: Float, density: Density, bold: Boolean, center: Boolean): Paint =
+    Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color.toArgb()
+        textSize = with(density) { sizeSp.sp.toPx() }
+        textAlign = if (center) Paint.Align.CENTER else Paint.Align.LEFT
+        if (bold) typeface = Typeface.DEFAULT_BOLD
+    }
+
+/**
+ * The whole day-axis header (month band + day numbers + weekday + today circle +
+ * weekend bg) drawn in ONE Canvas, only for the visible window (reads `scroll.value`
+ * in the draw phase). Replaces ~300+ composables that re-laid-out on every zoom step
+ * — the zoom/collapse hitch. Text via the native Canvas (cheap, no per-cell layout).
+ */
+@Composable
+private fun TimelineAxisCanvas(
+    days: List<TlDayCell>,
+    months: List<TlMonthBand>,
+    dayW: androidx.compose.ui.unit.Dp,
+    scroll: ScrollState,
+    modifier: Modifier,
+) {
+    val c = Tessera.colors
+    val density = LocalDensity.current
+    val dayNum = remember(c.text1) { axisPaint(c.text1, 11f, density, bold = false, center = true) }
+    val dayNumToday = remember(c.onPrimary) { axisPaint(c.onPrimary, 11f, density, bold = false, center = true) }
+    val weekday = remember(c.text3) { axisPaint(c.text3, 9f, density, bold = false, center = true) }
+    val monthPaint = remember(c.text2) { axisPaint(c.text2, 11f, density, bold = true, center = false) }
+    Canvas(modifier) {
+        val dayWpx = dayW.toPx()
+        if (dayWpx <= 0f || days.isEmpty()) return@Canvas
+        val scrollX = scroll.value.toFloat()
+        val w = size.width
+        val monthH = TL_MONTH_H.toPx()
+        val daysTop = monthH
+        val daysH = size.height - monthH
+        val canvas = drawContext.canvas.nativeCanvas
+
+        // ── month band ──
+        for (b in months) {
+            val x0 = b.startIdx * dayWpx - scrollX
+            val bw = b.span * dayWpx
+            if (x0 + bw < 0f || x0 > w) continue
+            drawRect(c.surfaceAlt, topLeft = Offset(x0, 0f), size = Size(bw, monthH))
+            drawLine(c.border, Offset(x0 + bw, 0f), Offset(x0 + bw, monthH), strokeWidth = 1f)
+            val lx = maxOf(x0, 0f) + 6.dp.toPx()
+            val ly = monthH / 2f - (monthPaint.descent() + monthPaint.ascent()) / 2f
+            canvas.drawText(b.label, lx, ly, monthPaint)
+        }
+
+        // ── day cells (visible range only) ──
+        val from = (scrollX / dayWpx).toInt().coerceIn(0, days.size - 1)
+        val to = ((scrollX + w) / dayWpx).toInt().coerceIn(0, days.size - 1)
+        val circleR = 9.dp.toPx()
+        val numCy = daysTop + daysH * 0.36f
+        val wdCy = daysTop + daysH * 0.78f
+        for (i in from..to) {
+            val cell = days[i]
+            val x0 = i * dayWpx - scrollX
+            val cx = x0 + dayWpx / 2f
+            drawRect(if (cell.weekend) c.bg else c.surface, topLeft = Offset(x0, daysTop), size = Size(dayWpx, daysH))
+            if (cell.isToday) drawCircle(c.primary, radius = circleR, center = Offset(cx, numCy))
+            val np = if (cell.isToday) dayNumToday else dayNum
+            canvas.drawText("${cell.dom}", cx, numCy - (np.descent() + np.ascent()) / 2f, np)
+            canvas.drawText(cell.weekday, cx, wdCy - (weekday.descent() + weekday.ascent()) / 2f, weekday)
         }
     }
 }
@@ -2069,31 +2142,6 @@ private fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long): List<
         )
     }
     return out
-}
-
-@Composable
-private fun TimelineDayRow(cells: List<TlDayCell>, dayW: androidx.compose.ui.unit.Dp) {
-    val c = Tessera.colors
-    Row {
-        cells.forEach { cell ->
-            Column(
-                Modifier.width(dayW).height(TL_DAYS_H)
-                    .background(if (cell.weekend) c.bg else c.surface),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Box(
-                    Modifier.size(18.dp).then(
-                        if (cell.isToday) Modifier.clip(CircleShape).background(accentGradient(c.primary)) else Modifier,
-                    ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("${cell.dom}", color = if (cell.isToday) c.onPrimary else c.text1, fontSize = 11.sp)
-                }
-                Text(cell.weekday, color = c.text3, fontSize = 9.sp)
-            }
-        }
-    }
 }
 
 /**
