@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +18,23 @@ import (
 	"strings"
 	"time"
 )
+
+// newTransport builds the HTTP transport shared by the GraphQL and asset clients.
+// The short dial + TLS-handshake timeouts are deliberate: when the self-hosted
+// GitLab is unreachable (e.g. a dropped tunnel), a proxy/sync request must fail
+// fast instead of holding a connection — otherwise the browser's per-origin
+// connection pool fills with stalled asset/avatar fetches and starves real API
+// calls, freezing the UI behind the "connecting…" overlay.
+func newTransport() *http.Transport {
+	tr := &http.Transport{
+		DialContext:         (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
+		TLSHandshakeTimeout: 4 * time.Second,
+	}
+	if strings.EqualFold(os.Getenv("GITLAB_INSECURE_TLS"), "true") {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for self-hosted private CAs
+	}
+	return tr
+}
 
 // Client talks to <baseURL>/api/graphql with a personal access token.
 type Client struct {
@@ -29,25 +47,18 @@ type Client struct {
 // Set GITLAB_INSECURE_TLS=true to skip certificate verification for a
 // self-hosted instance with a private/self-signed CA (dev convenience).
 func New(baseURL, token string) *Client {
-	tr := &http.Transport{}
-	if strings.EqualFold(os.Getenv("GITLAB_INSECURE_TLS"), "true") {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for self-hosted private CAs
-	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
-		http:    &http.Client{Timeout: 30 * time.Second, Transport: tr},
+		http:    &http.Client{Timeout: 15 * time.Second, Transport: newTransport()},
 	}
 }
 
 // NewHTTPClient returns a plain HTTP client configured like the GraphQL client
-// (honours GITLAB_INSECURE_TLS), for streaming asset downloads.
+// (honours GITLAB_INSECURE_TLS), for streaming asset downloads. The overall
+// timeout is short so a dead GitLab fails fast (see newTransport).
 func NewHTTPClient() *http.Client {
-	tr := &http.Transport{}
-	if strings.EqualFold(os.Getenv("GITLAB_INSECURE_TLS"), "true") {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for self-hosted private CAs
-	}
-	return &http.Client{Timeout: 60 * time.Second, Transport: tr}
+	return &http.Client{Timeout: 8 * time.Second, Transport: newTransport()}
 }
 
 // graphqlError is one entry of a GraphQL `errors` array.

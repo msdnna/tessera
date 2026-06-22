@@ -1644,6 +1644,16 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.53.2] — 2026-06-23
+- **Fix: UI froze when the self-hosted GitLab was unreachable.** The asset/avatar
+  proxy HTTP client had a 60s timeout, so a dropped GitLab tunnel left each
+  `<img>`-driven proxy fetch hanging up to a minute; on HTTP/1.1 those stalled
+  requests saturate the browser's per-origin connection pool and starve real API
+  calls, tripping the "Подключение к серверу Tessera" overlay. The GitLab HTTP
+  clients now fail fast — a 3s dial timeout + 4s TLS-handshake timeout, and overall
+  timeouts cut to 8s (asset/avatar proxy) and 15s (GraphQL sync). Write-back is
+  already async, so a GitLab outage only leaves outbox rows retrying.
+
 ### [0.53.1] — 2026-06-23
 - **Fix: GitLab status mapping was case-sensitive.** A label like `S: In Progress`
   / `S: In Review` (GitLab's capitalisation) never matched the rule `value_map`
