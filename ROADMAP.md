@@ -413,9 +413,12 @@ android-паритет суб-баров — в бэклоге). Заплани�
 - **Android background push (FCM)** — device-канал поднимает уведомления только **пока приложение
   открыто** (C2); напоминания — локальный `AlarmManager`. Фоновый push при закрытом приложении (FCM)
   ещё не сделан — следующий кандидат для надёжной доставки (аналог Telegram-доставки в budget-go).
-- **`chore(backend)` lint-cleanup** — расчистить pre-existing revive/gocritic/errcheck в старых файлах
-  (middleware/embed/realtime/auth — нет комментариев к экспортам), чтобы `make lint-backend` снова
-  зелёный. Дёшево, разблокирует чистый гейт. (Так и не сделано — проверить актуальный счётчик.)
+- **`chore(backend)` lint-cleanup — ✅ СДЕЛАНО** (2026-06-23). Было ~44 issue (golangci-lint обрезал
+  повторы — revive exported/package-comments, `max` shadow builtin ×6, errcheck ×3, gocritic
+  exitAfterDefer): добавлены doc-комментарии к экспортам (collab/attachments/auth/boards/version/ws/
+  realtime/embed/token) и package-комментарии (main/config/middleware/database), `max`→`maxPos`,
+  `cmd/migrate` вынесён в `run() error` (deferred Close теперь срабатывает и проверяется). Без
+  изменения поведения, без бампа. `make lint-backend` = 0 issues.
 - **Редактирование префиксов пользовательских тегов в TagManager** — сейчас понятные имена префиксов
   (mig 0026) правятся только из GitLab-модалки; для не-GitLab проектов нужен свой редактор.
 - **Виртуализация колонок на web** (kanban perf >100 карточек) — Android сделан (0.7.0), на web только
