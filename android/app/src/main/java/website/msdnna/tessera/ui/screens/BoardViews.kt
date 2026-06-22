@@ -1339,12 +1339,41 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     fun dayIndex(ms: Long): Int =
         (((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()).coerceIn(0, dayCount - 1)
     val axisW = dayW * dayCount
-    val todayLeft = dayW * dayIndex(todayMs) + dayW * 0.5f
+    val tier = tierFor(dayW)
+    val headH = if (tier == TimelineTier.HOURS) TL_HEAD_H + TL_HOURS_H else TL_HEAD_H
+    // Today-line x: the real current time in the hours tier (sub-day), else today's cell centre.
+    val todayLeft = if (tier == TimelineTier.HOURS)
+        dayW * ((System.currentTimeMillis() - rangeStart).toFloat() / TL_DAY_MS)
+    else dayW * dayIndex(todayMs) + dayW * 0.5f
     val gridColor = c.border.copy(alpha = 0.45f)
+    // Gridline periods follow the tier: weekly / daily / daily + faint hour-step minor.
+    val majorPx = if (tier == TimelineTier.WEEKS) dayWpx * 7f else dayWpx
+    val minorPx = if (tier == TimelineTier.HOURS) hourStepFor(dayW).let { if (it > 0) dayWpx * it / 24f else 0f } else 0f
+
+    // Pixel span of a task bar; in the hours tier a timed start/due sits at its real
+    // clock time, all-day (UTC-midnight) endpoints snap to day boundaries (web parity).
+    fun barGeom(t: Task): Pair<androidx.compose.ui.unit.Dp, androidx.compose.ui.unit.Dp> {
+        val s = parseInstantMillis(t.startDate)
+        val d = parseInstantMillis(t.dueDate)
+        val sMs = s ?: d ?: return 0.dp to 3.dp
+        val dMs = d ?: s ?: sMs
+        val honor = tier == TimelineTier.HOURS
+        val rawLeft = if (honor && !tlIsAllDay(sMs)) sMs else tlDayFloor(sMs)
+        val rawRight = if (honor && !tlIsAllDay(dMs)) dMs else tlDayFloor(dMs) + TL_DAY_MS
+        val hi = rangeStart + dayCount.toLong() * TL_DAY_MS
+        val lMs = rawLeft.coerceIn(rangeStart, hi)
+        val rMs = rawRight.coerceIn(rangeStart, hi)
+        val left = dayW * ((lMs - rangeStart).toFloat() / TL_DAY_MS)
+        val width = (dayW * ((rMs - lMs).toFloat() / TL_DAY_MS) - 2.dp).coerceAtLeast(3.dp)
+        return left to width
+    }
     // Precompute day-cell metadata once per window — rebuilding Calendar objects for
     // every day on each zoom frame was the main pinch-lag culprit.
     val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
     val monthBands = remember(rangeStart, dayCount) { buildMonthBands(rangeStart, dayCount) }
+    val weekBands = remember(rangeStart, dayCount, tier) {
+        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
+    }
 
     // Swimlanes follow the shared composer-bar grouping (status / tag[+prefix]) —
     // no separate timeline control (mirrors web; avoids duplicate grouping).
@@ -1467,9 +1496,9 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                     .clickableNoRipple { scrollToToday() }.padding(horizontal = 12.dp, vertical = 6.dp),
             ) { Text("Сегодня", color = c.text2, fontSize = 13.sp) }
             Spacer(Modifier.width(8.dp))
-            ZoomBtn("−") { zoomTo(dayW - 6.dp, viewportPx / 2f) }
+            ZoomBtn("−") { zoomTo(dayW * 0.8f, viewportPx / 2f) }
             Spacer(Modifier.width(4.dp))
-            ZoomBtn("+") { zoomTo(dayW + 6.dp, viewportPx / 2f) }
+            ZoomBtn("+") { zoomTo(dayW * 1.25f, viewportPx / 2f) }
             Spacer(Modifier.width(8.dp))
             // collapse / expand the left task column (animated)
             Box(
@@ -1500,12 +1529,12 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             // ── header: sticky months + days (horizontal-scrolls with the body) ──
             Row {
                 Box(
-                    Modifier.width(leftW).height(TL_HEAD_H).background(c.surfaceAlt).clipToBounds()
+                    Modifier.width(leftW).height(headH).background(c.surfaceAlt).clipToBounds()
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     contentAlignment = Alignment.BottomStart,
                 ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-                Box(Modifier.weight(1f).height(TL_HEAD_H).onSizeChanged { viewportPx = it.width }.clipToBounds()) {
-                    TimelineAxisCanvas(dayCells, monthBands, dayW, hScroll, Modifier.fillMaxSize())
+                Box(Modifier.weight(1f).height(headH).onSizeChanged { viewportPx = it.width }.clipToBounds()) {
+                    TimelineAxisCanvas(dayCells, monthBands, weekBands, tier, dayW, hScroll, Modifier.fillMaxSize())
                 }
             }
 
@@ -1517,8 +1546,8 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             } else {
                 LazyColumn(Modifier.weight(1f).pinchZoom { z, cx, s -> applyZoom(z, cx, s) }) {
                     timelineBodyItems(
-                        bodyRows, leftW, dayW, axisW, dayWpx, todayLeft, gridColor,
-                        hScroll, viewportPx, state, { span(it) }, { dayIndex(it) }, onOpenTask,
+                        bodyRows, leftW, dayW, axisW, majorPx, minorPx, todayLeft, gridColor,
+                        hScroll, viewportPx, state, { barGeom(it) }, onOpenTask,
                     )
                 }
             }
@@ -1630,10 +1659,36 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     fun dayIndex(ms: Long): Int =
         (((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()).coerceIn(0, dayCount - 1)
     val axisW = dayW * dayCount
-    val todayLeft = dayW * dayIndex(todayMs) + dayW * 0.5f
+    val tier = tierFor(dayW)
+    val headH = if (tier == TimelineTier.HOURS) TL_HEAD_H + TL_HOURS_H else TL_HEAD_H
+    val todayLeft = if (tier == TimelineTier.HOURS)
+        dayW * ((System.currentTimeMillis() - rangeStart).toFloat() / TL_DAY_MS)
+    else dayW * dayIndex(todayMs) + dayW * 0.5f
     val gridColor = c.border.copy(alpha = 0.45f)
+    val majorPx = if (tier == TimelineTier.WEEKS) dayWpx * 7f else dayWpx
+    val minorPx = if (tier == TimelineTier.HOURS) hourStepFor(dayW).let { if (it > 0) dayWpx * it / 24f else 0f } else 0f
+
+    // Pixel span of a task bar (hours tier honours real clock time; all-day → day bounds).
+    fun barGeom(t: Task): Pair<androidx.compose.ui.unit.Dp, androidx.compose.ui.unit.Dp> {
+        val s = parseInstantMillis(t.startDate)
+        val d = parseInstantMillis(t.dueDate)
+        val sMs = s ?: d ?: return 0.dp to 3.dp
+        val dMs = d ?: s ?: sMs
+        val honor = tier == TimelineTier.HOURS
+        val rawLeft = if (honor && !tlIsAllDay(sMs)) sMs else tlDayFloor(sMs)
+        val rawRight = if (honor && !tlIsAllDay(dMs)) dMs else tlDayFloor(dMs) + TL_DAY_MS
+        val hi = rangeStart + dayCount.toLong() * TL_DAY_MS
+        val lMs = rawLeft.coerceIn(rangeStart, hi)
+        val rMs = rawRight.coerceIn(rangeStart, hi)
+        val left = dayW * ((lMs - rangeStart).toFloat() / TL_DAY_MS)
+        val width = (dayW * ((rMs - lMs).toFloat() / TL_DAY_MS) - 2.dp).coerceAtLeast(3.dp)
+        return left to width
+    }
     val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
     val monthBands = remember(rangeStart, dayCount) { buildMonthBands(rangeStart, dayCount) }
+    val weekBands = remember(rangeStart, dayCount, tier) {
+        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
+    }
 
     fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
     val lanes = remember(scheduled, state.groupByTag, state.tagPrefix, state.tags, state.columns) {
@@ -1712,15 +1767,12 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
             val tk = byId[d.blockedId] ?: return@mapNotNull null
             val yb = rowTops[d.blockerId] ?: return@mapNotNull null
             val yk = rowTops[d.blockedId] ?: return@mapNotNull null
-            val (ab, bb) = span(tb)
-            val (ak, _) = span(tk)
-            val i0b = dayIndex(ab)
-            val i1b = dayIndex(bb)
-            val i0k = dayIndex(ak)
+            val (lb, wb) = barGeom(tb)
+            val (lk, _) = barGeom(tk)
             GanttArrow(
-                x1 = dayW * (i1b + 1) - 2.dp, // blocker bar right edge
+                x1 = lb + wb, // blocker bar right edge
                 y1 = yb + 19.dp, // bar centre (top 7 + height/2 12)
-                x2 = dayW * i0k, // blocked bar left edge
+                x2 = lk, // blocked bar left edge
                 y2 = yk + 19.dp,
             )
         }
@@ -1793,9 +1845,9 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                     .clickableNoRipple { scrollToToday() }.padding(horizontal = 12.dp, vertical = 6.dp),
             ) { Text("Сегодня", color = c.text2, fontSize = 13.sp) }
             Spacer(Modifier.width(8.dp))
-            ZoomBtn("−") { zoomTo(dayW - 6.dp, viewportPx / 2f) }
+            ZoomBtn("−") { zoomTo(dayW * 0.8f, viewportPx / 2f) }
             Spacer(Modifier.width(4.dp))
-            ZoomBtn("+") { zoomTo(dayW + 6.dp, viewportPx / 2f) }
+            ZoomBtn("+") { zoomTo(dayW * 1.25f, viewportPx / 2f) }
             Spacer(Modifier.width(8.dp))
             // collapse / expand the left task column (animated)
             Box(
@@ -1830,12 +1882,12 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
             // ── header: sticky months + days (h-scrolls with the body) ──
             Row {
                 Box(
-                    Modifier.width(leftW).height(TL_HEAD_H).background(c.surfaceAlt).clipToBounds()
+                    Modifier.width(leftW).height(headH).background(c.surfaceAlt).clipToBounds()
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     contentAlignment = Alignment.BottomStart,
                 ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-                Box(Modifier.weight(1f).height(TL_HEAD_H).onSizeChanged { viewportPx = it.width }.clipToBounds()) {
-                    TimelineAxisCanvas(dayCells, monthBands, dayW, hScroll, Modifier.fillMaxSize())
+                Box(Modifier.weight(1f).height(headH).onSizeChanged { viewportPx = it.width }.clipToBounds()) {
+                    TimelineAxisCanvas(dayCells, monthBands, weekBands, tier, dayW, hScroll, Modifier.fillMaxSize())
                 }
             }
 
@@ -1854,8 +1906,8 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                         state = gLazy,
                     ) {
                         timelineBodyItems(
-                            bodyRows, leftW, dayW, axisW, dayWpx, todayLeft, gridColor,
-                            hScroll, viewportPx, state, { span(it) }, { dayIndex(it) }, onOpenTask,
+                            bodyRows, leftW, dayW, axisW, majorPx, minorPx, todayLeft, gridColor,
+                            hScroll, viewportPx, state, { barGeom(it) }, onOpenTask,
                         )
                     }
                     // dependency arrows over the visible rows (clipped to the track area)
@@ -1963,6 +2015,8 @@ private fun axisPaint(color: Color, sizeSp: Float, density: Density, bold: Boole
 private fun TimelineAxisCanvas(
     days: List<TlDayCell>,
     months: List<TlMonthBand>,
+    weeks: List<TlWeekBand>,
+    tier: TimelineTier,
     dayW: androidx.compose.ui.unit.Dp,
     scroll: ScrollState,
     modifier: Modifier,
@@ -1973,14 +2027,13 @@ private fun TimelineAxisCanvas(
     val dayNumToday = remember(c.onPrimary) { axisPaint(c.onPrimary, 11f, density, bold = false, center = true) }
     val weekday = remember(c.text3) { axisPaint(c.text3, 9f, density, bold = false, center = true) }
     val monthPaint = remember(c.text2) { axisPaint(c.text2, 11f, density, bold = true, center = false) }
+    val weekPaint = remember(c.text2) { axisPaint(c.text2, 11f, density, bold = false, center = false) }
     Canvas(modifier) {
         val dayWpx = dayW.toPx()
         if (dayWpx <= 0f || days.isEmpty()) return@Canvas
         val scrollX = scroll.value.toFloat()
         val w = size.width
         val monthH = TL_MONTH_H.toPx()
-        val daysTop = monthH
-        val daysH = size.height - monthH
         val canvas = drawContext.canvas.nativeCanvas
 
         // ── month band ──
@@ -1995,7 +2048,25 @@ private fun TimelineAxisCanvas(
             canvas.drawText(b.label, lx, ly, monthPaint)
         }
 
-        // ── day cells (visible range only) ──
+        // ── weeks tier: one cell per week, labelled by its day-of-month range ──
+        if (tier == TimelineTier.WEEKS) {
+            val bandTop = monthH
+            val bandH = size.height - monthH
+            val ly = bandTop + bandH / 2f - (weekPaint.descent() + weekPaint.ascent()) / 2f
+            for (b in weeks) {
+                val x0 = b.startIdx * dayWpx - scrollX
+                val bw = b.span * dayWpx
+                if (x0 + bw < 0f || x0 > w) continue
+                drawRect(c.surface, topLeft = Offset(x0, bandTop), size = Size(bw, bandH))
+                drawLine(c.border.copy(alpha = 0.55f), Offset(x0 + bw, bandTop), Offset(x0 + bw, size.height), strokeWidth = 1f)
+                canvas.drawText(b.label, maxOf(x0, 0f) + 6.dp.toPx(), ly, weekPaint)
+            }
+            return@Canvas
+        }
+
+        // ── day cells (visible range only); hours tier reserves a bottom hour band ──
+        val daysTop = monthH
+        val daysH = if (tier == TimelineTier.HOURS) TL_DAYS_H.toPx() else size.height - monthH
         val from = (scrollX / dayWpx).toInt().coerceIn(0, days.size - 1)
         val to = ((scrollX + w) / dayWpx).toInt().coerceIn(0, days.size - 1)
         val circleR = 9.dp.toPx()
@@ -2010,6 +2081,24 @@ private fun TimelineAxisCanvas(
             val np = if (cell.isToday) dayNumToday else dayNum
             canvas.drawText("${cell.dom}", cx, numCy - (np.descent() + np.ascent()) / 2f, np)
             canvas.drawText(cell.weekday, cx, wdCy - (weekday.descent() + weekday.ascent()) / 2f, weekday)
+        }
+
+        // ── hours tier: hour-tick labels under each visible day ──
+        if (tier == TimelineTier.HOURS) {
+            val step = hourStepFor(dayW)
+            if (step > 0) {
+                val hourTop = daysTop + daysH
+                val hourCy = hourTop + (size.height - hourTop) / 2f - (weekday.descent() + weekday.ascent()) / 2f
+                drawRect(c.surface, topLeft = Offset(0f, hourTop), size = Size(w, size.height - hourTop))
+                for (i in from..to) {
+                    var h = step
+                    while (h < 24) {
+                        val x = (i + h / 24f) * dayWpx - scrollX
+                        canvas.drawText("%02d".format(h), x, hourCy, weekday)
+                        h += step
+                    }
+                }
+            }
         }
     }
 }
@@ -2040,14 +2129,14 @@ private fun LazyListScope.timelineBodyItems(
     leftW: androidx.compose.ui.unit.Dp,
     dayW: androidx.compose.ui.unit.Dp,
     axisW: androidx.compose.ui.unit.Dp,
-    dayWpx: Float,
+    majorPx: Float,
+    minorPx: Float,
     todayLeft: androidx.compose.ui.unit.Dp,
     gridColor: Color,
     hScroll: ScrollState,
     viewportPx: Int,
     state: BoardUiState,
-    span: (Task) -> Pair<Long, Long>,
-    dayIndex: (Long) -> Int,
+    barGeom: (Task) -> Pair<androidx.compose.ui.unit.Dp, androidx.compose.ui.unit.Dp>,
     onOpenTask: (Task) -> Unit,
 ) {
     items(
@@ -2088,7 +2177,7 @@ private fun LazyListScope.timelineBodyItems(
                         }
                     }
                     Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                        Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
+                        Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(majorPx, minorPx, gridColor, hScroll, viewportPx)) {
                             Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
                         }
                     }
@@ -2097,9 +2186,7 @@ private fun LazyListScope.timelineBodyItems(
 
             is TlTaskRow -> {
                 val t = row.task
-                val (a, b) = span(t)
-                val i0 = dayIndex(a)
-                val i1 = dayIndex(b)
+                val (barLeft, barWidth) = barGeom(t)
                 val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
                 Row {
                     Row(
@@ -2121,15 +2208,15 @@ private fun LazyListScope.timelineBodyItems(
                         )
                     }
                     Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                        Box(Modifier.width(axisW).height(TL_ROW_H).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
+                        Box(Modifier.width(axisW).height(TL_ROW_H).tlGrid(majorPx, minorPx, gridColor, hScroll, viewportPx)) {
                             Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
                             Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
                                 val lbl = Estimation.format(t.estimate, state.estimation)
-                                GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
+                                GhostBar(barLeft, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
                             }
                             Box(
-                                Modifier.offset(x = dayW * i0, y = 7.dp)
-                                    .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
+                                Modifier.offset(x = barLeft, y = 7.dp)
+                                    .width(barWidth).height(24.dp)
                                     .clip(RoundedCornerShape(6.dp))
                                     .alpha(if (t.isCompleted) 0.5f else 1f)
                                     .background(accentGradient(accent))
@@ -2214,8 +2301,68 @@ private fun GhostBar(
 private val TlMonths = listOf("янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")
 private val TlWeekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "вс")
 
-private val TL_DAY_W_MIN = 14.dp
-private val TL_DAY_W_MAX = 64.dp
+// Zoom spans week-grouping (out) → hour-precision (in); `tierFor` picks the axis
+// granularity. Thresholds mirror web (dp ≈ web's logical px): below ~20 a 2-digit day
+// number doesn't fit a cell → weeks; at/above ~140 a day shows ≥3 hour ticks → hours.
+private val TL_DAY_W_MIN = 6.dp
+private val TL_DAY_W_MAX = 230.dp
+private val TL_WEEKS_MAX_DAYW = 20.dp
+private val TL_HOURS_MIN_DAYW = 140.dp
+private val TL_HOURS_H = 14.dp // extra header band for the hour-tick row (hours tier)
+
+private enum class TimelineTier { WEEKS, DAYS, HOURS }
+
+private fun tierFor(dayW: androidx.compose.ui.unit.Dp): TimelineTier = when {
+    dayW < TL_WEEKS_MAX_DAYW -> TimelineTier.WEEKS
+    dayW >= TL_HOURS_MIN_DAYW -> TimelineTier.HOURS
+    else -> TimelineTier.DAYS
+}
+
+// True when the instant is UTC midnight → a date-only (all-day) value with no time of
+// day. Mirrors util/Dates.isUtcMidnight and web's isAllDayMs (the same signal used for
+// due labels). In the hours tier all-day endpoints snap to day boundaries; timed ones
+// sit at their real clock time.
+private fun tlIsAllDay(ms: Long): Boolean =
+    Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = ms }.let {
+        it.get(Calendar.HOUR_OF_DAY) == 0 && it.get(Calendar.MINUTE) == 0 && it.get(Calendar.SECOND) == 0
+    }
+
+// Hour-tick step (hours) keeping labels ≥34dp apart, or 0 if even 12h is too tight.
+private fun hourStepFor(dayW: androidx.compose.ui.unit.Dp): Int {
+    val perHour = dayW / 24f
+    for (s in intArrayOf(1, 2, 3, 4, 6, 12)) if (perHour * s.toFloat() >= 34.dp) return s
+    return 0
+}
+
+/** A week label spanning [span] day-cells from [startIdx]; label = day-of-month range. */
+private data class TlWeekBand(val label: String, val startIdx: Int, val span: Int)
+
+private fun buildWeekBands(rangeStart: Long, dayCount: Int): List<TlWeekBand> {
+    val out = ArrayList<TlWeekBand>()
+    val cal = Calendar.getInstance()
+    var startIdx = 0
+    var startDom = 1
+    var endDom = 1
+    var span = 0
+    for (i in 0 until dayCount) {
+        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        val dom = cal.get(Calendar.DAY_OF_MONTH)
+        if (span > 0 && cal.get(Calendar.DAY_OF_WEEK) == Calendar.MONDAY) {
+            out.add(TlWeekBand(if (startDom == endDom) "$startDom" else "$startDom–$endDom", startIdx, span))
+            startIdx = i
+            startDom = dom
+            span = 0
+        }
+        if (span == 0) {
+            startIdx = i
+            startDom = dom
+        }
+        endDom = dom
+        span++
+    }
+    if (span > 0) out.add(TlWeekBand(if (startDom == endDom) "$startDom" else "$startDom–$endDom", startIdx, span))
+    return out
+}
 
 /** A small −/+ zoom button for the timeline toolbar. */
 @Composable
@@ -2263,19 +2410,34 @@ private fun Modifier.pinchZoom(onZoom: (zoom: Float, centroidX: Float, isStart: 
 }
 
 /**
- * Faint vertical day gridlines behind a timeline track (web parity). Only the
- * VISIBLE day window is drawn (the track is up to ~30k px wide; drawing every line
- * across it was ~700 drawLine calls per row per frame). `scroll.value` is read in
- * the draw phase (not composition) so scrolling re-draws but never recomposes.
+ * Faint vertical gridlines behind a timeline track (web parity). The period follows
+ * the tier: one line per week (weeks), per day (days), or per day + faint per-hour-step
+ * minor lines (hours). Only the VISIBLE window is drawn (the track is up to ~30k px
+ * wide; drawing every line was ~700 drawLine calls per row per frame). `scroll.value`
+ * is read in the draw phase (not composition) so scrolling re-draws but never recomposes.
  */
-private fun Modifier.tlGrid(dayWpx: Float, color: Color, scroll: ScrollState, viewportPx: Int): Modifier = drawBehind {
-    if (dayWpx <= 0f) return@drawBehind
+private fun Modifier.tlGrid(
+    majorPx: Float,
+    minorPx: Float,
+    color: Color,
+    scroll: ScrollState,
+    viewportPx: Int,
+): Modifier = drawBehind {
+    if (majorPx <= 0f) return@drawBehind
     val fromX = scroll.value.toFloat()
     val end = minOf(fromX + viewportPx, size.width)
-    var x = ceil(fromX / dayWpx).toInt().coerceAtLeast(1) * dayWpx
+    if (minorPx > 0f) {
+        val minorColor = color.copy(alpha = color.alpha * 0.45f)
+        var x = ceil(fromX / minorPx).toInt().coerceAtLeast(1) * minorPx
+        while (x <= end + 0.5f) {
+            drawLine(minorColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
+            x += minorPx
+        }
+    }
+    var x = ceil(fromX / majorPx).toInt().coerceAtLeast(1) * majorPx
     while (x <= end + 0.5f) {
         drawLine(color, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-        x += dayWpx
+        x += majorPx
     }
 }
 
