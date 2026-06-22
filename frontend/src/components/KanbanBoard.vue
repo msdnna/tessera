@@ -16,6 +16,7 @@ import {
 } from 'naive-ui'
 import {
   GitBranchOutline,
+  GitNetworkOutline,
   SaveOutline,
   FolderOpenOutline,
   TrashOutline,
@@ -76,6 +77,10 @@ const membersList = computed(() => Object.values(membersMap))
 
 // view controls (layout comes from the store, above)
 const subtasksExpanded = ref(false) // full property cards vs compact rows
+// "Авто" (Gantt only): order rows by the blocking-dependency graph. The toggle
+// resets the composer to no-group/no-sort; `autoActive` below stays on only
+// while it remains in that state, so adding any grouping/sort silently exits it.
+const autoSort = ref(false)
 // Composer bar: collapsed to a single row (clipping overflow chips) so the
 // right-side tool buttons stay in view; tapping expands it to full height and
 // slides the tools off-screen. Collapses again on an outside click.
@@ -406,6 +411,30 @@ function clearAll() {
   sortLevels.value = []
 }
 
+// "Авто" dependency-graph ordering — Gantt only. Active only while the composer
+// is in its no-group/no-sort state, so any manual grouping/sort transparently
+// turns it off (and removing them brings it back). The button enters that state.
+const autoActive = computed(
+  () =>
+    layout.value === 'gantt' &&
+    autoSort.value &&
+    groupMode.value === 'none' &&
+    sortLevels.value.length === 0,
+)
+function toggleAuto() {
+  if (autoActive.value) {
+    autoSort.value = false
+    return
+  }
+  // Reset the composer (and any loaded view) to the bare auto-sort state.
+  resetFilters()
+  groupMode.value = 'none'
+  tagPrefix.value = ''
+  sortLevels.value = []
+  currentViewName.value = ''
+  autoSort.value = true
+}
+
 // ── per-board, per-layout toolbar state (localStorage, per device) ──
 // Group/sort/filter state is kept independently per layout: switching board↔
 // timeline swaps the live refs in and out of `toolbarByLayout`, so each layout
@@ -422,6 +451,7 @@ function defaultToolbar(forLayout) {
     tagPrefix: '',
     sortLevels: [],
     subtasksExpanded: false,
+    autoSort: false,
     filters: { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' },
   }
 }
@@ -431,6 +461,7 @@ function snapshotToolbar() {
     tagPrefix: tagPrefix.value,
     sortLevels: sortLevels.value.map((l) => ({ ...l })),
     subtasksExpanded: subtasksExpanded.value,
+    autoSort: autoSort.value,
     filters: {
       priorities: [...filters.priorities],
       assignees: [...filters.assignees],
@@ -446,6 +477,7 @@ function loadToolbar(s) {
   tagPrefix.value = s.tagPrefix || ''
   sortLevels.value = (s.sortLevels || []).map((l) => ({ ...l }))
   subtasksExpanded.value = !!s.subtasksExpanded
+  autoSort.value = !!s.autoSort
   Object.assign(
     filters,
     { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' },
@@ -526,7 +558,7 @@ watch(layout, (newL, oldL) => {
     persistView()
   })
 })
-watch([groupMode, tagPrefix, sortLevels, subtasksExpanded, filters], persistView, { deep: true })
+watch([groupMode, tagPrefix, sortLevels, subtasksExpanded, autoSort, filters], persistView, { deep: true })
 
 // ── saved views (per-user, server-side; cross-device) ──
 const savedViews = ref([])
@@ -1219,7 +1251,24 @@ watch(
         <!-- Right-side tools — slide off to the right while the composer is
              expanded so the full chip set has room. -->
         <div class="bar-tools" :class="{ hidden: composerExpanded }">
-        <n-tooltip>
+        <!-- "Авто": dependency-graph ordering (Gantt only). Resets the composer to
+             no-group/no-sort and orders rows by the blocking graph. -->
+        <n-tooltip v-if="layout === 'gantt'">
+          <template #trigger>
+            <n-button
+              size="small"
+              quaternary
+              class="ngrad bar-btn"
+              :type="autoActive ? 'primary' : 'default'"
+              @click="toggleAuto"
+            >
+              <template #icon><n-icon :component="GitNetworkOutline" /></template>
+            </n-button>
+          </template>
+          {{ autoActive ? 'Авто-сортировка по зависимостям (вкл.)' : 'Авто: сортировать по зависимостям' }}
+        </n-tooltip>
+
+        <n-tooltip v-if="!timelineLike">
           <template #trigger>
             <n-button
               size="small"
@@ -1234,8 +1283,8 @@ watch(
           {{ subtasksExpanded ? 'Свернуть подзадачи' : 'Развернуть подзадачи' }}
         </n-tooltip>
 
-        <!-- saved views: load (folder) + save (disk) -->
-        <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
+        <!-- saved views: load (folder) + save (disk) — hidden on timeline/Gantt -->
+        <n-popover v-if="!timelineLike" v-model:show="showLoadView" trigger="click" placement="bottom-start">
             <template #trigger>
             <n-tooltip>
                 <template #trigger>
@@ -1273,7 +1322,7 @@ watch(
             </div>
         </n-popover>
 
-        <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
+        <n-popover v-if="!timelineLike" v-model:show="showSaveView" trigger="click" placement="bottom-start">
             <template #trigger>
             <n-tooltip>
                 <template #trigger>
@@ -1350,6 +1399,7 @@ watch(
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
         :project-id="board?.project_id"
+        :auto-sort="autoActive"
         @open="openTask"
         @changed="onChanged"
       />

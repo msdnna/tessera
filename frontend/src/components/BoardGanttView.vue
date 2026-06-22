@@ -7,6 +7,7 @@ import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
+import { topoByDeps } from '@/utils/dependencyOrder'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { formatEstimate, formatEstimateFull, estimateDateRange, sumEstimates, estimateToDays } from '@/utils/estimation'
 import {
@@ -44,6 +45,10 @@ const props = defineProps({
   groupMode: { type: String, default: 'assignee' },
   tagPrefix: { type: String, default: '' },
   projectId: { type: String, default: null },
+  // "Авто": when on, rows are ordered by the blocking-dependency graph (DFS
+  // pre-order) instead of the incoming list order. Only meaningful with no
+  // grouping/sort, which the composer-bar enforces before setting this.
+  autoSort: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -138,6 +143,11 @@ let scrollRaf2 = 0
 const scheduled = computed(() => props.tasks.filter((t) => t.start_date || t.due_date))
 const unscheduled = computed(() => props.tasks.filter((t) => !t.start_date && !t.due_date))
 
+// "Авто" order: rows follow the blocking-dependency graph (see topoByDeps).
+const orderedScheduled = computed(() =>
+  props.autoSort ? topoByDeps(scheduled.value, deps.value) : scheduled.value,
+)
+
 function spanOf(t) {
   const s = parse(t.start_date)
   const d = parse(t.due_date)
@@ -193,7 +203,7 @@ const lanes = computed(() => {
   if (mode === 'status') {
     for (const col of props.statusColumns) ensure(col.id, col.name, col.color)
   }
-  for (const t of scheduled.value) {
+  for (const t of orderedScheduled.value) {
     if (mode === 'assignee') {
       const id = (t.assignee_ids || [])[0]
       const m = id ? props.membersMap[id] : null
