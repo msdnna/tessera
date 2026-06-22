@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
@@ -1275,6 +1276,9 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     var dayW by remember { mutableStateOf(TL_DAY_W) }
     var viewportPx by remember { mutableStateOf(0) }
     var anchorMs by remember { mutableStateOf(-1L) }
+    // Track-relative x the anchor date should stay at through a zoom (-1 = viewport
+    // centre). Set to the pinch focal point so zoom converges where the fingers are.
+    var anchorScreenX by remember { mutableStateOf(-1f) }
     // Collapsible left task/group column — animated to 0 to give the chart full width.
     var leftCollapsed by remember { mutableStateOf(false) }
     val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
@@ -1386,18 +1390,21 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
     val hScroll = rememberScrollState()
 
-    // Pinch-zoom: record the date under the viewport centre before rescaling, then
-    // re-centre it (LaunchedEffect below). 1-finger scroll passes through (pinchZoom).
-    fun applyZoom(zoomChange: Float) {
+    // Pinch-zoom: on the FIRST step of a 2-finger gesture, fix the date under the
+    // finger centroid (the focal point) + the track-x to keep it at; the LaunchedEffect
+    // re-anchors there each step. Computing it once avoids the per-event drift that
+    // walked the zoom toward an edge. 1-finger scroll passes through (pinchZoom).
+    fun applyZoom(zoomChange: Float, centroidX: Float, isStart: Boolean) {
         val oldPx = with(density) { dayW.toPx() }
         val newDayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
-        if (newDayW != dayW) {
-            if (viewportPx > 0 && oldPx > 0f) {
-                val centerDay = (hScroll.value + viewportPx / 2f) / oldPx
-                anchorMs = rangeStart + (centerDay * TL_DAY_MS).toLong()
-            }
-            dayW = newDayW
+        if (isStart && viewportPx > 0 && oldPx > 0f) {
+            val leftWpx = with(density) { leftW.toPx() }
+            val trackX = (centroidX - leftWpx).coerceIn(0f, viewportPx.toFloat())
+            val focalDay = (hScroll.value + trackX) / oldPx
+            anchorMs = rangeStart + (focalDay * TL_DAY_MS).toLong()
+            anchorScreenX = trackX
         }
+        if (newDayW != dayW) dayW = newDayW
     }
     // Re-anchor on scale / window-origin change (not on manual scroll → that stays put).
     // awaitTrackLayout waits for the track to measure so maxValue is valid (scrollTo
@@ -1410,11 +1417,13 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         val px = with(density) { dayW.toPx() }
         val centerMs = if (anchorMs >= 0L) anchorMs else todayMs
         val day = (centerMs - rangeStart).toFloat() / TL_DAY_MS
-        hScroll.scrollTo((day * px - viewportPx / 2f).roundToInt().coerceIn(0, hScroll.maxValue))
+        val sx = if (anchorScreenX >= 0f) anchorScreenX else viewportPx / 2f
+        hScroll.scrollTo((day * px - sx).roundToInt().coerceIn(0, hScroll.maxValue))
     }
 
     fun scrollToToday() {
         anchorMs = todayMs
+        anchorScreenX = -1f
         val px = with(density) { dayW.toPx() }
         scope.launch {
             awaitTrackLayout(hScroll)
@@ -1482,7 +1491,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                     Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
                 }
             } else {
-                LazyColumn(Modifier.weight(1f).pinchZoom { applyZoom(it) }) {
+                LazyColumn(Modifier.weight(1f).pinchZoom { z, cx, s -> applyZoom(z, cx, s) }) {
                     timelineBodyItems(
                         bodyRows, leftW, dayW, axisW, dayWpx, todayLeft, gridColor,
                         hScroll, viewportPx, state, { span(it) }, { dayIndex(it) }, onOpenTask,
@@ -1543,6 +1552,9 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     var dayW by remember { mutableStateOf(TL_DAY_W) }
     var viewportPx by remember { mutableStateOf(0) }
     var anchorMs by remember { mutableStateOf(-1L) }
+    // Track-relative x the anchor date should stay at through a zoom (-1 = viewport
+    // centre). Set to the pinch focal point so zoom converges where the fingers are.
+    var anchorScreenX by remember { mutableStateOf(-1f) }
     // Collapsible left task/group column — animated to 0 to give the chart full width.
     var leftCollapsed by remember { mutableStateOf(false) }
     val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
@@ -1688,18 +1700,21 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
     val hScroll = rememberScrollState()
 
-    // Pinch-zoom: record the date under the viewport centre before rescaling, then
-    // re-centre it (LaunchedEffect below). 1-finger scroll passes through (pinchZoom).
-    fun applyZoom(zoomChange: Float) {
+    // Pinch-zoom: on the FIRST step of a 2-finger gesture, fix the date under the
+    // finger centroid (the focal point) + the track-x to keep it at; the LaunchedEffect
+    // re-anchors there each step. Computing it once avoids the per-event drift that
+    // walked the zoom toward an edge. 1-finger scroll passes through (pinchZoom).
+    fun applyZoom(zoomChange: Float, centroidX: Float, isStart: Boolean) {
         val oldPx = with(density) { dayW.toPx() }
         val newDayW = (dayW * zoomChange).coerceIn(TL_DAY_W_MIN, TL_DAY_W_MAX)
-        if (newDayW != dayW) {
-            if (viewportPx > 0 && oldPx > 0f) {
-                val centerDay = (hScroll.value + viewportPx / 2f) / oldPx
-                anchorMs = rangeStart + (centerDay * TL_DAY_MS).toLong()
-            }
-            dayW = newDayW
+        if (isStart && viewportPx > 0 && oldPx > 0f) {
+            val leftWpx = with(density) { leftW.toPx() }
+            val trackX = (centroidX - leftWpx).coerceIn(0f, viewportPx.toFloat())
+            val focalDay = (hScroll.value + trackX) / oldPx
+            anchorMs = rangeStart + (focalDay * TL_DAY_MS).toLong()
+            anchorScreenX = trackX
         }
+        if (newDayW != dayW) dayW = newDayW
     }
     // Re-anchor on scale / window-origin change (not on manual scroll → that stays put).
     // awaitTrackLayout waits for the track to measure so maxValue is valid (scrollTo
@@ -1712,11 +1727,13 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         val px = with(density) { dayW.toPx() }
         val centerMs = if (anchorMs >= 0L) anchorMs else todayMs
         val day = (centerMs - rangeStart).toFloat() / TL_DAY_MS
-        hScroll.scrollTo((day * px - viewportPx / 2f).roundToInt().coerceIn(0, hScroll.maxValue))
+        val sx = if (anchorScreenX >= 0f) anchorScreenX else viewportPx / 2f
+        hScroll.scrollTo((day * px - sx).roundToInt().coerceIn(0, hScroll.maxValue))
     }
 
     fun scrollToToday() {
         anchorMs = todayMs
+        anchorScreenX = -1f
         val px = with(density) { dayW.toPx() }
         scope.launch {
             awaitTrackLayout(hScroll)
@@ -1793,7 +1810,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                 val gLazy = rememberLazyListState()
                 Box(Modifier.weight(1f)) {
                     LazyColumn(
-                        Modifier.fillMaxSize().pinchZoom { applyZoom(it) },
+                        Modifier.fillMaxSize().pinchZoom { z, cx, s -> applyZoom(z, cx, s) },
                         state = gLazy,
                     ) {
                         timelineBodyItems(
@@ -2145,19 +2162,25 @@ private fun ZoomBtn(glyph: String, onClick: () -> Unit) {
  * Direction-agnostic (zoom = ratio of the finger-distance change).
  */
 @Composable
-private fun Modifier.pinchZoom(onZoom: (Float) -> Unit): Modifier {
+private fun Modifier.pinchZoom(onZoom: (zoom: Float, centroidX: Float, isStart: Boolean) -> Unit): Modifier {
     val zoomFn = rememberUpdatedState(onZoom)
     return this.pointerInput(Unit) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            var pinching = false
             do {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 if (event.changes.count { it.pressed } >= 2) {
                     val zoom = event.calculateZoom()
                     if (zoom != 1f) {
-                        zoomFn.value(zoom)
+                        // isStart = first applied step of this 2-finger sub-gesture → the
+                        // caller fixes the focal anchor once (no per-event drift).
+                        zoomFn.value(zoom, event.calculateCentroid().x, !pinching)
+                        pinching = true
                         event.changes.forEach { it.consume() }
                     }
+                } else {
+                    pinching = false
                 }
             } while (event.changes.any { it.pressed })
         }
