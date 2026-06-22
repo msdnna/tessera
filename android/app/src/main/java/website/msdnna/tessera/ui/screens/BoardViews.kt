@@ -1240,12 +1240,13 @@ private val TL_DAYS_H = 34.dp
 private val TL_HEAD_H = 54.dp // TL_MONTH_H + TL_DAYS_H
 private val TL_LANE_H = 30.dp
 
-// Compose packs a Constraints' max width+height into one Long, so a track wider
-// than ~32k px next to a tall body can't be represented and measuring throws
-// ("Can't represent a width of … and height of …"). Cap the day window in px so a
-// board whose starts reach years back — e.g. GitLab `created` start dates — can't
-// blow the axis. Keep the recent/future end; older bars pin to the left edge.
-private const val TL_MAX_AXIS_PX = 30_000f
+// Cap the day window in px so a row's `axisW`-wide track Box can't exceed Compose's
+// Constraints width limit (~262k px; "Can't represent a width of …"). Now that BOTH
+// views are virtualized (LazyColumn → only SHORT per-row boxes; the 0.29.1 crash was a
+// TALL axisW×bodyH box that no longer exists), the cap can be large — it then triggers
+// only on multi-year boards at extreme zoom, so `rangeStart` stops shifting mid-zoom
+// (the date "jumps" at medium/large scales). Keep a safe margin under the limit.
+private const val TL_MAX_AXIS_PX = 200_000f
 private const val TL_MIN_DAYS = 30
 
 private fun tlDayFloor(ms: Long): Long =
