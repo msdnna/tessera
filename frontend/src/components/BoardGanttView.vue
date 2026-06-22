@@ -924,6 +924,7 @@ function onWheel(e) {
   white-space: nowrap;
 }
 .laneband {
+  box-sizing: border-box;
   position: relative;
   background: var(--t-surface-alt, var(--t-hover));
   border-bottom: 1px solid var(--t-border);
@@ -979,6 +980,7 @@ function onWheel(e) {
 }
 
 .tl-track {
+  box-sizing: border-box;
   position: relative;
   flex: 0 0 auto;
   height: 36px;

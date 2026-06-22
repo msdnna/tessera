@@ -44,7 +44,9 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -75,6 +77,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -1379,7 +1382,6 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
 
     val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
     val hScroll = rememberScrollState()
-    val vScroll = rememberScrollState()
 
     // Pinch-zoom: record the date under the viewport centre before rescaling, then
     // re-centre it (LaunchedEffect below). canPan=false lets 1-finger scroll through.
@@ -1478,103 +1480,10 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                 }
             } else {
                 LazyColumn(Modifier.weight(1f).transformable(zoom, canPan = { false })) {
-                    items(
-                        bodyRows,
-                        key = { row ->
-                            when (row) {
-                                is TlLaneHeaderRow -> "L:${row.lane.key}"
-                                is TlTaskRow -> "T:${row.task.id}"
-                            }
-                        },
-                    ) { row ->
-                        when (row) {
-                            is TlLaneHeaderRow -> {
-                                val lane = row.lane
-                                Row {
-                                    Row(
-                                        Modifier.width(leftW).height(TL_LANE_H).background(c.surfaceAlt).clipToBounds()
-                                            .padding(horizontal = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Box(
-                                            Modifier.size(9.dp).clip(RoundedCornerShape(3.dp))
-                                                .background(accentGradient(lane.color ?: c.primary)),
-                                        )
-                                        Spacer(Modifier.width(7.dp))
-                                        Text(
-                                            lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1, modifier = Modifier.weight(1f),
-                                        )
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
-                                        laneEffort(lane, state)?.let { eff ->
-                                            Spacer(Modifier.width(6.dp))
-                                            IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
-                                            Spacer(Modifier.width(3.dp))
-                                            Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
-                                        }
-                                    }
-                                    Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                                        Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
-                                            Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
-                                        }
-                                    }
-                                }
-                            }
-
-                            is TlTaskRow -> {
-                                val t = row.task
-                                val (a, b) = span(t)
-                                val i0 = dayIndex(a)
-                                val i1 = dayIndex(b)
-                                val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
-                                Row {
-                                    Row(
-                                        Modifier.width(leftW).height(TL_ROW_H).clipToBounds()
-                                            .clickableNoRipple { onOpenTask(t) }
-                                            .padding(horizontal = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Box(
-                                            Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp))
-                                                .background(accentGradient(accent)),
-                                        )
-                                        Spacer(Modifier.width(7.dp))
-                                        Text(
-                                            t.title,
-                                            color = if (t.isCompleted) c.text3 else c.text1,
-                                            fontSize = 13.sp, maxLines = 1,
-                                            textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
-                                        )
-                                    }
-                                    Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                                        Box(Modifier.width(axisW).height(TL_ROW_H).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
-                                            Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
-                                            Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
-                                                val lbl = Estimation.format(t.estimate, state.estimation)
-                                                GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
-                                            }
-                                            Box(
-                                                Modifier.offset(x = dayW * i0, y = 7.dp)
-                                                    .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .alpha(if (t.isCompleted) 0.5f else 1f)
-                                                    .background(accentGradient(accent))
-                                                    .clickableNoRipple { onOpenTask(t) }
-                                                    .padding(horizontal = 7.dp),
-                                                contentAlignment = Alignment.CenterStart,
-                                            ) {
-                                                Text(
-                                                    t.title, color = Color.White, fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Medium, maxLines = 1,
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    timelineBodyItems(
+                        bodyRows, leftW, dayW, axisW, dayWpx, todayLeft, gridColor,
+                        hScroll, viewportPx, state, { span(it) }, { dayIndex(it) }, onOpenTask,
+                    )
                 }
             }
         }
@@ -1616,10 +1525,10 @@ private data class GanttArrow(val x1: Dp, val y1: Dp, val x2: Dp, val y2: Dp)
  * h-scrolling track fights an h-drag — same call as the timeline/matrix): links
  * are created/removed in the task modal's «Связи» tab (tap a bar to open it).
  *
- * Layout differs from the timeline so a single arrow Canvas can span every row:
- * a fixed left task column and the scrolling track are two siblings that SHARE
- * `vScroll` (move in lockstep), and the track's bars + arrow overlay share one
- * vertical-scroll viewport.
+ * Shares the timeline's virtualized body (`timelineBodyItems` in a LazyColumn) and
+ * overlays the arrows on a single Canvas. LazyColumn doesn't compose off-screen rows,
+ * so arrow endpoints come from the precomputed `rowTops`/`itemTopsPx` + the list's
+ * scroll offset (not from composed bars), clipped to the visible track.
  */
 @Composable
 fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
@@ -1708,8 +1617,17 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
             .sortedBy { if (it.key == "∅") 1 else 0 }
     }
 
+    // Flattened rows for the virtualized body (shared with the timeline).
+    val bodyRows = remember(lanes) {
+        buildList {
+            for (lane in lanes) {
+                add(TlLaneHeaderRow(lane))
+                for (t in lane.tasks) add(TlTaskRow(t))
+            }
+        }
+    }
     // Row-top (Dp) of every task, walking lanes in render order, so the arrow
-    // Canvas and the bar rows agree on geometry. bodyH = total scrollable height.
+    // Canvas geometry matches the bar rows (offsets independent of composition).
     val rowTops = remember(lanes) {
         val m = LinkedHashMap<String, Dp>()
         var y = 0.dp
@@ -1722,10 +1640,19 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         }
         m
     }
-    val bodyH = run {
-        var y = 0.dp
-        for (lane in lanes) y += TL_LANE_H + TL_ROW_H * lane.tasks.size
-        y
+    // Absolute px-top of every LazyColumn item (lane headers + tasks), so the arrow
+    // Canvas can map a row to its on-screen Y from the list's scroll offset.
+    val itemTopsPx = remember(bodyRows, density) {
+        val laneH = with(density) { TL_LANE_H.toPx() }
+        val rowH = with(density) { TL_ROW_H.toPx() }
+        val out = FloatArray(bodyRows.size + 1)
+        var y = 0f
+        for (i in bodyRows.indices) {
+            out[i] = y
+            y += if (bodyRows[i] is TlLaneHeaderRow) laneH else rowH
+        }
+        out[bodyRows.size] = y
+        out
     }
 
     // Normalise the board's blocking edges to blocker→blocked and project them to
@@ -1757,7 +1684,6 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
 
     val overdue = scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) }
     val hScroll = rememberScrollState()
-    val vScroll = rememberScrollState()
 
     // Pinch-zoom: record the date under the viewport centre before rescaling, then
     // re-centre it (LaunchedEffect below). canPan=false lets 1-finger scroll through.
@@ -1858,108 +1784,48 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                     Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
                 }
             } else {
-                // ── body: left fixed column + right track, sharing vScroll ──
-                Row(Modifier.weight(1f)) {
-                    // left task column (lane headers + task names), v-scrolls in lockstep
-                    Column(Modifier.width(leftW).clipToBounds().verticalScroll(vScroll)) {
-                        lanes.forEach { lane ->
-                            Row(
-                                Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(accentGradient(lane.color ?: c.primary)))
-                                Spacer(Modifier.width(7.dp))
-                                Text(
-                                    lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1, modifier = Modifier.weight(1f),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
-                                laneEffort(lane, state)?.let { eff ->
-                                    Spacer(Modifier.width(6.dp))
-                                    IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
-                                    Spacer(Modifier.width(3.dp))
-                                    Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
-                                }
-                            }
-                            lane.tasks.forEach { t ->
-                                val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
-                                Row(
-                                    Modifier.fillMaxWidth().height(TL_ROW_H).clickableNoRipple { onOpenTask(t) }
-                                        .padding(horizontal = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Box(Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp)).background(accentGradient(accent)))
-                                    Spacer(Modifier.width(7.dp))
-                                    Text(
-                                        t.title, color = if (t.isCompleted) c.text3 else c.text1, fontSize = 13.sp, maxLines = 1,
-                                        textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    // right track: bars + arrow Canvas, both h-scroll(hScroll) & v-scroll(vScroll)
-                    Box(
-                        Modifier.weight(1f).horizontalScroll(hScroll).verticalScroll(vScroll)
-                            .transformable(zoom, canPan = { false }),
+                // Body = shared virtualized timeline rows + an arrow Canvas overlay.
+                // (LazyColumn won't compose off-screen rows, so arrows are drawn from the
+                //  precomputed rowTops + the list's scroll offset, not from composed bars.)
+                val gLazy = rememberLazyListState()
+                Box(Modifier.weight(1f)) {
+                    LazyColumn(
+                        Modifier.fillMaxSize().transformable(zoom, canPan = { false }),
+                        state = gLazy,
                     ) {
-                        Box(Modifier.width(axisW).height(bodyH)) {
-                            Column(Modifier.fillMaxSize()) {
-                                lanes.forEach { lane ->
-                                    Box(Modifier.fillMaxWidth().height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
-                                        Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
-                                    }
-                                    lane.tasks.forEach { t ->
-                                        val (a, b) = span(t)
-                                        val i0 = dayIndex(a)
-                                        val i1 = dayIndex(b)
-                                        val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
-                                        Box(Modifier.fillMaxWidth().height(TL_ROW_H).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
-                                            Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
-                                            Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
-                                                val lbl = Estimation.format(t.estimate, state.estimation)
-                                                GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
-                                            }
-                                            Box(
-                                                Modifier.offset(x = dayW * i0, y = 7.dp)
-                                                    .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .alpha(if (t.isCompleted) 0.5f else 1f)
-                                                    .background(accentGradient(accent))
-                                                    .clickableNoRipple { onOpenTask(t) }
-                                                    .padding(horizontal = 7.dp),
-                                                contentAlignment = Alignment.CenterStart,
-                                            ) {
-                                                Text(t.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                                            }
-                                        }
-                                    }
+                        timelineBodyItems(
+                            bodyRows, leftW, dayW, axisW, dayWpx, todayLeft, gridColor,
+                            hScroll, viewportPx, state, { span(it) }, { dayIndex(it) }, onOpenTask,
+                        )
+                    }
+                    // dependency arrows over the visible rows (clipped to the track area)
+                    Canvas(Modifier.fillMaxSize()) {
+                        val first = gLazy.layoutInfo.visibleItemsInfo.firstOrNull() ?: return@Canvas
+                        val viewportTopAbs = itemTopsPx[first.index] - first.offset
+                        val leftWpx = leftW.toPx()
+                        val hOff = hScroll.value.toFloat()
+                        clipRect(left = leftWpx, top = 0f, right = size.width, bottom = size.height) {
+                            arrows.forEach { s ->
+                                val x1 = leftWpx + s.x1.toPx() - hOff
+                                val y1 = s.y1.toPx() - viewportTopAbs
+                                val x2 = leftWpx + s.x2.toPx() - hOff
+                                val y2 = s.y2.toPx() - viewportTopAbs
+                                if (maxOf(y1, y2) < 0f || minOf(y1, y2) > size.height) return@forEach
+                                val dx = maxOf(22.dp.toPx(), kotlin.math.abs(x2 - x1) * 0.4f)
+                                val path = Path().apply {
+                                    moveTo(x1, y1)
+                                    cubicTo(x1 + dx, y1, x2 - dx, y2, x2, y2)
                                 }
-                            }
-                            // dependency arrows, drawn over the whole track
-                            Canvas(Modifier.fillMaxSize()) {
-                                arrows.forEach { s ->
-                                    val x1 = s.x1.toPx()
-                                    val y1 = s.y1.toPx()
-                                    val x2 = s.x2.toPx()
-                                    val y2 = s.y2.toPx()
-                                    val dx = maxOf(22.dp.toPx(), kotlin.math.abs(x2 - x1) * 0.4f)
-                                    val path = Path().apply {
-                                        moveTo(x1, y1)
-                                        cubicTo(x1 + dx, y1, x2 - dx, y2, x2, y2)
-                                    }
-                                    drawPath(path, color = arrowColor.copy(alpha = 0.7f), style = Stroke(width = 1.6.dp.toPx()))
-                                    val hw = 7.dp.toPx()
-                                    val hh = 4.dp.toPx()
-                                    val head = Path().apply {
-                                        moveTo(x2, y2)
-                                        lineTo(x2 - hw, y2 - hh)
-                                        lineTo(x2 - hw, y2 + hh)
-                                        close()
-                                    }
-                                    drawPath(head, color = arrowColor)
+                                drawPath(path, color = arrowColor.copy(alpha = 0.7f), style = Stroke(width = 1.6.dp.toPx()))
+                                val hw = 7.dp.toPx()
+                                val hh = 4.dp.toPx()
+                                val head = Path().apply {
+                                    moveTo(x2, y2)
+                                    lineTo(x2 - hw, y2 - hh)
+                                    lineTo(x2 - hw, y2 + hh)
+                                    close()
                                 }
+                                drawPath(head, color = arrowColor)
                             }
                         }
                     }
@@ -2040,6 +1906,127 @@ private suspend fun awaitTrackLayout(scroll: ScrollState) {
     while (scroll.maxValue == 0 && tries < 8) {
         withFrameNanos {}
         tries++
+    }
+}
+
+/**
+ * Shared virtualized body rows for the timeline AND Gantt (the Gantt overlays an
+ * arrow Canvas on top). Lane-header + task rows, each `[fixed left | h-scrolling
+ * track]`. Only visible rows compose (LazyColumn) — the ~200-task perf + open-freeze fix.
+ */
+@Suppress("LongParameterList")
+private fun LazyListScope.timelineBodyItems(
+    rows: List<TlBodyRow>,
+    leftW: androidx.compose.ui.unit.Dp,
+    dayW: androidx.compose.ui.unit.Dp,
+    axisW: androidx.compose.ui.unit.Dp,
+    dayWpx: Float,
+    todayLeft: androidx.compose.ui.unit.Dp,
+    gridColor: Color,
+    hScroll: ScrollState,
+    viewportPx: Int,
+    state: BoardUiState,
+    span: (Task) -> Pair<Long, Long>,
+    dayIndex: (Long) -> Int,
+    onOpenTask: (Task) -> Unit,
+) {
+    items(
+        rows,
+        key = { row ->
+            when (row) {
+                is TlLaneHeaderRow -> "L:${row.lane.key}"
+                is TlTaskRow -> "T:${row.task.id}"
+            }
+        },
+    ) { row ->
+        val c = Tessera.colors
+        when (row) {
+            is TlLaneHeaderRow -> {
+                val lane = row.lane
+                Row {
+                    Row(
+                        Modifier.width(leftW).height(TL_LANE_H).background(c.surfaceAlt).clipToBounds()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier.size(9.dp).clip(RoundedCornerShape(3.dp))
+                                .background(accentGradient(lane.color ?: c.primary)),
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            lane.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
+                        laneEffort(lane, state)?.let { eff ->
+                            Spacer(Modifier.width(6.dp))
+                            IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
+                            Spacer(Modifier.width(3.dp))
+                            Text(eff, color = c.text2, fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
+                    Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                        Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
+                            Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
+                        }
+                    }
+                }
+            }
+
+            is TlTaskRow -> {
+                val t = row.task
+                val (a, b) = span(t)
+                val i0 = dayIndex(a)
+                val i1 = dayIndex(b)
+                val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                Row {
+                    Row(
+                        Modifier.width(leftW).height(TL_ROW_H).clipToBounds()
+                            .clickableNoRipple { onOpenTask(t) }
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp))
+                                .background(accentGradient(accent)),
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            t.title,
+                            color = if (t.isCompleted) c.text3 else c.text1,
+                            fontSize = 13.sp, maxLines = 1,
+                            textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
+                        )
+                    }
+                    Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                        Box(Modifier.width(axisW).height(TL_ROW_H).tlGrid(dayWpx, gridColor, hScroll, viewportPx)) {
+                            Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
+                            Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
+                                val lbl = Estimation.format(t.estimate, state.estimation)
+                                GhostBar(dayW * i0, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
+                            }
+                            Box(
+                                Modifier.offset(x = dayW * i0, y = 7.dp)
+                                    .width((dayW * (i1 - i0 + 1)) - 2.dp).height(24.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .alpha(if (t.isCompleted) 0.5f else 1f)
+                                    .background(accentGradient(accent))
+                                    .clickableNoRipple { onOpenTask(t) }
+                                    .padding(horizontal = 7.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                Text(
+                                    t.title, color = Color.White, fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium, maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

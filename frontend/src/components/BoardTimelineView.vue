@@ -946,6 +946,7 @@ function ghostTitle(t) {
 }
 
 .tl-track {
+  box-sizing: border-box;
   position: relative;
   flex: 0 0 auto;
   height: 36px;
