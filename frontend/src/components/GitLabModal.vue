@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, h } from 'vue'
 import {
   NModal,
   NCard,
@@ -7,15 +7,25 @@ import {
   NSelect,
   NSwitch,
   NButton,
+  NButtonGroup,
+  NDropdown,
   NText,
   NIcon,
   NPopconfirm,
   useMessage,
 } from 'naive-ui'
-import { TrashOutline, AddOutline, SyncOutline, LogoGitlab } from '@vicons/ionicons5'
+import {
+  TrashOutline,
+  AddOutline,
+  SyncOutline,
+  LogoGitlab,
+  ChevronDownOutline,
+  TimeOutline,
+} from '@vicons/ionicons5'
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
+import GitLabJournalModal from '@/components/GitLabJournalModal.vue'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PRIORITY_LABELS } from '@/styles/tokens'
@@ -334,6 +344,14 @@ async function syncNow() {
   }
 }
 
+// ── sync journal ──
+const journalShow = ref(false)
+const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
+const syncMenu = [{ label: 'Журнал синхронизации', key: 'journal', icon: menuIcon(TimeOutline) }]
+function onSyncMenu(key) {
+  if (key === 'journal') journalShow.value = true
+}
+
 watch(
   () => [props.show, props.wsId],
   async ([show]) => {
@@ -546,10 +564,17 @@ watch(
         <div class="gl-footer">
           <span class="gl-synced">Последняя синхронизация: {{ lastSyncedText }}</span>
           <div class="gl-footer-btns">
-            <n-button size="medium" :loading="syncing" @click="syncNow">
-              <template #icon><n-icon :component="SyncOutline" /></template>
-              Синхронизировать
-            </n-button>
+            <n-button-group size="medium">
+              <n-button :loading="syncing" @click="syncNow">
+                <template #icon><n-icon :component="SyncOutline" /></template>
+                Синхронизировать
+              </n-button>
+              <n-dropdown trigger="click" :options="syncMenu" @select="onSyncMenu">
+                <n-button :disabled="syncing" class="gl-sync-caret">
+                  <template #icon><n-icon :component="ChevronDownOutline" /></template>
+                </n-button>
+              </n-dropdown>
+            </n-button-group>
             <n-button type="primary" size="medium" :loading="saving" @click="save">Сохранить</n-button>
           </div>
         </div>
@@ -560,7 +585,16 @@ watch(
       <loader-overlay :show="syncing" contained :messages="SYNC_MESSAGES" :interval="2600" />
     </div>
   </n-modal>
+  <git-lab-journal-modal v-model:show="journalShow" :ws-id="wsId" />
 </template>
+
+<style scoped>
+/* Caret button on the split "Синхронизировать" control keeps a tight width. */
+.gl-sync-caret {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+</style>
 
 <style scoped>
 /* Non-scrolling frame around the card: the sync loader fills it to cover the

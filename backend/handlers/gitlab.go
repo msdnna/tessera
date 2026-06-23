@@ -256,7 +256,7 @@ func (h *API) SyncGitlab(c *gin.Context) {
 		return
 	}
 
-	created, updated, err := h.runSync(c, integ, cred, uid)
+	created, updated, err := h.runSync(c, integ, cred, uid, "manual")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "GitLab sync failed: " + err.Error()})
 		return
@@ -277,7 +277,18 @@ type syncBoard struct {
 // cred's GitLab user onto the integration's board (status→column, priority→
 // priority, others→tags), attributing events to actorID. Pull-only. Per-issue
 // errors are logged and skipped; only a fetch/board-level failure aborts.
-func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.GitlabCredential, actorID uuid.UUID) (created, updated int, err error) {
+func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.GitlabCredential, actorID uuid.UUID, trigger string) (created, updated int, err error) {
+	aid := actorID
+	j := h.newJournal(integ.ID, "pull", trigger, &aid)
+	defer func() {
+		if err != nil {
+			j.abort(err)
+		}
+		// Use a cancellation-detached context so the journal still records even when
+		// the originating request was cancelled mid-sync.
+		h.flushJournal(context.WithoutCancel(ctx), j)
+	}()
+
 	token, err := h.sealer.Decrypt(cred.TokenEnc)
 	if err != nil {
 		return 0, 0, fmt.Errorf("decrypt stored token: %w", err)
@@ -401,7 +412,7 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		bc, col, completedAt := resolveBoardCol(issue, res)
 		dueDate := effectiveDue(issue, integ.DueSource)
 		startDate := effectiveStart(issue, integ.StartSource)
-		taskID, wasCreated, ok := h.syncOneIssue(ctx, integ, issue, res, wsID, bc.id, col.ID, nil, completedAt, dueDate, startDate, actorID)
+		taskID, wasCreated, ok := h.syncOneIssue(ctx, integ, issue, res, wsID, bc.id, col.ID, nil, completedAt, dueDate, startDate, actorID, col.Name, j)
 		if !ok {
 			continue
 		}
@@ -423,7 +434,7 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 				kdue := effectiveDue(kid, integ.DueSource)
 				kstart := effectiveStart(kid, integ.StartSource)
 				parentID := taskID
-				if _, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, actorID); kok {
+				if _, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, actorID, col.Name, j); kok {
 					if kc {
 						created++
 					} else {
@@ -472,7 +483,7 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		if err != nil {
 			continue // owner disconnected — skip until reconfigured
 		}
-		created, updated, serr := h.runSync(ctx, integ, cred, *integ.OwnerUserID)
+		created, updated, serr := h.runSync(ctx, integ, cred, *integ.OwnerUserID, "auto")
 		if serr != nil {
 			log.Printf("gitlab auto-sync ws=%s: %v", integ.WorkspaceID, serr)
 			continue
@@ -554,9 +565,10 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 
 // syncOneIssue creates or updates the Tessera task mirroring one issue on the
 // given board/column, optionally as a subtask of parentID, reconciling its link
-// and meta. Returns the task id, whether it was newly created, and ok=false on a
-// per-issue failure (logged, caller continues).
-func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate, startDate *time.Time, actorID uuid.UUID) (uuid.UUID, bool, bool) {
+// and meta. It records a create/update action in the sync journal j (only when
+// something actually changed). Returns the task id, whether it was newly created,
+// and ok=false on a per-issue failure (logged, caller continues).
+func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate, startDate *time.Time, actorID uuid.UUID, colName string, j *syncJournal) (uuid.UUID, bool, bool) {
 	// Resolve GitLab-relative attachment links to signed proxy URLs.
 	issue.Description = h.rewriteAssets(issue.Description, wsID)
 	// Synced labels become tags scoped to the integration board's project.
@@ -565,6 +577,11 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		log.Printf("gitlab sync: resolve project for board failed: %v", perr)
 		return uuid.Nil, false, false
 	}
+	entity := "task"
+	if parentID != nil {
+		entity = "subtask"
+	}
+	iid := issue.IID
 	link, lerr := h.q.GetGitlabLinkByGlobalID(ctx, db.GetGitlabLinkByGlobalIDParams{
 		IntegrationID: integ.ID, GlGlobalID: issue.GlobalID,
 	})
@@ -588,14 +605,31 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
 		}
-		h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
+		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 		h.broadcast(wsID, "task.created", t)
+
+		after := map[string]any{"title": issue.Title, "column": colName, "priority": res.Priority, "completed": completedAt != nil}
+		if dueDate != nil {
+			after["due"] = dueDate
+		}
+		if startDate != nil {
+			after["start"] = startDate
+		}
+		detail := map[string]any{"after": after, "url": issue.WebURL}
+		meta.into(detail)
+		j.add(journalAction{
+			Direction: "pull", EntityType: entity, Op: "create", TaskID: &t.ID, GlIid: &iid,
+			Summary: journalNoun(entity, true) + " #" + strconv.FormatInt(iid, 10) + " «" + issue.Title + "»",
+			Detail:  detail,
+		})
 		return t.ID, true, true
 	case lerr != nil:
 		log.Printf("gitlab sync: lookup link for issue !%d failed: %v", issue.IID, lerr)
 		return uuid.Nil, false, false
 	default:
+		// Snapshot the pre-update task so the journal can diff what changed.
+		old, _ := h.q.GetTask(ctx, link.TaskID)
 		t, uerr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
 			ID: link.TaskID, Title: issue.Title, Description: issue.Description,
 			Priority: res.Priority, ColumnID: columnID, CompletedAt: completedAt, BoardID: boardID,
@@ -626,35 +660,166 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			return uuid.Nil, false, false
 		}
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
+		dueApplied := false
 		if !link.DueOverridden && dueDate != nil {
 			_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate})
 			t.DueDate = dueDate
+			dueApplied = true
 		}
 		// Likewise the start date: synced unless GitLab gives none or the user overrode.
+		startApplied := false
 		if !link.StartOverridden && startDate != nil {
 			_ = h.q.UpdateTaskStartDate(ctx, db.UpdateTaskStartDateParams{ID: link.TaskID, StartDate: startDate})
 			t.StartDate = startDate
+			startApplied = true
 		}
-		h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
+		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
 		h.broadcast(wsID, "task.updated", t)
+
+		// Diff the changed task fields for the journal.
+		fields := map[string]any{}
+		if old.Title != issue.Title {
+			fields["title"] = map[string]any{"before": old.Title, "after": issue.Title}
+		}
+		if old.Description != issue.Description {
+			fields["description"] = map[string]any{"before": truncForJournal(old.Description), "after": truncForJournal(issue.Description)}
+		}
+		if old.Priority != res.Priority {
+			fields["priority"] = map[string]any{"before": old.Priority, "after": res.Priority}
+		}
+		if old.ColumnID != columnID {
+			before := ""
+			if oc, oerr := h.q.GetColumn(ctx, old.ColumnID); oerr == nil {
+				before = oc.Name
+			}
+			fields["column"] = map[string]any{"before": before, "after": colName}
+		}
+		if (old.CompletedAt != nil) != (completedAt != nil) {
+			fields["completed"] = map[string]any{"before": old.CompletedAt != nil, "after": completedAt != nil}
+		}
+		if dueApplied && !timePtrEq(old.DueDate, dueDate) {
+			fields["due"] = map[string]any{"before": old.DueDate, "after": dueDate}
+		}
+		if startApplied && !timePtrEq(old.StartDate, startDate) {
+			fields["start"] = map[string]any{"before": old.StartDate, "after": startDate}
+		}
+		// Only record an action when the sync actually changed something.
+		if len(fields) == 0 && !meta.changed() {
+			return link.TaskID, false, true
+		}
+		detail := map[string]any{"url": issue.WebURL}
+		if len(fields) > 0 {
+			detail["fields"] = fields
+		}
+		meta.into(detail)
+		j.add(journalAction{
+			Direction: "pull", EntityType: entity, Op: "update", TaskID: &link.TaskID, GlIid: &iid,
+			Summary: journalNoun(entity, false) + " #" + strconv.FormatInt(iid, 10) + " «" + issue.Title + "»: " + meta.summarize(fields),
+			Detail:  detail,
+		})
 		return link.TaskID, false, true
 	}
+}
+
+// metaDelta captures what reconcileTaskMeta changed, for the journal detail.
+type metaDelta struct {
+	tagsAdded     []string
+	tagsRemoved   []string
+	commentsAdded int
+	newComments   []string
+	assignees     []string // current GitLab assignee display names (informational)
+}
+
+// changed reports whether the meta reconcile touched anything.
+func (m metaDelta) changed() bool {
+	return len(m.tagsAdded) > 0 || len(m.tagsRemoved) > 0 || m.commentsAdded > 0
+}
+
+// into folds the meta delta into a journal detail map.
+func (m metaDelta) into(detail map[string]any) {
+	if len(m.tagsAdded) > 0 || len(m.tagsRemoved) > 0 {
+		tags := map[string]any{}
+		if len(m.tagsAdded) > 0 {
+			tags["added"] = m.tagsAdded
+		}
+		if len(m.tagsRemoved) > 0 {
+			tags["removed"] = m.tagsRemoved
+		}
+		detail["tags"] = tags
+	}
+	if m.commentsAdded > 0 {
+		detail["comments"] = map[string]any{"added": m.commentsAdded, "new": m.newComments}
+	}
+	if len(m.assignees) > 0 {
+		detail["assignees"] = m.assignees
+	}
+}
+
+// summarize builds the human-readable change list for an update action's summary.
+func (m metaDelta) summarize(fields map[string]any) string {
+	parts := make([]string, 0, 6)
+	for _, key := range []string{"title", "description", "priority", "column", "completed", "due", "start"} {
+		if _, ok := fields[key]; ok {
+			parts = append(parts, fieldLabelRU[key])
+		}
+	}
+	if len(m.tagsAdded) > 0 {
+		parts = append(parts, fmt.Sprintf("+%d тег.", len(m.tagsAdded)))
+	}
+	if len(m.tagsRemoved) > 0 {
+		parts = append(parts, fmt.Sprintf("−%d тег.", len(m.tagsRemoved)))
+	}
+	if m.commentsAdded > 0 {
+		parts = append(parts, fmt.Sprintf("+%d комм.", m.commentsAdded))
+	}
+	if len(parts) == 0 {
+		return "без изменений"
+	}
+	return strings.Join(parts, ", ")
+}
+
+var fieldLabelRU = map[string]string{
+	"title": "заголовок", "description": "описание", "priority": "приоритет",
+	"column": "колонка", "completed": "статус", "due": "срок", "start": "начало",
+}
+
+// journalNoun returns the Russian "(Created|Updated) (sub)task" phrase for a
+// journal summary.
+func journalNoun(entity string, created bool) string {
+	noun := "задача"
+	if entity == "subtask" {
+		noun = "подзадача"
+	}
+	if created {
+		return "Создана " + noun
+	}
+	return "Обновлена " + noun
 }
 
 // reconcileTaskMeta applies a synced issue's tags, assignees and comments to its
 // Tessera task. Each is "mixed": the sync owns the gitlab-sourced set (added,
 // refreshed and pruned to match GitLab) and never touches what the user added
-// manually.
-func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID, projectID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) {
-	h.reconcileTags(ctx, taskID, wsID, projectID, tags)
+// manually. Returns what changed, for the sync journal.
+func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID, projectID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) metaDelta {
+	added, removed := h.reconcileTags(ctx, taskID, wsID, projectID, tags)
 	h.reconcileAssignees(ctx, wsID, taskID, issue.Assignees)
-	h.syncComments(ctx, taskID, wsID, issue.Notes)
+	commentsAdded, newBodies := h.syncComments(ctx, taskID, wsID, issue.Notes)
+	names := make([]string, 0, len(issue.Assignees))
+	for _, p := range issue.Assignees {
+		if p.Name != "" {
+			names = append(names, p.Name)
+		} else {
+			names = append(names, p.Login)
+		}
+	}
+	return metaDelta{tagsAdded: added, tagsRemoved: removed, commentsAdded: commentsAdded, newComments: newBodies, assignees: names}
 }
 
 // reconcileTags ensures each resolved tag exists (with the GitLab colour or a
 // stable auto-colour), attaches it as gitlab-sourced, and prunes gitlab-sourced
-// tags GitLab no longer has. Manual ('user') tags are left untouched.
-func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UUID, tags []gitlab.Tag) {
+// tags GitLab no longer has. Manual ('user') tags are left untouched. Returns the
+// names of tags newly attached and pruned, for the journal.
+func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UUID, tags []gitlab.Tag) (added, removed []string) {
 	ids := make([]uuid.UUID, 0, len(tags))
 	for _, t := range tags {
 		color := t.Color
@@ -665,10 +830,13 @@ func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UU
 		if err != nil {
 			continue
 		}
-		_ = h.q.AddTaskTagSourced(ctx, db.AddTaskTagSourcedParams{TaskID: taskID, TagID: tag.ID, Source: "gitlab"})
+		if n, _ := h.q.AddTaskTagSourced(ctx, db.AddTaskTagSourcedParams{TaskID: taskID, TagID: tag.ID, Source: "gitlab"}); n > 0 {
+			added = append(added, t.Name)
+		}
 		ids = append(ids, tag.ID)
 	}
-	_ = h.q.DeleteStaleGitlabTaskTags(ctx, db.DeleteStaleGitlabTaskTagsParams{TaskID: taskID, Column2: ids})
+	removed, _ = h.q.DeleteStaleGitlabTaskTags(ctx, db.DeleteStaleGitlabTaskTagsParams{TaskID: taskID, Column2: ids})
+	return added, removed
 }
 
 // reconcileAssignees rebuilds the GitLab-sourced assignee set: a GitLab assignee
@@ -693,16 +861,23 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 }
 
 // syncComments upserts each GitLab note as a comment, idempotent by note id, with
-// the GitLab author denormalised (it may not be a Tessera user).
-func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []gitlab.Note) {
+// the GitLab author denormalised (it may not be a Tessera user). Returns the count
+// and truncated bodies of newly inserted comments, for the journal.
+func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []gitlab.Note) (added int, bodies []string) {
 	for _, n := range notes {
 		noteID := n.GlobalID
-		_ = h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
-			TaskID: taskID, Body: h.rewriteAssets(n.Body, wsID), GlNoteID: &noteID,
+		body := h.rewriteAssets(n.Body, wsID)
+		inserted, err := h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
+			TaskID: taskID, Body: body, GlNoteID: &noteID,
 			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name,
 			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, n.Author.AvatarURL), CreatedAt: n.CreatedAt,
 		})
+		if err == nil && inserted {
+			added++
+			bodies = append(bodies, truncForJournal(body))
+		}
 	}
+	return added, bodies
 }
 
 // effectiveDue resolves the due date the sync should apply, per the

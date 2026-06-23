@@ -50,7 +50,7 @@ func (q *Queries) AddTaskGitlabAssignee(ctx context.Context, arg AddTaskGitlabAs
 	return err
 }
 
-const addTaskTagSourced = `-- name: AddTaskTagSourced :exec
+const addTaskTagSourced = `-- name: AddTaskTagSourced :execrows
 INSERT INTO task_tags (task_id, tag_id, source) VALUES ($1, $2, $3)
 ON CONFLICT (task_id, tag_id) DO NOTHING
 `
@@ -61,9 +61,14 @@ type AddTaskTagSourcedParams struct {
 	Source string    `json:"source"`
 }
 
-func (q *Queries) AddTaskTagSourced(ctx context.Context, arg AddTaskTagSourcedParams) error {
-	_, err := q.db.Exec(ctx, addTaskTagSourced, arg.TaskID, arg.TagID, arg.Source)
-	return err
+// AddTaskTagSourced returns the number of rows inserted (1 = newly attached, 0 =
+// the tag was already on the task) so the sync journal can record actual additions.
+func (q *Queries) AddTaskTagSourced(ctx context.Context, arg AddTaskTagSourcedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addTaskTagSourced, arg.TaskID, arg.TagID, arg.Source)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const createGitlabLink = `-- name: CreateGitlabLink :one
@@ -158,9 +163,13 @@ func (q *Queries) DeleteStaleGitlabAssignees(ctx context.Context, arg DeleteStal
 	return err
 }
 
-const deleteStaleGitlabTaskTags = `-- name: DeleteStaleGitlabTaskTags :exec
-DELETE FROM task_tags
-WHERE task_id = $1 AND source = 'gitlab' AND NOT (tag_id = ANY($2::uuid[]))
+const deleteStaleGitlabTaskTags = `-- name: DeleteStaleGitlabTaskTags :many
+WITH deleted AS (
+    DELETE FROM task_tags
+    WHERE task_id = $1 AND source = 'gitlab' AND NOT (tag_id = ANY($2::uuid[]))
+    RETURNING tag_id
+)
+SELECT t.name FROM deleted d JOIN tags t ON t.id = d.tag_id
 `
 
 type DeleteStaleGitlabTaskTagsParams struct {
@@ -168,9 +177,26 @@ type DeleteStaleGitlabTaskTagsParams struct {
 	Column2 []uuid.UUID `json:"column_2"`
 }
 
-func (q *Queries) DeleteStaleGitlabTaskTags(ctx context.Context, arg DeleteStaleGitlabTaskTagsParams) error {
-	_, err := q.db.Exec(ctx, deleteStaleGitlabTaskTags, arg.TaskID, arg.Column2)
-	return err
+// DeleteStaleGitlabTaskTags removes gitlab-sourced tags GitLab no longer has and
+// returns their names for the sync journal.
+func (q *Queries) DeleteStaleGitlabTaskTags(ctx context.Context, arg DeleteStaleGitlabTaskTagsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteStaleGitlabTaskTags, arg.TaskID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deleteTaskGitlabAssignees = `-- name: DeleteTaskGitlabAssignees :exec
@@ -560,11 +586,12 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 	return i, err
 }
 
-const upsertGitlabComment = `-- name: UpsertGitlabComment :exec
+const upsertGitlabComment = `-- name: UpsertGitlabComment :one
 INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at)
 VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7)
 ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
 DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now()
+RETURNING (xmax = 0) AS inserted
 `
 
 type UpsertGitlabCommentParams struct {
@@ -578,8 +605,10 @@ type UpsertGitlabCommentParams struct {
 }
 
 // ── synced comments (idempotent by GitLab note id) ─────────
-func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabCommentParams) error {
-	_, err := q.db.Exec(ctx, upsertGitlabComment,
+// UpsertGitlabComment returns whether the row was freshly inserted (xmax = 0) so
+// the sync journal can count new comments rather than re-synced ones.
+func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabCommentParams) (bool, error) {
+	row := q.db.QueryRow(ctx, upsertGitlabComment,
 		arg.TaskID,
 		arg.Body,
 		arg.GlNoteID,
@@ -588,7 +617,9 @@ func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabComme
 		arg.GlAuthorAvatarUrl,
 		arg.CreatedAt,
 	)
-	return err
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
 const upsertGitlabCredential = `-- name: UpsertGitlabCredential :one

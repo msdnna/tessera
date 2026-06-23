@@ -121,8 +121,82 @@ func (h *API) drainWritebacks(ctx context.Context) {
 	if err != nil || len(rows) == 0 {
 		return
 	}
+	// One push run per integration touched in this drain cycle, recording every
+	// delivery attempt (and its outcome) so failures are visible in the journal.
+	journals := map[uuid.UUID]*syncJournal{}
 	for _, w := range rows {
-		h.settleWriteback(ctx, w, h.performWriteback(ctx, w))
+		res, perr := h.performWriteback(ctx, w)
+		h.settleWriteback(ctx, w, perr)
+		j := journals[w.IntegrationID]
+		if j == nil {
+			j = h.newJournal(w.IntegrationID, "push", "auto", nil)
+			journals[w.IntegrationID] = j
+		}
+		h.recordWritebackAction(j, w, res, perr)
+	}
+	for _, j := range journals {
+		h.flushJournal(context.WithoutCancel(ctx), j)
+	}
+}
+
+// writebackResult captures what a push delivery did, for the sync journal.
+type writebackResult struct {
+	glIid  int64  // the target GitLab issue iid (0 if not yet resolved)
+	result string // human-readable outcome, e.g. "issue closed", "label set"
+}
+
+// recordWritebackAction appends a journal action for one push delivery, capturing
+// the payload, the outcome and any error (so retry-from-UI can re-enqueue it).
+func (h *API) recordWritebackAction(j *syncJournal, w db.GitlabWriteback, res writebackResult, err error) {
+	var payload map[string]any
+	_ = json.Unmarshal(w.Payload, &payload)
+	var iidPtr *int64
+	if res.glIid != 0 {
+		iid := res.glIid
+		iidPtr = &iid
+	}
+	detail := map[string]any{
+		"change_kind":    w.ChangeKind,
+		"payload":        payload,
+		"writeback_id":   w.ID,
+		"integration_id": w.IntegrationID,
+	}
+	tid := w.TaskID
+	action := journalAction{
+		Direction: "push", EntityType: w.ChangeKind, Op: "push",
+		TaskID: &tid, GlIid: iidPtr, Detail: detail,
+	}
+	if err != nil {
+		action.Status = "fail"
+		action.Err = truncErr(err)
+		detail["error"] = action.Err
+		action.Summary = pushSummary(w.ChangeKind, payload, iidPtr) + " — ошибка"
+	} else {
+		detail["result"] = res.result
+		action.Summary = pushSummary(w.ChangeKind, payload, iidPtr)
+	}
+	j.add(action)
+}
+
+// pushSummary builds the one-line label for a push action.
+func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
+	prefix := "Issue"
+	if iidPtr != nil {
+		prefix = "Issue #" + strconv.FormatInt(*iidPtr, 10)
+	}
+	switch kind {
+	case "state":
+		state := "открыто"
+		if s, _ := payload["state"].(string); s == "closed" {
+			state = "закрыто"
+		}
+		return prefix + ": состояние → " + state
+	case "priority":
+		return prefix + ": приоритет"
+	case "comment":
+		return prefix + ": комментарий"
+	default:
+		return prefix + ": " + kind
 	}
 }
 
@@ -159,29 +233,31 @@ func isPermanentWriteback(err error) bool {
 // owner's credential. Returns nil on success, a permanent error for unrecoverable
 // states (unlinked task, disabled config, bad credential), or a transient error
 // (network / GitLab 5xx) to retry.
-func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) error {
+func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (writebackResult, error) {
+	var res writebackResult
 	link, err := h.q.GetGitlabLinkByTask(ctx, w.TaskID)
 	if err != nil {
-		return notify.Permanent(fmt.Errorf("task no longer linked: %w", err))
+		return res, notify.Permanent(fmt.Errorf("task no longer linked: %w", err))
 	}
+	res.glIid = link.GlIid
 	integ, err := h.q.GetGitlabIntegrationByID(ctx, w.IntegrationID)
 	if err != nil {
-		return notify.Permanent(fmt.Errorf("integration gone: %w", err))
+		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
 	}
 	wb := parseWriteback(integ.Writeback)
 	if !wb.Allows(w.ChangeKind) {
-		return notify.Permanent(fmt.Errorf("write-back %q is disabled", w.ChangeKind))
+		return res, notify.Permanent(fmt.Errorf("write-back %q is disabled", w.ChangeKind))
 	}
 	if integ.OwnerUserID == nil {
-		return notify.Permanent(errors.New("integration has no owner credential"))
+		return res, notify.Permanent(errors.New("integration has no owner credential"))
 	}
 	cred, err := h.q.GetGitlabCredential(ctx, *integ.OwnerUserID)
 	if err != nil {
-		return notify.Permanent(fmt.Errorf("owner credential gone: %w", err))
+		return res, notify.Permanent(fmt.Errorf("owner credential gone: %w", err))
 	}
 	token, err := h.sealer.Decrypt(cred.TokenEnc)
 	if err != nil {
-		return notify.Permanent(fmt.Errorf("decrypt token: %w", err))
+		return res, notify.Permanent(fmt.Errorf("decrypt token: %w", err))
 	}
 	client := gitlab.New(cred.BaseUrl, token)
 	path, iid := link.GlProjectPath, link.GlIid
@@ -191,20 +267,21 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) error 
 
 	switch w.ChangeKind {
 	case "state":
-		event := "reopen"
+		event, outcome := "reopen", "issue reopened"
 		if s, _ := payload["state"].(string); s == "closed" {
-			event = "close"
+			event, outcome = "close", "issue closed"
 		}
 		if err := client.UpdateIssueState(ctx, path, iid, event); err != nil {
-			return err
+			return res, err
 		}
+		res.result = outcome
 		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
 
 	case "priority":
 		rules := parseRules(integ.LabelRules)
 		inv, ok := rules.InversePriority()
 		if !ok {
-			return notify.Permanent(errors.New("priority label mapping is not invertible"))
+			return res, notify.Permanent(errors.New("priority label mapping is not invertible"))
 		}
 		var prio int32
 		if f, fok := payload["priority"].(float64); fok {
@@ -212,7 +289,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) error 
 		}
 		add, ok := inv[prio]
 		if !ok {
-			return notify.Permanent(fmt.Errorf("no GitLab label for priority %d", prio))
+			return res, notify.Permanent(fmt.Errorf("no GitLab label for priority %d", prio))
 		}
 		var remove []string
 		for _, lbl := range rules.AllPriorityLabels() {
@@ -221,19 +298,25 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) error 
 			}
 		}
 		if err := client.SetIssueLabels(ctx, path, iid, []string{add}, remove); err != nil {
-			return err
+			return res, err
+		}
+		res.result = "label «" + add + "» set"
+		if len(remove) > 0 {
+			res.result += ", removed " + strings.Join(remove, ", ")
 		}
 		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
 
 	case "comment":
 		body, _ := payload["body"].(string)
 		if strings.TrimSpace(body) == "" {
-			return nil
+			res.result = "empty comment skipped"
+			return res, nil
 		}
 		gid, err := client.CreateIssueNote(ctx, path, iid, body)
 		if err != nil {
-			return err
+			return res, err
 		}
+		res.result = "note posted"
 		// Tag the originating comment with the new note id so the next pull updates
 		// that row (ON CONFLICT gl_note_id) instead of inserting a duplicate.
 		if gid != "" {
@@ -245,9 +328,9 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) error 
 		}
 
 	default:
-		return notify.Permanent(fmt.Errorf("unknown change_kind %q", w.ChangeKind))
+		return res, notify.Permanent(fmt.Errorf("unknown change_kind %q", w.ChangeKind))
 	}
-	return nil
+	return res, nil
 }
 
 // refreshLinkSnapshot re-fetches the one issue we just pushed to and rewrites the

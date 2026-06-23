@@ -97,6 +97,38 @@ type GitlabLink struct {
 	GlLastState       string     `json:"gl_last_state"`
 }
 
+type GitlabSyncAction struct {
+	ID         uuid.UUID  `json:"id"`
+	RunID      uuid.UUID  `json:"run_id"`
+	Seq        int32      `json:"seq"`
+	Direction  string     `json:"direction"`
+	EntityType string     `json:"entity_type"`
+	Op         string     `json:"op"`
+	TaskID     *uuid.UUID `json:"task_id"`
+	GlIid      *int64     `json:"gl_iid"`
+	Summary    string     `json:"summary"`
+	Detail     []byte     `json:"detail"`
+	Status     string     `json:"status"`
+	Error      string     `json:"error"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+type GitlabSyncRun struct {
+	ID            uuid.UUID  `json:"id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	Kind          string     `json:"kind"`
+	Trigger       string     `json:"trigger"`
+	ActorID       *uuid.UUID `json:"actor_id"`
+	Status        string     `json:"status"`
+	CreatedCount  int32      `json:"created_count"`
+	UpdatedCount  int32      `json:"updated_count"`
+	DeletedCount  int32      `json:"deleted_count"`
+	ActionCount   int32      `json:"action_count"`
+	Error         string     `json:"error"`
+	StartedAt     time.Time  `json:"started_at"`
+	FinishedAt    *time.Time `json:"finished_at"`
+}
+
 type GitlabWriteback struct {
 	ID            uuid.UUID `json:"id"`
 	TaskID        uuid.UUID `json:"task_id"`

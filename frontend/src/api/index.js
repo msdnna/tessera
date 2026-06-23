@@ -295,6 +295,11 @@ export const gitlab = {
   // skipLoader: sync is intentionally long and shows its own in-modal loader, so
   // it must not trigger the global slow/offline overlay.
   sync: (wsId) => api.post(`/workspaces/${wsId}/gitlab/sync`, null, { skipLoader: true }),
+  // Sync journal: run/action history + retry of a failed push.
+  syncRuns: (wsId, limit = 50) => api.get(`/workspaces/${wsId}/gitlab/sync-runs`, { params: { limit } }),
+  syncRunActions: (wsId, runId) => api.get(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions`),
+  retryWriteback: (wsId, runId, actionId) =>
+    api.post(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions/${actionId}/retry`),
 }
 
 export default api

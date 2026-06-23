@@ -270,6 +270,10 @@ func main() {
 			protected.GET("/workspaces/:id/gitlab/integration", rh.GetGitlabIntegration)
 			protected.PUT("/workspaces/:id/gitlab/integration", rh.SetGitlabIntegration)
 			protected.POST("/workspaces/:id/gitlab/sync", rh.SyncGitlab)
+			// Sync journal: run/action history + retry of failed pushes.
+			protected.GET("/workspaces/:id/gitlab/sync-runs", rh.ListGitlabSyncRuns)
+			protected.GET("/workspaces/:id/gitlab/sync-runs/:runId/actions", rh.ListGitlabSyncActions)
+			protected.POST("/workspaces/:id/gitlab/sync-runs/:runId/actions/:actionId/retry", rh.RetryGitlabWriteback)
 
 			// Reminders (personal).
 			protected.POST("/reminders", rh.CreateReminder)

@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.93.0] — 2026-06-23
+- **GitLab: журнал синхронизации.** Кнопка «Синхронизировать» в GitLab-модалке стала
+  сплит-кнопкой: основное действие — синхронизация, в дропдауне (каретка) — «Журнал
+  синхронизации». Новая модалка `GitLabJournalModal.vue` (мастер-деталь): слева список
+  прогонов воркера (pull/push, когда, вручную/авто, счётчики `+создано ~обновлено` или
+  число доставок, точка статуса ok/частично/ошибка); по раскрытию прогона — его действия;
+  справа — детальный «дифф» выбранного действия. Для pull показываются изменённые поля
+  (до→после с цветовой разметкой), добавленные/удалённые теги, новые комментарии,
+  исполнители GitLab и ссылка на issue; для push — что улетало в GitLab (состояние/
+  приоритет/комментарий), результат либо ошибка. У упавшей push-доставки есть кнопка
+  «Повторить» (ставит её обратно в очередь). Использует `EmptyState`/`LoaderOverlay`,
+  читает `/gitlab/sync-runs`, `/sync-runs/:id/actions`, `.../retry`.
+
 ### [0.92.0] — 2026-06-23
 - **GitLab-модалка: секция «Обратная запись в GitLab».** Мастер-тумблер (выкл по
   умолчанию) + три переключателя — статус (закрыть/открыть issue по границе колонки
@@ -1650,6 +1663,27 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.54.0] — 2026-06-23
+- **GitLab: журнал синхронизации (миграция 0033).** Две новые таблицы —
+  `gitlab_sync_runs` (один ряд на прогон воркера: pull/push, trigger manual|auto,
+  status, счётчики created/updated/deleted/action, error, started/finished) и
+  `gitlab_sync_actions` (один ряд на затронутую запись: direction, entity_type, op,
+  task_id `ON DELETE SET NULL`, gl_iid, summary, `detail` jsonb с до/после, status,
+  error). Журнал ведётся **только** в своих таблицах GitLab-хендлерами — ядро задач не
+  трогается; `detail` — провайдеро-нейтральная форма `{fields,tags,comments,…}`.
+- **Запись прогонов и действий.** Пулл-движок (`runSync`→`syncOneIssue`) пишет per-task
+  действия create/update (только когда что-то реально изменилось) с диффом полей и
+  дельтами тегов/комментариев; реконсайл-запросы расширены под это
+  (`AddTaskTagSourced :execrows`, `DeleteStaleGitlabTaskTags` возвращает имена,
+  `UpsertGitlabComment` возвращает `xmax=0` — был ли коммент вставлен). Push-воркер
+  (`drainWritebacks`) пишет push-прогон на цикл, по одному действию на доставку с
+  payload/result/ошибкой. Пустые успешные авто-прогоны не пишутся; история обрезается до
+  последних 200 прогонов на интеграцию.
+- **Чтение и повтор.** `GET /workspaces/:id/gitlab/sync-runs`,
+  `GET .../sync-runs/:runId/actions` (детали отдаются как JSON, не base64),
+  `POST .../sync-runs/:runId/actions/:actionId/retry` — пересоздаёт outbox-ряд упавшей
+  push-доставки из сохранённого payload. Все под `requireMember`.
 
 ### [0.53.2] — 2026-06-23
 - **Fix: UI froze when the self-hosted GitLab was unreachable.** The asset/avatar

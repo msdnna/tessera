@@ -107,13 +107,21 @@ SELECT gl_iid FROM gitlab_links WHERE integration_id = $1;
 -- name: GetUserIDByGitlabUsername :one
 SELECT user_id FROM gitlab_credentials WHERE gl_username = $1;
 
--- name: AddTaskTagSourced :exec
+-- AddTaskTagSourced returns the number of rows inserted (1 = newly attached, 0 =
+-- the tag was already on the task) so the sync journal can record actual additions.
+-- name: AddTaskTagSourced :execrows
 INSERT INTO task_tags (task_id, tag_id, source) VALUES ($1, $2, $3)
 ON CONFLICT (task_id, tag_id) DO NOTHING;
 
--- name: DeleteStaleGitlabTaskTags :exec
-DELETE FROM task_tags
-WHERE task_id = $1 AND source = 'gitlab' AND NOT (tag_id = ANY($2::uuid[]));
+-- DeleteStaleGitlabTaskTags removes gitlab-sourced tags GitLab no longer has and
+-- returns their names for the sync journal.
+-- name: DeleteStaleGitlabTaskTags :many
+WITH deleted AS (
+    DELETE FROM task_tags
+    WHERE task_id = $1 AND source = 'gitlab' AND NOT (tag_id = ANY($2::uuid[]))
+    RETURNING tag_id
+)
+SELECT t.name FROM deleted d JOIN tags t ON t.id = d.tag_id;
 
 -- name: AddTaskAssigneeSourced :exec
 INSERT INTO task_assignees (task_id, user_id, source) VALUES ($1, $2, $3)
@@ -135,8 +143,11 @@ ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name, gl_
 SELECT gl_username, gl_name, gl_avatar_url FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name;
 
 -- ── synced comments (idempotent by GitLab note id) ─────────
--- name: UpsertGitlabComment :exec
+-- UpsertGitlabComment returns whether the row was freshly inserted (xmax = 0) so
+-- the sync journal can count new comments rather than re-synced ones.
+-- name: UpsertGitlabComment :one
 INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at)
 VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7)
 ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
-DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now();
+DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now()
+RETURNING (xmax = 0) AS inserted;

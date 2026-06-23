@@ -1,0 +1,306 @@
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"tessera/internal/db"
+)
+
+// journalRetention caps how many runs we keep per integration; older runs (and
+// their actions, via ON DELETE CASCADE) are pruned after every flush.
+const journalRetention = 200
+
+// journalTextCap bounds the length of free-text (descriptions, comment bodies)
+// stored in a journal detail so a single sync row can't bloat the table.
+const journalTextCap = 400
+
+// truncForJournal shortens free text for storage in a journal detail.
+func truncForJournal(s string) string {
+	r := []rune(s)
+	if len(r) <= journalTextCap {
+		return s
+	}
+	return string(r[:journalTextCap]) + "…"
+}
+
+// timePtrEq reports whether two optional timestamps represent the same instant.
+func timePtrEq(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
+}
+
+// journalAction is one accumulated action within a sync run, flushed to
+// gitlab_sync_actions when the run completes.
+type journalAction struct {
+	Direction  string         // "pull" (GL→DB) | "push" (DB→GL)
+	EntityType string         // task|subtask|tag|assignee|comment|state|priority
+	Op         string         // create|update|delete|push
+	TaskID     *uuid.UUID     // nil when no task is involved/known
+	GlIid      *int64         // the GitLab issue iid, when known
+	Summary    string         // one-line label for the left list
+	Detail     map[string]any // before/after (pull) or payload/result (push)
+	Status     string         // "ok" | "fail" (defaults to "ok")
+	Err        string         // populated when Status == "fail"
+}
+
+// syncJournal accumulates one run's worth of actions in memory, then flushes the
+// run header + its actions together in flushJournal. Provider-neutral: nothing
+// here is GitLab-specific beyond the table names.
+type syncJournal struct {
+	integrationID uuid.UUID
+	kind          string // "pull" | "push"
+	trigger       string // "manual" | "auto"
+	actorID       *uuid.UUID
+	actions       []journalAction
+	created       int
+	updated       int
+	deleted       int
+	status        string // overall run status; "ok" unless an action fails or the run aborts
+	errText       string // run-level error (a fetch/board failure that aborted the pull)
+}
+
+func (h *API) newJournal(integrationID uuid.UUID, kind, trigger string, actorID *uuid.UUID) *syncJournal {
+	return &syncJournal{integrationID: integrationID, kind: kind, trigger: trigger, actorID: actorID, status: "ok"}
+}
+
+// add appends an action, bumping the run's create/update/delete counts and
+// downgrading the run status to "partial" on a per-action failure.
+func (j *syncJournal) add(a journalAction) {
+	if j == nil {
+		return
+	}
+	if a.Status == "" {
+		a.Status = "ok"
+	}
+	switch a.Op {
+	case "create":
+		j.created++
+	case "update":
+		j.updated++
+	case "delete":
+		j.deleted++
+	}
+	if a.Status == "fail" && j.status == "ok" {
+		j.status = "partial"
+	}
+	j.actions = append(j.actions, a)
+}
+
+// abort records a run-level failure (e.g. the GitLab fetch failed before any
+// per-item work), so the run shows as errored in the journal.
+func (j *syncJournal) abort(err error) {
+	if j == nil || err == nil {
+		return
+	}
+	j.status = "error"
+	j.errText = err.Error()
+}
+
+// flushJournal persists the run and its actions, then prunes old runs. A
+// successful auto run with no actions is skipped so the journal isn't filled with
+// empty heartbeats (gitlab_integrations.last_synced_at already records that).
+// Best-effort: a journal write failure must never break the sync itself.
+func (h *API) flushJournal(ctx context.Context, j *syncJournal) {
+	if j == nil {
+		return
+	}
+	if len(j.actions) == 0 && j.status == "ok" && j.trigger != "manual" {
+		return
+	}
+	run, err := h.q.CreateGitlabSyncRun(ctx, db.CreateGitlabSyncRunParams{
+		IntegrationID: j.integrationID, Kind: j.kind, Trigger: j.trigger, ActorID: j.actorID,
+	})
+	if err != nil {
+		log.Printf("gitlab journal: create run failed: %v", err)
+		return
+	}
+	for i, a := range j.actions {
+		detail := []byte("{}")
+		if a.Detail != nil {
+			if b, derr := json.Marshal(a.Detail); derr == nil {
+				detail = b
+			}
+		}
+		if cerr := h.q.CreateGitlabSyncAction(ctx, db.CreateGitlabSyncActionParams{
+			RunID: run.ID, Seq: int32(i), Direction: a.Direction, EntityType: a.EntityType,
+			Op: a.Op, TaskID: a.TaskID, GlIid: a.GlIid, Summary: a.Summary,
+			Detail: detail, Status: a.Status, Error: a.Err,
+		}); cerr != nil {
+			log.Printf("gitlab journal: create action failed: %v", cerr)
+		}
+	}
+	if ferr := h.q.FinishGitlabSyncRun(ctx, db.FinishGitlabSyncRunParams{
+		ID: run.ID, Status: j.status, CreatedCount: int32(j.created), UpdatedCount: int32(j.updated),
+		DeletedCount: int32(j.deleted), ActionCount: int32(len(j.actions)), Error: j.errText,
+	}); ferr != nil {
+		log.Printf("gitlab journal: finish run failed: %v", ferr)
+	}
+	if perr := h.q.PruneGitlabSyncRuns(ctx, db.PruneGitlabSyncRunsParams{
+		IntegrationID: j.integrationID, Limit: journalRetention,
+	}); perr != nil {
+		log.Printf("gitlab journal: prune failed: %v", perr)
+	}
+}
+
+// ── HTTP: read the journal & retry failed pushes ───────────
+
+// syncActionDTO re-exposes a journal action with detail as raw JSON (the generated
+// struct carries it as []byte, which would marshal as base64).
+type syncActionDTO struct {
+	ID         uuid.UUID       `json:"id"`
+	Seq        int32           `json:"seq"`
+	Direction  string          `json:"direction"`
+	EntityType string          `json:"entity_type"`
+	Op         string          `json:"op"`
+	TaskID     *uuid.UUID      `json:"task_id"`
+	GlIid      *int64          `json:"gl_iid"`
+	Summary    string          `json:"summary"`
+	Detail     json.RawMessage `json:"detail"`
+	Status     string          `json:"status"`
+	Error      string          `json:"error"`
+	CreatedAt  time.Time       `json:"created_at"`
+}
+
+func toSyncActionDTO(a db.GitlabSyncAction) syncActionDTO {
+	detail := json.RawMessage(a.Detail)
+	if len(detail) == 0 {
+		detail = json.RawMessage("{}")
+	}
+	return syncActionDTO{
+		ID: a.ID, Seq: a.Seq, Direction: a.Direction, EntityType: a.EntityType, Op: a.Op,
+		TaskID: a.TaskID, GlIid: a.GlIid, Summary: a.Summary, Detail: detail,
+		Status: a.Status, Error: a.Error, CreatedAt: a.CreatedAt,
+	}
+}
+
+// integrationForWorkspace resolves the workspace's GitLab integration after a
+// membership check, writing the appropriate error response on failure.
+func (h *API) integrationForWorkspace(c *gin.Context) (db.GitlabIntegration, bool) {
+	wsID, ok := parseID(c, "id")
+	if !ok {
+		return db.GitlabIntegration{}, false
+	}
+	if !h.requireMember(c, wsID) {
+		return db.GitlabIntegration{}, false
+	}
+	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no GitLab integration configured for this workspace"})
+		return db.GitlabIntegration{}, false
+	}
+	if err != nil {
+		fail(c)
+		return db.GitlabIntegration{}, false
+	}
+	return integ, true
+}
+
+// ListGitlabSyncRuns returns the integration's recent sync runs, newest first.
+func (h *API) ListGitlabSyncRuns(c *gin.Context) {
+	integ, ok := h.integrationForWorkspace(c)
+	if !ok {
+		return
+	}
+	limit := int32(50)
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= journalRetention {
+			limit = int32(n)
+		}
+	}
+	runs, err := h.q.ListGitlabSyncRuns(c, db.ListGitlabSyncRunsParams{IntegrationID: integ.ID, Limit: limit})
+	if err != nil {
+		fail(c)
+		return
+	}
+	if runs == nil {
+		runs = []db.GitlabSyncRun{}
+	}
+	c.JSON(http.StatusOK, runs)
+}
+
+// ListGitlabSyncActions returns the actions of one run (scoped to the workspace's
+// integration), in sequence order.
+func (h *API) ListGitlabSyncActions(c *gin.Context) {
+	integ, ok := h.integrationForWorkspace(c)
+	if !ok {
+		return
+	}
+	runID, ok := parseID(c, "runId")
+	if !ok {
+		return
+	}
+	if _, err := h.q.GetGitlabSyncRun(c, db.GetGitlabSyncRunParams{ID: runID, IntegrationID: integ.ID}); err != nil {
+		if notFound(c, err) {
+			return
+		}
+		fail(c)
+		return
+	}
+	actions, err := h.q.ListGitlabSyncActions(c, runID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	out := make([]syncActionDTO, 0, len(actions))
+	for _, a := range actions {
+		out = append(out, toSyncActionDTO(a))
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// RetryGitlabWriteback re-enqueues a failed push action by re-creating its outbox
+// row from the recorded payload, so the worker delivers it again.
+func (h *API) RetryGitlabWriteback(c *gin.Context) {
+	integ, ok := h.integrationForWorkspace(c)
+	if !ok {
+		return
+	}
+	actionID, ok := parseID(c, "actionId")
+	if !ok {
+		return
+	}
+	action, err := h.q.GetGitlabSyncAction(c, db.GetGitlabSyncActionParams{ID: actionID, IntegrationID: integ.ID})
+	if err != nil {
+		if notFound(c, err) {
+			return
+		}
+		fail(c)
+		return
+	}
+	if action.Direction != "push" || action.Status != "fail" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "only failed push actions can be retried"})
+		return
+	}
+	var detail struct {
+		ChangeKind string          `json:"change_kind"`
+		Payload    json.RawMessage `json:"payload"`
+	}
+	_ = json.Unmarshal(action.Detail, &detail)
+	if action.TaskID == nil || detail.ChangeKind == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "action is not replayable"})
+		return
+	}
+	payload := detail.Payload
+	if len(payload) == 0 {
+		payload = json.RawMessage("{}")
+	}
+	if err := h.q.CreateGitlabWriteback(c, db.CreateGitlabWritebackParams{
+		TaskID: *action.TaskID, IntegrationID: integ.ID, ChangeKind: detail.ChangeKind, Payload: payload,
+	}); err != nil {
+		fail(c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "queued"})
+}
