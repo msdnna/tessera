@@ -424,6 +424,12 @@ android-паритет суб-баров — в бэклоге). Заплани�
   + контент-хэши), после пуша ре-фетч issue переписывает снапшот. Пуш — PAT владельца интеграции
   (нужен scope `api`). Статус — **только open/close** (инверс колонка→`S:` лоссится; редактор явных
   привязок `column_label_bindings` отложен, шов пустой). См. [[project-gitlab-writeback]].
+- **GitLab журнал синхронизации — ⭐ СЛЕДУЮЩЕЕ** (запланировано 2026-06-23, отдельный тред). Видимая
+  пользователю история: прогоны pull-синка (когда, создано/обновлено, ошибки) + доставки write-back
+  (что ушло, успех/ошибка). Сейчас оба молчат; упавший write-back просто лежит в `gitlab_writebacks`
+  (`status='failed'`, `last_error`) — никто не видит. Субстрат частично есть (`last_synced_at`,
+  `gitlab_writebacks`, `synced`-logEvent); пробелы — нет таблицы истории pull-прогонов и нет UI для
+  провалов. Подробности/ориентир — [[project-gitlab-sync-journal-next]]. Миграция 0033.
 - **GitLab фаза B+ (остаток)** — write-back для **assignees** (ждёт OAuth — нужен надёжный
   Tessera-user↔GL-user маппинг) и **title/description** (риск затирания, gated `push_title_desc`);
   редактор `column_label_bindings` (колонка→метка `S:`); webhooks (вместо/в дополнение к polling);
