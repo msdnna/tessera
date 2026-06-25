@@ -27,6 +27,19 @@ const boards = computed(() =>
 )
 const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUpperCase())
 
+// Icon colouring mode (badge box vs glyph) — mirror the sidebar rows.
+const iconMode = computed(() => props.node.icon_mode === 'icon')
+const colored = computed(() => props.node.color && props.node.color !== 'transparent')
+const glyphColor = computed(() =>
+  iconMode.value ? (colored.value ? props.node.color : 'var(--t-primary)') : '',
+)
+const projBox = computed(() =>
+  iconMode.value || props.node.color === 'transparent'
+    ? { background: 'transparent' }
+    : { background: props.node.color || 'var(--t-primary)' },
+)
+const projBare = computed(() => iconMode.value || props.node.color === 'transparent')
+
 onMounted(() => {
   if (props.kind === 'project' && !store.boardsByProject[props.node.id]) {
     store.loadBoards(props.node.id)
@@ -45,14 +58,8 @@ function openBoard(b) {
     <!-- Project: header + its boards -->
     <template v-if="kind === 'project'">
       <div class="fly-head">
-        <span
-          class="picon"
-          :class="{ 'picon-bare': node.color === 'transparent' }"
-          :style="{
-            background: node.color === 'transparent' ? 'transparent' : node.color || 'var(--t-primary)',
-          }"
-        >
-          <ProjectIcon :icon="node.icon" :initials="initials" :size="12" />
+        <span class="picon" :class="{ 'picon-bare': projBare }" :style="projBox">
+          <ProjectIcon :icon="node.icon" :initials="initials" :size="12" :color="glyphColor" />
         </span>
         <span class="fly-name">{{ node.name }}</span>
       </div>
@@ -72,7 +79,12 @@ function openBoard(b) {
     <!-- Group: folder header + recursive children -->
     <template v-else>
       <div class="fly-head">
-        <n-icon :component="FolderOutline" :size="15" class="fly-folder" />
+        <n-icon
+          :component="FolderOutline"
+          :size="15"
+          class="fly-folder"
+          :color="glyphColor || undefined"
+        />
         <span class="fly-name">{{ node.name }}</span>
       </div>
       <div class="fly-children">

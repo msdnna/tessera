@@ -14,7 +14,7 @@ SELECT coalesce(max(position), 0)::double precision FROM project_groups WHERE wo
 
 -- name: UpdateProjectGroup :one
 UPDATE project_groups
-SET name = $2, icon = $3, color = $4, updated_at = now()
+SET name = $2, icon = $3, color = $4, icon_mode = $5, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

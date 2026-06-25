@@ -422,7 +422,9 @@ watch(
   background: var(--t-hover);
 }
 .j-action.sel {
-  background: var(--t-accent-grad-subtle);
+  /* Soft same-hue tint (not the saturated accent gradient) so the coloured op
+     label and the dark/light summary text keep contrast on both themes. */
+  background: color-mix(in srgb, var(--t-primary) 14%, var(--t-surface));
   color: var(--t-text1);
 }
 .j-action.fail .j-action-sum {

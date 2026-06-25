@@ -1625,6 +1625,11 @@ watch(
   border-radius: 8px;
   background: var(--t-surface);
   transition: max-height 0.28s ease;
+  /* Tame the inherited (Naive) line-height: without this the chips compute to
+     ~23px tall — past the 22px add button — so the bar's natural height is ~41px.
+     Collapsed clamps it to 40px and focus/expand (which drops the clamp) then made
+     the bar jump down 1px. A tight line-height keeps the natural height at 40px. */
+  line-height: 1.25;
 }
 /* Reserve room on the right for the absolutely-positioned clear-×. */
 .composer.has-clear {

@@ -476,7 +476,7 @@ watch(
 
         <!-- Generic rule engine -->
         <h4 class="gl-h gl-h-sub">Правила меток</h4>
-        <div class="gl-grid">
+        <div class="gl-grid gl-grid-rules">
           <n-text depth="3" class="lbl">Колонка по умолчанию</n-text>
           <n-select
             v-model:value="defaultColumn"
@@ -649,6 +649,11 @@ watch(
 }
 .gl-grid-top {
   margin-top: 12px;
+}
+/* Breathing room between the defaults grid (ends with the prefix toggle) and the
+   per-prefix rule cards that follow. */
+.gl-grid-rules {
+  margin-bottom: 14px;
 }
 .gl-wb-hint {
   margin: 8px 0 0;

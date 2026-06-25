@@ -9,6 +9,15 @@ import (
 	"tessera/internal/db"
 )
 
+// normIconMode validates the icon colouring mode, defaulting unknown/empty
+// values (e.g. older clients that don't send the field) to "badge".
+func normIconMode(m string) string {
+	if m == "icon" {
+		return "icon"
+	}
+	return "badge"
+}
+
 // ── Project groups ─────────────────────────────────────────
 
 // CreateProjectGroup adds a group to a workspace, optionally nested in a parent.
@@ -62,9 +71,10 @@ func (h *API) UpdateProjectGroup(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name  string `json:"name" binding:"required"`
-		Icon  string `json:"icon"`
-		Color string `json:"color"`
+		Name     string `json:"name" binding:"required"`
+		Icon     string `json:"icon"`
+		Color    string `json:"color"`
+		IconMode string `json:"icon_mode"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -72,6 +82,7 @@ func (h *API) UpdateProjectGroup(c *gin.Context) {
 	}
 	updated, err := h.q.UpdateProjectGroup(c, db.UpdateProjectGroupParams{
 		ID: g.ID, Name: req.Name, Icon: req.Icon, Color: req.Color,
+		IconMode: normIconMode(req.IconMode),
 	})
 	if err != nil {
 		fail(c)
@@ -195,17 +206,19 @@ func (h *API) UpdateProject(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name    string     `json:"name" binding:"required"`
-		Color   string     `json:"color"`
-		Icon    string     `json:"icon"`
-		GroupID *uuid.UUID `json:"group_id"`
+		Name     string     `json:"name" binding:"required"`
+		Color    string     `json:"color"`
+		Icon     string     `json:"icon"`
+		IconMode string     `json:"icon_mode"`
+		GroupID  *uuid.UUID `json:"group_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	updated, err := h.q.UpdateProject(c, db.UpdateProjectParams{
-		ID: p.ID, Name: req.Name, Color: req.Color, Icon: req.Icon, GroupID: req.GroupID,
+		ID: p.ID, Name: req.Name, Color: req.Color, Icon: req.Icon,
+		GroupID: req.GroupID, IconMode: normIconMode(req.IconMode),
 	})
 	if err != nil {
 		fail(c)

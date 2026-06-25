@@ -15,6 +15,26 @@ const props = defineProps({
 
 const show = ref(false)
 const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUpperCase())
+
+// Icon colouring mode — mirror ProjectRow / SidebarNode (badge box vs glyph).
+const iconMode = computed(() => props.node.icon_mode === 'icon')
+const colored = computed(() => props.node.color && props.node.color !== 'transparent')
+const glyphColor = computed(() =>
+  iconMode.value ? (colored.value ? props.node.color : 'var(--t-primary)') : '',
+)
+// Project: no colour ⇒ primary badge. Group: no colour ⇒ neutral.
+const projBox = computed(() =>
+  iconMode.value || props.node.color === 'transparent'
+    ? { background: 'transparent' }
+    : { background: hueGrad(props.node.color || 'var(--t-primary)') },
+)
+const projBare = computed(() => iconMode.value || props.node.color === 'transparent')
+const grpBox = computed(() =>
+  !iconMode.value && colored.value
+    ? { background: hueGrad(props.node.color) }
+    : { background: 'transparent' },
+)
+const grpBare = computed(() => iconMode.value || !colored.value)
 </script>
 
 <template>
@@ -31,25 +51,20 @@ const initials = computed(() => (props.node.name || '?').trim().slice(0, 2).toUp
         <span
           v-if="kind === 'project'"
           class="picon"
-          :class="{ 'picon-bare': node.color === 'transparent' }"
-          :style="{
-            background:
-              node.color === 'transparent' ? 'transparent' : hueGrad(node.color || 'var(--t-primary)'),
-          }"
+          :class="{ 'picon-bare': projBare }"
+          :style="projBox"
         >
-          <ProjectIcon :icon="node.icon" :initials="initials" :size="15" />
+          <ProjectIcon :icon="node.icon" :initials="initials" :size="15" :color="glyphColor" />
         </span>
-        <span
-          v-else
-          class="gicon"
-          :class="{ 'gicon-bare': !node.color || node.color === 'transparent' }"
-          :style="{
-            background:
-              node.color && node.color !== 'transparent' ? hueGrad(node.color) : 'transparent',
-          }"
-        >
-          <ProjectIcon v-if="node.icon" :icon="node.icon" :initials="initials" :size="15" />
-          <n-icon v-else :component="FolderOutline" :size="18" />
+        <span v-else class="gicon" :class="{ 'gicon-bare': grpBare }" :style="grpBox">
+          <ProjectIcon
+            v-if="node.icon"
+            :icon="node.icon"
+            :initials="initials"
+            :size="15"
+            :color="glyphColor"
+          />
+          <n-icon v-else :component="FolderOutline" :size="18" :color="glyphColor || undefined" />
         </span>
       </button>
     </template>

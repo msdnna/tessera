@@ -240,6 +240,7 @@ type Project struct {
 	Icon        string           `json:"icon"`
 	Slug        string           `json:"slug"`
 	Estimation  *json.RawMessage `json:"estimation"`
+	IconMode    string           `json:"icon_mode"`
 }
 
 type ProjectGroup struct {
@@ -252,6 +253,7 @@ type ProjectGroup struct {
 	ParentID    *uuid.UUID `json:"parent_id"`
 	Icon        string     `json:"icon"`
 	Color       string     `json:"color"`
+	IconMode    string     `json:"icon_mode"`
 }
 
 type RefreshToken struct {

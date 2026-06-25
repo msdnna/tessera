@@ -7,20 +7,25 @@ const props = defineProps({
   icon: { type: String, default: '' },
   initials: { type: String, default: '?' },
   size: { type: Number, default: 14 },
+  // When set, tints the glyph itself (currentColor-based icons + initials) — used
+  // by "icon" colour mode, where the badge box is transparent. Raster/own-fill
+  // SVGs keep their colours.
+  color: { type: String, default: '' },
 })
 
 const kind = computed(() => iconKind(props.icon))
 const comp = computed(() => iconComponent(props.icon))
 const svg = computed(() => (kind.value === 'svg' ? sanitizeIconSvg(props.icon) : ''))
 const px = computed(() => ({ width: props.size + 'px', height: props.size + 'px' }))
+const tint = computed(() => (props.color ? { color: props.color } : {}))
 </script>
 
 <template>
-  <n-icon v-if="kind === 'curated'" :component="comp" :size="size" />
+  <n-icon v-if="kind === 'curated'" :component="comp" :size="size" :color="color || undefined" />
   <!-- eslint-disable-next-line vue/no-v-html -->
-  <span v-else-if="kind === 'svg'" class="pi-svg" :style="px" v-html="svg" />
+  <span v-else-if="kind === 'svg'" class="pi-svg" :style="{ ...px, ...tint }" v-html="svg" />
   <img v-else-if="kind === 'img'" :src="icon" class="pi-img" :style="px" alt="" />
-  <template v-else>{{ initials }}</template>
+  <span v-else :style="tint">{{ initials }}</span>
 </template>
 
 <style scoped>

@@ -7,18 +7,22 @@ import { PROJECT_ICONS, sanitizeIconSvg } from '@/utils/projectIcons'
 const props = defineProps({
   icon: { type: String, default: '' },
   color: { type: String, default: '' },
+  mode: { type: String, default: 'badge' }, // 'badge' (colour the box) | 'icon' (colour the glyph)
   initials: { type: String, default: '?' },
   allowUpload: { type: Boolean, default: false }, // projects: upload SVG/PNG
   fallbackFolder: { type: Boolean, default: false }, // groups: "no icon" = folder
   transparentDefault: { type: Boolean, default: false }, // groups: empty ≡ transparent
 })
-const emit = defineEmits(['update:icon', 'update:color'])
+const emit = defineEmits(['update:icon', 'update:color', 'update:mode'])
 const message = useMessage()
 
 const COLORS = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96', '#9aa0aa']
-const swatches = computed(() =>
-  props.transparentDefault ? ['transparent', ...COLORS] : ['', 'transparent', ...COLORS],
-)
+const swatches = computed(() => {
+  // In "icon" mode the badge box is transparent regardless, so the explicit
+  // "transparent" swatch is meaningless — drop it.
+  if (props.mode === 'icon') return props.transparentDefault ? [...COLORS] : ['', ...COLORS]
+  return props.transparentDefault ? ['transparent', ...COLORS] : ['', 'transparent', ...COLORS]
+})
 function swatchActive(s) {
   if (s === props.color) return true
   return props.transparentDefault && s === 'transparent' && !props.color
@@ -142,6 +146,24 @@ function onIconFile(e) {
       />
     </div>
 
+    <!-- Where the colour lands: the badge box (default) or the glyph itself. -->
+    <div class="mode-toggle" role="group" aria-label="Что красить">
+      <button
+        class="mt-opt"
+        :class="{ active: mode !== 'icon' }"
+        @click="emit('update:mode', 'badge')"
+      >
+        Бейдж
+      </button>
+      <button
+        class="mt-opt"
+        :class="{ active: mode === 'icon' }"
+        @click="emit('update:mode', 'icon')"
+      >
+        Иконка
+      </button>
+    </div>
+
     <input
       v-if="allowUpload"
       ref="iconFileInput"
@@ -242,6 +264,31 @@ function onIconFile(e) {
   background-position:
     0 0,
     5px 5px;
+}
+/* Segmented "what to colour" toggle — badge box vs the glyph. */
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  align-self: center;
+  border: 1px solid var(--t-border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.mt-opt {
+  appearance: none;
+  border: none;
+  background: var(--t-surface);
+  color: var(--t-text2);
+  font-size: 12px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+.mt-opt + .mt-opt {
+  border-left: 1px solid var(--t-border);
+}
+.mt-opt.active {
+  background: var(--t-accent-grad-subtle);
+  color: var(--t-on-primary);
 }
 .icp-grid {
   display: grid;

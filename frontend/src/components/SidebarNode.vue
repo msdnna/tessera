@@ -85,6 +85,7 @@ async function applyGroup(patch) {
       name: props.group.name,
       icon: props.group.icon || '',
       color: props.group.color || '',
+      icon_mode: props.group.icon_mode || 'badge',
       ...patch,
     })
     await store.refresh()
@@ -92,6 +93,20 @@ async function applyGroup(patch) {
     message.error(e.message)
   }
 }
+
+// Icon colouring: "badge" tints the box, "icon" leaves it transparent and tints
+// the glyph instead. Groups with no colour stay neutral in badge mode.
+const iconMode = computed(() => props.group.icon_mode === 'icon')
+const colored = computed(() => props.group.color && props.group.color !== 'transparent')
+const boxStyle = computed(() =>
+  !iconMode.value && colored.value
+    ? { background: hueGrad(props.group.color) }
+    : { background: 'transparent' },
+)
+const bare = computed(() => iconMode.value || !colored.value)
+const glyphColor = computed(() =>
+  iconMode.value ? (colored.value ? props.group.color : 'var(--t-primary)') : '',
+)
 
 const subgroups = computed(() => store.childGroups(props.group.id))
 const childProjects = computed(() => store.projectsInGroup(props.group.id))
@@ -165,15 +180,18 @@ async function commitRename() {
       />
       <span
         class="gicon"
-        :class="{ 'gicon-bare': !group.color || group.color === 'transparent' }"
-        :style="{
-          background:
-            group.color && group.color !== 'transparent' ? hueGrad(group.color) : 'transparent',
-        }"
+        :class="{ 'gicon-bare': bare }"
+        :style="boxStyle"
         @click="expanded = !expanded"
       >
-        <ProjectIcon v-if="group.icon" :icon="group.icon" :initials="initials" :size="15" />
-        <n-icon v-else :component="FolderOutline" :size="16" />
+        <ProjectIcon
+          v-if="group.icon"
+          :icon="group.icon"
+          :initials="initials"
+          :size="15"
+          :color="glyphColor"
+        />
+        <n-icon v-else :component="FolderOutline" :size="16" :color="glyphColor || undefined" />
       </span>
       <n-input
         v-if="renaming"
@@ -201,11 +219,13 @@ async function commitRename() {
           <IconColorPicker
             :icon="group.icon"
             :color="group.color"
+            :mode="group.icon_mode || 'badge'"
             :initials="initials"
             fallback-folder
             transparent-default
             @update:icon="applyGroup({ icon: $event })"
             @update:color="applyGroup({ color: $event })"
+            @update:mode="applyGroup({ icon_mode: $event })"
           />
           <n-button type="primary" ghost size="small" block @click="startRename">
             <template #icon><n-icon :component="CreateOutline" /></template>

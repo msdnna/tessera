@@ -122,6 +122,7 @@ async function updateField(patch) {
       name: props.project.name,
       color: props.project.color || '',
       icon: props.project.icon || '',
+      icon_mode: props.project.icon_mode || 'badge',
       group_id: props.project.group_id || null,
       ...patch,
     })
@@ -130,6 +131,19 @@ async function updateField(patch) {
     message.error(e.message)
   }
 }
+
+// Icon colouring: "badge" tints the box (legacy; no colour ⇒ primary badge),
+// "icon" leaves the box transparent and tints the glyph instead.
+const iconMode = computed(() => props.project.icon_mode === 'icon')
+const colored = computed(() => props.project.color && props.project.color !== 'transparent')
+const boxStyle = computed(() => {
+  if (iconMode.value || props.project.color === 'transparent') return { background: 'transparent' }
+  return { background: hueGrad(props.project.color || 'var(--t-primary)') }
+})
+const bare = computed(() => iconMode.value || props.project.color === 'transparent')
+const glyphColor = computed(() =>
+  iconMode.value ? (colored.value ? props.project.color : 'var(--t-primary)') : '',
+)
 const confirmDelete = ref(false)
 function remove() {
   confirmDelete.value = true
@@ -267,18 +281,8 @@ async function addBoard() {
         :component="ChevronForwardOutline"
         @click="toggle"
       />
-      <span
-        class="picon"
-        :class="{ 'picon-bare': project.color === 'transparent' }"
-        :style="{
-          background:
-            project.color === 'transparent'
-              ? 'transparent'
-              : hueGrad(project.color || 'var(--t-primary)'),
-        }"
-        @click="toggle"
-      >
-        <ProjectIcon :icon="project.icon" :initials="initials" :size="13" />
+      <span class="picon" :class="{ 'picon-bare': bare }" :style="boxStyle" @click="toggle">
+        <ProjectIcon :icon="project.icon" :initials="initials" :size="13" :color="glyphColor" />
       </span>
       <n-input
         v-if="renaming"
@@ -309,10 +313,12 @@ async function addBoard() {
           <IconColorPicker
             :icon="project.icon"
             :color="project.color"
+            :mode="project.icon_mode || 'badge'"
             :initials="initials"
             allow-upload
             @update:icon="updateField({ icon: $event })"
             @update:color="updateField({ color: $event })"
+            @update:mode="updateField({ icon_mode: $event })"
           />
           <div class="action-row">
             <n-button type="primary" ghost size="small" @click="startRename">
