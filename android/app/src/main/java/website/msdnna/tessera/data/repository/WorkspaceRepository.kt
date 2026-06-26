@@ -31,7 +31,8 @@ class WorkspaceRepository {
         name: String = group.name,
         color: String = group.color,
         icon: String = group.icon,
-    ): ProjectGroup = api.updateGroup(group.id, UpdateGroupRequest(name, color, icon))
+        iconMode: String = group.iconMode,
+    ): ProjectGroup = api.updateGroup(group.id, UpdateGroupRequest(name, color, icon, iconMode))
 
     suspend fun moveGroup(groupId: String, parentId: String?, beforeId: String?, afterId: String?): ProjectGroup =
         api.moveGroup(groupId, website.msdnna.tessera.data.model.MoveGroupRequest(parentId, beforeId, afterId))
@@ -47,7 +48,8 @@ class WorkspaceRepository {
         color: String = project.color,
         icon: String = project.icon,
         groupId: String? = project.groupId,
-    ): Project = api.updateProject(project.id, UpdateProjectRequest(name, color, icon, groupId))
+        iconMode: String = project.iconMode,
+    ): Project = api.updateProject(project.id, UpdateProjectRequest(name, color, icon, groupId, iconMode))
 
     suspend fun moveProject(projectId: String, groupId: String?, beforeId: String?, afterId: String?): Project =
         api.moveProject(projectId, website.msdnna.tessera.data.model.MoveProjectRequest(groupId, beforeId, afterId))

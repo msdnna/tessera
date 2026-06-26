@@ -45,6 +45,7 @@ class AppPreferences(private val context: Context) {
         val EXPANDED_PROJECTS = stringSetPreferencesKey("expanded_projects")
         val LAST_DEST = stringPreferencesKey("last_dest")
         val DEVICE_ID = stringPreferencesKey("device_id")
+        val RECENT_ASSIGNEES = stringPreferencesKey("recent_assignees")
     }
 
     /** Stable per-install id for the notification "device" channel; generated and
@@ -182,6 +183,21 @@ class AppPreferences(private val context: Context) {
 
     suspend fun setLastDest(dest: String) {
         context.dataStore.edit { it[Keys.LAST_DEST] = dest }
+    }
+
+    /** Cross-board MRU of recently-assigned user ids (web `tessera_recent_assignees`),
+     *  surfacing the people you actually use first in the on-card assignee picker.
+     *  Stored newest-first as a newline-joined string (ids are UUIDs). */
+    val recentAssignees: Flow<List<String>> = context.dataStore.data.map {
+        it[Keys.RECENT_ASSIGNEES].orEmpty().split('\n').filter { id -> id.isNotBlank() }
+    }
+
+    suspend fun bumpRecentAssignee(id: String) {
+        if (id.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val cur = prefs[Keys.RECENT_ASSIGNEES].orEmpty().split('\n').filter { it.isNotBlank() }
+            prefs[Keys.RECENT_ASSIGNEES] = (listOf(id) + cur.filter { it != id }).take(30).joinToString("\n")
+        }
     }
 
     suspend fun setAccentKey(key: String) {

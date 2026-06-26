@@ -183,6 +183,10 @@ fun AppRoot(
                 token.isBlank() -> AuthScreen(
                     serverUrl = serverUrl,
                     onServerUrlChange = { scope.launch { prefs.setServerUrl(it) } },
+                    isDark = isDark,
+                    // Pre-login the theme lives only in local prefs (no user yet);
+                    // it's reconciled with the server pref after sign-in.
+                    onToggleTheme = { scope.launch { prefs.setDarkMode(!isDark) } },
                 )
 
                 else -> MainScreen(

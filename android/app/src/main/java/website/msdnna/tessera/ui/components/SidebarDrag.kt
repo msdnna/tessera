@@ -53,6 +53,7 @@ data class SbNode(
     val name: String,
     val icon: String,
     val color: String,
+    val iconMode: String = "badge",
 )
 
 /** The resolved target of an in-flight sidebar drag. */
@@ -280,6 +281,7 @@ private fun SidebarRowGhost(node: SbNode) {
             color = node.color,
             size = 20.dp,
             fallbackFolder = node.kind == SbKind.GROUP,
+            iconMode = node.iconMode,
         )
         Spacer(Modifier.width(9.dp))
         Text(node.name, color = c.text1, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)

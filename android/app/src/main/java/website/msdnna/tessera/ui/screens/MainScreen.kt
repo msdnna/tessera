@@ -71,6 +71,7 @@ sealed interface MainDest {
     data object Notes : MainDest
     data object Reminders : MainDest
     data object GitLabSettings : MainDest
+    data object GitLabJournal : MainDest
     data object Notifications : MainDest
     data object Settings : MainDest
     data object Admin : MainDest
@@ -206,6 +207,7 @@ fun MainScreen(
                 is MainDest.Notes -> "notes"
                 is MainDest.Reminders -> "reminders"
                 is MainDest.GitLabSettings -> "gitlab"
+                is MainDest.GitLabJournal -> "gitlab"
                 is MainDest.Notifications -> "notifications"
                 is MainDest.Settings -> "settings"
                 is MainDest.Admin -> "admin"
@@ -315,7 +317,12 @@ fun MainScreen(
 
                             is MainDest.Reminders -> RemindersScreen()
 
-                            is MainDest.GitLabSettings -> GitLabSettingsScreen(workspaceId = state.currentId)
+                            is MainDest.GitLabSettings -> GitLabSettingsScreen(
+                                workspaceId = state.currentId,
+                                onOpenJournal = { navTo(MainDest.GitLabJournal) },
+                            )
+
+                            is MainDest.GitLabJournal -> GitLabJournalScreen(workspaceId = state.currentId)
 
                             is MainDest.Notifications -> NotificationSettingsScreen(deviceId = deviceId)
 
@@ -520,6 +527,7 @@ private fun titleFor(dest: MainDest): String = when (dest) {
     is MainDest.Notes -> "Заметки"
     is MainDest.Reminders -> "Напоминания"
     is MainDest.GitLabSettings -> "GitLab"
+    is MainDest.GitLabJournal -> "Журнал синхронизации"
     is MainDest.Notifications -> "Уведомления"
     is MainDest.Settings -> "Настройки"
     is MainDest.Admin -> "Администрирование"
@@ -532,6 +540,7 @@ private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Notes -> "notes"
     is MainDest.Reminders -> "reminders"
     is MainDest.GitLabSettings -> "gitlab"
+    is MainDest.GitLabJournal -> "gitlab"
     is MainDest.Notifications -> "notifications"
     is MainDest.Settings -> "settings"
     is MainDest.Admin -> "admin"

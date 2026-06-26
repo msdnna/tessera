@@ -669,7 +669,11 @@ class BoardViewModel(
     }
 
     fun toggleAssignee(task: Task, userId: String) = launchCatching {
-        if (userId in task.assigneeIds) repo.removeAssignee(task.id, userId) else repo.addAssignee(task.id, userId)
+        val adding = userId !in task.assigneeIds
+        if (adding) repo.addAssignee(task.id, userId) else repo.removeAssignee(task.id, userId)
+        // Bump the cross-board MRU only on assign, so the picker surfaces the people
+        // you actually use first (web tessera_recent_assignees).
+        if (adding) runCatching { AppContainer.prefs.bumpRecentAssignee(userId) }
         refreshTasks()
     }
 

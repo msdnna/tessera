@@ -27,6 +27,14 @@ class GitlabRepository {
         api.gitlabSetIntegration(workspaceId, req)
     suspend fun sync(workspaceId: String): GitlabSyncResult = api.gitlabSync(workspaceId)
 
+    /** Sync-journal: recent runs, the actions of one run, and retrying a failed push. */
+    suspend fun syncRuns(workspaceId: String): List<website.msdnna.tessera.data.model.GitlabSyncRun> =
+        api.gitlabSyncRuns(workspaceId).orEmpty()
+    suspend fun syncActions(workspaceId: String, runId: String): List<website.msdnna.tessera.data.model.GitlabSyncAction> =
+        api.gitlabSyncActions(workspaceId, runId).orEmpty()
+    suspend fun retryWriteback(workspaceId: String, runId: String, actionId: String) =
+        api.gitlabRetryWriteback(workspaceId, runId, actionId)
+
     /** Every board in the workspace, labelled `Project / Board`, for the picker. */
     suspend fun workspaceBoards(workspaceId: String): List<BoardOption> {
         val out = mutableListOf<BoardOption>()

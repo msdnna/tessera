@@ -14,6 +14,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
@@ -97,6 +98,8 @@ private val BrandPurple = Color(0xFF7C6CFF)
 fun AuthScreen(
     serverUrl: String,
     onServerUrlChange: (String) -> Unit,
+    isDark: Boolean = false,
+    onToggleTheme: () -> Unit = {},
     vm: AuthViewModel = viewModel(),
 ) {
     val c = Tessera.colors
@@ -124,13 +127,21 @@ fun AuthScreen(
         // Airy drifting aurora over the brand gradient (mirrors the web login).
         AuthAurora(Modifier.fillMaxSize())
 
-        // Server settings — gear in the top-right, popover with a live URL field.
-        Box(
+        // Theme toggle + server settings — top-right (web AuthLayout has the theme
+        // toggle in the corner; the brand gradient itself stays purple either way).
+        Row(
             Modifier
                 .align(Alignment.TopEnd)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            IonIconButton(
+                Ion.CONTRAST,
+                onClick = onToggleTheme,
+                boxSize = 40.dp,
+                tint = Color.White,
+            )
             // Active state so it's clear the popover belongs to this gear.
             Box(
                 Modifier

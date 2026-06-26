@@ -35,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.data.model.GitlabRule
 import website.msdnna.tessera.data.model.GitlabRules
 import website.msdnna.tessera.data.model.GitlabSetIntegrationRequest
+import website.msdnna.tessera.data.model.GitlabWriteback
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
@@ -79,7 +80,11 @@ private val MapActions = setOf("status", "priority", "board")
  *  integration (project → board, interval, due source) with a generic label
  *  rule editor, and run a manual sync. Mirrors the web `GitLabModal`. */
 @Composable
-fun GitLabSettingsScreen(workspaceId: String, vm: GitlabViewModel = viewModel(key = "gitlab")) {
+fun GitLabSettingsScreen(
+    workspaceId: String,
+    onOpenJournal: () -> Unit = {},
+    vm: GitlabViewModel = viewModel(key = "gitlab"),
+) {
     val c = Tessera.colors
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(workspaceId) { vm.loadAll(workspaceId) }
@@ -108,7 +113,7 @@ fun GitLabSettingsScreen(workspaceId: String, vm: GitlabViewModel = viewModel(ke
 
         if (state.connected && state.integration != null) {
             Spacer(Modifier.height(16.dp))
-            IntegrationCard(state, vm, workspaceId)
+            IntegrationCard(state, vm, workspaceId, onOpenJournal)
         }
         Spacer(Modifier.height(40.dp))
     }
@@ -147,7 +152,12 @@ private fun AccountCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUiStat
 }
 
 @Composable
-private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUiState, vm: GitlabViewModel, workspaceId: String) {
+private fun IntegrationCard(
+    state: website.msdnna.tessera.ui.viewmodels.GitlabUiState,
+    vm: GitlabViewModel,
+    workspaceId: String,
+    onOpenJournal: () -> Unit,
+) {
     val c = Tessera.colors
     val integ = state.integration!!
     var projectPath by remember(integ) { mutableStateOf(integ.projectPath) }
@@ -159,6 +169,10 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
     var defaultColumn by remember(integ) { mutableStateOf(integ.labelRules.defaultColumn) }
     var defaultAction by remember(integ) { mutableStateOf(integ.labelRules.defaultAction) }
     var tagKeepPrefix by remember(integ) { mutableStateOf(integ.labelRules.tagKeepPrefix) }
+    var wbEnabled by remember(integ) { mutableStateOf(integ.writeback.enabled) }
+    var wbState by remember(integ) { mutableStateOf(integ.writeback.pushState) }
+    var wbPriority by remember(integ) { mutableStateOf(integ.writeback.pushPriority) }
+    var wbComments by remember(integ) { mutableStateOf(integ.writeback.pushComments) }
     val rules = remember(integ) { mutableStateListOf<EditRule>().apply { addAll(integ.labelRules.rules.map { EditRule(it) }) } }
     // Prefill each prefix rule's friendly name from the loaded store (web GitLabModal
     // loadPrefixNames). Re-runs when the target project's names load / change.
@@ -192,6 +206,23 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
         TSelect(StartSourceOptions.find { it.first == startSource }?.second ?: "—", StartSourceOptions) { startSource = it }
     }
     Field("Включена") { TSwitch(enabled, { enabled = it }) }
+
+    // Write-back (Tessera → GitLab), opt-in; all off by default (web GitLabModal).
+    Spacer(Modifier.height(14.dp))
+    SectionLabel("Обратная запись в GitLab")
+    Field("Включить запись") { TSwitch(wbEnabled, { wbEnabled = it }) }
+    if (wbEnabled) {
+        Field("Статус (закрыть/открыть issue)") { TSwitch(wbState, { wbState = it }) }
+        Field("Приоритет (метка P:)") { TSwitch(wbPriority, { wbPriority = it }) }
+        Field("Комментарии (как заметки)") { TSwitch(wbComments, { wbComments = it }) }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Изменения линкованных задач отправляются в GitLab под токеном владельца " +
+                "интеграции (нужен scope «api»). Статус — только открыть/закрыть issue по " +
+                "границе колонки «Готово»; метки «S:» не трогаются.",
+            color = c.text3, fontSize = 12.sp,
+        )
+    }
 
     Spacer(Modifier.height(14.dp))
     SectionLabel("Правила меток")
@@ -241,6 +272,7 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
                         GitlabSetIntegrationRequest(
                             projectPath.trim(), bid, enabled, interval, dueSource, startSource,
                             GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
+                            GitlabWriteback(wbEnabled, wbState, wbPriority, wbComments),
                         ),
                     )
                 }
@@ -249,6 +281,14 @@ private fun IntegrationCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUi
             modifier = Modifier.weight(1f),
         )
     }
+    Spacer(Modifier.height(8.dp))
+    TButton(
+        "Журнал синхронизации",
+        onClick = onOpenJournal,
+        kind = TButtonKind.Ghost,
+        icon = Ion.TIME,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

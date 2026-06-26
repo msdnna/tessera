@@ -1,5 +1,6 @@
 package website.msdnna.tessera.data.model
 
+import com.google.gson.JsonObject
 import com.google.gson.annotations.SerializedName
 
 /** The current user's GitLab connection (the token itself is never returned). */
@@ -35,6 +36,16 @@ data class GitlabRules(
     val rules: List<GitlabRule> get() = rulesRaw.orEmpty()
 }
 
+/** Opt-in write-back (Tessera → GitLab) config; mirrors backend `gitlab.Writeback`.
+ *  All off by default. We round-trip the 4 toggles the editor exposes (the backend
+ *  also carries push_title_desc / column_label_bindings, deferred features). */
+data class GitlabWriteback(
+    @SerializedName("enabled") val enabled: Boolean = false,
+    @SerializedName("push_state") val pushState: Boolean = false,
+    @SerializedName("push_priority") val pushPriority: Boolean = false,
+    @SerializedName("push_comments") val pushComments: Boolean = false,
+)
+
 /** The workspace's GitLab integration config (mirrors backend `gitlabIntegrationView`). */
 data class GitlabIntegration(
     @SerializedName("configured") val configured: Boolean = false,
@@ -46,6 +57,7 @@ data class GitlabIntegration(
     @SerializedName("start_source") val startSource: String = "created",
     @SerializedName("last_synced_at") val lastSyncedAt: String? = null,
     @SerializedName("label_rules") val labelRules: GitlabRules = GitlabRules(),
+    @SerializedName("writeback") val writeback: GitlabWriteback = GitlabWriteback(),
 )
 
 data class GitlabSetIntegrationRequest(
@@ -56,10 +68,42 @@ data class GitlabSetIntegrationRequest(
     @SerializedName("due_source") val dueSource: String,
     @SerializedName("start_source") val startSource: String,
     @SerializedName("label_rules") val labelRules: GitlabRules,
+    @SerializedName("writeback") val writeback: GitlabWriteback,
 )
 
 data class GitlabSyncResult(
     @SerializedName("total") val total: Int = 0,
     @SerializedName("created") val created: Int = 0,
     @SerializedName("updated") val updated: Int = 0,
+)
+
+/** One sync-journal run header (mirrors backend `db.GitlabSyncRun`). `kind` =
+ *  pull|push, `trigger` = manual|auto, `status` = ok|partial|error|fail. */
+data class GitlabSyncRun(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("kind") val kind: String = "pull",
+    @SerializedName("trigger") val trigger: String = "auto",
+    @SerializedName("status") val status: String = "ok",
+    @SerializedName("created_count") val createdCount: Int = 0,
+    @SerializedName("updated_count") val updatedCount: Int = 0,
+    @SerializedName("deleted_count") val deletedCount: Int = 0,
+    @SerializedName("action_count") val actionCount: Int = 0,
+    @SerializedName("error") val error: String = "",
+    @SerializedName("started_at") val startedAt: String? = null,
+    @SerializedName("finished_at") val finishedAt: String? = null,
+)
+
+/** One action within a run (mirrors backend `syncActionDTO`). `detail` is the raw
+ *  before/after (pull) or payload/result (push) blob, rendered ad-hoc by the UI. */
+data class GitlabSyncAction(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("seq") val seq: Int = 0,
+    @SerializedName("direction") val direction: String = "pull",
+    @SerializedName("entity_type") val entityType: String = "",
+    @SerializedName("op") val op: String = "",
+    @SerializedName("gl_iid") val glIid: Long? = null,
+    @SerializedName("summary") val summary: String = "",
+    @SerializedName("detail") val detail: JsonObject? = null,
+    @SerializedName("status") val status: String = "ok",
+    @SerializedName("error") val error: String = "",
 )

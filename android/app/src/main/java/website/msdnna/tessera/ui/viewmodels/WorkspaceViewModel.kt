@@ -173,6 +173,12 @@ class WorkspaceViewModel(
         refreshSilently()
     }
 
+    /** Whether the colour paints the badge box ("badge") or the glyph ("icon"). */
+    fun setProjectIconMode(project: Project, mode: String) = launchCatching {
+        repo.updateProject(project, iconMode = mode)
+        refreshSilently()
+    }
+
     fun deleteProject(projectId: String) = launchCatching {
         repo.deleteProject(projectId)
         refreshSilently()
@@ -201,6 +207,12 @@ class WorkspaceViewModel(
 
     fun setGroupIcon(group: ProjectGroup, icon: String) = launchCatching {
         repo.updateGroup(group, icon = icon)
+        refreshSilently()
+    }
+
+    /** Whether the colour paints the badge box ("badge") or the glyph ("icon"). */
+    fun setGroupIconMode(group: ProjectGroup, mode: String) = launchCatching {
+        repo.updateGroup(group, iconMode = mode)
         refreshSilently()
     }
 

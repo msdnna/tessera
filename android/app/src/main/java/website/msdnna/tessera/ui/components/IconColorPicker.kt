@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -14,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.msdnna.tessera.ui.theme.Tessera
@@ -41,6 +43,8 @@ fun ColumnScopePicker(
     icon: String,
     onColor: (String) -> Unit,
     onIcon: (String) -> Unit,
+    iconMode: String? = null,
+    onIconMode: ((String) -> Unit)? = null,
 ) {
     val c = Tessera.colors
     val tint = parseHexColor(color, c.text2)
@@ -86,7 +90,41 @@ fun ColumnScopePicker(
         CuratedIconKeys.forEach { key ->
             val selected = icon == key
             IconTile(selected = selected, onClick = { onIcon(key) }) {
-                ProjectIcon(name = "", icon = key, color = color, size = 18.dp)
+                ProjectIcon(name = "", icon = key, color = color, size = 18.dp, iconMode = iconMode ?: "badge")
+            }
+        }
+    }
+
+    // Where the colour lands: the badge box (default) or the glyph itself.
+    if (onIconMode != null) {
+        TMenuDivider()
+        SectionLabel("Что красить")
+        ModeToggle(
+            mode = iconMode ?: "badge",
+            onMode = onIconMode,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/** Segmented "badge box vs glyph" toggle (web `.mode-toggle`). */
+@Composable
+private fun ModeToggle(mode: String, onMode: (String) -> Unit, modifier: Modifier = Modifier) {
+    val c = Tessera.colors
+    Row(
+        modifier.clip(RoundedCornerShape(6.dp)).background(c.surfaceAlt).padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        listOf("badge" to "Бейдж", "icon" to "Иконка").forEach { (key, label) ->
+            val active = (mode != "icon") == (key == "badge")
+            Box(
+                Modifier.weight(1f).clip(RoundedCornerShape(5.dp))
+                    .background(if (active) c.surface else Color.Transparent)
+                    .clickableNoRipple { onMode(key) }
+                    .padding(vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(label, color = if (active) c.text1 else c.text3, fontSize = 12.sp)
             }
         }
     }

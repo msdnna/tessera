@@ -324,17 +324,17 @@ private fun TreeCtx.commitProject(name: String, groupId: String?) {
 private fun buildFlat(state: WorkspaceUiState): List<SbNode> {
     val out = mutableListOf<SbNode>()
     fun walkGroup(g: ProjectGroup, depth: Int) {
-        out += SbNode(g.id, SbKind.GROUP, depth, g.parentId, g.name, g.icon, g.color)
+        out += SbNode(g.id, SbKind.GROUP, depth, g.parentId, g.name, g.icon, g.color, g.iconMode)
         if (g.id in state.expandedGroups) {
             state.childGroups(g.id).forEach { walkGroup(it, depth + 1) }
             state.projectsInGroup(g.id).forEach {
-                out += SbNode(it.id, SbKind.PROJECT, depth + 1, it.groupId, it.name, it.icon, it.color)
+                out += SbNode(it.id, SbKind.PROJECT, depth + 1, it.groupId, it.name, it.icon, it.color, it.iconMode)
             }
         }
     }
     state.childGroups(null).forEach { walkGroup(it, 0) }
     state.projectsInGroup(null).forEach {
-        out += SbNode(it.id, SbKind.PROJECT, 0, it.groupId, it.name, it.icon, it.color)
+        out += SbNode(it.id, SbKind.PROJECT, 0, it.groupId, it.name, it.icon, it.color, it.iconMode)
     }
     return out
 }
@@ -365,7 +365,7 @@ private fun NavRow(icon: String, label: String, active: Boolean, onClick: () -> 
 @Composable
 private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
     val expanded = group.id in ctx.state.expandedGroups
-    val node = SbNode(group.id, SbKind.GROUP, depth, group.parentId, group.name, group.icon, group.color)
+    val node = SbNode(group.id, SbKind.GROUP, depth, group.parentId, group.name, group.icon, group.color, group.iconMode)
     TreeRow(
         node = node,
         expanded = expanded,
@@ -394,6 +394,8 @@ private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
                 icon = group.icon,
                 onColor = { ctx.vm.setGroupColor(group, it) },
                 onIcon = { ctx.vm.setGroupIcon(group, it) },
+                iconMode = group.iconMode,
+                onIconMode = { ctx.vm.setGroupIconMode(group, it) },
             )
         },
         deleteMessage = "Удалить «${group.name}»? Подгруппы вложатся выше, проекты станут без группы.",
@@ -418,7 +420,7 @@ private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
 private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
     val c = Tessera.colors
     val expanded = project.id in ctx.state.expandedProjects
-    val node = SbNode(project.id, SbKind.PROJECT, depth, project.groupId, project.name, project.icon, project.color)
+    val node = SbNode(project.id, SbKind.PROJECT, depth, project.groupId, project.name, project.icon, project.color, project.iconMode)
     var estimating by remember { mutableStateOf(false) }
     TreeRow(
         node = node,
@@ -447,6 +449,8 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                 icon = project.icon,
                 onColor = { ctx.vm.setProjectColor(project, it) },
                 onIcon = { ctx.vm.setProjectIcon(project, it) },
+                iconMode = project.iconMode,
+                onIconMode = { ctx.vm.setProjectIconMode(project, it) },
             )
         },
         deleteMessage = "Проект «${project.name}» будет удалён со всеми досками и задачами. Действие необратимо.",
@@ -581,7 +585,7 @@ private fun TreeRow(
         }
         Spacer(Modifier.width(4.dp))
         Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-            ProjectIcon(name = node.name, icon = node.icon, color = node.color, size = 20.dp, fallbackFolder = fallbackFolder)
+            ProjectIcon(name = node.name, icon = node.icon, color = node.color, size = 20.dp, fallbackFolder = fallbackFolder, iconMode = node.iconMode)
         }
         Spacer(Modifier.width(9.dp))
         if (renaming) {

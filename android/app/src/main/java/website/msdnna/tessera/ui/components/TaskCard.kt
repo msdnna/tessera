@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.theme.PriorityColors
@@ -607,8 +609,30 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
                 }
             }
         }
-        TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            state.members.forEach { m ->
+        var query by remember { mutableStateOf("") }
+        LaunchedEffect(menu) { if (!menu) query = "" }
+        val recent by AppContainer.prefs.recentAssignees.collectAsState(initial = emptyList())
+        // No query: assigned → recently-picked (MRU) → alphabetical, deduped and
+        // capped at 10 (never hiding a current assignee). With a query: name filter.
+        // Mirrors web TaskCard pickerMembers.
+        val pickerMembers = remember(query, recent, state.members, task.assigneeIds) {
+            val q = query.trim().lowercase()
+            if (q.isNotBlank()) {
+                state.members.filter { it.name.lowercase().contains(q) }
+            } else {
+                val byId = state.members.associateBy { it.userId }
+                val out = LinkedHashMap<String, website.msdnna.tessera.data.model.Member>()
+                (task.assigneeIds + recent + state.members.sortedBy { it.name.lowercase() }.map { it.userId })
+                    .forEach { id -> byId[id]?.let { out.putIfAbsent(id, it) } }
+                out.values.toList().take(maxOf(10, task.assigneeIds.size))
+            }
+        }
+        TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
+            TTextField(
+                query, { query = it }, placeholder = "Поиск…",
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+            pickerMembers.forEach { m ->
                 val on = m.userId in task.assigneeIds
                 Row(
                     Modifier.fillMaxWidth().clickableNoRipple { vm.toggleAssignee(task, m.userId) }

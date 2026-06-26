@@ -25,10 +25,13 @@ import website.msdnna.tessera.util.classifyIcon
 import website.msdnna.tessera.util.parseHexColor
 
 /**
- * Project / group glyph mirroring the web `ProjectIcon`:
- *  - curated key → a bundled ionicon tinted with the entity colour;
- *  - raw SVG / data-URL image → rendered via Coil;
- *  - empty → a folder (groups) or a coloured initials tile (projects).
+ * Project / group glyph mirroring the web `ProjectIcon` + the parent's badge box.
+ * The colour lands on the BOX (`iconMode == "badge"`, default) or on the GLYPH
+ * (`iconMode == "icon"`), per the per-entity toggle (backend `icon_mode`):
+ *  - badge + colour → a soft-gradient tile with a neutral (white/dark) glyph;
+ *  - icon  / no colour → a transparent box with the glyph tinted (or neutral);
+ *  - raw SVG / data-URL image → rendered via Coil, untinted (own colours);
+ *  - empty → a folder (groups) or initials (projects).
  */
 @Composable
 fun ProjectIcon(
@@ -38,12 +41,34 @@ fun ProjectIcon(
     modifier: Modifier = Modifier,
     size: Dp = 22.dp,
     fallbackFolder: Boolean = false,
+    iconMode: String = "badge",
 ) {
     val c = Tessera.colors
-    val tint = parseHexColor(color, c.text2)
-    val hasColor = color.isNotBlank()
-    when (val kind = classifyIcon(icon)) {
-        is IconKind.Curated -> IonIcon(kind.ion, modifier = modifier, size = size, tint = tint, gradient = hasColor)
+    val parsed = parseHexColor(color, c.text2)
+    val hasColor = color.isNotBlank() && !color.equals("transparent", ignoreCase = true)
+    val kind = classifyIcon(icon)
+    val tintableGlyph = kind is IconKind.Curated || (kind is IconKind.None && fallbackFolder)
+    val badge = iconMode != "icon" && hasColor && tintableGlyph
+
+    // Badge mode: the colour fills the box, the glyph rides neutral (web `.gicon`).
+    if (badge) {
+        val onBox = if (parsed.luminance() > 0.6f) Color(0xFF1F1F1F) else Color.White
+        Box(
+            modifier.size(size).clip(RoundedCornerShape(5.dp)).background(accentGradient(parsed)),
+            contentAlignment = Alignment.Center,
+        ) {
+            val glyph = (kind as? IconKind.Curated)?.ion ?: Ion.FOLDER
+            IonIcon(glyph, size = size * 0.66f, tint = onBox)
+        }
+        return
+    }
+
+    // Transparent box (icon mode, or no colour): the glyph carries the colour.
+    val glyphTint = if (iconMode == "icon" && hasColor) parsed else c.text2
+    when (kind) {
+        is IconKind.Curated -> IonIcon(
+            kind.ion, modifier = modifier, size = size, tint = glyphTint, gradient = iconMode == "icon" && hasColor,
+        )
 
         is IconKind.Svg -> AsyncImage(
             model = ByteBuffer.wrap(kind.markup.toByteArray(Charsets.UTF_8)),
@@ -58,22 +83,30 @@ fun ProjectIcon(
         )
 
         IconKind.None -> if (fallbackFolder) {
-            IonIcon(Ion.FOLDER, modifier = modifier, size = size, tint = c.text3)
+            IonIcon(Ion.FOLDER, modifier = modifier, size = size, tint = if (iconMode == "icon" && hasColor) parsed else c.text3)
         } else {
-            InitialsTile(name, color, modifier, size)
+            InitialsTile(name, color, modifier, size, plain = iconMode == "icon" && hasColor)
         }
     }
 }
 
 @Composable
-private fun InitialsTile(name: String, color: String, modifier: Modifier, size: Dp) {
-    val tile = parseHexColor(color, Tessera.colors.primary)
+private fun InitialsTile(name: String, color: String, modifier: Modifier, size: Dp, plain: Boolean = false) {
+    val c = Tessera.colors
+    val glyph = name.trim().take(2).uppercase().ifBlank { "?" }
+    // Icon mode: initials are plain tinted text (no box). Otherwise a coloured tile.
+    if (plain) {
+        Box(modifier.size(size), contentAlignment = Alignment.Center) {
+            Text(glyph, color = parseHexColor(color, c.primary), fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.SemiBold)
+        }
+        return
+    }
+    val tile = parseHexColor(color, c.primary)
     val onTile = if (tile.luminance() > 0.6f) Color(0xFF1F1F1F) else Color.White
     Box(
         modifier.size(size).clip(RoundedCornerShape(6.dp)).background(accentGradient(tile)),
         contentAlignment = Alignment.Center,
     ) {
-        val glyph = name.trim().take(2).uppercase().ifBlank { "?" }
         Text(glyph, color = onTile, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.SemiBold)
     }
 }

@@ -32,6 +32,7 @@ data class ProjectGroup(
     @SerializedName("name") val name: String = "",
     @SerializedName("icon") val icon: String = "",
     @SerializedName("color") val color: String = "",
+    @SerializedName("icon_mode") val iconMode: String = "badge",
     @SerializedName("position") val position: Double = 0.0,
 )
 
@@ -43,6 +44,7 @@ data class Project(
     @SerializedName("name") val name: String = "",
     @SerializedName("icon") val icon: String = "",
     @SerializedName("color") val color: String = "",
+    @SerializedName("icon_mode") val iconMode: String = "badge",
     @SerializedName("position") val position: Double = 0.0,
     @SerializedName("estimation") val estimation: EstimationConfig? = null,
 )
@@ -94,12 +96,14 @@ data class UpdateProjectRequest(
     @SerializedName("color") val color: String = "",
     @SerializedName("icon") val icon: String = "",
     @SerializedName("group_id") val groupId: String? = null,
+    @SerializedName("icon_mode") val iconMode: String = "badge",
 )
 
 data class UpdateGroupRequest(
     @SerializedName("name") val name: String,
     @SerializedName("color") val color: String = "",
     @SerializedName("icon") val icon: String = "",
+    @SerializedName("icon_mode") val iconMode: String = "badge",
 )
 
 /** Re-parents and/or repositions a group among its siblings (server computes the

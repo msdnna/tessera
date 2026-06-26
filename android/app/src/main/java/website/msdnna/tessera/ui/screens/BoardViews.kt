@@ -1233,6 +1233,21 @@ private val TL_DAY_W = 30.dp
 private val TL_ROW_H = 38.dp
 private val TL_LEFT_W = 168.dp
 
+// Subtask sub-bars stack below the parent bar within the same row; each adds one
+// step to the row height (web SUB_STEP/SUB_TOP0). The parent bar is 24dp tall at
+// y=7 (bottom 31), so the first sub-bar tops at ~33.
+private val TL_SUB_STEP = 18.dp // sub-bar height (14) + gap (4)
+private val TL_SUB_H = 14.dp
+private val TL_SUB_TOP0 = 33.dp
+
+/** Scheduled subtasks (with a start or due) of [task], drawn as thin sub-bars. */
+private fun tlSubBars(state: BoardUiState, task: Task): List<Task> =
+    state.subtasksOf(task.id).filter { it.startDate != null || it.dueDate != null }
+
+/** Row height grows by one step per scheduled subtask sub-bar (web rowHeight). */
+private fun tlRowHeight(state: BoardUiState, task: Task): androidx.compose.ui.unit.Dp =
+    TL_ROW_H + TL_SUB_STEP * tlSubBars(state, task).size
+
 // Header = month band + day band; lane (group) header band. The left fixed column
 // and the right scrolling grid of every row must share the same height or the grid
 // "slides" out of alignment with the day numbers.
@@ -1790,28 +1805,29 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     }
     // Row-top (Dp) of every task, walking lanes in render order, so the arrow
     // Canvas geometry matches the bar rows (offsets independent of composition).
-    val rowTops = remember(lanes) {
+    val rowTops = remember(lanes, state.subtasks) {
         val m = LinkedHashMap<String, Dp>()
         var y = 0.dp
         for (lane in lanes) {
             y += TL_LANE_H
             for (t in lane.tasks) {
                 m[t.id] = y
-                y += TL_ROW_H
+                y += tlRowHeight(state, t)
             }
         }
         m
     }
     // Absolute px-top of every LazyColumn item (lane headers + tasks), so the arrow
-    // Canvas can map a row to its on-screen Y from the list's scroll offset.
-    val itemTopsPx = remember(bodyRows, density) {
+    // Canvas can map a row to its on-screen Y from the list's scroll offset. Task
+    // rows grow with their scheduled sub-bars, so use the per-task height.
+    val itemTopsPx = remember(bodyRows, state.subtasks, density) {
         val laneH = with(density) { TL_LANE_H.toPx() }
-        val rowH = with(density) { TL_ROW_H.toPx() }
         val out = FloatArray(bodyRows.size + 1)
         var y = 0f
         for (i in bodyRows.indices) {
             out[i] = y
-            y += if (bodyRows[i] is TlLaneHeaderRow) laneH else rowH
+            val row = bodyRows[i]
+            y += if (row is TlTaskRow) with(density) { tlRowHeight(state, row.task).toPx() } else laneH
         }
         out[bodyRows.size] = y
         out
@@ -2256,27 +2272,31 @@ private fun LazyListScope.timelineBodyItems(
                 val t = row.task
                 val (barLeft, barWidth) = barGeom(t)
                 val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
+                val subs = tlSubBars(state, t)
+                val rowH = TL_ROW_H + TL_SUB_STEP * subs.size
                 Row(Modifier.tlRowBorders(leftW, c.border.copy(alpha = 0.6f), c.border)) {
-                    Row(
-                        Modifier.width(leftW).height(TL_ROW_H).clipToBounds()
-                            .clickableNoRipple { onOpenTask(t) }
-                            .padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp))
-                                .background(accentGradient(accent)),
-                        )
-                        Spacer(Modifier.width(7.dp))
-                        Text(
-                            t.title,
-                            color = if (t.isCompleted) c.text3 else c.text1,
-                            fontSize = 13.sp, maxLines = 1,
-                            textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
-                        )
+                    // Left label sits in the parent-bar band (top TL_ROW_H) of the taller
+                    // row, so it lines up with the parent bar rather than the sub-bars.
+                    Box(Modifier.width(leftW).height(rowH).clipToBounds().clickableNoRipple { onOpenTask(t) }) {
+                        Row(
+                            Modifier.fillMaxWidth().height(TL_ROW_H).padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp))
+                                    .background(accentGradient(accent)),
+                            )
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                t.title,
+                                color = if (t.isCompleted) c.text3 else c.text1,
+                                fontSize = 13.sp, maxLines = 1,
+                                textDecoration = if (t.isCompleted) TextDecoration.LineThrough else null,
+                            )
+                        }
                     }
                     Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                        Box(Modifier.width(axisW).height(TL_ROW_H).tlGrid(majorPx, minorPx, gridColor, hScroll, viewportPx)) {
+                        Box(Modifier.width(axisW).height(rowH).tlGrid(majorPx, minorPx, gridColor, hScroll, viewportPx)) {
                             Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
                             Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
                                 val lbl = Estimation.format(t.estimate, state.estimation)
@@ -2296,6 +2316,29 @@ private fun LazyListScope.timelineBodyItems(
                                     t.title, color = Color.White, fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium, maxLines = 1,
                                 )
+                            }
+                            // Scheduled subtasks: thin priority-coloured bars stacked under
+                            // the parent, a surface border separating same-colour children.
+                            subs.forEachIndexed { i, s ->
+                                val (sLeft, sWidth) = barGeom(s)
+                                val sAccent = PriorityColors.getOrElse(s.priority) { PriorityColors[0] }
+                                Box(
+                                    Modifier.offset(x = sLeft, y = TL_SUB_TOP0 + TL_SUB_STEP * i)
+                                        .width(sWidth).height(TL_SUB_H)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .alpha(if (s.isCompleted) 0.5f else 1f)
+                                        .background(accentGradient(sAccent))
+                                        .border(1.dp, c.surface, RoundedCornerShape(4.dp))
+                                        .clickableNoRipple { onOpenTask(s) }
+                                        .padding(horizontal = 5.dp),
+                                    contentAlignment = Alignment.CenterStart,
+                                ) {
+                                    Text(
+                                        s.title, color = Color.White, fontSize = 9.sp,
+                                        maxLines = 1,
+                                        textDecoration = if (s.isCompleted) TextDecoration.LineThrough else null,
+                                    )
+                                }
                             }
                         }
                     }

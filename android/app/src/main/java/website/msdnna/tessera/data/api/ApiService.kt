@@ -553,4 +553,22 @@ interface ApiService {
     suspend fun gitlabSync(
         @Path("id") workspaceId: String,
     ): website.msdnna.tessera.data.model.GitlabSyncResult
+
+    @GET("workspaces/{id}/gitlab/sync-runs")
+    suspend fun gitlabSyncRuns(
+        @Path("id") workspaceId: String,
+    ): List<website.msdnna.tessera.data.model.GitlabSyncRun>?
+
+    @GET("workspaces/{id}/gitlab/sync-runs/{runId}/actions")
+    suspend fun gitlabSyncActions(
+        @Path("id") workspaceId: String,
+        @Path("runId") runId: String,
+    ): List<website.msdnna.tessera.data.model.GitlabSyncAction>?
+
+    @POST("workspaces/{id}/gitlab/sync-runs/{runId}/actions/{actionId}/retry")
+    suspend fun gitlabRetryWriteback(
+        @Path("id") workspaceId: String,
+        @Path("runId") runId: String,
+        @Path("actionId") actionId: String,
+    )
 }
