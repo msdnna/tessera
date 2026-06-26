@@ -154,14 +154,35 @@ class GitlabViewModel : ViewModel() {
     fun sync(workspaceId: String) {
         viewModelScope.launch {
             _state.update { it.copy(syncing = true, error = null) }
+            // The sync now runs in the background server-side (a large batch used to
+            // drop the long request). Kick it off, then poll the journal for the run
+            // to finish so we can still show totals.
+            val baselineId = runCatching { repo.syncRuns(workspaceId).firstOrNull()?.id }.getOrNull()
             try {
-                val r = repo.sync(workspaceId)
-                _state.update {
-                    it.copy(syncing = false, message = "Синхронизировано: ${r.total} (+${r.created}, ~${r.updated})")
-                }
+                repo.sync(workspaceId)
             } catch (e: Exception) {
                 _state.update { it.copy(syncing = false, error = errorMessage(e)) }
+                return@launch
             }
+            repeat(900) {
+                // 900 × 2s ≈ 30 min cap
+                kotlinx.coroutines.delay(2000)
+                val runs = runCatching { repo.syncRuns(workspaceId) }.getOrNull() ?: return@repeat
+                val run = runs.firstOrNull { it.kind == "pull" && it.finishedAt != null && it.id != baselineId }
+                    ?: return@repeat
+                _state.update {
+                    if (run.status == "error") {
+                        it.copy(syncing = false, error = "Синхронизация не удалась: ${run.error.ifBlank { "ошибка" }}")
+                    } else {
+                        it.copy(
+                            syncing = false,
+                            message = "Синхронизировано: ${run.createdCount + run.updatedCount} (+${run.createdCount}, ~${run.updatedCount})",
+                        )
+                    }
+                }
+                return@launch
+            }
+            _state.update { it.copy(syncing = false, message = "Синхронизация выполняется в фоне — см. журнал") }
         }
     }
 

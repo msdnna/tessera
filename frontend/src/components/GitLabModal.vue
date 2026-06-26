@@ -104,9 +104,9 @@ const targetProjectId = computed(() => boardProject.value[boardId.value] || null
 const columnOptions = ref([])
 const saving = ref(false)
 const syncing = ref(false)
-// The sync endpoint is a single blocking call (totals only come back at the end),
-// so we can't stream live per-task progress — friendly cross-fading captions
-// instead, on the same branded LoaderOverlay used by the connection overlay.
+// The sync runs in the background (so a large batch can't drop the long request);
+// we poll the journal for the result. Meanwhile, friendly cross-fading captions on
+// the same branded LoaderOverlay used by the connection overlay.
 const SYNC_MESSAGES = [
   'Подключаемся к GitLab…',
   'Загружаем задачи из проектов…',
@@ -349,10 +349,47 @@ async function save() {
 async function syncNow() {
   syncing.value = true
   try {
-    const { data } = await glApi.sync(props.wsId)
-    lastSynced.value = new Date().toISOString()
-    message.success(`Синхронизировано: ${data.total} задач (+${data.created} новых, ${data.updated} обновлено)`)
-    emit('synced')
+    // Baseline: the newest existing run, so we can tell our new run apart.
+    let baseline = 0
+    try {
+      const prev = (await glApi.syncRuns(props.wsId, 1)).data || []
+      if (prev[0]) baseline = new Date(prev[0].started_at).getTime()
+    } catch {
+      /* journal not critical for starting */
+    }
+    // The sync now runs in the background (large batches used to drop the long
+    // request). Kick it off, then poll the journal for the run to finish.
+    await glApi.sync(props.wsId)
+    const startedAt = Date.now()
+    const MAX_MS = 30 * 60 * 1000
+    let settled = false
+    while (Date.now() - startedAt < MAX_MS) {
+      await new Promise((r) => setTimeout(r, 2000))
+      let runs
+      try {
+        runs = (await glApi.syncRuns(props.wsId, 5)).data || []
+      } catch {
+        continue
+      }
+      const run = runs.find(
+        (r) => r.kind === 'pull' && r.finished_at && new Date(r.started_at).getTime() > baseline,
+      )
+      if (!run) continue
+      settled = true
+      if (run.status === 'error') {
+        message.error('Синхронизация не удалась: ' + (run.error || 'ошибка'))
+      } else {
+        const created = run.created_count || 0
+        const updated = run.updated_count || 0
+        lastSynced.value = run.finished_at
+        message.success(`Синхронизировано: ${created + updated} задач (+${created} новых, ${updated} обновлено)`)
+        emit('synced')
+      }
+      break
+    }
+    if (!settled) {
+      message.info('Синхронизация выполняется в фоне — результат появится в журнале')
+    }
   } catch (e) {
     message.error(e.message)
   } finally {

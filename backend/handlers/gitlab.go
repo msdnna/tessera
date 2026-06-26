@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -97,13 +98,13 @@ func (h *API) DisconnectGitlab(c *gin.Context) {
 // gitlabIntegrationView is the JSON shape returned to the client (label_rules
 // decoded from JSONB into the typed rule engine config).
 type gitlabIntegrationView struct {
-	Configured      bool         `json:"configured"`
-	ProjectPath     string       `json:"project_path"`
-	BoardID         *uuid.UUID   `json:"board_id"`
-	Enabled         bool         `json:"enabled"`
-	SyncIntervalSec int32        `json:"sync_interval_sec"`
-	DueSource       string       `json:"due_source"`
-	StartSource     string       `json:"start_source"`
+	Configured      bool             `json:"configured"`
+	ProjectPath     string           `json:"project_path"`
+	BoardID         *uuid.UUID       `json:"board_id"`
+	Enabled         bool             `json:"enabled"`
+	SyncIntervalSec int32            `json:"sync_interval_sec"`
+	DueSource       string           `json:"due_source"`
+	StartSource     string           `json:"start_source"`
 	LastSyncedAt    *time.Time       `json:"last_synced_at"`
 	LabelRules      gitlab.Rules     `json:"label_rules"`
 	Writeback       gitlab.Writeback `json:"writeback"`
@@ -263,13 +264,27 @@ func (h *API) SyncGitlab(c *gin.Context) {
 		return
 	}
 
-	created, updated, err := h.runSync(c, integ, cred, uid, "manual")
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "GitLab sync failed: " + err.Error()})
+	// A large batch can take minutes — run it detached from the request so no proxy
+	// read-timeout (or browser) drops the long connection mid-sync. The client polls
+	// the sync journal for the result. Guarded so a manual + auto run don't overlap.
+	if _, busy := runningSyncs.LoadOrStore(integ.ID, struct{}{}); busy {
+		c.JSON(http.StatusAccepted, gin.H{"started": false, "already_running": true})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"total": created + updated, "created": created, "updated": updated})
+	go func() {
+		defer runningSyncs.Delete(integ.ID)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		if _, _, serr := h.runSync(ctx, integ, cred, uid, "manual"); serr != nil {
+			log.Printf("gitlab manual-sync ws=%s: %v", integ.WorkspaceID, serr)
+		}
+	}()
+	c.JSON(http.StatusAccepted, gin.H{"started": true})
 }
+
+// runningSyncs guards against two runSync calls for the same integration running
+// at once (manual button + auto worker, or a double-click). Key = integration id.
+var runningSyncs sync.Map
 
 // syncBoard caches a board's columns + done column during a sync run.
 type syncBoard struct {
@@ -498,7 +513,12 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		if err != nil {
 			continue // owner disconnected — skip until reconfigured
 		}
+		// Skip if a manual (or previous auto) run for this integration is in flight.
+		if _, busy := runningSyncs.LoadOrStore(integ.ID, struct{}{}); busy {
+			continue
+		}
 		created, updated, serr := h.runSync(ctx, integ, cred, *integ.OwnerUserID, "auto")
+		runningSyncs.Delete(integ.ID)
 		if serr != nil {
 			log.Printf("gitlab auto-sync ws=%s: %v", integ.WorkspaceID, serr)
 			continue
