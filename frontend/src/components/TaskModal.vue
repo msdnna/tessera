@@ -49,6 +49,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
+import { toggleTaskMarker } from '@/utils/markdown'
 import {
   formatEstimate,
   formatEstimateFull,
@@ -679,6 +680,20 @@ async function deleteComment(id) {
     message.error(e.message)
   }
 }
+// Toggle a task checkbox inside a rendered (own) comment → rewrite its markdown
+// and persist. Optimistic; reverts on failure.
+async function onCommentCheck(c, i) {
+  const prev = c.body
+  const next = toggleTaskMarker(prev, i)
+  if (next === prev) return
+  c.body = next
+  try {
+    await tasksApi.updateComment(c.id, next)
+  } catch (e) {
+    c.body = prev
+    message.error(e.message)
+  }
+}
 
 // ── relations (by #N) ──
 function relKindLabel(k) {
@@ -1150,6 +1165,7 @@ function eventText(e) {
               :min-rows="3"
               :initial-mode="descInitialMode"
               @blur="saveDesc"
+              @persist="saveDesc"
             />
           </div>
 
@@ -1213,7 +1229,14 @@ function eventText(e) {
                         <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
                       </n-space>
                     </template>
-                    <RichContent v-else class="c-text" :source="c.body" :members="mentionItems" />
+                    <RichContent
+                      v-else
+                      class="c-text"
+                      :source="c.body"
+                      :members="mentionItems"
+                      :interactive="c.author_id === meId"
+                      @toggle="onCommentCheck(c, $event)"
+                    />
                   </div>
                 </div>
                 <div v-if="!comments.length" class="empty-hint">Комментариев пока нет</div>

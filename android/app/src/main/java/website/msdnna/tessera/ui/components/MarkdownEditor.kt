@@ -54,6 +54,7 @@ import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.toggleTaskMarker
 
 /** Snippet inserted by the mermaid toolbar button (matches the web editor). */
 private const val MERMAID_SNIPPET = "\n```mermaid\ngraph TD\n  A[Старт] --> B[Готово]\n```\n"
@@ -154,7 +155,17 @@ fun MarkdownEditor(
                 if (value.isBlank()) {
                     Text(placeholder, color = c.placeholder, fontSize = 14.sp)
                 } else {
-                    RichContent(value, mentions = mentions)
+                    // Ticking a checkbox in preview rewrites the markdown marker and
+                    // persists via onBlur (the description/comment save path).
+                    RichContent(
+                        value,
+                        mentions = mentions,
+                        interactive = true,
+                        onToggleCheck = { i ->
+                            onValueChange(toggleTaskMarker(value, i))
+                            onBlur?.invoke()
+                        },
+                    )
                 }
             }
         } else {
@@ -179,7 +190,9 @@ fun MarkdownEditor(
                 BasicTextField(
                     value = tfv,
                     onValueChange = ::update,
-                    textStyle = TextStyle(color = c.text1, fontSize = 14.sp, lineHeight = 21.sp),
+                    // Monospace so indentation (nested lists) lines up while editing;
+                    // the field auto-grows to its content (no fixed height/scroll).
+                    textStyle = TextStyle(color = c.text1, fontSize = 13.sp, lineHeight = 20.sp, fontFamily = FontFamily.Monospace),
                     cursorBrush = SolidColor(c.primary),
                     modifier = Modifier
                         .fillMaxWidth()

@@ -10,7 +10,11 @@ const props = defineProps({
   source: { type: String, default: '' },
   members: { type: Array, default: () => [] },
   empty: { type: String, default: '' },
+  // When true, GFM task-list checkboxes become clickable; clicking emits `toggle`
+  // with the checkbox index so the parent can rewrite the stored markdown.
+  interactive: { type: Boolean, default: false },
 })
+const emit = defineEmits(['toggle'])
 
 const theme = useThemeStore()
 const root = ref(null)
@@ -19,9 +23,29 @@ let mermaidMod = null
 let seq = 0 // guards against out-of-order async renders
 
 function build() {
-  const out = renderRich(props.source, props.members)
+  let out = renderRich(props.source, props.members)
+  // Interactive: drop the `disabled` marked stamps on task checkboxes so they
+  // can receive clicks (the markdown rewrite is the source of truth, not the DOM).
+  if (props.interactive && out) {
+    out = out.replace(
+      /<input\b([^>]*\btype="checkbox"[^>]*)>/gi,
+      (_, attrs) => `<input${attrs.replace(/\s*disabled(="")?/gi, '')}>`,
+    )
+  }
   html.value = out || (props.empty ? `<em class="rc-empty">${props.empty}</em>` : '')
   nextTick(renderMermaid)
+}
+
+// Delegate checkbox clicks → toggle the matching marker in the source markdown.
+function onClick(e) {
+  if (!props.interactive) return
+  const t = e.target
+  if (t && t.tagName === 'INPUT' && t.type === 'checkbox') {
+    e.preventDefault()
+    const boxes = [...root.value.querySelectorAll('input[type="checkbox"]')]
+    const i = boxes.indexOf(t)
+    if (i >= 0) emit('toggle', i)
+  }
 }
 
 async function renderMermaid() {
@@ -67,10 +91,48 @@ onMounted(build)
 
 <template>
   <!-- eslint-disable-next-line vue/no-v-html -->
-  <div ref="root" class="md" v-html="html" />
+  <div ref="root" class="md" :class="{ interactive }" @click="onClick" v-html="html" />
 </template>
 
 <style scoped>
+/* App-styled GFM task checkboxes: square, accent-tinted, aligned to the line.
+   Interactive mode makes them clickable (pointer); read-only stays default. */
+.md :deep(li.task-list-item),
+.md :deep(li:has(> input[type='checkbox'])) {
+  list-style: none;
+}
+.md :deep(input[type='checkbox']) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0 7px 0 0;
+  vertical-align: -2px;
+  border: 1.5px solid var(--t-border-strong, var(--t-text3));
+  border-radius: 4px;
+  background: var(--t-surface);
+  cursor: default;
+  position: relative;
+  flex: none;
+}
+.md :deep(input[type='checkbox']:checked) {
+  border-color: transparent;
+  background: var(--t-accent-grad, var(--t-primary));
+}
+.md :deep(input[type='checkbox']:checked)::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--t-on-primary, #fff);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.md.interactive :deep(input[type='checkbox']) {
+  cursor: pointer;
+}
 .md :deep(.mermaid-diagram) {
   display: flex;
   justify-content: center;

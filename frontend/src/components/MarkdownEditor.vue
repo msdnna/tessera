@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { NIcon, useMessage } from 'naive-ui'
 import { LinkOutline, ImageOutline, GitNetworkOutline } from '@vicons/ionicons5'
 import { uploads as uploadsApi } from '@/api'
+import { toggleTaskMarker } from '@/utils/markdown'
 import RichContent from './RichContent.vue'
 
 const props = defineProps({
@@ -15,7 +16,7 @@ const props = defineProps({
   // e.g. when a different task loads). User tab clicks override locally.
   initialMode: { type: String, default: 'write' },
 })
-const emit = defineEmits(['update:modelValue', 'submit', 'blur'])
+const emit = defineEmits(['update:modelValue', 'submit', 'blur', 'persist'])
 
 const message = useMessage()
 const mode = ref(props.initialMode) // 'write' | 'preview'
@@ -32,6 +33,27 @@ const picked = ref([])
 
 function setValue(v) {
   emit('update:modelValue', v)
+}
+
+// Auto-grow: the textarea height follows its content so long text isn't trapped
+// behind an inner scrollbar (the modal scrolls instead).
+function autoGrow() {
+  const el = ta.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+watch(() => props.modelValue, () => nextTick(autoGrow))
+watch(mode, (m) => {
+  if (m === 'write') nextTick(autoGrow)
+})
+onMounted(() => nextTick(autoGrow))
+
+// Preview checkbox toggle: rewrite the matching task marker in the markdown and
+// ask the parent to persist (description save / comment update).
+function onToggleCheck(i) {
+  setValue(toggleTaskMarker(props.modelValue, i))
+  emit('persist')
 }
 
 // ── markdown formatting (applied to the textarea selection) ──
@@ -273,6 +295,7 @@ function pickMention(item) {
 
 function onInput(e) {
   setValue(e.target.value)
+  autoGrow()
   detectMention()
   hideBubble()
 }
@@ -410,7 +433,9 @@ defineExpose({ getMentions, clear, focus })
       class="md2-preview"
       :source="modelValue"
       :members="mentionItems"
+      interactive
       empty="Нечего показать"
+      @toggle="onToggleCheck"
     />
     </Transition>
   </div>
@@ -490,12 +515,15 @@ defineExpose({ getMentions, clear, focus })
   box-sizing: border-box;
   border: none;
   outline: none;
-  resize: vertical;
+  /* Auto-grows to its content (height set in JS); no inner scrollbar. */
+  resize: none;
+  overflow: hidden;
   padding: 2px 0;
   background: transparent;
   color: var(--t-text1);
-  font: inherit;
-  font-size: 14px;
+  /* Monospace so indentation (nested lists) lines up while editing. */
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
   line-height: 1.55;
   min-height: calc(v-bind(minRows) * 1.55em);
 }

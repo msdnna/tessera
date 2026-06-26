@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,14 +49,22 @@ fun RichContent(
     source: String,
     modifier: Modifier = Modifier,
     mentions: List<String> = emptyList(),
+    // When true, GFM task checkboxes become clickable; a click reports the box
+    // index via [onToggleCheck] so the caller can rewrite the stored markdown.
+    interactive: Boolean = false,
+    onToggleCheck: ((Int) -> Unit)? = null,
 ) {
     val c = Tessera.colors
     val ctx = LocalContext.current
     val serverRoot = RetrofitClient.serverRoot
     var heightDp by remember { mutableStateOf(1) }
+    // Latest callback, so the long-lived JS bridge always calls the current one.
+    val toggleCb by rememberUpdatedState(onToggleCheck)
 
-    // Rebuild the document whenever the source, theme or mention list changes.
-    val html = remember(source, c.isDark, mentions) { buildRichHtml(source, c, serverRoot, mentions) }
+    // Rebuild the document whenever the source, theme, mentions or mode changes.
+    val html = remember(source, c.isDark, mentions, interactive) {
+        buildRichHtml(source, c, serverRoot, mentions, interactive)
+    }
 
     AndroidView(
         modifier = modifier.fillMaxWidth().height(heightDp.dp),
@@ -72,6 +81,11 @@ fun RichContent(
                         @JavascriptInterface
                         fun onHeight(px: Int) {
                             post { heightDp = px.coerceIn(1, 6000) }
+                        }
+
+                        @JavascriptInterface
+                        fun onCheckToggle(index: Int) {
+                            post { toggleCb?.invoke(index) }
                         }
                     },
                     "AndroidRich",
@@ -126,7 +140,13 @@ private fun hex(c: Color): String =
     String.format(Locale.US, "#%02X%02X%02X", (c.red * 255).roundToInt(), (c.green * 255).roundToInt(), (c.blue * 255).roundToInt())
 
 /** Builds a self-contained HTML document themed to the current Tessera colours. */
-private fun buildRichHtml(source: String, c: TesseraColors, serverRoot: String, mentions: List<String>): String {
+private fun buildRichHtml(
+    source: String,
+    c: TesseraColors,
+    serverRoot: String,
+    mentions: List<String>,
+    interactive: Boolean,
+): String {
     val hljsTheme = if (c.isDark) "github-dark" else "github"
     val src = JSONObject.quote(source)
     val root = JSONObject.quote(serverRoot)
@@ -135,8 +155,10 @@ private fun buildRichHtml(source: String, c: TesseraColors, serverRoot: String, 
     val strength = 0.14f
     val accentDarker = lerp(c.primary, Color.Black, strength)
     val accentLighter = lerp(c.primary, Color.White, strength)
-    val accentGradCss = "background:linear-gradient(135deg,${hex(accentDarker)},${hex(c.primary)},${hex(accentLighter)});" +
+    val accentBoxGrad = "linear-gradient(135deg,${hex(accentDarker)},${hex(c.primary)},${hex(accentLighter)})"
+    val accentGradCss = "background:$accentBoxGrad;" +
         "-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;"
+    val checkCursor = if (interactive) "pointer" else "default"
     return """
 <!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
@@ -151,6 +173,13 @@ private fun buildRichHtml(source: String, c: TesseraColors, serverRoot: String, 
   h1,h2,h3,h4{margin:12px 0 6px;line-height:1.3;font-weight:600;}
   h1{font-size:20px;} h2{font-size:18px;} h3{font-size:16px;} h4{font-size:14px;}
   ul,ol{margin:0 0 8px;padding-left:20px;} li{margin:2px 0;}
+  li:has(> input[type=checkbox]){list-style:none;}
+  input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 7px 0 0;
+       vertical-align:-2px;border:1.5px solid ${hex(c.text3)};border-radius:4px;background:${hex(c.surface)};
+       position:relative;flex:none;cursor:$checkCursor;}
+  input[type=checkbox]:checked{border-color:transparent;background:$accentBoxGrad;}
+  input[type=checkbox]:checked::after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;
+       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;transform:rotate(45deg);}
   img{max-width:100%;height:auto;border-radius:8px;}
   blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid ${hex(c.border)};color:${hex(c.text2)};}
   hr{border:none;border-top:1px solid ${hex(c.border)};margin:12px 0;}
@@ -168,7 +197,7 @@ private fun buildRichHtml(source: String, c: TesseraColors, serverRoot: String, 
 <div id="content"></div>
 <script src="file:///android_asset/richcontent/marked.umd.js"></script>
 <script>
-  var SRC = $src, ROOT = $root, MENTIONS = $mentionsJson;
+  var SRC = $src, ROOT = $root, MENTIONS = $mentionsJson, INTERACTIVE = $interactive;
   marked.setOptions({breaks:true, gfm:true});
   // Wrap "@Name" tokens for known members in a .mention span (mirrors the web
   // utils/markdown.js highlightMentions: text boundaries only, longer names first).
@@ -191,6 +220,17 @@ private fun buildRichHtml(source: String, c: TesseraColors, serverRoot: String, 
     var h = an.getAttribute('href')||'';
     if (h.charAt(0) === '/') an.href = ROOT + h;
   });
+  // Interactive GFM checkboxes: enable + report the box index on click so Kotlin
+  // can rewrite the markdown marker (the re-render reflects the new state).
+  if (INTERACTIVE) {
+    el.querySelectorAll('input[type=checkbox]').forEach(function(box, i){
+      box.disabled = false;
+      box.addEventListener('click', function(e){
+        e.preventDefault();
+        if (window.AndroidRich) AndroidRich.onCheckToggle(i);
+      });
+    });
+  }
   function report(){ if (window.AndroidRich) AndroidRich.onHeight(document.body.scrollHeight + 4); }
   // Image loads change height — re-report once they settle.
   el.querySelectorAll('img').forEach(function(im){ im.addEventListener('load', report); });

@@ -106,6 +106,7 @@ import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.toggleTaskMarker
 import website.msdnna.tessera.util.whenLabel
 
 private val RelKindLabels = mapOf(
@@ -910,7 +911,17 @@ private fun CommentsTab(vm: TaskDetailViewModel, comments: List<website.msdnna.t
                             TButton("Отмена", kind = TButtonKind.Secondary, onClick = { editingId = null }, modifier = Modifier.height(34.dp))
                         }
                     } else {
-                        RichContent(cm.body, mentions = mentionNames)
+                        val own = cm.authorId != null && cm.authorId == meId
+                        RichContent(
+                            cm.body,
+                            mentions = mentionNames,
+                            interactive = own,
+                            onToggleCheck = if (own) {
+                                { i -> vm.editComment(cm.id, toggleTaskMarker(cm.body, i)) }
+                            } else {
+                                null
+                            },
+                        )
                     }
                 }
             }

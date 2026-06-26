@@ -108,6 +108,28 @@ export function renderRich(src, members) {
   return DOMPurify.sanitize(highlightMentions(html, members), SANITIZE_OPTS)
 }
 
+// toggleTaskMarker flips the [ ]↔[x] of the index-th GFM task-list item in the
+// source markdown (index = render order, top to bottom). Used by interactive
+// preview checkboxes so ticking one rewrites the stored markdown. Returns the
+// source unchanged if the index isn't found.
+const TASK_MARKER_RE = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])/
+export function toggleTaskMarker(src, index) {
+  if (!src) return src
+  const lines = String(src).split('\n')
+  let n = -1
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(TASK_MARKER_RE)
+    if (!m) continue
+    n++
+    if (n === index) {
+      const checked = m[2].toLowerCase() === 'x'
+      lines[i] = lines[i].replace(TASK_MARKER_RE, `$1${checked ? ' ' : 'x'}$3`)
+      break
+    }
+  }
+  return lines.join('\n')
+}
+
 // toEditorHtml normalises stored content into HTML for loading into the editor.
 // Legacy Markdown is converted; existing HTML is passed through untouched.
 export function toEditorHtml(src) {
