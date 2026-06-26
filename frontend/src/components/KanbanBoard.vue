@@ -70,6 +70,21 @@ const columns = ref([])
 const allTasks = ref([])
 const subtasksByParent = ref({})
 const lists = ref({})
+// ── card-list virtualization (IntersectionObserver windowing) ──────────────
+// Every column item keeps its wrapper <div> so vuedraggable's child count,
+// indices, drop targets and the before/after math in onColChange stay identical
+// (DnD untouched). Cards more than ~800px outside the viewport collapse to a
+// cheap placeholder of their last-measured height; only near-viewport cards
+// mount the heavy TaskCard. Visibility is driven by each card's *real* viewport
+// position (one IO, root = viewport), so there's no model-vs-DOM divergence to
+// thrash the scrollbar and the bottom is always reachable. Parity with Android's
+// LazyColumn. Measuring before collapsing keeps placeholder height exact → no
+// jump. IO swaps are frozen during a drag so SortableJS sees a stable DOM.
+const VCARD_EST = 190 // placeholder px until a card has been measured
+const vis = reactive({}) // task id → in/near viewport (undefined = not yet known)
+const cardH = reactive({}) // task id → last measured px (from the rendered card)
+let cardIO = null // toggles visibility by real viewport position
+let cardRO = null // measures rendered cards (settles after content layout)
 const tagsMap = reactive({})
 const membersMap = reactive({})
 const tagsList = computed(() => Object.values(tagsMap))
@@ -961,6 +976,15 @@ function rebuildLists() {
 }
 watch([filteredTasks, groupMode, tagPrefix], rebuildLists)
 
+// Observe each card wrapper (stable per task id via item-key) once. Off-screen
+// cards collapse to a placeholder; near-viewport cards mount the real TaskCard.
+function regCard(el, id) {
+  if (!el || !cardIO) return
+  el.dataset.cardId = id
+  cardIO.observe(el)
+  cardRO.observe(el)
+}
+
 // Mutable mirror of displayColumns for column drag-reorder (status mode only).
 const colModel = ref([])
 watch(displayColumns, (v) => (colModel.value = [...v]), { immediate: true })
@@ -1160,6 +1184,30 @@ onMounted(async () => {
     ro.observe(boardScroll.value)
     measure()
   }
+  // Card-list windowing: reveal cards within 800px of the viewport; collapse the
+  // rest. Frozen mid-drag so SortableJS sees a stable DOM.
+  cardIO = new IntersectionObserver(
+    (entries) => {
+      if (dragging.value) return
+      for (const en of entries) {
+        const id = en.target.dataset.cardId
+        if (id) vis[id] = en.isIntersecting
+      }
+    },
+    { rootMargin: '800px 0px' },
+  )
+  // Measure rendered cards (re-fires as TaskCard content settles, unlike a
+  // one-shot read), so a collapsed card's placeholder gets its exact height.
+  // Skip wrappers showing a placeholder to avoid feeding back a stale height.
+  cardRO = new ResizeObserver((entries) => {
+    for (const en of entries) {
+      const el = en.target
+      const id = el.dataset.cardId
+      if (!id || el.firstElementChild?.classList.contains('card-ph')) continue
+      const h = Math.round(en.contentRect.height)
+      if (h > 0 && cardH[id] !== h) cardH[id] = h
+    }
+  })
   document.addEventListener('pointerdown', onDocPointerDown, true)
   restoreView()
   await load(props.boardId)
@@ -1168,6 +1216,8 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
+  cardIO?.disconnect()
+  cardRO?.disconnect()
   document.removeEventListener('pointerdown', onDocPointerDown, true)
   onDragEnd()
   boardViewStore.reset()
@@ -1176,6 +1226,10 @@ watch(
   () => props.boardId,
   async (id) => {
     if (!id) return
+    // Drop the previous board's windowing state so its measured heights /
+    // visibility don't bleed in (re-seeded fresh by the IO/RO on render).
+    for (const k of Object.keys(vis)) delete vis[k]
+    for (const k of Object.keys(cardH)) delete cardH[k]
     restoreView()
     await load(id)
     loadViews()
@@ -1467,9 +1521,15 @@ watch(
                 @end="onDragEnd"
                 @change="onColChange($event, dcol)"
               >
-                <template #item="{ element }">
-                  <div>
+                <template #item="{ element, index }">
+                  <div :ref="(el) => regCard(el, element.id)" class="card-wrap">
+                    <div
+                      v-if="!(vis[element.id] ?? index < 12)"
+                      class="card-ph"
+                      :style="{ height: (cardH[element.id] || VCARD_EST) + 'px' }"
+                    />
                     <TaskCard
+                      v-else
                       :task="element"
                       :subtasks="subtasksByParent[element.id] || []"
                       :subtasks-expanded="subtasksExpanded"
@@ -2013,6 +2073,12 @@ watch(
 }
 .ghost {
   opacity: 0.5;
+}
+/* Off-screen card stand-in: occupies the card's last-measured height so the
+   scrollbar and drop positions stay correct while the heavy TaskCard is unmounted
+   (see the IntersectionObserver windowing in the script). */
+.card-ph {
+  pointer-events: none;
 }
 .add-btn {
   margin-top: 6px;
