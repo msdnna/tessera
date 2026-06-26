@@ -477,10 +477,24 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
   `sync-runs` / `.../actions` / `.../retry`. Подробности — [[project-gitlab-sync-journal-next]].
   Открытый хвост: визуальный прогон в живом UI (headless для NModal ненадёжен).
   **Android-паритет — ✅ СДЕЛАНО** (android 0.35.0, см. раздел 15).
-- **GitLab фаза B+ (остаток)** — write-back для **assignees** (ждёт OAuth — нужен надёжный
-  Tessera-user↔GL-user маппинг) и **title/description** (риск затирания, gated `push_title_desc`);
-  редактор `column_label_bindings` (колонка→метка `S:`); webhooks (вместо/в дополнение к polling);
-  OAuth/SSO.
+- **GitLab фаза B+ — СОГЛАСОВАННЫЙ ПЛАН** (2026-06-27, порядок `1→3→2→4`; детали и гочи —
+  [[project-gitlab-phase-b-plus-plan]]). Строим на готовом outbox/worker/журнале, каждый шаг
+  зеркалит priority-путь:
+  1. **Теги + due → GL** (малый): флаги `push_labels`/`push_due` (jsonb, без миграции); реконсайл
+     меток только в управляемых неймспейсах; **только `due_date` issue** (start у GL-issue нет —
+     блокер на стороне GL).
+  2. **timeEstimate ↔ задача (двусторонне)** (средний): pull + push, **только при единице оценки
+     «время»**; смена единицы → тогл в GL-модалке неактивен + подсказка.
+  3. **Members-sync → ассайни** (средний): новая `gitlab_project_members` (из GL Project Members),
+     объединённый пикер Tessera+GL, `task_gitlab_assignees` становится writable; write-back через
+     `gl_user_id`. **Снимает OAuth-блокер ассайни целиком.**
+  4. **Создание issue из таски** (крупный): opt-in тогл в модалке задачи (как «Выполнено»), автор =
+     owner PAT, guard от петель; **issue_templates** тянем из репо (`.gitlab/issue_templates/*.md`)
+     в свой стор → префилл описания.
+  - **OAuth/SSO** — не сейчас, но **ближний бэклог** (универсальный маппинг + атрибуция), не в долгий
+    ящик. Ассайни от него больше не зависят (шаг 3).
+  - Остаток прежнего бэклога: **title/description** (риск затирания, gated `push_title_desc`),
+    редактор `column_label_bindings` (колонка→метка `S:`), webhooks (вместо/в дополнение к polling).
 - **Android background push (FCM)** — device-канал поднимает уведомления только **пока приложение
   открыто** (C2); напоминания — локальный `AlarmManager`. Фоновый push при закрытом приложении (FCM)
   ещё не сделан — следующий кандидат для надёжной доставки (аналог Telegram-доставки в budget-go).
