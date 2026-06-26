@@ -118,7 +118,12 @@ onMounted(build)
 }
 .md :deep(input[type='checkbox']:checked) {
   border-color: transparent;
-  background: var(--t-accent-grad, var(--t-primary));
+  /* background-IMAGE (not the shorthand) + border-box origin so the gradient
+     fills under the transparent border — the shorthand resets origin to
+     padding-box, leaving a repeated-gradient "seam" ring (see gradient gotchas). */
+  background-color: transparent;
+  background-image: var(--t-accent-grad, var(--t-primary));
+  background-origin: border-box;
 }
 .md :deep(input[type='checkbox']:checked)::after {
   content: '';

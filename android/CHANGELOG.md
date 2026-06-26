@@ -5,6 +5,12 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.36.2 — 2026-06-26
+- **Чекбоксы превью — «мозаичный» фон убран.** Отмеченный квадрат рисовался `background`-
+  шорткатом (сбрасывает `background-origin` в `padding-box`), и при прозрачном бордере
+  градиент повторялся кольцом. Перешли на `background-image` + `background-origin: border-box`
+  — фон сплошной, галочка ровно по центру.
+
 ## 0.36.1 — 2026-06-26
 - **Чекбоксы превью:** галочка отцентрована в квадрате (была смещена вниз —
   `transform: translate(-50%,-55%)` вместо абсолютного `top`); бордер невыбранного

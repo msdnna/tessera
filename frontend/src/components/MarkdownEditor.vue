@@ -35,13 +35,28 @@ function setValue(v) {
   emit('update:modelValue', v)
 }
 
+// The nearest scrollable ancestor (the modal body) — its scrollTop must be
+// restored around the height reset, or the `height:auto` reflow makes the
+// browser re-anchor the (focused) textarea and the modal jumps.
+function scrollParent(el) {
+  let p = el?.parentElement
+  while (p) {
+    const oy = getComputedStyle(p).overflowY
+    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p
+    p = p.parentElement
+  }
+  return null
+}
 // Auto-grow: the textarea height follows its content so long text isn't trapped
 // behind an inner scrollbar (the modal scrolls instead).
 function autoGrow() {
   const el = ta.value
   if (!el) return
+  const sp = scrollParent(el)
+  const top = sp ? sp.scrollTop : null
   el.style.height = 'auto'
   el.style.height = `${el.scrollHeight}px`
+  if (sp != null && top != null) sp.scrollTop = top
 }
 watch(() => props.modelValue, () => nextTick(autoGrow))
 watch(mode, (m) => {

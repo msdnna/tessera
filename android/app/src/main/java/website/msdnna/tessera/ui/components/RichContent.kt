@@ -179,7 +179,8 @@ private fun buildRichHtml(
   input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 7px 0 0;
        vertical-align:-2px;border:1.5px solid $checkBorder;border-radius:4px;background:${hex(c.surface)};
        position:relative;flex:none;cursor:$checkCursor;}
-  input[type=checkbox]:checked{border-color:transparent;background:$accentBoxGrad;}
+  input[type=checkbox]:checked{border-color:transparent;background-color:transparent;
+       background-image:$accentBoxGrad;background-origin:border-box;}
   input[type=checkbox]:checked::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:8px;
        border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;transform:translate(-50%,-55%) rotate(45deg);}
   img{max-width:100%;height:auto;border-radius:8px;}
