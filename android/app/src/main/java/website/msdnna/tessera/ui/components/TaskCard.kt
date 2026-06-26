@@ -575,27 +575,35 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
         task.createdBy != null -> state.membersMap[task.createdBy]?.name
         else -> null
     }
+    // When the author is also an assignee, don't render a separate (muted) author
+    // avatar — the person already shows once as the accent assignee. Mirrors web.
+    val authorIsAssignee = when {
+        task.gitlabAuthor != null ->
+            external.any { it.equals(authorName, true) || it.equals(task.gitlabAuthor, true) }
+
+        task.createdBy != null -> task.createdBy in task.assigneeIds
+
+        else -> false
+    }
+    val showAuthor = authorName != null && !authorIsAssignee
     Box {
         Box(Modifier.clip(RoundedCornerShape(RadiusSm)).clickableNoRipple { menu = true }.padding(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Author → assignee cascade (author muted, non-actionable).
-                if (authorName != null) {
-                    CardAvatar(
-                        authorName,
-                        muted = true,
-                        userId = if (task.gitlabAuthor == null) task.createdBy else null,
-                        avatarUrl = if (task.gitlabAuthor != null) task.gitlabAuthorAvatarUrl else null,
-                    )
-                    Text("→", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 3.dp))
-                }
-                if (assignees.isEmpty() && external.isEmpty()) {
-                    IonIcon(Ion.PERSON_ADD, size = 14.dp, tint = c.text3)
-                } else {
-                    // Overlapping stack with a card-coloured ring (the "cutout").
-                    Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
-                        assignees.forEach { CardAvatar(it.name, muted = false, userId = it.userId) }
-                        external.forEach { CardAvatar(it, muted = true) }
+            if (authorName == null && assignees.isEmpty() && external.isEmpty()) {
+                IonIcon(Ion.PERSON_ADD, size = 14.dp, tint = c.text3)
+            } else {
+                // Author + assignees merged into one overlapping stack (card-coloured
+                // ring = the "cutout"): the muted author leads, then accent assignees.
+                Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
+                    if (showAuthor) {
+                        CardAvatar(
+                            authorName,
+                            muted = true,
+                            userId = if (task.gitlabAuthor == null) task.createdBy else null,
+                            avatarUrl = if (task.gitlabAuthor != null) task.gitlabAuthorAvatarUrl else null,
+                        )
                     }
+                    assignees.forEach { CardAvatar(it.name, muted = false, userId = it.userId) }
+                    external.forEach { CardAvatar(it, muted = true) }
                 }
             }
         }
