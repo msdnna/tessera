@@ -528,25 +528,12 @@ watch(
           <n-text depth="3" class="lbl">Исполнители (assignees issue)</n-text>
           <div><n-switch v-model:value="wbAssignees" size="small" /></div>
 
-          <n-text depth="3" class="lbl">
-            Оценка (timeEstimate)
-            <n-text v-if="estimationUnit !== 'time'" depth="3" style="font-size: 11px">
-              — только при единице «время»
-            </n-text>
-          </n-text>
-          <div>
-            <n-tooltip :disabled="estimationUnit === 'time'" trigger="hover">
-              <template #trigger>
-                <span>
-                  <n-switch
-                    v-model:value="wbEstimate"
-                    size="small"
-                    :disabled="estimationUnit !== 'time'"
-                  />
-                </span>
-              </template>
+          <n-text depth="3" class="lbl">Оценка (timeEstimate)</n-text>
+          <div class="est-wb">
+            <n-switch v-model:value="wbEstimate" size="small" :disabled="estimationUnit !== 'time'" />
+            <n-text v-if="estimationUnit !== 'time'" depth="3" class="est-hint">
               Доступно только когда единица оценки доски — «время».
-            </n-tooltip>
+            </n-text>
           </div>
         </div>
         <p v-if="wbEnabled" class="gl-wb-hint">
@@ -750,6 +737,15 @@ watch(
 }
 .lbl {
   font-size: 12px;
+}
+.est-wb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.est-hint {
+  font-size: 11px;
+  line-height: 1.3;
 }
 .gl-actions {
   margin-top: 12px;
