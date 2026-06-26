@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, reactive, computed, watchEffect, nextTick } from 'vue'
 import { NInput, NButton, NText, NIcon, NPopconfirm, useMessage } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
 import { projects as projectsApi } from '@/api'
@@ -21,6 +21,37 @@ const props = defineProps({
 const groups = computed(() => buildTagGroups(props.tags, props.prefixNames))
 const showHeaders = computed(() => groups.value.length > 1)
 const emit = defineEmits(['changed'])
+
+// Friendly prefix-name editor (mig 0026 store): the prefixes that actually exist
+// among this project's tags, each with an editable label. Lets non-GitLab
+// projects rename prefixes too (was previously editable only via the GitLab modal).
+const prefixGroups = computed(() => groups.value.filter((g) => g.prefix))
+const labelEdits = reactive({}) // canonical prefix (g.key) → editable label
+watchEffect(() => {
+  for (const g of prefixGroups.value) {
+    if (!(g.key in labelEdits)) labelEdits[g.key] = props.prefixNames[g.key] || ''
+  }
+})
+// Save the whole merged set (preserves prefixes not currently among the tags,
+// blank label clears the mapping) — mirrors GitLabModal's merge-save.
+async function savePrefixes() {
+  if (!props.projectId) return
+  const merged = { ...props.prefixNames }
+  for (const g of prefixGroups.value) {
+    const label = (labelEdits[g.key] || '').trim()
+    if (label) merged[g.key] = label
+    else delete merged[g.key]
+  }
+  try {
+    await projectsApi.setTagPrefixes(
+      props.projectId,
+      Object.entries(merged).map(([prefix, label]) => ({ prefix, label })),
+    )
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
 
 const message = useMessage()
 const editingId = ref(null)
@@ -136,6 +167,22 @@ async function add() {
       <n-input v-model:value="newName" size="tiny" placeholder="Новый тег" @keyup.enter="add" />
       <n-button type="primary" size="tiny" @click="add">Добавить</n-button>
     </div>
+
+    <template v-if="prefixGroups.length">
+      <n-text depth="3" class="head pfx-head">Имена префиксов</n-text>
+      <div class="pfx-list">
+        <div v-for="g in prefixGroups" :key="g.key" class="pfx-row">
+          <span class="pfx-key">{{ g.prefix.trim() }}</span>
+          <n-input
+            v-model:value="labelEdits[g.key]"
+            size="tiny"
+            placeholder="напр. Статус"
+            @keyup.enter="savePrefixes"
+            @blur="savePrefixes"
+          />
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -208,5 +255,27 @@ async function add() {
 }
 .empty {
   font-size: 12px;
+}
+.pfx-head {
+  margin-top: 14px;
+}
+.pfx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* room for the focused input's border ring (overflow clip on the popover) */
+  padding: 3px;
+}
+.pfx-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pfx-key {
+  flex: 0 0 auto;
+  min-width: 34px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
 }
 </style>
