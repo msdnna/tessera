@@ -47,6 +47,7 @@ data class GitlabWriteback(
     @SerializedName("push_labels") val pushLabels: Boolean = false,
     @SerializedName("push_due") val pushDue: Boolean = false,
     @SerializedName("push_assignees") val pushAssignees: Boolean = false,
+    @SerializedName("push_estimate") val pushEstimate: Boolean = false,
 )
 
 /** The workspace's GitLab integration config (mirrors backend `gitlabIntegrationView`). */
@@ -61,6 +62,9 @@ data class GitlabIntegration(
     @SerializedName("last_synced_at") val lastSyncedAt: String? = null,
     @SerializedName("label_rules") val labelRules: GitlabRules = GitlabRules(),
     @SerializedName("writeback") val writeback: GitlabWriteback = GitlabWriteback(),
+    // Resolved estimation unit of the integration board; the estimate toggle is
+    // only meaningful when it's "time".
+    @SerializedName("estimation_unit") val estimationUnit: String = "time",
 )
 
 data class GitlabSetIntegrationRequest(

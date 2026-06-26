@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -190,7 +191,7 @@ fun TFormError(message: String?, modifier: Modifier = Modifier) {
 
 /** Pill toggle matching the web's Naive `n-switch` (no Material thumb/ripple). */
 @Composable
-fun TSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun TSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val c = Tessera.colors
     val trackW = 40.dp
     val trackH = 22.dp
@@ -207,10 +208,11 @@ fun TSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modi
     val trackFill = if (checked) accentGradient(track) else SolidColor(track)
     Box(
         modifier
+            .then(if (enabled) Modifier else Modifier.alpha(0.4f))
             .size(trackW, trackH)
             .clip(CircleShape)
             .background(trackFill)
-            .clickableNoRipple { onCheckedChange(!checked) },
+            .then(if (enabled) Modifier.clickableNoRipple { onCheckedChange(!checked) } else Modifier),
         contentAlignment = Alignment.CenterStart,
     ) {
         Box(

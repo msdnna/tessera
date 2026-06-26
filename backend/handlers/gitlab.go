@@ -107,6 +107,9 @@ type gitlabIntegrationView struct {
 	LastSyncedAt    *time.Time       `json:"last_synced_at"`
 	LabelRules      gitlab.Rules     `json:"label_rules"`
 	Writeback       gitlab.Writeback `json:"writeback"`
+	// Resolved estimation unit for the integration board (project→workspace→time),
+	// so the UI can disable the estimate write-back toggle when it isn't "time".
+	EstimationUnit string `json:"estimation_unit,omitempty"`
 }
 
 // integrationView projects a stored integration row into its JSON view.
@@ -140,7 +143,9 @@ func (h *API) GetGitlabIntegration(c *gin.Context) {
 		fail(c)
 		return
 	}
-	c.JSON(http.StatusOK, integrationView(integ))
+	view := integrationView(integ)
+	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
+	c.JSON(http.StatusOK, view)
 }
 
 // SetGitlabIntegration creates or updates the workspace's integration config.
@@ -215,7 +220,9 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 		fail(c)
 		return
 	}
-	c.JSON(http.StatusOK, integrationView(integ))
+	view := integrationView(integ)
+	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
+	c.JSON(http.StatusOK, view)
 }
 
 // ── Sync (pull) ────────────────────────────────────────────
@@ -318,6 +325,8 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 
 	rules := parseRules(integ.LabelRules)
 	wsID := integ.WorkspaceID
+	// Time-estimate sync is gated on the board's estimation unit being "time".
+	estimateUnit := h.integrationEstimationUnit(ctx, integ)
 
 	// Per-board column cache — a "board" rule can route a task onto a different
 	// board (e.g. a Backlog board), so columns are resolved per target board.
@@ -416,7 +425,8 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		bc, col, completedAt := resolveBoardCol(issue, res)
 		dueDate := effectiveDue(issue, integ.DueSource)
 		startDate := effectiveStart(issue, integ.StartSource)
-		taskID, wasCreated, ok := h.syncOneIssue(ctx, integ, issue, res, wsID, bc.id, col.ID, nil, completedAt, dueDate, startDate, actorID, col.Name, j)
+		estimate := effectiveEstimate(issue, estimateUnit)
+		taskID, wasCreated, ok := h.syncOneIssue(ctx, integ, issue, res, wsID, bc.id, col.ID, nil, completedAt, dueDate, startDate, estimate, actorID, col.Name, j)
 		if !ok {
 			continue
 		}
@@ -437,8 +447,9 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 				}
 				kdue := effectiveDue(kid, integ.DueSource)
 				kstart := effectiveStart(kid, integ.StartSource)
+				kest := effectiveEstimate(kid, estimateUnit)
 				parentID := taskID
-				if _, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, actorID, col.Name, j); kok {
+				if _, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, kest, actorID, col.Name, j); kok {
 					if kc {
 						created++
 					} else {
@@ -516,7 +527,7 @@ func (h *API) resolveDoneColumn(ctx context.Context, board db.Board) *uuid.UUID 
 // syncCreateTask creates a mirrored task at the end of its target column (or its
 // parent's subtask list when parentID is set). The task has no Tessera creator
 // (created_by stays null) — the GitLab author is on the link instead.
-func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, issue gitlab.Issue, priority int32, completedAt, dueDate, startDate *time.Time) (db.Task, error) {
+func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, issue gitlab.Issue, priority int32, completedAt, dueDate, startDate *time.Time, estimate *float64) (db.Task, error) {
 	var pos float64
 	if parentID != nil {
 		subs, err := h.q.ListSubtasks(ctx, parentID)
@@ -543,7 +554,7 @@ func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.U
 	t, err := h.q.CreateTask(ctx, db.CreateTaskParams{
 		BoardID: boardID, ColumnID: columnID, ParentID: parentID,
 		Title: issue.Title, Description: issue.Description, Priority: priority,
-		DueDate: dueDate, StartDate: startDate, Position: pos, CreatedBy: nil, Number: &num,
+		DueDate: dueDate, StartDate: startDate, Estimate: estimate, Position: pos, CreatedBy: nil, Number: &num,
 	})
 	if err != nil {
 		return db.Task{}, err
@@ -572,7 +583,7 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 // and meta. It records a create/update action in the sync journal j (only when
 // something actually changed). Returns the task id, whether it was newly created,
 // and ok=false on a per-issue failure (logged, caller continues).
-func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate, startDate *time.Time, actorID uuid.UUID, colName string, j *syncJournal) (uuid.UUID, bool, bool) {
+func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate, startDate *time.Time, estimate *float64, actorID uuid.UUID, colName string, j *syncJournal) (uuid.UUID, bool, bool) {
 	// Resolve GitLab-relative attachment links to signed proxy URLs.
 	issue.Description = h.rewriteAssets(issue.Description, wsID)
 	// Synced labels become tags scoped to the integration board's project.
@@ -591,7 +602,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 	})
 	switch {
 	case errors.Is(lerr, pgx.ErrNoRows):
-		t, cerr := h.syncCreateTask(ctx, wsID, boardID, columnID, parentID, issue, res.Priority, completedAt, dueDate, startDate)
+		t, cerr := h.syncCreateTask(ctx, wsID, boardID, columnID, parentID, issue, res.Priority, completedAt, dueDate, startDate, estimate)
 		if cerr != nil {
 			log.Printf("gitlab sync: create task for issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
@@ -676,6 +687,12 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			_ = h.q.UpdateTaskStartDate(ctx, db.UpdateTaskStartDateParams{ID: link.TaskID, StartDate: startDate})
 			t.StartDate = startDate
 			startApplied = true
+		}
+		// Time estimate (only when the board's unit is time → estimate != nil here):
+		// synced unless the user overrode it.
+		if !link.EstimateOverridden && estimate != nil {
+			_ = h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: link.TaskID, Estimate: estimate})
+			t.Estimate = estimate
 		}
 		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
 		h.broadcast(wsID, "task.updated", t)
@@ -901,6 +918,56 @@ func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []
 		}
 	}
 	return added, bodies
+}
+
+// effectiveEstimate resolves the estimate (canon minutes) the sync should apply:
+// only when the board's estimation unit is "time" and GitLab has an estimate.
+// GitLab's timeEstimate is in seconds; canon for the "time" unit is minutes.
+func effectiveEstimate(issue gitlab.Issue, unit string) *float64 {
+	if unit != "time" || issue.TimeEstimate <= 0 {
+		return nil
+	}
+	m := float64(issue.TimeEstimate) / 60.0
+	return &m
+}
+
+// integrationEstimationUnit resolves the estimation unit for an integration's
+// board: project config → workspace config → built-in default ("time").
+func (h *API) integrationEstimationUnit(ctx context.Context, integ db.GitlabIntegration) string {
+	var proj, ws *json.RawMessage
+	if pid, err := h.q.ProjectIDForBoard(ctx, integ.BoardID); err == nil {
+		if p, perr := h.q.GetProject(ctx, pid); perr == nil {
+			proj = p.Estimation
+		}
+	}
+	if w, werr := h.q.GetWorkspace(ctx, integ.WorkspaceID); werr == nil {
+		ws = w.Estimation
+	}
+	return estimationUnit(proj, ws)
+}
+
+// estimationUnit parses the unit from the two-level estimation config (project
+// wins over workspace); empty/unset → "time" (the built-in default).
+func estimationUnit(proj, ws *json.RawMessage) string {
+	parse := func(r *json.RawMessage) string {
+		if r == nil || len(*r) == 0 {
+			return ""
+		}
+		var cfg struct {
+			Unit string `json:"unit"`
+		}
+		if json.Unmarshal(*r, &cfg) == nil {
+			return cfg.Unit
+		}
+		return ""
+	}
+	if u := parse(proj); u != "" {
+		return u
+	}
+	if u := parse(ws); u != "" {
+		return u
+	}
+	return "time"
 }
 
 // effectiveDue resolves the due date the sync should apply, per the

@@ -328,6 +328,10 @@ func (h *API) UpdateTask(c *gin.Context) {
 	if !sameTime(t.StartDate, updated.StartDate) {
 		_ = h.q.MarkGitlabStartOverridden(c, id)
 	}
+	// A manual estimate change wins over the GitLab timeEstimate pull.
+	if !sameEstimate(t.Estimate, updated.Estimate) {
+		_ = h.q.MarkGitlabEstimateOverridden(c, id)
+	}
 	changes := h.journalUpdate(c, t, updated)
 	if len(changes) > 0 {
 		h.notifyTaskParticipants(c, updated, wsID, "updated",
@@ -346,6 +350,9 @@ func (h *API) UpdateTask(c *gin.Context) {
 	// is fine (also lets a burst of edits coalesce to one pending row).
 	if !sameTime(t.DueDate, updated.DueDate) {
 		h.enqueueWriteback(c, id, actor, "due", map[string]any{})
+	}
+	if !sameEstimate(t.Estimate, updated.Estimate) {
+		h.enqueueWriteback(c, id, actor, "estimate", map[string]any{})
 	}
 	h.broadcast(wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)

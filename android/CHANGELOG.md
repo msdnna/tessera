@@ -5,6 +5,12 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.39.0 — 2026-06-27
+- **Тумблер «Оценка (timeEstimate)» в настройках GitLab** (паритет web 0.101.0 / backend 0.58.0,
+  шаг 2) — двусторонняя синхронизация оценки с GL. Активен **только при единице оценки „время"**
+  (иначе disabled, по новому полю `estimation_unit` интеграции); `GitlabWriteback.pushEstimate`
+  round-trip. `TSwitch` получил параметр `enabled`.
+
 ## 0.38.0 — 2026-06-27
 - **Назначение участников GitLab из Tessera** (паритет web 0.100.0 / backend 0.57.0, шаг 3).
   Пикер исполнителей (на карточке и в модалке задачи) показывает секцию «GitLab» с участниками

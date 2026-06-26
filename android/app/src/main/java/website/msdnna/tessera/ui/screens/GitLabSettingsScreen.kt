@@ -176,6 +176,8 @@ private fun IntegrationCard(
     var wbLabels by remember(integ) { mutableStateOf(integ.writeback.pushLabels) }
     var wbDue by remember(integ) { mutableStateOf(integ.writeback.pushDue) }
     var wbAssignees by remember(integ) { mutableStateOf(integ.writeback.pushAssignees) }
+    val estimateTimeUnit = integ.estimationUnit == "time"
+    var wbEstimate by remember(integ) { mutableStateOf(integ.writeback.pushEstimate && estimateTimeUnit) }
     val rules = remember(integ) { mutableStateListOf<EditRule>().apply { addAll(integ.labelRules.rules.map { EditRule(it) }) } }
     // Prefill each prefix rule's friendly name from the loaded store (web GitLabModal
     // loadPrefixNames). Re-runs when the target project's names load / change.
@@ -221,6 +223,9 @@ private fun IntegrationCard(
         Field("Теги (метки тег-неймспейсов)") { TSwitch(wbLabels, { wbLabels = it }) }
         Field("Срок (due date issue)") { TSwitch(wbDue, { wbDue = it }) }
         Field("Исполнители (assignees issue)") { TSwitch(wbAssignees, { wbAssignees = it }) }
+        Field(if (estimateTimeUnit) "Оценка (timeEstimate)" else "Оценка — только при единице «время»") {
+            TSwitch(wbEstimate, { wbEstimate = it }, enabled = estimateTimeUnit)
+        }
         Spacer(Modifier.height(4.dp))
         Text(
             "Изменения линкованных задач отправляются в GitLab под токеном владельца " +
@@ -279,7 +284,7 @@ private fun IntegrationCard(
                         GitlabSetIntegrationRequest(
                             projectPath.trim(), bid, enabled, interval, dueSource, startSource,
                             GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
-                            GitlabWriteback(wbEnabled, wbState, wbPriority, wbComments, wbLabels, wbDue, wbAssignees),
+                            GitlabWriteback(wbEnabled, wbState, wbPriority, wbComments, wbLabels, wbDue, wbAssignees, wbEstimate && estimateTimeUnit),
                         ),
                     )
                 }

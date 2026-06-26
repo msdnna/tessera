@@ -1034,6 +1034,20 @@ func (q *Queries) UpdateTaskDueDate(ctx context.Context, arg UpdateTaskDueDatePa
 	return err
 }
 
+const updateTaskEstimate = `-- name: UpdateTaskEstimate :exec
+UPDATE tasks SET estimate = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateTaskEstimateParams struct {
+	ID       uuid.UUID `json:"id"`
+	Estimate *float64  `json:"estimate"`
+}
+
+func (q *Queries) UpdateTaskEstimate(ctx context.Context, arg UpdateTaskEstimateParams) error {
+	_, err := q.db.Exec(ctx, updateTaskEstimate, arg.ID, arg.Estimate)
+	return err
+}
+
 const updateTaskStartDate = `-- name: UpdateTaskStartDate :exec
 UPDATE tasks SET start_date = $2, updated_at = now() WHERE id = $1
 `

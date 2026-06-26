@@ -157,6 +157,7 @@ type Issue struct {
 	UpdatedAt      *time.Time
 	CreatedAt      *time.Time // issue/task creation timestamp (always present)
 	DueDate        *time.Time // issue's own due date (date-only), nil when unset
+	TimeEstimate   int64      // issue time estimate in seconds (0 when unset)
 	MilestoneDue   *time.Time // due date (End date) of the issue's milestone, if any
 	MilestoneStart *time.Time // start date of the issue's milestone (date-only), if any
 	Labels       []Label
@@ -182,6 +183,7 @@ query($path: ID!, $username: String, $iids: [String!], $after: String) {
         updatedAt
         createdAt
         dueDate
+        timeEstimate
         milestone { startDate dueDate }
         author { username name avatarUrl }
         assignees { nodes { username name avatarUrl } }
@@ -256,8 +258,9 @@ type issueNode struct {
 	State       string     `json:"state"`
 	UpdatedAt   *time.Time `json:"updatedAt"`
 	CreatedAt   *time.Time `json:"createdAt"`
-	DueDate     string     `json:"dueDate"`
-	Milestone   *struct {
+	DueDate      string     `json:"dueDate"`
+	TimeEstimate int64      `json:"timeEstimate"` // seconds (0 when unset)
+	Milestone    *struct {
 		StartDate string `json:"startDate"`
 		DueDate   string `json:"dueDate"`
 	} `json:"milestone"`
@@ -312,7 +315,7 @@ func (n issueNode) toIssue(base string) Issue {
 	issue := Issue{
 		GlobalID: n.ID, IID: iid, Title: n.Title, Description: n.Description,
 		WebURL: n.WebURL, State: n.State, UpdatedAt: n.UpdatedAt,
-		CreatedAt: n.CreatedAt, DueDate: parseDate(n.DueDate), Labels: labels,
+		CreatedAt: n.CreatedAt, DueDate: parseDate(n.DueDate), TimeEstimate: n.TimeEstimate, Labels: labels,
 	}
 	if n.Milestone != nil {
 		issue.MilestoneStart = parseDate(n.Milestone.StartDate)
@@ -553,6 +556,18 @@ func (c *Client) UpdateIssueState(ctx context.Context, projectPath string, iid i
 // empty date clears it (GitLab accepts an empty due_date to unset).
 func (c *Client) UpdateIssueDueDate(ctx context.Context, projectPath string, iid int64, date string) error {
 	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid), url.Values{"due_date": {date}})
+	return err
+}
+
+// SetIssueTimeEstimate sets the issue's time estimate to `minutes` (GitLab parses
+// the "<n>m" duration string), or resets it when minutes <= 0.
+func (c *Client) SetIssueTimeEstimate(ctx context.Context, projectPath string, iid int64, minutes int64) error {
+	if minutes <= 0 {
+		_, err := c.restForm(ctx, http.MethodPost, issuePath(projectPath, iid)+"/reset_time_estimate", url.Values{})
+		return err
+	}
+	_, err := c.restForm(ctx, http.MethodPost, issuePath(projectPath, iid)+"/time_estimate",
+		url.Values{"duration": {strconv.FormatInt(minutes, 10) + "m"}})
 	return err
 }
 

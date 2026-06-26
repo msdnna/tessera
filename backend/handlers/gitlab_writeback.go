@@ -100,7 +100,7 @@ func shouldPushWriteback(kind string, payload map[string]any, lastState string, 
 		return s != "" && s != lastState
 	case "priority":
 		return prioInvertible
-	case "comment", "labels", "due", "assignees":
+	case "comment", "labels", "due", "assignees", "estimate":
 		// Loop-safe: only user-side handlers enqueue these (the pull uses a Nil
 		// actor); the worker reads the latest task state at push time.
 		return true
@@ -211,6 +211,8 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 		return prefix + ": срок"
 	case "assignees":
 		return prefix + ": исполнители"
+	case "estimate":
+		return prefix + ": оценка"
 	default:
 		return prefix + ": " + kind
 	}
@@ -413,6 +415,30 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 			return res, err
 		}
 		res.result = fmt.Sprintf("assignees set (%d)", len(list))
+		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
+
+	case "estimate":
+		// Only meaningful when the board's estimation unit is time; GitLab's
+		// timeEstimate is seconds, our canon is minutes.
+		if h.integrationEstimationUnit(ctx, integ) != "time" {
+			return res, notify.Permanent(errors.New("estimate write-back needs a time estimation unit"))
+		}
+		task, err := h.q.GetTask(ctx, w.TaskID)
+		if err != nil {
+			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
+		var minutes int64
+		if task.Estimate != nil {
+			minutes = int64(*task.Estimate)
+		}
+		if err := client.SetIssueTimeEstimate(ctx, path, iid, minutes); err != nil {
+			return res, err
+		}
+		if minutes <= 0 {
+			res.result = "estimate cleared"
+		} else {
+			res.result = fmt.Sprintf("estimate → %dm", minutes)
+		}
 		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
 
 	case "due":

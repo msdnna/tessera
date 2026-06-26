@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.101.0] — 2026-06-27
+- **Двусторонняя синхронизация оценки с GitLab timeEstimate** (phase B+ шаг 2). В разделе
+  обратной записи GitLab-модалки добавлен тумблер «Оценка (timeEstimate)» — **активен только когда
+  единица оценки доски „время"** (иначе disabled + тултип/подсказка). Единица берётся из нового поля
+  `estimation_unit` ответа интеграции. При смене единицы тумблер гаснет и `push_estimate` не
+  сохраняется.
+
 ### [0.100.0] — 2026-06-27
 - **Назначение участников GitLab из Tessera** (phase B+ шаг 3). На бордах с интеграцией пикер
   исполнителей (на карточке и в модалке) теперь показывает секцию «GitLab» с участниками проекта
@@ -1793,6 +1800,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.58.0] — 2026-06-27
+- **Двусторонняя синхронизация time-estimate с GitLab (фаза B+ шаг 2, миграция 0036).** Pull читает
+  `timeEstimate` issue (GraphQL, секунды → канон-минуты) и пишет в `tasks.estimate` — **только когда
+  единица оценки доски „время"** (резолв project→workspace→дефолт). Write-back **`estimate`** (флаг
+  `push_estimate`): пушит `tasks.estimate` (минуты) в GL `time_estimate`/`reset_time_estimate`,
+  тоже gated на единицу «время». Ручная правка оценки → `gitlab_links.estimate_overridden` (зеркало
+  `due_overridden`) переживает ресинк; enqueue на изменении оценки в `UpdateTask`. GL-клиент:
+  `SetIssueTimeEstimate`, `timeEstimate` в issue-запросе. Ответ интеграции несёт `estimation_unit`
+  (для гейта тумблера в UI). **Деплой:** миграция добавляет колонку в `gitlab_links` (читается через
+  `SELECT *`) — применять вместе с новым бэкендом.
 
 ### [0.57.0] — 2026-06-27
 - **GitLab: синк участников проекта + write-back исполнителей (фаза B+ шаг 3, миграция 0035).**

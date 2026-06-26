@@ -56,7 +56,7 @@ INSERT INTO gitlab_links (
     gl_author_avatar_url, gl_last_state
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden
 `
 
 type CreateGitlabLinkParams struct {
@@ -113,6 +113,7 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		&i.GlAuthorAvatarUrl,
 		&i.StartOverridden,
 		&i.GlLastState,
+		&i.EstimateOverridden,
 	)
 	return i, err
 }
@@ -249,7 +250,7 @@ func (q *Queries) GetGitlabIntegrationByWorkspace(ctx context.Context, workspace
 
 const getGitlabLinkByGlobalID = `-- name: GetGitlabLinkByGlobalID :one
 
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
 `
 
 type GetGitlabLinkByGlobalIDParams struct {
@@ -280,12 +281,13 @@ func (q *Queries) GetGitlabLinkByGlobalID(ctx context.Context, arg GetGitlabLink
 		&i.GlAuthorAvatarUrl,
 		&i.StartOverridden,
 		&i.GlLastState,
+		&i.EstimateOverridden,
 	)
 	return i, err
 }
 
 const getGitlabLinkByTask = `-- name: GetGitlabLinkByTask :one
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state FROM gitlab_links WHERE task_id = $1
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden FROM gitlab_links WHERE task_id = $1
 `
 
 func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (GitlabLink, error) {
@@ -310,6 +312,7 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 		&i.GlAuthorAvatarUrl,
 		&i.StartOverridden,
 		&i.GlLastState,
+		&i.EstimateOverridden,
 	)
 	return i, err
 }
@@ -501,6 +504,15 @@ func (q *Queries) MarkGitlabDueOverridden(ctx context.Context, taskID uuid.UUID)
 	return err
 }
 
+const markGitlabEstimateOverridden = `-- name: MarkGitlabEstimateOverridden :exec
+UPDATE gitlab_links SET estimate_overridden = true WHERE task_id = $1
+`
+
+func (q *Queries) MarkGitlabEstimateOverridden(ctx context.Context, taskID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markGitlabEstimateOverridden, taskID)
+	return err
+}
+
 const markGitlabStartOverridden = `-- name: MarkGitlabStartOverridden :exec
 UPDATE gitlab_links SET start_overridden = true WHERE task_id = $1
 `
@@ -624,7 +636,7 @@ SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
     gl_last_state = $11,
     last_synced_at = now()
 WHERE task_id = $1
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden
 `
 
 type UpdateGitlabLinkParams struct {
@@ -675,6 +687,7 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		&i.GlAuthorAvatarUrl,
 		&i.StartOverridden,
 		&i.GlLastState,
+		&i.EstimateOverridden,
 	)
 	return i, err
 }

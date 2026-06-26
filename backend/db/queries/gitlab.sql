@@ -42,6 +42,9 @@ RETURNING *;
 -- name: MarkGitlabDueOverridden :exec
 UPDATE gitlab_links SET due_overridden = true WHERE task_id = $1;
 
+-- name: MarkGitlabEstimateOverridden :exec
+UPDATE gitlab_links SET estimate_overridden = true WHERE task_id = $1;
+
 -- MarkGitlabStartOverridden flags a linked task's start as user-set so the sync
 -- stops touching it. No-op when the task isn't linked.
 -- name: MarkGitlabStartOverridden :exec

@@ -85,6 +85,10 @@ const wbComments = ref(false)
 const wbLabels = ref(false)
 const wbDue = ref(false)
 const wbAssignees = ref(false)
+const wbEstimate = ref(false)
+// Resolved estimation unit of the integration board (from the integration GET);
+// the estimate toggle is only meaningful when it's "time".
+const estimationUnit = ref('time')
 const defaultColumn = ref('')
 const defaultAction = ref('tag')
 const tagKeepPrefix = ref(true)
@@ -234,6 +238,8 @@ async function loadIntegration() {
     wbLabels.value = wb.push_labels === true
     wbDue.value = wb.push_due === true
     wbAssignees.value = wb.push_assignees === true
+    wbEstimate.value = wb.push_estimate === true
+    estimationUnit.value = data.estimation_unit || 'time'
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
     defaultAction.value = r.default_action || 'tag'
@@ -309,6 +315,7 @@ async function save() {
         push_labels: wbLabels.value,
         push_due: wbDue.value,
         push_assignees: wbAssignees.value,
+        push_estimate: wbEstimate.value && estimationUnit.value === 'time',
       },
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
@@ -483,6 +490,27 @@ watch(
 
           <n-text depth="3" class="lbl">Исполнители (assignees issue)</n-text>
           <div><n-switch v-model:value="wbAssignees" size="small" /></div>
+
+          <n-text depth="3" class="lbl">
+            Оценка (timeEstimate)
+            <n-text v-if="estimationUnit !== 'time'" depth="3" style="font-size: 11px">
+              — только при единице «время»
+            </n-text>
+          </n-text>
+          <div>
+            <n-tooltip :disabled="estimationUnit === 'time'" trigger="hover">
+              <template #trigger>
+                <span>
+                  <n-switch
+                    v-model:value="wbEstimate"
+                    size="small"
+                    :disabled="estimationUnit !== 'time'"
+                  />
+                </span>
+              </template>
+              Доступно только когда единица оценки доски — «время».
+            </n-tooltip>
+          </div>
         </div>
         <p v-if="wbEnabled" class="gl-wb-hint">
           <n-text depth="3">
@@ -492,6 +520,8 @@ watch(
             только метки тег-неймспейсов (не «S:»/«P:»); срок ставится на сам issue.
             Исполнители: участники проекта GitLab назначаются в пикере исполнителей
             (резолв в GL-аккаунт по members), assignee_ids issue перезаписываются.
+            Оценка синхронизируется двусторонне (GL timeEstimate ↔ задача), только при
+            единице оценки «время».
           </n-text>
         </p>
 
