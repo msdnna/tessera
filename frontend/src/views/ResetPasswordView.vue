@@ -31,7 +31,7 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout subtitle="Новый пароль">
+  <auth-layout title="Новый пароль">
     <p v-if="!token" class="note">Ссылка недействительна — токен отсутствует.</p>
     <p v-else-if="done" class="note">Пароль изменён. Перенаправляем ко входу…</p>
     <template v-else>

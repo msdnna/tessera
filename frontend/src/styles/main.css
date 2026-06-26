@@ -349,97 +349,62 @@ body {
 }
 
 /* ── Auth screens (login / register) ────────────────────────────────────────
-   The form sits directly on the brand gradient (no card), Android-style. The
-   form is slotted into AuthLayout, so its controls are styled here globally. */
-/* Notes (verify / recover / forgot landing text) were left-aligned inside the
-   360px column and read as "off-centre" next to the centred mark — centre them. */
+   The form sits inside a centred card on the themed background (AuthLayout),
+   with a soft blurred brand-purple glow drifting behind it. The form is slotted
+   in, so its controls inherit Naive's themed defaults — only a few card-level
+   tweaks live here. */
+/* Notes (verify / recover / forgot landing text) — centre them in the card. */
 .auth .note {
   text-align: center;
+  color: var(--t-text2);
+}
+/* Browser autofill paints its own pale-blue background + dark text, which
+   clashes with the themed inputs (most visibly in dark mode). Mask it: keep the
+   themed text colour and a flat inset matching the input surface (white in
+   light, surfaceAlt in dark — that's what the Naive Input override uses). */
+.auth .n-input .n-input__input-el:-webkit-autofill,
+.auth .n-input .n-input__input-el:-webkit-autofill:hover,
+.auth .n-input .n-input__input-el:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--t-text2);
+  caret-color: var(--t-text2);
+  -webkit-box-shadow: 0 0 0 1000px var(--t-surface) inset;
+  transition: background-color 9999s ease-in-out 0s;
+  border-radius: 8px;
+}
+[data-theme='dark'] .auth .n-input .n-input__input-el:-webkit-autofill,
+[data-theme='dark'] .auth .n-input .n-input__input-el:-webkit-autofill:hover,
+[data-theme='dark'] .auth .n-input .n-input__input-el:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--t-surface-alt) inset;
 }
 .auth-foot {
   margin-top: 18px;
   text-align: center;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
-}
-/* Inline form-error banner over the gradient (login/register). */
-.auth-error {
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(229, 72, 77, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  color: #fff;
-  font-size: 13px;
-  line-height: 1.4;
-  text-align: center;
-}
-/* Per-field validation feedback stays readable over the purple gradient. */
-.auth .n-form-item-feedback__line,
-.auth .n-form-item-feedback {
-  color: #ffd4d4 !important;
+  color: var(--t-text3);
 }
 .auth-foot a {
-  color: #fff;
-  font-weight: 700;
+  color: var(--t-primary);
+  font-weight: 600;
   text-decoration: none;
 }
 .auth-foot a:hover {
   text-decoration: underline;
 }
-/* Labels in white over the gradient. (Naive sets its colour CSS vars inline, so
-   these overrides target real properties with !important to win over them.) */
-.auth .n-form-item .n-form-item-label__text {
-  color: rgba(255, 255, 255, 0.9) !important;
-}
-/* Frosted translucent inputs (no hard border), white text. */
-.auth .n-input {
-  background: rgba(255, 255, 255, 0.16) !important;
+/* Inline form-error banner inside the card. */
+.auth-error {
+  margin: 0 0 16px;
+  padding: 10px 12px;
   border-radius: 10px;
+  background: color-mix(in srgb, #e0533d 14%, var(--t-surface));
+  border: 1px solid color-mix(in srgb, #e0533d 38%, transparent);
+  color: #e0533d;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
 }
-.auth .n-input .n-input__border,
-.auth .n-input .n-input__state-border {
-  border: none !important;
-}
-.auth .n-input .n-input__input-el,
-.auth .n-input .n-input__textarea-el {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff;
-  caret-color: #ffffff;
-}
-.auth .n-input .n-input__placeholder,
-.auth .n-input .n-input__input-el::placeholder {
-  color: rgba(255, 255, 255, 0.7) !important;
-  -webkit-text-fill-color: rgba(255, 255, 255, 0.7);
-}
-/* Browser autofill paints its own (light) background + dark text, which clashes
-   with the frosted login inputs. Mask it: keep white text and a frosted inset. */
-.auth .n-input .n-input__input-el:-webkit-autofill,
-.auth .n-input .n-input__input-el:-webkit-autofill:hover,
-.auth .n-input .n-input__input-el:-webkit-autofill:focus {
-  -webkit-text-fill-color: #ffffff;
-  caret-color: #ffffff;
-  -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.16) inset;
-  transition: background-color 9999s ease-in-out 0s;
-}
-.auth .n-input .n-input__eye,
-.auth .n-input .n-input__suffix {
-  color: rgba(255, 255, 255, 0.8);
-}
-/* White submit button with the brand-purple label (overrides the global
-   filled-primary gradient inside the auth screen). */
+/* Submit button keeps the global filled-primary brand gradient — just spacing. */
 .auth .n-button--primary-type {
-  background: #ffffff !important;
   margin-top: 4px;
-}
-.auth .n-button--primary-type:hover {
-  background: rgba(255, 255, 255, 0.92) !important;
-  filter: none;
-}
-.auth .n-button--primary-type .n-button__content {
-  color: #6d5fe0 !important;
-  -webkit-text-fill-color: #6d5fe0;
-  font-weight: 600;
 }
 
 /* ── Route / view transitions ────────────────────────────────────────────────

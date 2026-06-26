@@ -11,6 +11,8 @@ import { hueGrad } from '@/utils/gradient'
 const props = defineProps({
   node: { type: Object, required: true },
   kind: { type: String, required: true }, // 'group' | 'project'
+  // The open board's project lives in (or under) this rail node — highlight it.
+  active: { type: Boolean, default: false },
 })
 
 const show = ref(false)
@@ -47,7 +49,7 @@ const grpBare = computed(() => iconMode.value || !colored.value)
     raw
   >
     <template #trigger>
-      <button class="rail-item" :title="node.name">
+      <button class="rail-item" :class="{ active }" :title="node.name">
         <span
           v-if="kind === 'project'"
           class="picon"
@@ -89,6 +91,17 @@ const grpBare = computed(() => iconMode.value || !colored.value)
 }
 .rail-item:hover {
   background: var(--t-hover);
+}
+/* Active branch: the open board's project lives in (or under) this node. Matches
+   the collapsed nav-link active highlight (soft primary-tinted square). The
+   neutral (uncoloured) glyph is tinted primary too; nodes with their own colour
+   keep it (the explicit glyph colour wins over this inherited one). */
+.rail-item.active {
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
+}
+.rail-item.active .gicon-bare,
+.rail-item.active .picon-bare {
+  color: var(--t-primary);
 }
 .picon {
   display: inline-flex;

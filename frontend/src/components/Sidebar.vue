@@ -23,6 +23,7 @@ import {
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
+import { useRoute } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import {
@@ -47,10 +48,30 @@ defineProps({
 
 const store = useWorkspacesStore()
 const message = useMessage()
+const route = useRoute()
 
 const wsOptions = computed(() => store.list.map((w) => ({ label: w.name, value: w.id })))
 const rootGroups = computed(() => store.childGroups(null))
 const ungrouped = computed(() => store.projectsInGroup(null))
+
+// On the collapsed rail, highlight the root node (top-level group, or ungrouped
+// project) that contains the currently-open board's project — so the active
+// branch stays visible the way the expanded tree shows it. Resolved from the
+// route's projectSlug, walking group ancestors up to the root.
+const activeRailId = computed(() => {
+  const slug = route.params.projectSlug
+  if (!slug) return null
+  const proj = store.projects.find((p) => p.slug === slug)
+  if (!proj) return null
+  if (!proj.group_id) return proj.id // ungrouped → its own rail node
+  let g = store.groups.find((x) => x.id === proj.group_id)
+  while (g?.parent_id) {
+    const parent = store.groups.find((x) => x.id === g.parent_id)
+    if (!parent) break
+    g = parent
+  }
+  return g?.id ?? null
+})
 
 // Mutable mirrors for vuedraggable at the root level (parent/group = null).
 const rootGrpModel = ref([])
@@ -217,8 +238,20 @@ async function createWorkspace() {
     </n-scrollbar>
     <n-scrollbar v-else class="rail-scroll">
       <div class="rail">
-        <SidebarRailNode v-for="g in rootGroups" :key="g.id" :node="g" kind="group" />
-        <SidebarRailNode v-for="p in ungrouped" :key="p.id" :node="p" kind="project" />
+        <SidebarRailNode
+          v-for="g in rootGroups"
+          :key="g.id"
+          :node="g"
+          kind="group"
+          :active="g.id === activeRailId"
+        />
+        <SidebarRailNode
+          v-for="p in ungrouped"
+          :key="p.id"
+          :node="p"
+          kind="project"
+          :active="p.id === activeRailId"
+        />
       </div>
     </n-scrollbar>
 

@@ -23,7 +23,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <auth-layout subtitle="Подтверждение почты">
+  <auth-layout title="Подтверждение">
     <p class="note">
       <template v-if="state === 'pending'">Подтверждаем…</template>
       <template v-else-if="state === 'ok'">Почта подтверждена. Спасибо!</template>

@@ -1944,11 +1944,12 @@ watch(
     var(--col-accent) 50%,
     color-mix(in srgb, var(--col-accent) 86%, #fff)
   );
-  /* Top accent: a 3px gradient TOP border that wraps the rounded top corners
-     onto the side edges (transparent top border reveals the gradient painted on
-     the border-box; padding-box keeps the column fill flat). */
-  border: 0 solid transparent;
-  border-top-width: 3px;
+  /* Light 1px border on the sides/bottom (like the cards), plus a 3px gradient
+     TOP accent: the top border is transparent and reveals the gradient painted
+     on the border-box (wrapping the rounded top corners); the other borders stay
+     the opaque neutral colour, and padding-box keeps the column fill flat. */
+  border: 1px solid var(--t-border);
+  border-top: 3px solid transparent;
   background:
     linear-gradient(var(--t-surface-alt), var(--t-surface-alt)) padding-box,
     var(--col-grad) border-box;

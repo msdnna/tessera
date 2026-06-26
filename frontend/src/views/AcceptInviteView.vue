@@ -32,7 +32,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <auth-layout subtitle="Приглашение">
+  <auth-layout title="Приглашение">
     <p class="note">
       <template v-if="state === 'pending'">Принимаем приглашение…</template>
       <template v-else-if="state === 'ok'">Готово! Вы присоединились к пространству.</template>

@@ -110,6 +110,66 @@ const author = computed(() => {
   }
   return null
 })
+// When the author is also an assignee, don't render a separate (muted) author
+// avatar — the person already shows once as the accent assignee. The tooltip
+// still lists both roles.
+const authorIsAssignee = computed(() => {
+  const a = author.value
+  if (!a) return false
+  if (a.id) return (props.task.assignee_ids || []).includes(a.id)
+  // GitLab author (no Tessera id): match by login/name against GitLab assignees.
+  const key = (a.login || a.name || '').toLowerCase()
+  return glAssignees.value.some((g) => {
+    const gn = (g.name || g || '').toString().toLowerCase()
+    return gn === key || (g.login || '').toLowerCase() === key
+  })
+})
+
+// Combined assignee names (Tessera + GitLab) for the merged people tooltip.
+const assigneeNames = computed(() =>
+  [
+    ...assignees.value.map((u) => u.name),
+    ...glAssignees.value.map((g) => `${g.name || g} (GitLab)`),
+  ].join(', '),
+)
+
+// Assignee picker: a search box + a list capped at 10, ordered assigned →
+// recently-picked → alphabetical. "Recent" is a small cross-board localStorage
+// MRU of user ids the user has assigned, so the people you actually use surface
+// first; falls back to alphabetical when there's no history.
+const RECENT_ASSIGNEES_KEY = 'tessera_recent_assignees'
+function readRecentAssignees() {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_ASSIGNEES_KEY) || '[]')
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
+}
+const assigneeQuery = ref('')
+const recentAssignees = ref(readRecentAssignees())
+const pickerMembers = computed(() => {
+  const q = assigneeQuery.value.trim().toLowerCase()
+  if (q) return props.members.filter((m) => (m.name || '').toLowerCase().includes(q))
+  // No query: assigned first, then MRU, then alphabetical — deduped, capped at 10
+  // (but never hiding a currently-assigned member so they can be removed).
+  const byId = new Map(props.members.map((m) => [m.user_id, m]))
+  const seen = new Set()
+  const out = []
+  const add = (id) => {
+    if (seen.has(id) || !byId.has(id)) return
+    seen.add(id)
+    out.push(byId.get(id))
+  }
+  const assigned = props.task.assignee_ids || []
+  assigned.forEach(add)
+  recentAssignees.value.forEach(add)
+  ;[...props.members]
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .forEach((m) => add(m.user_id))
+  return out.slice(0, Math.max(10, assigned.length))
+})
+
 const due = computed(() => formatDue(props.task.due_date))
 // Overdue: due date in the past on a not-yet-done task.
 const overdue = computed(
@@ -338,8 +398,15 @@ async function createTag() {
   emit('changed')
 }
 async function toggleAssignee(uid) {
-  if (isAssigned(uid)) await tasksApi.removeAssignee(props.task.id, uid)
-  else await tasksApi.addAssignee(props.task.id, uid)
+  const adding = !isAssigned(uid)
+  if (adding) await tasksApi.addAssignee(props.task.id, uid)
+  else await tasksApi.removeAssignee(props.task.id, uid)
+  if (adding) {
+    // Bump to the front of the MRU list (cap the stored history).
+    const next = [uid, ...recentAssignees.value.filter((x) => x !== uid)].slice(0, 30)
+    recentAssignees.value = next
+    localStorage.setItem(RECENT_ASSIGNEES_KEY, JSON.stringify(next))
+  }
   emit('changed')
 }
 
@@ -610,56 +677,78 @@ async function submitAddSub() {
           </div>
         </n-popover>
 
-        <span class="spacer" />
-
-        <!-- author → assignees: the creator (non-clickable) points at the
-           assignee(s). Author omitted when unknown (older tasks). -->
+        <!-- author + assignees merged into one overlapping avatar group: the
+           author (muted) leads, then the assignee(s). Hover shows the full
+           breakdown; click opens the assignee picker (search + recent). The
+           group right-aligns (margin-left:auto) and stays right-aligned even
+           when it wraps to its own line. -->
         <div class="people">
-          <n-tooltip v-if="author">
+          <n-popover
+            trigger="click"
+            placement="bottom-end"
+            @update:show="(v) => !v && (assigneeQuery = '')"
+          >
             <template #trigger>
-              <UserAvatar
-                class="avatar author-ava"
-                :user-id="author.id"
-                :src="author.avatar"
-                :name="author.name"
+              <n-tooltip placement="top">
+                <template #trigger>
+                  <button class="pill assignee-pill" @click.stop>
+                    <UserAvatar
+                      v-if="author && !authorIsAssignee"
+                      class="avatar author-ava"
+                      :user-id="author.id"
+                      :src="author.avatar"
+                      :name="author.name"
+                    />
+                    <UserAvatar
+                      v-for="u in assignees"
+                      :key="u.user_id"
+                      class="avatar"
+                      :user-id="u.user_id"
+                      :name="u.name"
+                    />
+                    <UserAvatar
+                      v-for="(g, i) in glAssignees"
+                      :key="`g${i}`"
+                      class="avatar ext-ava"
+                      :src="g.avatar_url"
+                      :name="g.name || g"
+                    />
+                    <n-icon
+                      v-if="!author && !assignees.length && !glAssignees.length"
+                      :component="PersonAddOutline"
+                      :size="13"
+                    />
+                  </button>
+                </template>
+                <div class="people-tip">
+                  <div v-if="author">
+                    Автор: {{ author.gl ? `@${author.login} (GitLab)` : author.name }}
+                  </div>
+                  <div v-if="assigneeNames">Исполнитель: {{ assigneeNames }}</div>
+                  <div v-if="!author && !assigneeNames">Нет исполнителя</div>
+                </div>
+              </n-tooltip>
+            </template>
+            <div class="menu assignee-menu">
+              <n-input
+                v-model:value="assigneeQuery"
+                size="tiny"
+                placeholder="Поиск"
+                clearable
                 @click.stop
               />
-            </template>
-            {{ author.gl ? `Автор: @${author.login} (GitLab)` : `Автор: ${author.name}` }}
-          </n-tooltip>
-          <n-icon v-if="author" :component="ArrowForwardOutline" :size="11" class="people-arrow" />
-          <n-popover trigger="click" placement="bottom-end">
-            <template #trigger>
-              <button class="pill assignee-pill" @click.stop>
-                <n-tooltip v-for="u in assignees" :key="u.user_id">
-                  <template #trigger>
-                    <UserAvatar class="avatar" :user-id="u.user_id" :name="u.name" />
-                  </template>
-                  Исполнитель: {{ u.name }}
-                </n-tooltip>
-                <n-tooltip v-for="(g, i) in glAssignees" :key="`g${i}`">
-                  <template #trigger>
-                    <UserAvatar class="avatar ext-ava" :src="g.avatar_url" :name="g.name || g" />
-                  </template>
-                  Исполнитель: {{ g.name || g }} (GitLab)
-                </n-tooltip>
-                <n-icon
-                  v-if="!assignees.length && !glAssignees.length"
-                  :component="PersonAddOutline"
-                  :size="13"
-                />
-              </button>
-            </template>
-            <div class="menu">
-              <div
-                v-for="m in members"
-                :key="m.user_id"
-                class="menu-item assignee-item"
-                @click="toggleAssignee(m.user_id)"
-              >
-                <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
-                <span class="aname">{{ m.name }}</span>
-                <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
+              <div class="assignee-list">
+                <div
+                  v-for="m in pickerMembers"
+                  :key="m.user_id"
+                  class="menu-item assignee-item"
+                  @click="toggleAssignee(m.user_id)"
+                >
+                  <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
+                  <span class="aname">{{ m.name }}</span>
+                  <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
+                </div>
+                <div v-if="!pickerMembers.length" class="assignee-empty">Никого не найдено</div>
               </div>
             </div>
           </n-popover>
@@ -997,9 +1086,6 @@ async function submitAddSub() {
   gap: 5px;
   max-width: 220px;
 }
-.spacer {
-  flex: 1;
-}
 .avatar {
   width: 24px;
   height: 24px;
@@ -1026,22 +1112,43 @@ async function submitAddSub() {
   border: none;
   padding: 2px;
 }
-/* author → assignee group */
+/* author + assignee group — pushed to the right edge of the row; margin-left
+   auto keeps it right-aligned even when it wraps onto its own line. */
 .people {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  margin-left: auto;
 }
-/* the author avatar: read-only, visually muted vs the accent assignees */
+/* the author avatar: read-only, visually muted vs the accent assignees, and it
+   leads the stack (so it sits flush-left like any first avatar) */
 .author-ava {
-  margin-left: 0;
-  cursor: default;
   background: var(--t-text3);
   opacity: 0.85;
 }
-.people-arrow {
+/* Multiline people tooltip (Автор / Исполнитель breakdown). */
+.people-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+/* Assignee picker: a pinned search box above a scrollable, capped list. */
+.assignee-menu {
+  gap: 6px;
+}
+.assignee-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.assignee-empty {
+  padding: 8px 6px;
+  text-align: center;
+  font-size: 12px;
   color: var(--t-text3);
-  flex: none;
 }
 /* external GitLab assignee (no Tessera account): neutral, slightly muted */
 .ext-ava {

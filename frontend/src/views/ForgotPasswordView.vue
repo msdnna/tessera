@@ -37,7 +37,7 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout subtitle="Восстановление пароля">
+  <auth-layout title="Восстановление">
     <template v-if="!sent">
       <n-form @submit.prevent="submit">
         <n-form-item

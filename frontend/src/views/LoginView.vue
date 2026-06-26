@@ -41,7 +41,7 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout subtitle="Войдите в аккаунт">
+  <auth-layout title="Вход">
     <div v-if="formError" class="auth-error">{{ formError }}</div>
     <n-form @submit.prevent="submit">
       <n-form-item
