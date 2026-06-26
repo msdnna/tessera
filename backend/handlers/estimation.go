@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -147,6 +149,11 @@ func (h *API) SetProjectEstimation(c *gin.Context) {
 func (h *API) bindEstimation(c *gin.Context) (*json.RawMessage, string) {
 	var raw json.RawMessage
 	if err := c.ShouldBindJSON(&raw); err != nil {
+		// An empty body means "inherit" (the UI sends null when «Наследовать» is on;
+		// axios omits a null body entirely → EOF here). Treat it as clear, not error.
+		if errors.Is(err, io.EOF) {
+			return nil, ""
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return nil, "skip"
 	}
