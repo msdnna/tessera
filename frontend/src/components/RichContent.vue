@@ -108,7 +108,8 @@ onMounted(build)
   height: 15px;
   margin: 0 7px 0 0;
   vertical-align: -2px;
-  border: 1.5px solid var(--t-border-strong, var(--t-text3));
+  /* Muted (not the bright text3) so the box reads softly on dark + light. */
+  border: 1.5px solid color-mix(in srgb, var(--t-text3) 45%, var(--t-border));
   border-radius: 4px;
   background: var(--t-surface);
   cursor: default;
@@ -122,13 +123,13 @@ onMounted(build)
 .md :deep(input[type='checkbox']:checked)::after {
   content: '';
   position: absolute;
-  left: 4px;
-  top: 1px;
+  left: 50%;
+  top: 50%;
   width: 4px;
   height: 8px;
   border: solid var(--t-on-primary, #fff);
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  transform: translate(-50%, -55%) rotate(45deg);
 }
 .md.interactive :deep(input[type='checkbox']) {
   cursor: pointer;

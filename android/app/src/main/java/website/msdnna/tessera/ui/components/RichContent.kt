@@ -159,6 +159,8 @@ private fun buildRichHtml(
     val accentGradCss = "background:$accentBoxGrad;" +
         "-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;"
     val checkCursor = if (interactive) "pointer" else "default"
+    // Muted box border (not the bright text3) so checkboxes read softly on dark.
+    val checkBorder = hex(lerp(c.text3, c.border, 0.55f))
     return """
 <!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
@@ -175,11 +177,11 @@ private fun buildRichHtml(
   ul,ol{margin:0 0 8px;padding-left:20px;} li{margin:2px 0;}
   li:has(> input[type=checkbox]){list-style:none;}
   input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 7px 0 0;
-       vertical-align:-2px;border:1.5px solid ${hex(c.text3)};border-radius:4px;background:${hex(c.surface)};
+       vertical-align:-2px;border:1.5px solid $checkBorder;border-radius:4px;background:${hex(c.surface)};
        position:relative;flex:none;cursor:$checkCursor;}
   input[type=checkbox]:checked{border-color:transparent;background:$accentBoxGrad;}
-  input[type=checkbox]:checked::after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;
-       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;transform:rotate(45deg);}
+  input[type=checkbox]:checked::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:8px;
+       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;transform:translate(-50%,-55%) rotate(45deg);}
   img{max-width:100%;height:auto;border-radius:8px;}
   blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid ${hex(c.border)};color:${hex(c.text2)};}
   hr{border:none;border-top:1px solid ${hex(c.border)};margin:12px 0;}

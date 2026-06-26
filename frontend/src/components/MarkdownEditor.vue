@@ -380,7 +380,7 @@ defineExpose({ getMentions, clear, focus })
 
     <input ref="imgInput" type="file" accept="image/*" hidden @change="onImgFile" />
 
-    <Transition name="md2-fade" mode="out-in">
+    <Transition name="md2-fade" mode="out-in" @after-enter="autoGrow">
     <div v-if="mode === 'write'" key="write" class="md2-write">
       <textarea
         ref="ta"
