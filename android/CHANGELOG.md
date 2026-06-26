@@ -5,6 +5,12 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.37.0 — 2026-06-27
+- **GitLab write-back: тумблеры «Теги» и «Срок»** (паритет web 0.99.0 / backend 0.56.0).
+  В `GitLabSettingsScreen` добавлены переключатели `push_labels` (синк тегов → метки
+  тег-неймспейсов issue) и `push_due` (синк срока → `due_date` issue); модель
+  `GitlabWriteback` round-trip-ит оба новых поля.
+
 ## 0.36.4 — 2026-06-26
 - **Тап по тексту пункта тоже отмечает/снимает чекбокс** (не только по квадрату).
   Делегированный клик в WebView находит чекбокс пункта, флипает его (с анимацией) и

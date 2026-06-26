@@ -12,6 +12,8 @@ type Writeback struct {
 	PushState           bool              `json:"push_state"`
 	PushPriority        bool              `json:"push_priority"`
 	PushComments        bool              `json:"push_comments"`
+	PushLabels          bool              `json:"push_labels"` // reconcile tag-namespace labels
+	PushDue             bool              `json:"push_due"`    // push the issue's own due_date
 	PushTitleDesc       bool              `json:"push_title_desc"`
 	ColumnLabelBindings map[string]string `json:"column_label_bindings,omitempty"`
 }
@@ -32,6 +34,10 @@ func (w Writeback) Allows(kind string) bool {
 		return w.PushPriority
 	case "comment":
 		return w.PushComments
+	case "labels":
+		return w.PushLabels
+	case "due":
+		return w.PushDue
 	case "title_desc":
 		return w.PushTitleDesc
 	default:

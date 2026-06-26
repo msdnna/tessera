@@ -342,6 +342,11 @@ func (h *API) UpdateTask(c *gin.Context) {
 	if t.Priority != updated.Priority {
 		h.enqueueWriteback(c, id, actor, "priority", map[string]any{"priority": updated.Priority})
 	}
+	// Due-date push reads the latest task state at push time, so an empty payload
+	// is fine (also lets a burst of edits coalesce to one pending row).
+	if !sameTime(t.DueDate, updated.DueDate) {
+		h.enqueueWriteback(c, id, actor, "due", map[string]any{})
+	}
 	h.broadcast(wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)
 }
@@ -708,6 +713,9 @@ func (h *API) AddTaskTag(c *gin.Context) {
 		return
 	}
 	h.broadcast(wsID, "task.tagged", gin.H{"task_id": id, "tag_id": req.TagID})
+	// Reconcile labels back to the linked issue (the worker reads the task's
+	// current tags, so the empty payload coalesces a burst into one row).
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "labels", map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -730,6 +738,7 @@ func (h *API) RemoveTaskTag(c *gin.Context) {
 		return
 	}
 	h.broadcast(wsID, "task.untagged", gin.H{"task_id": id, "tag_id": tagID})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "labels", map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 

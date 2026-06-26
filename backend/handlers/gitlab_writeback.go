@@ -39,6 +39,8 @@ const (
 //   state    {"state": "closed"|"opened"}
 //   priority {"priority": <int>}
 //   comment  {"comment_id": "<uuid>", "body": "<text>"}
+//   labels   {} — worker reconciles the task's current tags vs. the issue's labels
+//   due      {} — worker pushes the task's current due_date (empty clears it)
 func (h *API) enqueueWriteback(ctx context.Context, taskID, actorID uuid.UUID, kind string, payload map[string]any) {
 	if actorID == uuid.Nil {
 		return
@@ -56,7 +58,13 @@ func (h *API) enqueueWriteback(ctx context.Context, taskID, actorID uuid.UUID, k
 		return
 	}
 
-	_, prioInvertible := parseRules(integ.LabelRules).InversePriority()
+	rules := parseRules(integ.LabelRules)
+	// Label write-back needs tag names to round-trip to full label titles; skip
+	// queuing doomed rows when the prefix is stripped.
+	if kind == "labels" && !rules.TagsInvertible() {
+		return
+	}
+	_, prioInvertible := rules.InversePriority()
 	if !shouldPushWriteback(kind, payload, link.GlLastState, prioInvertible) {
 		return
 	}
@@ -92,7 +100,9 @@ func shouldPushWriteback(kind string, payload map[string]any, lastState string, 
 		return s != "" && s != lastState
 	case "priority":
 		return prioInvertible
-	case "comment":
+	case "comment", "labels", "due":
+		// Loop-safe: only user-side handlers enqueue these (the pull uses a Nil
+		// actor); the worker reads the latest task state at push time.
 		return true
 	default:
 		return false
@@ -195,6 +205,10 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 		return prefix + ": приоритет"
 	case "comment":
 		return prefix + ": комментарий"
+	case "labels":
+		return prefix + ": метки"
+	case "due":
+		return prefix + ": срок"
 	default:
 		return prefix + ": " + kind
 	}
@@ -303,6 +317,82 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		res.result = "label «" + add + "» set"
 		if len(remove) > 0 {
 			res.result += ", removed " + strings.Join(remove, ", ")
+		}
+		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
+
+	case "labels":
+		rules := parseRules(integ.LabelRules)
+		if !rules.TagsInvertible() {
+			return res, notify.Permanent(errors.New("tag labels are not invertible (prefix stripped)"))
+		}
+		// Diff the issue's current tag-namespace labels against the task's tags;
+		// status/priority labels are excluded (owned by their own write-back path).
+		issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+		if err != nil {
+			return res, err
+		}
+		if len(issues) == 0 {
+			return res, notify.Permanent(errors.New("issue not found"))
+		}
+		current := map[string]bool{}
+		for _, l := range issues[0].Labels {
+			if t := strings.TrimSpace(l.Title); rules.TagLabelClass(t) {
+				current[t] = true
+			}
+		}
+		tags, err := h.q.ListTaskTags(ctx, w.TaskID)
+		if err != nil {
+			return res, err // transient: retry
+		}
+		desired := map[string]bool{}
+		for _, tg := range tags {
+			if t := strings.TrimSpace(tg.Name); t != "" && rules.TagLabelClass(t) {
+				desired[t] = true
+			}
+		}
+		var add, remove []string
+		for t := range desired {
+			if !current[t] {
+				add = append(add, t)
+			}
+		}
+		for t := range current {
+			if !desired[t] {
+				remove = append(remove, t)
+			}
+		}
+		if len(add) == 0 && len(remove) == 0 {
+			res.result = "labels already in sync"
+			return res, nil
+		}
+		if err := client.SetIssueLabels(ctx, path, iid, add, remove); err != nil {
+			return res, err
+		}
+		res.result = "labels reconciled"
+		if len(add) > 0 {
+			res.result += " +[" + strings.Join(add, ", ") + "]"
+		}
+		if len(remove) > 0 {
+			res.result += " -[" + strings.Join(remove, ", ") + "]"
+		}
+		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
+
+	case "due":
+		task, err := h.q.GetTask(ctx, w.TaskID)
+		if err != nil {
+			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
+		date := ""
+		if task.DueDate != nil {
+			date = task.DueDate.UTC().Format("2006-01-02")
+		}
+		if err := client.UpdateIssueDueDate(ctx, path, iid, date); err != nil {
+			return res, err
+		}
+		if date == "" {
+			res.result = "due date cleared"
+		} else {
+			res.result = "due date → " + date
 		}
 		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
 

@@ -173,6 +173,8 @@ private fun IntegrationCard(
     var wbState by remember(integ) { mutableStateOf(integ.writeback.pushState) }
     var wbPriority by remember(integ) { mutableStateOf(integ.writeback.pushPriority) }
     var wbComments by remember(integ) { mutableStateOf(integ.writeback.pushComments) }
+    var wbLabels by remember(integ) { mutableStateOf(integ.writeback.pushLabels) }
+    var wbDue by remember(integ) { mutableStateOf(integ.writeback.pushDue) }
     val rules = remember(integ) { mutableStateListOf<EditRule>().apply { addAll(integ.labelRules.rules.map { EditRule(it) }) } }
     // Prefill each prefix rule's friendly name from the loaded store (web GitLabModal
     // loadPrefixNames). Re-runs when the target project's names load / change.
@@ -215,11 +217,14 @@ private fun IntegrationCard(
         Field("Статус (закрыть/открыть issue)") { TSwitch(wbState, { wbState = it }) }
         Field("Приоритет (метка P:)") { TSwitch(wbPriority, { wbPriority = it }) }
         Field("Комментарии (как заметки)") { TSwitch(wbComments, { wbComments = it }) }
+        Field("Теги (метки тег-неймспейсов)") { TSwitch(wbLabels, { wbLabels = it }) }
+        Field("Срок (due date issue)") { TSwitch(wbDue, { wbDue = it }) }
         Spacer(Modifier.height(4.dp))
         Text(
             "Изменения линкованных задач отправляются в GitLab под токеном владельца " +
                 "интеграции (нужен scope «api»). Статус — только открыть/закрыть issue по " +
-                "границе колонки «Готово»; метки «S:» не трогаются.",
+                "границе колонки «Готово»; метки «S:» не трогаются. Теги синхронизируют " +
+                "только метки тег-неймспейсов (не «S:»/«P:»); срок ставится на сам issue.",
             color = c.text3, fontSize = 12.sp,
         )
     }
@@ -272,7 +277,7 @@ private fun IntegrationCard(
                         GitlabSetIntegrationRequest(
                             projectPath.trim(), bid, enabled, interval, dueSource, startSource,
                             GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
-                            GitlabWriteback(wbEnabled, wbState, wbPriority, wbComments),
+                            GitlabWriteback(wbEnabled, wbState, wbPriority, wbComments, wbLabels, wbDue),
                         ),
                     )
                 }

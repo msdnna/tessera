@@ -472,6 +472,13 @@ func (c *Client) UpdateIssueState(ctx context.Context, projectPath string, iid i
 	return err
 }
 
+// UpdateIssueDueDate sets the issue's own due date (date is "YYYY-MM-DD"); an
+// empty date clears it (GitLab accepts an empty due_date to unset).
+func (c *Client) UpdateIssueDueDate(ctx context.Context, projectPath string, iid int64, date string) error {
+	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid), url.Values{"due_date": {date}})
+	return err
+}
+
 // SetIssueLabels adds and/or removes labels (by title) on an issue. Empty slices
 // are skipped; a fully-empty call is a no-op.
 func (c *Client) SetIssueLabels(ctx context.Context, projectPath string, iid int64, add, remove []string) error {

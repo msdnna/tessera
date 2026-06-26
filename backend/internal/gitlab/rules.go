@@ -193,6 +193,42 @@ func (rs Rules) Resolve(labels []Label) Resolution {
 	return res
 }
 
+// TagLabelClass reports whether a GitLab label title would resolve to a Tessera
+// *tag* (as opposed to status/priority/board/group/ignore). Used by label
+// write-back to reconcile ONLY tag-namespace labels — status (S:) and priority
+// (P:) labels are owned by the state/priority write-back paths and never touched.
+func (rs Rules) TagLabelClass(title string) bool {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return false
+	}
+	for i := range rs.Rules {
+		rule := &rs.Rules[i]
+		if _, ok := rule.matches(title); !ok {
+			continue
+		}
+		return rule.Action == "tag" // first matching rule wins
+	}
+	// no rule matched → default action decides
+	return rs.DefaultAction != "ignore"
+}
+
+// TagsInvertible reports whether tag names round-trip to full GitLab label titles
+// (i.e. the prefix is kept), so a Tessera tag name can be pushed verbatim as a
+// label. False when any tag-producing path strips the namespace — then we can't
+// reconstruct the label title and label write-back must be skipped.
+func (rs Rules) TagsInvertible() bool {
+	if !rs.TagKeepPrefix {
+		return false
+	}
+	for i := range rs.Rules {
+		if rs.Rules[i].Action == "tag" && !rs.Rules[i].KeepPrefix {
+			return false
+		}
+	}
+	return true
+}
+
 // stripNamespace removes a leading "prefix: " or "key::" namespace from a label
 // title, e.g. "T: bug" → "bug", "effort::small" → "small".
 func stripNamespace(label string) string {

@@ -16,12 +16,60 @@ func TestWriteback_AllowsDisabled(t *testing.T) {
 }
 
 func TestWriteback_AllowsPerKind(t *testing.T) {
-	w := Writeback{Enabled: true, PushState: true, PushComments: true}
-	cases := map[string]bool{"state": true, "priority": false, "comment": true, "title_desc": false, "bogus": false}
+	w := Writeback{Enabled: true, PushState: true, PushComments: true, PushLabels: true}
+	cases := map[string]bool{
+		"state": true, "priority": false, "comment": true, "labels": true,
+		"due": false, "title_desc": false, "bogus": false,
+	}
 	for kind, want := range cases {
 		if got := w.Allows(kind); got != want {
 			t.Errorf("Allows(%q) = %v, want %v", kind, got, want)
 		}
+	}
+}
+
+func TestTagLabelClass_Default(t *testing.T) {
+	rs := DefaultRules()
+	cases := map[string]bool{
+		"S: Done":    false, // status
+		"P: High":    false, // priority
+		"M: epic":    false, // group
+		"T: bug":     true,  // default → tag
+		"Scope: api": true,  // default → tag
+		"":           false,
+	}
+	for title, want := range cases {
+		if got := rs.TagLabelClass(title); got != want {
+			t.Errorf("TagLabelClass(%q) = %v, want %v", title, got, want)
+		}
+	}
+}
+
+func TestTagLabelClass_IgnoreDefault(t *testing.T) {
+	rs := Rules{DefaultAction: "ignore", Rules: []Rule{
+		{Match: "T: ", MatchType: "prefix", Action: "tag", KeepPrefix: true},
+	}}
+	if !rs.TagLabelClass("T: bug") {
+		t.Error("explicit tag rule should classify as tag")
+	}
+	if rs.TagLabelClass("random") {
+		t.Error("unmatched label with default ignore should NOT be a tag")
+	}
+}
+
+func TestTagsInvertible(t *testing.T) {
+	if !DefaultRules().TagsInvertible() {
+		t.Error("default rules keep the prefix → invertible")
+	}
+	stripped := Rules{TagKeepPrefix: false, DefaultAction: "tag"}
+	if stripped.TagsInvertible() {
+		t.Error("stripped default tags are not invertible")
+	}
+	mixedRule := Rules{TagKeepPrefix: true, Rules: []Rule{
+		{Match: "T: ", Action: "tag", KeepPrefix: false},
+	}}
+	if mixedRule.TagsInvertible() {
+		t.Error("a tag rule that strips the prefix breaks invertibility")
 	}
 }
 

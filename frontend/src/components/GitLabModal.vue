@@ -82,6 +82,8 @@ const wbEnabled = ref(false)
 const wbState = ref(false)
 const wbPriority = ref(false)
 const wbComments = ref(false)
+const wbLabels = ref(false)
+const wbDue = ref(false)
 const defaultColumn = ref('')
 const defaultAction = ref('tag')
 const tagKeepPrefix = ref(true)
@@ -228,6 +230,8 @@ async function loadIntegration() {
     wbState.value = wb.push_state === true
     wbPriority.value = wb.push_priority === true
     wbComments.value = wb.push_comments === true
+    wbLabels.value = wb.push_labels === true
+    wbDue.value = wb.push_due === true
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
     defaultAction.value = r.default_action || 'tag'
@@ -300,6 +304,8 @@ async function save() {
         push_state: wbState.value,
         push_priority: wbPriority.value,
         push_comments: wbComments.value,
+        push_labels: wbLabels.value,
+        push_due: wbDue.value,
       },
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
@@ -465,12 +471,19 @@ watch(
 
           <n-text depth="3" class="lbl">Комментарии (как заметки)</n-text>
           <div><n-switch v-model:value="wbComments" size="small" /></div>
+
+          <n-text depth="3" class="lbl">Теги (метки тег-неймспейсов)</n-text>
+          <div><n-switch v-model:value="wbLabels" size="small" /></div>
+
+          <n-text depth="3" class="lbl">Срок (due date issue)</n-text>
+          <div><n-switch v-model:value="wbDue" size="small" /></div>
         </div>
         <p v-if="wbEnabled" class="gl-wb-hint">
           <n-text depth="3">
             Изменения линкованных задач отправляются в GitLab под токеном владельца
             интеграции (нужен scope «api»). Статус — только открыть/закрыть issue по
-            границе колонки «Готово»; метки «S:» не трогаются.
+            границе колонки «Готово»; метки «S:» не трогаются. Теги синхронизируют
+            только метки тег-неймспейсов (не «S:»/«P:»); срок ставится на сам issue.
           </n-text>
         </p>
 
