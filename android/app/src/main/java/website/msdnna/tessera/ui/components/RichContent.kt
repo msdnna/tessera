@@ -60,6 +60,12 @@ fun RichContent(
     var heightDp by remember { mutableStateOf(1) }
     // Latest callback, so the long-lived JS bridge always calls the current one.
     val toggleCb by rememberUpdatedState(onToggleCheck)
+    // A self-originated checkbox tap already toggled (and animated) the box in the
+    // WebView, so skip the reload the resulting markdown change would trigger —
+    // reloading would wipe the tick animation. `lastLoaded` makes `update` act only
+    // on a genuine html change (not every recomposition).
+    val skipNextLoad = remember { mutableStateOf(false) }
+    val lastLoaded = remember { mutableStateOf<String?>(null) }
 
     // Rebuild the document whenever the source, theme, mentions or mode changes.
     val html = remember(source, c.isDark, mentions, interactive) {
@@ -85,7 +91,10 @@ fun RichContent(
 
                         @JavascriptInterface
                         fun onCheckToggle(index: Int) {
-                            post { toggleCb?.invoke(index) }
+                            post {
+                                skipNextLoad.value = true
+                                toggleCb?.invoke(index)
+                            }
                         }
                     },
                     "AndroidRich",
@@ -115,7 +124,17 @@ fun RichContent(
             }
         },
         update = { web ->
-            web.loadDataWithBaseURL("file:///android_asset/richcontent/", html, "text/html", "utf-8", null)
+            // Only (re)load on a genuine html change. A self-toggle changed the html
+            // (markdown rewrite) but the WebView DOM already reflects + animated it,
+            // so adopt the new html without reloading.
+            if (html != lastLoaded.value) {
+                if (skipNextLoad.value) {
+                    skipNextLoad.value = false
+                } else {
+                    web.loadDataWithBaseURL("file:///android_asset/richcontent/", html, "text/html", "utf-8", null)
+                }
+                lastLoaded.value = html
+            }
         },
     )
 }
@@ -178,11 +197,17 @@ private fun buildRichHtml(
   li:has(> input[type=checkbox]){list-style:none;}
   input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 7px 0 0;
        vertical-align:-2px;border:1.5px solid $checkBorder;border-radius:4px;background:${hex(c.surface)};
-       position:relative;flex:none;cursor:$checkCursor;}
+       position:relative;flex:none;cursor:$checkCursor;
+       transition:border-color .15s ease,background-color .15s ease;}
   input[type=checkbox]:checked{border-color:transparent;background-color:transparent;
        background-image:$accentBoxGrad;background-origin:border-box;}
-  input[type=checkbox]:checked::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:8px;
-       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;transform:translate(-50%,-55%) rotate(45deg);}
+  /* Checkmark always present; pops in/out (scale+fade) — the light tick animation. */
+  input[type=checkbox]::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:8px;
+       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;
+       transform:translate(-50%,-60%) rotate(45deg) scale(.4);opacity:0;
+       transition:opacity .12s ease,transform .18s cubic-bezier(.2,.7,.3,1.55);}
+  input[type=checkbox]:checked::after{opacity:1;transform:translate(-50%,-60%) rotate(45deg) scale(1);}
+  @media (prefers-reduced-motion:reduce){input[type=checkbox],input[type=checkbox]::after{transition:none;}}
   img{max-width:100%;height:auto;border-radius:8px;}
   blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid ${hex(c.border)};color:${hex(c.text2)};}
   hr{border:none;border-top:1px solid ${hex(c.border)};margin:12px 0;}
@@ -224,12 +249,13 @@ private fun buildRichHtml(
     if (h.charAt(0) === '/') an.href = ROOT + h;
   });
   // Interactive GFM checkboxes: enable + report the box index on click so Kotlin
-  // can rewrite the markdown marker (the re-render reflects the new state).
+  // can rewrite the markdown marker. We let the native toggle happen (no
+  // preventDefault) so the CSS tick animation plays; Kotlin skips the reload
+  // that would otherwise interrupt it (the DOM already matches the new markdown).
   if (INTERACTIVE) {
     el.querySelectorAll('input[type=checkbox]').forEach(function(box, i){
       box.disabled = false;
-      box.addEventListener('click', function(e){
-        e.preventDefault();
+      box.addEventListener('click', function(){
         if (window.AndroidRich) AndroidRich.onCheckToggle(i);
       });
     });

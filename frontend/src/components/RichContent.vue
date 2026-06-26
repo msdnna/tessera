@@ -115,6 +115,9 @@ onMounted(build)
   cursor: default;
   position: relative;
   flex: none;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
 }
 .md :deep(input[type='checkbox']:checked) {
   border-color: transparent;
@@ -125,7 +128,9 @@ onMounted(build)
   background-image: var(--t-accent-grad, var(--t-primary));
   background-origin: border-box;
 }
-.md :deep(input[type='checkbox']:checked)::after {
+/* Checkmark is always present; it pops in (scale + fade) on check and out on
+   uncheck — the light tick animation. */
+.md :deep(input[type='checkbox'])::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -134,10 +139,24 @@ onMounted(build)
   height: 8px;
   border: solid var(--t-on-primary, #fff);
   border-width: 0 2px 2px 0;
-  transform: translate(-50%, -55%) rotate(45deg);
+  transform: translate(-50%, -60%) rotate(45deg) scale(0.4);
+  opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1.55);
+}
+.md :deep(input[type='checkbox']:checked)::after {
+  opacity: 1;
+  transform: translate(-50%, -60%) rotate(45deg) scale(1);
 }
 .md.interactive :deep(input[type='checkbox']) {
   cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .md :deep(input[type='checkbox']),
+  .md :deep(input[type='checkbox'])::after {
+    transition: none;
+  }
 }
 .md :deep(.mermaid-diagram) {
   display: flex;
