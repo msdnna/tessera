@@ -16,10 +16,10 @@ func TestWriteback_AllowsDisabled(t *testing.T) {
 }
 
 func TestWriteback_AllowsPerKind(t *testing.T) {
-	w := Writeback{Enabled: true, PushState: true, PushComments: true, PushLabels: true}
+	w := Writeback{Enabled: true, PushState: true, PushComments: true, PushLabels: true, PushAssignees: true}
 	cases := map[string]bool{
 		"state": true, "priority": false, "comment": true, "labels": true,
-		"due": false, "title_desc": false, "bogus": false,
+		"due": false, "assignees": true, "title_desc": false, "bogus": false,
 	}
 	for kind, want := range cases {
 		if got := w.Allows(kind); got != want {

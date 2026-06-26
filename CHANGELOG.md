@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.100.0] — 2026-06-27
+- **Назначение участников GitLab из Tessera** (phase B+ шаг 3). На бордах с интеграцией пикер
+  исполнителей (на карточке и в модалке) теперь показывает секцию «GitLab» с участниками проекта
+  GitLab — их можно назначить/снять даже без аккаунта в Tessera. Участники грузятся из
+  `GET /workspaces/:id/gitlab/members`; выбор пишет в `task_gitlab_assignees` (pin/unpin), при
+  включённом `push_assignees` бэкенд зеркалит набор в issue.
+- **Тумблер «Исполнители (assignees)»** в разделе обратной записи GitLab-модалки (`push_assignees`).
+- Карточки доски используют новое поле `gitlab_assignee_logins`, чтобы отмечать уже назначенных
+  GL-участников в пикере.
+
 ### [0.99.0] — 2026-06-27
 - **GitLab write-back: тумблеры «Теги» и «Срок».** В разделе «Обратная запись в GitLab»
   (GitLab-модалка) добавлены переключатели `push_labels` (синк тегов → метки тег-неймспейсов
@@ -1783,6 +1793,18 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.57.0] — 2026-06-27
+- **GitLab: синк участников проекта + write-back исполнителей (фаза B+ шаг 3, миграция 0035).**
+  Закрывает блокер «назначить GL-участника без аккаунта в Tessera» — **без OAuth**. Новая таблица
+  `gitlab_project_members` (синкается из GL Project Members на каждом pull; `gl_user_id` нужен для
+  `assignee_ids[]`). `task_gitlab_assignees` получила колонку `source` (user|gitlab): синк
+  перестраивает только gitlab-набор, ручные пины переживают ресинк. Новые эндпоинты:
+  `GET /workspaces/:id/gitlab/members`, `POST/DELETE /tasks/:id/gitlab-assignees`. Новый вид
+  write-back **`assignees`** (флаг `push_assignees`): пушит разрешённый набор исполнителей —
+  Tessera-юзеры с привязанным GL-аккаунтом (`gitlab_credentials.gl_user_id`) + закреплённые
+  GL-участники (резолв username→id по members) — через replace-all `assignee_ids`. GL-клиент:
+  `ProjectMembers`, `SetIssueAssignees`. Board-tasks отдают `gitlab_assignee_logins` для пикера.
 
 ### [0.56.0] — 2026-06-27
 - **GitLab write-back: теги + срок (фаза B+ шаг 1).** Два новых вида обратной записи поверх

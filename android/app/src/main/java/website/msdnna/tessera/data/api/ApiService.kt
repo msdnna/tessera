@@ -30,6 +30,7 @@ import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.DueNotifyRequest
 import website.msdnna.tessera.data.model.EmailRequest
 import website.msdnna.tessera.data.model.EstimationConfig
+import website.msdnna.tessera.data.model.GitlabMember
 import website.msdnna.tessera.data.model.Invitation
 import website.msdnna.tessera.data.model.InviteRequest
 import website.msdnna.tessera.data.model.LinkResponse
@@ -39,6 +40,7 @@ import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
 import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.PasswordChange
+import website.msdnna.tessera.data.model.PinGitlabAssigneeRequest
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.model.ProfileUpdate
 import website.msdnna.tessera.data.model.Project
@@ -263,6 +265,15 @@ interface ApiService {
 
     @DELETE("tasks/{id}/assignees/{userId}")
     suspend fun removeTaskAssignee(@Path("id") taskId: String, @Path("userId") userId: String)
+
+    @POST("tasks/{id}/gitlab-assignees")
+    suspend fun pinGitlabAssignee(@Path("id") taskId: String, @Body body: PinGitlabAssigneeRequest)
+
+    @DELETE("tasks/{id}/gitlab-assignees/{username}")
+    suspend fun removeGitlabAssignee(@Path("id") taskId: String, @Path("username") username: String)
+
+    @GET("workspaces/{id}/gitlab/members")
+    suspend fun gitlabMembers(@Path("id") workspaceId: String): List<GitlabMember>?
 
     // ── Tags (project-scoped) / members (workspace-scoped) ──────────────────
     @GET("projects/{id}/tags")

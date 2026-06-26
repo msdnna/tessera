@@ -175,6 +175,7 @@ private fun IntegrationCard(
     var wbComments by remember(integ) { mutableStateOf(integ.writeback.pushComments) }
     var wbLabels by remember(integ) { mutableStateOf(integ.writeback.pushLabels) }
     var wbDue by remember(integ) { mutableStateOf(integ.writeback.pushDue) }
+    var wbAssignees by remember(integ) { mutableStateOf(integ.writeback.pushAssignees) }
     val rules = remember(integ) { mutableStateListOf<EditRule>().apply { addAll(integ.labelRules.rules.map { EditRule(it) }) } }
     // Prefill each prefix rule's friendly name from the loaded store (web GitLabModal
     // loadPrefixNames). Re-runs when the target project's names load / change.
@@ -219,6 +220,7 @@ private fun IntegrationCard(
         Field("Комментарии (как заметки)") { TSwitch(wbComments, { wbComments = it }) }
         Field("Теги (метки тег-неймспейсов)") { TSwitch(wbLabels, { wbLabels = it }) }
         Field("Срок (due date issue)") { TSwitch(wbDue, { wbDue = it }) }
+        Field("Исполнители (assignees issue)") { TSwitch(wbAssignees, { wbAssignees = it }) }
         Spacer(Modifier.height(4.dp))
         Text(
             "Изменения линкованных задач отправляются в GitLab под токеном владельца " +
@@ -277,7 +279,7 @@ private fun IntegrationCard(
                         GitlabSetIntegrationRequest(
                             projectPath.trim(), bid, enabled, interval, dueSource, startSource,
                             GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
-                            GitlabWriteback(wbEnabled, wbState, wbPriority, wbComments, wbLabels, wbDue),
+                            GitlabWriteback(wbEnabled, wbState, wbPriority, wbComments, wbLabels, wbDue, wbAssignees),
                         ),
                     )
                 }

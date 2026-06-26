@@ -312,6 +312,10 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 	}
 	issues := mergeIssues(assigned, linked)
 
+	// Refresh the assignable project-member roster (best-effort: a failure here
+	// must not abort the issue sync).
+	h.syncProjectMembers(ctx, client, integ)
+
 	rules := parseRules(integ.LabelRules)
 	wsID := integ.WorkspaceID
 
@@ -839,19 +843,38 @@ func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UU
 	return added, removed
 }
 
+// syncProjectMembers refreshes the integration's assignable GitLab member roster
+// (upsert each + prune those no longer present). Best-effort — logged, never fatal.
+func (h *API) syncProjectMembers(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration) {
+	members, err := client.ProjectMembers(ctx, integ.ProjectPath)
+	if err != nil {
+		log.Printf("gitlab sync: list members for %s: %v", integ.ProjectPath, err)
+		return
+	}
+	keep := make([]int64, 0, len(members))
+	for _, m := range members {
+		_ = h.q.UpsertGitlabProjectMember(ctx, db.UpsertGitlabProjectMemberParams{
+			IntegrationID: integ.ID, GlUserID: m.ID, GlUsername: m.Username, GlName: m.Name,
+			GlAvatarUrl: h.avatarProxyURL(integ.WorkspaceID, m.AvatarURL), AccessLevel: int32(m.AccessLevel),
+		})
+		keep = append(keep, m.ID)
+	}
+	_ = h.q.DeleteStaleGitlabProjectMembers(ctx, db.DeleteStaleGitlabProjectMembersParams{IntegrationID: integ.ID, Column2: keep})
+}
+
 // reconcileAssignees rebuilds the GitLab-sourced assignee set: a GitLab assignee
 // whose username maps to a Tessera user becomes a real (gitlab-sourced) assignee;
 // the rest are stored as external display-only assignees. Manual ('user')
 // assignees are left untouched.
 func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, people []gitlab.Person) {
-	_ = h.q.DeleteTaskGitlabAssignees(ctx, taskID) // external set is fully rebuilt
+	_ = h.q.DeleteGitlabSourcedAssignees(ctx, taskID) // only the sync-made set is rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))
 	for _, p := range people {
 		if uid, err := h.q.GetUserIDByGitlabUsername(ctx, p.Login); err == nil {
 			_ = h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"})
 			tesseraIDs = append(tesseraIDs, uid)
 		} else {
-			_ = h.q.AddTaskGitlabAssignee(ctx, db.AddTaskGitlabAssigneeParams{
+			_ = h.q.UpsertGitlabSourcedAssignee(ctx, db.UpsertGitlabSourcedAssigneeParams{
 				TaskID: taskID, GlUsername: p.Login, GlName: p.Name,
 				GlAvatarUrl: h.avatarProxyURL(wsID, p.AvatarURL),
 			})
@@ -1015,4 +1038,84 @@ func parseWriteback(raw []byte) gitlab.Writeback {
 func hashStr(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
+}
+
+// ListGitlabMembers returns the assignable GitLab project members for a workspace
+// (synced from GitLab on each pull). Powers the integration-board assignee picker.
+func (h *API) ListGitlabMembers(c *gin.Context) {
+	wsID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	rows, err := h.q.ListGitlabProjectMembersByWorkspace(c, wsID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	out := make([]gin.H, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, gin.H{
+			"gl_user_id": m.GlUserID, "gl_username": m.GlUsername,
+			"gl_name": m.GlName, "gl_avatar_url": m.GlAvatarUrl,
+		})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// PinTaskGitlabAssignee pins a GitLab project member (who may have no Tessera
+// account) as an assignee of a task, surviving the sync rebuild (source='user').
+func (h *API) PinTaskGitlabAssignee(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	var req struct {
+		GlUsername  string `json:"gl_username" binding:"required"`
+		GlName      string `json:"gl_name"`
+		GlAvatarURL string `json:"gl_avatar_url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.q.PinGitlabAssignee(c, db.PinGitlabAssigneeParams{
+		TaskID: id, GlUsername: req.GlUsername, GlName: req.GlName, GlAvatarUrl: req.GlAvatarURL,
+	}); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "gl_username": req.GlUsername})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "assignees", map[string]any{})
+	c.Status(http.StatusNoContent)
+}
+
+// RemoveTaskGitlabAssignee unpins a GitLab-member assignee from a task.
+func (h *API) RemoveTaskGitlabAssignee(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	username := c.Param("username")
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username required"})
+		return
+	}
+	if err := h.q.RemoveGitlabAssignee(c, db.RemoveGitlabAssigneeParams{TaskID: id, GlUsername: username}); err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "gl_username": username})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "assignees", map[string]any{})
+	c.Status(http.StatusNoContent)
 }

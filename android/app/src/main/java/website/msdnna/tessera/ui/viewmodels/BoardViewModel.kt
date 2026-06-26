@@ -83,6 +83,7 @@ data class BoardUiState(
     val estimation: website.msdnna.tessera.data.model.EstimationConfig =
         website.msdnna.tessera.util.Estimation.DEFAULT,
     val members: List<Member> = emptyList(),
+    val gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
     val viewMode: BoardViewMode = BoardViewMode.Kanban,
     /** Swimlane/column grouping: "status" | "tag" | "assignee" | "none". Kanban only
      *  honours status/tag (columns); assignee/none are timeline/Gantt-only (mirrors web). */
@@ -231,6 +232,7 @@ class BoardViewModel(
             val prefixNames = loadPrefixNames()
             val estimation = loadEstimation()
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
+            val gitlabMembers = if (workspaceId.isNotBlank()) repo.gitlabMembers(workspaceId) else emptyList()
             _state.update {
                 val base = it.copy(
                     loading = false,
@@ -244,6 +246,7 @@ class BoardViewModel(
                     prefixNames = prefixNames,
                     estimation = estimation,
                     members = members,
+                    gitlabMembers = gitlabMembers,
                 )
                 if (cfg != null) base.applyConfig(cfg) else base
             }
@@ -674,6 +677,14 @@ class BoardViewModel(
         // Bump the cross-board MRU only on assign, so the picker surfaces the people
         // you actually use first (web tessera_recent_assignees).
         if (adding) runCatching { AppContainer.prefs.bumpRecentAssignee(userId) }
+        refreshTasks()
+    }
+
+    // Assign/unassign a GitLab project member (may have no Tessera account). On
+    // integration boards with push_assignees on, the backend mirrors it to the issue.
+    fun toggleGitlabAssignee(task: Task, m: website.msdnna.tessera.data.model.GitlabMember) = launchCatching {
+        if (m.glUsername in task.gitlabAssigneeLogins) repo.removeGitlabAssignee(task.id, m.glUsername)
+        else repo.pinGitlabAssignee(task.id, m)
         refreshTasks()
     }
 

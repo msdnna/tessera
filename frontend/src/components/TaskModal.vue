@@ -76,6 +76,7 @@ const props = defineProps({
   tags: { type: Array, default: () => [] },
   tagPrefixNames: { type: Object, default: () => ({}) },
   members: { type: Array, default: () => [] },
+  gitlabMembers: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:show', 'changed', 'open'])
 
@@ -593,6 +594,28 @@ async function toggleAssignee(uid) {
   }
 }
 
+function isGlAssigned(username) {
+  return glAssignees.value.some((g) => g.gl_username === username)
+}
+// Assign/unassign a GitLab project member (may have no Tessera account). On
+// integration boards with push_assignees on, the backend mirrors this to the issue.
+async function toggleGlAssignee(m) {
+  try {
+    if (isGlAssigned(m.gl_username)) await tasksApi.removeGitlabAssignee(props.taskId, m.gl_username)
+    else
+      await tasksApi.pinGitlabAssignee(props.taskId, {
+        gl_username: m.gl_username,
+        gl_name: m.gl_name,
+        gl_avatar_url: m.gl_avatar_url,
+      })
+    const res = await tasksApi.get(props.taskId)
+    task.value = res.data
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
 async function addSubtask() {
   const t = newSubtask.value.trim()
   if (!t || !task.value) return
@@ -1042,6 +1065,19 @@ function eventText(e) {
                       class="chk"
                     />
                   </div>
+                  <template v-if="gitlabMembers.length">
+                    <div class="menu-sep">GitLab</div>
+                    <div
+                      v-for="m in gitlabMembers"
+                      :key="m.gl_user_id"
+                      class="menu-item"
+                      @click="toggleGlAssignee(m)"
+                    >
+                      <UserAvatar class="avatar sm" :src="m.gl_avatar_url" :name="m.gl_name || m.gl_username" />
+                      <span class="grow">{{ m.gl_name || m.gl_username }}</span>
+                      <n-icon v-if="isGlAssigned(m.gl_username)" :component="CheckmarkOutline" class="chk" />
+                    </div>
+                  </template>
                 </div>
               </n-popover>
             </div>
@@ -1776,6 +1812,13 @@ function eventText(e) {
 }
 .menu-item:hover {
   background: var(--t-hover);
+}
+.menu-sep {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+  padding: 6px 6px 2px;
 }
 .grow {
   flex: 1;

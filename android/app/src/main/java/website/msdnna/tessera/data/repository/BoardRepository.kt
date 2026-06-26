@@ -7,8 +7,10 @@ import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.DueNotifyRequest
+import website.msdnna.tessera.data.model.GitlabMember
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
+import website.msdnna.tessera.data.model.PinGitlabAssigneeRequest
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.SetEisenhowerRequest
 import website.msdnna.tessera.data.model.SetParentRequest
@@ -119,6 +121,11 @@ class BoardRepository {
     suspend fun removeTag(taskId: String, tagId: String) = api.removeTaskTag(taskId, tagId)
     suspend fun addAssignee(taskId: String, userId: String) = api.addTaskAssignee(taskId, AddAssigneeRequest(userId))
     suspend fun removeAssignee(taskId: String, userId: String) = api.removeTaskAssignee(taskId, userId)
+    suspend fun gitlabMembers(workspaceId: String): List<GitlabMember> =
+        runCatching { api.gitlabMembers(workspaceId).orEmpty() }.getOrDefault(emptyList())
+    suspend fun pinGitlabAssignee(taskId: String, m: GitlabMember) =
+        api.pinGitlabAssignee(taskId, PinGitlabAssigneeRequest(m.glUsername, m.glName, m.glAvatarUrl))
+    suspend fun removeGitlabAssignee(taskId: String, username: String) = api.removeGitlabAssignee(taskId, username)
 
     suspend fun createTag(projectId: String, name: String, color: String): Tag =
         api.createTag(projectId, CreateTagRequest(name, color))

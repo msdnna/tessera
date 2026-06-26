@@ -159,6 +159,15 @@ class TaskDetailViewModel(
         reloadDetail()
     }
 
+    // Assign/unassign a GitLab project member (may have no Tessera account); the
+    // backend mirrors it to the issue when push_assignees is on.
+    fun toggleGitlabAssignee(m: website.msdnna.tessera.data.model.GitlabMember) = mutate {
+        val d = state.value.detail ?: return@mutate
+        if (d.gitlabAssignees.any { it.glUsername == m.glUsername }) boardRepo.removeGitlabAssignee(d.id, m.glUsername)
+        else boardRepo.pinGitlabAssignee(d.id, m)
+        reloadDetail()
+    }
+
     fun attachToParent(parentId: String) = mutate {
         boardRepo.setParent(taskId, parentId)
         reloadDetail()

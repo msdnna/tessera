@@ -97,6 +97,16 @@ type GitlabLink struct {
 	GlLastState       string     `json:"gl_last_state"`
 }
 
+type GitlabProjectMember struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	GlUserID      int64     `json:"gl_user_id"`
+	GlUsername    string    `json:"gl_username"`
+	GlName        string    `json:"gl_name"`
+	GlAvatarUrl   string    `json:"gl_avatar_url"`
+	AccessLevel   int32     `json:"access_level"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
 type GitlabSyncAction struct {
 	ID         uuid.UUID  `json:"id"`
 	RunID      uuid.UUID  `json:"run_id"`
@@ -363,6 +373,7 @@ type TaskGitlabAssignee struct {
 	GlUsername  string    `json:"gl_username"`
 	GlName      string    `json:"gl_name"`
 	GlAvatarUrl string    `json:"gl_avatar_url"`
+	Source      string    `json:"source"`
 }
 
 type TaskRelation struct {

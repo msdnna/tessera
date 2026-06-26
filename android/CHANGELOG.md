@@ -5,6 +5,14 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.38.0 — 2026-06-27
+- **Назначение участников GitLab из Tessera** (паритет web 0.100.0 / backend 0.57.0, шаг 3).
+  Пикер исполнителей (на карточке и в модалке задачи) показывает секцию «GitLab» с участниками
+  проекта GitLab — назначаются/снимаются даже без аккаунта в Tessera (`GitlabMember`,
+  `gitlabMembers` в `BoardUiState`, `toggleGitlabAssignee` в Board/TaskDetail VM, эндпоинты
+  `gitlab/members` + `gitlab-assignees`). Тумблер «Исполнители (assignees)» в настройках GitLab
+  (`push_assignees`). Задачи несут `gitlab_assignee_logins` для отметки назначенных.
+
 ## 0.37.0 — 2026-06-27
 - **GitLab write-back: тумблеры «Теги» и «Срок»** (паритет web 0.99.0 / backend 0.56.0).
   В `GitLabSettingsScreen` добавлены переключатели `push_labels` (синк тегов → метки

@@ -132,15 +132,45 @@ DELETE FROM task_assignees
 WHERE task_id = $1 AND source = 'gitlab' AND NOT (user_id = ANY($2::uuid[]));
 
 -- ── external GitLab assignees (no Tessera account) ─────────
--- name: DeleteTaskGitlabAssignees :exec
-DELETE FROM task_gitlab_assignees WHERE task_id = $1;
+-- Only the sync-made set is rebuilt each run; user-pinned (source='user') survive.
+-- name: DeleteGitlabSourcedAssignees :exec
+DELETE FROM task_gitlab_assignees WHERE task_id = $1 AND source = 'gitlab';
 
--- name: AddTaskGitlabAssignee :exec
-INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url) VALUES ($1, $2, $3, $4)
+-- Sync upsert: never downgrades an existing user-pinned row's source.
+-- name: UpsertGitlabSourcedAssignee :exec
+INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url, source) VALUES ($1, $2, $3, $4, 'gitlab')
 ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url;
 
+-- User pin (from the assignee picker): forces source='user' so the sync won't drop it.
+-- name: PinGitlabAssignee :exec
+INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url, source) VALUES ($1, $2, $3, $4, 'user')
+ON CONFLICT (task_id, gl_username) DO UPDATE SET source = 'user', gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url;
+
+-- name: RemoveGitlabAssignee :exec
+DELETE FROM task_gitlab_assignees WHERE task_id = $1 AND gl_username = $2;
+
 -- name: ListTaskGitlabAssignees :many
-SELECT gl_username, gl_name, gl_avatar_url FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name;
+SELECT gl_username, gl_name, gl_avatar_url, source FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name;
+
+-- ── GitLab project members (assignable from Tessera) ───────
+-- name: UpsertGitlabProjectMember :exec
+INSERT INTO gitlab_project_members (integration_id, gl_user_id, gl_username, gl_name, gl_avatar_url, access_level, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, now())
+ON CONFLICT (integration_id, gl_user_id) DO UPDATE SET
+    gl_username = EXCLUDED.gl_username, gl_name = EXCLUDED.gl_name,
+    gl_avatar_url = EXCLUDED.gl_avatar_url, access_level = EXCLUDED.access_level, updated_at = now();
+
+-- name: DeleteStaleGitlabProjectMembers :exec
+DELETE FROM gitlab_project_members WHERE integration_id = $1 AND NOT (gl_user_id = ANY($2::bigint[]));
+
+-- name: ListGitlabProjectMembersByWorkspace :many
+SELECT m.gl_user_id, m.gl_username, m.gl_name, m.gl_avatar_url, m.access_level
+FROM gitlab_project_members m
+JOIN gitlab_integrations i ON i.id = m.integration_id
+WHERE i.workspace_id = $1 ORDER BY m.gl_name;
+
+-- name: GetGitlabMemberIDByUsername :one
+SELECT gl_user_id FROM gitlab_project_members WHERE integration_id = $1 AND gl_username = $2;
 
 -- ── synced comments (idempotent by GitLab note id) ─────────
 -- UpsertGitlabComment returns whether the row was freshly inserted (xmax = 0) so

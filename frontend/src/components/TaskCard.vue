@@ -59,6 +59,7 @@ const props = defineProps({
   tags: { type: Array, default: () => [] },
   tagPrefixNames: { type: Object, default: () => ({}) },
   members: { type: Array, default: () => [] },
+  gitlabMembers: { type: Array, default: () => [] },
   wsId: { type: String, default: null },
   projectId: { type: String, default: null },
 })
@@ -409,6 +410,21 @@ async function toggleAssignee(uid) {
   }
   emit('changed')
 }
+// GitLab-member assignees: board tasks carry their logins in gitlab_assignee_logins.
+const glAssigneeLogins = computed(() => props.task.gitlab_assignee_logins || [])
+function isGlAssigned(username) {
+  return glAssigneeLogins.value.includes(username)
+}
+async function toggleGlAssignee(m) {
+  if (isGlAssigned(m.gl_username)) await tasksApi.removeGitlabAssignee(props.task.id, m.gl_username)
+  else
+    await tasksApi.pinGitlabAssignee(props.task.id, {
+      gl_username: m.gl_username,
+      gl_name: m.gl_name,
+      gl_avatar_url: m.gl_avatar_url,
+    })
+  emit('changed')
+}
 
 // ── subtasks ──
 const addingSub = ref(false)
@@ -748,7 +764,22 @@ async function submitAddSub() {
                   <span class="aname">{{ m.name }}</span>
                   <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
                 </div>
-                <div v-if="!pickerMembers.length" class="assignee-empty">Никого не найдено</div>
+                <template v-if="gitlabMembers.length">
+                  <div class="assignee-sep">GitLab</div>
+                  <div
+                    v-for="m in gitlabMembers"
+                    :key="m.gl_user_id"
+                    class="menu-item assignee-item"
+                    @click="toggleGlAssignee(m)"
+                  >
+                    <UserAvatar class="avatar sm" :src="m.gl_avatar_url" :name="m.gl_name || m.gl_username" />
+                    <span class="aname">{{ m.gl_name || m.gl_username }}</span>
+                    <n-icon v-if="isGlAssigned(m.gl_username)" :component="CheckmarkOutline" class="chk" />
+                  </div>
+                </template>
+                <div v-if="!pickerMembers.length && !gitlabMembers.length" class="assignee-empty">
+                  Никого не найдено
+                </div>
               </div>
             </div>
           </n-popover>
@@ -792,6 +823,7 @@ async function submitAddSub() {
             :members-map="membersMap"
             :tags="tags"
             :members="members"
+            :gitlab-members="gitlabMembers"
             :ws-id="wsId"
             :project-id="projectId"
             @open="emit('open', $event)"
@@ -1149,6 +1181,13 @@ async function submitAddSub() {
   text-align: center;
   font-size: 12px;
   color: var(--t-text3);
+}
+.assignee-sep {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--t-text3);
+  padding: 6px 6px 2px;
 }
 /* external GitLab assignee (no Tessera account): neutral, slightly muted */
 .ext-ava {

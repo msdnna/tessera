@@ -147,6 +147,7 @@ fun TaskModal(
     tags: List<Tag>,
     prefixNames: Map<String, String>,
     members: List<Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
     parentCandidates: List<Task>,
     breadcrumb: List<String>,
     estimation: website.msdnna.tessera.data.model.EstimationConfig =
@@ -227,6 +228,7 @@ fun TaskModal(
                             tags = tags,
                             prefixNames = prefixNames,
                             members = members,
+                            gitlabMembers = gitlabMembers,
                             parentCandidates = parentCandidates,
                         )
 
@@ -402,6 +404,7 @@ private fun PropertyGrid(
     tags: List<Tag>,
     prefixNames: Map<String, String>,
     members: List<Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
     parentCandidates: List<Task>,
 ) {
     // Author (read-only): GitLab issue author for synced tasks, else the creator.
@@ -438,7 +441,9 @@ private fun PropertyGrid(
                 )
             }
         }
-        PropRow(Ion.PEOPLE, "Исполнители") { AssigneesValue(assignees, gitlabAssignees, members) { vm.toggleAssignee(it) } }
+        PropRow(Ion.PEOPLE, "Исполнители") {
+            AssigneesValue(assignees, gitlabAssignees, members, gitlabMembers, { vm.toggleAssignee(it) }, { vm.toggleGitlabAssignee(it) })
+        }
         if (gitlab != null) {
             PropRow(Ion.GITLAB, "GitLab") { GitlabLinkValue(gitlab) }
         }
@@ -628,7 +633,9 @@ private fun AssigneesValue(
     assignees: List<String>,
     gitlabAssignees: List<GitlabAssignee>,
     members: List<Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
     onToggle: (String) -> Unit,
+    onToggleGl: (website.msdnna.tessera.data.model.GitlabMember) -> Unit,
 ) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
@@ -663,6 +670,30 @@ private fun AssigneesValue(
                     if (on) {
                         Spacer(Modifier.width(8.dp))
                         IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+                    }
+                }
+            }
+            if (gitlabMembers.isNotEmpty()) {
+                val assignedGl = gitlabAssignees.map { it.glUsername }.toSet()
+                Text(
+                    "GitLab",
+                    color = c.text3, fontSize = 10.sp,
+                    modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 2.dp),
+                )
+                gitlabMembers.forEach { m ->
+                    val label = m.glName.ifBlank { m.glUsername }
+                    Row(
+                        Modifier.fillMaxWidth().clickableNoRipple { onToggleGl(m) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MemberAvatar(22.dp, label, avatarUrl = m.glAvatarUrl, muted = true)
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        if (m.glUsername in assignedGl) {
+                            Spacer(Modifier.width(8.dp))
+                            IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+                        }
                     }
                 }
             }

@@ -119,6 +119,7 @@ export const workspaces = {
   get: (id) => api.get(`/workspaces/${id}`),
   create: (data) => api.post('/workspaces', data),
   members: (id) => api.get(`/workspaces/${id}/members`),
+  gitlabMembers: (id) => api.get(`/workspaces/${id}/gitlab/members`),
   addMember: (id, data) => api.post(`/workspaces/${id}/members`, data),
   updateMemberRole: (id, userId, role) =>
     api.patch(`/workspaces/${id}/members/${userId}`, { role }),
@@ -221,6 +222,9 @@ export const tasks = {
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),
   removeAssignee: (id, userId) => api.delete(`/tasks/${id}/assignees/${userId}`),
+  pinGitlabAssignee: (id, data) => api.post(`/tasks/${id}/gitlab-assignees`, data),
+  removeGitlabAssignee: (id, username) =>
+    api.delete(`/tasks/${id}/gitlab-assignees/${encodeURIComponent(username)}`),
   // Per-task due-notification override (null fields = inherit the user default).
   dueNotify: (id, data) => api.patch(`/tasks/${id}/due-notify`, data),
   // Eisenhower-matrix quadrant override (quadrant 0-3, or null = derive from

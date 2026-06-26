@@ -87,8 +87,12 @@ let cardIO = null // toggles visibility by real viewport position
 let cardRO = null // measures rendered cards (settles after content layout)
 const tagsMap = reactive({})
 const membersMap = reactive({})
+// GitLab project members (assignable on integration boards even without a Tessera
+// account), keyed by gl_user_id; empty for non-integration boards.
+const gitlabMembersMap = reactive({})
 const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
+const gitlabMembersList = computed(() => Object.values(gitlabMembersMap))
 
 // view controls (layout comes from the store, above)
 const subtasksExpanded = ref(false) // full property cards vs compact rows
@@ -867,15 +871,18 @@ async function loadWorkspaceMeta() {
   const projectId = board.value?.project_id
   if (!wsId || !projectId) return
   // Tags + prefix names are project-scoped; members stay workspace-scoped.
-  const [tg, mem, pfx] = await Promise.all([
+  const [tg, mem, pfx, glMem] = await Promise.all([
     projectsApi.tags(projectId),
     wsApi.members(wsId),
     projectsApi.tagPrefixes(projectId).catch(() => ({ data: [] })),
+    wsApi.gitlabMembers(wsId).catch(() => ({ data: [] })),
   ])
   for (const k of Object.keys(tagsMap)) delete tagsMap[k]
   for (const t of tg.data || []) tagsMap[t.id] = t
   for (const k of Object.keys(membersMap)) delete membersMap[k]
   for (const m of mem.data || []) membersMap[m.user_id] = m
+  for (const k of Object.keys(gitlabMembersMap)) delete gitlabMembersMap[k]
+  for (const g of glMem.data || []) gitlabMembersMap[g.gl_user_id] = g
   for (const k of Object.keys(tagPrefixNames)) delete tagPrefixNames[k]
   for (const p of pfx.data || []) tagPrefixNames[p.prefix] = p.label
   // Mirror tags + prefix names + context to the store so the header Теги manager works.
@@ -1540,6 +1547,7 @@ watch(
                       :tags="tagsList"
                       :tag-prefix-names="tagPrefixNames"
                       :members="membersList"
+                      :gitlab-members="gitlabMembersList"
                       :ws-id="wsStore.currentId"
                       :project-id="board?.project_id"
                       @open="openTask"
@@ -1606,6 +1614,7 @@ watch(
       :tags="tagsList"
       :tag-prefix-names="tagPrefixNames"
       :members="membersList"
+      :gitlab-members="gitlabMembersList"
       @update:show="(v) => v || closeTask()"
       @changed="onChanged"
       @open="openTask"

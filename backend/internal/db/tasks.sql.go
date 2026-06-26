@@ -335,6 +335,7 @@ SELECT
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
     COALESCE(array_agg(DISTINCT ga.gl_name) FILTER (WHERE ga.gl_name IS NOT NULL), '{}')::text[] AS gitlab_assignees,
+    COALESCE(array_agg(DISTINCT ga.gl_username) FILTER (WHERE ga.gl_username IS NOT NULL), '{}')::text[] AS gitlab_assignee_logins,
     gl.gl_iid AS gitlab_iid,
     gl.gl_web_url AS gitlab_url,
     gl.gl_author AS gitlab_author,
@@ -376,6 +377,7 @@ type ListBoardTasksWithMetaRow struct {
 	TagIds                []uuid.UUID      `json:"tag_ids"`
 	AssigneeIds           []uuid.UUID      `json:"assignee_ids"`
 	GitlabAssignees       []string         `json:"gitlab_assignees"`
+	GitlabAssigneeLogins  []string         `json:"gitlab_assignee_logins"`
 	GitlabIid             *int64           `json:"gitlab_iid"`
 	GitlabUrl             *string          `json:"gitlab_url"`
 	GitlabAuthor          *string          `json:"gitlab_author"`
@@ -421,6 +423,7 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID)
 			&i.TagIds,
 			&i.AssigneeIds,
 			&i.GitlabAssignees,
+			&i.GitlabAssigneeLogins,
 			&i.GitlabIid,
 			&i.GitlabUrl,
 			&i.GitlabAuthor,

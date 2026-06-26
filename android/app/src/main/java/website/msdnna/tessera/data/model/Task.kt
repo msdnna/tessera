@@ -62,6 +62,9 @@ data class Task(
     @SerializedName("gitlab_author_avatar_url") val gitlabAuthorAvatarUrl: String? = null,
     // External GitLab assignees (no Tessera account) — display names only.
     @SerializedName("gitlab_assignees") val gitlabAssignees: List<String> = emptyList(),
+    // Logins of the GitLab-member assignees (parallel to the names) so the on-card
+    // picker can tell which GL members are currently assigned.
+    @SerializedName("gitlab_assignee_logins") val gitlabAssigneeLogins: List<String> = emptyList(),
 ) {
     val isCompleted: Boolean get() = completedAt != null
 }
@@ -107,6 +110,21 @@ data class SetEisenhowerRequest(@SerializedName("quadrant") val quadrant: Int?)
 data class SetParentRequest(@SerializedName("parent_id") val parentId: String?)
 data class AddTagRequest(@SerializedName("tag_id") val tagId: String)
 data class AddAssigneeRequest(@SerializedName("user_id") val userId: String)
+
+/** A GitLab project member, assignable on integration boards even without a
+ *  Tessera account (synced from GitLab Project Members). */
+data class GitlabMember(
+    @SerializedName("gl_user_id") val glUserId: Long = 0,
+    @SerializedName("gl_username") val glUsername: String = "",
+    @SerializedName("gl_name") val glName: String = "",
+    @SerializedName("gl_avatar_url") val glAvatarUrl: String = "",
+)
+
+data class PinGitlabAssigneeRequest(
+    @SerializedName("gl_username") val glUsername: String,
+    @SerializedName("gl_name") val glName: String,
+    @SerializedName("gl_avatar_url") val glAvatarUrl: String,
+)
 
 /** Move a task (and its subtasks) to another board; column optional (defaults to first). */
 data class TransferTaskRequest(

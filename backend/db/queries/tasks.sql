@@ -20,6 +20,7 @@ SELECT
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
     COALESCE(array_agg(DISTINCT ga.gl_name) FILTER (WHERE ga.gl_name IS NOT NULL), '{}')::text[] AS gitlab_assignees,
+    COALESCE(array_agg(DISTINCT ga.gl_username) FILTER (WHERE ga.gl_username IS NOT NULL), '{}')::text[] AS gitlab_assignee_logins,
     gl.gl_iid AS gitlab_iid,
     gl.gl_web_url AS gitlab_url,
     gl.gl_author AS gitlab_author,

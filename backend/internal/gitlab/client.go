@@ -466,6 +466,83 @@ func (c *Client) restForm(ctx context.Context, method, path string, form url.Val
 	return body, nil
 }
 
+// restGet performs a GET against the REST v4 API and returns the body (up to a
+// generous cap, member pages can be large) or an *APIError. body limit larger
+// than restForm's since list endpoints return arrays.
+func (c *Client) restGet(ctx context.Context, path string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v4/"+strings.TrimPrefix(path, "/"), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{Status: resp.StatusCode, Body: string(body)}
+	}
+	return body, nil
+}
+
+// Member is a GitLab project member (for the assignee picker + assignee write-back).
+type Member struct {
+	ID          int64
+	Username    string
+	Name        string
+	AvatarURL   string
+	AccessLevel int
+}
+
+// ProjectMembers lists the project's members (including inherited), paginated.
+// Caps at 10 pages (1000 members) — plenty for a self-hosted project.
+func (c *Client) ProjectMembers(ctx context.Context, projectPath string) ([]Member, error) {
+	base := "projects/" + url.PathEscape(strings.Trim(projectPath, "/")) + "/members/all?per_page=100&page="
+	var out []Member
+	for page := 1; page <= 10; page++ {
+		body, err := c.restGet(ctx, base+strconv.Itoa(page))
+		if err != nil {
+			return nil, err
+		}
+		var rows []struct {
+			ID          int64  `json:"id"`
+			Username    string `json:"username"`
+			Name        string `json:"name"`
+			AvatarURL   string `json:"avatar_url"`
+			AccessLevel int    `json:"access_level"`
+		}
+		if err := json.Unmarshal(body, &rows); err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			out = append(out, Member{ID: r.ID, Username: r.Username, Name: r.Name, AvatarURL: r.AvatarURL, AccessLevel: r.AccessLevel})
+		}
+		if len(rows) < 100 {
+			break
+		}
+	}
+	return out, nil
+}
+
+// SetIssueAssignees replaces the issue's assignees with the given numeric user
+// ids (GitLab's assignee_ids is replace-all). An empty slice clears assignees.
+func (c *Client) SetIssueAssignees(ctx context.Context, projectPath string, iid int64, ids []int64) error {
+	form := url.Values{}
+	if len(ids) == 0 {
+		form.Set("assignee_ids", "0") // GitLab convention: a single 0 unassigns all
+	} else {
+		strs := make([]string, len(ids))
+		for i, id := range ids {
+			strs[i] = strconv.FormatInt(id, 10)
+		}
+		form["assignee_ids[]"] = strs
+	}
+	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid), form)
+	return err
+}
+
 // UpdateIssueState closes or reopens an issue. event is "close" or "reopen".
 func (c *Client) UpdateIssueState(ctx context.Context, projectPath string, iid int64, event string) error {
 	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid), url.Values{"state_event": {event}})

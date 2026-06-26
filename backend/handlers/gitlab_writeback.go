@@ -100,7 +100,7 @@ func shouldPushWriteback(kind string, payload map[string]any, lastState string, 
 		return s != "" && s != lastState
 	case "priority":
 		return prioInvertible
-	case "comment", "labels", "due":
+	case "comment", "labels", "due", "assignees":
 		// Loop-safe: only user-side handlers enqueue these (the pull uses a Nil
 		// actor); the worker reads the latest task state at push time.
 		return true
@@ -209,6 +209,8 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 		return prefix + ": метки"
 	case "due":
 		return prefix + ": срок"
+	case "assignees":
+		return prefix + ": исполнители"
 	default:
 		return prefix + ": " + kind
 	}
@@ -375,6 +377,42 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		if len(remove) > 0 {
 			res.result += " -[" + strings.Join(remove, ", ") + "]"
 		}
+		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
+
+	case "assignees":
+		// Replace the issue's assignees with the resolved Tessera-side set:
+		// Tessera-user assignees that have a connected GitLab account (their numeric
+		// gl_user_id) + user-pinned GitLab members (resolved via the members table).
+		// GitLab's assignee_ids is replace-all, so unresolvable assignees drop out.
+		ids := map[int64]bool{}
+		if tas, err := h.q.ListTaskAssignees(ctx, w.TaskID); err == nil {
+			for _, a := range tas {
+				if cred, cerr := h.q.GetGitlabCredential(ctx, a.ID); cerr == nil && cred.GlUserID != 0 {
+					ids[cred.GlUserID] = true
+				}
+			}
+		} else {
+			return res, err // transient
+		}
+		if gas, err := h.q.ListTaskGitlabAssignees(ctx, w.TaskID); err == nil {
+			for _, g := range gas {
+				if uid, gerr := h.q.GetGitlabMemberIDByUsername(ctx, db.GetGitlabMemberIDByUsernameParams{
+					IntegrationID: integ.ID, GlUsername: g.GlUsername,
+				}); gerr == nil && uid != 0 {
+					ids[uid] = true
+				}
+			}
+		} else {
+			return res, err // transient
+		}
+		list := make([]int64, 0, len(ids))
+		for id := range ids {
+			list = append(list, id)
+		}
+		if err := client.SetIssueAssignees(ctx, path, iid, list); err != nil {
+			return res, err
+		}
+		res.result = fmt.Sprintf("assignees set (%d)", len(list))
 		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
 
 	case "due":

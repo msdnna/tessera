@@ -168,6 +168,7 @@ fun BoardScreen(
             tags = state.tagList,
             prefixNames = state.prefixNames,
             members = state.members,
+            gitlabMembers = state.gitlabMembers,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
             breadcrumb = breadcrumb,
             estimation = state.estimation,

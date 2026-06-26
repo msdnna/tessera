@@ -84,6 +84,7 @@ const wbPriority = ref(false)
 const wbComments = ref(false)
 const wbLabels = ref(false)
 const wbDue = ref(false)
+const wbAssignees = ref(false)
 const defaultColumn = ref('')
 const defaultAction = ref('tag')
 const tagKeepPrefix = ref(true)
@@ -232,6 +233,7 @@ async function loadIntegration() {
     wbComments.value = wb.push_comments === true
     wbLabels.value = wb.push_labels === true
     wbDue.value = wb.push_due === true
+    wbAssignees.value = wb.push_assignees === true
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
     defaultAction.value = r.default_action || 'tag'
@@ -306,6 +308,7 @@ async function save() {
         push_comments: wbComments.value,
         push_labels: wbLabels.value,
         push_due: wbDue.value,
+        push_assignees: wbAssignees.value,
       },
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
@@ -477,6 +480,9 @@ watch(
 
           <n-text depth="3" class="lbl">Срок (due date issue)</n-text>
           <div><n-switch v-model:value="wbDue" size="small" /></div>
+
+          <n-text depth="3" class="lbl">Исполнители (assignees issue)</n-text>
+          <div><n-switch v-model:value="wbAssignees" size="small" /></div>
         </div>
         <p v-if="wbEnabled" class="gl-wb-hint">
           <n-text depth="3">
@@ -484,6 +490,8 @@ watch(
             интеграции (нужен scope «api»). Статус — только открыть/закрыть issue по
             границе колонки «Готово»; метки «S:» не трогаются. Теги синхронизируют
             только метки тег-неймспейсов (не «S:»/«P:»); срок ставится на сам issue.
+            Исполнители: участники проекта GitLab назначаются в пикере исполнителей
+            (резолв в GL-аккаунт по members), assignee_ids issue перезаписываются.
           </n-text>
         </p>
 

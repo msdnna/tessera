@@ -28,28 +28,6 @@ func (q *Queries) AddTaskAssigneeSourced(ctx context.Context, arg AddTaskAssigne
 	return err
 }
 
-const addTaskGitlabAssignee = `-- name: AddTaskGitlabAssignee :exec
-INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url) VALUES ($1, $2, $3, $4)
-ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url
-`
-
-type AddTaskGitlabAssigneeParams struct {
-	TaskID      uuid.UUID `json:"task_id"`
-	GlUsername  string    `json:"gl_username"`
-	GlName      string    `json:"gl_name"`
-	GlAvatarUrl string    `json:"gl_avatar_url"`
-}
-
-func (q *Queries) AddTaskGitlabAssignee(ctx context.Context, arg AddTaskGitlabAssigneeParams) error {
-	_, err := q.db.Exec(ctx, addTaskGitlabAssignee,
-		arg.TaskID,
-		arg.GlUsername,
-		arg.GlName,
-		arg.GlAvatarUrl,
-	)
-	return err
-}
-
 const addTaskTagSourced = `-- name: AddTaskTagSourced :execrows
 INSERT INTO task_tags (task_id, tag_id, source) VALUES ($1, $2, $3)
 ON CONFLICT (task_id, tag_id) DO NOTHING
@@ -148,6 +126,17 @@ func (q *Queries) DeleteGitlabCredential(ctx context.Context, userID uuid.UUID) 
 	return err
 }
 
+const deleteGitlabSourcedAssignees = `-- name: DeleteGitlabSourcedAssignees :exec
+DELETE FROM task_gitlab_assignees WHERE task_id = $1 AND source = 'gitlab'
+`
+
+// ── external GitLab assignees (no Tessera account) ─────────
+// Only the sync-made set is rebuilt each run; user-pinned (source='user') survive.
+func (q *Queries) DeleteGitlabSourcedAssignees(ctx context.Context, taskID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteGitlabSourcedAssignees, taskID)
+	return err
+}
+
 const deleteStaleGitlabAssignees = `-- name: DeleteStaleGitlabAssignees :exec
 DELETE FROM task_assignees
 WHERE task_id = $1 AND source = 'gitlab' AND NOT (user_id = ANY($2::uuid[]))
@@ -160,6 +149,20 @@ type DeleteStaleGitlabAssigneesParams struct {
 
 func (q *Queries) DeleteStaleGitlabAssignees(ctx context.Context, arg DeleteStaleGitlabAssigneesParams) error {
 	_, err := q.db.Exec(ctx, deleteStaleGitlabAssignees, arg.TaskID, arg.Column2)
+	return err
+}
+
+const deleteStaleGitlabProjectMembers = `-- name: DeleteStaleGitlabProjectMembers :exec
+DELETE FROM gitlab_project_members WHERE integration_id = $1 AND NOT (gl_user_id = ANY($2::bigint[]))
+`
+
+type DeleteStaleGitlabProjectMembersParams struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	Column2       []int64   `json:"column_2"`
+}
+
+func (q *Queries) DeleteStaleGitlabProjectMembers(ctx context.Context, arg DeleteStaleGitlabProjectMembersParams) error {
+	_, err := q.db.Exec(ctx, deleteStaleGitlabProjectMembers, arg.IntegrationID, arg.Column2)
 	return err
 }
 
@@ -197,16 +200,6 @@ func (q *Queries) DeleteStaleGitlabTaskTags(ctx context.Context, arg DeleteStale
 		return nil, err
 	}
 	return items, nil
-}
-
-const deleteTaskGitlabAssignees = `-- name: DeleteTaskGitlabAssignees :exec
-DELETE FROM task_gitlab_assignees WHERE task_id = $1
-`
-
-// ── external GitLab assignees (no Tessera account) ─────────
-func (q *Queries) DeleteTaskGitlabAssignees(ctx context.Context, taskID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTaskGitlabAssignees, taskID)
-	return err
 }
 
 const getGitlabCredential = `-- name: GetGitlabCredential :one
@@ -321,6 +314,22 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 	return i, err
 }
 
+const getGitlabMemberIDByUsername = `-- name: GetGitlabMemberIDByUsername :one
+SELECT gl_user_id FROM gitlab_project_members WHERE integration_id = $1 AND gl_username = $2
+`
+
+type GetGitlabMemberIDByUsernameParams struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	GlUsername    string    `json:"gl_username"`
+}
+
+func (q *Queries) GetGitlabMemberIDByUsername(ctx context.Context, arg GetGitlabMemberIDByUsernameParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getGitlabMemberIDByUsername, arg.IntegrationID, arg.GlUsername)
+	var gl_user_id int64
+	err := row.Scan(&gl_user_id)
+	return gl_user_id, err
+}
+
 const getUserIDByGitlabUsername = `-- name: GetUserIDByGitlabUsername :one
 SELECT user_id FROM gitlab_credentials WHERE gl_username = $1
 `
@@ -404,14 +413,56 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 	return items, nil
 }
 
+const listGitlabProjectMembersByWorkspace = `-- name: ListGitlabProjectMembersByWorkspace :many
+SELECT m.gl_user_id, m.gl_username, m.gl_name, m.gl_avatar_url, m.access_level
+FROM gitlab_project_members m
+JOIN gitlab_integrations i ON i.id = m.integration_id
+WHERE i.workspace_id = $1 ORDER BY m.gl_name
+`
+
+type ListGitlabProjectMembersByWorkspaceRow struct {
+	GlUserID    int64  `json:"gl_user_id"`
+	GlUsername  string `json:"gl_username"`
+	GlName      string `json:"gl_name"`
+	GlAvatarUrl string `json:"gl_avatar_url"`
+	AccessLevel int32  `json:"access_level"`
+}
+
+func (q *Queries) ListGitlabProjectMembersByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListGitlabProjectMembersByWorkspaceRow, error) {
+	rows, err := q.db.Query(ctx, listGitlabProjectMembersByWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGitlabProjectMembersByWorkspaceRow
+	for rows.Next() {
+		var i ListGitlabProjectMembersByWorkspaceRow
+		if err := rows.Scan(
+			&i.GlUserID,
+			&i.GlUsername,
+			&i.GlName,
+			&i.GlAvatarUrl,
+			&i.AccessLevel,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTaskGitlabAssignees = `-- name: ListTaskGitlabAssignees :many
-SELECT gl_username, gl_name, gl_avatar_url FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name
+SELECT gl_username, gl_name, gl_avatar_url, source FROM task_gitlab_assignees WHERE task_id = $1 ORDER BY gl_name
 `
 
 type ListTaskGitlabAssigneesRow struct {
 	GlUsername  string `json:"gl_username"`
 	GlName      string `json:"gl_name"`
 	GlAvatarUrl string `json:"gl_avatar_url"`
+	Source      string `json:"source"`
 }
 
 func (q *Queries) ListTaskGitlabAssignees(ctx context.Context, taskID uuid.UUID) ([]ListTaskGitlabAssigneesRow, error) {
@@ -423,7 +474,12 @@ func (q *Queries) ListTaskGitlabAssignees(ctx context.Context, taskID uuid.UUID)
 	var items []ListTaskGitlabAssigneesRow
 	for rows.Next() {
 		var i ListTaskGitlabAssigneesRow
-		if err := rows.Scan(&i.GlUsername, &i.GlName, &i.GlAvatarUrl); err != nil {
+		if err := rows.Scan(
+			&i.GlUsername,
+			&i.GlName,
+			&i.GlAvatarUrl,
+			&i.Source,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -463,6 +519,43 @@ UPDATE gitlab_integrations SET last_synced_at = now() WHERE id = $1
 // MarkGitlabSynced stamps the integration's last successful sync time.
 func (q *Queries) MarkGitlabSynced(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markGitlabSynced, id)
+	return err
+}
+
+const pinGitlabAssignee = `-- name: PinGitlabAssignee :exec
+INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url, source) VALUES ($1, $2, $3, $4, 'user')
+ON CONFLICT (task_id, gl_username) DO UPDATE SET source = 'user', gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url
+`
+
+type PinGitlabAssigneeParams struct {
+	TaskID      uuid.UUID `json:"task_id"`
+	GlUsername  string    `json:"gl_username"`
+	GlName      string    `json:"gl_name"`
+	GlAvatarUrl string    `json:"gl_avatar_url"`
+}
+
+// User pin (from the assignee picker): forces source='user' so the sync won't drop it.
+func (q *Queries) PinGitlabAssignee(ctx context.Context, arg PinGitlabAssigneeParams) error {
+	_, err := q.db.Exec(ctx, pinGitlabAssignee,
+		arg.TaskID,
+		arg.GlUsername,
+		arg.GlName,
+		arg.GlAvatarUrl,
+	)
+	return err
+}
+
+const removeGitlabAssignee = `-- name: RemoveGitlabAssignee :exec
+DELETE FROM task_gitlab_assignees WHERE task_id = $1 AND gl_username = $2
+`
+
+type RemoveGitlabAssigneeParams struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	GlUsername string    `json:"gl_username"`
+}
+
+func (q *Queries) RemoveGitlabAssignee(ctx context.Context, arg RemoveGitlabAssigneeParams) error {
+	_, err := q.db.Exec(ctx, removeGitlabAssignee, arg.TaskID, arg.GlUsername)
 	return err
 }
 
@@ -730,4 +823,57 @@ func (q *Queries) UpsertGitlabIntegration(ctx context.Context, arg UpsertGitlabI
 		&i.Writeback,
 	)
 	return i, err
+}
+
+const upsertGitlabProjectMember = `-- name: UpsertGitlabProjectMember :exec
+INSERT INTO gitlab_project_members (integration_id, gl_user_id, gl_username, gl_name, gl_avatar_url, access_level, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, now())
+ON CONFLICT (integration_id, gl_user_id) DO UPDATE SET
+    gl_username = EXCLUDED.gl_username, gl_name = EXCLUDED.gl_name,
+    gl_avatar_url = EXCLUDED.gl_avatar_url, access_level = EXCLUDED.access_level, updated_at = now()
+`
+
+type UpsertGitlabProjectMemberParams struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	GlUserID      int64     `json:"gl_user_id"`
+	GlUsername    string    `json:"gl_username"`
+	GlName        string    `json:"gl_name"`
+	GlAvatarUrl   string    `json:"gl_avatar_url"`
+	AccessLevel   int32     `json:"access_level"`
+}
+
+// ── GitLab project members (assignable from Tessera) ───────
+func (q *Queries) UpsertGitlabProjectMember(ctx context.Context, arg UpsertGitlabProjectMemberParams) error {
+	_, err := q.db.Exec(ctx, upsertGitlabProjectMember,
+		arg.IntegrationID,
+		arg.GlUserID,
+		arg.GlUsername,
+		arg.GlName,
+		arg.GlAvatarUrl,
+		arg.AccessLevel,
+	)
+	return err
+}
+
+const upsertGitlabSourcedAssignee = `-- name: UpsertGitlabSourcedAssignee :exec
+INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url, source) VALUES ($1, $2, $3, $4, 'gitlab')
+ON CONFLICT (task_id, gl_username) DO UPDATE SET gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url
+`
+
+type UpsertGitlabSourcedAssigneeParams struct {
+	TaskID      uuid.UUID `json:"task_id"`
+	GlUsername  string    `json:"gl_username"`
+	GlName      string    `json:"gl_name"`
+	GlAvatarUrl string    `json:"gl_avatar_url"`
+}
+
+// Sync upsert: never downgrades an existing user-pinned row's source.
+func (q *Queries) UpsertGitlabSourcedAssignee(ctx context.Context, arg UpsertGitlabSourcedAssigneeParams) error {
+	_, err := q.db.Exec(ctx, upsertGitlabSourcedAssignee,
+		arg.TaskID,
+		arg.GlUsername,
+		arg.GlName,
+		arg.GlAvatarUrl,
+	)
+	return err
 }

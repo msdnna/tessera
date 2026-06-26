@@ -212,6 +212,8 @@ func main() {
 			protected.DELETE("/tasks/:id/tags/:tagId", rh.RemoveTaskTag)
 			protected.POST("/tasks/:id/assignees", rh.AddTaskAssignee)
 			protected.DELETE("/tasks/:id/assignees/:userId", rh.RemoveTaskAssignee)
+			protected.POST("/tasks/:id/gitlab-assignees", rh.PinTaskGitlabAssignee)
+			protected.DELETE("/tasks/:id/gitlab-assignees/:username", rh.RemoveTaskGitlabAssignee)
 
 			// Rich task detail: journal, comments, relations, attachments (#8).
 			protected.GET("/tasks/:id/events", rh.ListTaskEvents)
@@ -269,6 +271,7 @@ func main() {
 			protected.DELETE("/gitlab/connection", rh.DisconnectGitlab)
 			protected.GET("/workspaces/:id/gitlab/integration", rh.GetGitlabIntegration)
 			protected.PUT("/workspaces/:id/gitlab/integration", rh.SetGitlabIntegration)
+			protected.GET("/workspaces/:id/gitlab/members", rh.ListGitlabMembers)
 			protected.POST("/workspaces/:id/gitlab/sync", rh.SyncGitlab)
 			// Sync journal: run/action history + retry of failed pushes.
 			protected.GET("/workspaces/:id/gitlab/sync-runs", rh.ListGitlabSyncRuns)

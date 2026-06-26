@@ -650,6 +650,30 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
                     }
                 }
             }
+            if (state.gitlabMembers.isNotEmpty()) {
+                Text(
+                    "GitLab",
+                    color = c.text3, fontSize = 10.sp,
+                    modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 2.dp),
+                )
+                state.gitlabMembers.forEach { m ->
+                    val on = m.glUsername in task.gitlabAssigneeLogins
+                    val label = m.glName.ifBlank { m.glUsername }
+                    Row(
+                        Modifier.fillMaxWidth().clickableNoRipple { vm.toggleGitlabAssignee(task, m) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CardAvatar(label, muted = true, avatarUrl = m.glAvatarUrl)
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        if (on) {
+                            Spacer(Modifier.width(8.dp))
+                            IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -768,6 +768,7 @@ func (h *API) AddTaskAssignee(c *gin.Context) {
 	h.notify(c, req.UserID, wsID, &id, "assigned",
 		fmt.Sprintf("%s назначил вам задачу #%s%s", h.actorName(c), taskRef(t.Number), shortCtx(t.Title)))
 	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "user_id": req.UserID})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "assignees", map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -791,6 +792,7 @@ func (h *API) RemoveTaskAssignee(c *gin.Context) {
 	}
 	h.logEvent(c, id, "unassigned", map[string]any{"user_id": userID})
 	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "user_id": userID})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "assignees", map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 

@@ -37,7 +37,7 @@ data class GitlabRules(
 }
 
 /** Opt-in write-back (Tessera → GitLab) config; mirrors backend `gitlab.Writeback`.
- *  All off by default. We round-trip the 6 toggles the editor exposes (the backend
+ *  All off by default. We round-trip the 7 toggles the editor exposes (the backend
  *  also carries push_title_desc / column_label_bindings, deferred features). */
 data class GitlabWriteback(
     @SerializedName("enabled") val enabled: Boolean = false,
@@ -46,6 +46,7 @@ data class GitlabWriteback(
     @SerializedName("push_comments") val pushComments: Boolean = false,
     @SerializedName("push_labels") val pushLabels: Boolean = false,
     @SerializedName("push_due") val pushDue: Boolean = false,
+    @SerializedName("push_assignees") val pushAssignees: Boolean = false,
 )
 
 /** The workspace's GitLab integration config (mirrors backend `gitlabIntegrationView`). */
