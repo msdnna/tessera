@@ -248,16 +248,26 @@ private fun buildRichHtml(
     var h = an.getAttribute('href')||'';
     if (h.charAt(0) === '/') an.href = ROOT + h;
   });
-  // Interactive GFM checkboxes: enable + report the box index on click so Kotlin
-  // can rewrite the markdown marker. We let the native toggle happen (no
-  // preventDefault) so the CSS tick animation plays; Kotlin skips the reload
-  // that would otherwise interrupt it (the DOM already matches the new markdown).
+  // Interactive GFM checkboxes: enable them, and delegate clicks so a tap on the
+  // checkbox OR on the item's text toggles it. The native checkbox toggle animates
+  // (no preventDefault); a text tap flips it manually so it animates too. Kotlin
+  // skips the reload the markdown rewrite triggers (the DOM already matches it).
   if (INTERACTIVE) {
-    el.querySelectorAll('input[type=checkbox]').forEach(function(box, i){
-      box.disabled = false;
-      box.addEventListener('click', function(){
-        if (window.AndroidRich) AndroidRich.onCheckToggle(i);
-      });
+    var allBoxes = [].slice.call(el.querySelectorAll('input[type=checkbox]'));
+    allBoxes.forEach(function(box){ box.disabled = false; });
+    el.addEventListener('click', function(e){
+      var t = e.target, box = null;
+      if (t.tagName === 'INPUT' && t.type === 'checkbox') {
+        box = t;
+      } else {
+        if (t.closest('a,code,pre,.mention')) return;
+        var li = t.closest('li');
+        box = li && li.querySelector(':scope > input[type=checkbox]');
+        if (box) box.checked = !box.checked;
+      }
+      if (!box) return;
+      var i = allBoxes.indexOf(box);
+      if (i >= 0 && window.AndroidRich) AndroidRich.onCheckToggle(i);
     });
   }
   function report(){ if (window.AndroidRich) AndroidRich.onHeight(document.body.scrollHeight + 4); }

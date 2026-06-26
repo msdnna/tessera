@@ -36,15 +36,33 @@ function build() {
   nextTick(renderMermaid)
 }
 
-// Delegate checkbox clicks → toggle the matching marker in the source markdown.
+// A self-originated checkbox toggle already flipped (and animated) the box in the
+// live DOM, so skip the source→html rebuild it triggers — rebuilding recreates the
+// checkbox element and the CSS tick transition never plays.
+let skipBuild = false
+function queueToggle(box) {
+  const boxes = [...root.value.querySelectorAll('input[type="checkbox"]')]
+  const i = boxes.indexOf(box)
+  if (i >= 0) {
+    skipBuild = true
+    emit('toggle', i)
+  }
+}
+// Delegate clicks: the checkbox itself (native toggle animates) OR the item's
+// text (manually flip the box so it animates too), then toggle the markdown.
 function onClick(e) {
   if (!props.interactive) return
   const t = e.target
   if (t && t.tagName === 'INPUT' && t.type === 'checkbox') {
-    e.preventDefault()
-    const boxes = [...root.value.querySelectorAll('input[type="checkbox"]')]
-    const i = boxes.indexOf(t)
-    if (i >= 0) emit('toggle', i)
+    queueToggle(t) // let the native toggle proceed (no preventDefault) so it animates
+    return
+  }
+  if (!t || t.closest('a, code, pre, .mention')) return
+  const li = t.closest('li')
+  const box = li && li.querySelector(':scope > input[type="checkbox"]')
+  if (box) {
+    box.checked = !box.checked // text click doesn't toggle natively — do it for the animation
+    queueToggle(box)
   }
 }
 
@@ -85,7 +103,15 @@ async function renderMermaid() {
   }
 }
 
-watch(() => [props.source, theme.isDark], build)
+watch(() => [props.source, theme.isDark], () => {
+  // Skip the rebuild from a self-toggle (the DOM already reflects + animated it);
+  // genuine source/theme changes still rebuild.
+  if (skipBuild) {
+    skipBuild = false
+    return
+  }
+  build()
+})
 onMounted(build)
 </script>
 
@@ -149,7 +175,8 @@ onMounted(build)
   opacity: 1;
   transform: translate(-50%, -60%) rotate(45deg) scale(1);
 }
-.md.interactive :deep(input[type='checkbox']) {
+.md.interactive :deep(input[type='checkbox']),
+.md.interactive :deep(li:has(> input[type='checkbox'])) {
   cursor: pointer;
 }
 @media (prefers-reduced-motion: reduce) {
