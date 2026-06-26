@@ -3,8 +3,8 @@
 Источник истины для «что сделано / что дальше». Обновлять по ходу работы (и в том же
 изменении правда важнее красоты). Детали реализации — в коде, CHANGELOG и auto-memory.
 
-Текущие версии — `make version`. На 2026-06-26: backend `0.55.0` ·
-frontend `0.98.0` · android `0.36.4`. Следующая миграция — `0035`.
+Текущие версии — `make version`. На 2026-06-27: backend `0.58.0` ·
+frontend `0.101.0` · android `0.39.0`. Следующая миграция — `0037`.
 
 ## Статус фаз (0–10)
 
@@ -477,19 +477,20 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
   `sync-runs` / `.../actions` / `.../retry`. Подробности — [[project-gitlab-sync-journal-next]].
   Открытый хвост: визуальный прогон в живом UI (headless для NModal ненадёжен).
   **Android-паритет — ✅ СДЕЛАНО** (android 0.35.0, см. раздел 15).
-- **GitLab фаза B+ — СОГЛАСОВАННЫЙ ПЛАН** (2026-06-27, порядок `1→3→2→4`; детали и гочи —
-  [[project-gitlab-phase-b-plus-plan]]). Строим на готовом outbox/worker/журнале, каждый шаг
-  зеркалит priority-путь:
-  1. **Теги + due → GL** (малый): флаги `push_labels`/`push_due` (jsonb, без миграции); реконсайл
-     меток только в управляемых неймспейсах; **только `due_date` issue** (start у GL-issue нет —
-     блокер на стороне GL).
-  2. **timeEstimate ↔ задача (двусторонне)** (средний): pull + push, **только при единице оценки
-     «время»**; смена единицы → тогл в GL-модалке неактивен + подсказка.
-  3. **Members-sync → ассайни** (средний): новая `gitlab_project_members` (из GL Project Members),
-     объединённый пикер Tessera+GL, `task_gitlab_assignees` становится writable; write-back через
-     `gl_user_id`. **Снимает OAuth-блокер ассайни целиком.**
-  4. **Создание issue из таски** (крупный): opt-in тогл в модалке задачи (как «Выполнено»), автор =
-     owner PAT, guard от петель; **issue_templates** тянем из репо (`.gitlab/issue_templates/*.md`)
+- **GitLab фаза B+ — шаги 1/2/3 ✅ СДЕЛАНО** (2026-06-27, порядок `1→3→2`; детали и гочи —
+  [[project-gitlab-phase-b-plus-plan]]). На готовом outbox/worker/журнале, каждый шаг зеркалит
+  priority-путь. **Шаг 4 — на паузе (пользователь тестирует 1/2/3 против живого GL перед стартом).**
+  1. **Теги + due → GL** — ✅ (backend 0.56 / web 0.99 / android 0.37): флаги `push_labels`/`push_due`
+     (jsonb, без миграции); реконсайл меток только в тег-неймспейсах; только `due_date` issue
+     (start у GL-issue нет).
+  2. **timeEstimate ↔ задача (двусторонне)** — ✅ (backend 0.58 / web 0.101 / android 0.39, миг 0036):
+     pull+push, только при единице оценки «время» (`estimation_unit` в ответе интеграции → тогл
+     disabled иначе); `estimate_overridden`.
+  3. **Members-sync → ассайни** — ✅ (backend 0.57 / web 0.100 / android 0.38, миг 0035): таблица
+     `gitlab_project_members`, объединённый пикер Tessera+GL, `task_gitlab_assignees` writable
+     (`source`), write-back `assignees` через `gl_user_id`. **OAuth-блокер ассайни снят.**
+  4. **Создание issue из таски** (крупный, СЛЕДУЮЩИЙ): opt-in тогл в модалке задачи (как «Выполнено»),
+     автор = owner PAT, guard от петель; **issue_templates** тянем из репо (`.gitlab/issue_templates/*.md`)
      в свой стор → префилл описания.
   - **OAuth/SSO** — не сейчас, но **ближний бэклог** (универсальный маппинг + атрибуция), не в долгий
     ящик. Ассайни от него больше не зависят (шаг 3).
