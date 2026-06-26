@@ -50,7 +50,11 @@ func New(baseURL, token string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
-		http:    &http.Client{Timeout: 15 * time.Second, Transport: newTransport()},
+		// A large pull (hundreds of issues, each with up to 100 notes, plus all
+		// linked issues) can take well over 15s; the sync now runs in the
+		// background so it can afford a generous ceiling. A dead host still fails
+		// fast via the transport dial/TLS timeouts (3s/4s).
+		http: &http.Client{Timeout: 120 * time.Second, Transport: newTransport()},
 	}
 }
 
