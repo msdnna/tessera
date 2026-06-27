@@ -449,7 +449,7 @@ func (e *APIError) Error() string {
 // issuePath is the REST path for one issue, with the project path URL-encoded
 // ("group/project" → "group%2Fproject").
 func issuePath(projectPath string, iid int64) string {
-	return "projects/" + url.PathEscape(strings.Trim(projectPath, "/")) + "/issues/" + strconv.FormatInt(iid, 10)
+	return "projects/" + projectPathEsc(projectPath) + "/issues/" + strconv.FormatInt(iid, 10)
 }
 
 // restForm sends a form-encoded request to <baseURL>/api/v4/<path> with the PAT,
@@ -590,6 +590,112 @@ func (c *Client) SetIssueLabels(ctx context.Context, projectPath string, iid int
 	}
 	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid), form)
 	return err
+}
+
+// projectPathEsc URL-encodes a project path for use in a REST path
+// ("group/project" → "group%2Fproject").
+func projectPathEsc(projectPath string) string {
+	return url.PathEscape(strings.Trim(projectPath, "/"))
+}
+
+// CreatedIssue is the subset of a freshly-created issue the caller needs to build
+// the gitlab_link row (the numeric db id reconstructs the GraphQL global id).
+type CreatedIssue struct {
+	ID     int64  // global numeric db id, e.g. 123 (NOT the per-project iid)
+	IID    int64  // per-project iid (#N)
+	WebURL string // https://gitlab.example.com/group/project/-/issues/N
+	State  string // "opened"
+}
+
+// GlobalID reconstructs the GraphQL global id ("gid://gitlab/Issue/<id>") so the
+// created link matches the gl_global_id shape used by the pull path.
+func (ci CreatedIssue) GlobalID() string {
+	return fmt.Sprintf("gid://gitlab/Issue/%d", ci.ID)
+}
+
+// CreateIssue opens a new issue in the project from Tessera-side fields. labels are
+// full label titles (joined into the comma-separated labels param); dueDate is
+// "YYYY-MM-DD" or empty; assigneeIDs are numeric GitLab user ids (empty = none).
+func (c *Client) CreateIssue(ctx context.Context, projectPath, title, description string, labels []string, dueDate string, assigneeIDs []int64) (CreatedIssue, error) {
+	form := url.Values{}
+	form.Set("title", title)
+	if description != "" {
+		form.Set("description", description)
+	}
+	if len(labels) > 0 {
+		form.Set("labels", strings.Join(labels, ","))
+	}
+	if dueDate != "" {
+		form.Set("due_date", dueDate)
+	}
+	if len(assigneeIDs) > 0 {
+		strs := make([]string, len(assigneeIDs))
+		for i, id := range assigneeIDs {
+			strs[i] = strconv.FormatInt(id, 10)
+		}
+		form["assignee_ids[]"] = strs
+	}
+	out, err := c.restForm(ctx, http.MethodPost, "projects/"+projectPathEsc(projectPath)+"/issues", form)
+	if err != nil {
+		return CreatedIssue{}, err
+	}
+	var resp struct {
+		ID     int64  `json:"id"`
+		IID    int64  `json:"iid"`
+		WebURL string `json:"web_url"`
+		State  string `json:"state"`
+	}
+	if uerr := json.Unmarshal(out, &resp); uerr != nil {
+		return CreatedIssue{}, uerr
+	}
+	return CreatedIssue{ID: resp.ID, IID: resp.IID, WebURL: resp.WebURL, State: resp.State}, nil
+}
+
+// IssueTemplate is a repo issue template (.gitlab/issue_templates/<Name>.md).
+type IssueTemplate struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
+// IssueTemplates lists the project's issue templates with their content. GitLab's
+// list endpoint returns names only, so each template's body is fetched separately;
+// capped at maxTemplates to bound the fan-out. A project with no templates yields
+// an empty slice (not an error).
+func (c *Client) IssueTemplates(ctx context.Context, projectPath string) ([]IssueTemplate, error) {
+	const maxTemplates = 25
+	body, err := c.restGet(ctx, "projects/"+projectPathEsc(projectPath)+"/templates/issues")
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		Key  string `json:"key"`
+		Name string `json:"name"`
+	}
+	if uerr := json.Unmarshal(body, &rows); uerr != nil {
+		return nil, uerr
+	}
+	out := make([]IssueTemplate, 0, len(rows))
+	for i, r := range rows {
+		if i >= maxTemplates {
+			break
+		}
+		name := r.Name
+		if name == "" {
+			name = r.Key
+		}
+		tb, terr := c.restGet(ctx, "projects/"+projectPathEsc(projectPath)+"/templates/issues/"+url.PathEscape(name))
+		if terr != nil {
+			continue // skip a template that can't be fetched; keep the rest
+		}
+		var tpl IssueTemplate
+		if json.Unmarshal(tb, &tpl) == nil {
+			if tpl.Name == "" {
+				tpl.Name = name
+			}
+			out = append(out, tpl)
+		}
+	}
+	return out, nil
 }
 
 // CreateIssueNote posts a comment (note) on an issue and returns the created

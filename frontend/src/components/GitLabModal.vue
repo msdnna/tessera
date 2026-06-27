@@ -86,6 +86,7 @@ const wbLabels = ref(false)
 const wbDue = ref(false)
 const wbAssignees = ref(false)
 const wbEstimate = ref(false)
+const wbCreate = ref(false) // allow creating GitLab issues from tasks (independent of write-back)
 // Resolved estimation unit of the integration board (from the integration GET);
 // the estimate toggle is only meaningful when it's "time".
 const estimationUnit = ref('time')
@@ -239,6 +240,7 @@ async function loadIntegration() {
     wbDue.value = wb.push_due === true
     wbAssignees.value = wb.push_assignees === true
     wbEstimate.value = wb.push_estimate === true
+    wbCreate.value = wb.push_create === true
     estimationUnit.value = data.estimation_unit || 'time'
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
@@ -316,6 +318,7 @@ async function save() {
         push_due: wbDue.value,
         push_assignees: wbAssignees.value,
         push_estimate: wbEstimate.value && estimationUnit.value === 'time',
+        push_create: wbCreate.value,
       },
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
@@ -508,7 +511,17 @@ watch(
         <div class="gl-grid">
           <n-text depth="3" class="lbl">Включить запись</n-text>
           <div><n-switch v-model:value="wbEnabled" /></div>
+
+          <n-text depth="3" class="lbl">Создание issue из задачи</n-text>
+          <div><n-switch v-model:value="wbCreate" /></div>
         </div>
+        <p class="gl-wb-hint">
+          <n-text depth="3">
+            «Создание issue из задачи» добавляет в карточку действие «Создать issue в
+            GitLab» (под токеном владельца интеграции). Работает независимо от обратной
+            записи изменений ниже.
+          </n-text>
+        </p>
         <div v-if="wbEnabled" class="gl-grid">
           <n-text depth="3" class="lbl">Статус (закрыть/открыть issue)</n-text>
           <div><n-switch v-model:value="wbState" size="small" /></div>

@@ -43,6 +43,7 @@ import {
   boards as boardsApi,
   workspaces as wsApi,
   projects as projApi,
+  gitlab as glApi,
 } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
@@ -77,6 +78,7 @@ const props = defineProps({
   tagPrefixNames: { type: Object, default: () => ({}) },
   members: { type: Array, default: () => [] },
   gitlabMembers: { type: Array, default: () => [] },
+  gitlabCanCreate: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:show', 'changed', 'open'])
 
@@ -468,6 +470,51 @@ async function onDueNotify(patch) {
 function setCompleted(v) {
   completed.value = v
   applyMeta()
+}
+
+// ── Create a GitLab issue from this task ──
+// Offered only on the integration board when writeback.push_create is on and the
+// task isn't already linked. Optionally prefilled from a repo issue template.
+const glShowCreate = ref(false)
+const glCreating = ref(false)
+const glTemplates = ref([])
+const glTemplatesLoaded = ref(false)
+const glTemplate = ref(null)
+const glDescription = ref('')
+const glTemplateOptions = computed(() =>
+  glTemplates.value.map((t) => ({ label: t.name, value: t.name })),
+)
+async function onGlCreateShow(show) {
+  if (!show) return
+  // Seed the issue body from the task's current description; load templates lazily.
+  glDescription.value = description.value || ''
+  glTemplate.value = null
+  if (glTemplatesLoaded.value) return
+  glTemplatesLoaded.value = true
+  try {
+    const res = await glApi.issueTemplates(props.wsId)
+    glTemplates.value = res.data || []
+  } catch {
+    glTemplates.value = []
+  }
+}
+function applyGlTemplate(name) {
+  const tpl = glTemplates.value.find((t) => t.name === name)
+  glDescription.value = tpl ? tpl.content : description.value || ''
+}
+async function createGlIssue() {
+  glCreating.value = true
+  try {
+    const res = await glApi.createIssue(props.taskId, { description: glDescription.value })
+    if (task.value) task.value.gitlab = res.data
+    glShowCreate.value = false
+    message.success(`Создан issue !${res.data.iid} в GitLab`)
+    emit('changed')
+  } catch (e) {
+    message.error(e?.response?.data?.error || e.message)
+  } finally {
+    glCreating.value = false
+  }
 }
 async function save() {
   try {
@@ -894,6 +941,46 @@ function eventText(e) {
             <n-icon :component="LogoGitlab" :size="13" />
             <span>GitLab !{{ task.gitlab.iid }}</span>
           </a>
+          <n-popover
+            v-if="task && !task.gitlab && props.gitlabCanCreate"
+            v-model:show="glShowCreate"
+            trigger="click"
+            placement="bottom-start"
+            :width="320"
+            @update:show="onGlCreateShow"
+          >
+            <template #trigger>
+              <button class="gl-create-btn" type="button" title="Создать issue в GitLab из этой задачи">
+                <n-icon :component="LogoGitlab" :size="13" />
+                <span>Создать issue</span>
+              </button>
+            </template>
+            <div class="gl-create-pop">
+              <div class="glc-title">Создать issue в GitLab</div>
+              <n-select
+                v-if="glTemplates.length"
+                v-model:value="glTemplate"
+                :options="glTemplateOptions"
+                size="small"
+                clearable
+                placeholder="Шаблон описания (необязательно)"
+                @update:value="applyGlTemplate"
+              />
+              <n-input
+                v-model:value="glDescription"
+                type="textarea"
+                size="small"
+                :autosize="{ minRows: 3, maxRows: 8 }"
+                placeholder="Описание issue"
+              />
+              <div class="glc-actions">
+                <n-button size="small" @click="glShowCreate = false">Отмена</n-button>
+                <n-button size="small" type="primary" :loading="glCreating" @click="createGlIssue">
+                  Создать
+                </n-button>
+              </div>
+            </div>
+          </n-popover>
           <n-input v-model:value="title" placeholder="Название задачи" class="title-input plain" />
 
           <div class="props">
@@ -1562,6 +1649,40 @@ function eventText(e) {
 }
 .gl-line:hover {
   color: var(--t-primary);
+}
+.gl-create-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0 2px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--t-text2);
+  background: var(--t-accent-grad-subtle);
+  border: 1px solid var(--t-border);
+  border-radius: 7px;
+  cursor: pointer;
+  width: fit-content;
+  transition: color 0.15s, border-color 0.15s;
+}
+.gl-create-btn:hover {
+  color: var(--t-primary);
+  border-color: var(--t-primary);
+}
+.gl-create-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.glc-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
+}
+.glc-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .gl-author {
   color: var(--t-text3);

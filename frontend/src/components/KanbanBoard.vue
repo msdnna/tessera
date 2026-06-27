@@ -30,6 +30,7 @@ import {
   workspaces as wsApi,
   columns as columnsApi,
   projects as projectsApi,
+  gitlab as gitlabApi,
 } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useBoardViewStore } from '@/stores/boardView'
@@ -90,6 +91,10 @@ const membersMap = reactive({})
 // GitLab project members (assignable on integration boards even without a Tessera
 // account), keyed by gl_user_id; empty for non-integration boards.
 const gitlabMembersMap = reactive({})
+// True when this board is the workspace's GitLab integration board and the
+// integration allows creating issues from tasks (writeback.push_create) — gates the
+// "Создать issue в GitLab" action in the task modal.
+const gitlabCanCreate = ref(false)
 const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
 const gitlabMembersList = computed(() => Object.values(gitlabMembersMap))
@@ -871,11 +876,12 @@ async function loadWorkspaceMeta() {
   const projectId = board.value?.project_id
   if (!wsId || !projectId) return
   // Tags + prefix names are project-scoped; members stay workspace-scoped.
-  const [tg, mem, pfx, glMem] = await Promise.all([
+  const [tg, mem, pfx, glMem, glInt] = await Promise.all([
     projectsApi.tags(projectId),
     wsApi.members(wsId),
     projectsApi.tagPrefixes(projectId).catch(() => ({ data: [] })),
     wsApi.gitlabMembers(wsId).catch(() => ({ data: [] })),
+    gitlabApi.getIntegration(wsId).catch(() => ({ data: {} })),
   ])
   for (const k of Object.keys(tagsMap)) delete tagsMap[k]
   for (const t of tg.data || []) tagsMap[t.id] = t
@@ -883,6 +889,13 @@ async function loadWorkspaceMeta() {
   for (const m of mem.data || []) membersMap[m.user_id] = m
   for (const k of Object.keys(gitlabMembersMap)) delete gitlabMembersMap[k]
   for (const g of glMem.data || []) gitlabMembersMap[g.gl_user_id] = g
+  // Issue-creation is offered only on the configured integration board.
+  const gi = glInt.data || {}
+  gitlabCanCreate.value =
+    gi.configured === true &&
+    gi.enabled === true &&
+    gi.board_id === props.boardId &&
+    gi.writeback?.push_create === true
   for (const k of Object.keys(tagPrefixNames)) delete tagPrefixNames[k]
   for (const p of pfx.data || []) tagPrefixNames[p.prefix] = p.label
   // Mirror tags + prefix names + context to the store so the header Теги manager works.
@@ -1615,6 +1628,7 @@ watch(
       :tag-prefix-names="tagPrefixNames"
       :members="membersList"
       :gitlab-members="gitlabMembersList"
+      :gitlab-can-create="gitlabCanCreate"
       @update:show="(v) => v || closeTask()"
       @changed="onChanged"
       @open="openTask"

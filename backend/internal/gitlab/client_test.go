@@ -97,6 +97,75 @@ func TestCreateIssueNote(t *testing.T) {
 	}
 }
 
+func TestCreateIssue(t *testing.T) {
+	var got captured
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		got.method = r.Method
+		got.path = r.URL.EscapedPath()
+		got.form = map[string]string{}
+		for k := range r.PostForm {
+			got.form[k] = strings.Join(r.PostForm[k], "|")
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id": 99, "iid": 12, "web_url": "https://gl/x/-/issues/12", "state": "opened"}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "tok")
+	created, err := c.CreateIssue(context.Background(), "grp/project", "Title", "Body", []string{"P: High", "T: bug"}, "2026-07-01", []int64{5, 8})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if got.method != http.MethodPost {
+		t.Errorf("method = %s, want POST", got.method)
+	}
+	if !strings.HasSuffix(got.path, "/api/v4/projects/grp%2Fproject/issues") {
+		t.Errorf("path = %s", got.path)
+	}
+	if got.form["title"] != "Title" || got.form["description"] != "Body" {
+		t.Errorf("title/description = %q/%q", got.form["title"], got.form["description"])
+	}
+	if got.form["labels"] != "P: High,T: bug" {
+		t.Errorf("labels = %q", got.form["labels"])
+	}
+	if got.form["due_date"] != "2026-07-01" {
+		t.Errorf("due_date = %q", got.form["due_date"])
+	}
+	if got.form["assignee_ids[]"] != "5|8" {
+		t.Errorf("assignee_ids[] = %q", got.form["assignee_ids[]"])
+	}
+	if created.IID != 12 || created.WebURL != "https://gl/x/-/issues/12" || created.State != "opened" {
+		t.Errorf("created = %+v", created)
+	}
+	if created.GlobalID() != "gid://gitlab/Issue/99" {
+		t.Errorf("GlobalID = %q, want gid://gitlab/Issue/99", created.GlobalID())
+	}
+}
+
+func TestIssueTemplates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		switch {
+		case strings.HasSuffix(r.URL.EscapedPath(), "/templates/issues"):
+			_, _ = w.Write([]byte(`[{"key":"Bug","name":"Bug"},{"key":"Feature","name":"Feature"}]`))
+		default: // one template's content
+			_, _ = w.Write([]byte(`{"name":"Bug","content":"## Steps"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "tok")
+	tpls, err := c.IssueTemplates(context.Background(), "grp/project")
+	if err != nil {
+		t.Fatalf("IssueTemplates: %v", err)
+	}
+	if len(tpls) != 2 {
+		t.Fatalf("len = %d, want 2", len(tpls))
+	}
+	if tpls[0].Name != "Bug" || tpls[0].Content != "## Steps" {
+		t.Errorf("tpl[0] = %+v", tpls[0])
+	}
+}
+
 func TestCreateIssueNote_ReturnsGID(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)

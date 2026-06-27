@@ -304,6 +304,10 @@ export const gitlab = {
   syncRunActions: (wsId, runId) => api.get(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions`),
   retryWriteback: (wsId, runId, actionId) =>
     api.post(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions/${actionId}/retry`),
+  // Create a GitLab issue from a task (returns the new link view) + the project's
+  // issue templates for prefilling the description.
+  createIssue: (taskId, data) => api.post(`/tasks/${taskId}/gitlab-issue`, data),
+  issueTemplates: (wsId) => api.get(`/workspaces/${wsId}/gitlab/issue-templates`),
 }
 
 export default api
