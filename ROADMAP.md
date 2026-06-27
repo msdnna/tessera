@@ -3,8 +3,8 @@
 Источник истины для «что сделано / что дальше». Обновлять по ходу работы (и в том же
 изменении правда важнее красоты). Детали реализации — в коде, CHANGELOG и auto-memory.
 
-Текущие версии — `make version`. На 2026-06-27: backend `0.59.2` ·
-frontend `0.102.1` · android `0.40.0`. Следующая миграция — `0037`.
+Текущие версии — `make version`. На 2026-06-27: backend `0.60.0` ·
+frontend `0.103.0` · android `0.40.0`. Следующая миграция — `0037`.
 
 ## Статус фаз (0–10)
 
@@ -489,9 +489,19 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
   3. **Members-sync → ассайни** — ✅ (backend 0.57 / web 0.100 / android 0.38, миг 0035): таблица
      `gitlab_project_members`, объединённый пикер Tessera+GL, `task_gitlab_assignees` writable
      (`source`), write-back `assignees` через `gl_user_id`. **OAuth-блокер ассайни снят.**
-  4. **Создание issue из таски** (крупный, СЛЕДУЮЩИЙ): opt-in тогл в модалке задачи (как «Выполнено»),
-     автор = owner PAT, guard от петель; **issue_templates** тянем из репо (`.gitlab/issue_templates/*.md`)
-     в свой стор → префилл описания.
+  4. **Создание issue из таски** — ✅ СДЕЛАНО (api 0.60.0 / web 0.103.0, commit 9c4f810, БЕЗ миграции —
+     `push_create` это jsonb-флаг writeback). **Синхронный** `POST /tasks/:id/gitlab-issue` (не async-
+     outbox: очередь завязана на уже-слинкованную задачу, а тут создание И есть линковка, и нужен
+     iid/url сразу). Гейты: интеграция настроена+включена → `push_create` → задача на борде интеграции →
+     не слинкована → есть владелец → есть GL-креденшел (вызывающего, иначе владельца). Issue строится из
+     задачи: заголовок, описание (переопределяемо из тела — заполненный шаблон), метки (теги если
+     инвертируются, `P:` приоритет, `S:` из `column_label_bindings`), `due_date`, исполнители (резолв в
+     `gl_user_id`), best-effort timeEstimate. После линковки `refreshLinkSnapshot`. Шаблоны:
+     `GET /workspaces/:id/gitlab/issue-templates` (REST `templates/issues`, soft-fail в `[]`). Web:
+     «Создать issue» поповер в TaskModal (пикер шаблона + правка описания) + тумблер `push_create` в
+     GitLab-модалке; борда грузит конфиг интеграции в `loadWorkspaceMeta` → `gitlabCanCreate`. e2e на
+     tessera_test проверил гейты; живой GL-путь покрыт httptest-юнит-тестами. **Не live-verified; Android
+     паритет шага 4 — TODO.**
   - **OAuth/SSO** — не сейчас, но **ближний бэклог** (универсальный маппинг + атрибуция), не в долгий
     ящик. Ассайни от него больше не зависят (шаг 3).
   - Остаток прежнего бэклога: **title/description** (риск затирания, gated `push_title_desc`),
