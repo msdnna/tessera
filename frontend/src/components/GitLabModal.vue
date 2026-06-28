@@ -87,6 +87,7 @@ const wbDue = ref(false)
 const wbAssignees = ref(false)
 const wbEstimate = ref(false)
 const wbCreate = ref(false) // allow creating GitLab issues from tasks (independent of write-back)
+const wbFetchTemplates = ref(false) // offer repo issue templates when creating
 // Resolved estimation unit of the integration board (from the integration GET);
 // the estimate toggle is only meaningful when it's "time".
 const estimationUnit = ref('time')
@@ -241,6 +242,7 @@ async function loadIntegration() {
     wbAssignees.value = wb.push_assignees === true
     wbEstimate.value = wb.push_estimate === true
     wbCreate.value = wb.push_create === true
+    wbFetchTemplates.value = wb.fetch_templates === true
     estimationUnit.value = data.estimation_unit || 'time'
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
@@ -319,6 +321,7 @@ async function save() {
         push_assignees: wbAssignees.value,
         push_estimate: wbEstimate.value && estimationUnit.value === 'time',
         push_create: wbCreate.value,
+        fetch_templates: wbCreate.value && wbFetchTemplates.value,
       },
     })
     lastSynced.value = data.last_synced_at || lastSynced.value
@@ -514,12 +517,21 @@ watch(
 
           <n-text depth="3" class="lbl">Создание issue из задачи</n-text>
           <div><n-switch v-model:value="wbCreate" /></div>
+
+          <template v-if="wbCreate">
+            <n-text depth="3" class="lbl">Получение issue-templates из проекта</n-text>
+            <div><n-switch v-model:value="wbFetchTemplates" size="small" /></div>
+          </template>
         </div>
         <p class="gl-wb-hint">
           <n-text depth="3">
-            «Создание issue из задачи» добавляет в карточку действие «Создать issue в
-            GitLab» (под токеном владельца интеграции). Работает независимо от обратной
-            записи изменений ниже.
+            «Создание issue из задачи» добавляет в модалку задачи (под свойством
+            «Родитель») кнопку «Создать issue в GitLab» — issue открывается из свойств и
+            описания задачи под токеном владельца интеграции, после чего задача
+            становится синхронизированной. Работает независимо от обратной записи
+            изменений ниже. «Получение issue-templates» подтягивает шаблоны
+            <code>.gitlab/issue_templates/*.md</code> — их можно выбрать над редактором
+            описания перед созданием.
           </n-text>
         </p>
         <div v-if="wbEnabled" class="gl-grid">

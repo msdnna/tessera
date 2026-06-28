@@ -17,7 +17,8 @@ type Writeback struct {
 	PushAssignees       bool              `json:"push_assignees"`  // push the resolved assignee set
 	PushEstimate        bool              `json:"push_estimate"`   // push timeEstimate (time unit only)
 	PushTitleDesc       bool              `json:"push_title_desc"`
-	PushCreate          bool              `json:"push_create"` // allow creating a GitLab issue from a task
+	PushCreate          bool              `json:"push_create"`     // allow creating a GitLab issue from a task
+	FetchTemplates      bool              `json:"fetch_templates"` // offer repo issue templates when creating
 	ColumnLabelBindings map[string]string `json:"column_label_bindings,omitempty"`
 }
 

@@ -95,6 +95,7 @@ const gitlabMembersMap = reactive({})
 // integration allows creating issues from tasks (writeback.push_create) — gates the
 // "Создать issue в GitLab" action in the task modal.
 const gitlabCanCreate = ref(false)
+const gitlabFetchTemplates = ref(false)
 const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
 const gitlabMembersList = computed(() => Object.values(gitlabMembersMap))
@@ -896,6 +897,7 @@ async function loadWorkspaceMeta() {
     gi.enabled === true &&
     gi.board_id === props.boardId &&
     gi.writeback?.push_create === true
+  gitlabFetchTemplates.value = gitlabCanCreate.value && gi.writeback?.fetch_templates === true
   for (const k of Object.keys(tagPrefixNames)) delete tagPrefixNames[k]
   for (const p of pfx.data || []) tagPrefixNames[p.prefix] = p.label
   // Mirror tags + prefix names + context to the store so the header Теги manager works.
@@ -1629,6 +1631,7 @@ watch(
       :members="membersList"
       :gitlab-members="gitlabMembersList"
       :gitlab-can-create="gitlabCanCreate"
+      :gitlab-fetch-templates="gitlabFetchTemplates"
       @update:show="(v) => v || closeTask()"
       @changed="onChanged"
       @open="openTask"
