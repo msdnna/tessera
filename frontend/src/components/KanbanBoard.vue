@@ -517,7 +517,7 @@ function defaultToolbar(forLayout) {
     sortLevels: [],
     subtasksExpanded: false,
     autoSort: false,
-    filters: { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' },
+    filters: { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
   }
 }
 function snapshotToolbar() {
@@ -532,6 +532,7 @@ function snapshotToolbar() {
       assignees: [...filters.assignees],
       tags: [...filters.tags],
       statuses: [...filters.statuses],
+      milestones: [...filters.milestones],
       due: filters.due,
       q: filters.q,
     },
@@ -545,7 +546,7 @@ function loadToolbar(s) {
   autoSort.value = !!s.autoSort
   Object.assign(
     filters,
-    { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' },
+    { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
     s.filters || {},
   )
 }
@@ -666,7 +667,11 @@ function applyViewConfig(c) {
     sortLevels.value = [{ field: c.sortBy, dir: c.sortDir || 'asc' }]
   else sortLevels.value = []
   subtasksExpanded.value = !!c.subtasksExpanded
-  Object.assign(filters, { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' }, c.filters || {})
+  Object.assign(
+    filters,
+    { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
+    c.filters || {},
+  )
 }
 async function saveView() {
   const name = (newViewName.value || currentViewName.value).trim()
