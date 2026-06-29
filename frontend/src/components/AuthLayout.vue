@@ -261,6 +261,10 @@ onBeforeUnmount(() => {
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 160px 160px;
+  /* Fade the grain out toward its edge so the disc has no visible rim — it
+     should only live where the glow's banding does, in the soft centre. */
+  -webkit-mask: radial-gradient(circle at 50% 50%, #000 30%, transparent 62%);
+  mask: radial-gradient(circle at 50% 50%, #000 30%, transparent 62%);
 }
 
 .auth-card {
