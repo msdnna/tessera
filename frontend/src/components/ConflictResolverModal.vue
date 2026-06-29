@@ -4,6 +4,7 @@ import { NModal, NCard, NIcon, NButton, NInput, NText, useMessage } from 'naive-
 import { LogoGitlab, WarningOutline, CheckmarkOutline } from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
 import { diffSegments } from '@/utils/linediff'
+import { PRIORITY_LABELS } from '@/styles/tokens'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
 
@@ -30,14 +31,22 @@ const FIELD_LABEL = {
   due: 'Срок (ГГГГ-ММ-ДД)',
   estimate: 'Оценка (минуты)',
   state: 'Статус',
+  priority: 'Приоритет',
 }
 const KIND_LABEL = {
   title_desc: 'Заголовок и описание',
   due: 'Срок',
   estimate: 'Оценка',
+  state: 'Статус',
+  priority: 'Приоритет',
 }
 
 const selected = computed(() => conflicts.value.find((c) => c.id === selectedId.value) || null)
+// Manual merge makes sense only for free-text/numeric fields; state and priority
+// are discrete (ours/theirs is enough), so hide the manual option for them.
+const manualAllowed = computed(() =>
+  (selected.value?.fields || []).every((f) => !['state', 'priority'].includes(f.field)),
+)
 
 function fieldLabel(f) {
   return FIELD_LABEL[f] || f
@@ -52,6 +61,13 @@ function emptyVal(v) {
 // the diverged lines are highlighted; short scalar values render plain.
 function isTextField(field) {
   return field === 'title' || field === 'description'
+}
+// Human-readable value for discrete fields (state/priority); others pass through.
+function displayVal(field, v) {
+  if (emptyVal(v)) return '— пусто —'
+  if (field === 'state') return v === 'closed' ? 'Закрыта' : 'Открыта'
+  if (field === 'priority') return PRIORITY_LABELS[Number(v)] || v
+  return v
 }
 const theirsDiff = (f) => diffSegments(f.base, f.theirs)
 const oursDiff = (f) => diffSegments(f.base, f.ours)
@@ -167,7 +183,7 @@ watch(
               <p class="c-hint">
                 <n-text depth="3">
                   И вы, и GitLab изменили это с момента последней синхронизации. Выберите,
-                  чьё значение оставить, или объедините вручную.
+                  чьё значение оставить{{ manualAllowed ? ', или объедините вручную' : '' }}.
                 </n-text>
               </p>
 
@@ -177,7 +193,7 @@ watch(
                   <div class="c-col">
                     <div class="c-col-lbl">Было (база)</div>
                     <div class="c-val base" :class="{ empty: emptyVal(f.base) }">
-                      {{ emptyVal(f.base) ? '— пусто —' : f.base }}
+                      {{ displayVal(f.field, f.base) }}
                     </div>
                   </div>
                   <div class="c-col">
@@ -189,7 +205,7 @@ watch(
                           :key="si"
                           :class="{ 'ch-theirs': seg.changed }"
                         >{{ seg.text }}</span></template>
-                      <template v-else>{{ f.theirs }}</template>
+                      <template v-else>{{ displayVal(f.field, f.theirs) }}</template>
                     </div>
                   </div>
                   <div class="c-col">
@@ -201,7 +217,7 @@ watch(
                           :key="si"
                           :class="{ 'ch-ours': seg.changed }"
                         >{{ seg.text }}</span></template>
-                      <template v-else>{{ f.ours }}</template>
+                      <template v-else>{{ displayVal(f.field, f.ours) }}</template>
                     </div>
                   </div>
                 </div>
@@ -229,10 +245,19 @@ watch(
                 <n-button :disabled="resolving" @click="resolve('theirs')">
                   Принять GitLab
                 </n-button>
-                <n-button v-if="!manualField" :disabled="resolving" @click="startManual">
+                <n-button
+                  v-if="manualAllowed && !manualField"
+                  :disabled="resolving"
+                  @click="startManual"
+                >
                   Объединить вручную…
                 </n-button>
-                <n-button v-else type="primary" :loading="resolving" @click="resolve('manual')">
+                <n-button
+                  v-else-if="manualAllowed"
+                  type="primary"
+                  :loading="resolving"
+                  @click="resolve('manual')"
+                >
                   <template #icon><n-icon :component="CheckmarkOutline" /></template>
                   Сохранить объединение
                 </n-button>

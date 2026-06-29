@@ -640,7 +640,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
 		}
-		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue)})
+		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))})
 		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false)
 		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
@@ -675,9 +675,17 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		if frozen["title_desc"] {
 			title, desc = old.Title, old.Description
 		}
+		prio := res.Priority
+		if frozen["priority"] {
+			prio = old.Priority
+		}
+		col, comp := columnID, completedAt
+		if frozen["state"] {
+			col, comp = old.ColumnID, old.CompletedAt
+		}
 		t, uerr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
 			ID: link.TaskID, Title: title, Description: desc,
-			Priority: res.Priority, ColumnID: columnID, CompletedAt: completedAt, BoardID: boardID,
+			Priority: prio, ColumnID: col, CompletedAt: comp, BoardID: boardID,
 		})
 		if uerr != nil {
 			log.Printf("gitlab sync: update task for issue !%d failed: %v", issue.IID, uerr)
@@ -704,7 +712,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
 			return uuid.Nil, false, false
 		}
-		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue)})
+		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))})
 		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
@@ -740,17 +748,17 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 				fields["description"] = map[string]any{"before": truncForJournal(old.Description), "after": truncForJournal(issue.Description)}
 			}
 		}
-		if old.Priority != res.Priority {
+		if !frozen["priority"] && old.Priority != res.Priority {
 			fields["priority"] = map[string]any{"before": old.Priority, "after": res.Priority}
 		}
-		if old.ColumnID != columnID {
+		if !frozen["state"] && old.ColumnID != columnID {
 			before := ""
 			if oc, oerr := h.q.GetColumn(ctx, old.ColumnID); oerr == nil {
 				before = oc.Name
 			}
 			fields["column"] = map[string]any{"before": before, "after": colName}
 		}
-		if (old.CompletedAt != nil) != (completedAt != nil) {
+		if !frozen["state"] && (old.CompletedAt != nil) != (completedAt != nil) {
 			fields["completed"] = map[string]any{"before": old.CompletedAt != nil, "after": completedAt != nil}
 		}
 		if dueApplied && !timePtrEq(old.DueDate, dueDate) {

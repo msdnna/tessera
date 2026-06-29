@@ -317,7 +317,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		if len(issues) == 0 {
 			return res, notify.Permanent(errors.New("issue not found"))
 		}
-		decision, fields, derr := h.evalWritebackConflict(ctx, w, link, issues[0], integ.WorkspaceID)
+		decision, fields, derr := h.evalWritebackConflict(ctx, w, link, issues[0], integ.WorkspaceID, parseRules(integ.LabelRules))
 		if derr != nil {
 			return res, derr
 		}
@@ -338,8 +338,14 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 
 	switch w.ChangeKind {
 	case "state":
+		// Read the live task state (not the enqueue payload) so a conflict resolved
+		// in our favour pushes the task's current open/closed, never a stale value.
+		task, err := h.q.GetTask(ctx, w.TaskID)
+		if err != nil {
+			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
 		event, outcome := "reopen", "issue reopened"
-		if s, _ := payload["state"].(string); s == "closed" {
+		if task.CompletedAt != nil {
 			event, outcome = "close", "issue closed"
 		}
 		if err := client.UpdateIssueState(ctx, path, iid, event); err != nil {
@@ -354,10 +360,12 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		if !ok {
 			return res, notify.Permanent(errors.New("priority label mapping is not invertible"))
 		}
-		var prio int32
-		if f, fok := payload["priority"].(float64); fok {
-			prio = int32(f)
+		// Live task priority (not the enqueue payload), for the same reason as state.
+		task, terr := h.q.GetTask(ctx, w.TaskID)
+		if terr != nil {
+			return res, notify.Permanent(fmt.Errorf("task gone: %w", terr))
 		}
+		prio := task.Priority
 		add, ok := inv[prio]
 		if !ok {
 			return res, notify.Permanent(fmt.Errorf("no GitLab label for priority %d", prio))
@@ -601,7 +609,7 @@ func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, in
 	// baseline matches what the task stores (avoids a false title_desc conflict).
 	issue.Description = h.rewriteAssets(issue.Description, integ.WorkspaceID)
 	if serr := h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{
-		TaskID: taskID, GlSnapshot: buildGlSnapshot(issue),
+		TaskID: taskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules)),
 	}); serr != nil {
 		log.Printf("gitlab writeback: refresh conflict snapshot for task %s failed: %v", taskID, serr)
 	}

@@ -781,6 +781,23 @@ func (q *Queries) RestoreTask(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const setTaskColumnCompleted = `-- name: SetTaskColumnCompleted :exec
+UPDATE tasks SET column_id = $2, completed_at = $3, updated_at = now() WHERE id = $1
+`
+
+type SetTaskColumnCompletedParams struct {
+	ID          uuid.UUID  `json:"id"`
+	ColumnID    uuid.UUID  `json:"column_id"`
+	CompletedAt *time.Time `json:"completed_at"`
+}
+
+// SetTaskColumnCompleted applies a resolved state conflict: move the task to a
+// column and set/clear its completion (used when accepting GitLab's open/closed).
+func (q *Queries) SetTaskColumnCompleted(ctx context.Context, arg SetTaskColumnCompletedParams) error {
+	_, err := q.db.Exec(ctx, setTaskColumnCompleted, arg.ID, arg.ColumnID, arg.CompletedAt)
+	return err
+}
+
 const setTaskDescription = `-- name: SetTaskDescription :exec
 UPDATE tasks SET description = $2, updated_at = now() WHERE id = $1
 `
@@ -940,6 +957,20 @@ func (q *Queries) SetTaskParent(ctx context.Context, arg SetTaskParentParams) (T
 		&i.MilestoneID,
 	)
 	return i, err
+}
+
+const setTaskPriority = `-- name: SetTaskPriority :exec
+UPDATE tasks SET priority = $2, updated_at = now() WHERE id = $1
+`
+
+type SetTaskPriorityParams struct {
+	ID       uuid.UUID `json:"id"`
+	Priority int32     `json:"priority"`
+}
+
+func (q *Queries) SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) error {
+	_, err := q.db.Exec(ctx, setTaskPriority, arg.ID, arg.Priority)
+	return err
 }
 
 const setTaskTitle = `-- name: SetTaskTitle :exec

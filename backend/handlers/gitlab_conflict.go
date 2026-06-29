@@ -40,16 +40,19 @@ type glSnapshot struct {
 	State        string `json:"state"`         // opened | closed
 	Due          string `json:"due"`           // YYYY-MM-DD, "" when unset
 	TimeEstimate int64  `json:"time_estimate"` // minutes, 0 when unset
+	Priority     int32  `json:"priority"`      // resolved priority level the GL labels imply
 }
 
 // buildGlSnapshot captures the conflict-relevant fields of a freshly fetched issue.
-func buildGlSnapshot(issue gitlab.Issue) []byte {
+// rules resolve the issue's labels to a priority level (the comparable baseline).
+func buildGlSnapshot(issue gitlab.Issue, rules gitlab.Rules) []byte {
 	snap := glSnapshot{
 		Title:        issue.Title,
 		Description:  issue.Description,
 		State:        issue.State,
 		Due:          dateStr(issue.DueDate),
 		TimeEstimate: issue.TimeEstimate / 60,
+		Priority:     rules.Resolve(issue.Labels).Priority,
 	}
 	b, err := json.Marshal(snap)
 	if err != nil {
@@ -86,6 +89,11 @@ func minutesStr(m *float64) string {
 	return strconv.FormatInt(int64(*m), 10)
 }
 
+// prioStr renders a priority level as a string (the comparable form for the triple).
+func prioStr(p int32) string {
+	return strconv.FormatInt(int64(p), 10)
+}
+
 // conflictField is one diverged field: the three-way base/ours/theirs values the
 // resolver UI shows. basePresent is internal (not serialised) — false means the
 // snapshot had no baseline for this field yet, so it isn't a real conflict.
@@ -109,7 +117,7 @@ const (
 // detection. Other kinds push directly (current behaviour).
 func conflictCheckedKind(kind string) bool {
 	switch kind {
-	case "due", "estimate", "title_desc":
+	case "due", "estimate", "title_desc", "state", "priority":
 		return true
 	default:
 		return false
@@ -120,7 +128,8 @@ func conflictCheckedKind(kind string) bool {
 // from the snapshot, the freshly fetched issue and the current task. wsID is used to
 // resolve GitLab attachment links in the issue body to the same proxy URLs Tessera
 // stores, so a description comparison doesn't false-conflict on link rewriting.
-func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task db.Task, wsID uuid.UUID) []conflictField {
+// rules map the issue's labels to a priority level for the priority triple.
+func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task db.Task, wsID uuid.UUID, rules gitlab.Rules) []conflictField {
 	snap, present := snapshotPresence(raw)
 	switch kind {
 	case "due":
@@ -134,6 +143,23 @@ func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task 
 		return []conflictField{{
 			Field: "estimate", Base: minutesStr(ptrFloat(snap.TimeEstimate)), Ours: minutesStr(task.Estimate),
 			Theirs: minutesStr(ptrFloat(issue.TimeEstimate / 60)), basePresent: ok,
+		}}
+	case "state":
+		_, ok := present["state"]
+		return []conflictField{{
+			Field: "state", Base: snap.State, Ours: issueState(task.CompletedAt != nil),
+			Theirs: issue.State, basePresent: ok,
+		}}
+	case "priority":
+		// Only meaningful when the priority label mapping inverts (else the push
+		// can't form a label anyway); skip detection otherwise.
+		if _, inv := rules.InversePriority(); !inv {
+			return nil
+		}
+		_, ok := present["priority"]
+		return []conflictField{{
+			Field: "priority", Base: prioStr(snap.Priority), Ours: prioStr(task.Priority),
+			Theirs: prioStr(rules.Resolve(issue.Labels).Priority), basePresent: ok,
 		}}
 	case "title_desc":
 		_, titleOK := present["title"]
@@ -180,12 +206,12 @@ func evalConflict(triples []conflictField) (conflictDecision, []conflictField) {
 // evalWritebackConflict is the conflict gate called from performWriteback for
 // conflict-checked kinds. It returns the decision and (when parked) the diverged
 // fields. The caller has already fetched the issue for its own push.
-func (h *API) evalWritebackConflict(ctx context.Context, w db.GitlabWriteback, link db.GitlabLink, issue gitlab.Issue, wsID uuid.UUID) (conflictDecision, []conflictField, error) {
+func (h *API) evalWritebackConflict(ctx context.Context, w db.GitlabWriteback, link db.GitlabLink, issue gitlab.Issue, wsID uuid.UUID, rules gitlab.Rules) (conflictDecision, []conflictField, error) {
 	task, err := h.q.GetTask(ctx, w.TaskID)
 	if err != nil {
 		return conflictProceed, nil, err // transient: retry
 	}
-	triples := h.conflictTriples(w.ChangeKind, link.GlSnapshot, issue, task, wsID)
+	triples := h.conflictTriples(w.ChangeKind, link.GlSnapshot, issue, task, wsID, rules)
 	if len(triples) == 0 {
 		return conflictProceed, nil, nil
 	}
@@ -397,7 +423,47 @@ func (h *API) applyConflictValue(ctx context.Context, taskID uuid.UUID, field, v
 		_ = h.q.SetTaskTitle(ctx, db.SetTaskTitleParams{ID: taskID, Title: value})
 	case "description":
 		_ = h.q.SetTaskDescription(ctx, db.SetTaskDescriptionParams{ID: taskID, Description: value})
+	case "priority":
+		if n, err := strconv.ParseInt(value, 10, 32); err == nil {
+			_ = h.q.SetTaskPriority(ctx, db.SetTaskPriorityParams{ID: taskID, Priority: int32(n)})
+		}
+	case "state":
+		h.applyTaskState(ctx, taskID, value)
 	}
+}
+
+// applyTaskState makes the task match a GitLab open/closed state: "closed" moves it
+// to the board's done column (and marks it completed); "opened" clears completion and
+// moves it out of the done column (to the first non-done column) if it sat there.
+func (h *API) applyTaskState(ctx context.Context, taskID uuid.UUID, state string) {
+	task, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return
+	}
+	board, err := h.q.GetBoard(ctx, task.BoardID)
+	if err != nil {
+		return
+	}
+	done := h.resolveDoneColumn(ctx, board)
+	col := task.ColumnID
+	var completed *time.Time
+	if state == "closed" {
+		if done != nil {
+			col = *done
+		}
+		now := time.Now()
+		completed = &now
+	} else if done != nil && task.ColumnID == *done {
+		if cols, cerr := h.q.ListColumns(ctx, board.ID); cerr == nil {
+			for _, c := range cols {
+				if c.ID != *done {
+					col = c.ID
+					break
+				}
+			}
+		}
+	}
+	_ = h.q.SetTaskColumnCompleted(ctx, db.SetTaskColumnCompletedParams{ID: taskID, ColumnID: col, CompletedAt: completed})
 }
 
 // setSnapshotField writes a resolved string back into the typed snapshot.
@@ -417,6 +483,10 @@ func setSnapshotField(snap *glSnapshot, field, value string) {
 		snap.Description = value
 	case "state":
 		snap.State = value
+	case "priority":
+		if n, err := strconv.ParseInt(value, 10, 32); err == nil {
+			snap.Priority = int32(n)
+		}
 	}
 }
 

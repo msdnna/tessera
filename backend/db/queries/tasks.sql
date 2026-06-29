@@ -158,6 +158,14 @@ UPDATE tasks SET title = $2, updated_at = now() WHERE id = $1;
 -- name: SetTaskDescription :exec
 UPDATE tasks SET description = $2, updated_at = now() WHERE id = $1;
 
+-- name: SetTaskPriority :exec
+UPDATE tasks SET priority = $2, updated_at = now() WHERE id = $1;
+
+-- SetTaskColumnCompleted applies a resolved state conflict: move the task to a
+-- column and set/clear its completion (used when accepting GitLab's open/closed).
+-- name: SetTaskColumnCompleted :exec
+UPDATE tasks SET column_id = $2, completed_at = $3, updated_at = now() WHERE id = $1;
+
 -- name: MoveTask :one
 UPDATE tasks
 SET column_id = $2, position = $3, updated_at = now()
