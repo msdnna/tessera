@@ -37,6 +37,7 @@ import {
   DownloadOutline,
   CloseOutline,
   TimerOutline,
+  RibbonOutline,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -78,6 +79,7 @@ const props = defineProps({
   tagPrefixNames: { type: Object, default: () => ({}) },
   members: { type: Array, default: () => [] },
   gitlabMembers: { type: Array, default: () => [] },
+  milestones: { type: Array, default: () => [] },
   gitlabCanCreate: { type: Boolean, default: false },
   gitlabFetchTemplates: { type: Boolean, default: false },
 })
@@ -443,6 +445,41 @@ async function applyMeta() {
 function setPriority(p) {
   priority.value = p
   applyMeta()
+}
+// ── milestone («Этап») ──
+const newMilestoneTitle = ref('')
+// Locally-created milestones shown immediately, before the board reloads its meta.
+const extraMilestones = ref([])
+const milestoneOptions = computed(() => {
+  const seen = new Set(props.milestones.map((m) => m.id))
+  return [...props.milestones, ...extraMilestones.value.filter((m) => !seen.has(m.id))]
+})
+const taskMilestone = computed(() =>
+  task.value?.milestone_id
+    ? milestoneOptions.value.find((m) => m.id === task.value.milestone_id) || null
+    : null,
+)
+async function setMilestone(milestoneId) {
+  try {
+    if (milestoneId) await tasksApi.setMilestone(props.taskId, milestoneId)
+    else await tasksApi.clearMilestone(props.taskId)
+    if (task.value) task.value.milestone_id = milestoneId || null
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+async function createMilestone() {
+  const title = newMilestoneTitle.value.trim()
+  if (!title || !props.projectId) return
+  try {
+    const { data } = await projApi.createMilestone(props.projectId, { title })
+    extraMilestones.value.push(data)
+    newMilestoneTitle.value = ''
+    await setMilestone(data.id)
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 // DueEditor commits start + due + recurrence together.
 function onDueApply(patch) {
@@ -1049,6 +1086,53 @@ function eventText(e) {
                       <n-button size="tiny" tertiary @click="clearEstimate">Очистить</n-button>
                       <n-button size="tiny" type="primary" @click="applyEstInput">ОК</n-button>
                     </div>
+                  </div>
+                </div>
+              </n-popover>
+            </div>
+
+            <!-- milestone («Этап») -->
+            <div class="prow">
+              <span class="plabel"><n-icon :component="RibbonOutline" :size="15" /> Этап</span>
+              <n-popover trigger="click" placement="bottom-start">
+                <template #trigger>
+                  <button class="val">
+                    <span :class="{ muted: !taskMilestone }">
+                      {{ taskMilestone ? taskMilestone.title : 'Не задан' }}
+                    </span>
+                    <span v-if="taskMilestone?.state === 'closed'" class="est-range">· закрыт</span>
+                  </button>
+                </template>
+                <div class="ms-pop">
+                  <div class="menu ms-menu">
+                    <div class="menu-item" @click="setMilestone(null)">
+                      <span class="grow muted">Не задан</span>
+                      <n-icon v-if="!task?.milestone_id" :component="CheckmarkOutline" class="chk" />
+                    </div>
+                    <div
+                      v-for="m in milestoneOptions"
+                      :key="m.id"
+                      class="menu-item"
+                      @click="setMilestone(m.id)"
+                    >
+                      <span class="grow" :class="{ 'ms-closed': m.state === 'closed' }">{{ m.title }}</span>
+                      <n-icon
+                        v-if="task?.milestone_id === m.id"
+                        :component="CheckmarkOutline"
+                        class="chk"
+                      />
+                    </div>
+                  </div>
+                  <div class="ms-new">
+                    <n-input
+                      v-model:value="newMilestoneTitle"
+                      size="small"
+                      placeholder="Новый этап…"
+                      @keydown.enter.prevent="createMilestone"
+                    />
+                    <n-button size="tiny" type="primary" :disabled="!newMilestoneTitle.trim()" @click="createMilestone">
+                      Создать
+                    </n-button>
                   </div>
                 </div>
               </n-popover>
@@ -1928,6 +2012,24 @@ function eventText(e) {
   flex-direction: column;
   gap: 8px;
   width: 220px;
+}
+.ms-pop {
+  width: 240px;
+}
+.ms-menu {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.ms-closed {
+  opacity: 0.6;
+}
+.ms-new {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--t-border);
 }
 .est-actions {
   display: flex;

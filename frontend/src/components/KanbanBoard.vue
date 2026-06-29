@@ -98,6 +98,9 @@ const gitlabCanCreate = ref(false)
 const gitlabFetchTemplates = ref(false)
 const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
+// Project milestones («Этап»), keyed by id; cards/modal resolve a task's milestone_id.
+const milestonesMap = reactive({})
+const milestonesList = computed(() => Object.values(milestonesMap))
 const gitlabMembersList = computed(() => Object.values(gitlabMembersMap))
 
 // view controls (layout comes from the store, above)
@@ -877,15 +880,18 @@ async function loadWorkspaceMeta() {
   const projectId = board.value?.project_id
   if (!wsId || !projectId) return
   // Tags + prefix names are project-scoped; members stay workspace-scoped.
-  const [tg, mem, pfx, glMem, glInt] = await Promise.all([
+  const [tg, mem, pfx, glMem, glInt, ms] = await Promise.all([
     projectsApi.tags(projectId),
     wsApi.members(wsId),
     projectsApi.tagPrefixes(projectId).catch(() => ({ data: [] })),
     wsApi.gitlabMembers(wsId).catch(() => ({ data: [] })),
     gitlabApi.getIntegration(wsId).catch(() => ({ data: {} })),
+    projectsApi.milestones(projectId).catch(() => ({ data: [] })),
   ])
   for (const k of Object.keys(tagsMap)) delete tagsMap[k]
   for (const t of tg.data || []) tagsMap[t.id] = t
+  for (const k of Object.keys(milestonesMap)) delete milestonesMap[k]
+  for (const m of ms.data || []) milestonesMap[m.id] = m
   for (const k of Object.keys(membersMap)) delete membersMap[k]
   for (const m of mem.data || []) membersMap[m.user_id] = m
   for (const k of Object.keys(gitlabMembersMap)) delete gitlabMembersMap[k]
@@ -903,6 +909,7 @@ async function loadWorkspaceMeta() {
   // Mirror tags + prefix names + context to the store so the header Теги manager works.
   boardViewStore.setTags(tagsList.value)
   boardViewStore.setPrefixNames({ ...tagPrefixNames })
+  boardViewStore.setMilestones(milestonesList.value)
   boardViewStore.setContext(props.boardId, wsId, projectId)
 }
 
@@ -1568,6 +1575,7 @@ watch(
                       :tag-prefix-names="tagPrefixNames"
                       :members="membersList"
                       :gitlab-members="gitlabMembersList"
+                      :milestones-map="milestonesMap"
                       :ws-id="wsStore.currentId"
                       :project-id="board?.project_id"
                       @open="openTask"
@@ -1635,6 +1643,7 @@ watch(
       :tag-prefix-names="tagPrefixNames"
       :members="membersList"
       :gitlab-members="gitlabMembersList"
+      :milestones="milestonesList"
       :gitlab-can-create="gitlabCanCreate"
       :gitlab-fetch-templates="gitlabFetchTemplates"
       @update:show="(v) => v || closeTask()"

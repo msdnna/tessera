@@ -158,6 +158,14 @@ export const projects = {
   setTagPrefixes: (id, prefixes) => api.put(`/projects/${id}/tag-prefixes`, { prefixes }),
   // Per-project estimation override; `null` clears it to inherit the workspace default.
   setEstimation: (id, config) => api.put(`/projects/${id}/estimation`, config),
+  // Milestones («Этап»): project-scoped.
+  milestones: (id) => api.get(`/projects/${id}/milestones`),
+  createMilestone: (id, data) => api.post(`/projects/${id}/milestones`, data),
+}
+
+export const milestones = {
+  update: (id, data) => api.patch(`/milestones/${id}`, data),
+  remove: (id) => api.delete(`/milestones/${id}`),
 }
 
 export const groups = {
@@ -222,6 +230,9 @@ export const tasks = {
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),
   removeAssignee: (id, userId) => api.delete(`/tasks/${id}/assignees/${userId}`),
+  // Milestone («Этап»): assign (milestone id) or clear (null / clear endpoint).
+  setMilestone: (id, milestoneId) => api.post(`/tasks/${id}/milestone`, { milestone_id: milestoneId }),
+  clearMilestone: (id) => api.delete(`/tasks/${id}/milestone`),
   pinGitlabAssignee: (id, data) => api.post(`/tasks/${id}/gitlab-assignees`, data),
   removeGitlabAssignee: (id, username) =>
     api.delete(`/tasks/${id}/gitlab-assignees/${encodeURIComponent(username)}`),

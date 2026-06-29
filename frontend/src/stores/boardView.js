@@ -11,6 +11,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const projectId = ref(null) // the open board's project — scopes its tags
   const tagsList = ref([]) // for the header Теги manager
   const prefixNames = ref({}) // canonical tag-prefix → friendly label
+  const milestonesList = ref([]) // project's milestones, for card chips + the picker
   const layout = ref('board') // 'board' | 'list' | 'calendar' | 'timeline' | 'gantt' | 'matrix'
   const archiveOpen = ref(false)
   const reloadNonce = ref(0) // header-driven changes ask the board to reload
@@ -30,6 +31,9 @@ export const useBoardViewStore = defineStore('boardView', () => {
   function setPrefixNames(map) {
     prefixNames.value = map || {}
   }
+  function setMilestones(list) {
+    milestonesList.value = list || []
+  }
   function reset() {
     active.value = false
     boardId.value = null
@@ -37,6 +41,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     projectId.value = null
     tagsList.value = []
     prefixNames.value = {}
+    milestonesList.value = []
     archiveOpen.value = false
   }
 
@@ -47,6 +52,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     projectId,
     tagsList,
     prefixNames,
+    milestonesList,
     layout,
     archiveOpen,
     reloadNonce,
@@ -54,6 +60,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     setContext,
     setTags,
     setPrefixNames,
+    setMilestones,
     reset,
   }
 })

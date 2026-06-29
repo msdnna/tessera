@@ -20,6 +20,7 @@ import {
   TrashOutline,
   OpenOutline,
   TimerOutline,
+  RibbonOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -33,6 +34,7 @@ import ProjectIcon from './ProjectIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
 import ConfirmByName from './ConfirmByName.vue'
 import EstimationModal from './EstimationModal.vue'
+import MilestoneManager from './MilestoneManager.vue'
 import { DEFAULT_ESTIMATION, resolveEstimation } from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
@@ -166,6 +168,7 @@ const pcOptions = [
   { type: 'divider', key: 'd1' },
   { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
   { label: 'Оценка задач…', key: 'estimation', icon: menuIcon(TimerOutline) },
+  { label: 'Этапы…', key: 'milestones', icon: menuIcon(RibbonOutline) },
   { label: 'Удалить проект', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
 ]
 function onProjectCtx(e) {
@@ -180,8 +183,12 @@ function onProjectCtxSelect(key) {
   if (key === 'add-board') startAddBoard()
   else if (key === 'rename') startRename()
   else if (key === 'estimation') estShow.value = true
+  else if (key === 'milestones') msShow.value = true
   else if (key === 'delete') remove()
 }
+
+// Milestones («Этап») manager for this project.
+const msShow = ref(false)
 
 // Estimation override editor for this project (inherits the workspace default).
 const estShow = ref(false)
@@ -435,6 +442,8 @@ async function addBoard() {
       :value="project.estimation || null"
       :inherited="estInherited"
     />
+
+    <MilestoneManager v-model:show="msShow" :project-id="project.id" :project-name="project.name" />
   </div>
 </template>
 

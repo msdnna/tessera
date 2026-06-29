@@ -19,6 +19,7 @@ import {
   LogoGitlab,
   RepeatOutline,
   TimerOutline,
+  RibbonOutline,
 } from '@vicons/ionicons5'
 
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
@@ -60,6 +61,7 @@ const props = defineProps({
   tagPrefixNames: { type: Object, default: () => ({}) },
   members: { type: Array, default: () => [] },
   gitlabMembers: { type: Array, default: () => [] },
+  milestonesMap: { type: Object, default: () => ({}) },
   wsId: { type: String, default: null },
   projectId: { type: String, default: null },
 })
@@ -88,6 +90,9 @@ async function commitTitle() {
 
 const taskTags = computed(() =>
   (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
+)
+const taskMilestone = computed(() =>
+  props.task.milestone_id ? props.milestonesMap[props.task.milestone_id] || null : null,
 )
 const assignees = computed(() =>
   (props.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean),
@@ -618,6 +623,17 @@ async function submitAddSub() {
           {{ estTooltip }}
         </n-tooltip>
 
+        <!-- milestone («Этап»): display-only chip; editing lives in the task modal -->
+        <n-tooltip v-if="taskMilestone">
+          <template #trigger>
+            <div class="pill set ms-pill" :class="{ closed: taskMilestone.state === 'closed' }">
+              <n-icon :component="RibbonOutline" :size="13" />
+              <span class="pill-text">{{ taskMilestone.title }}</span>
+            </div>
+          </template>
+          Этап: {{ taskMilestone.title }}{{ taskMilestone.state === 'closed' ? ' (закрыт)' : '' }}
+        </n-tooltip>
+
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
         <n-popover trigger="click" placement="bottom-start">
           <template #trigger>
@@ -1064,6 +1080,24 @@ async function submitAddSub() {
   box-sizing: border-box;
   height: 22px;
   line-height: 1;
+}
+/* milestone chip: same box model as the estimate <div>, soft accent fill */
+.ms-pill {
+  box-sizing: border-box;
+  height: 22px;
+  line-height: 1;
+  max-width: 140px;
+  background: var(--t-accent-grad-subtle);
+  border-color: transparent;
+  color: var(--t-text2);
+}
+.ms-pill .pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ms-pill.closed {
+  opacity: 0.6;
 }
 .pill.set {
   border-style: solid;

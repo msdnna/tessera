@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.105.0] — 2026-06-29
+- **Этапы (milestones, «Этап») — нативный UI (M0).** Задаче можно назначить этап:
+  - **Свойство «Этап»** в таск-модалке (под «Оценкой») — поповер со списком этапов проекта, «Не задан»
+    и инлайн-создание; назначение через `POST /tasks/:id/milestone`, снятие — «Не задан».
+  - **Чип этапа** на карточке (`RibbonOutline`, soft-fill, закрытый этап — приглушён), резолвится из
+    этапов проекта по `task.milestone_id`.
+  - **Менеджер «Этапы…»** в контекст-меню проекта (рядом с «Оценка задач…»): `MilestoneManager.vue` —
+    список с правкой названия/срока (`n-date-picker`), закрытие/открытие, удаление (с подтверждением),
+    создание.
+  - `boardView`-стор расширен `milestonesList`/`setMilestones`; `KanbanBoard.loadWorkspaceMeta` тянет
+    этапы проекта и прокидывает в карточки/модалку. API: `projects.milestones/createMilestone`,
+    `milestones.update/remove`, `tasks.setMilestone/clearMilestone`.
+
 ### [0.104.0] — 2026-06-29
 - **Интерактивное разрешение конфликтов обратной записи GitLab.** Новый `ConflictResolverModal.vue`:
   слева — инбокс открытых конфликтов (задача + тип изменения + число полей), справа — трёхсторонний вид
