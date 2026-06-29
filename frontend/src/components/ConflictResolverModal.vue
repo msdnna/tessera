@@ -10,6 +10,8 @@ import LoaderOverlay from '@/components/LoaderOverlay.vue'
 const props = defineProps({
   show: { type: Boolean, default: false },
   wsId: { type: String, default: null },
+  // When opened from a specific task, pre-select that task's conflict.
+  focusTaskId: { type: String, default: null },
 })
 const emit = defineEmits(['update:show', 'resolved'])
 
@@ -60,7 +62,13 @@ async function load() {
   try {
     const { data } = await glApi.conflicts(props.wsId)
     conflicts.value = data || []
-    if (!conflicts.value.find((c) => c.id === selectedId.value)) {
+    // Pre-select the focused task's conflict (when opened from a card), else keep
+    // the current selection if still present, else the first.
+    const focused = props.focusTaskId && conflicts.value.find((c) => c.task_id === props.focusTaskId)
+    if (focused) {
+      selectedId.value = focused.id
+      manualField.value = null
+    } else if (!conflicts.value.find((c) => c.id === selectedId.value)) {
       selectedId.value = conflicts.value[0]?.id || null
     }
   } catch (e) {

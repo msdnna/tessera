@@ -562,12 +562,15 @@ async function submitAddSub() {
         <!-- unresolved GitLab write-back conflict on this task -->
         <n-tooltip v-if="hasConflict">
           <template #trigger>
-            <div class="pill set conf-pill">
+            <button
+              class="pill set conf-pill"
+              @click.stop="conflictsStore.openResolver(props.task.id)"
+            >
               <n-icon :component="WarningOutline" :size="13" />
               <span class="pill-text">Конфликт</span>
-            </div>
+            </button>
           </template>
-          Конфликт обратной записи GitLab — откройте «Интеграции» для разрешения
+          Конфликт обратной записи GitLab — нажмите, чтобы разрешить
         </n-tooltip>
 
         <!-- priority -->

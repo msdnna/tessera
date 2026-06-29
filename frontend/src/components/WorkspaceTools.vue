@@ -252,6 +252,24 @@ function fmtTime(d) {
   line-height: 16px;
   height: 16px;
 }
+/* Conflict badge on the Integrations button: same compact shape as the bell badge
+   (orange background comes from the n-badge `color` prop). */
+.conf-badge :deep(.n-badge-sup) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  min-width: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 999px;
+}
+.conf-badge :deep(.n-badge-sup .n-base-slot-machine) {
+  line-height: 16px;
+  height: 16px;
+}
 .appearance {
   width: 200px;
 }

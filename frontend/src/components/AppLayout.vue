@@ -11,6 +11,7 @@ import {
 } from 'naive-ui'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
+import ConflictResolverModal from './ConflictResolverModal.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -154,6 +155,15 @@ watch(
       </n-drawer-content>
     </n-drawer>
   </n-layout>
+
+  <!-- App-level conflict resolver: opened from any surface via the conflicts store
+       (e.g. the «Конфликт» pill on a task card). -->
+  <ConflictResolverModal
+    v-model:show="conflicts.resolverOpen"
+    :ws-id="ws.currentId"
+    :focus-task-id="conflicts.focusTaskId"
+    @resolved="conflicts.load()"
+  />
 </template>
 
 <style scoped>
