@@ -1310,6 +1310,21 @@ async function applyTaskQuery() {
   }
 }
 
+// Deep-link from the «Этапы» screen: ?milestone=<id> filters the board to that
+// milestone (a removable chip), then the param is stripped so the URL stays clean
+// while the filter (and its persistence in the saved view) carries on.
+function applyMilestoneQuery() {
+  const id = route.query.milestone
+  if (!id) return
+  const s = String(id)
+  if (milestonesMap[s] && !filters.milestones.includes(s)) {
+    filters.milestones.push(s)
+  }
+  const q = { ...route.query }
+  delete q.milestone
+  router.replace({ query: q })
+}
+
 onMounted(async () => {
   ro = new ResizeObserver(() => measure())
   if (boardScroll.value) {
@@ -1345,6 +1360,7 @@ onMounted(async () => {
   await load(props.boardId)
   loadViews()
   applyTaskQuery()
+  applyMilestoneQuery()
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
@@ -1366,6 +1382,7 @@ watch(
     await load(id)
     loadViews()
     applyTaskQuery()
+    applyMilestoneQuery()
   },
 )
 watch(

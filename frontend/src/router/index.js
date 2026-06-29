@@ -39,6 +39,7 @@ const routes = [
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },
       { path: 'notes', component: () => import('@/views/NotesView.vue') },
       { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
+      { path: 'milestones', component: () => import('@/views/MilestonesView.vue') },
       { path: 'settings', component: () => import('@/views/SettingsView.vue') },
       {
         path: 'admin',

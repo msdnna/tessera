@@ -262,6 +262,7 @@ func main() {
 			protected.DELETE("/tags/:id", rh.DeleteTag)
 
 			// Milestones («Этап») — project-scoped planning unit.
+			protected.GET("/workspaces/:id/milestones", rh.ListWorkspaceMilestones)
 			protected.GET("/projects/:id/milestones", rh.ListMilestones)
 			protected.POST("/projects/:id/milestones", rh.CreateMilestone)
 			protected.PATCH("/milestones/:id", rh.UpdateMilestone)

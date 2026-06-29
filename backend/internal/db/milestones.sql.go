@@ -149,6 +149,89 @@ func (q *Queries) ListMilestones(ctx context.Context, projectID uuid.UUID) ([]Li
 	return items, nil
 }
 
+const listWorkspaceMilestones = `-- name: ListWorkspaceMilestones :many
+SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date,
+       m.state, m.position, m.created_at, m.updated_at,
+       l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id,
+       p.name AS project_name, p.slug AS project_slug,
+       COALESCE((SELECT b.slug FROM boards b WHERE b.project_id = p.id
+        ORDER BY b.position, b.created_at LIMIT 1), '') AS board_slug,
+       COUNT(t.id) AS task_count,
+       COUNT(t.id) FILTER (WHERE t.completed_at IS NOT NULL) AS done_count,
+       COALESCE(SUM(t.estimate), 0)::float8 AS estimate_sum
+FROM milestones m
+JOIN projects p ON p.id = m.project_id
+LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
+LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+WHERE p.workspace_id = $1
+GROUP BY m.id, l.gl_web_url, l.gl_global_id, p.name, p.slug, p.id
+ORDER BY p.name, m.position, m.created_at
+`
+
+type ListWorkspaceMilestonesRow struct {
+	ID          uuid.UUID   `json:"id"`
+	ProjectID   uuid.UUID   `json:"project_id"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	StartDate   *time.Time  `json:"start_date"`
+	DueDate     *time.Time  `json:"due_date"`
+	State       string      `json:"state"`
+	Position    float64     `json:"position"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	GlUrl       *string     `json:"gl_url"`
+	GlGlobalID  *string     `json:"gl_global_id"`
+	ProjectName string      `json:"project_name"`
+	ProjectSlug string      `json:"project_slug"`
+	BoardSlug   interface{} `json:"board_slug"`
+	TaskCount   int64       `json:"task_count"`
+	DoneCount   int64       `json:"done_count"`
+	EstimateSum float64     `json:"estimate_sum"`
+}
+
+// ListWorkspaceMilestones returns every milestone across a workspace's projects with
+// per-milestone task rollups (total / done / Σ estimate, archived excluded) plus the
+// owning project's name + slug and a board slug to deep-link to. Powers the dedicated
+// «Этапы» roadmap screen (one query, no per-project fan-out).
+func (q *Queries) ListWorkspaceMilestones(ctx context.Context, workspaceID uuid.UUID) ([]ListWorkspaceMilestonesRow, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceMilestones, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWorkspaceMilestonesRow
+	for rows.Next() {
+		var i ListWorkspaceMilestonesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Title,
+			&i.Description,
+			&i.StartDate,
+			&i.DueDate,
+			&i.State,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.GlUrl,
+			&i.GlGlobalID,
+			&i.ProjectName,
+			&i.ProjectSlug,
+			&i.BoardSlug,
+			&i.TaskCount,
+			&i.DoneCount,
+			&i.EstimateSum,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setTaskMilestone = `-- name: SetTaskMilestone :exec
 UPDATE tasks SET milestone_id = $2, updated_at = now() WHERE id = $1
 `

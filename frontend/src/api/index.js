@@ -141,6 +141,8 @@ export const workspaces = {
   tags: (id) => api.get(`/workspaces/${id}/tags`),
   // Workspace-wide default estimation config; `null` clears it to the built-in default.
   setEstimation: (id, config) => api.put(`/workspaces/${id}/estimation`, config),
+  // Every milestone across the workspace's projects with task rollups — for the «Этапы» screen.
+  milestones: (id) => api.get(`/workspaces/${id}/milestones`),
 }
 
 export const projects = {

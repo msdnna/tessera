@@ -11,6 +11,28 @@ LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
 WHERE m.project_id = $1
 ORDER BY m.position, m.created_at;
 
+-- ListWorkspaceMilestones returns every milestone across a workspace's projects with
+-- per-milestone task rollups (total / done / Σ estimate, archived excluded) plus the
+-- owning project's name + slug and a board slug to deep-link to. Powers the dedicated
+-- «Этапы» roadmap screen (one query, no per-project fan-out).
+-- name: ListWorkspaceMilestones :many
+SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date,
+       m.state, m.position, m.created_at, m.updated_at,
+       l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id,
+       p.name AS project_name, p.slug AS project_slug,
+       COALESCE((SELECT b.slug FROM boards b WHERE b.project_id = p.id
+        ORDER BY b.position, b.created_at LIMIT 1), '') AS board_slug,
+       COUNT(t.id) AS task_count,
+       COUNT(t.id) FILTER (WHERE t.completed_at IS NOT NULL) AS done_count,
+       COALESCE(SUM(t.estimate), 0)::float8 AS estimate_sum
+FROM milestones m
+JOIN projects p ON p.id = m.project_id
+LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
+LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+WHERE p.workspace_id = $1
+GROUP BY m.id, l.gl_web_url, l.gl_global_id, p.name, p.slug, p.id
+ORDER BY p.name, m.position, m.created_at;
+
 -- name: GetMilestone :one
 SELECT * FROM milestones WHERE id = $1;
 

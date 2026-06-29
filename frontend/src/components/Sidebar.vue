@@ -18,6 +18,7 @@ import {
   HomeOutline,
   DocumentTextOutline,
   AlarmOutline,
+  RibbonOutline,
   AddOutline,
   FolderOutline,
 } from '@vicons/ionicons5'
@@ -181,6 +182,15 @@ async function createWorkspace() {
           </router-link>
         </template>
         Напоминания
+      </n-tooltip>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <router-link to="/milestones" class="nav-link">
+            <n-icon :component="RibbonOutline" :size="18" />
+            <span v-if="!collapsed">Этапы</span>
+          </router-link>
+        </template>
+        Этапы
       </n-tooltip>
     </nav>
 

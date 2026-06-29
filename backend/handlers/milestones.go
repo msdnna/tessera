@@ -51,6 +51,27 @@ func (h *API) ListMilestones(c *gin.Context) {
 	c.JSON(http.StatusOK, ms)
 }
 
+// ListWorkspaceMilestones returns every milestone across the workspace's projects
+// with task rollups (total / done / Σ estimate) for the dedicated «Этапы» screen.
+func (h *API) ListWorkspaceMilestones(c *gin.Context) {
+	wsID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	ms, err := h.q.ListWorkspaceMilestones(c, wsID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	if ms == nil {
+		ms = []db.ListWorkspaceMilestonesRow{}
+	}
+	c.JSON(http.StatusOK, ms)
+}
+
 // CreateMilestone adds a milestone to a project.
 func (h *API) CreateMilestone(c *gin.Context) {
 	projectID, ok := parseID(c, "id")
