@@ -219,8 +219,8 @@ onBeforeUnmount(() => {
   filter: blur(62px);
   background: radial-gradient(
     circle at 50% 50%,
-    rgba(124, 108, 255, 0.85) 0%,
-    rgba(109, 95, 224, 0.5) 38%,
+    rgba(124, 108, 255, 0.38) 0%,
+    rgba(109, 95, 224, 0.2) 38%,
     rgba(145, 131, 255, 0) 70%
   );
   will-change: transform;
@@ -229,8 +229,8 @@ onBeforeUnmount(() => {
   filter: blur(70px);
   background: radial-gradient(
     circle at 50% 50%,
-    rgba(124, 108, 255, 0.6) 0%,
-    rgba(109, 95, 224, 0.32) 40%,
+    rgba(124, 108, 255, 0.3) 0%,
+    rgba(109, 95, 224, 0.16) 40%,
     rgba(145, 131, 255, 0) 70%
   );
 }
@@ -247,11 +247,13 @@ onBeforeUnmount(() => {
   box-shadow: 0 18px 50px -14px rgba(24, 11, 70, 0.3);
 }
 /* The default --t-border is barely visible on the white card over a light
-   background — give the light-theme card a slightly firmer edge. */
+   background — give the light-theme card a slightly firmer edge, tinted toward
+   the brand purple so the rim quietly echoes the glow behind it. */
 [data-theme='light'] .auth-card {
-  border-color: #d5d5d5;
+  border-color: color-mix(in srgb, #6d5fe0 28%, #d5d5d5);
 }
 [data-theme='dark'] .auth-card {
+  border-color: color-mix(in srgb, #7c6cff 24%, var(--t-border));
   box-shadow: 0 18px 54px -14px rgba(0, 0, 0, 0.6);
 }
 </style>

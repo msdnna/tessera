@@ -1132,9 +1132,10 @@ async function submitAddSub() {
   border-style: solid;
   color: var(--t-text2);
 }
-/* repeat glyph on a recurring task's due pill */
+/* repeat glyph on a recurring task's due pill — inherits the pill's text
+   colour (purple accent clashed inside the neutral pill, worse on dark) */
 .pill-recur {
-  color: var(--t-primary);
+  color: inherit;
 }
 /* overdue due-date pill: soft red tint (like a warning tag) */
 .pill.overdue {
