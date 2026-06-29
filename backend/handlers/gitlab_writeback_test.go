@@ -18,7 +18,8 @@ func TestShouldPushWriteback(t *testing.T) {
 		{"priority not invertible", "priority", map[string]any{"priority": float64(3)}, "", false, false},
 		{"comment always", "comment", map[string]any{"body": "hi"}, "", false, true},
 		{"title_desc pushable", "title_desc", map[string]any{}, "", true, true},
-		{"unknown kind", "milestone", map[string]any{}, "", true, false},
+		{"milestone pushable", "milestone", map[string]any{}, "", true, true},
+		{"unknown kind", "weight", map[string]any{}, "", true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

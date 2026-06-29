@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.106.0] — 2026-06-29
+- **Тумблер «Этап (milestone issue)»** в разделе обратной записи GitLab-модалки (`push_milestone`) —
+  включает пуш этапа задачи в milestone issue (только для этапов, связанных с GitLab).
+
 ### [0.105.0] — 2026-06-29
 - **Этапы (milestones, «Этап») — нативный UI (M0).** Задаче можно назначить этап:
   - **Свойство «Этап»** в таск-модалке (под «Оценкой») — поповер со списком этапов проекта, «Не задан»
@@ -1869,6 +1873,14 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.65.0] — 2026-06-29
+- **Write-back этапа задачи → milestone issue (B/M2, без миграции).** Новый флаг `push_milestone` в jsonb
+  `gitlab_integrations.writeback`. При смене этапа линкованной задачи (`SetTaskMilestone`/
+  `ClearTaskMilestone`) ставится outbox-строка `milestone`; воркер резолвит этап задачи → `gl_numeric_id`
+  из `gitlab_milestone_links` → `PUT /issues/:iid?milestone_id=` (новый клиентский метод
+  `SetIssueMilestone`; `0` — снять). Нативный (не-GitLab) этап на линкованной задаче пропускается без
+  ошибки. Httptest на set/clear. Полный путь — live-verify против реального GitLab.
 
 ### [0.64.0] — 2026-06-29
 - **Pull-маппинг этапов из GitLab (B/M1, мигр. 0039).** GraphQL-селект milestone расширен до

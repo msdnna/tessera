@@ -16,6 +16,7 @@ type Writeback struct {
 	PushDue             bool              `json:"push_due"`        // push the issue's own due_date
 	PushAssignees       bool              `json:"push_assignees"`  // push the resolved assignee set
 	PushEstimate        bool              `json:"push_estimate"`   // push timeEstimate (time unit only)
+	PushMilestone       bool              `json:"push_milestone"`  // push the task's milestone (GitLab-linked only)
 	PushTitleDesc       bool              `json:"push_title_desc"`
 	PushCreate          bool              `json:"push_create"`     // allow creating a GitLab issue from a task
 	FetchTemplates      bool              `json:"fetch_templates"` // offer repo issue templates when creating
@@ -46,6 +47,8 @@ func (w Writeback) Allows(kind string) bool {
 		return w.PushAssignees
 	case "estimate":
 		return w.PushEstimate
+	case "milestone":
+		return w.PushMilestone
 	case "title_desc":
 		return w.PushTitleDesc
 	default:

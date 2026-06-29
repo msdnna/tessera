@@ -105,7 +105,7 @@ func shouldPushWriteback(kind string, payload map[string]any, lastState string, 
 		return s != "" && s != lastState
 	case "priority":
 		return prioInvertible
-	case "comment", "labels", "due", "assignees", "estimate", "title_desc":
+	case "comment", "labels", "due", "assignees", "estimate", "milestone", "title_desc":
 		// Loop-safe: only user-side handlers enqueue these (the pull uses a Nil
 		// actor); the worker reads the latest task state at push time. title_desc is
 		// additionally three-way conflict-checked before the push.
@@ -232,6 +232,10 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 		return prefix + ": исполнители"
 	case "estimate":
 		return prefix + ": оценка"
+	case "milestone":
+		return prefix + ": этап"
+	case "title_desc":
+		return prefix + ": заголовок/описание"
 	default:
 		return prefix + ": " + kind
 	}
@@ -529,6 +533,31 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 				}
 			}
 		}
+
+	case "milestone":
+		task, err := h.q.GetTask(ctx, w.TaskID)
+		if err != nil {
+			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
+		var milestoneID int64 // 0 clears the issue's milestone
+		if task.MilestoneID != nil {
+			ml, lerr := h.q.GetGitlabMilestoneLink(ctx, *task.MilestoneID)
+			if lerr != nil {
+				// Native (non-GitLab) milestone — nothing to push, not an error.
+				res.result = "native milestone, not pushed"
+				return res, nil
+			}
+			milestoneID = ml.GlNumericID
+		}
+		if err := client.SetIssueMilestone(ctx, path, iid, milestoneID); err != nil {
+			return res, err
+		}
+		if milestoneID == 0 {
+			res.result = "milestone cleared"
+		} else {
+			res.result = "milestone set"
+		}
+		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
 
 	case "title_desc":
 		task, err := h.q.GetTask(ctx, w.TaskID)

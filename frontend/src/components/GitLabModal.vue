@@ -88,6 +88,7 @@ const wbLabels = ref(false)
 const wbDue = ref(false)
 const wbAssignees = ref(false)
 const wbEstimate = ref(false)
+const wbMilestone = ref(false) // push the task's GitLab-linked milestone to the issue
 const wbTitleDesc = ref(false) // push task title/description to the issue (conflict-checked)
 const wbCreate = ref(false) // allow creating GitLab issues from tasks (independent of write-back)
 const wbFetchTemplates = ref(false) // offer repo issue templates when creating
@@ -244,6 +245,7 @@ async function loadIntegration() {
     wbDue.value = wb.push_due === true
     wbAssignees.value = wb.push_assignees === true
     wbEstimate.value = wb.push_estimate === true
+    wbMilestone.value = wb.push_milestone === true
     wbTitleDesc.value = wb.push_title_desc === true
     wbCreate.value = wb.push_create === true
     wbFetchTemplates.value = wb.fetch_templates === true
@@ -324,6 +326,7 @@ async function save() {
         push_due: wbDue.value,
         push_assignees: wbAssignees.value,
         push_estimate: wbEstimate.value && estimationUnit.value === 'time',
+        push_milestone: wbMilestone.value,
         push_title_desc: wbTitleDesc.value,
         push_create: wbCreate.value,
         fetch_templates: wbCreate.value && wbFetchTemplates.value,
@@ -574,6 +577,9 @@ watch(
 
           <n-text depth="3" class="lbl">Заголовок и описание</n-text>
           <div><n-switch v-model:value="wbTitleDesc" size="small" /></div>
+
+          <n-text depth="3" class="lbl">Этап (milestone issue)</n-text>
+          <div><n-switch v-model:value="wbMilestone" size="small" /></div>
 
           <n-text depth="3" class="lbl">Срок (due date issue)</n-text>
           <div><n-switch v-model:value="wbDue" size="small" /></div>

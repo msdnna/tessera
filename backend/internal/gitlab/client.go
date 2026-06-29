@@ -578,6 +578,17 @@ func (c *Client) UpdateIssueDueDate(ctx context.Context, projectPath string, iid
 	return err
 }
 
+// SetIssueMilestone assigns the issue to the milestone with the given numeric id, or
+// clears it when milestoneID <= 0 (GitLab unassigns on milestone_id=0).
+func (c *Client) SetIssueMilestone(ctx context.Context, projectPath string, iid, milestoneID int64) error {
+	v := "0"
+	if milestoneID > 0 {
+		v = strconv.FormatInt(milestoneID, 10)
+	}
+	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid), url.Values{"milestone_id": {v}})
+	return err
+}
+
 // UpdateIssueTitleDescription overwrites the issue's title and description. Used by
 // the title_desc write-back, which is three-way conflict-checked before this call.
 func (c *Client) UpdateIssueTitleDescription(ctx context.Context, projectPath string, iid int64, title, description string) error {

@@ -75,6 +75,24 @@ func TestUpdateIssueTitleDescription(t *testing.T) {
 	}
 }
 
+func TestSetIssueMilestone(t *testing.T) {
+	var got captured
+	c := stubGitLab(t, http.StatusOK, &got)
+	if err := c.SetIssueMilestone(context.Background(), "grp/project", 7, 42); err != nil {
+		t.Fatalf("SetIssueMilestone: %v", err)
+	}
+	if got.method != http.MethodPut || got.form["milestone_id"] != "42" {
+		t.Errorf("method=%s milestone_id=%q", got.method, got.form["milestone_id"])
+	}
+	// clear → milestone_id=0
+	if err := c.SetIssueMilestone(context.Background(), "grp/project", 7, 0); err != nil {
+		t.Fatalf("SetIssueMilestone clear: %v", err)
+	}
+	if got.form["milestone_id"] != "0" {
+		t.Errorf("clear milestone_id=%q, want 0", got.form["milestone_id"])
+	}
+}
+
 func TestSetIssueLabels(t *testing.T) {
 	var got captured
 	c := stubGitLab(t, http.StatusOK, &got)
