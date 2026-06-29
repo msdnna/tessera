@@ -1157,6 +1157,11 @@ async function createInQuadrant({ title, quadrant }) {
 
 useRealtime((ev) => {
   if (ev.scope !== wsStore.currentId) return
+  // Surface a freshly detected write-back conflict so the user knows to resolve it
+  // (the resolver lives in the GitLab modal's «Конфликты» entry).
+  if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
+    message.warning('Конфликт обратной записи GitLab — откройте настройки GitLab, чтобы разрешить')
+  }
   if (dragging.value || Date.now() < suppressReloadUntil) return
   scheduleReload()
 })

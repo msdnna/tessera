@@ -308,6 +308,10 @@ export const gitlab = {
   // issue templates for prefilling the description.
   createIssue: (taskId, data) => api.post(`/tasks/${taskId}/gitlab-issue`, data),
   issueTemplates: (wsId) => api.get(`/workspaces/${wsId}/gitlab/issue-templates`),
+  // Write-back conflicts: open-conflict inbox + interactive resolution.
+  conflicts: (wsId) => api.get(`/workspaces/${wsId}/gitlab/conflicts`),
+  resolveConflict: (taskId, conflictId, data) =>
+    api.post(`/tasks/${taskId}/gitlab/conflicts/${conflictId}/resolve`, data), // { resolution, value? }
 }
 
 export default api

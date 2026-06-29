@@ -21,11 +21,13 @@ import {
   LogoGitlab,
   ChevronDownOutline,
   TimeOutline,
+  WarningOutline,
 } from '@vicons/ionicons5'
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
 import GitLabJournalModal from '@/components/GitLabJournalModal.vue'
+import ConflictResolverModal from '@/components/ConflictResolverModal.vue'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PRIORITY_LABELS } from '@/styles/tokens'
@@ -86,6 +88,7 @@ const wbLabels = ref(false)
 const wbDue = ref(false)
 const wbAssignees = ref(false)
 const wbEstimate = ref(false)
+const wbTitleDesc = ref(false) // push task title/description to the issue (conflict-checked)
 const wbCreate = ref(false) // allow creating GitLab issues from tasks (independent of write-back)
 const wbFetchTemplates = ref(false) // offer repo issue templates when creating
 // Resolved estimation unit of the integration board (from the integration GET);
@@ -241,6 +244,7 @@ async function loadIntegration() {
     wbDue.value = wb.push_due === true
     wbAssignees.value = wb.push_assignees === true
     wbEstimate.value = wb.push_estimate === true
+    wbTitleDesc.value = wb.push_title_desc === true
     wbCreate.value = wb.push_create === true
     wbFetchTemplates.value = wb.fetch_templates === true
     estimationUnit.value = data.estimation_unit || 'time'
@@ -320,6 +324,7 @@ async function save() {
         push_due: wbDue.value,
         push_assignees: wbAssignees.value,
         push_estimate: wbEstimate.value && estimationUnit.value === 'time',
+        push_title_desc: wbTitleDesc.value,
         push_create: wbCreate.value,
         fetch_templates: wbCreate.value && wbFetchTemplates.value,
       },
@@ -403,12 +408,31 @@ async function syncNow() {
   }
 }
 
-// ── sync journal ──
+// ── sync journal + write-back conflicts ──
 const journalShow = ref(false)
+const conflictShow = ref(false)
+const conflictCount = ref(0)
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
-const syncMenu = [{ label: 'Журнал синхронизации', key: 'journal', icon: menuIcon(TimeOutline) }]
+const syncMenu = computed(() => [
+  { label: 'Журнал синхронизации', key: 'journal', icon: menuIcon(TimeOutline) },
+  {
+    label: conflictCount.value ? `Конфликты (${conflictCount.value})` : 'Конфликты',
+    key: 'conflicts',
+    icon: menuIcon(WarningOutline),
+    disabled: !conflictCount.value,
+  },
+])
 function onSyncMenu(key) {
   if (key === 'journal') journalShow.value = true
+  else if (key === 'conflicts') conflictShow.value = true
+}
+async function loadConflictCount() {
+  try {
+    const { data } = await glApi.conflicts(props.wsId)
+    conflictCount.value = (data || []).length
+  } catch {
+    conflictCount.value = 0
+  }
 }
 
 watch(
@@ -418,6 +442,7 @@ watch(
     if (!gl.loaded) await gl.load()
     await loadBoards()
     await loadIntegration()
+    loadConflictCount()
   },
   { immediate: false },
 )
@@ -546,6 +571,9 @@ watch(
 
           <n-text depth="3" class="lbl">Теги (метки тег-неймспейсов)</n-text>
           <div><n-switch v-model:value="wbLabels" size="small" /></div>
+
+          <n-text depth="3" class="lbl">Заголовок и описание</n-text>
+          <div><n-switch v-model:value="wbTitleDesc" size="small" /></div>
 
           <n-text depth="3" class="lbl">Срок (due date issue)</n-text>
           <div><n-switch v-model:value="wbDue" size="small" /></div>
@@ -686,6 +714,11 @@ watch(
     </div>
   </n-modal>
   <git-lab-journal-modal v-model:show="journalShow" :ws-id="wsId" />
+  <conflict-resolver-modal
+    v-model:show="conflictShow"
+    :ws-id="wsId"
+    @resolved="loadConflictCount"
+  />
 </template>
 
 <style scoped>
