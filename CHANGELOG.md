@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.110.0] — 2026-06-29
+- **Менеджер этапов: выборочное создание этапа в GitLab.** У нативного этапа (в GL-привязанном проекте с
+  включённым milestone write-back) появляется кнопка **«В GitLab»** — создаёт этап в GitLab и связывает
+  (per-milestone opt-in, не автоматически). GL-связанные этапы помечаются иконкой GitLab со ссылкой на
+  milestone, их поля read-only (правка/закрытие — в GitLab; удаление в Tessera снимает связь). Видимость
+  кнопки определяется конфигом интеграции (`project_id` + `enabled` + `push_milestone`). API:
+  `milestones.pushToGitlab(id)`.
+
 ### [0.109.0] — 2026-06-29
 - **Резолвер конфликтов поддерживает «Статус» и «Приоритет»:** значения показываются по-человечески
   (Открыта/Закрыта; названия приоритетов из `PRIORITY_LABELS`), а кнопка «Объединить вручную…» для них
@@ -1928,6 +1936,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.67.0] — 2026-06-29
+- **Создание GitLab-milestone из нативного этапа (M3a) — выборочно, без миграции.** Новый
+  синхронный `POST /milestones/:id/gitlab`: создаёт project-milestone в GitLab из полей этапа и линкует
+  их (`gitlab_milestone_links`). Это **явное per-milestone действие** — создание нативного этапа в
+  GL-привязанном проекте НЕ дублирует его в GitLab автоматически. Гейты: интеграция настроена+включена →
+  этап в проекте доски интеграции → ещё не слинкован → есть GL-креденшел (вызывающего, иначе владельца).
+  Клиентский метод `CreateProjectMilestone` (`POST /projects/:path/milestones`, gid пересобирается).
+  `ListMilestones` обогащён `gl_url`/`gl_global_id` (LEFT JOIN; null у нативных) — UI отличает нативные
+  от GL-источника. В `gitlab/integration` добавлен `project_id` (проект доски интеграции) для гейтинга.
+  Httptest на создание milestone.
 
 ### [0.66.0] — 2026-06-29
 - **Конфликт-детекция распространена на `state` и `priority`** (раньше — только `due`/`estimate`/

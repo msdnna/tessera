@@ -268,6 +268,7 @@ func main() {
 			protected.DELETE("/milestones/:id", rh.DeleteMilestone)
 			protected.POST("/tasks/:id/milestone", rh.SetTaskMilestone)
 			protected.DELETE("/tasks/:id/milestone", rh.ClearTaskMilestone)
+			protected.POST("/milestones/:id/gitlab", rh.PushMilestoneToGitlab)
 
 			protected.GET("/notes/:id", rh.GetNote)
 			protected.PATCH("/notes/:id", rh.UpdateNote)

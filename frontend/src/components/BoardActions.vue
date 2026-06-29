@@ -53,6 +53,7 @@ function onChanged() {
       v-model:show="msShow"
       :project-id="store.projectId"
       :project-name="projectName"
+      :ws-id="store.wsId"
       @changed="onChanged"
     />
   </div>

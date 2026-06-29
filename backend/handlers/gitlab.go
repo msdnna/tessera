@@ -101,6 +101,7 @@ type gitlabIntegrationView struct {
 	Configured      bool             `json:"configured"`
 	ProjectPath     string           `json:"project_path"`
 	BoardID         *uuid.UUID       `json:"board_id"`
+	ProjectID       *uuid.UUID       `json:"project_id"` // the integration board's project (for milestone gating)
 	Enabled         bool             `json:"enabled"`
 	SyncIntervalSec int32            `json:"sync_interval_sec"`
 	DueSource       string           `json:"due_source"`
@@ -146,6 +147,9 @@ func (h *API) GetGitlabIntegration(c *gin.Context) {
 	}
 	view := integrationView(integ)
 	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
+	if pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID); perr == nil {
+		view.ProjectID = &pid
+	}
 	c.JSON(http.StatusOK, view)
 }
 
@@ -223,6 +227,9 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 	}
 	view := integrationView(integ)
 	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
+	if pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID); perr == nil {
+		view.ProjectID = &pid
+	}
 	c.JSON(http.StatusOK, view)
 }
 

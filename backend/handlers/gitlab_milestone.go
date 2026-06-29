@@ -3,14 +3,18 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log"
+	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
+	"tessera/middleware"
 )
 
 // GitLab milestone pull-mapping (B/M1): map a GitLab issue's milestone onto a native
@@ -99,4 +103,93 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 	default:
 		return uuid.Nil, err
 	}
+}
+
+// PushMilestoneToGitlab creates a GitLab project milestone from a NATIVE Tessera
+// milestone and links them — an explicit, selective action. Creating a native
+// milestone never auto-pushes to GitLab; the user opts in per milestone here.
+// POST /milestones/:id/gitlab.
+func (h *API) PushMilestoneToGitlab(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	m, wsID, ok := h.milestoneWorkspace(c, id)
+	if !ok {
+		return
+	}
+	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no GitLab integration configured for this workspace"})
+		return
+	}
+	if err != nil {
+		fail(c)
+		return
+	}
+	if !integ.Enabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "GitLab integration is disabled"})
+		return
+	}
+	// The milestone must live in the integration board's project (GitLab milestones
+	// are project-scoped, and the integration maps to exactly one GL project).
+	pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID)
+	if perr != nil {
+		fail(c)
+		return
+	}
+	if m.ProjectID != pid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "milestone is not in the GitLab-linked project"})
+		return
+	}
+	if _, lerr := h.q.GetGitlabMilestoneLink(c, id); lerr == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "milestone is already linked to GitLab"})
+		return
+	}
+	// Author with the acting user's credential when connected, else the owner's PAT.
+	actor := middleware.CurrentUser(c)
+	cred, err := h.q.GetGitlabCredential(c, actor)
+	if err != nil {
+		if integ.OwnerUserID == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first"})
+			return
+		}
+		cred, err = h.q.GetGitlabCredential(c, *integ.OwnerUserID)
+	}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first"})
+		return
+	}
+	token, err := h.sealer.Decrypt(cred.TokenEnc)
+	if err != nil {
+		fail(c)
+		return
+	}
+	client := gitlab.New(cred.BaseUrl, token)
+
+	created, err := client.CreateProjectMilestone(c, integ.ProjectPath, m.Title, m.Description, dateStr(m.StartDate), dateStr(m.DueDate))
+	if err != nil {
+		log.Printf("gitlab create milestone %s: %v", id, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "GitLab rejected the milestone: " + truncErr(err)})
+		return
+	}
+	state := created.State
+	if state != "closed" {
+		state = "active"
+	}
+	var iid *int64
+	if created.IID != 0 {
+		v := created.IID
+		iid = &v
+	}
+	if cerr := h.q.CreateGitlabMilestoneLink(c, db.CreateGitlabMilestoneLinkParams{
+		MilestoneID: id, IntegrationID: integ.ID, GlGlobalID: created.GlobalID(),
+		GlIid: iid, GlNumericID: created.ID, GlWebUrl: created.WebURL, GlState: state,
+		TitleHash: hashStr(m.Title),
+	}); cerr != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(wsID, "milestone.updated", gin.H{"id": id})
+	c.JSON(http.StatusOK, gin.H{"id": id, "gl_url": created.WebURL, "gl_linked": true})
 }

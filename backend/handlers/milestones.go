@@ -46,7 +46,7 @@ func (h *API) ListMilestones(c *gin.Context) {
 		return
 	}
 	if ms == nil {
-		ms = []db.Milestone{}
+		ms = []db.ListMilestonesRow{}
 	}
 	c.JSON(http.StatusOK, ms)
 }

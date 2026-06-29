@@ -152,11 +152,11 @@ type Note struct {
 
 // Issue is a GitLab issue reduced to the fields the sync needs.
 type Issue struct {
-	GlobalID     string
-	IID          int64
-	Title        string
-	Description  string
-	WebURL       string
+	GlobalID       string
+	IID            int64
+	Title          string
+	Description    string
+	WebURL         string
 	State          string // opened | closed
 	UpdatedAt      *time.Time
 	CreatedAt      *time.Time // issue/task creation timestamp (always present)
@@ -169,12 +169,12 @@ type Issue struct {
 	MilestoneTitle string     // milestone title
 	MilestoneState string     // active | closed
 	MilestoneURL   string     // milestone web path/url
-	Labels       []Label
-	AuthorLogin  string // GitLab username of the issue author (may not be a Tessera user)
-	AuthorName   string
-	AuthorAvatar string // author avatar URL, "" when none
-	Assignees    []Person
-	Notes        []Note // user comments (system notes filtered out)
+	Labels         []Label
+	AuthorLogin    string // GitLab username of the issue author (may not be a Tessera user)
+	AuthorName     string
+	AuthorAvatar   string // author avatar URL, "" when none
+	Assignees      []Person
+	Notes          []Note // user comments (system notes filtered out)
 }
 
 const issuesQuery = `
@@ -259,14 +259,14 @@ func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map
 
 // issueNode mirrors the GraphQL issue node shape.
 type issueNode struct {
-	ID          string     `json:"id"`
-	IID         string     `json:"iid"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	WebURL      string     `json:"webUrl"`
-	State       string     `json:"state"`
-	UpdatedAt   *time.Time `json:"updatedAt"`
-	CreatedAt   *time.Time `json:"createdAt"`
+	ID           string     `json:"id"`
+	IID          string     `json:"iid"`
+	Title        string     `json:"title"`
+	Description  string     `json:"description"`
+	WebURL       string     `json:"webUrl"`
+	State        string     `json:"state"`
+	UpdatedAt    *time.Time `json:"updatedAt"`
+	CreatedAt    *time.Time `json:"createdAt"`
 	DueDate      string     `json:"dueDate"`
 	TimeEstimate int64      `json:"timeEstimate"` // seconds (0 when unset)
 	Milestone    *struct {
@@ -645,6 +645,50 @@ type CreatedIssue struct {
 // created link matches the gl_global_id shape used by the pull path.
 func (ci CreatedIssue) GlobalID() string {
 	return fmt.Sprintf("gid://gitlab/Issue/%d", ci.ID)
+}
+
+// CreatedMilestone is the subset of a freshly-created project milestone the caller
+// needs to build the gitlab_milestone_links row.
+type CreatedMilestone struct {
+	ID     int64 // global numeric milestone id (for REST milestone_id)
+	IID    int64 // per-project iid (may be 0)
+	WebURL string
+	State  string // "active"
+}
+
+// GlobalID reconstructs the GraphQL global id ("gid://gitlab/Milestone/<id>").
+func (cm CreatedMilestone) GlobalID() string {
+	return fmt.Sprintf("gid://gitlab/Milestone/%d", cm.ID)
+}
+
+// CreateProjectMilestone creates a project milestone from Tessera-side fields.
+// startDate/dueDate are "YYYY-MM-DD" or empty.
+func (c *Client) CreateProjectMilestone(ctx context.Context, projectPath, title, description, startDate, dueDate string) (CreatedMilestone, error) {
+	form := url.Values{}
+	form.Set("title", title)
+	if description != "" {
+		form.Set("description", description)
+	}
+	if startDate != "" {
+		form.Set("start_date", startDate)
+	}
+	if dueDate != "" {
+		form.Set("due_date", dueDate)
+	}
+	out, err := c.restForm(ctx, http.MethodPost, "projects/"+projectPathEsc(projectPath)+"/milestones", form)
+	if err != nil {
+		return CreatedMilestone{}, err
+	}
+	var resp struct {
+		ID     int64  `json:"id"`
+		IID    int64  `json:"iid"`
+		WebURL string `json:"web_url"`
+		State  string `json:"state"`
+	}
+	if uerr := json.Unmarshal(out, &resp); uerr != nil {
+		return CreatedMilestone{}, uerr
+	}
+	return CreatedMilestone{ID: resp.ID, IID: resp.IID, WebURL: resp.WebURL, State: resp.State}, nil
 }
 
 // CreateIssue opens a new issue in the project from Tessera-side fields. labels are

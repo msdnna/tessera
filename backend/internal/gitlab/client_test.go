@@ -75,6 +75,32 @@ func TestUpdateIssueTitleDescription(t *testing.T) {
 	}
 }
 
+func TestCreateProjectMilestone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.EscapedPath(), "/api/v4/projects/grp%2Fproject/milestones") {
+			t.Errorf("path = %s", r.URL.EscapedPath())
+		}
+		if r.PostForm.Get("title") != "Sprint 1" || r.PostForm.Get("due_date") != "2026-07-15" {
+			t.Errorf("form = %v", r.PostForm)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":77,"iid":3,"web_url":"https://gl/x/-/milestones/3","state":"active"}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "tok")
+	got, err := c.CreateProjectMilestone(context.Background(), "grp/project", "Sprint 1", "", "", "2026-07-15")
+	if err != nil {
+		t.Fatalf("CreateProjectMilestone: %v", err)
+	}
+	if got.ID != 77 || got.IID != 3 || got.GlobalID() != "gid://gitlab/Milestone/77" {
+		t.Errorf("got = %+v, gid=%s", got, got.GlobalID())
+	}
+}
+
 func TestSetIssueMilestone(t *testing.T) {
 	var got captured
 	c := stubGitLab(t, http.StatusOK, &got)

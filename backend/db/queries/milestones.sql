@@ -2,8 +2,14 @@
 -- GitLab-sourced milestones get a row in gitlab_milestone_links (added later); the
 -- presence of that link makes a milestone read-only in Tessera.
 
+-- ListMilestones returns a project's milestones with their GitLab link info (null
+-- columns when native), so the UI can tell native from GitLab-sourced.
 -- name: ListMilestones :many
-SELECT * FROM milestones WHERE project_id = $1 ORDER BY position, created_at;
+SELECT m.*, l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id
+FROM milestones m
+LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
+WHERE m.project_id = $1
+ORDER BY m.position, m.created_at;
 
 -- name: GetMilestone :one
 SELECT * FROM milestones WHERE id = $1;

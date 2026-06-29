@@ -443,7 +443,12 @@ async function addBoard() {
       :inherited="estInherited"
     />
 
-    <MilestoneManager v-model:show="msShow" :project-id="project.id" :project-name="project.name" />
+    <MilestoneManager
+      v-model:show="msShow"
+      :project-id="project.id"
+      :project-name="project.name"
+      :ws-id="store.currentId"
+    />
   </div>
 </template>
 

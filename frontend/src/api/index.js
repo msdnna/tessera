@@ -166,6 +166,8 @@ export const projects = {
 export const milestones = {
   update: (id, data) => api.patch(`/milestones/${id}`, data),
   remove: (id) => api.delete(`/milestones/${id}`),
+  // Explicitly create this native milestone in GitLab + link them (opt-in per milestone).
+  pushToGitlab: (id) => api.post(`/milestones/${id}/gitlab`),
 }
 
 export const groups = {

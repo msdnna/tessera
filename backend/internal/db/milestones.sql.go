@@ -89,21 +89,42 @@ func (q *Queries) GetMilestone(ctx context.Context, id uuid.UUID) (Milestone, er
 
 const listMilestones = `-- name: ListMilestones :many
 
-SELECT id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at FROM milestones WHERE project_id = $1 ORDER BY position, created_at
+SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date, m.state, m.position, m.created_at, m.updated_at, l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id
+FROM milestones m
+LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
+WHERE m.project_id = $1
+ORDER BY m.position, m.created_at
 `
+
+type ListMilestonesRow struct {
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	StartDate   *time.Time `json:"start_date"`
+	DueDate     *time.Time `json:"due_date"`
+	State       string     `json:"state"`
+	Position    float64    `json:"position"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	GlUrl       *string    `json:"gl_url"`
+	GlGlobalID  *string    `json:"gl_global_id"`
+}
 
 // Milestones («Этап») — project-scoped planning unit. CRUD + task assignment.
 // GitLab-sourced milestones get a row in gitlab_milestone_links (added later); the
 // presence of that link makes a milestone read-only in Tessera.
-func (q *Queries) ListMilestones(ctx context.Context, projectID uuid.UUID) ([]Milestone, error) {
+// ListMilestones returns a project's milestones with their GitLab link info (null
+// columns when native), so the UI can tell native from GitLab-sourced.
+func (q *Queries) ListMilestones(ctx context.Context, projectID uuid.UUID) ([]ListMilestonesRow, error) {
 	rows, err := q.db.Query(ctx, listMilestones, projectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Milestone
+	var items []ListMilestonesRow
 	for rows.Next() {
-		var i Milestone
+		var i ListMilestonesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
@@ -115,6 +136,8 @@ func (q *Queries) ListMilestones(ctx context.Context, projectID uuid.UUID) ([]Mi
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.GlUrl,
+			&i.GlGlobalID,
 		); err != nil {
 			return nil, err
 		}

@@ -1,20 +1,36 @@
 <script setup>
 import { ref, watch } from 'vue'
-import { NModal, NCard, NIcon, NButton, NInput, NDatePicker, NPopconfirm, useMessage } from 'naive-ui'
-import { RibbonOutline, AddOutline, TrashOutline, CheckmarkOutline, RefreshOutline } from '@vicons/ionicons5'
-import { projects as projApi, milestones as msApi } from '@/api'
+import { NModal, NCard, NIcon, NButton, NInput, NDatePicker, NPopconfirm, NTooltip, useMessage } from 'naive-ui'
+import {
+  RibbonOutline,
+  AddOutline,
+  TrashOutline,
+  CheckmarkOutline,
+  RefreshOutline,
+  LogoGitlab,
+  OpenOutline,
+} from '@vicons/ionicons5'
+import { projects as projApi, milestones as msApi, gitlab as glApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
   projectId: { type: String, default: null },
   projectName: { type: String, default: '' },
+  wsId: { type: String, default: null },
 })
 const emit = defineEmits(['update:show', 'changed'])
 
 const message = useMessage()
 const list = ref([])
 const loading = ref(false)
+// Whether this project can push milestones to GitLab (integration on this project's
+// board + enabled + milestone write-back on). Creation stays per-milestone opt-in.
+const glLinkable = ref(false)
+const pushing = ref(null) // milestone id currently being created in GitLab
+function isLinked(m) {
+  return !!m.gl_global_id
+}
 const newTitle = ref('')
 const newStart = ref(null) // epoch ms
 const newDue = ref(null) // epoch ms
@@ -32,6 +48,35 @@ async function load() {
     message.error(e.message)
   } finally {
     loading.value = false
+  }
+  // Can this project's milestones be pushed to GitLab? (integration on this project's
+  // board + enabled + push_milestone). Best-effort; no GitLab → just hidden.
+  glLinkable.value = false
+  if (props.wsId) {
+    try {
+      const { data } = await glApi.getIntegration(props.wsId)
+      glLinkable.value =
+        data?.configured === true &&
+        data?.enabled === true &&
+        data?.writeback?.push_milestone === true &&
+        data?.project_id === props.projectId
+    } catch {
+      glLinkable.value = false
+    }
+  }
+}
+
+async function pushToGitlab(m) {
+  pushing.value = m.id
+  try {
+    await msApi.pushToGitlab(m.id)
+    await load()
+    emit('changed')
+    message.success('Этап создан в GitLab')
+  } catch (e) {
+    message.error(e.response?.data?.error || e.message)
+  } finally {
+    pushing.value = null
   }
 }
 
@@ -174,10 +219,45 @@ watch(
               <n-button size="tiny" tertiary @click="cancelEdit">Отмена</n-button>
             </template>
             <template v-else>
-              <span class="m-name" @click="startEdit(m)">{{ m.title }}</span>
+              <n-tooltip v-if="isLinked(m)" :disabled="false">
+                <template #trigger>
+                  <span class="m-name linked">{{ m.title }}</span>
+                </template>
+                Синхронизируется с GitLab — правьте в GitLab
+              </n-tooltip>
+              <span v-else class="m-name" @click="startEdit(m)">{{ m.title }}</span>
               <span v-if="fmtRange(m)" class="m-due">{{ fmtRange(m) }}</span>
+              <a
+                v-if="isLinked(m)"
+                class="m-gl"
+                :href="m.gl_url"
+                target="_blank"
+                rel="noopener"
+                title="Открыть в GitLab"
+              >
+                <n-icon :component="LogoGitlab" /><n-icon :component="OpenOutline" :size="11" />
+              </a>
               <span class="m-spacer" />
-              <n-button size="tiny" tertiary :title="m.state === 'closed' ? 'Открыть' : 'Закрыть'" @click="toggleState(m)">
+              <!-- explicit, per-milestone push to GitLab (native + linkable only) -->
+              <n-button
+                v-if="!isLinked(m) && glLinkable"
+                size="tiny"
+                tertiary
+                :loading="pushing === m.id"
+                title="Создать этот этап в GitLab"
+                @click="pushToGitlab(m)"
+              >
+                <template #icon><n-icon :component="LogoGitlab" /></template>
+                В GitLab
+              </n-button>
+              <!-- state toggle: native only (GitLab-linked state is synced from GitLab) -->
+              <n-button
+                v-if="!isLinked(m)"
+                size="tiny"
+                tertiary
+                :title="m.state === 'closed' ? 'Открыть' : 'Закрыть'"
+                @click="toggleState(m)"
+              >
                 <template #icon><n-icon :component="m.state === 'closed' ? RefreshOutline : CheckmarkOutline" /></template>
               </n-button>
               <n-popconfirm @positive-click="remove(m)">
@@ -186,7 +266,11 @@ watch(
                     <template #icon><n-icon :component="TrashOutline" /></template>
                   </n-button>
                 </template>
-                Удалить этап «{{ m.title }}»? Задачи останутся, но потеряют этап.
+                {{
+                  isLinked(m)
+                    ? 'Удалить этап в Tessera? В GitLab он останется (связь будет снята).'
+                    : 'Удалить этап «' + m.title + '»? Задачи останутся, но потеряют этап.'
+                }}
               </n-popconfirm>
             </template>
           </div>
@@ -244,6 +328,21 @@ watch(
   cursor: pointer;
 }
 .m-name:hover {
+  color: var(--t-primary);
+}
+.m-name.linked {
+  cursor: default;
+}
+.m-name.linked:hover {
+  color: var(--t-text1);
+}
+.m-gl {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--t-text3);
+}
+.m-gl:hover {
   color: var(--t-primary);
 }
 .m-due {
