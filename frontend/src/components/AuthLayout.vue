@@ -93,6 +93,9 @@ onBeforeUnmount(() => {
           aria-hidden="true"
           :style="{ transform: `translate3d(calc(-50% + ${glowX}px), calc(-50% + ${glowY}px), 0)` }"
         />
+        <!-- Dithering grain over the glow — breaks up 8-bit banding that's only
+             visible on the dark theme (hidden on light, where it's not needed). -->
+        <div class="auth-grain" aria-hidden="true" />
         <div ref="card" class="auth-card">
           <slot />
         </div>
@@ -233,6 +236,31 @@ onBeforeUnmount(() => {
     rgba(109, 95, 224, 0.16) 40%,
     rgba(145, 131, 255, 0) 70%
   );
+}
+
+/* Static grain that dithers away the glow's colour banding. Hidden on light
+   (banding isn't perceptible there); on dark it sits above the glow and below
+   the card, blended so it only nudges the smooth gradient enough to break the
+   visible steps. High-frequency fractal noise as an inline SVG, rasterised once
+   — no animation, no runtime cost. */
+.auth-grain {
+  display: none;
+}
+[data-theme='dark'] .auth-grain {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 50%;
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
 }
 
 .auth-card {
