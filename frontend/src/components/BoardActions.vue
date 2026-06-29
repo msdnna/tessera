@@ -1,13 +1,21 @@
 <script setup>
+import { ref, computed } from 'vue'
 import { NButton, NPopover, NIcon } from 'naive-ui'
-import { PricetagsOutline, ArchiveOutline } from '@vicons/ionicons5'
+import { PricetagsOutline, ArchiveOutline, RibbonOutline } from '@vicons/ionicons5'
 import { useBoardViewStore } from '@/stores/boardView'
+import { useWorkspacesStore } from '@/stores/workspaces'
 import TagManager from './TagManager.vue'
 import ArchiveModal from './ArchiveModal.vue'
+import MilestoneManager from './MilestoneManager.vue'
 
 const store = useBoardViewStore()
-// Tag/archive changes happen outside the board component now, so nudge it to
-// reload via the shared store.
+const wsStore = useWorkspacesStore()
+const msShow = ref(false)
+const projectName = computed(
+  () => wsStore.projects.find((p) => p.id === store.projectId)?.name || '',
+)
+// Tag/archive/milestone changes happen outside the board component now, so nudge
+// it to reload via the shared store.
 function onChanged() {
   store.bumpReload()
 }
@@ -30,12 +38,23 @@ function onChanged() {
       />
     </n-popover>
 
+    <n-button size="small" quaternary @click="msShow = true">
+      <template #icon><n-icon :component="RibbonOutline" /></template>
+      Этапы
+    </n-button>
+
     <n-button size="small" quaternary @click="store.archiveOpen = true">
       <template #icon><n-icon :component="ArchiveOutline" /></template>
       Архив
     </n-button>
 
     <ArchiveModal v-model:show="store.archiveOpen" :board-id="store.boardId" @changed="onChanged" />
+    <MilestoneManager
+      v-model:show="msShow"
+      :project-id="store.projectId"
+      :project-name="projectName"
+      @changed="onChanged"
+    />
   </div>
 </template>
 

@@ -10,16 +10,17 @@ const props = defineProps({
   projectId: { type: String, default: null },
   projectName: { type: String, default: '' },
 })
-const emit = defineEmits(['update:show'])
+const emit = defineEmits(['update:show', 'changed'])
 
 const message = useMessage()
 const list = ref([])
 const loading = ref(false)
 const newTitle = ref('')
+const newStart = ref(null) // epoch ms
 const newDue = ref(null) // epoch ms
 const saving = ref(false)
 const editingId = ref(null)
-const editBuf = ref({ title: '', due_date: null, state: 'active' })
+const editBuf = ref({ title: '', start_date: null, due_date: null, state: 'active' })
 
 async function load() {
   if (!props.projectId) return
@@ -40,11 +41,14 @@ async function create() {
   saving.value = true
   try {
     const body = { title }
+    if (newStart.value) body.start_date = new Date(newStart.value).toISOString()
     if (newDue.value) body.due_date = new Date(newDue.value).toISOString()
     const { data } = await projApi.createMilestone(props.projectId, body)
     list.value.push(data)
     newTitle.value = ''
+    newStart.value = null
     newDue.value = null
+    emit('changed')
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -56,6 +60,7 @@ function startEdit(m) {
   editingId.value = m.id
   editBuf.value = {
     title: m.title,
+    start_date: m.start_date ? new Date(m.start_date).getTime() : null,
     due_date: m.due_date ? new Date(m.due_date).getTime() : null,
     state: m.state,
   }
@@ -70,14 +75,15 @@ async function saveEdit(m) {
     const body = {
       title: b.title.trim(),
       description: m.description || '',
+      start_date: b.start_date ? new Date(b.start_date).toISOString() : null,
       due_date: b.due_date ? new Date(b.due_date).toISOString() : null,
-      start_date: m.start_date || null,
       state: b.state,
     }
     const { data } = await msApi.update(m.id, body)
     const i = list.value.findIndex((x) => x.id === m.id)
     if (i >= 0) list.value[i] = data
     editingId.value = null
+    emit('changed')
   } catch (e) {
     message.error(e.message)
   }
@@ -93,6 +99,7 @@ async function toggleState(m) {
     })
     const i = list.value.findIndex((x) => x.id === m.id)
     if (i >= 0) list.value[i] = data
+    emit('changed')
   } catch (e) {
     message.error(e.message)
   }
@@ -101,14 +108,22 @@ async function remove(m) {
   try {
     await msApi.remove(m.id)
     list.value = list.value.filter((x) => x.id !== m.id)
+    emit('changed')
   } catch (e) {
     message.error(e.message)
   }
 }
 
-function fmtDue(iso) {
+function fmtDate(iso) {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+// Render the milestone's start–due window (either side may be missing).
+function fmtRange(m) {
+  if (m.start_date && m.due_date) return `${fmtDate(m.start_date)} – ${fmtDate(m.due_date)}`
+  if (m.due_date) return `до ${fmtDate(m.due_date)}`
+  if (m.start_date) return `с ${fmtDate(m.start_date)}`
+  return ''
 }
 
 watch(
@@ -122,7 +137,7 @@ watch(
 <template>
   <n-modal :show="show" @update:show="emit('update:show', $event)">
     <div class="m-wrap">
-      <n-card class="m-card" style="width: 540px; max-width: 94vw" role="dialog">
+      <n-card class="m-card" style="width: 620px; max-width: 96vw" role="dialog">
         <template #header>
           <span class="m-title">
             <n-icon :component="RibbonOutline" class="grad-icon" /> Этапы — {{ projectName }}
@@ -139,7 +154,20 @@ watch(
           <div v-for="m in list" :key="m.id" class="m-row" :class="{ closed: m.state === 'closed' }">
             <template v-if="editingId === m.id">
               <n-input v-model:value="editBuf.title" size="small" class="m-edit-title" />
-              <n-date-picker v-model:value="editBuf.due_date" type="date" size="small" clearable />
+              <n-date-picker
+                v-model:value="editBuf.start_date"
+                type="date"
+                size="small"
+                clearable
+                placeholder="Начало"
+              />
+              <n-date-picker
+                v-model:value="editBuf.due_date"
+                type="date"
+                size="small"
+                clearable
+                placeholder="Конец"
+              />
               <n-button size="tiny" type="primary" @click="saveEdit(m)">
                 <template #icon><n-icon :component="CheckmarkOutline" /></template>
               </n-button>
@@ -147,7 +175,7 @@ watch(
             </template>
             <template v-else>
               <span class="m-name" @click="startEdit(m)">{{ m.title }}</span>
-              <span v-if="m.due_date" class="m-due">{{ fmtDue(m.due_date) }}</span>
+              <span v-if="fmtRange(m)" class="m-due">{{ fmtRange(m) }}</span>
               <span class="m-spacer" />
               <n-button size="tiny" tertiary :title="m.state === 'closed' ? 'Открыть' : 'Закрыть'" @click="toggleState(m)">
                 <template #icon><n-icon :component="m.state === 'closed' ? RefreshOutline : CheckmarkOutline" /></template>
@@ -171,7 +199,8 @@ watch(
             placeholder="Название этапа"
             @keydown.enter.prevent="create"
           />
-          <n-date-picker v-model:value="newDue" type="date" size="small" clearable placeholder="Срок" />
+          <n-date-picker v-model:value="newStart" type="date" size="small" clearable placeholder="Начало" />
+          <n-date-picker v-model:value="newDue" type="date" size="small" clearable placeholder="Конец" />
           <n-button size="small" type="primary" :loading="saving" :disabled="!newTitle.trim()" @click="create">
             <template #icon><n-icon :component="AddOutline" /></template>
             Создать
@@ -226,15 +255,23 @@ watch(
 }
 .m-edit-title {
   flex: 1;
+  min-width: 120px;
+}
+.m-row :deep(.n-date-picker),
+.m-new :deep(.n-date-picker) {
+  width: 132px;
+  flex: none;
 }
 .m-new {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
   padding-top: 12px;
   border-top: 1px solid var(--t-border);
 }
 .m-new :deep(.n-input) {
   flex: 1;
+  min-width: 140px;
 }
 </style>

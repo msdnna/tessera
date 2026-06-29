@@ -1130,7 +1130,7 @@ function eventText(e) {
                       placeholder="Новый этап…"
                       @keydown.enter.prevent="createMilestone"
                     />
-                    <n-button size="tiny" type="primary" :disabled="!newMilestoneTitle.trim()" @click="createMilestone">
+                    <n-button size="small" type="primary" :disabled="!newMilestoneTitle.trim()" @click="createMilestone">
                       Создать
                     </n-button>
                   </div>

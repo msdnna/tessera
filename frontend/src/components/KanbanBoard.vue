@@ -154,14 +154,21 @@ const groupTags = computed(() =>
 )
 // Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
 const sortLevels = ref([])
-const filters = reactive({ priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '' })
+const filters = reactive({ priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' })
 const sortFieldOptions = [
   { label: 'Приоритет', value: 'priority' },
   { label: 'Срок', value: 'due' },
+  { label: 'Этап', value: 'milestone' },
   { label: 'Статус', value: 'status' },
   { label: 'Название', value: 'title' },
   { label: 'Номер', value: 'number' },
 ]
+// Milestone sort order: by the milestone's due date (none last), then its title.
+const milestoneSortKey = (t) => {
+  const m = t.milestone_id ? milestonesMap[t.milestone_id] : null
+  if (!m) return { d: Number.POSITIVE_INFINITY, s: '' }
+  return { d: m.due_date ? Date.parse(m.due_date) : Number.POSITIVE_INFINITY, s: m.title || '' }
+}
 // Status sort/filter is offered only on the timeline for now (the board already
 // groups by status into columns, so sorting/filtering by it there is redundant).
 const sortFieldsForMenu = computed(() =>
@@ -186,6 +193,12 @@ function cmpLevel(a, b, { field, dir }) {
     return d * (av - bv)
   }
   if (field === 'priority') return d * ((a.priority || 0) - (b.priority || 0))
+  if (field === 'milestone') {
+    const ka = milestoneSortKey(a)
+    const kb = milestoneSortKey(b)
+    if (ka.d !== kb.d) return d * (ka.d - kb.d)
+    return d * ka.s.localeCompare(kb.s, 'ru')
+  }
   if (field === 'title') return d * String(a.title || '').localeCompare(String(b.title || ''), 'ru')
   if (field === 'number') return d * ((a.number || 0) - (b.number || 0))
   return 0
@@ -219,12 +232,18 @@ const tagFilterMenu = computed(() => {
 })
 // Status filter = which board columns to show (timeline-only facet).
 const statusFilterOptions = computed(() => columns.value.map((c) => ({ label: c.name, value: c.id })))
+// Milestone filter menu (+ an explicit "Без этапа" bucket).
+const milestoneFilterMenu = computed(() => [
+  ...milestonesList.value.map((m) => ({ label: m.title, key: `fm.${m.id}` })),
+  { label: 'Без этапа', key: 'fm.__none__' },
+])
 const activeFilterCount = computed(
   () =>
     filters.priorities.length +
     filters.assignees.length +
     filters.tags.length +
     filters.statuses.length +
+    filters.milestones.length +
     (filters.due ? 1 : 0) +
     (filters.q.trim() ? 1 : 0),
 )
@@ -233,6 +252,7 @@ function resetFilters() {
   filters.assignees = []
   filters.tags = []
   filters.statuses = []
+  filters.milestones = []
   filters.due = ''
   filters.q = ''
 }
@@ -259,6 +279,13 @@ const facetChips = computed(() => {
   filters.statuses.forEach((s) =>
     out.push({ kind: 'status', value: s, label: `Статус: ${columns.value.find((c) => c.id === s)?.name || '—'}` }),
   )
+  filters.milestones.forEach((m) =>
+    out.push({
+      kind: 'milestone',
+      value: m,
+      label: `Этап: ${m === '__none__' ? 'без этапа' : milestonesMap[m]?.title || '—'}`,
+    }),
+  )
   if (filters.due) {
     out.push({ kind: 'due', label: `Срок: ${dueOptions.find((o) => o.value === filters.due)?.label || filters.due}` })
   }
@@ -268,6 +295,7 @@ const facetChips = computed(() => {
 const groupModeLabel = computed(() => {
   if (groupMode.value === 'assignee') return 'исполнитель'
   if (groupMode.value === 'none') return 'без группировки'
+  if (groupMode.value === 'milestone') return 'этапы'
   if (groupMode.value === 'tag')
     return `теги${tagPrefix.value ? ` · ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
   return 'статусы'
@@ -279,6 +307,7 @@ const addOptions = computed(() => {
     ...tagPrefixOptions.value
       .filter((o) => o.value)
       .map((o) => ({ label: `По тегам · ${o.label}`, key: `g.tagp.${encodeURIComponent(o.value)}` })),
+    { label: 'По этапам', key: 'g.milestone' },
   ]
   // Timeline swimlanes can also be per-assignee or ungrouped.
   if (timelineLike.value) {
@@ -302,6 +331,7 @@ const addOptions = computed(() => {
       children: memberFilterOptions.value.map((o) => ({ label: o.label, key: `fa.${o.value}` })),
     },
     { label: 'Фильтр: тег', key: 'ft', children: tagFilterMenu.value },
+    { label: 'Фильтр: этап', key: 'fm', children: milestoneFilterMenu.value },
     {
       label: 'Фильтр: срок',
       key: 'fd',
@@ -390,6 +420,9 @@ function onAddFacet(key) {
   } else if (key.startsWith('g.tagp.')) {
     groupMode.value = 'tag'
     tagPrefix.value = decodeURIComponent(key.slice('g.tagp.'.length))
+  } else if (key === 'g.milestone') {
+    groupMode.value = 'milestone'
+    tagPrefix.value = ''
   } else if (key === 'g.assignee') {
     groupMode.value = 'assignee'
     tagPrefix.value = ''
@@ -411,6 +444,9 @@ function onAddFacet(key) {
   } else if (key.startsWith('fs.')) {
     const v = key.slice(3)
     if (!filters.statuses.includes(v)) filters.statuses.push(v)
+  } else if (key.startsWith('fm.')) {
+    const v = key.slice(3)
+    if (!filters.milestones.includes(v)) filters.milestones.push(v)
   } else if (key.startsWith('fd.')) {
     filters.due = key.slice(3)
   }
@@ -421,6 +457,7 @@ function removeChip(c) {
   else if (c.kind === 'assignee') filters.assignees = filters.assignees.filter((x) => x !== c.value)
   else if (c.kind === 'tag') filters.tags = filters.tags.filter((x) => x !== c.value)
   else if (c.kind === 'status') filters.statuses = filters.statuses.filter((x) => x !== c.value)
+  else if (c.kind === 'milestone') filters.milestones = filters.milestones.filter((x) => x !== c.value)
   else if (c.kind === 'due') filters.due = ''
 }
 function onChipClick(c) {
@@ -938,6 +975,8 @@ const filteredTasks = computed(() => {
   if (filters.tags.length)
     arr = arr.filter((t) => (t.tag_ids || []).some((id) => filters.tags.includes(id)))
   if (filters.statuses.length) arr = arr.filter((t) => filters.statuses.includes(t.column_id))
+  if (filters.milestones.length)
+    arr = arr.filter((t) => filters.milestones.includes(t.milestone_id || '__none__'))
   if (filters.due) arr = arr.filter((t) => matchesDue(t, filters.due))
   const q = filters.q.trim().toLowerCase()
   if (q)
@@ -977,6 +1016,12 @@ const displayColumns = computed(() => {
   if (groupMode.value === 'status') {
     return columns.value.map((c) => ({ key: c.id, name: c.name, color: c.color, status: c }))
   }
+  if (groupMode.value === 'milestone') {
+    return [
+      ...milestonesList.value.map((m) => ({ key: m.id, name: m.title, color: '', milestone: m })),
+      { key: '__none__', name: 'Без этапа', color: '', milestone: null },
+    ]
+  }
   return [
     ...groupTags.value.map((t) => ({ key: t.id, name: t.name, color: t.color, tag: t })),
     { key: '__none__', name: 'Без тегов', color: '', tag: null },
@@ -985,12 +1030,20 @@ const displayColumns = computed(() => {
 
 function rebuildLists() {
   // 'assignee'/'none' are timeline-only swimlane modes; the board/list views only
-  // understand status/tag columns, so skip rebuilding for those (lists unused).
-  if (groupMode.value !== 'status' && groupMode.value !== 'tag') return
+  // understand status/tag/milestone columns, so skip rebuilding for those.
+  if (!['status', 'tag', 'milestone'].includes(groupMode.value)) return
   const map = {}
   if (groupMode.value === 'status') {
     for (const col of columns.value) map[col.id] = []
     for (const t of filteredTasks.value) (map[t.column_id] ||= []).push(t)
+  } else if (groupMode.value === 'milestone') {
+    const msIds = new Set(milestonesList.value.map((m) => m.id))
+    for (const m of milestonesList.value) map[m.id] = []
+    map.__none__ = []
+    for (const t of filteredTasks.value) {
+      if (t.milestone_id && msIds.has(t.milestone_id)) map[t.milestone_id].push(t)
+      else map.__none__.push(t)
+    }
   } else {
     const tgIds = new Set(groupTags.value.map((t) => t.id))
     for (const tg of groupTags.value) map[tg.id] = []
@@ -1003,7 +1056,7 @@ function rebuildLists() {
   }
   lists.value = map
 }
-watch([filteredTasks, groupMode, tagPrefix], rebuildLists)
+watch([filteredTasks, groupMode, tagPrefix, milestonesList], rebuildLists)
 
 // Observe each card wrapper (stable per task id via item-key) once. Off-screen
 // cards collapse to a placeholder; near-viewport cards mount the real TaskCard.
@@ -1058,6 +1111,14 @@ async function onColChange(evt, dcol) {
           after_id: after ? after.id : null,
         })
       }
+    } else if (groupMode.value === 'milestone') {
+      // Single-value: the destination column's `added` sets/clears it; the source's
+      // `removed` is ignored (the new value overwrites).
+      if (evt.added) {
+        const id = evt.added.element.id
+        if (dcol.milestone) await tasksApi.setMilestone(id, dcol.milestone.id)
+        else await tasksApi.clearMilestone(id)
+      }
     } else {
       if (evt.added && dcol.tag) await tasksApi.addTag(evt.added.element.id, dcol.tag.id)
       if (evt.removed && dcol.tag) await tasksApi.removeTag(evt.removed.element.id, dcol.tag.id)
@@ -1103,6 +1164,8 @@ async function submitAddTask(dcol) {
   try {
     const res = await boards.createTask(board.value.id, { column_id: columnId, title })
     if (groupMode.value === 'tag' && dcol.tag) await tasksApi.addTag(res.data.id, dcol.tag.id)
+    if (groupMode.value === 'milestone' && dcol.milestone)
+      await tasksApi.setMilestone(res.data.id, dcol.milestone.id)
     await load(props.boardId)
     addingInColumn.value = dcol.key // load() reset refs; re-open
     focusTaskInput()
@@ -1169,14 +1232,34 @@ useRealtime((ev) => {
   if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
     message.warning('Конфликт обратной записи GitLab — откройте настройки GitLab, чтобы разрешить')
   }
+  // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
+  if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
   if (dragging.value || Date.now() < suppressReloadUntil) return
   scheduleReload()
 })
 
-// Header-hosted actions (Теги manager, Архив) ask the board to reload.
+// Refresh just the project's milestones (after the manager edits them, or a remote
+// milestone change) without a full board reload.
+async function reloadMilestones() {
+  const projectId = board.value?.project_id
+  if (!projectId) return
+  try {
+    const { data } = await projectsApi.milestones(projectId)
+    for (const k of Object.keys(milestonesMap)) delete milestonesMap[k]
+    for (const m of data || []) milestonesMap[m.id] = m
+    boardViewStore.setMilestones(milestonesList.value)
+  } catch {
+    /* keep the current list on error */
+  }
+}
+
+// Header-hosted actions (Теги manager, Архив, Этапы) ask the board to reload.
 watch(
   () => boardViewStore.reloadNonce,
-  () => onChanged(),
+  () => {
+    reloadMilestones()
+    onChanged()
+  },
 )
 
 // Sync the open task to the URL's ?task= (a number, or a legacy UUID). Resolves

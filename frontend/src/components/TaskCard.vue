@@ -1081,14 +1081,13 @@ async function submitAddSub() {
   height: 22px;
   line-height: 1;
 }
-/* milestone chip: same box model as the estimate <div>, soft accent fill */
+/* milestone chip: same neutral look as the other set pills (no fill) */
 .ms-pill {
   box-sizing: border-box;
   height: 22px;
   line-height: 1;
   max-width: 140px;
-  background: var(--t-accent-grad-subtle);
-  border-color: transparent;
+  border-style: solid;
   color: var(--t-text2);
 }
 .ms-pill .pill-text {
