@@ -1119,8 +1119,8 @@ function eventText(e) {
                       class="menu-item"
                       @click="setMilestone(m.id)"
                     >
-                      <span class="grow" :class="{ 'ms-closed': m.state === 'closed' }">
-                        {{ m.title }}
+                      <span class="grow ms-opt" :class="{ 'ms-closed': m.state === 'closed' }">
+                        <span class="ms-opt-title">{{ m.title }}</span>
                         <span v-if="milestoneRange(m)" class="ms-opt-range">{{ milestoneRange(m) }}</span>
                       </span>
                       <n-icon
@@ -1312,9 +1312,9 @@ function eventText(e) {
               <span class="plabel"
                 ><n-icon :component="GitMergeOutline" :size="15" /> Родитель</span
               >
-              <n-button v-if="task?.parent_id" quaternary size="small" @click="detachFromParent">
+              <button v-if="task?.parent_id" class="val" @click="detachFromParent">
                 Открепить
-              </n-button>
+              </button>
               <n-popover v-else trigger="click" placement="bottom-start">
                 <template #trigger>
                   <button class="val"><span class="muted">Сделать подзадачей…</span></button>
@@ -2021,7 +2021,11 @@ function eventText(e) {
   width: 220px;
 }
 .ms-pop {
-  width: 240px;
+  /* Fit the widest option (title + date range on one line) up to a cap, instead
+     of a fixed 240px that forced the period to wrap. */
+  width: max-content;
+  min-width: 240px;
+  max-width: 380px;
 }
 .ms-menu {
   max-height: 260px;
@@ -2030,10 +2034,24 @@ function eventText(e) {
 .ms-closed {
   opacity: 0.6;
 }
+/* Title + date range share one line; the title ellipsises if extreme, the range
+   never wraps so the period stays intact. */
+.ms-opt {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.ms-opt-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ms-opt-range {
+  flex: none;
   color: var(--t-text3);
   font-size: 11px;
-  margin-left: 6px;
+  white-space: nowrap;
 }
 .ms-new {
   display: flex;
