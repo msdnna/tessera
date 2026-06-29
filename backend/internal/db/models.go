@@ -96,6 +96,7 @@ type GitlabLink struct {
 	StartOverridden    bool       `json:"start_overridden"`
 	GlLastState        string     `json:"gl_last_state"`
 	EstimateOverridden bool       `json:"estimate_overridden"`
+	GlSnapshot         []byte     `json:"gl_snapshot"`
 }
 
 type GitlabProjectMember struct {
@@ -141,17 +142,21 @@ type GitlabSyncRun struct {
 }
 
 type GitlabWriteback struct {
-	ID            uuid.UUID `json:"id"`
-	TaskID        uuid.UUID `json:"task_id"`
-	IntegrationID uuid.UUID `json:"integration_id"`
-	ChangeKind    string    `json:"change_kind"`
-	Payload       []byte    `json:"payload"`
-	Status        string    `json:"status"`
-	Attempts      int32     `json:"attempts"`
-	LastError     string    `json:"last_error"`
-	NextAttemptAt time.Time `json:"next_attempt_at"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	TaskID        uuid.UUID  `json:"task_id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ChangeKind    string     `json:"change_kind"`
+	Payload       []byte     `json:"payload"`
+	Status        string     `json:"status"`
+	Attempts      int32      `json:"attempts"`
+	LastError     string     `json:"last_error"`
+	NextAttemptAt time.Time  `json:"next_attempt_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	Conflict      []byte     `json:"conflict"`
+	Resolution    string     `json:"resolution"`
+	ResolvedBy    *uuid.UUID `json:"resolved_by"`
+	ResolvedAt    *time.Time `json:"resolved_at"`
 }
 
 type Membership struct {

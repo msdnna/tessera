@@ -279,6 +279,9 @@ func main() {
 			protected.GET("/workspaces/:id/gitlab/sync-runs", rh.ListGitlabSyncRuns)
 			protected.GET("/workspaces/:id/gitlab/sync-runs/:runId/actions", rh.ListGitlabSyncActions)
 			protected.POST("/workspaces/:id/gitlab/sync-runs/:runId/actions/:actionId/retry", rh.RetryGitlabWriteback)
+			// Write-back conflicts: inbox + interactive ours/theirs/manual resolution.
+			protected.GET("/workspaces/:id/gitlab/conflicts", rh.ListGitlabConflicts)
+			protected.POST("/tasks/:id/gitlab/conflicts/:conflictId/resolve", rh.ResolveGitlabConflict)
 
 			// Reminders (personal).
 			protected.POST("/reminders", rh.CreateReminder)

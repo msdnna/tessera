@@ -94,6 +94,12 @@ SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
 WHERE task_id = $1
 RETURNING *;
 
+-- SetGitlabLinkSnapshot stores the last-synced GitLab field state (the conflict
+-- baseline). Written alongside the pull link-update and after a successful push, so
+-- the next push can tell a clean overwrite from a both-sides-changed conflict.
+-- name: SetGitlabLinkSnapshot :exec
+UPDATE gitlab_links SET gl_snapshot = $2 WHERE task_id = $1;
+
 -- SyncUpsertTask updates the synced fields of a linked task without touching its
 -- position (the user may have reordered it on the board).
 -- name: SyncUpdateTask :one

@@ -640,6 +640,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
 		}
+		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue)})
 		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 		h.broadcast(wsID, "task.created", t)
@@ -694,9 +695,13 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
 			return uuid.Nil, false, false
 		}
+		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue)})
+		// Fields with an open write-back conflict are frozen: don't overwrite the
+		// user's pending value from GitLab until they resolve it.
+		frozen := h.conflictFrozenKinds(ctx, link.TaskID)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
-		if !link.DueOverridden && dueDate != nil {
+		if !link.DueOverridden && !frozen["due"] && dueDate != nil {
 			_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate})
 			t.DueDate = dueDate
 			dueApplied = true
@@ -710,7 +715,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		}
 		// Time estimate (only when the board's unit is time → estimate != nil here):
 		// synced unless the user overrode it.
-		if !link.EstimateOverridden && estimate != nil {
+		if !link.EstimateOverridden && !frozen["estimate"] && estimate != nil {
 			_ = h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: link.TaskID, Estimate: estimate})
 			t.Estimate = estimate
 		}

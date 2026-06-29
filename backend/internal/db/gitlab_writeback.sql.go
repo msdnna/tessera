@@ -22,7 +22,7 @@ WHERE id IN (
     LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at
+RETURNING id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at
 `
 
 // ClaimPendingWritebacks atomically grabs up to $1 due pending rows, marking them
@@ -49,6 +49,10 @@ func (q *Queries) ClaimPendingWritebacks(ctx context.Context, limit int32) ([]Gi
 			&i.NextAttemptAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Conflict,
+			&i.Resolution,
+			&i.ResolvedBy,
+			&i.ResolvedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -135,6 +139,182 @@ func (q *Queries) GetGitlabIntegrationByID(ctx context.Context, id uuid.UUID) (G
 	return i, err
 }
 
+const getGitlabWriteback = `-- name: GetGitlabWriteback :one
+SELECT id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at FROM gitlab_writebacks WHERE id = $1
+`
+
+// GetGitlabWriteback fetches one outbox row by id (for the resolve endpoint).
+func (q *Queries) GetGitlabWriteback(ctx context.Context, id uuid.UUID) (GitlabWriteback, error) {
+	row := q.db.QueryRow(ctx, getGitlabWriteback, id)
+	var i GitlabWriteback
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.IntegrationID,
+		&i.ChangeKind,
+		&i.Payload,
+		&i.Status,
+		&i.Attempts,
+		&i.LastError,
+		&i.NextAttemptAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Conflict,
+		&i.Resolution,
+		&i.ResolvedBy,
+		&i.ResolvedAt,
+	)
+	return i, err
+}
+
+const getOpenConflict = `-- name: GetOpenConflict :one
+SELECT id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at FROM gitlab_writebacks
+WHERE task_id = $1 AND change_kind = $2 AND status = 'conflict'
+`
+
+type GetOpenConflictParams struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	ChangeKind string    `json:"change_kind"`
+}
+
+// GetOpenConflict returns the open conflict row for a (task, change_kind), if any.
+func (q *Queries) GetOpenConflict(ctx context.Context, arg GetOpenConflictParams) (GitlabWriteback, error) {
+	row := q.db.QueryRow(ctx, getOpenConflict, arg.TaskID, arg.ChangeKind)
+	var i GitlabWriteback
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.IntegrationID,
+		&i.ChangeKind,
+		&i.Payload,
+		&i.Status,
+		&i.Attempts,
+		&i.LastError,
+		&i.NextAttemptAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Conflict,
+		&i.Resolution,
+		&i.ResolvedBy,
+		&i.ResolvedAt,
+	)
+	return i, err
+}
+
+const listOpenConflictKinds = `-- name: ListOpenConflictKinds :many
+SELECT change_kind FROM gitlab_writebacks WHERE task_id = $1 AND status = 'conflict'
+`
+
+// ListOpenConflictKinds lists the change kinds with an open conflict for a task, so
+// the pull can freeze those fields (not overwrite the user's pending value).
+func (q *Queries) ListOpenConflictKinds(ctx context.Context, taskID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listOpenConflictKinds, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var change_kind string
+		if err := rows.Scan(&change_kind); err != nil {
+			return nil, err
+		}
+		items = append(items, change_kind)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenConflicts = `-- name: ListOpenConflicts :many
+SELECT w.id, w.task_id, w.integration_id, w.change_kind, w.payload, w.status, w.attempts, w.last_error, w.next_attempt_at, w.created_at, w.updated_at, w.conflict, w.resolution, w.resolved_by, w.resolved_at, t.title AS task_title, t.number AS task_number
+FROM gitlab_writebacks w
+JOIN tasks t ON t.id = w.task_id
+WHERE w.integration_id = $1 AND w.status = 'conflict'
+ORDER BY w.updated_at DESC
+`
+
+type ListOpenConflictsRow struct {
+	ID            uuid.UUID  `json:"id"`
+	TaskID        uuid.UUID  `json:"task_id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ChangeKind    string     `json:"change_kind"`
+	Payload       []byte     `json:"payload"`
+	Status        string     `json:"status"`
+	Attempts      int32      `json:"attempts"`
+	LastError     string     `json:"last_error"`
+	NextAttemptAt time.Time  `json:"next_attempt_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	Conflict      []byte     `json:"conflict"`
+	Resolution    string     `json:"resolution"`
+	ResolvedBy    *uuid.UUID `json:"resolved_by"`
+	ResolvedAt    *time.Time `json:"resolved_at"`
+	TaskTitle     string     `json:"task_title"`
+	TaskNumber    *int64     `json:"task_number"`
+}
+
+// ListOpenConflicts returns every open conflict for an integration with its task's
+// title/number, newest first — powers the conflicts inbox.
+func (q *Queries) ListOpenConflicts(ctx context.Context, integrationID uuid.UUID) ([]ListOpenConflictsRow, error) {
+	rows, err := q.db.Query(ctx, listOpenConflicts, integrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOpenConflictsRow
+	for rows.Next() {
+		var i ListOpenConflictsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.IntegrationID,
+			&i.ChangeKind,
+			&i.Payload,
+			&i.Status,
+			&i.Attempts,
+			&i.LastError,
+			&i.NextAttemptAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Conflict,
+			&i.Resolution,
+			&i.ResolvedBy,
+			&i.ResolvedAt,
+			&i.TaskTitle,
+			&i.TaskNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markWritebackConflict = `-- name: MarkWritebackConflict :exec
+
+UPDATE gitlab_writebacks
+SET status = 'conflict', conflict = $2, updated_at = now()
+WHERE id = $1
+`
+
+type MarkWritebackConflictParams struct {
+	ID       uuid.UUID `json:"id"`
+	Conflict []byte    `json:"conflict"`
+}
+
+// ── Write-back conflicts ────────────────────────────────────
+// MarkWritebackConflict parks a claimed row as a conflict (both sides changed the
+// same field since the last sync). It stays parked until the user resolves it.
+func (q *Queries) MarkWritebackConflict(ctx context.Context, arg MarkWritebackConflictParams) error {
+	_, err := q.db.Exec(ctx, markWritebackConflict, arg.ID, arg.Conflict)
+	return err
+}
+
 const markWritebackFailed = `-- name: MarkWritebackFailed :exec
 UPDATE gitlab_writebacks SET status = 'failed', last_error = $2, updated_at = now() WHERE id = $1
 `
@@ -173,6 +353,72 @@ UPDATE gitlab_writebacks SET status = 'sent', last_error = '', updated_at = now(
 
 func (q *Queries) MarkWritebackSent(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markWritebackSent, id)
+	return err
+}
+
+const reArmConflict = `-- name: ReArmConflict :exec
+UPDATE gitlab_writebacks
+SET status = 'pending', attempts = 0, last_error = '', next_attempt_at = now(),
+    conflict = '{}'::jsonb, resolution = $2, resolved_by = $3, resolved_at = now(),
+    updated_at = now()
+WHERE id = $1
+`
+
+type ReArmConflictParams struct {
+	ID         uuid.UUID  `json:"id"`
+	Resolution string     `json:"resolution"`
+	ResolvedBy *uuid.UUID `json:"resolved_by"`
+}
+
+// ReArmConflict re-queues a resolved conflict for delivery (ours/manual): the
+// worker re-fetches GitLab and pushes the now-acknowledged value. Records the choice.
+func (q *Queries) ReArmConflict(ctx context.Context, arg ReArmConflictParams) error {
+	_, err := q.db.Exec(ctx, reArmConflict, arg.ID, arg.Resolution, arg.ResolvedBy)
+	return err
+}
+
+const refreshConflict = `-- name: RefreshConflict :exec
+UPDATE gitlab_writebacks
+SET payload = $3, conflict = $4, updated_at = now()
+WHERE task_id = $1 AND change_kind = $2 AND status = 'conflict'
+`
+
+type RefreshConflictParams struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	ChangeKind string    `json:"change_kind"`
+	Payload    []byte    `json:"payload"`
+	Conflict   []byte    `json:"conflict"`
+}
+
+// RefreshConflict updates an open conflict's desired payload + conflict snapshot
+// when the user edits the same field again before resolving (latest intent wins).
+func (q *Queries) RefreshConflict(ctx context.Context, arg RefreshConflictParams) error {
+	_, err := q.db.Exec(ctx, refreshConflict,
+		arg.TaskID,
+		arg.ChangeKind,
+		arg.Payload,
+		arg.Conflict,
+	)
+	return err
+}
+
+const resolveConflictSettled = `-- name: ResolveConflictSettled :exec
+UPDATE gitlab_writebacks
+SET status = 'sent', conflict = '{}'::jsonb, resolution = $2, resolved_by = $3,
+    resolved_at = now(), updated_at = now()
+WHERE id = $1
+`
+
+type ResolveConflictSettledParams struct {
+	ID         uuid.UUID  `json:"id"`
+	Resolution string     `json:"resolution"`
+	ResolvedBy *uuid.UUID `json:"resolved_by"`
+}
+
+// ResolveConflictSettled closes a conflict with no push (theirs): the task already
+// holds GitLab's value, so nothing is sent.
+func (q *Queries) ResolveConflictSettled(ctx context.Context, arg ResolveConflictSettledParams) error {
+	_, err := q.db.Exec(ctx, resolveConflictSettled, arg.ID, arg.Resolution, arg.ResolvedBy)
 	return err
 }
 

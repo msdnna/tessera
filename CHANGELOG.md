@@ -1843,6 +1843,29 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.61.0] — 2026-06-29
+- **Механизм разрешения конфликтов write-back (фундамент, мигр. 0037).** Прежний loop-guard не замечал
+  встречную правку в GitLab между синками → фактически last-writer-wins. Теперь у каждого линка есть
+  **базлайн** `gitlab_links.gl_snapshot` (jsonb — последние синканные GL-значения), и при пуше
+  `conflict`-проверяемых полей воркер делает трёхстороннее сравнение **base / theirs (текущее в GL) /
+  ours (желаемое)**:
+  - `theirs == ours` → уже синхронно, ничего не пушим;
+  - `theirs == base` (или базлайна ещё нет) → чистая перезапись, пушим;
+  - обе стороны ушли от базлайна → **конфликт**: строка outbox паркуется (`status='conflict'` +
+    `conflict` jsonb с `{field, base, ours, theirs}`), пуш не выполняется, в журнал пишется action
+    `op="conflict"`, по WS летит `gitlab.conflict`.
+- **Интерактивное разрешение:** `GET /workspaces/:id/gitlab/conflicts` (инбокс открытых конфликтов) +
+  `POST /tasks/:id/gitlab/conflicts/:conflictId/resolve` с `{resolution: ours|theirs|manual, value?}`.
+  *theirs* — пишет GL-значение в задачу (без пуша); *ours* — признаёт текущее GL-значение базлайном и
+  ре-арм пуша (воркер дольёт наше); *manual* — пишет присланное merged-значение в задачу и пушит его.
+  При ре-арме воркер заново читает GL и при повторном расхождении безопасно ре-паркует.
+- **Заморозка поля на pull:** пока по (task, kind) открыт конфликт, плановый pull не перезаписывает это
+  поле задачи (по аналогии с `due_overridden`/`start_overridden`/`estimate_overridden`).
+- **Объём этого прохода:** трёхсторонняя проверка включена для `due` и `estimate` (есть чистые
+  per-field writer'ы). `state/priority/labels/assignees/comment` поведения не меняют (без регрессии);
+  `title_desc` — следующим шагом. Снапшот пишется на pull (create/update линка) и после успешного пуша
+  (`refreshLinkSnapshot`). Юнит-тесты на решающую функцию (`evalConflict`).
+
 ### [0.60.1] — 2026-06-29
 - **Флаг `fetch_templates`** в jsonb `gitlab_integrations.writeback` (без миграции) — управляет тем,
   предлагать ли репо-шаблоны issue при создании issue из задачи. Отдаётся/принимается через конфиг

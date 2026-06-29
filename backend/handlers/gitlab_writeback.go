@@ -68,6 +68,11 @@ func (h *API) enqueueWriteback(ctx context.Context, taskID, actorID uuid.UUID, k
 	if !shouldPushWriteback(kind, payload, link.GlLastState, prioInvertible) {
 		return
 	}
+	// An open conflict for this (task, kind) already represents the pending intent;
+	// resolution re-pushes the task's live value, so don't stack a second row.
+	if _, cerr := h.q.GetOpenConflict(ctx, db.GetOpenConflictParams{TaskID: taskID, ChangeKind: kind}); cerr == nil {
+		return
+	}
 
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -135,13 +140,23 @@ func (h *API) drainWritebacks(ctx context.Context) {
 	// delivery attempt (and its outcome) so failures are visible in the journal.
 	journals := map[uuid.UUID]*syncJournal{}
 	for _, w := range rows {
-		res, perr := h.performWriteback(ctx, w)
-		h.settleWriteback(ctx, w, perr)
 		j := journals[w.IntegrationID]
 		if j == nil {
 			j = h.newJournal(w.IntegrationID, "push", "auto", nil)
 			journals[w.IntegrationID] = j
 		}
+		res, perr := h.performWriteback(ctx, w)
+		if res.conflict {
+			// Parked by performWriteback; don't settle (the row is now 'conflict').
+			h.recordConflictAction(j, w, res, res.fields)
+			if res.wsID != uuid.Nil {
+				h.broadcast(res.wsID, "gitlab.conflict", map[string]any{
+					"task_id": w.TaskID, "change_kind": w.ChangeKind, "fields": res.fields,
+				})
+			}
+			continue
+		}
+		h.settleWriteback(ctx, w, perr)
 		h.recordWritebackAction(j, w, res, perr)
 	}
 	for _, j := range journals {
@@ -151,8 +166,11 @@ func (h *API) drainWritebacks(ctx context.Context) {
 
 // writebackResult captures what a push delivery did, for the sync journal.
 type writebackResult struct {
-	glIid  int64  // the target GitLab issue iid (0 if not yet resolved)
-	result string // human-readable outcome, e.g. "issue closed", "label set"
+	glIid    int64           // the target GitLab issue iid (0 if not yet resolved)
+	result   string          // human-readable outcome, e.g. "issue closed", "label set"
+	wsID     uuid.UUID       // owning workspace (for realtime broadcast)
+	conflict bool            // true when the push was parked as a conflict (don't settle)
+	fields   []conflictField // diverged fields, when conflict
 }
 
 // recordWritebackAction appends a journal action for one push delivery, capturing
@@ -279,9 +297,39 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	}
 	client := gitlab.New(cred.BaseUrl, token)
 	path, iid := link.GlProjectPath, link.GlIid
+	res.wsID = integ.WorkspaceID
 
 	var payload map[string]any
 	_ = json.Unmarshal(w.Payload, &payload)
+
+	// Conflict gate: for three-way-checked kinds, fetch the current issue and decide
+	// whether to push (baseline clean), no-op (already in sync), or park as a conflict.
+	if conflictCheckedKind(w.ChangeKind) {
+		issues, ferr := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+		if ferr != nil {
+			return res, ferr
+		}
+		if len(issues) == 0 {
+			return res, notify.Permanent(errors.New("issue not found"))
+		}
+		decision, fields, derr := h.evalWritebackConflict(ctx, w, link, issues[0])
+		if derr != nil {
+			return res, derr
+		}
+		switch decision {
+		case conflictNoop:
+			res.result = "уже синхронно с GitLab"
+			return res, nil
+		case conflictParked:
+			if perr := h.parkConflict(ctx, w, fields); perr != nil {
+				return res, perr
+			}
+			res.conflict, res.fields = true, fields
+			res.result = "конфликт — ожидает решения"
+			return res, nil
+		}
+		// conflictProceed: fall through to the push.
+	}
 
 	switch w.ChangeKind {
 	case "state":
@@ -506,5 +554,11 @@ func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, in
 		GlLastState:       issue.State,
 	}); uerr != nil {
 		log.Printf("gitlab writeback: refresh link snapshot for task %s failed: %v", taskID, uerr)
+	}
+	// Refresh the conflict baseline so the next push sees nothing remote-changed.
+	if serr := h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{
+		TaskID: taskID, GlSnapshot: buildGlSnapshot(issue),
+	}); serr != nil {
+		log.Printf("gitlab writeback: refresh conflict snapshot for task %s failed: %v", taskID, serr)
 	}
 }

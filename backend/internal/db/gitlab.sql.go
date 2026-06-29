@@ -56,7 +56,7 @@ INSERT INTO gitlab_links (
     gl_author_avatar_url, gl_last_state
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot
 `
 
 type CreateGitlabLinkParams struct {
@@ -114,6 +114,7 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		&i.StartOverridden,
 		&i.GlLastState,
 		&i.EstimateOverridden,
+		&i.GlSnapshot,
 	)
 	return i, err
 }
@@ -250,7 +251,7 @@ func (q *Queries) GetGitlabIntegrationByWorkspace(ctx context.Context, workspace
 
 const getGitlabLinkByGlobalID = `-- name: GetGitlabLinkByGlobalID :one
 
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
 `
 
 type GetGitlabLinkByGlobalIDParams struct {
@@ -282,12 +283,13 @@ func (q *Queries) GetGitlabLinkByGlobalID(ctx context.Context, arg GetGitlabLink
 		&i.StartOverridden,
 		&i.GlLastState,
 		&i.EstimateOverridden,
+		&i.GlSnapshot,
 	)
 	return i, err
 }
 
 const getGitlabLinkByTask = `-- name: GetGitlabLinkByTask :one
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden FROM gitlab_links WHERE task_id = $1
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot FROM gitlab_links WHERE task_id = $1
 `
 
 func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (GitlabLink, error) {
@@ -313,6 +315,7 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 		&i.StartOverridden,
 		&i.GlLastState,
 		&i.EstimateOverridden,
+		&i.GlSnapshot,
 	)
 	return i, err
 }
@@ -571,6 +574,23 @@ func (q *Queries) RemoveGitlabAssignee(ctx context.Context, arg RemoveGitlabAssi
 	return err
 }
 
+const setGitlabLinkSnapshot = `-- name: SetGitlabLinkSnapshot :exec
+UPDATE gitlab_links SET gl_snapshot = $2 WHERE task_id = $1
+`
+
+type SetGitlabLinkSnapshotParams struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	GlSnapshot []byte    `json:"gl_snapshot"`
+}
+
+// SetGitlabLinkSnapshot stores the last-synced GitLab field state (the conflict
+// baseline). Written alongside the pull link-update and after a successful push, so
+// the next push can tell a clean overwrite from a both-sides-changed conflict.
+func (q *Queries) SetGitlabLinkSnapshot(ctx context.Context, arg SetGitlabLinkSnapshotParams) error {
+	_, err := q.db.Exec(ctx, setGitlabLinkSnapshot, arg.TaskID, arg.GlSnapshot)
+	return err
+}
+
 const syncUpdateTask = `-- name: SyncUpdateTask :one
 UPDATE tasks
 SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, board_id = $7, updated_at = now()
@@ -636,7 +656,7 @@ SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
     gl_last_state = $11,
     last_synced_at = now()
 WHERE task_id = $1
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot
 `
 
 type UpdateGitlabLinkParams struct {
@@ -688,6 +708,7 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		&i.StartOverridden,
 		&i.GlLastState,
 		&i.EstimateOverridden,
+		&i.GlSnapshot,
 	)
 	return i, err
 }
