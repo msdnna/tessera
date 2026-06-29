@@ -1310,15 +1310,17 @@ async function applyTaskQuery() {
   }
 }
 
-// Deep-link from the «Этапы» screen: ?milestone=<id> filters the board to that
-// milestone (a removable chip), then the param is stripped so the URL stays clean
-// while the filter (and its persistence in the saved view) carries on.
+// Deep-link from the «Этапы» screen: ?milestone=<id> filters the board to exactly
+// that milestone (a removable chip), then the param is stripped so the URL stays
+// clean. It *replaces* the milestone facet (rather than appending) so re-entering
+// from the screen for a different milestone doesn't accumulate the previous one
+// that the saved view had persisted.
 function applyMilestoneQuery() {
   const id = route.query.milestone
   if (!id) return
   const s = String(id)
-  if (milestonesMap[s] && !filters.milestones.includes(s)) {
-    filters.milestones.push(s)
+  if (milestonesMap[s]) {
+    filters.milestones = [s]
   }
   const q = { ...route.query }
   delete q.milestone
