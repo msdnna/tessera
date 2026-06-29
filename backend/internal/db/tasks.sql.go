@@ -767,6 +767,20 @@ func (q *Queries) RestoreTask(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const setTaskDescription = `-- name: SetTaskDescription :exec
+UPDATE tasks SET description = $2, updated_at = now() WHERE id = $1
+`
+
+type SetTaskDescriptionParams struct {
+	ID          uuid.UUID `json:"id"`
+	Description string    `json:"description"`
+}
+
+func (q *Queries) SetTaskDescription(ctx context.Context, arg SetTaskDescriptionParams) error {
+	_, err := q.db.Exec(ctx, setTaskDescription, arg.ID, arg.Description)
+	return err
+}
+
 const setTaskDueNotify = `-- name: SetTaskDueNotify :one
 UPDATE tasks
 SET due_lead_minutes = $2, due_repeat_minutes = $3, due_notify_enabled = $4, updated_at = now()
@@ -909,6 +923,22 @@ func (q *Queries) SetTaskParent(ctx context.Context, arg SetTaskParentParams) (T
 		&i.Estimate,
 	)
 	return i, err
+}
+
+const setTaskTitle = `-- name: SetTaskTitle :exec
+UPDATE tasks SET title = $2, updated_at = now() WHERE id = $1
+`
+
+type SetTaskTitleParams struct {
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+}
+
+// SetTaskTitle / SetTaskDescription apply a single resolved field from a write-back
+// conflict resolution (theirs/manual) without disturbing the other columns.
+func (q *Queries) SetTaskTitle(ctx context.Context, arg SetTaskTitleParams) error {
+	_, err := q.db.Exec(ctx, setTaskTitle, arg.ID, arg.Title)
+	return err
 }
 
 const transferTask = `-- name: TransferTask :one

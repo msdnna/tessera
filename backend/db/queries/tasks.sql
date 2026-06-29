@@ -150,6 +150,14 @@ UPDATE tasks SET start_date = $2, updated_at = now() WHERE id = $1;
 -- name: UpdateTaskEstimate :exec
 UPDATE tasks SET estimate = $2, updated_at = now() WHERE id = $1;
 
+-- SetTaskTitle / SetTaskDescription apply a single resolved field from a write-back
+-- conflict resolution (theirs/manual) without disturbing the other columns.
+-- name: SetTaskTitle :exec
+UPDATE tasks SET title = $2, updated_at = now() WHERE id = $1;
+
+-- name: SetTaskDescription :exec
+UPDATE tasks SET description = $2, updated_at = now() WHERE id = $1;
+
 -- name: MoveTask :one
 UPDATE tasks
 SET column_id = $2, position = $3, updated_at = now()

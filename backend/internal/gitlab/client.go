@@ -563,6 +563,14 @@ func (c *Client) UpdateIssueDueDate(ctx context.Context, projectPath string, iid
 	return err
 }
 
+// UpdateIssueTitleDescription overwrites the issue's title and description. Used by
+// the title_desc write-back, which is three-way conflict-checked before this call.
+func (c *Client) UpdateIssueTitleDescription(ctx context.Context, projectPath string, iid int64, title, description string) error {
+	_, err := c.restForm(ctx, http.MethodPut, issuePath(projectPath, iid),
+		url.Values{"title": {title}, "description": {description}})
+	return err
+}
+
 // SetIssueTimeEstimate sets the issue's time estimate to `minutes` (GitLab parses
 // the "<n>m" duration string), or resets it when minutes <= 0.
 func (c *Client) SetIssueTimeEstimate(ctx context.Context, projectPath string, iid int64, minutes int64) error {

@@ -105,9 +105,10 @@ func shouldPushWriteback(kind string, payload map[string]any, lastState string, 
 		return s != "" && s != lastState
 	case "priority":
 		return prioInvertible
-	case "comment", "labels", "due", "assignees", "estimate":
+	case "comment", "labels", "due", "assignees", "estimate", "title_desc":
 		// Loop-safe: only user-side handlers enqueue these (the pull uses a Nil
-		// actor); the worker reads the latest task state at push time.
+		// actor); the worker reads the latest task state at push time. title_desc is
+		// additionally three-way conflict-checked before the push.
 		return true
 	default:
 		return false
@@ -312,7 +313,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		if len(issues) == 0 {
 			return res, notify.Permanent(errors.New("issue not found"))
 		}
-		decision, fields, derr := h.evalWritebackConflict(ctx, w, link, issues[0])
+		decision, fields, derr := h.evalWritebackConflict(ctx, w, link, issues[0], integ.WorkspaceID)
 		if derr != nil {
 			return res, derr
 		}
@@ -529,6 +530,17 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 			}
 		}
 
+	case "title_desc":
+		task, err := h.q.GetTask(ctx, w.TaskID)
+		if err != nil {
+			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
+		if err := client.UpdateIssueTitleDescription(ctx, path, iid, task.Title, task.Description); err != nil {
+			return res, err
+		}
+		res.result = "title/description updated"
+		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
+
 	default:
 		return res, notify.Permanent(fmt.Errorf("unknown change_kind %q", w.ChangeKind))
 	}
@@ -556,6 +568,9 @@ func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, in
 		log.Printf("gitlab writeback: refresh link snapshot for task %s failed: %v", taskID, uerr)
 	}
 	// Refresh the conflict baseline so the next push sees nothing remote-changed.
+	// Rewrite attachment links the same way the pull does, so the description
+	// baseline matches what the task stores (avoids a false title_desc conflict).
+	issue.Description = h.rewriteAssets(issue.Description, integ.WorkspaceID)
 	if serr := h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{
 		TaskID: taskID, GlSnapshot: buildGlSnapshot(issue),
 	}); serr != nil {

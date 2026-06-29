@@ -354,6 +354,12 @@ func (h *API) UpdateTask(c *gin.Context) {
 	if !sameEstimate(t.Estimate, updated.Estimate) {
 		h.enqueueWriteback(c, id, actor, "estimate", map[string]any{})
 	}
+	// Title/description push reads the latest task state at push time (empty payload),
+	// and is conflict-checked — GitLab issue bodies get edited richly, so a naive
+	// overwrite is gated behind three-way detection.
+	if t.Title != updated.Title || t.Description != updated.Description {
+		h.enqueueWriteback(c, id, actor, "title_desc", map[string]any{})
+	}
 	h.broadcast(wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)
 }

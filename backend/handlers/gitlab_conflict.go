@@ -109,7 +109,7 @@ const (
 // detection. Other kinds push directly (current behaviour).
 func conflictCheckedKind(kind string) bool {
 	switch kind {
-	case "due", "estimate":
+	case "due", "estimate", "title_desc":
 		return true
 	default:
 		return false
@@ -117,8 +117,10 @@ func conflictCheckedKind(kind string) bool {
 }
 
 // conflictTriples builds the base/ours/theirs triple(s) for a conflict-checked kind
-// from the snapshot, the freshly fetched issue and the current task.
-func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task db.Task) []conflictField {
+// from the snapshot, the freshly fetched issue and the current task. wsID is used to
+// resolve GitLab attachment links in the issue body to the same proxy URLs Tessera
+// stores, so a description comparison doesn't false-conflict on link rewriting.
+func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task db.Task, wsID uuid.UUID) []conflictField {
 	snap, present := snapshotPresence(raw)
 	switch kind {
 	case "due":
@@ -133,6 +135,14 @@ func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task 
 			Field: "estimate", Base: minutesStr(ptrFloat(snap.TimeEstimate)), Ours: minutesStr(task.Estimate),
 			Theirs: minutesStr(ptrFloat(issue.TimeEstimate / 60)), basePresent: ok,
 		}}
+	case "title_desc":
+		_, titleOK := present["title"]
+		_, descOK := present["description"]
+		theirsDesc := h.rewriteAssets(issue.Description, wsID)
+		return []conflictField{
+			{Field: "title", Base: snap.Title, Ours: task.Title, Theirs: issue.Title, basePresent: titleOK},
+			{Field: "description", Base: snap.Description, Ours: task.Description, Theirs: theirsDesc, basePresent: descOK},
+		}
 	default:
 		return nil
 	}
@@ -170,12 +180,12 @@ func evalConflict(triples []conflictField) (conflictDecision, []conflictField) {
 // evalWritebackConflict is the conflict gate called from performWriteback for
 // conflict-checked kinds. It returns the decision and (when parked) the diverged
 // fields. The caller has already fetched the issue for its own push.
-func (h *API) evalWritebackConflict(ctx context.Context, w db.GitlabWriteback, link db.GitlabLink, issue gitlab.Issue) (conflictDecision, []conflictField, error) {
+func (h *API) evalWritebackConflict(ctx context.Context, w db.GitlabWriteback, link db.GitlabLink, issue gitlab.Issue, wsID uuid.UUID) (conflictDecision, []conflictField, error) {
 	task, err := h.q.GetTask(ctx, w.TaskID)
 	if err != nil {
 		return conflictProceed, nil, err // transient: retry
 	}
-	triples := h.conflictTriples(w.ChangeKind, link.GlSnapshot, issue, task)
+	triples := h.conflictTriples(w.ChangeKind, link.GlSnapshot, issue, task, wsID)
 	if len(triples) == 0 {
 		return conflictProceed, nil, nil
 	}
@@ -372,6 +382,10 @@ func (h *API) applyConflictValue(ctx context.Context, taskID uuid.UUID, field, v
 			}
 		}
 		_ = h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: taskID, Estimate: est})
+	case "title":
+		_ = h.q.SetTaskTitle(ctx, db.SetTaskTitleParams{ID: taskID, Title: value})
+	case "description":
+		_ = h.q.SetTaskDescription(ctx, db.SetTaskDescriptionParams{ID: taskID, Description: value})
 	}
 }
 

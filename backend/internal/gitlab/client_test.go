@@ -55,6 +55,26 @@ func TestUpdateIssueState(t *testing.T) {
 	}
 }
 
+func TestUpdateIssueTitleDescription(t *testing.T) {
+	var got captured
+	c := stubGitLab(t, http.StatusOK, &got)
+	if err := c.UpdateIssueTitleDescription(context.Background(), "grp/project", 7, "New title", "Body **md**"); err != nil {
+		t.Fatalf("UpdateIssueTitleDescription: %v", err)
+	}
+	if got.method != http.MethodPut {
+		t.Errorf("method = %s, want PUT", got.method)
+	}
+	if !strings.HasSuffix(got.path, "/api/v4/projects/grp%2Fproject/issues/7") {
+		t.Errorf("path = %s", got.path)
+	}
+	if got.form["title"] != "New title" {
+		t.Errorf("title = %q", got.form["title"])
+	}
+	if got.form["description"] != "Body **md**" {
+		t.Errorf("description = %q", got.form["description"])
+	}
+}
+
 func TestSetIssueLabels(t *testing.T) {
 	var got captured
 	c := stubGitLab(t, http.StatusOK, &got)
