@@ -667,8 +667,16 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 	default:
 		// Snapshot the pre-update task so the journal can diff what changed.
 		old, _ := h.q.GetTask(ctx, link.TaskID)
+		// Fields with an open write-back conflict are frozen: don't overwrite the
+		// user's pending value from GitLab until they resolve it. title/description
+		// are written in the bulk update below, so resolve the freeze up here.
+		frozen := h.conflictFrozenKinds(ctx, link.TaskID)
+		title, desc := issue.Title, issue.Description
+		if frozen["title_desc"] {
+			title, desc = old.Title, old.Description
+		}
 		t, uerr := h.q.SyncUpdateTask(ctx, db.SyncUpdateTaskParams{
-			ID: link.TaskID, Title: issue.Title, Description: issue.Description,
+			ID: link.TaskID, Title: title, Description: desc,
 			Priority: res.Priority, ColumnID: columnID, CompletedAt: completedAt, BoardID: boardID,
 		})
 		if uerr != nil {
@@ -698,9 +706,6 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		}
 		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue)})
 		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden)
-		// Fields with an open write-back conflict are frozen: don't overwrite the
-		// user's pending value from GitLab until they resolve it.
-		frozen := h.conflictFrozenKinds(ctx, link.TaskID)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
 		if !link.DueOverridden && !frozen["due"] && dueDate != nil {
@@ -724,13 +729,16 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
 		h.broadcast(wsID, "task.updated", t)
 
-		// Diff the changed task fields for the journal.
+		// Diff the changed task fields for the journal (skip title/description when
+		// frozen — they were intentionally not applied, so there's no real change).
 		fields := map[string]any{}
-		if old.Title != issue.Title {
-			fields["title"] = map[string]any{"before": old.Title, "after": issue.Title}
-		}
-		if old.Description != issue.Description {
-			fields["description"] = map[string]any{"before": truncForJournal(old.Description), "after": truncForJournal(issue.Description)}
+		if !frozen["title_desc"] {
+			if old.Title != issue.Title {
+				fields["title"] = map[string]any{"before": old.Title, "after": issue.Title}
+			}
+			if old.Description != issue.Description {
+				fields["description"] = map[string]any{"before": truncForJournal(old.Description), "after": truncForJournal(issue.Description)}
+			}
 		}
 		if old.Priority != res.Priority {
 			fields["priority"] = map[string]any{"before": old.Priority, "after": res.Priority}
