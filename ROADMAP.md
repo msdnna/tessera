@@ -3,8 +3,8 @@
 Источник истины для «что сделано / что дальше». Обновлять по ходу работы (и в том же
 изменении правда важнее красоты). Детали реализации — в коде, CHANGELOG и auto-memory.
 
-Текущие версии — `make version`. На 2026-06-29: backend `0.60.1` ·
-frontend `0.103.2` · android `0.40.0`. Следующая миграция — `0037`.
+Текущие версии — `make version`. На 2026-06-29: backend `0.65.0` ·
+frontend `0.106.0` · android `0.40.0`. Следующая миграция — `0040`.
 
 ## Статус фаз (0–10)
 
@@ -510,24 +510,26 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
     ящик. Ассайни от него больше не зависят (шаг 3).
   - Остаток прежнего бэклога: редактор `column_label_bindings` (колонка→метка `S:`),
     webhooks (вместо/в дополнение к polling).
-- **Write-back: title/description + механизм разрешения блокировок/конфликтов — 🔜 В РАБОТЕ (план в
-  следующем треде).** Заголовок/описание задачи СЕЙЧАС НЕ пушатся в issue (только при создании; флаг
-  `push_title_desc` — пустой шов, нет `case` в `performWriteback`, никто не enqueue-ит; см.
-  [[project-gitlab-writeback-conflict-and-milestones-next]]). Прямой двусторонний текст рискует
-  **затиранием** (issue-описание правят и в GL). Решение откладываем до проработки **общего механизма
-  разрешения блокировок/конфликтов**, который надо распространить **на все writeback-сущности**, а не
-  только текст (сейчас loop-guard = «не пушим то, что в GL уже есть» по снапшоту, без обнаружения
-  встречной правки в GL между синками → last-writer-wins). Направления: версия/`updatedAt`-watermark на
-  `gitlab_links`, детект конкуренции (обе стороны изменились с последнего синка) → политика (GL wins /
-  Tessera wins / пометить конфликт для ручного решения), и только потом включать `push_title_desc`.
-- **Этапы (milestones) — 🔜 ПЛАН в следующем треде.** У GL-синканных задач нет milestone, и в Tessera
-  самой сущности нет (сейчас из GL утекают только даты milestone через `start_source/due_source`).
-  Решено по названию: **«Этап»** (рус.), **project-scoped** (как теги/оценка, 1:1 с GL project
-  milestones). Старт с малого: нативная сущность + pull-маппинг из GL; write-back/создание/группировка —
-  позже. Открытые вопросы дизайна (создавать в проекте, не в доске; в дереве пространства НЕ показывать —
-  только project-менеджер + свойство задачи + будущая группировка/таймлайн-маркер) и схема (`milestones`
-  core-таблица + `tasks.milestone_id` + отдельная `gitlab_milestone_links` для loose-coupling, нужен
-  `gl_numeric_id` для REST `milestone_id`) — детально в [[project-gitlab-writeback-conflict-and-milestones-next]].
+- **Write-back: title/description + механизм разрешения конфликтов — ✅ СДЕЛАНО** (backend 0.61.0–0.62.0 /
+  web 0.104.0, мигр. **0037**, 2026-06-29). Трёхсторонняя детекция (base/theirs/ours) против нового
+  базлайна `gitlab_links.gl_snapshot`: при пуше `conflict`-проверяемого поля воркер сверяет текущее в GL,
+  последнее синканное и желаемое → push / no-op / **конфликт** (паркует строку `status='conflict'`,
+  не перетирая встречную правку). Интерактивный резолвер на web (`ConflictResolverModal`, инбокс
+  «Конфликты (N)» в GitLab-модалке): трёхколоночный diff + **ours / theirs / manual**. Pull замораживает
+  конфликтное поле. `title_desc` оживлён (новый REST `UpdateIssueTitleDescription`, сравнение описания по
+  переписанным attachment-ссылкам). **Этот проход покрывает `due`/`estimate`/`title_desc`;**
+  `state`/`priority`/`labels`/`assignees` пока по-старому (last-writer-wins, без регрессии) — расширить
+  на них детекцию следующим заходом. Опц. per-integration `conflict_policy` — шов заложен, дефолт
+  «всегда держать вручную». См. [[project-gitlab-writeback-conflict-and-milestones-next]].
+- **Этапы (milestones, «Этап») — ✅ M0–M2 СДЕЛАНО** (backend 0.63.0–0.65.0 / web 0.105.0–0.106.0,
+  мигр. **0038**/**0039**, 2026-06-29). **M0** нативная project-scoped сущность: `milestones` +
+  `tasks.milestone_id` (`SET NULL`), CRUD, свойство «Этап» в таск-модалке (пикер + инлайн-создание),
+  чип на карточке, project-менеджер `MilestoneManager` из контекст-меню проекта. **M1** pull-маппинг:
+  GraphQL `milestone{ id iid title state startDate dueDate webPath }` → апсерт нативного этапа +
+  `gitlab_milestone_links` (loose-coupled, `gl_numeric_id` из gid), `task.milestone_id` (+
+  `milestone_overridden` оверрайд). **M2** write-back: флаг `push_milestone` → `PUT ?milestone_id=`
+  (`SetIssueMilestone`). **M3 (позже):** создание этапа на GL + группировка доски по этапам + таймлайн-
+  маркер + rollup оценки. Pull/push milestone требуют live-verify против реального GitLab.
 - **Android background push (FCM)** — device-канал поднимает уведомления только **пока приложение
   открыто** (C2); напоминания — локальный `AlarmManager`. Фоновый push при закрытом приложении (FCM)
   ещё не сделан — следующий кандидат для надёжной доставки (аналог Telegram-доставки в budget-go).
