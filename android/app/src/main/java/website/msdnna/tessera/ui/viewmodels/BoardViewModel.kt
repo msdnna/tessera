@@ -54,11 +54,14 @@ data class BoardFilter(
     val assigneeIds: Set<String> = emptySet(),
     // Status = board column ids (timeline-only facet; lets you hide e.g. «done»).
     val statuses: Set<String> = emptySet(),
+    // Milestone ids to show; "__none__" matches milestone-less tasks (deep-link from
+    // the «Этапы» screen sets a single id). Empty = no milestone filter.
+    val milestoneIds: Set<String> = emptySet(),
     val due: DueFilter = DueFilter.All,
 ) {
     val isActive: Boolean
         get() = query.isNotBlank() || priorities.isNotEmpty() || tagIds.isNotEmpty() ||
-            assigneeIds.isNotEmpty() || statuses.isNotEmpty() || due != DueFilter.All
+            assigneeIds.isNotEmpty() || statuses.isNotEmpty() || milestoneIds.isNotEmpty() || due != DueFilter.All
 }
 
 private val TagPalette = listOf(
@@ -84,6 +87,9 @@ data class BoardUiState(
         website.msdnna.tessera.util.Estimation.DEFAULT,
     val members: List<Member> = emptyList(),
     val gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
+    /** This board's project milestones («Этапы»), for the card chip, the milestone
+     *  grouping and the picker. Empty when the project has none. */
+    val milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
     val viewMode: BoardViewMode = BoardViewMode.Kanban,
     /** Swimlane/column grouping: "status" | "tag" | "assignee" | "none". Kanban only
      *  honours status/tag (columns); assignee/none are timeline/Gantt-only (mirrors web). */
@@ -113,6 +119,12 @@ data class BoardUiState(
     /** Kanban grouping is binary (status vs tag columns); derived from [groupMode]. */
     val groupByTag: Boolean get() = groupMode == "tag"
 
+    /** Kanban grouping by milestone («По этапам») — one column per milestone + «Без этапа». */
+    val groupByMilestone: Boolean get() = groupMode == "milestone"
+
+    val milestonesMap: Map<String, website.msdnna.tessera.data.model.Milestone>
+        get() = milestones.associateBy { it.id }
+
     /** "Авто" is only honoured on the Gantt with no grouping/sort, so any manual
      *  grouping or sort transparently turns it off (web `autoActive` parity). */
     val autoActive: Boolean
@@ -137,6 +149,8 @@ data class BoardUiState(
             val matchesTags = filter.tagIds.isEmpty() || t.tagIds.any { it in filter.tagIds }
             val matchesAssignees = filter.assigneeIds.isEmpty() || t.assigneeIds.any { it in filter.assigneeIds }
             val matchesStatus = filter.statuses.isEmpty() || t.columnId in filter.statuses
+            val matchesMilestone = filter.milestoneIds.isEmpty() ||
+                (t.milestoneId ?: "__none__") in filter.milestoneIds
             val due = isoDateKey(t.dueDate)
             val matchesDue = when (filter.due) {
                 DueFilter.All -> true
@@ -146,7 +160,8 @@ data class BoardUiState(
                 DueFilter.Today -> due == today
                 DueFilter.Week -> due.isNotEmpty() && due >= today && due < weekEnd
             }
-            matchesQuery && matchesPriority && matchesTags && matchesAssignees && matchesStatus && matchesDue
+            matchesQuery && matchesPriority && matchesTags && matchesAssignees &&
+                matchesStatus && matchesMilestone && matchesDue
         }
         if (sortLevels.isEmpty()) return filtered.sortedBy { it.position }
         val comparator = sortLevels
@@ -229,6 +244,7 @@ class BoardViewModel(
             val subtasks = repo.subtasks(boardId)
             val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
             val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
+            val milestones = if (projectId.isNotBlank()) runCatching { repo.milestones(projectId) }.getOrDefault(emptyList()) else emptyList()
             val prefixNames = loadPrefixNames()
             val estimation = loadEstimation()
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
@@ -243,6 +259,7 @@ class BoardViewModel(
                     dependencies = dependencies,
                     tags = tags.associateBy { t -> t.id },
                     tagList = tags,
+                    milestones = milestones,
                     prefixNames = prefixNames,
                     estimation = estimation,
                     members = members,
@@ -292,7 +309,11 @@ class BoardViewModel(
      *  in-progress drags are filtered out. Debounced to coalesce bursts. */
     private fun onRealtimeEvent(ev: RealtimeEvent) {
         if (ev.scope != workspaceId) return
-        if (!ev.type.startsWith("task") && !ev.type.startsWith("column") && !ev.type.startsWith("board")) return
+        if (!ev.type.startsWith("task") && !ev.type.startsWith("column") &&
+            !ev.type.startsWith("board") && !ev.type.startsWith("milestone")
+        ) {
+            return
+        }
         if (dragging || SystemClock.elapsedRealtime() < suppressUntil) return
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
@@ -311,6 +332,7 @@ class BoardViewModel(
         val subtasks = repo.subtasks(boardId)
         val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
         val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
+        val milestones = if (projectId.isNotBlank()) runCatching { repo.milestones(projectId) }.getOrDefault(emptyList()) else emptyList()
         val prefixNames = loadPrefixNames()
         // Estimation config is loaded once on full load() — it rarely changes and
         // would cost two extra list calls on every realtime echo here.
@@ -323,6 +345,7 @@ class BoardViewModel(
                 dependencies = dependencies,
                 tags = tags.associateBy { t -> t.id },
                 tagList = tags,
+                milestones = milestones,
                 prefixNames = prefixNames,
             )
         }
@@ -688,6 +711,21 @@ class BoardViewModel(
         refreshTasks()
     }
 
+    /** Assign (non-null) or clear (null) a task's milestone. */
+    fun setTaskMilestone(task: Task, milestoneId: String?) = launchCatching {
+        repo.setTaskMilestone(task.id, milestoneId)
+        refreshTasks()
+    }
+
+    /** Deep-link from the «Этапы» screen: show only this milestone's cards (a
+     *  removable «Этап:» chip). Passing null clears the milestone filter. */
+    fun setMilestoneFilter(milestoneId: String?) {
+        _state.update {
+            it.copy(filter = it.filter.copy(milestoneIds = if (milestoneId == null) emptySet() else setOf(milestoneId)))
+        }
+        persistView()
+    }
+
     fun archive(taskId: String) = launchCatching {
         repo.archiveTask(taskId)
         refreshTasks()
@@ -747,7 +785,7 @@ private fun layoutKey(mode: BoardViewMode): String = when (mode) {
  *  the timeline/Gantt) so e.g. Kanban never inherits a swimlane-only grouping. */
 private fun BoardUiState.coerceGroupingFor(mode: BoardViewMode): BoardUiState {
     val timelineLike = mode == BoardViewMode.Timeline || mode == BoardViewMode.Gantt
-    return if (!timelineLike && groupMode != "status" && groupMode != "tag") {
+    return if (!timelineLike && groupMode != "status" && groupMode != "tag" && groupMode != "milestone") {
         copy(groupMode = "status", tagPrefix = "")
     } else {
         this
@@ -767,6 +805,7 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
         assignees = s.filter.assigneeIds.toList(),
         tags = s.filter.tagIds.toList(),
         statuses = s.filter.statuses.toList(),
+        milestones = s.filter.milestoneIds.toList(),
         due = dueToWeb(s.filter.due),
         q = s.filter.query,
     ),
@@ -793,6 +832,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
         tagIds = c.filters.tags.toSet(),
         assigneeIds = c.filters.assignees.toSet(),
         statuses = c.filters.statuses.toSet(),
+        milestoneIds = c.filters.milestones.toSet(),
         due = dueFromWeb(c.filters.due),
     ),
 )

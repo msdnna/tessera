@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -148,6 +149,7 @@ fun TaskModal(
     prefixNames: Map<String, String>,
     members: List<Member>,
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
+    milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
     parentCandidates: List<Task>,
     breadcrumb: List<String>,
     estimation: website.msdnna.tessera.data.model.EstimationConfig =
@@ -169,6 +171,14 @@ fun TaskModal(
     var confirmArchive by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
+    // Milestones inline-created from the picker, merged with the board's list so a
+    // freshly-made «Этап» shows immediately (the board reloads on close).
+    var extraMilestones by remember(detail?.id) {
+        mutableStateOf<List<website.msdnna.tessera.data.model.Milestone>>(emptyList())
+    }
+    val allMilestones = remember(milestones, extraMilestones) {
+        (milestones + extraMilestones).distinctBy { it.id }
+    }
 
     // Read `changed` from the StateFlow's current value, not the composed
     // snapshot — a delete/archive flips it in the same coroutine that calls
@@ -225,6 +235,9 @@ fun TaskModal(
                             gitlab = detail.gitlab,
                             taskTagIds = detail.tags.map { it.id },
                             parentId = detail.parentId,
+                            milestoneId = detail.milestoneId,
+                            milestones = allMilestones,
+                            onCreateMilestone = { t -> vm.createMilestoneAndAssign(t) { m -> extraMilestones = extraMilestones + m } },
                             tags = tags,
                             prefixNames = prefixNames,
                             members = members,
@@ -401,6 +414,9 @@ private fun PropertyGrid(
     gitlab: GitlabLink?,
     taskTagIds: List<String>,
     parentId: String?,
+    milestoneId: String?,
+    milestones: List<website.msdnna.tessera.data.model.Milestone>,
+    onCreateMilestone: (String) -> Unit,
     tags: List<Tag>,
     prefixNames: Map<String, String>,
     members: List<Member>,
@@ -449,6 +465,16 @@ private fun PropertyGrid(
         }
         PropRow(Ion.PRICETAG, "Теги") {
             TagsValue(taskTagIds, tags, prefixNames, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} })
+        }
+        if (milestones.isNotEmpty() || milestoneId != null) {
+            PropRow(Ion.ROCKET, "Этап") {
+                MilestoneValue(
+                    milestoneId = milestoneId,
+                    milestones = milestones,
+                    onSet = { vm.setMilestone(it) },
+                    onCreate = onCreateMilestone,
+                )
+            }
         }
         PropRow(Ion.CHECK, "Выполнено") { TSwitch(checked = completed, onCheckedChange = { vm.setCompleted(it) }) }
         PropRow(Ion.GIT_MERGE, "Родитель") {
@@ -532,7 +558,8 @@ private fun DueValue(
         )
         if (recurrence != null) {
             Spacer(Modifier.width(6.dp))
-            IonIcon(Ion.REPEAT, size = 13.dp, tint = c.primary)
+            // Recur glyph inherits the value text colour (web 0.113.2 parity).
+            IonIcon(Ion.REPEAT, size = 13.dp, tint = if (label.isBlank()) c.text3 else c.text1)
         }
     }
     if (picker) {
@@ -852,7 +879,8 @@ private fun ParentValue(parentId: String?, candidates: List<Task>, onAttach: (St
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     if (parentId != null) {
-        Text("Открепить", fontSize = 14.sp, style = TextStyle(brush = accentGradient(c.primary)), modifier = Modifier.clickableNoRipple { onDetach() })
+        // Plain value-text style, matching «Сделать подзадачей…» (web 0.113.6).
+        Text("Открепить", color = c.text3, fontSize = 14.sp, modifier = Modifier.clickableNoRipple { onDetach() })
     } else {
         Box {
             Text(
@@ -875,6 +903,65 @@ private fun ParentValue(parentId: String?, candidates: List<Task>, onAttach: (St
                         menu = false
                         onAttach(cand.id)
                     })
+                }
+            }
+        }
+    }
+}
+
+/** Milestone («Этап») picker: shows the current milestone (title + date range), a
+ *  dropdown to switch / clear («Без этапа») and an inline create field. */
+@Composable
+private fun MilestoneValue(
+    milestoneId: String?,
+    milestones: List<website.msdnna.tessera.data.model.Milestone>,
+    onSet: (String?) -> Unit,
+    onCreate: (String) -> Unit,
+) {
+    val c = Tessera.colors
+    var menu by remember { mutableStateOf(false) }
+    val chosen = milestones.firstOrNull { it.id == milestoneId }
+    Box {
+        Row(
+            Modifier.clickableNoRipple { menu = true },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (chosen == null) {
+                Text("Без этапа", color = c.text3, fontSize = 14.sp)
+            } else {
+                val range = website.msdnna.tessera.util.Milestones.range(chosen.startDate, chosen.dueDate)
+                Box(Modifier.alpha(if (chosen.isClosed) 0.6f else 1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(chosen.title, color = c.text1, fontSize = 14.sp, maxLines = 1)
+                        if (range.isNotEmpty()) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(range, color = c.text3, fontSize = 12.sp, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+        TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
+            TMenuItem("Без этапа", onClick = {
+                menu = false
+                onSet(null)
+            }, trailing = {
+                if (milestoneId == null) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+            })
+            milestones.forEach { m ->
+                val range = website.msdnna.tessera.util.Milestones.range(m.startDate, m.dueDate)
+                val label = if (range.isEmpty()) m.title else "${m.title}  ·  $range"
+                TMenuItem(label, onClick = {
+                    menu = false
+                    onSet(m.id)
+                }, trailing = {
+                    if (m.id == milestoneId) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+                })
+            }
+            Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).width(250.dp)) {
+                InlineEnterField("Новый этап, Enter") {
+                    onCreate(it)
+                    menu = false
                 }
             }
         }

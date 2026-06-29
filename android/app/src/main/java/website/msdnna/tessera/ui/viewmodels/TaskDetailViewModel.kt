@@ -168,6 +168,25 @@ class TaskDetailViewModel(
         reloadDetail()
     }
 
+    /** Assign (non-null) or clear (null) the task's milestone. */
+    fun setMilestone(milestoneId: String?) = mutate {
+        boardRepo.setTaskMilestone(taskId, milestoneId)
+        reloadDetail()
+    }
+
+    /** Inline-create a milestone on the task's project and assign it; [onCreated]
+     *  receives the new milestone so the picker can show it immediately. */
+    fun createMilestoneAndAssign(
+        title: String,
+        onCreated: (website.msdnna.tessera.data.model.Milestone) -> Unit,
+    ) = mutate {
+        if (title.isBlank() || projectId.isBlank()) return@mutate
+        val m = boardRepo.createMilestone(projectId, title)
+        boardRepo.setTaskMilestone(taskId, m.id)
+        onCreated(m)
+        reloadDetail()
+    }
+
     fun attachToParent(parentId: String) = mutate {
         boardRepo.setParent(taskId, parentId)
         reloadDetail()

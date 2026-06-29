@@ -160,6 +160,8 @@ fun KanbanView(
     state: BoardUiState,
     vm: BoardViewModel,
     onOpenTask: (Task) -> Unit,
+    conflictTaskIds: Set<String> = emptySet(),
+    onOpenConflict: ((Task) -> Unit)? = null,
 ) {
     // Lanes carry each column's filtered + multi-level-sorted card list. That work
     // is O(n log n) per column; recomputing it on every recomposition re-sorts the
@@ -168,14 +170,20 @@ fun KanbanView(
     // recomposition — reuses the cached lanes instead of re-sorting 100s of cards.
     val lanes = remember(
         state.groupByTag,
+        state.groupByMilestone,
         state.tagPrefix,
         state.columns,
         state.tasks,
         state.tags,
+        state.milestones,
         state.filter,
         state.sortLevels,
     ) {
-        if (state.groupByTag) tagLanes(state) else columnLanes(state)
+        when {
+            state.groupByMilestone -> milestoneLanes(state)
+            state.groupByTag -> tagLanes(state)
+            else -> columnLanes(state)
+        }
     }
     val scrollState = rememberScrollState()
     val drag = rememberBoardDragState()
@@ -293,6 +301,7 @@ fun KanbanView(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 val laneIcon = when {
+                                    state.groupByMilestone -> Ion.ROCKET
                                     state.groupByTag -> Ion.PRICETAG
                                     lane.id == state.doneColumnId -> Ion.CHECK_CIRCLE
                                     lane.id == state.sortedColumns.firstOrNull()?.id -> Ion.ELLIPSE
@@ -323,6 +332,22 @@ fun KanbanView(
                                         modifier = Modifier.weight(1f)
                                             .then(if (lane.canAdd) Modifier.clickableNoRipple { renamingCol = true } else Modifier),
                                     )
+                                }
+                                // Σ estimate of the milestone's cards (web parity: shown
+                                // only when grouped «По этапам», in the board's unit).
+                                if (state.groupByMilestone) {
+                                    val eff = remember(lane.tasks, state.estimation) {
+                                        Estimation.sum(lane.tasks.map { it.estimate })
+                                            ?.let { Estimation.format(it, state.estimation).ifBlank { null } }
+                                    }
+                                    if (eff != null) {
+                                        Text(
+                                            "Σ $eff",
+                                            color = Tessera.colors.text3,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.padding(end = 8.dp),
+                                        )
+                                    }
                                 }
                                 // Count sits just left of the column menu, both pinned right.
                                 Text("${lane.tasks.size}", color = Tessera.colors.text3, fontSize = 13.sp)
@@ -365,6 +390,8 @@ fun KanbanView(
                                             drag = if (lane.canAdd) drag else null,
                                             onDropTask = if (lane.canAdd) onDropTask else null,
                                             nestSlot = nestDrop?.takeIf { it.parentId == task.id }?.let { it.beforeId to it.afterId },
+                                            conflictTaskIds = conflictTaskIds,
+                                            onOpenConflict = onOpenConflict,
                                         )
                                     }
                                 }
@@ -396,7 +423,7 @@ fun KanbanView(
             }
             // "+ column" placeholder at the end of the status lanes (web parity):
             // tap names a new column; a blank entry cancels back to the tile.
-            if (!state.groupByTag) {
+            if (!state.groupByTag && !state.groupByMilestone) {
                 Column(Modifier.width(colWidth)) {
                     if (addingNewColumn) {
                         Column(
@@ -1057,6 +1084,38 @@ private fun tagLanes(state: BoardUiState): List<Lane> {
     return byTag + Lane("none", "Без тега", null, untagged, canAdd = false)
 }
 
+/** Milestone columns («По этапам»): one read-only lane per milestone (by position)
+ *  plus a trailing «Без этапа» for the unassigned (web `rebuildLists` milestone mode). */
+private fun milestoneLanes(state: BoardUiState): List<Lane> {
+    val milestones = state.milestones.sortedBy { it.position }
+    val byMs = milestones.map { m ->
+        Lane(m.id, m.title, null, state.applyFilterSort(state.tasks.filter { it.milestoneId == m.id }), canAdd = false)
+    }
+    val msIds = milestones.map { it.id }.toSet()
+    val none = state.applyFilterSort(state.tasks.filter { it.milestoneId == null || it.milestoneId !in msIds })
+    return byMs + Lane("none", "Без этапа", null, none, canAdd = false)
+}
+
+/** Pixel x-positions (track-relative) of milestone due-dates inside the timeline window. */
+private fun milestoneMarkerXs(
+    milestones: List<website.msdnna.tessera.data.model.Milestone>,
+    rangeStart: Long,
+    dayCount: Int,
+    dayWpx: Float,
+): List<Float> {
+    val rangeEnd = rangeStart + dayCount.toLong() * TL_DAY_MS
+    return milestones.mapNotNull { m ->
+        val due = parseInstantMillis(m.dueDate) ?: return@mapNotNull null
+        val floor = tlDayFloor(due)
+        if (floor < rangeStart || floor >= rangeEnd) {
+            null
+        } else {
+            val idx = ((floor - rangeStart) / TL_DAY_MS).toInt()
+            dayWpx * idx + dayWpx * 0.5f
+        }
+    }
+}
+
 /**
  * A snapping fling for the (non-lazy) board row: after a flick or drag-release it
  * lets the natural fling project, then animates to the nearest column boundary so
@@ -1383,6 +1442,10 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         val width = (dayW * ((rMs - lMs).toFloat() / TL_DAY_MS) - 2.dp).coerceAtLeast(3.dp)
         return left to width
     }
+    // Dashed due-markers for milestones whose due-date falls inside the window.
+    val msMarkers = remember(state.milestones, rangeStart, dayCount, dayWpx) {
+        milestoneMarkerXs(state.milestones, rangeStart, dayCount, dayWpx)
+    }
     // Precompute day-cell metadata once per window — rebuilding Calendar objects for
     // every day on each zoom frame was the main pinch-lag culprit.
     val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
@@ -1563,7 +1626,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             } else {
                 LazyColumn(Modifier.weight(1f).pinchZoom { z, cx, s -> applyZoom(z, cx, s) }) {
                     timelineBodyItems(
-                        bodyRows, leftW, dayW, axisW, majorPx, minorPx, todayLeft, gridColor,
+                        bodyRows, leftW, dayW, axisW, majorPx, minorPx, todayLeft, gridColor, msMarkers,
                         hScroll, viewportPx, state, { barGeom(it) }, onOpenTask,
                     )
                 }
@@ -1716,6 +1779,9 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val gridColor = c.border.copy(alpha = 0.45f)
     val majorPx = if (tier == TimelineTier.WEEKS) dayWpx * 7f else dayWpx
     val minorPx = if (tier == TimelineTier.HOURS) hourStepFor(dayW).let { if (it > 0) dayWpx * it / 24f else 0f } else 0f
+    val msMarkers = remember(state.milestones, rangeStart, dayCount, dayWpx) {
+        milestoneMarkerXs(state.milestones, rangeStart, dayCount, dayWpx)
+    }
 
     // Pixel span of a task bar (hours tier honours real clock time; all-day → day bounds).
     fun barGeom(t: Task): Pair<androidx.compose.ui.unit.Dp, androidx.compose.ui.unit.Dp> {
@@ -1982,7 +2048,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                         state = gLazy,
                     ) {
                         timelineBodyItems(
-                            bodyRows, leftW, dayW, axisW, majorPx, minorPx, todayLeft, gridColor,
+                            bodyRows, leftW, dayW, axisW, majorPx, minorPx, todayLeft, gridColor, msMarkers,
                             hScroll, viewportPx, state, { barGeom(it) }, onOpenTask,
                         )
                     }
@@ -2217,6 +2283,7 @@ private fun LazyListScope.timelineBodyItems(
     minorPx: Float,
     todayLeft: androidx.compose.ui.unit.Dp,
     gridColor: Color,
+    milestoneMarkers: List<Float>,
     hScroll: ScrollState,
     viewportPx: Int,
     state: BoardUiState,
@@ -2261,7 +2328,11 @@ private fun LazyListScope.timelineBodyItems(
                         }
                     }
                     Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                        Box(Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt).tlGrid(majorPx, minorPx, gridColor, hScroll, viewportPx)) {
+                        Box(
+                            Modifier.width(axisW).height(TL_LANE_H).background(c.surfaceAlt)
+                                .tlGrid(majorPx, minorPx, gridColor, hScroll, viewportPx)
+                                .tlMilestoneMarkers(milestoneMarkers, c.text3.copy(alpha = 0.5f)),
+                        ) {
                             Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.55f)))
                         }
                     }
@@ -2296,7 +2367,11 @@ private fun LazyListScope.timelineBodyItems(
                         }
                     }
                     Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
-                        Box(Modifier.width(axisW).height(rowH).tlGrid(majorPx, minorPx, gridColor, hScroll, viewportPx)) {
+                        Box(
+                            Modifier.width(axisW).height(rowH)
+                                .tlGrid(majorPx, minorPx, gridColor, hScroll, viewportPx)
+                                .tlMilestoneMarkers(milestoneMarkers, c.text3.copy(alpha = 0.5f)),
+                        ) {
                             Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
                             Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
                                 val lbl = Estimation.format(t.estimate, state.estimation)
@@ -2551,6 +2626,19 @@ private fun Modifier.tlGrid(
         x += majorPx
     }
 }
+
+/** Dashed vertical lines at each milestone's due-date x (web milestone due-markers). */
+private fun Modifier.tlMilestoneMarkers(xs: List<Float>, color: Color): Modifier =
+    if (xs.isEmpty()) {
+        this
+    } else {
+        drawBehind {
+            val dash = PathEffect.dashPathEffect(floatArrayOf(7f, 7f))
+            xs.forEach { x ->
+                drawLine(color, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.5f, pathEffect = dash)
+            }
+        }
+    }
 
 /**
  * Web-parity row borders for a timeline/Gantt body row: a horizontal divider along the

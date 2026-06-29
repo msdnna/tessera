@@ -48,6 +48,7 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.dashedBorder
+import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -83,6 +84,8 @@ private val MapActions = setOf("status", "priority", "board")
 fun GitLabSettingsScreen(
     workspaceId: String,
     onOpenJournal: () -> Unit = {},
+    conflictCount: Int = 0,
+    onOpenConflicts: () -> Unit = {},
     vm: GitlabViewModel = viewModel(key = "gitlab"),
 ) {
     val c = Tessera.colors
@@ -114,6 +117,28 @@ fun GitLabSettingsScreen(
         if (state.connected && state.integration != null) {
             Spacer(Modifier.height(16.dp))
             IntegrationCard(state, vm, workspaceId, onOpenJournal)
+        }
+        if (conflictCount > 0) {
+            Spacer(Modifier.height(14.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusMd))
+                    .border(1.dp, ConflictAmber.copy(alpha = 0.55f), RoundedCornerShape(RadiusMd))
+                    .background(ConflictAmber.copy(alpha = 0.12f))
+                    .clickableNoRipple(onClick = onOpenConflicts)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IonIcon(Ion.GIT_NETWORK, size = 17.dp, tint = ConflictAmber)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Конфликты обратной записи: $conflictCount",
+                    color = c.text1,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f),
+                )
+                IonIcon(Ion.CHEVRON_FORWARD, size = 14.dp, tint = c.text3)
+            }
         }
         Spacer(Modifier.height(40.dp))
     }

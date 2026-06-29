@@ -193,6 +193,13 @@ fun BoardComposerBar(
                     onRemove = { vm.setFilter(f.copy(statuses = f.statuses - id)) },
                 )
             }
+            f.milestoneIds.forEach { id ->
+                val name = if (id == "__none__") "Без этапа" else state.milestonesMap[id]?.title ?: "—"
+                FacetChip(
+                    "Этап: $name",
+                    onRemove = { vm.setFilter(f.copy(milestoneIds = f.milestoneIds - id)) },
+                )
+            }
             if (f.due != DueFilter.All) {
                 FacetChip(
                     "Срок: ${DueChipLabels[f.due] ?: ""}",
@@ -228,7 +235,8 @@ fun BoardComposerBar(
 
 private fun hasClearable(state: BoardUiState): Boolean = state.sortLevels.isNotEmpty() ||
     state.filter.priorities.isNotEmpty() || state.filter.assigneeIds.isNotEmpty() ||
-    state.filter.tagIds.isNotEmpty() || state.filter.statuses.isNotEmpty() || state.filter.due != DueFilter.All
+    state.filter.tagIds.isNotEmpty() || state.filter.statuses.isNotEmpty() ||
+    state.filter.milestoneIds.isNotEmpty() || state.filter.due != DueFilter.All
 
 /** The always-present grouping chip; its dropdown picks status / all tags / a namespace. */
 @Composable
@@ -244,6 +252,7 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
     val label = "Группировка: " + when (state.groupMode) {
         "tag" -> "теги" + (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(state.tagPrefix, state.prefixNames)}" else "")
+        "milestone" -> "этапы"
         "assignee" -> "исполнитель"
         "none" -> "без"
         else -> "статусы"
@@ -264,6 +273,13 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
                 CheckRow("По тегам · $nsLabel", selected = state.groupMode == "tag" && state.tagPrefix == ns) {
                     menu = false
                     vm.setGrouping("tag", prefix = ns)
+                }
+            }
+            // «По этапам» — only when the project actually has milestones.
+            if (state.milestones.isNotEmpty()) {
+                CheckRow("По этапам", selected = state.groupMode == "milestone") {
+                    menu = false
+                    vm.setGrouping("milestone")
                 }
             }
             if (timelineLike) {
@@ -374,12 +390,29 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                     }
                 }
 
+                "fm" -> {
+                    BackRow { category = null }
+                    state.milestones.filter { it.id !in f.milestoneIds }.forEach { m ->
+                        TMenuItem(m.title, onClick = {
+                            vm.setFilter(f.copy(milestoneIds = f.milestoneIds + m.id))
+                            close()
+                        })
+                    }
+                    if ("__none__" !in f.milestoneIds) {
+                        TMenuItem("Без этапа", onClick = {
+                            vm.setFilter(f.copy(milestoneIds = f.milestoneIds + "__none__"))
+                            close()
+                        })
+                    }
+                }
+
                 else -> {
                     if (sortFields.isNotEmpty()) ArrowRow("Сортировка") { category = "sort" }
                     if (timeline && state.sortedColumns.isNotEmpty()) ArrowRow("Фильтр: статус") { category = "fs" }
                     ArrowRow("Фильтр: приоритет") { category = "fp" }
                     if (state.members.isNotEmpty()) ArrowRow("Фильтр: исполнитель") { category = "fa" }
                     if (state.tagList.isNotEmpty()) ArrowRow("Фильтр: тег") { category = "ft" }
+                    if (state.milestones.isNotEmpty()) ArrowRow("Фильтр: этап") { category = "fm" }
                     ArrowRow("Фильтр: срок") { category = "fd" }
                 }
             }

@@ -35,6 +35,17 @@ class GitlabRepository {
     suspend fun retryWriteback(workspaceId: String, runId: String, actionId: String) =
         api.gitlabRetryWriteback(workspaceId, runId, actionId)
 
+    /** Write-back conflicts of a workspace ([] when no integration / none open). */
+    suspend fun conflicts(workspaceId: String): List<website.msdnna.tessera.data.model.GitlabConflict> =
+        runCatching { api.gitlabConflicts(workspaceId).orEmpty() }.getOrDefault(emptyList())
+
+    /** Resolve a conflict: ours | theirs | manual (manual carries merged [value]). */
+    suspend fun resolveConflict(taskId: String, conflictId: String, resolution: String, value: Map<String, String>?) =
+        api.resolveGitlabConflict(
+            taskId, conflictId,
+            website.msdnna.tessera.data.model.ResolveConflictRequest(resolution, value),
+        )
+
     /** Every board in the workspace, labelled `Project / Board`, for the picker. */
     suspend fun workspaceBoards(workspaceId: String): List<BoardOption> {
         val out = mutableListOf<BoardOption>()

@@ -23,6 +23,8 @@ class BoardRepository {
     private val api get() = AppContainer.api()
 
     suspend fun board(boardId: String): website.msdnna.tessera.data.model.Board = api.board(boardId)
+    suspend fun boards(projectId: String): List<website.msdnna.tessera.data.model.Board> =
+        api.boards(projectId).orEmpty()
 
     /** Resolves a task's board id (for opening a task when only its id is known). */
     suspend fun taskBoardId(taskId: String): String = api.task(taskId).boardId
@@ -43,6 +45,21 @@ class BoardRepository {
     suspend fun dependencies(boardId: String): List<website.msdnna.tessera.data.model.BoardDependency> =
         api.boardDependencies(boardId).orEmpty()
     suspend fun tags(projectId: String): List<Tag> = api.tags(projectId).orEmpty()
+    suspend fun milestones(projectId: String): List<website.msdnna.tessera.data.model.Milestone> =
+        api.milestones(projectId).orEmpty()
+
+    /** Assign (non-null) or clear (null) a task's milestone. */
+    suspend fun setTaskMilestone(taskId: String, milestoneId: String?) {
+        if (milestoneId == null) {
+            api.clearTaskMilestone(taskId)
+        } else {
+            api.setTaskMilestone(taskId, website.msdnna.tessera.data.model.SetTaskMilestoneRequest(milestoneId))
+        }
+    }
+
+    /** Inline milestone create from a task picker (returns the new milestone). */
+    suspend fun createMilestone(projectId: String, title: String): website.msdnna.tessera.data.model.Milestone =
+        api.createMilestone(projectId, website.msdnna.tessera.data.model.MilestoneRequest(title.trim()))
     suspend fun members(workspaceId: String): List<Member> = api.members(workspaceId).orEmpty()
 
     /** Resolved estimation config for a project: project override → workspace

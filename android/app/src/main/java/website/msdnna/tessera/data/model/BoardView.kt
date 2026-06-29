@@ -36,6 +36,7 @@ data class BoardViewFilters(
     @SerializedName("assignees") val assignees: List<String> = emptyList(),
     @SerializedName("tags") val tags: List<String> = emptyList(),
     @SerializedName("statuses") val statuses: List<String> = emptyList(),
+    @SerializedName("milestones") val milestones: List<String> = emptyList(),
     @SerializedName("due") val due: String = "", // "" | overdue | today | week | has | none
     @SerializedName("q") val q: String = "",
 )

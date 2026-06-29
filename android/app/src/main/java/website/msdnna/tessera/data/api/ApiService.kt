@@ -275,6 +275,42 @@ interface ApiService {
     @GET("workspaces/{id}/gitlab/members")
     suspend fun gitlabMembers(@Path("id") workspaceId: String): List<GitlabMember>?
 
+    // ── Milestones («Этап»): project-scoped CRUD + task assignment + GL push ──
+    @GET("projects/{id}/milestones")
+    suspend fun milestones(@Path("id") projectId: String): List<website.msdnna.tessera.data.model.Milestone>?
+
+    @GET("workspaces/{id}/milestones")
+    suspend fun workspaceMilestones(
+        @Path("id") workspaceId: String,
+    ): List<website.msdnna.tessera.data.model.WorkspaceMilestone>?
+
+    @POST("projects/{id}/milestones")
+    suspend fun createMilestone(
+        @Path("id") projectId: String,
+        @Body body: website.msdnna.tessera.data.model.MilestoneRequest,
+    ): website.msdnna.tessera.data.model.Milestone
+
+    @PATCH("milestones/{id}")
+    suspend fun updateMilestone(
+        @Path("id") milestoneId: String,
+        @Body body: website.msdnna.tessera.data.model.MilestoneRequest,
+    ): website.msdnna.tessera.data.model.Milestone
+
+    @DELETE("milestones/{id}")
+    suspend fun deleteMilestone(@Path("id") milestoneId: String)
+
+    @POST("tasks/{id}/milestone")
+    suspend fun setTaskMilestone(
+        @Path("id") taskId: String,
+        @Body body: website.msdnna.tessera.data.model.SetTaskMilestoneRequest,
+    )
+
+    @DELETE("tasks/{id}/milestone")
+    suspend fun clearTaskMilestone(@Path("id") taskId: String)
+
+    @POST("milestones/{id}/gitlab")
+    suspend fun pushMilestoneToGitlab(@Path("id") milestoneId: String): website.msdnna.tessera.data.model.MilestonePushResult
+
     // ── Tags (project-scoped) / members (workspace-scoped) ──────────────────
     @GET("projects/{id}/tags")
     suspend fun tags(@Path("id") projectId: String): List<Tag>?
@@ -581,5 +617,18 @@ interface ApiService {
         @Path("id") workspaceId: String,
         @Path("runId") runId: String,
         @Path("actionId") actionId: String,
+    )
+
+    // ── GitLab write-back conflicts (three-way resolution) ──────────────────────
+    @GET("workspaces/{id}/gitlab/conflicts")
+    suspend fun gitlabConflicts(
+        @Path("id") workspaceId: String,
+    ): List<website.msdnna.tessera.data.model.GitlabConflict>?
+
+    @POST("tasks/{id}/gitlab/conflicts/{conflictId}/resolve")
+    suspend fun resolveGitlabConflict(
+        @Path("id") taskId: String,
+        @Path("conflictId") conflictId: String,
+        @Body body: website.msdnna.tessera.data.model.ResolveConflictRequest,
     )
 }

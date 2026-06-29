@@ -70,6 +70,7 @@ sealed interface MainDest {
     data object Home : MainDest
     data object Notes : MainDest
     data object Reminders : MainDest
+    data object Milestones : MainDest
     data object GitLabSettings : MainDest
     data object GitLabJournal : MainDest
     data object Notifications : MainDest
@@ -97,6 +98,7 @@ fun MainScreen(
     wsVm: WorkspaceViewModel = viewModel(),
     notifVm: NotificationViewModel = viewModel(),
     updateVm: UpdateViewModel = viewModel(),
+    conflictsVm: website.msdnna.tessera.ui.viewmodels.ConflictsViewModel = viewModel(),
 ) {
     val c = Tessera.colors
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -106,12 +108,19 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     val state by wsVm.state.collectAsStateWithLifecycle()
     val notifState by notifVm.state.collectAsStateWithLifecycle()
+    val conflictsState by conflictsVm.state.collectAsStateWithLifecycle()
     val updateState by updateVm.state.collectAsStateWithLifecycle()
     val updateAvailable by updateVm.available.collectAsStateWithLifecycle()
     val boardRepo = remember { BoardRepository() }
+    val gitlabRepo = remember { website.msdnna.tessera.data.repository.GitlabRepository() }
 
     var dest by remember { mutableStateOf<MainDest>(MainDest.Home) }
     var pendingTaskId by remember { mutableStateOf<String?>(null) }
+    // Deep-link from the «Этапы» screen: open a board filtered to this milestone.
+    var pendingMilestoneId by remember { mutableStateOf<String?>(null) }
+    // The GitLab-integration project (if any), so the milestone manager only offers
+    // «В GitLab» on milestones of that project (resolved from the integration board).
+    var glProjectId by remember { mutableStateOf<String?>(null) }
     var notesPreselectId by remember { mutableStateOf<String?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
@@ -141,6 +150,32 @@ fun MainScreen(
             val board = runCatching { boardRepo.board(boardId) }.getOrNull() ?: return@launch
             navTo(MainDest.BoardView(board))
             pendingTaskId = taskId
+        }
+    }
+
+    // Deep-link «Этап» → open the project's (first) board, filtered to the milestone.
+    fun openBoardWithMilestone(projectId: String, milestoneId: String) {
+        scope.launch {
+            val board = state.boardsByProject[projectId]?.firstOrNull()
+                ?: runCatching { boardRepo.boards(projectId) }.getOrNull()?.firstOrNull()
+                ?: return@launch
+            navTo(MainDest.BoardView(board))
+            pendingMilestoneId = milestoneId
+        }
+    }
+
+    // Load GitLab write-back conflicts for the current workspace (count badges + resolver).
+    LaunchedEffect(state.currentId) { conflictsVm.load(state.currentId) }
+
+    // Resolve the GitLab-integration project once the workspace + its boards are known.
+    LaunchedEffect(state.currentId, state.boardsByProject) {
+        glProjectId = if (state.currentId.isBlank()) {
+            null
+        } else {
+            val integ = runCatching { gitlabRepo.integration(state.currentId) }.getOrNull()
+            val boardId = integ?.boardId?.takeIf { integ.configured }
+            if (boardId == null) null
+            else state.boardsByProject.entries.firstOrNull { e -> e.value.any { it.id == boardId } }?.key
         }
     }
 
@@ -189,6 +224,8 @@ fun MainScreen(
 
                 saved == "reminders" -> dest = MainDest.Reminders
 
+                saved == "milestones" -> dest = MainDest.Milestones
+
                 saved.startsWith("board:") -> {
                     val id = saved.removePrefix("board:")
                     runCatching { boardRepo.board(id) }.getOrNull()?.let { dest = MainDest.BoardView(it) }
@@ -206,6 +243,7 @@ fun MainScreen(
                 is MainDest.Home -> "home"
                 is MainDest.Notes -> "notes"
                 is MainDest.Reminders -> "reminders"
+                is MainDest.Milestones -> "milestones"
                 is MainDest.GitLabSettings -> "gitlab"
                 is MainDest.GitLabJournal -> "gitlab"
                 is MainDest.Notifications -> "notifications"
@@ -250,11 +288,13 @@ fun MainScreen(
                     onOpenHome = { go(MainDest.Home) },
                     onOpenReminders = { go(MainDest.Reminders) },
                     onOpenNotes = { go(MainDest.Notes) },
+                    onOpenMilestones = { go(MainDest.Milestones) },
                     onOpenMembers = {
                         membersOpen = true
                         scope.launch { drawerState.close() }
                     },
                     onOpenGitlab = { go(MainDest.GitLabSettings) },
+                    conflictCount = conflictsState.count,
                     onOpenNotifications = { go(MainDest.Notifications) },
                     onOpenSettings = { go(MainDest.Settings) },
                     onOpenAdmin = { go(MainDest.Admin) },
@@ -317,9 +357,21 @@ fun MainScreen(
 
                             is MainDest.Reminders -> RemindersScreen()
 
+                            is MainDest.Milestones -> MilestonesScreen(
+                                workspaceId = state.currentId,
+                                projects = state.projects,
+                                workspace = state.current,
+                                glProjectId = glProjectId,
+                                onOpenMilestone = { projectId, milestoneId ->
+                                    openBoardWithMilestone(projectId, milestoneId)
+                                },
+                            )
+
                             is MainDest.GitLabSettings -> GitLabSettingsScreen(
                                 workspaceId = state.currentId,
                                 onOpenJournal = { navTo(MainDest.GitLabJournal) },
+                                conflictCount = conflictsState.count,
+                                onOpenConflicts = { conflictsVm.openResolver() },
                             )
 
                             is MainDest.GitLabJournal -> GitLabJournalScreen(workspaceId = state.currentId)
@@ -335,6 +387,8 @@ fun MainScreen(
                                 workspaceId = state.currentId,
                                 initialTaskId = pendingTaskId,
                                 onInitialTaskConsumed = { pendingTaskId = null },
+                                initialMilestoneId = pendingMilestoneId,
+                                onInitialMilestoneConsumed = { pendingMilestoneId = null },
                                 archiveOpen = boardArchiveOpen,
                                 tagsOpen = boardTagsOpen,
                                 onCloseArchive = { boardArchiveOpen = false },
@@ -348,6 +402,10 @@ fun MainScreen(
 
             if (membersOpen) {
                 MembersModal(workspaceId = state.currentId, onDismiss = { membersOpen = false })
+            }
+
+            if (conflictsState.resolverOpen) {
+                ConflictResolverModal(vm = conflictsVm, onDismiss = { conflictsVm.closeResolver() })
             }
 
             if (searchOpen) {
@@ -526,6 +584,7 @@ private fun titleFor(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "Моя работа"
     is MainDest.Notes -> "Заметки"
     is MainDest.Reminders -> "Напоминания"
+    is MainDest.Milestones -> "Этапы"
     is MainDest.GitLabSettings -> "GitLab"
     is MainDest.GitLabJournal -> "Журнал синхронизации"
     is MainDest.Notifications -> "Уведомления"
@@ -539,6 +598,7 @@ private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "home"
     is MainDest.Notes -> "notes"
     is MainDest.Reminders -> "reminders"
+    is MainDest.Milestones -> "milestones"
     is MainDest.GitLabSettings -> "gitlab"
     is MainDest.GitLabJournal -> "gitlab"
     is MainDest.Notifications -> "notifications"

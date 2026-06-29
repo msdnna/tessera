@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -45,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,6 +55,7 @@ import coil.compose.AsyncImage
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Task
+import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
@@ -89,6 +92,8 @@ fun TaskCard(
     drag: BoardDragState? = null,
     onDropTask: ((Task) -> Unit)? = null,
     nestSlot: Pair<String?, String?>? = null,
+    conflictTaskIds: Set<String> = emptySet(),
+    onOpenConflict: ((Task) -> Unit)? = null,
 ) {
     val c = Tessera.colors
     // Keep ALL subtasks composed during a drag (removing the dragged one would
@@ -143,6 +148,10 @@ fun TaskCard(
                 ),
         ) {
             CardHeader(task, vm, onOpen, showMenu = !compact)
+            if (onOpenConflict != null && conflictTaskIds.contains(task.id)) {
+                Spacer(Modifier.height(6.dp))
+                ConflictPill { onOpenConflict(task) }
+            }
             Spacer(Modifier.height(8.dp))
             PillsRow(task, state, vm)
         }
@@ -166,6 +175,8 @@ fun TaskCard(
                         nested = true,
                         drag = drag,
                         onDropTask = onDropTask,
+                        conflictTaskIds = conflictTaskIds,
+                        onOpenConflict = onOpenConflict,
                         modifier = Modifier.animatePlacement().zIndex((subtasks.size - i).toFloat()).overlapTop(RadiusLg * 2)
                             .subtaskDrag(drag, onDropTask, sub),
                     )
@@ -381,8 +392,52 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
         EstimatePill(task, state)
         Spacer(Modifier.width(6.dp))
         TagsPill(task, state, vm)
+        MilestonePill(task, state)
         Spacer(Modifier.weight(1f))
         AssigneesPill(task, state, vm)
+    }
+}
+
+/** Amber «Конфликт» pill for a task with an unresolved GitLab write-back conflict;
+ *  tapping opens the resolver focused on this task (web parity). */
+@Composable
+private fun ConflictPill(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(RadiusSm)
+    Row(
+        Modifier.clip(shape)
+            .background(ConflictAmber.copy(alpha = 0.14f))
+            .border(1.dp, ConflictAmber.copy(alpha = 0.55f), shape)
+            .clickableNoRipple(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IonIcon(Ion.GIT_NETWORK, size = 13.dp, tint = ConflictAmber)
+        Spacer(Modifier.width(5.dp))
+        Text("Конфликт", color = ConflictAmber, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/** Display-only milestone («Этап») chip: a flag + the milestone title, dimmed when
+ *  the milestone is closed. Only shown when the task is assigned one (web parity;
+ *  assigning/clearing happens in the task modal). */
+@Composable
+private fun MilestonePill(task: Task, state: BoardUiState) {
+    val c = Tessera.colors
+    val ms = task.milestoneId?.let { state.milestonesMap[it] } ?: return
+    Spacer(Modifier.width(6.dp))
+    Box(Modifier.alpha(if (ms.isClosed) 0.6f else 1f)) {
+        Pill(onClick = {}, set = true) {
+            IonIcon(Ion.ROCKET, size = 13.dp, tint = c.text2)
+            Spacer(Modifier.width(4.dp))
+            Text(
+                ms.title,
+                color = c.text2,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 96.dp),
+            )
+        }
     }
 }
 
@@ -545,7 +600,9 @@ private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel) {
         }
         if (task.recurrence != null) {
             Spacer(Modifier.width(4.dp))
-            IonIcon(Ion.REPEAT, size = 11.dp, tint = c.primary)
+            // Recur glyph inherits the pill's text colour (web 0.113.2) — the purple
+            // accent clashed on the dark theme.
+            IonIcon(Ion.REPEAT, size = 11.dp, tint = tint)
         }
     }
     if (picker) {

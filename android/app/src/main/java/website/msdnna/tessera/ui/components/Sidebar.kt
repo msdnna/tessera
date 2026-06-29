@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -52,6 +53,7 @@ import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.User
+import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
@@ -109,8 +111,10 @@ fun Sidebar(
     onOpenHome: () -> Unit,
     onOpenReminders: () -> Unit,
     onOpenNotes: () -> Unit,
+    onOpenMilestones: () -> Unit,
     onOpenMembers: () -> Unit,
     onOpenGitlab: () -> Unit,
+    conflictCount: Int = 0,
     onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenAdmin: () -> Unit,
@@ -166,7 +170,23 @@ fun Sidebar(
                 // Brand wordmark intentionally omitted — the spacer reserves room
                 // for future header controls while keeping the icons right-aligned.
                 Spacer(Modifier.weight(1f))
-                IonIconButton(Ion.GIT_BRANCH, onClick = onOpenGitlab)
+                Box {
+                    IonIconButton(Ion.GIT_BRANCH, onClick = onOpenGitlab)
+                    if (conflictCount > 0) {
+                        Box(
+                            Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 2.dp)
+                                .clip(CircleShape).background(ConflictAmber)
+                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                        ) {
+                            Text(
+                                if (conflictCount > 9) "9+" else "$conflictCount",
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
                 IonIconButton(Ion.NOTIFICATIONS, onClick = onOpenNotifications)
                 IonIconButton(Ion.PEOPLE, onClick = onOpenMembers)
                 IonIconButton(Ion.PALETTE, onClick = { showTheme = true })
@@ -209,6 +229,7 @@ fun Sidebar(
 
             Spacer(Modifier.padding(top = 2.dp))
             NavRow(Ion.HOME, "Моя работа", active = activeNav == "home", onClick = onOpenHome)
+            NavRow(Ion.ROCKET, "Этапы", active = activeNav == "milestones", onClick = onOpenMilestones)
             NavRow(Ion.ALARM, "Напоминания", active = activeNav == "reminders", onClick = onOpenReminders)
             NavRow(Ion.DOCUMENT_TEXT, "Заметки", active = activeNav == "notes", onClick = onOpenNotes)
             if (user?.isAdmin == true) {

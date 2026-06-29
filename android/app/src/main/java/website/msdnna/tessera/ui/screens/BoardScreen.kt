@@ -71,6 +71,8 @@ fun BoardScreen(
     workspaceId: String,
     initialTaskId: String? = null,
     onInitialTaskConsumed: () -> Unit = {},
+    initialMilestoneId: String? = null,
+    onInitialMilestoneConsumed: () -> Unit = {},
     archiveOpen: Boolean = false,
     tagsOpen: Boolean = false,
     onCloseArchive: () -> Unit = {},
@@ -81,6 +83,10 @@ fun BoardScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val wsVm: WorkspaceViewModel = viewModel()
     val wsState by wsVm.state.collectAsStateWithLifecycle()
+    // Shared (activity-scoped) conflicts VM — loaded by MainScreen; drives the card
+    // «Конфликт» pill and opens the resolver focused on the tapped task.
+    val conflictsVm: website.msdnna.tessera.ui.viewmodels.ConflictsViewModel = viewModel()
+    val conflictsState by conflictsVm.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(board.id, workspaceId) { vm.load(board.id, workspaceId) }
 
@@ -97,6 +103,16 @@ fun BoardScreen(
         if (initialTaskId != null) {
             openTaskId = initialTaskId
             onInitialTaskConsumed()
+        }
+    }
+    // Deep-link «Этап» filter from the «Этапы» screen — apply AFTER the board loads
+    // (load() applies the saved view config, which would otherwise clobber it).
+    var milestoneApplied by remember(board.id) { mutableStateOf(false) }
+    LaunchedEffect(initialMilestoneId, state.loading) {
+        if (initialMilestoneId != null && !state.loading && !milestoneApplied) {
+            vm.setMilestoneFilter(initialMilestoneId)
+            milestoneApplied = true
+            onInitialMilestoneConsumed()
         }
     }
     LaunchedEffect(archiveOpen) { if (archiveOpen) vm.loadArchived() }
@@ -123,11 +139,22 @@ fun BoardScreen(
 
                     else -> Crossfade(targetState = state.viewMode, animationSpec = tween(200), label = "viewMode") { mode ->
                         when (mode) {
-                            BoardViewMode.Kanban -> KanbanView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+                            BoardViewMode.Kanban -> KanbanView(
+                                state = state,
+                                vm = vm,
+                                onOpenTask = { openTaskId = it.id },
+                                conflictTaskIds = conflictsState.taskIds,
+                                onOpenConflict = { conflictsVm.openResolver(it.id) },
+                            )
+
                             BoardViewMode.List -> BoardListView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+
                             BoardViewMode.Calendar -> BoardCalendarView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+
                             BoardViewMode.Matrix -> BoardMatrixView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+
                             BoardViewMode.Timeline -> BoardTimelineView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
+
                             BoardViewMode.Gantt -> BoardGanttView(state = state, vm = vm, onOpenTask = { openTaskId = it.id })
                         }
                     }
@@ -169,6 +196,7 @@ fun BoardScreen(
             prefixNames = state.prefixNames,
             members = state.members,
             gitlabMembers = state.gitlabMembers,
+            milestones = state.milestones,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
             breadcrumb = breadcrumb,
             estimation = state.estimation,

@@ -99,6 +99,9 @@ val PriorityLabels = listOf("Без приоритета", "Низкий", "Об
 /** Destructive-action red (web `--t-danger`). Theme-neutral; readable on both. */
 val TesseraDanger = Color(0xFFE0533D)
 
+/** Warning amber for GitLab write-back conflicts (web `#e0922f`). */
+val ConflictAmber = Color(0xFFE0922F)
+
 private fun relativeLuminance(c: Color): Double {
     fun chan(v: Float): Double {
         val d = v.toDouble()

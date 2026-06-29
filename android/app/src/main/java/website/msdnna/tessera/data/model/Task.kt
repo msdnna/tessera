@@ -52,6 +52,9 @@ data class Task(
     // Eisenhower-matrix override: pinned quadrant 0-3, or null = derive from
     // priority + due-date (see the matrix view). Encoding matches the backend.
     @SerializedName("eisenhower_quadrant") val eisenhowerQuadrant: Int? = null,
+    // Assigned milestone («Этап»), resolved to a name from the board's milestone
+    // list (null = unassigned). Mirrors the web `task.milestone_id`.
+    @SerializedName("milestone_id") val milestoneId: String? = null,
     @SerializedName("tag_ids") val tagIds: List<String> = emptyList(),
     @SerializedName("assignee_ids") val assigneeIds: List<String> = emptyList(),
     // GitLab provenance (present when the card is mirrored from a GitLab issue).

@@ -100,6 +100,45 @@ data class GitlabSyncRun(
     @SerializedName("finished_at") val finishedAt: String? = null,
 )
 
+/**
+ * A parked write-back conflict (mirrors backend `conflictDTO`): GitLab and Tessera
+ * both changed the same field(s) since the last sync. `change_kind` ∈
+ * due|estimate|title_desc|state|priority. Discrete kinds (state/priority) can't be
+ * manually merged. Resolved via ours/theirs/manual.
+ */
+data class GitlabConflict(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("task_id") val taskId: String = "",
+    @SerializedName("task_title") val taskTitle: String = "",
+    @SerializedName("task_number") val taskNumber: Long? = null,
+    @SerializedName("change_kind") val changeKind: String = "",
+    @SerializedName("gl_iid") val glIid: Long = 0,
+    @SerializedName("fields") private val fieldsRaw: List<ConflictField>? = null,
+    @SerializedName("detected_at") val detectedAt: String? = null,
+) {
+    val fields: List<ConflictField> get() = fieldsRaw.orEmpty()
+
+    /** Manual merge is only meaningful for free-text/numeric fields. */
+    val manualAllowed: Boolean get() = fields.all { it.field != "state" && it.field != "priority" }
+}
+
+/** One diverged field of a conflict: the last-synced [base], Tessera's [ours], GitLab's [theirs]. */
+data class ConflictField(
+    @SerializedName("field") val field: String = "",
+    @SerializedName("base") val base: String = "",
+    @SerializedName("ours") val ours: String = "",
+    @SerializedName("theirs") val theirs: String = "",
+) {
+    val isText: Boolean get() = this.field == "title" || this.field == "description"
+}
+
+/** Resolve a conflict: [resolution] ∈ ours|theirs|manual; [value] carries the merged
+ *  field values for a manual resolution (keyed by field name). */
+data class ResolveConflictRequest(
+    @SerializedName("resolution") val resolution: String,
+    @SerializedName("value") val value: Map<String, String>? = null,
+)
+
 /** One action within a run (mirrors backend `syncActionDTO`). `detail` is the raw
  *  before/after (pull) or payload/result (push) blob, rendered ad-hoc by the UI. */
 data class GitlabSyncAction(
