@@ -8,7 +8,6 @@ import {
   CheckmarkOutline,
   RefreshOutline,
   LogoGitlab,
-  OpenOutline,
 } from '@vicons/ionicons5'
 import { projects as projApi, milestones as msApi, gitlab as glApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
@@ -227,16 +226,6 @@ watch(
               </n-tooltip>
               <span v-else class="m-name" @click="startEdit(m)">{{ m.title }}</span>
               <span v-if="fmtRange(m)" class="m-due">{{ fmtRange(m) }}</span>
-              <a
-                v-if="isLinked(m)"
-                class="m-gl"
-                :href="m.gl_url"
-                target="_blank"
-                rel="noopener"
-                title="Открыть в GitLab"
-              >
-                <n-icon :component="LogoGitlab" /><n-icon :component="OpenOutline" :size="11" />
-              </a>
               <span class="m-spacer" />
               <!-- explicit, per-milestone push to GitLab (native + linkable only) -->
               <n-button
@@ -249,6 +238,19 @@ watch(
               >
                 <template #icon><n-icon :component="LogoGitlab" /></template>
                 В GitLab
+              </n-button>
+              <!-- open the linked GitLab milestone (a button by the delete one) -->
+              <n-button
+                v-if="isLinked(m)"
+                size="tiny"
+                tertiary
+                tag="a"
+                :href="m.gl_url"
+                target="_blank"
+                rel="noopener"
+                title="Открыть в GitLab"
+              >
+                <template #icon><n-icon :component="LogoGitlab" /></template>
               </n-button>
               <!-- state toggle: native only (GitLab-linked state is synced from GitLab) -->
               <n-button
@@ -336,15 +338,6 @@ watch(
 .m-name.linked:hover {
   color: var(--t-text1);
 }
-.m-gl {
-  display: inline-flex;
-  align-items: center;
-  gap: 1px;
-  color: var(--t-text3);
-}
-.m-gl:hover {
-  color: var(--t-primary);
-}
 .m-due {
   font-size: 12px;
   color: var(--t-text3);
@@ -363,11 +356,14 @@ watch(
 }
 .m-new {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
   flex-wrap: wrap;
   padding-top: 12px;
   border-top: 1px solid var(--t-border);
+}
+.m-new .n-button {
+  margin-left: 4px;
 }
 .m-new :deep(.n-input) {
   flex: 1;
