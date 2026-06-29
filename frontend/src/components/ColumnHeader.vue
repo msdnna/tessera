@@ -18,6 +18,7 @@ import { columns as columnsApi } from '@/api'
 const props = defineProps({
   dcol: { type: Object, required: true },
   count: { type: Number, default: 0 },
+  estimate: { type: String, default: '' }, // Σ estimate (milestone grouping); '' = hide
   editable: { type: Boolean, default: false }, // status columns only
   isDone: { type: Boolean, default: false }, // task-completing column
   first: { type: Boolean, default: false }, // leftmost column (To-Do icon)
@@ -159,6 +160,7 @@ async function removeCol() {
     />
     <span v-else class="col-title col-drag" @dblclick="startRename">{{ dcol.name }}</span>
     <span class="count">{{ count }}</span>
+    <span v-if="estimate" class="col-est" title="Суммарная оценка задач этапа">Σ {{ estimate }}</span>
     <n-popover v-if="editable" v-model:show="settingsOpen" trigger="click" placement="bottom-end">
       <template #trigger>
         <n-button text size="tiny" class="col-menu">
@@ -252,6 +254,11 @@ async function removeCol() {
   background: var(--t-hover);
   border-radius: 10px;
   padding: 0 7px;
+}
+.col-est {
+  font-size: 11px;
+  color: var(--t-text3);
+  white-space: nowrap;
 }
 .col-menu {
   font-size: 16px;

@@ -10,6 +10,7 @@ import {
   LogoGitlab,
 } from '@vicons/ionicons5'
 import { projects as projApi, milestones as msApi, gitlab as glApi } from '@/api'
+import { milestoneRange } from '@/utils/milestones'
 import EmptyState from '@/components/EmptyState.vue'
 
 const props = defineProps({
@@ -158,17 +159,7 @@ async function remove(m) {
   }
 }
 
-function fmtDate(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-// Render the milestone's start–due window (either side may be missing).
-function fmtRange(m) {
-  if (m.start_date && m.due_date) return `${fmtDate(m.start_date)} – ${fmtDate(m.due_date)}`
-  if (m.due_date) return `до ${fmtDate(m.due_date)}`
-  if (m.start_date) return `с ${fmtDate(m.start_date)}`
-  return ''
-}
+const fmtRange = milestoneRange
 
 watch(
   () => props.show,

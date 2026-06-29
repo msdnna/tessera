@@ -30,6 +30,7 @@ import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from 
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
+import { milestoneRange } from '@/utils/milestones'
 import { formatEstimate, formatEstimateFull, estimateTooltip, sumEstimates } from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
@@ -650,6 +651,7 @@ async function submitAddSub() {
             </div>
           </template>
           Этап: {{ taskMilestone.title }}{{ taskMilestone.state === 'closed' ? ' (закрыт)' : '' }}
+          <template v-if="milestoneRange(taskMilestone)"> · {{ milestoneRange(taskMilestone) }}</template>
         </n-tooltip>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->

@@ -40,6 +40,7 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { tagNamespace, prefixLabel, buildTagGroups } from '@/utils/tagGroups'
+import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -1033,6 +1034,15 @@ const displayColumns = computed(() => {
   ]
 })
 
+// Estimation rollup per milestone column: Σ of the column's tasks' own estimates,
+// formatted in the project's unit. Shown only when grouped by milestone.
+const estCfg = computed(() => wsStore.estimationFor(board.value?.project_id))
+function columnEstimate(dcol) {
+  if (groupMode.value !== 'milestone') return ''
+  const v = sumEstimates(lists.value[dcol.key] || [])
+  return v ? formatEstimate(v, estCfg.value) : ''
+}
+
 function rebuildLists() {
   // 'assignee'/'none' are timeline-only swimlane modes; the board/list views only
   // understand status/tag/milestone columns, so skip rebuilding for those.
@@ -1621,6 +1631,7 @@ watch(
               <ColumnHeader
                 :dcol="dcol"
                 :count="(lists[dcol.key] || []).length"
+                :estimate="columnEstimate(dcol)"
                 :editable="groupMode === 'status'"
                 :is-done="groupMode === 'status' && dcol.key === doneColumnId"
                 :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"

@@ -51,6 +51,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
+import { milestoneRange } from '@/utils/milestones'
 import { toggleTaskMarker } from '@/utils/markdown'
 import {
   formatEstimate,
@@ -1100,6 +1101,9 @@ function eventText(e) {
                     <span :class="{ muted: !taskMilestone }">
                       {{ taskMilestone ? taskMilestone.title : 'Не задан' }}
                     </span>
+                    <span v-if="taskMilestone && milestoneRange(taskMilestone)" class="est-range">
+                      · {{ milestoneRange(taskMilestone) }}
+                    </span>
                     <span v-if="taskMilestone?.state === 'closed'" class="est-range">· закрыт</span>
                   </button>
                 </template>
@@ -1115,7 +1119,10 @@ function eventText(e) {
                       class="menu-item"
                       @click="setMilestone(m.id)"
                     >
-                      <span class="grow" :class="{ 'ms-closed': m.state === 'closed' }">{{ m.title }}</span>
+                      <span class="grow" :class="{ 'ms-closed': m.state === 'closed' }">
+                        {{ m.title }}
+                        <span v-if="milestoneRange(m)" class="ms-opt-range">{{ milestoneRange(m) }}</span>
+                      </span>
                       <n-icon
                         v-if="task?.milestone_id === m.id"
                         :component="CheckmarkOutline"
@@ -2022,6 +2029,11 @@ function eventText(e) {
 }
 .ms-closed {
   opacity: 0.6;
+}
+.ms-opt-range {
+  color: var(--t-text3);
+  font-size: 11px;
+  margin-left: 6px;
 }
 .ms-new {
   display: flex;
