@@ -182,6 +182,8 @@ func (h *API) SetTaskMilestone(c *gin.Context) {
 		fail(c)
 		return
 	}
+	// A manual milestone change on a GitLab-linked task wins over the sync.
+	_ = h.q.MarkGitlabMilestoneOverridden(c, id)
 	if t, err := h.q.GetTask(c, id); err == nil {
 		h.broadcast(wsID, "task.updated", t)
 	}
@@ -202,6 +204,7 @@ func (h *API) ClearTaskMilestone(c *gin.Context) {
 		fail(c)
 		return
 	}
+	_ = h.q.MarkGitlabMilestoneOverridden(c, id)
 	if t, err := h.q.GetTask(c, id); err == nil {
 		h.broadcast(wsID, "task.updated", t)
 	}

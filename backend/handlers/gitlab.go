@@ -641,6 +641,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			return uuid.Nil, false, false
 		}
 		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue)})
+		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false)
 		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 		h.broadcast(wsID, "task.created", t)
@@ -696,6 +697,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			return uuid.Nil, false, false
 		}
 		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue)})
+		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden)
 		// Fields with an open write-back conflict are frozen: don't overwrite the
 		// user's pending value from GitLab until they resolve it.
 		frozen := h.conflictFrozenKinds(ctx, link.TaskID)

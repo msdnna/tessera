@@ -1870,6 +1870,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.64.0] — 2026-06-29
+- **Pull-маппинг этапов из GitLab (B/M1, мигр. 0039).** GraphQL-селект milestone расширен до
+  `{ id iid title state startDate dueDate webPath }`; `Issue`/`toIssue` несут `MilestoneGID/IID/Title/
+  State/URL`. На синке `reconcileTaskMilestone`: если у issue есть milestone — апсертит **нативный**
+  `milestones` + `gitlab_milestone_links` (новая loose-coupled таблица; `gl_numeric_id` парсится из gid
+  `gid://gitlab/Milestone/<n>` — без лишнего REST) и проставляет `task.milestone_id`; если milestone у
+  issue убрали — снимает (GitLab — источник истины). Ручная смена этапа на линкованной задаче ставит
+  `gitlab_links.milestone_overridden` (зеркалит due/start/estimate-оверрайды) → синк её не перетирает.
+  Наличие строки `gitlab_milestone_links` помечает этап GitLab-источником (read-only в Tessera). Юнит на
+  парсер gid. Полный pull-путь требует живого GitLab (live-verify отдельно).
+
 ### [0.63.0] — 2026-06-29
 - **Этапы (milestones) — нативная сущность (M0, мигр. 0038).** Новая project-scoped таблица `milestones`
   (`title`, `description`, `start_date?`, `due_date?`, `state` active|closed, `position`) + nullable

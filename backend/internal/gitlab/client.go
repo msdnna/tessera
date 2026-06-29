@@ -164,6 +164,11 @@ type Issue struct {
 	TimeEstimate   int64      // issue time estimate in seconds (0 when unset)
 	MilestoneDue   *time.Time // due date (End date) of the issue's milestone, if any
 	MilestoneStart *time.Time // start date of the issue's milestone (date-only), if any
+	MilestoneGID   string     // milestone GraphQL global id (gid://gitlab/Milestone/<n>), "" when none
+	MilestoneIID   int64      // milestone iid (0 when none/unavailable)
+	MilestoneTitle string     // milestone title
+	MilestoneState string     // active | closed
+	MilestoneURL   string     // milestone web path/url
 	Labels       []Label
 	AuthorLogin  string // GitLab username of the issue author (may not be a Tessera user)
 	AuthorName   string
@@ -188,7 +193,7 @@ query($path: ID!, $username: String, $iids: [String!], $after: String) {
         createdAt
         dueDate
         timeEstimate
-        milestone { startDate dueDate }
+        milestone { id iid title state startDate dueDate webPath }
         author { username name avatarUrl }
         assignees { nodes { username name avatarUrl } }
         labels { nodes { title color } }
@@ -265,8 +270,13 @@ type issueNode struct {
 	DueDate      string     `json:"dueDate"`
 	TimeEstimate int64      `json:"timeEstimate"` // seconds (0 when unset)
 	Milestone    *struct {
+		ID        string `json:"id"`
+		IID       string `json:"iid"`
+		Title     string `json:"title"`
+		State     string `json:"state"`
 		StartDate string `json:"startDate"`
 		DueDate   string `json:"dueDate"`
+		WebPath   string `json:"webPath"`
 	} `json:"milestone"`
 	Author *struct {
 		Username  string `json:"username"`
@@ -324,6 +334,11 @@ func (n issueNode) toIssue(base string) Issue {
 	if n.Milestone != nil {
 		issue.MilestoneStart = parseDate(n.Milestone.StartDate)
 		issue.MilestoneDue = parseDate(n.Milestone.DueDate)
+		issue.MilestoneGID = n.Milestone.ID
+		issue.MilestoneIID, _ = strconv.ParseInt(n.Milestone.IID, 10, 64)
+		issue.MilestoneTitle = n.Milestone.Title
+		issue.MilestoneState = strings.ToLower(n.Milestone.State)
+		issue.MilestoneURL = absAvatar(base, n.Milestone.WebPath)
 	}
 	if n.Author != nil {
 		issue.AuthorLogin = n.Author.Username
