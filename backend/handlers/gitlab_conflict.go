@@ -246,10 +246,21 @@ type conflictDTO struct {
 }
 
 // ListGitlabConflicts returns every open write-back conflict for the workspace's
-// integration, newest first — the conflicts inbox.
+// integration, newest first — the conflicts inbox. Returns an empty list (not 400)
+// when the workspace has no GitLab integration, so clients can poll any workspace
+// for a conflict count without special-casing.
 func (h *API) ListGitlabConflicts(c *gin.Context) {
-	integ, ok := h.integrationForWorkspace(c)
-	if !ok {
+	wsID, ok := parseID(c, "id")
+	if !ok || !h.requireMember(c, wsID) {
+		return
+	}
+	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusOK, []conflictDTO{})
+		return
+	}
+	if err != nil {
+		fail(c)
 		return
 	}
 	rows, err := h.q.ListOpenConflicts(c, integ.ID)

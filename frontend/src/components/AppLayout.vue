@@ -16,6 +16,7 @@ import { getDeviceId, deviceLabel } from '@/utils/device'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useConflictsStore } from '@/stores/conflicts'
 import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
@@ -24,6 +25,7 @@ import { useOverlayBack } from '@/composables/useOverlayBack'
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
+const conflicts = useConflictsStore()
 const { isMobile } = useResponsive()
 const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
 const route = useRoute()
@@ -60,6 +62,7 @@ onBeforeUnmount(stopDrag)
 // device notifications must fire wherever you are.
 useRealtime((ev) => {
   notes.onEvent(ev, authStore.user?.id)
+  conflicts.onEvent(ev)
 })
 
 const drawerOpen = ref(false)
@@ -70,6 +73,7 @@ onMounted(async () => {
   await authStore.verify()
   await ws.loadWorkspaces()
   await notes.load()
+  conflicts.load(ws.currentId)
   // Register this browser as a routable "device" channel (best-effort).
   try {
     await notificationChannels.registerDevice({
@@ -86,6 +90,11 @@ onMounted(async () => {
 watch(
   () => route.fullPath,
   () => (drawerOpen.value = false),
+)
+// Refresh the open-conflict count when the active workspace changes.
+watch(
+  () => ws.currentId,
+  (id) => conflicts.load(id),
 )
 </script>
 

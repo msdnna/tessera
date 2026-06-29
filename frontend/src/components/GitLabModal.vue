@@ -8,6 +8,7 @@ import {
   NSwitch,
   NButton,
   NButtonGroup,
+  NBadge,
   NDropdown,
   NText,
   NIcon,
@@ -698,17 +699,25 @@ watch(
         <div class="gl-footer">
           <span class="gl-synced">Последняя синхронизация: {{ lastSyncedText }}</span>
           <div class="gl-footer-btns">
-            <n-button-group size="medium">
-              <n-button :loading="syncing" @click="syncNow">
-                <template #icon><n-icon :component="SyncOutline" /></template>
-                Синхронизировать
-              </n-button>
-              <n-dropdown trigger="click" :options="syncMenu" @select="onSyncMenu">
-                <n-button :disabled="syncing" class="gl-sync-caret">
-                  <template #icon><n-icon :component="ChevronDownOutline" /></template>
+            <n-badge
+              :value="conflictCount"
+              :max="9"
+              :show="conflictCount > 0"
+              color="#e0922f"
+              title="Есть неразрешённые конфликты — откройте «Конфликты» в меню рядом"
+            >
+              <n-button-group size="medium">
+                <n-button :loading="syncing" @click="syncNow">
+                  <template #icon><n-icon :component="SyncOutline" /></template>
+                  Синхронизировать
                 </n-button>
-              </n-dropdown>
-            </n-button-group>
+                <n-dropdown trigger="click" :options="syncMenu" @select="onSyncMenu">
+                  <n-button :disabled="syncing" class="gl-sync-caret">
+                    <template #icon><n-icon :component="ChevronDownOutline" /></template>
+                  </n-button>
+                </n-dropdown>
+              </n-button-group>
+            </n-badge>
             <n-button type="primary" size="medium" :loading="saving" @click="save">Сохранить</n-button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, h } from 'vue'
+import { ref, computed, h } from 'vue'
 import {
   NButton,
   NIcon,
@@ -19,6 +19,7 @@ import {
   ExtensionPuzzleOutline,
   LogoGitlab,
   TimerOutline,
+  WarningOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
@@ -26,10 +27,12 @@ import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useConflictsStore } from '@/stores/conflicts'
 import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
+import ConflictResolverModal from './ConflictResolverModal.vue'
 import EstimationModal from './EstimationModal.vue'
 import { DEFAULT_ESTIMATION } from '@/utils/estimation'
 
@@ -38,6 +41,7 @@ defineProps({ placement: { type: String, default: 'bottom-end' } })
 const theme = useThemeStore()
 const ws = useWorkspacesStore()
 const notes = useNotificationsStore()
+const conflicts = useConflictsStore()
 const router = useRouter()
 // On touch (mobile) tooltips fire on tap and overlap the dropdown/popover they
 // label — suppress them there.
@@ -45,22 +49,44 @@ const { isMobile } = useResponsive()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
+const showConflicts = ref(false)
 const showEstimation = ref(false)
 // Browser Back closes these modals instead of leaving the board.
 useOverlayBack(showMembers, () => (showMembers.value = false))
 useOverlayBack(showGitlab, () => (showGitlab.value = false))
+useOverlayBack(showConflicts, () => (showConflicts.value = false))
 useOverlayBack(showEstimation, () => (showEstimation.value = false))
-const integrationOptions = [
-  { label: 'GitLab', key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
+// GitLab row carries an orange conflict count when there are unresolved conflicts.
+const glLabel = () =>
+  h('span', { style: 'display:inline-flex;align-items:center;gap:8px' }, [
+    'GitLab',
+    conflicts.count
+      ? h(
+          'span',
+          {
+            style:
+              'min-width:18px;height:18px;padding:0 5px;border-radius:9px;display:inline-flex;' +
+              'align-items:center;justify-content:center;font-size:11px;font-weight:600;' +
+              'background:#e0922f;color:#fff;',
+          },
+          conflicts.count > 9 ? '9+' : String(conflicts.count),
+        )
+      : null,
+  ])
+const integrationOptions = computed(() => [
+  { label: glLabel, key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
   {
     label: 'Оценка задач',
     key: 'estimation',
     icon: () => h(NIcon, null, { default: () => h(TimerOutline) }),
   },
-]
+])
 function onIntegrationSelect(key) {
   if (key === 'gitlab') showGitlab.value = true
   else if (key === 'estimation') showEstimation.value = true
+}
+function openConflicts() {
+  showConflicts.value = true
 }
 
 function openNotification(n) {
@@ -101,10 +127,18 @@ function fmtTime(d) {
       <n-tooltip :disabled="isMobile">
         <template #trigger>
           <n-button quaternary circle size="small" aria-label="Интеграции">
-            <n-icon :component="ExtensionPuzzleOutline" />
+            <n-badge
+              :value="conflicts.count"
+              :max="9"
+              :show="conflicts.count > 0"
+              color="#e0922f"
+              class="conf-badge"
+            >
+              <n-icon :component="ExtensionPuzzleOutline" />
+            </n-badge>
           </n-button>
         </template>
-        Интеграции
+        {{ conflicts.count ? `Интеграции · конфликтов: ${conflicts.count}` : 'Интеграции' }}
       </n-tooltip>
     </n-dropdown>
 
@@ -115,9 +149,15 @@ function fmtTime(d) {
           <n-badge :value="notes.unread" :max="9" :show="notes.unread > 0" class="bell-badge">
             <n-icon :component="NotificationsOutline" />
           </n-badge>
+          <span v-if="conflicts.count" class="conf-dot" />
         </n-button>
       </template>
       <div class="feed">
+        <button v-if="conflicts.count" class="feed-item conf-row" @click="openConflicts">
+          <span class="conf-row-ic"><n-icon :component="WarningOutline" /></span>
+          <span class="ft">Конфликты обратной записи GitLab: {{ conflicts.count }}</span>
+          <span class="fa">открыть</span>
+        </button>
         <div class="feed-head">
           <span>Уведомления</span>
           <n-button
@@ -186,6 +226,11 @@ function fmtTime(d) {
 
     <MembersModal v-model:show="showMembers" :ws-id="ws.currentId" />
     <GitLabModal v-model:show="showGitlab" :ws-id="ws.currentId" />
+    <ConflictResolverModal
+      v-model:show="showConflicts"
+      :ws-id="ws.currentId"
+      @resolved="conflicts.load()"
+    />
     <EstimationModal
       v-model:show="showEstimation"
       scope="workspace"
@@ -202,6 +247,34 @@ function fmtTime(d) {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+/* Bell: a small orange dot (bottom-right) signals unresolved conflicts, separate
+   from the purple numeric unread badge (top-right). */
+.bell-btn {
+  position: relative;
+}
+.conf-dot {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e0922f;
+  border: 1.5px solid var(--t-surface);
+  pointer-events: none;
+}
+/* Pinned conflicts row at the top of the notification feed. */
+.conf-row {
+  border-bottom: 1px solid var(--t-border);
+}
+.conf-row-ic {
+  color: #e0922f;
+  display: inline-flex;
+  margin-right: 6px;
+}
+.conf-row .fa {
+  color: #b96a08;
 }
 /* Smaller notification badge so it doesn't rival the bell icon's size.
    Equal min-width/height + a pill radius keeps it a clean circle for a single

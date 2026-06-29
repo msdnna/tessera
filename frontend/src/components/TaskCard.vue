@@ -20,6 +20,7 @@ import {
   RepeatOutline,
   TimerOutline,
   RibbonOutline,
+  WarningOutline,
 } from '@vicons/ionicons5'
 
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
@@ -35,10 +36,13 @@ import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useConflictsStore } from '@/stores/conflicts'
 import { useDateLocale } from '@/composables/useDateLocale'
 
 const theme = useThemeStore()
 const wsStore = useWorkspacesStore()
+const conflictsStore = useConflictsStore()
+const hasConflict = computed(() => conflictsStore.has(props.task.id))
 const { formatDue } = useDateLocale()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
@@ -555,6 +559,17 @@ async function submitAddSub() {
       </div>
 
       <div class="pills">
+        <!-- unresolved GitLab write-back conflict on this task -->
+        <n-tooltip v-if="hasConflict">
+          <template #trigger>
+            <div class="pill set conf-pill">
+              <n-icon :component="WarningOutline" :size="13" />
+              <span class="pill-text">Конфликт</span>
+            </div>
+          </template>
+          Конфликт обратной записи GitLab — откройте «Интеграции» для разрешения
+        </n-tooltip>
+
         <!-- priority -->
         <n-popover trigger="click" placement="bottom-start">
           <template #trigger>
@@ -1097,6 +1112,16 @@ async function submitAddSub() {
 }
 .ms-pill.closed {
   opacity: 0.6;
+}
+/* conflict warning pill: orange, draws the eye to an unresolved write-back conflict */
+.conf-pill {
+  box-sizing: border-box;
+  height: 22px;
+  line-height: 1;
+  border-style: solid;
+  border-color: color-mix(in srgb, #e0922f 55%, transparent);
+  background: color-mix(in srgb, #e0922f 14%, transparent);
+  color: #b96a08;
 }
 .pill.set {
   border-style: solid;
