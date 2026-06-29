@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { NModal, NCard, NIcon, NButton, NInput, NText, useMessage } from 'naive-ui'
 import { LogoGitlab, WarningOutline, CheckmarkOutline } from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
-import { diffLines } from '@/utils/linediff'
+import { diffSegments } from '@/utils/linediff'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
 
@@ -51,8 +51,8 @@ function emptyVal(v) {
 function isTextField(field) {
   return field === 'title' || field === 'description'
 }
-const theirsDiff = (f) => diffLines(f.base, f.theirs)
-const oursDiff = (f) => diffLines(f.base, f.ours)
+const theirsDiff = (f) => diffSegments(f.base, f.theirs)
+const oursDiff = (f) => diffSegments(f.base, f.ours)
 
 async function load() {
   if (!props.wsId) return
@@ -176,14 +176,11 @@ watch(
                     <div class="c-col-lbl gl">GitLab</div>
                     <div class="c-val theirs" :class="{ empty: emptyVal(f.theirs) }">
                       <template v-if="emptyVal(f.theirs)">— пусто —</template>
-                      <template v-else-if="isTextField(f.field)">
-                        <div
-                          v-for="(l, li) in theirsDiff(f)"
-                          :key="li"
-                          class="c-line"
-                          :class="{ 'ch-theirs': l.changed }"
-                        >{{ l.text || ' ' }}</div>
-                      </template>
+                      <template v-else-if="isTextField(f.field)"><span
+                          v-for="(seg, si) in theirsDiff(f)"
+                          :key="si"
+                          :class="{ 'ch-theirs': seg.changed }"
+                        >{{ seg.text }}</span></template>
                       <template v-else>{{ f.theirs }}</template>
                     </div>
                   </div>
@@ -191,14 +188,11 @@ watch(
                     <div class="c-col-lbl mine">Моё (Tessera)</div>
                     <div class="c-val ours" :class="{ empty: emptyVal(f.ours) }">
                       <template v-if="emptyVal(f.ours)">— пусто —</template>
-                      <template v-else-if="isTextField(f.field)">
-                        <div
-                          v-for="(l, li) in oursDiff(f)"
-                          :key="li"
-                          class="c-line"
-                          :class="{ 'ch-ours': l.changed }"
-                        >{{ l.text || ' ' }}</div>
-                      </template>
+                      <template v-else-if="isTextField(f.field)"><span
+                          v-for="(seg, si) in oursDiff(f)"
+                          :key="si"
+                          :class="{ 'ch-ours': seg.changed }"
+                        >{{ seg.text }}</span></template>
                       <template v-else>{{ f.ours }}</template>
                     </div>
                   </div>
@@ -382,18 +376,16 @@ watch(
   color: var(--t-text3);
   font-style: italic;
 }
-/* per-line diff highlight: tint the lines that diverged from the base */
-.c-line {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.c-line.ch-theirs {
-  background: color-mix(in srgb, #d03050 18%, transparent);
+/* inline diff highlight: tint only the spans that diverged from the base */
+.ch-theirs {
+  background: color-mix(in srgb, #d03050 30%, transparent);
   border-radius: 3px;
+  padding: 0 1px;
 }
-.c-line.ch-ours {
-  background: color-mix(in srgb, var(--t-primary) 18%, transparent);
+.ch-ours {
+  background: color-mix(in srgb, var(--t-primary) 30%, transparent);
   border-radius: 3px;
+  padding: 0 1px;
 }
 .c-manual {
   margin-top: 8px;
