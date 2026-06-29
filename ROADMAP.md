@@ -528,8 +528,12 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
   GraphQL `milestone{ id iid title state startDate dueDate webPath }` → апсерт нативного этапа +
   `gitlab_milestone_links` (loose-coupled, `gl_numeric_id` из gid), `task.milestone_id` (+
   `milestone_overridden` оверрайд). **M2** write-back: флаг `push_milestone` → `PUT ?milestone_id=`
-  (`SetIssueMilestone`). **M3 (позже):** создание этапа на GL + группировка доски по этапам + таймлайн-
-  маркер + rollup оценки. Pull/push milestone требуют live-verify против реального GitLab.
+  (`SetIssueMilestone`). **M3 — ✅ СДЕЛАНО** (backend 0.63.0–0.68.0 / web 0.105.0–0.113.0): M3a создание
+  этапа на GL (`POST /milestones/:id/gitlab`), группировка/сорт/фильтр доски «По этапам», M3c Σ-оценка в
+  заголовке колонки-этапа, M3d диапазон дат в чипе/пикере, M3e пунктирные маркеры этапов на Timeline/Gantt,
+  **M3f отдельный экран «Этапы»** (`/milestones`, `MilestonesView`) — кросс-проектный roadmap воркспейса с
+  rollup'ами (агрегирующий `GET /workspaces/:id/milestones`) + deep-link на доску с фильтром по этапу.
+  Pull/push milestone и создание на GL требуют live-verify против реального GitLab.
 - **Android background push (FCM)** — device-канал поднимает уведомления только **пока приложение
   открыто** (C2); напоминания — локальный `AlarmManager`. Фоновый push при закрытом приложении (FCM)
   ещё не сделан — следующий кандидат для надёжной доставки (аналог Telegram-доставки в budget-go).
