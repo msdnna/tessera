@@ -1857,6 +1857,16 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.63.0] — 2026-06-29
+- **Этапы (milestones) — нативная сущность (M0, мигр. 0038).** Новая project-scoped таблица `milestones`
+  (`title`, `description`, `start_date?`, `due_date?`, `state` active|closed, `position`) + nullable
+  `tasks.milestone_id` (`ON DELETE SET NULL`). CRUD: `GET/POST /projects/:id/milestones`,
+  `PATCH/DELETE /milestones/:id`; привязка к задаче — `POST /tasks/:id/milestone` (`{milestone_id}`, null
+  снимает) и `DELETE /tasks/:id/milestone`. Членство — через `WorkspaceIDForProject`/`loadTask`; события
+  `milestone.created|updated|deleted` + `task.updated`. `milestone_id` отдаётся на карточках доски
+  (через `t.*` в `ListBoardTasksWithMeta`), клиент резолвит сам этап из списка проекта. GitLab pull/
+  write-back этапов — следующими шагами (M1/M2).
+
 ### [0.62.0] — 2026-06-29
 - **Write-back заголовка и описания задачи → issue (`title_desc`), за механизмом конфликтов.** Мёртвый
   шов оживлён: при правке `title`/`description` задачи `UpdateTask` ставит в outbox `title_desc`; воркер

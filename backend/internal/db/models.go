@@ -167,6 +167,19 @@ type Membership struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type Milestone struct {
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	StartDate   *time.Time `json:"start_date"`
+	DueDate     *time.Time `json:"due_date"`
+	State       string     `json:"state"`
+	Position    float64    `json:"position"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
 type Note struct {
 	ID          uuid.UUID  `json:"id"`
 	WorkspaceID uuid.UUID  `json:"workspace_id"`
@@ -333,6 +346,7 @@ type Task struct {
 	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
 	StartDate          *time.Time       `json:"start_date"`
 	Estimate           *float64         `json:"estimate"`
+	MilestoneID        *uuid.UUID       `json:"milestone_id"`
 }
 
 type TaskAssignee struct {
