@@ -1572,6 +1572,7 @@ watch(
         :tag-prefix="tagPrefix"
         :project-id="board?.project_id"
         :subtasks-by-parent="subtasksByParent"
+        :milestones="milestonesList"
         @open="openTask"
         @changed="onChanged"
       />
@@ -1588,6 +1589,7 @@ watch(
         :project-id="board?.project_id"
         :auto-sort="autoActive"
         :subtasks-by-parent="subtasksByParent"
+        :milestones="milestonesList"
         @open="openTask"
         @changed="onChanged"
       />

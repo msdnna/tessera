@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
 import { NDropdown, NPopconfirm, NIcon, NTooltip } from 'naive-ui'
-import { TimerOutline, ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
+import { TimerOutline, ChevronBackOutline, ChevronForwardOutline, RibbonOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { useThemeStore } from '@/stores/theme'
@@ -50,6 +50,8 @@ const props = defineProps({
   // { parentId: [subtask, …] } — scheduled subtasks render as thin sub-bars
   // stacked inside their parent's row (no graph linking; see subBars/rowHeight).
   subtasksByParent: { type: Object, default: () => ({}) },
+  // Project milestones — rendered as dashed vertical due-markers across the chart.
+  milestones: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -453,6 +455,18 @@ const todayLeft = computed(() =>
   tier.value === 'hours' ? xAt(Date.now(), range.value.start, dayW.value) : dayIndex(todayMs) * dayW.value + dayW.value / 2,
 )
 
+// Milestone due-markers: dashed vertical lines at each milestone's due date that
+// falls within the current axis range.
+const milestoneMarkers = computed(() =>
+  (props.milestones || [])
+    .filter((m) => m.due_date)
+    .map((m) => {
+      const di = dayIndex(parse(m.due_date))
+      return { id: m.id, title: m.title, di, left: di * dayW.value + dayW.value / 2 }
+    })
+    .filter((m) => m.di >= 0 && m.di < range.value.days),
+)
+
 // ── scroll-to-today ──
 // rAF-driven so the glide is reliable: native `scrollTo({behavior:'smooth'})` on
 // this overflow container was a no-op in practice (jumped instantly).
@@ -709,6 +723,14 @@ const cursorLabel = computed(() => {
              the scroll height; one continuous today-line spans the whole body) -->
         <div ref="bodyEl" class="tl-body">
           <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
+          <div
+            v-for="m in milestoneMarkers"
+            :key="m.id"
+            class="tl-ms"
+            :style="{ left: `${leftW + m.left}px` }"
+          >
+            <span class="tl-ms-label"><n-icon :component="RibbonOutline" :size="11" /> {{ m.title }}</span>
+          </div>
           <div v-if="cursor" class="tl-cursor" :style="{ left: `${leftW + cursor.axisX}px` }" />
           <div class="tl-vspacer" :style="{ height: `${vwindow.top}px` }" />
           <template v-for="r in vwindow.rows" :key="r.key">
@@ -1335,6 +1357,31 @@ const cursorLabel = computed(() => {
 }
 .tl-inner.animate .tl-today {
   transition: left 0.18s ease;
+}
+/* milestone due-marker: dashed vertical line + a small label at the top */
+.tl-ms {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px dashed color-mix(in srgb, var(--t-primary) 55%, transparent);
+  z-index: 1;
+  pointer-events: none;
+}
+.tl-ms-label {
+  position: sticky;
+  top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 3px;
+  padding: 0 5px;
+  height: 16px;
+  border-radius: 8px;
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--t-primary);
+  background: color-mix(in srgb, var(--t-primary) 12%, var(--t-surface));
 }
 
 /* ghost estimate envelope: dashed bar behind the real bar, sized to the estimate */
