@@ -19,7 +19,6 @@ import {
   ExtensionPuzzleOutline,
   LogoGitlab,
   TimerOutline,
-  WarningOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
@@ -32,7 +31,6 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
-import ConflictResolverModal from './ConflictResolverModal.vue'
 import EstimationModal from './EstimationModal.vue'
 import { DEFAULT_ESTIMATION } from '@/utils/estimation'
 
@@ -49,12 +47,10 @@ const { isMobile } = useResponsive()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
-const showConflicts = ref(false)
 const showEstimation = ref(false)
 // Browser Back closes these modals instead of leaving the board.
 useOverlayBack(showMembers, () => (showMembers.value = false))
 useOverlayBack(showGitlab, () => (showGitlab.value = false))
-useOverlayBack(showConflicts, () => (showConflicts.value = false))
 useOverlayBack(showEstimation, () => (showEstimation.value = false))
 // GitLab row carries an orange conflict count when there are unresolved conflicts.
 const glLabel = () =>
@@ -84,9 +80,6 @@ const integrationOptions = computed(() => [
 function onIntegrationSelect(key) {
   if (key === 'gitlab') showGitlab.value = true
   else if (key === 'estimation') showEstimation.value = true
-}
-function openConflicts() {
-  showConflicts.value = true
 }
 
 function openNotification(n) {
@@ -149,15 +142,9 @@ function fmtTime(d) {
           <n-badge :value="notes.unread" :max="9" :show="notes.unread > 0" class="bell-badge">
             <n-icon :component="NotificationsOutline" />
           </n-badge>
-          <span v-if="conflicts.count" class="conf-dot" />
         </n-button>
       </template>
       <div class="feed">
-        <button v-if="conflicts.count" class="feed-item conf-row" @click="openConflicts">
-          <span class="conf-row-ic"><n-icon :component="WarningOutline" /></span>
-          <span class="ft">Конфликты обратной записи GitLab: {{ conflicts.count }}</span>
-          <span class="fa">открыть</span>
-        </button>
         <div class="feed-head">
           <span>Уведомления</span>
           <n-button
@@ -226,11 +213,6 @@ function fmtTime(d) {
 
     <MembersModal v-model:show="showMembers" :ws-id="ws.currentId" />
     <GitLabModal v-model:show="showGitlab" :ws-id="ws.currentId" />
-    <ConflictResolverModal
-      v-model:show="showConflicts"
-      :ws-id="ws.currentId"
-      @resolved="conflicts.load()"
-    />
     <EstimationModal
       v-model:show="showEstimation"
       scope="workspace"
@@ -247,34 +229,6 @@ function fmtTime(d) {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-}
-/* Bell: a small orange dot (bottom-right) signals unresolved conflicts, separate
-   from the purple numeric unread badge (top-right). */
-.bell-btn {
-  position: relative;
-}
-.conf-dot {
-  position: absolute;
-  right: 1px;
-  bottom: 1px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #e0922f;
-  border: 1.5px solid var(--t-surface);
-  pointer-events: none;
-}
-/* Pinned conflicts row at the top of the notification feed. */
-.conf-row {
-  border-bottom: 1px solid var(--t-border);
-}
-.conf-row-ic {
-  color: #e0922f;
-  display: inline-flex;
-  margin-right: 6px;
-}
-.conf-row .fa {
-  color: #b96a08;
 }
 /* Smaller notification badge so it doesn't rival the bell icon's size.
    Equal min-width/height + a pill radius keeps it a clean circle for a single
