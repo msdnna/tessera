@@ -1247,14 +1247,9 @@ function eventText(e) {
               <span class="plabel"
                 ><n-icon :component="LogoGitlab" :size="15" /> GitLab</span
               >
-              <n-button
-                quaternary
-                size="small"
-                :loading="glCreating"
-                @click="createGlIssue"
-              >
-                Создать issue
-              </n-button>
+              <button class="val" :disabled="glCreating" @click="createGlIssue">
+                <span class="muted">{{ glCreating ? 'Создание…' : 'Создать issue' }}</span>
+              </button>
             </div>
           </div>
 
