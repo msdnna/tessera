@@ -100,6 +100,11 @@ watch(
 </script>
 
 <template>
+  <!-- Single root element: the App-level <transition mode="out-in"> can only track
+       a component with one root. A second sibling root (e.g. the conflict modal)
+       turns this into a fragment, and the leave callback never fires when AppLayout
+       unmounts on logout — leaving a blank screen until a hard refresh. -->
+  <div class="app-shell">
   <!-- Desktop: fixed sider + content -->
   <n-layout v-if="!isMobile" has-sider class="app-layout" :class="{ resizing: dragging }" style="height: 100vh">
     <n-layout-sider
@@ -164,9 +169,14 @@ watch(
     :focus-task-id="conflicts.focusTaskId"
     @resolved="conflicts.load()"
   />
+  </div>
 </template>
 
 <style scoped>
+/* Single transition-trackable root; the inner n-layouts own the 100vh height. */
+.app-shell {
+  height: 100vh;
+}
 /* Drag handle sitting in the gutter between the sidebar and the content. */
 .sider-resizer {
   position: fixed;
