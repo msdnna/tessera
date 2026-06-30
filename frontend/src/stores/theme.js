@@ -306,10 +306,13 @@ export const useThemeStore = defineStore('theme', () => {
 
   watch([isDark, activeTheme], applyCssVars, { immediate: true })
 
-  // Reset to defaults on logout (drop the signed-in user's cached prefs).
+  // Logout cleanup. Appearance (theme mode + accent) is a device-level preference:
+  // we KEEP it so the auth screens and any reload hold the look the user last chose
+  // — and re-persist it to localStorage. Only the account-bound preferences
+  // (localizing + board background) drop back to defaults. The next login
+  // re-hydrates everything from that user's server prefs (so a different account's
+  // saved appearance still wins once signed in).
   function reset() {
-    activeTheme.value = COLOR_THEMES[0]
-    themeMode.value = 'system'
     language.value = 'ru'
     timezone.value = ''
     country.value = ''
@@ -317,7 +320,9 @@ export const useThemeStore = defineStore('theme', () => {
     dateFormat.value = 'dd.MM.yyyy'
     weekStart.value = 1
     boardBackground.value = ''
-    localStorage.removeItem('tessera_prefs')
+    localStorage.setItem('tessera_prefs', JSON.stringify(snapshot()))
+    localStorage.setItem('tessera_color', activeTheme.value.key)
+    localStorage.setItem('tessera_dark', isDark.value ? '1' : '0')
   }
 
   return {
