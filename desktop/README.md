@@ -39,15 +39,42 @@ the `.deb`.
 
 ### Windows (built natively on Windows — not from WSL)
 
-Cross-compiling Windows installers from Linux is impractical; build on Windows:
+Cross-compiling from Linux is impractical, AND the native Windows toolchain
+(cargo/MSVC/NSIS) **cannot build over a `\\wsl$` / UNC path** — so the repo must
+live on a native Windows drive. sh scripts and the Makefile don't run on Windows
+either; use `desktop\build-windows.ps1` instead.
 
-1. Install **Rust (MSVC)**: rustup with the `x86_64-pc-windows-msvc` target.
-2. Install **Visual Studio C++ Build Tools** (the MSVC linker).
-3. **WebView2 Runtime** — preinstalled on current Windows 10/11; otherwise install
-   the Evergreen runtime.
+One-time setup:
+1. **Rust (MSVC)** via rustup (`x86_64-pc-windows-msvc` target).
+2. **Visual Studio C++ Build Tools** (the MSVC linker).
+3. **WebView2 Runtime** — preinstalled on current Windows 10/11; else install the
+   Evergreen runtime.
 4. `cargo install tauri-cli --version '^2' --locked`.
-5. From `desktop/src-tauri`: `cargo tauri build` → NSIS `.exe` installer under
-   `target/release/bundle/nsis/`.
+5. **Native checkout** (not a `\\wsl.localhost\...` path):
+   ```
+   git clone \\wsl.localhost\<distro>\home\msdnna\GolandProjects\tessera C:\src\tessera
+   ```
+   Re-sync later with `git -C C:\src\tessera pull`.
+
+Each build (frontend built in WSL, only Rust+NSIS on Windows):
+1. In WSL: `corepack yarn --cwd frontend build`.
+2. Mirror the built frontend into the Windows checkout (frontend\dist is
+   gitignored, so `git pull` won't carry it):
+   ```
+   robocopy \\wsl.localhost\<distro>\home\msdnna\GolandProjects\tessera\frontend\dist C:\src\tessera\frontend\dist /MIR
+   ```
+3. In PowerShell:
+   ```
+   # signing (self-update) — copy the key from WSL ~/.tessera/ first:
+   $env:TAURI_SIGNING_PRIVATE_KEY = 'C:\path\to\tessera-desktop-updater.key'
+   $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
+   pwsh C:\src\tessera\desktop\build-windows.ps1
+   ```
+   → NSIS `-setup.exe` (+ `.sig`) under `desktop\src-tauri\target\release\bundle\nsis\`.
+   Pass `-BuildFrontend` to build the frontend on Windows instead (needs Node 22 +
+   a prior `corepack yarn install` in `frontend\`).
+4. Copy the `-setup.exe` + its `.sig` into the WSL repo's `desktop-dist\`, then run
+   `make desktop-release` in WSL to fold the Windows entry into `latest.json`.
 
 ## Develop
 
