@@ -30,6 +30,12 @@ type Config struct {
 	// PublicURL (lock the API to the web app's origin); in dev defaults to "*".
 	// Override explicitly with CORS_ORIGIN.
 	CORSOrigin string
+	// Additional allowed origins for the desktop (Tauri) app, reflected by the
+	// CORS middleware alongside CORSOrigin. The Tauri webview origin differs per
+	// OS (Windows WebView2 ≈ http://tauri.localhost; Linux WebKitGTK ≈
+	// tauri://localhost), so all known forms are allowed by default. Override
+	// with DESKTOP_CORS_ORIGINS (comma-separated).
+	DesktopOrigins []string
 }
 
 // New reads configuration from the environment. In production
@@ -94,21 +100,38 @@ func New() *Config {
 		}
 	}
 
+	// Desktop (Tauri) origins reflected in addition to CORSOrigin. Ignored when
+	// CORSOrigin is a wildcard (dev), where every origin is already allowed.
+	desktopOrigins := splitCSV(getEnv("DESKTOP_CORS_ORIGINS",
+		"tauri://localhost,http://tauri.localhost,https://tauri.localhost"))
+
 	return &Config{
-		DatabaseURL:   dbURL,
-		Port:          getEnv("PORT", "8080"),
-		JWTSecret:     jwt,
-		AppEnv:        getEnv("APP_ENV", "development"),
-		UploadDir:     getEnv("UPLOAD_DIR", "./uploads"),
-		EncryptionKey: encKey,
-		SMTPHost:      os.Getenv("SMTP_HOST"),
-		SMTPPort:      getEnv("SMTP_PORT", "587"),
-		SMTPUser:      os.Getenv("SMTP_USER"),
-		SMTPPass:      os.Getenv("SMTP_PASS"),
-		SMTPFrom:      os.Getenv("SMTP_FROM"),
-		PublicURL:     publicURL,
-		CORSOrigin:    corsOrigin,
+		DatabaseURL:    dbURL,
+		Port:           getEnv("PORT", "8080"),
+		JWTSecret:      jwt,
+		AppEnv:         getEnv("APP_ENV", "development"),
+		UploadDir:      getEnv("UPLOAD_DIR", "./uploads"),
+		EncryptionKey:  encKey,
+		SMTPHost:       os.Getenv("SMTP_HOST"),
+		SMTPPort:       getEnv("SMTP_PORT", "587"),
+		SMTPUser:       os.Getenv("SMTP_USER"),
+		SMTPPass:       os.Getenv("SMTP_PASS"),
+		SMTPFrom:       os.Getenv("SMTP_FROM"),
+		PublicURL:      publicURL,
+		CORSOrigin:     corsOrigin,
+		DesktopOrigins: desktopOrigins,
 	}
+}
+
+// splitCSV splits a comma-separated env value into a trimmed, non-empty slice.
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {

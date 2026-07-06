@@ -1,6 +1,7 @@
 import { marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
 import DOMPurify from 'dompurify'
+import { isTauri, serverBase } from '@/utils/serverBase'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
 import typescript from 'highlight.js/lib/languages/typescript'
@@ -57,6 +58,20 @@ marked.use(
 // and mention chips (`<span data-type="mention" data-id="…">@Name</span>`).
 const SANITIZE_OPTS = {
   ADD_ATTR: ['target', 'rel', 'data-type', 'data-id', 'data-label', 'class'],
+}
+
+// On desktop (Tauri) the webview is served from a custom protocol, so the
+// backend's root-relative '/api/…' media URLs (GitLab avatar/asset proxies,
+// rewritten attachment links) would resolve against that protocol and 404.
+// Rewrite src/href starting with '/api/' to the configured server origin. Guarded
+// by isTauri() at registration time → web sanitisation is untouched.
+if (isTauri()) {
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    for (const attr of ['src', 'href']) {
+      const v = node.getAttribute && node.getAttribute(attr)
+      if (v && v.startsWith('/api/')) node.setAttribute(attr, serverBase() + v)
+    }
+  })
 }
 
 // looksLikeHtml decides whether to pass content through as raw HTML (legacy

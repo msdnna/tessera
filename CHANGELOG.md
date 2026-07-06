@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.114.0] — 2026-07-06
+- **Десктоп-адаптация (Фаза 0): runtime-конфигурируемый адрес сервера.** Фронт больше не завязан жёстко
+  на same-origin — новый `utils/serverBase.js` (`isTauri`/`serverBase`/`apiBaseURL`/`wsURL`/
+  `setServerBase`/`absolutizeApiUrl`) резолвит origin API/WS. **В браузере поведение байт-идентично**
+  (`serverBase()===''` → axios `baseURL:'/api'`, WS из `location.host`); в десктоп-обёртке (Tauri,
+  детект по `window.__TAURI_INTERNALS__`) адрес берётся из localStorage `tessera_server_base` (дефолт
+  prod `tessera.msdnna.website`). Проведено в `api/index.js` (baseURL + refresh + avatarUrl),
+  `composables/useRealtime.js` (WS-URL), `components/UserAvatar.vue` и `utils/markdown.js` (абсолютизация
+  относительных `/api/…` медиа-URL GitLab-прокси/вложений — только при `isTauri()`).
+- **Логин-экран: поповер «Адрес сервера».** В `AuthLayout.vue` рядом с тумблером темы (только в
+  десктоп-сборке) — кнопка с `n-popover` для ввода адреса сервера до входа (зеркалит настройку в Android);
+  сохранение → `setServerBase` + reload. В браузере кнопка скрыта.
+- **device.js:** `deviceLabel()` даёт метку «Настольное приложение (ОС)» и `notificationsSupported()`
+  возвращает `true` под Tauri (нативные уведомления идут через плагин, а не Web Notification API).
+
 ### [0.113.8] — 2026-06-30
 - **Фикс: тема не сохранялась при выходе из учётки.** При логауте `theme.reset()` сбрасывал режим темы
   в `system` и удалял `tessera_prefs`, из-за чего после выхода форма входа открывалась в системной
@@ -2015,6 +2030,16 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.69.0] — 2026-07-06
+- **CORS: мультиorigin reflected-allowlist (под десктоп-клиент).** `middleware.CORS` больше не отдаёт
+  один жёсткий `Access-Control-Allow-Origin`, а принимает список разрешённых origin'ов и **отражает**
+  запросный `Origin`, если он в списке (при `""`/`"*"` — прежнее wildcard-поведение). Нужно, чтобы к
+  одному API ходили и web (`PUBLIC_URL`), и десктоп-приложение на Tauri, чей webview-origin отличается
+  по ОС (Windows WebView2 ≈ `http://tauri.localhost`, Linux WebKitGTK ≈ `tauri://localhost`). Новый
+  конфиг `DesktopOrigins` из env `DESKTOP_CORS_ORIGINS` (comma-separated; дефолт — три известных
+  Tauri-формы) прокинут в `main.go` как доп. origin'ы. WS-upgrader (`CheckOrigin: true`) не менялся.
+  Юнит-тест `middleware/cors_test.go` фиксирует reflected/blocked/preflight-поведение.
 
 ### [0.68.0] — 2026-06-29
 - **Агрегирующий эндпоинт этапов воркспейса (M3f).** Новый `GET /workspaces/:id/milestones`: все этапы

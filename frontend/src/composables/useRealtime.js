@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted } from 'vue'
+import { wsURL } from '@/utils/serverBase'
 
 // useRealtime opens the /api/ws WebSocket and invokes `onEvent({scope,type,data})`
 // for every server broadcast. Auto-reconnects with a fixed backoff. The caller
@@ -9,8 +10,9 @@ export function useRealtime(onEvent) {
   let closed = false
 
   function connect() {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    ws = new WebSocket(`${proto}://${location.host}/api/ws`)
+    // Web: ws(s)://<location.host>/api/ws. Desktop (Tauri): derived from the
+    // configured server origin. See utils/serverBase.js.
+    ws = new WebSocket(wsURL())
     ws.onmessage = (e) => {
       try {
         onEvent(JSON.parse(e.data))

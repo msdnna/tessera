@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { initials } from '@/utils/initials'
+import { apiBaseURL, absolutizeApiUrl } from '@/utils/serverBase'
 
 // A circular user avatar: shows the uploaded image (Tessera user by id, or an
 // explicit src for GitLab users), falling back to gradient initials on miss/error.
@@ -12,7 +13,15 @@ const props = defineProps({
 })
 
 const failed = ref(false)
-const url = computed(() => props.src || (props.userId ? `/api/users/${props.userId}/avatar` : ''))
+// props.src (e.g. a GitLab avatar proxy '/api/gitlab/avatar?…') is absolutized
+// for desktop; the Tessera user path is built from the (already absolute) apiBaseURL.
+const url = computed(() =>
+  props.src
+    ? absolutizeApiUrl(props.src)
+    : props.userId
+      ? `${apiBaseURL()}/users/${props.userId}/avatar`
+      : '',
+)
 watch(url, () => (failed.value = false))
 </script>
 

@@ -8,15 +8,27 @@
 // Input / button / link styling for the slotted form lives in main.css under
 // `.auth` (scoped styles can't reach slotted nodes).
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { NIcon } from 'naive-ui'
-import { SunnyOutline, MoonOutline } from '@vicons/ionicons5'
+import { NIcon, NPopover, NInput, NButton } from 'naive-ui'
+import { SunnyOutline, MoonOutline, ServerOutline } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
+import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 
 defineProps({
   title: { type: String, default: '' },
 })
 
 const theme = useThemeStore()
+
+// Desktop only: let the user point the app at a self-hosted server before
+// logging in (mirrors the Android server-URL setting). Empty = built-in default.
+const desktop = isTauri()
+const showServer = ref(false)
+const serverInput = ref(serverBase())
+function saveServer() {
+  setServerBase(serverInput.value)
+  // Reload so axios (baseURL) and the WS reconnect against the new origin.
+  location.reload()
+}
 
 const card = ref(null)
 const glowX = ref(0) // current (eased) glow offset from card centre, px
@@ -71,15 +83,46 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="auth">
-    <button
-      class="auth-theme-toggle"
-      type="button"
-      :title="theme.isDark ? 'Светлая тема' : 'Тёмная тема'"
-      :aria-label="theme.isDark ? 'Светлая тема' : 'Тёмная тема'"
-      @click="theme.toggle()"
-    >
-      <n-icon :component="theme.isDark ? SunnyOutline : MoonOutline" :size="20" />
-    </button>
+    <div class="auth-tools">
+      <!-- Desktop only: server-address popover, sitting left of the theme toggle. -->
+      <n-popover
+        v-if="desktop"
+        v-model:show="showServer"
+        trigger="click"
+        placement="bottom-end"
+      >
+        <template #trigger>
+          <button
+            class="auth-tool-btn"
+            type="button"
+            title="Адрес сервера"
+            aria-label="Адрес сервера"
+          >
+            <n-icon :component="ServerOutline" :size="20" />
+          </button>
+        </template>
+        <div class="auth-server-pop">
+          <div class="auth-server-label">Адрес сервера</div>
+          <n-input
+            v-model:value="serverInput"
+            placeholder="https://tessera.msdnna.website"
+            size="small"
+            @keyup.enter="saveServer"
+          />
+          <n-button size="small" type="primary" block @click="saveServer">Сохранить</n-button>
+        </div>
+      </n-popover>
+
+      <button
+        class="auth-tool-btn"
+        type="button"
+        :title="theme.isDark ? 'Светлая тема' : 'Тёмная тема'"
+        :aria-label="theme.isDark ? 'Светлая тема' : 'Тёмная тема'"
+        @click="theme.toggle()"
+      >
+        <n-icon :component="theme.isDark ? SunnyOutline : MoonOutline" :size="20" />
+      </button>
+    </div>
 
     <div class="auth-stage">
       <div class="auth-header">
@@ -117,12 +160,17 @@ onBeforeUnmount(() => {
   background: var(--t-bg);
 }
 
-/* Theme toggle, top-right corner. */
-.auth-theme-toggle {
+/* Tool buttons (server address + theme toggle), top-right corner. */
+.auth-tools {
   position: absolute;
   top: 18px;
   right: 18px;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auth-tool-btn {
   width: 40px;
   height: 40px;
   display: flex;
@@ -138,9 +186,22 @@ onBeforeUnmount(() => {
     color 0.15s ease,
     border-color 0.15s ease;
 }
-.auth-theme-toggle:hover {
+.auth-tool-btn:hover {
   color: var(--t-primary);
   border-color: var(--t-primary);
+}
+
+/* Server-address popover body. */
+.auth-server-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+}
+.auth-server-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
 }
 
 .auth-stage {

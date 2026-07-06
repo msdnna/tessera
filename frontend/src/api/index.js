@@ -1,8 +1,11 @@
 import axios from 'axios'
 import { humanizeError } from '@/utils/errors'
 import { reqStart, reqEnd, setOffline } from '@/composables/useConnection'
+import { apiBaseURL } from '@/utils/serverBase'
 
-const api = axios.create({ baseURL: '/api' })
+// Web: apiBaseURL() === '/api' (same-origin). Desktop (Tauri): '<server>/api',
+// where <server> is the login-configured origin. See utils/serverBase.js.
+const api = axios.create({ baseURL: apiBaseURL() })
 
 // Attach the access token on every request + track liveness for the connection
 // overlay (start now, paired end in the response/error handlers below). Requests
@@ -26,7 +29,7 @@ async function refreshAccessToken() {
   const refreshToken = localStorage.getItem('tessera_refresh_token')
   if (!refreshToken) return null
   refreshInflight = axios
-    .post('/api/auth/refresh', { refresh_token: refreshToken })
+    .post(`${apiBaseURL()}/auth/refresh`, { refresh_token: refreshToken })
     .then((res) => {
       const data = res.data || {}
       if (data.access_token) localStorage.setItem('tessera_token', data.access_token)
@@ -103,7 +106,7 @@ export const users = {
     return api.put('/users/me/avatar', form)
   },
   deleteAvatar: () => api.delete('/users/me/avatar'),
-  avatarUrl: (id) => `/api/users/${id}/avatar`,
+  avatarUrl: (id) => `${apiBaseURL()}/users/${id}/avatar`,
 }
 
 // Global-admin panel (every endpoint re-checks is_admin server-side).
