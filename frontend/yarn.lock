@@ -519,6 +519,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@tauri-apps/plugin-autostart@npm:^2.5.1":
+  version: 2.5.1
+  resolution: "@tauri-apps/plugin-autostart@npm:2.5.1"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.8.0"
+  checksum: 10c0/b66fe2b87fd77e4b2c73b04fb93b34ba1fea32cadf74c01da6df037a508ca8c03aba9bcf9ef13e949effc219b26936d0596717f0d031ee552d60c069406026dd
+  languageName: node
+  linkType: hard
+
 "@tauri-apps/plugin-clipboard-manager@npm:^2.3.2":
   version: 2.3.2
   resolution: "@tauri-apps/plugin-clipboard-manager@npm:2.3.2"
@@ -3526,6 +3535,7 @@ __metadata:
   dependencies:
     "@eslint/js": "npm:^10.0.1"
     "@tauri-apps/api": "npm:^2.11.1"
+    "@tauri-apps/plugin-autostart": "npm:^2.5.1"
     "@tauri-apps/plugin-clipboard-manager": "npm:^2.3.2"
     "@tauri-apps/plugin-dialog": "npm:^2.7.1"
     "@tauri-apps/plugin-fs": "npm:^2.5.1"

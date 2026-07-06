@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.116.0] — 2026-07-07
+- **Десктоп Фаза 2 (клиентская часть).** Всё под `isTauri()`, web не затронут:
+  - **Автозапуск** — тумблер «Запускать при входе в систему» в `SettingsView` секции «Приложение»
+    (`@tauri-apps/plugin-autostart` isEnabled/enable/disable).
+  - **Deep-link по клику уведомления** — `composables/useDesktopDeepLink.js`: уведомление несёт
+    `task_board_id`/`task_number` в `extra`, по клику окно поднимается (show/unminimize/focus) и роутер
+    открывает `/board/:id?task=` (best-effort — если ОС не отдаёт payload клика, окно просто фокусируется).
+  - **WS resume-reconnect** (`useRealtime.js`, польза и для web): слушатели `online`/`visibilitychange`
+    немедленно реконнектят сокет при выходе из сна / показе окна (важно для свёрнутого в трей десктопа),
+    не дожидаясь 3-сек backoff.
+
 ### [0.115.1] — 2026-07-06
 - **Фикс (десктоп): не грузились аватары и инлайн-картинки.** В webview Tauri удалённые кросс-origin
   `<img>` (с сервера) не загружаются, хотя axios/fetch работает — поэтому вместо инициалов/битых картинок

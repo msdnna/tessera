@@ -26,10 +26,32 @@ export function useRealtime(onEvent) {
     ws.onerror = () => ws && ws.close()
   }
 
-  onMounted(connect)
+  // The OS can silently kill the socket on sleep/hibernate (notably when the
+  // desktop app is minimised to the tray); the backoff eventually recovers, but
+  // reconnect immediately when the machine comes back online or the window is
+  // shown again so live events resume without a lag.
+  function reconnectNow() {
+    if (closed) return
+    const dead = !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING
+    if (dead) {
+      clearTimeout(retry)
+      connect()
+    }
+  }
+  function onVisible() {
+    if (document.visibilityState === 'visible') reconnectNow()
+  }
+
+  onMounted(() => {
+    connect()
+    window.addEventListener('online', reconnectNow)
+    document.addEventListener('visibilitychange', onVisible)
+  })
   onUnmounted(() => {
     closed = true
     clearTimeout(retry)
+    window.removeEventListener('online', reconnectNow)
+    document.removeEventListener('visibilitychange', onVisible)
     if (ws) {
       ws.onclose = null
       ws.close()

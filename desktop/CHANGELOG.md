@@ -4,6 +4,21 @@ All notable changes to the Tessera desktop app (Tauri v2) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/). The desktop app
 is versioned independently (`desktop/VERSION`), like the other components.
 
+## [0.2.0] — 2026-07-07
+
+Phase 2 — OS integration.
+
+- **System tray**: menu «Открыть Tessera» / «Выход», left-click shows the window.
+- **Close-to-tray**: the window's close button hides to the tray instead of
+  quitting (keeps the WS alive so reminders keep arriving); real quit is via the
+  tray «Выход».
+- **Single-instance** (`tauri-plugin-single-instance`): a second launch focuses
+  the running window instead of opening a duplicate.
+- **Autostart** (`tauri-plugin-autostart`): optional launch-at-login (toggle in
+  Settings → «Приложение»); autostarted with `--minimized` → straight to the tray.
+- Window `show`/`unminimize`/`set-focus` capabilities for the tray + notification
+  deep-link (see web 0.116.0).
+
 ## [0.1.1] — 2026-07-06
 
 - **Devtools в релизе** (`tauri` feature `devtools`): webview-инспектор доступен по правому клику →

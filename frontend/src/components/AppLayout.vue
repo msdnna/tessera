@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   NLayout,
   NLayoutSider,
@@ -23,6 +23,7 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
+import { useDesktopDeepLink } from '@/composables/useDesktopDeepLink'
 
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
@@ -31,6 +32,10 @@ const conflicts = useConflictsStore()
 const { isMobile } = useResponsive()
 const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
 const route = useRoute()
+const router = useRouter()
+
+// Desktop: native-notification click → focus window + open the task.
+useDesktopDeepLink(router)
 
 // ── draggable sidebar divider ──
 // Drag only engages once the pointer actually moves past a small threshold, so a

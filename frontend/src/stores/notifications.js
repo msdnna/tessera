@@ -61,7 +61,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
         )
         let granted = await isPermissionGranted()
         if (!granted) granted = (await requestPermission()) === 'granted'
-        if (granted) sendNotification({ title, body: n.text })
+        if (granted)
+          sendNotification({
+            title,
+            body: n.text,
+            // Carried back on click for deep-linking (see useDesktopDeepLink).
+            extra: { task_board_id: n.task_board_id, task_number: n.task_number },
+          })
         return
       }
       if (!notificationsSupported() || Notification.permission !== 'granted') return

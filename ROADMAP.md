@@ -479,10 +479,17 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
   **Гоча:** AppImage под WSL валит `linuxdeploy` (FUSE) — `.deb` ок, AppImage собирать на нативном
   Linux/CI (release-скрипт это терпит). Ещё не запускалось живьём в окне (нужна графическая сессия) +
   Windows NSIS собирается на машине пользователя.
-- **Фаза 2 — ОС-интеграция** (трей/close-to-tray/автозапуск/single-instance, клик-уведомления→deep-link,
-  resume-reconnect WS, опц. хардлинг refresh-token в OS-keychain) — далее.
-- Windows-сборка (NSIS `.exe`) — нативно на Windows-машине пользователя; Linux (`.deb` на dev-боксе,
-  AppImage — на нативном Linux/CI).
+- **Фаза 2 — ОС-интеграция — ✅ СДЕЛАНО** (desktop 0.2.0 / frontend 0.116.0): системный трей
+  (меню Открыть/Выход, клик — показать окно), close-to-tray (крестик прячет в трей, WS жив → напоминания
+  идут; реальный выход — через трей), single-instance (второй запуск фокусит окно), автозапуск
+  (`plugin-autostart` + тумблер в настройках, старт `--minimized` в трей), клик-уведомления→deep-link на
+  задачу (`useDesktopDeepLink`, best-effort), WS resume-reconnect (`online`/`visibilitychange`). `cargo
+  fmt`/`clippy`/`check` + фронт lint/build/test зелёные. Опц. хардлинг refresh-token в OS-keychain — не
+  делали (localStorage персистентен, паритет с web), кандидат на потом.
+- **Багфикс (web 0.115.1 / desktop 0.1.1):** в webview Tauri удалённые `<img>` не грузятся → аватары и
+  инлайн-картинки шли через axios→`blob:` (`useApiImage`); devtools включены в релиз для отладки.
+- Windows-сборка (NSIS `.exe`) — нативно на Windows-машине пользователя (`desktop/build-windows.ps1`, т.к.
+  cargo не собирает по UNC-пути); Linux (`.deb` на dev-боксе, AppImage — на нативном Linux/CI).
 
 ## Что дальше (бэклог; приоритет не зафиксирован — выбирает пользователь)
 

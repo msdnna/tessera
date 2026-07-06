@@ -1,6 +1,6 @@
 <script setup>
-import { ref, reactive, computed } from 'vue'
-import { NInput, NButton, NSelect, NAvatar, NIcon } from 'naive-ui'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { NInput, NButton, NSelect, NAvatar, NIcon, NSwitch } from 'naive-ui'
 import { CloudUploadOutline, TrashOutline, CheckmarkCircle } from '@vicons/ionicons5'
 import { users, accountFlows } from '@/api'
 import NotificationSettings from '@/components/NotificationSettings.vue'
@@ -26,6 +26,33 @@ const {
   check: updCheck,
   install: updInstall,
 } = useDesktopUpdate()
+
+// Launch-at-login (desktop). Reflects/sets the OS autostart entry.
+const autostart = ref(false)
+const autostartBusy = ref(false)
+async function loadAutostart() {
+  if (!isDesktop) return
+  try {
+    const { isEnabled } = await import('@tauri-apps/plugin-autostart')
+    autostart.value = await isEnabled()
+  } catch {
+    /* plugin unavailable — leave off */
+  }
+}
+async function toggleAutostart(v) {
+  autostartBusy.value = true
+  try {
+    const mod = await import('@tauri-apps/plugin-autostart')
+    if (v) await mod.enable()
+    else await mod.disable()
+    autostart.value = v
+  } catch {
+    autostart.value = !v // revert on failure
+  } finally {
+    autostartBusy.value = false
+  }
+}
+onMounted(loadAutostart)
 
 const auth = useAuthStore()
 const theme = useThemeStore()
@@ -398,6 +425,17 @@ async function resendVerify() {
         <n-button type="primary" @click="saveServerAddr">Сохранить и перезапустить</n-button>
       </div>
       <div class="field" style="margin-top: 14px">
+        <span>Автозапуск</span>
+        <label class="autostart-row">
+          <n-switch
+            :value="autostart"
+            :loading="autostartBusy"
+            @update:value="toggleAutostart"
+          />
+          <span>Запускать Tessera при входе в систему (свёрнутой в трей)</span>
+        </label>
+      </div>
+      <div class="field" style="margin-top: 14px">
         <span>Обновления</span>
         <div class="row-end" style="justify-content: flex-start; gap: 10px">
           <n-button :loading="updBusy" @click="updCheck(false)">Проверить обновления</n-button>
@@ -477,6 +515,14 @@ async function resendVerify() {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+.autostart-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--t-text2);
+  cursor: pointer;
 }
 .ava {
   flex: none;
