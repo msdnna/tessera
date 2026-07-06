@@ -4,6 +4,7 @@ import { NIcon, useMessage } from 'naive-ui'
 import { LinkOutline, ImageOutline, GitNetworkOutline } from '@vicons/ionicons5'
 import { uploads as uploadsApi } from '@/api'
 import { toggleTaskMarker } from '@/utils/markdown'
+import { isTauri } from '@/utils/serverBase'
 import RichContent from './RichContent.vue'
 
 const props = defineProps({
@@ -166,7 +167,17 @@ function onImgFile(e) {
   e.target.value = ''
   if (f) uploadImage(f)
 }
-function onPaste(e) {
+// Encode raw RGBA pixels (from the Tauri clipboard) into a PNG File.
+async function rgbaToPngFile(rgba, width, height) {
+  if (!width || !height) return null
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0)
+  const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
+  return blob ? new File([blob], `clipboard-${Date.now()}.png`, { type: 'image/png' }) : null
+}
+async function onPaste(e) {
   const items = e.clipboardData && e.clipboardData.items
   for (const it of items || []) {
     if (it.type && it.type.startsWith('image/')) {
@@ -176,6 +187,19 @@ function onPaste(e) {
         uploadImage(f)
         return
       }
+    }
+  }
+  // Desktop fallback: WebKitGTK (Linux) often doesn't expose a pasted image via
+  // clipboardData — read it from the Tauri clipboard and encode to PNG.
+  if (isTauri()) {
+    try {
+      const { readImage } = await import('@tauri-apps/plugin-clipboard-manager')
+      const img = await readImage()
+      const size = await img.size()
+      const file = await rgbaToPngFile(await img.rgba(), size.width, size.height)
+      if (file) uploadImage(file)
+    } catch {
+      /* no image in clipboard — ignore */
     }
   }
 }

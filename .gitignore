@@ -34,3 +34,6 @@ android/local.env
 .DS_Store
 .idea/
 *.swp
+
+# Desktop (Tauri) release output (built + published, not tracked)
+desktop-dist/

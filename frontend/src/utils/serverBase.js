@@ -14,9 +14,7 @@ const DEFAULT_BASE = 'https://tessera.msdnna.website'
 // isTauri reports whether we're running inside the Tauri webview (v2 injects
 // __TAURI_INTERNALS__; older/global builds expose __TAURI__).
 export function isTauri() {
-  return (
-    typeof window !== 'undefined' && (!!window.__TAURI_INTERNALS__ || !!window.__TAURI__)
-  )
+  return typeof window !== 'undefined' && (!!window.__TAURI_INTERNALS__ || !!window.__TAURI__)
 }
 
 // serverBase returns '' for web (same-origin) or an absolute origin without a

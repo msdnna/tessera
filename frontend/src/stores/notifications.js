@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { notifications as api } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
+import { isTauri } from '@/utils/serverBase'
 
 // Human title for a native (OS) notification, by kind.
 const KIND_TITLE = {
@@ -46,14 +47,25 @@ export const useNotificationsStore = defineStore('notifications', () => {
     if (items.value.length > 50) items.value.pop()
   }
 
-  // Show a Web Notification when this browser's device id is among the event's
-  // targets and the user has granted permission. Best-effort.
-  function maybeNotifyDevice(targets, n) {
+  // Raise a native OS notification when this device's id is among the event's
+  // targets. Best-effort. On desktop (Tauri) this goes through the notification
+  // plugin (the WebKitGTK webview may lack window.Notification); on web it uses
+  // the Web Notifications API unchanged.
+  async function maybeNotifyDevice(targets, n) {
     try {
       if (!Array.isArray(targets) || !targets.includes(getDeviceId())) return
+      const title = KIND_TITLE[n.kind] || 'Tessera'
+      if (isTauri()) {
+        const { isPermissionGranted, requestPermission, sendNotification } = await import(
+          '@tauri-apps/plugin-notification'
+        )
+        let granted = await isPermissionGranted()
+        if (!granted) granted = (await requestPermission()) === 'granted'
+        if (granted) sendNotification({ title, body: n.text })
+        return
+      }
       if (!notificationsSupported() || Notification.permission !== 'granted') return
-      const note = new Notification(KIND_TITLE[n.kind] || 'Tessera', { body: n.text, tag: n.id })
-      void note
+      void new Notification(title, { body: n.text, tag: n.id })
     } catch {
       /* notifications unavailable — ignore */
     }

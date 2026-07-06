@@ -78,6 +78,7 @@ version: ## Show service versions
 	@echo "backend:  $$(cat backend/VERSION)"
 	@echo "frontend: $$(cat frontend/VERSION)"
 	@echo "android:  $$(cat android/VERSION)"
+	@echo "desktop:  $$(cat desktop/VERSION)"
 
 .PHONY: bump-api
 bump-api: ## Bump backend version (BUMP=patch|minor|major)
@@ -90,6 +91,10 @@ bump-web: ## Bump frontend version (BUMP=patch|minor|major)
 .PHONY: bump-android
 bump-android: ## Bump Android version (BUMP=patch|minor|major)
 	@./tools/bump-version.sh android $(or $(BUMP),patch)
+
+.PHONY: bump-desktop
+bump-desktop: ## Bump desktop version (BUMP=patch|minor|major)
+	@./tools/bump-version.sh desktop $(or $(BUMP),patch)
 
 # ── Android ────────────────────────────────────────────────
 ANDROID_DIR := android
@@ -126,3 +131,26 @@ test-android: ## Run Android unit tests
 test-android-cover: ## Android unit tests + JaCoCo coverage report
 	@$(ANDROID_GRADLE) :app:jacocoTestReport
 	@echo "Coverage: $(ANDROID_DIR)/app/build/reports/jacoco/jacocoTestReport/html/index.html"
+
+# ── Desktop (Tauri) ────────────────────────────────────────
+DESKTOP_DIR := desktop/src-tauri
+# Updater signing key (kept outside the repo, like the Android keystore). When
+# present it's passed to bundling builds so updater artifacts get signed.
+DESKTOP_KEY := $(HOME)/.tessera/tessera-desktop-updater.key
+DESKTOP_SIGN := $(if $(wildcard $(DESKTOP_KEY)),TAURI_SIGNING_PRIVATE_KEY="$(DESKTOP_KEY)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="",)
+
+.PHONY: dev-desktop
+dev-desktop: ## Run the desktop app in dev (Vite :5174 + Tauri window)
+	cd $(DESKTOP_DIR) && cargo tauri dev
+
+.PHONY: desktop
+desktop: ## Build desktop bundles for this OS (Linux: AppImage + .deb)
+	cd $(DESKTOP_DIR) && $(DESKTOP_SIGN) cargo tauri build
+
+.PHONY: desktop-release
+desktop-release: ## Build + sign desktop bundles and assemble the updater manifest
+	./tools/build-desktop-release.sh
+
+.PHONY: lint-desktop
+lint-desktop: ## cargo fmt --check + clippy on the desktop crate
+	cd $(DESKTOP_DIR) && cargo fmt --check && cargo clippy -- -D warnings

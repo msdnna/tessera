@@ -14,6 +14,7 @@ import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
+import { isTauri } from '@/utils/serverBase'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -75,12 +76,24 @@ onMounted(async () => {
   await ws.loadWorkspaces()
   await notes.load()
   conflicts.load(ws.currentId)
-  // Register this browser as a routable "device" channel (best-effort).
+  // On desktop, ask for notification permission up front so reminders can fire
+  // without waiting for the first event (best-effort).
+  if (isTauri()) {
+    try {
+      const { isPermissionGranted, requestPermission } = await import(
+        '@tauri-apps/plugin-notification'
+      )
+      if (!(await isPermissionGranted())) await requestPermission()
+    } catch {
+      /* plugin unavailable — non-fatal */
+    }
+  }
+  // Register this client as a routable "device" channel (best-effort).
   try {
     await notificationChannels.registerDevice({
       device_id: getDeviceId(),
       label: deviceLabel(),
-      platform: 'web',
+      platform: isTauri() ? 'desktop' : 'web',
     })
   } catch {
     /* offline / unauthorized — non-fatal */

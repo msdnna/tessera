@@ -7,6 +7,24 @@ import NotificationSettings from '@/components/NotificationSettings.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
+import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
+import { useDesktopUpdate } from '@/composables/useDesktopUpdate'
+
+// Desktop-only settings: configurable server address + self-update.
+const isDesktop = isTauri()
+const serverAddr = ref(serverBase())
+function saveServerAddr() {
+  setServerBase(serverAddr.value)
+  location.reload()
+}
+const {
+  busy: updBusy,
+  status: updStatus,
+  newVersion: updVersion,
+  error: updError,
+  check: updCheck,
+  install: updInstall,
+} = useDesktopUpdate()
 
 const auth = useAuthStore()
 const theme = useThemeStore()
@@ -363,6 +381,35 @@ async function resendVerify() {
       </div>
       <p class="hint">
         Форматы применяются к календарям и датам. Переключение языка интерфейса появится позже.
+      </p>
+    </section>
+
+    <!-- Desktop app: server address + self-update (hidden in the browser). -->
+    <section v-if="isDesktop" class="card">
+      <h2>Приложение</h2>
+      <label class="field">
+        <span>Адрес сервера</span>
+        <n-input v-model:value="serverAddr" placeholder="https://tessera.msdnna.website" />
+      </label>
+      <div class="row-end">
+        <n-button type="primary" @click="saveServerAddr">Сохранить и перезапустить</n-button>
+      </div>
+      <div class="field" style="margin-top: 14px">
+        <span>Обновления</span>
+        <div class="row-end" style="justify-content: flex-start; gap: 10px">
+          <n-button :loading="updBusy" @click="updCheck(false)">Проверить обновления</n-button>
+          <n-button v-if="updStatus === 'available'" type="primary" @click="updInstall">
+            Установить {{ updVersion }} и перезапустить
+          </n-button>
+        </div>
+      </div>
+      <p class="hint">
+        <template v-if="updStatus === 'none'">Установлена последняя версия.</template>
+        <template v-else-if="updStatus === 'available'"
+          >Доступна версия {{ updVersion }}.</template
+        >
+        <template v-else-if="updStatus === 'downloading'">Загрузка обновления…</template>
+        <template v-else-if="updStatus === 'error'">Ошибка обновления: {{ updError }}</template>
       </p>
     </section>
   </div>

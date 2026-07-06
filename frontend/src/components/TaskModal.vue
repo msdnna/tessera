@@ -53,6 +53,7 @@ import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/grad
 import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { toggleTaskMarker } from '@/utils/markdown'
+import { isTauri } from '@/utils/serverBase'
 import {
   formatEstimate,
   formatEstimateFull,
@@ -870,6 +871,17 @@ async function onFileChosen(ev) {
 async function downloadAttachment(att) {
   try {
     const res = await tasksApi.downloadAttachment(att.id)
+    // Desktop: a real "Save as…" dialog + write to disk (the webview can't drive
+    // an <a download> file save). Web keeps the anchor-download path.
+    if (isTauri()) {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const { writeFile } = await import('@tauri-apps/plugin-fs')
+      const path = await save({ defaultPath: att.filename })
+      if (!path) return
+      await writeFile(path, new Uint8Array(await res.data.arrayBuffer()))
+      message.success('Файл сохранён')
+      return
+    }
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url

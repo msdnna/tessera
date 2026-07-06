@@ -81,8 +81,10 @@ services:
       - tessera-network
     # Android self-update store: drop signed APK + latest.json here to serve
     # /apks/. Optional — remove if you don't publish Android builds from prod.
+    # Desktop (Tauri) self-update store: build-desktop-release.sh output → /desktop/.
     volumes:
       - ./apks:/usr/share/nginx/html/apks:ro
+      - ./desktop-dist:/usr/share/nginx/html/desktop:ro
 
   caddy:
     image: caddy:2-alpine

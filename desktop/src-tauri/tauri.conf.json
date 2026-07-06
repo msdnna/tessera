@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tessera",
+  "identifier": "website.msdnna.tessera",
+  "build": {
+    "beforeDevCommand": "cd ../frontend && corepack yarn dev",
+    "devUrl": "http://localhost:5174",
+    "beforeBuildCommand": "cd ../frontend && corepack yarn build",
+    "frontendDist": "../../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Tessera",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true,
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://tessera.msdnna.website/desktop/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZFRDlFOTRFMTE2QjM5Q0MKUldUTU9Xc1JUdW5aL2xNMDVlTW9iY1EyMUVTMklWSlFuZzQzc0R0MWczeUVtNGhMTkxKNnZqU0MK"
+    }
+  }
+}

@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.115.0] — 2026-07-06
+- **Десктоп-интеграция (Фаза 1) в общем фронте.** Всё под `isTauri()`, web не затронут:
+  - **Нативные уведомления** — `stores/notifications.js` `maybeNotifyDevice` при `isTauri()` шлёт через
+    `@tauri-apps/plugin-notification` (permission + `sendNotification`), иначе прежний Web Notification API;
+    `AppLayout.vue` запрашивает permission на старте и регистрирует device как `platform:'desktop'`.
+  - **Self-update** — `composables/useDesktopUpdate.js` (`@tauri-apps/plugin-updater` + `-process`);
+    секция «Приложение» в `SettingsView.vue` (desktop-only) с «Проверить обновления» / «Установить и
+    перезапустить» + полем адреса сервера.
+  - **Сохранение вложений** — `TaskModal.vue` при `isTauri()` открывает native save-dialog
+    (`@tauri-apps/plugin-dialog`) и пишет файл (`@tauri-apps/plugin-fs`) вместо `<a download>`.
+  - **Вставка картинок из буфера** — `MarkdownEditor.vue` fallback через
+    `@tauri-apps/plugin-clipboard-manager` `readImage()`→PNG для Linux/WebKitGTK, где `clipboardData`
+    не отдаёт изображение. HTML5 `@drop`/`@paste` продолжают работать (`dragDropEnabled:false` у окна).
+  - Tauri JS SDK (`@tauri-apps/api` + плагины) добавлены как зависимости; грузятся ленивым `import()`
+    только под Tauri, web-бандл их не исполняет.
+
 ### [0.114.0] — 2026-07-06
 - **Десктоп-адаптация (Фаза 0): runtime-конфигурируемый адрес сервера.** Фронт больше не завязан жёстко
   на same-origin — новый `utils/serverBase.js` (`isTauri`/`serverBase`/`apiBaseURL`/`wsURL`/

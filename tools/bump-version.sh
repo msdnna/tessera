@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bump a service's semantic version.
-# Usage: tools/bump-version.sh <backend|frontend|android> [patch|minor|major]
+# Usage: tools/bump-version.sh <backend|frontend|android|desktop> [patch|minor|major]
 set -euo pipefail
 
 service="${1:?usage: bump-version.sh <service> [patch|minor|major]}"
@@ -10,7 +10,8 @@ case "$service" in
   backend)  file="backend/VERSION" ;;
   frontend) file="frontend/VERSION" ;;
   android)  file="android/VERSION" ;;
-  *) echo "unknown service: $service (want backend|frontend|android)" >&2; exit 1 ;;
+  desktop)  file="desktop/VERSION" ;;
+  *) echo "unknown service: $service (want backend|frontend|android|desktop)" >&2; exit 1 ;;
 esac
 
 [ -f "$file" ] || { echo "missing $file" >&2; exit 1; }
@@ -26,4 +27,14 @@ esac
 
 new="${major}.${minor}.${patch}"
 printf '%s\n' "$new" > "$file"
+
+# Tauri reads the app version from Cargo.toml (tauri.conf.json omits `version`),
+# so keep the crate version in lockstep with desktop/VERSION.
+if [ "$service" = desktop ]; then
+  cargo="desktop/src-tauri/Cargo.toml"
+  if [ -f "$cargo" ]; then
+    sed -i -E "0,/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/s//version = \"$new\"/" "$cargo"
+  fi
+fi
+
 echo "$service: $cur -> $new"

@@ -467,11 +467,22 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
   логин-поповер адреса сервера в `AuthLayout.vue` (desktop-only), reflected-CORS мультиorigin с
   `DESKTOP_CORS_ORIGINS`. **Web-поведение байт-идентично** (isTauri()=false → same-origin). lint/test/build
   всех компонентов зелёные.
-- **Фаза 1 — MVP-десктоп** (скаффолд `desktop/src-tauri`, `dragDropEnabled:false`, prod-дефолт, нативные
-  уведомления, self-update, паритет загрузки файлов/буфера) — далее.
+- **Фаза 1 — MVP-десктоп — ✅ СДЕЛАНО** (desktop 0.1.0 / frontend 0.115.0): скаффолд `desktop/src-tauri`
+  (Tauri v2, `frontendDist→../../frontend/dist`, `dragDropEnabled:false`, иконки из бренд-бандла,
+  capabilities); нативные уведомления (`plugin-notification` в `maybeNotifyDevice`, permission на старте,
+  `platform:'desktop'`); self-update (`plugin-updater`+`-process`, minisign, `/desktop/latest.json`,
+  `tools/build-desktop-release.sh` + static `/desktop` в deploy); native save-dialog для вложений
+  (`plugin-dialog`/`-fs`); Linux clipboard-fallback картинок (`plugin-clipboard-manager` `readImage`);
+  Makefile (`dev-desktop`/`desktop`/`desktop-release`/`lint-desktop`/`bump-desktop`) + bump-version.sh
+  кейс. **Верифицировано:** `cargo build`/`clippy`/`fmt` чисто, `.deb` собирается (4.6M), фронт
+  lint+build+test зелёные. Ключ подписи — `~/.tessera/tessera-desktop-updater.key` (вне репо).
+  **Гоча:** AppImage под WSL валит `linuxdeploy` (FUSE) — `.deb` ок, AppImage собирать на нативном
+  Linux/CI (release-скрипт это терпит). Ещё не запускалось живьём в окне (нужна графическая сессия) +
+  Windows NSIS собирается на машине пользователя.
 - **Фаза 2 — ОС-интеграция** (трей/close-to-tray/автозапуск/single-instance, клик-уведомления→deep-link,
-  Linux clipboard-fallback, опц. хардлинг refresh-token в OS-keychain) — далее.
-- Windows-сборка (NSIS `.exe`) — нативно на Windows-машине пользователя; Linux (AppImage/.deb) — на dev-боксе.
+  resume-reconnect WS, опц. хардлинг refresh-token в OS-keychain) — далее.
+- Windows-сборка (NSIS `.exe`) — нативно на Windows-машине пользователя; Linux (`.deb` на dev-боксе,
+  AppImage — на нативном Linux/CI).
 
 ## Что дальше (бэклог; приоритет не зафиксирован — выбирает пользователь)
 
