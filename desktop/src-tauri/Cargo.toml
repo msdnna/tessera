@@ -1,6 +1,6 @@
 [package]
 name = "tessera-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tessera desktop app"
 authors = ["msdnna"]
 edition = "2021"
@@ -16,7 +16,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+# `devtools` keeps the webview inspector available in release builds (right-click →
+# Inspect) — handy while the desktop app is stabilising; drop it for a locked release.
+tauri = { version = "2", features = ["tray-icon", "devtools"] }
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

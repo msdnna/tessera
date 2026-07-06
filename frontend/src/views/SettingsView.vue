@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
+import { useApiImage } from '@/composables/useApiImage'
 import { useDesktopUpdate } from '@/composables/useDesktopUpdate'
 
 // Desktop-only settings: configurable server address + self-update.
@@ -65,8 +66,10 @@ async function saveProfile() {
 // ── avatar ───────────────────────────────────────────────────────────────────
 const fileInput = ref(null)
 const avatarBust = ref(0) // cache-buster so a re-upload refreshes the <img>
-const avatarUrl = computed(() =>
-  auth.user?.avatar_url ? `${auth.user.avatar_url}?t=${avatarBust.value}` : null,
+// Direct URL on web; axios-fetched blob: URL on desktop. The ?t buster changes the
+// URL on re-upload so both the browser cache and the blob cache miss and refetch.
+const avatarUrl = useApiImage(() =>
+  auth.user?.avatar_url ? `${auth.user.avatar_url}?t=${avatarBust.value}` : '',
 )
 const initials = computed(() => {
   const n = (auth.user?.name || auth.user?.email || '?').trim()

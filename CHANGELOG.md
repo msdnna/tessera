@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.115.1] — 2026-07-06
+- **Фикс (десктоп): не грузились аватары и инлайн-картинки.** В webview Tauri удалённые кросс-origin
+  `<img>` (с сервера) не загружаются, хотя axios/fetch работает — поэтому вместо инициалов/битых картинок
+  везде были заглушки. Новый `composables/useApiImage.js`: на десктопе тянет картинку через axios и отдаёт
+  `blob:`-URL (кэш по URL, чтобы повторяющиеся аватары не перезапрашивать), на web — прямой URL как раньше.
+  Применено в `UserAvatar.vue` (все аватары на карточках/в модалках/сайдбаре/GitLab), `SidebarFooter.vue`,
+  `SettingsView.vue` (аватар профиля), и `RichContent.vue` (инлайн-картинки описаний/комментариев —
+  `/api/uploads/…` и GitLab-ассеты — подменяются на blob после рендера). Web-поведение не изменилось.
+
 ### [0.115.0] — 2026-07-06
 - **Десктоп-интеграция (Фаза 1) в общем фронте.** Всё под `isTauri()`, web не затронут:
   - **Нативные уведомления** — `stores/notifications.js` `maybeNotifyDevice` при `isTauri()` шлёт через

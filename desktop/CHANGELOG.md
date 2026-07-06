@@ -4,6 +4,12 @@ All notable changes to the Tessera desktop app (Tauri v2) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/). The desktop app
 is versioned independently (`desktop/VERSION`), like the other components.
 
+## [0.1.1] — 2026-07-06
+
+- **Devtools в релизе** (`tauri` feature `devtools`): webview-инспектор доступен по правому клику →
+  Inspect в релизных сборках — удобно, пока десктоп стабилизируется. Убрать для «залоченного» релиза.
+- Пара к фиксу web 0.115.1 (аватары/картинки грузятся через blob на десктопе).
+
 ## [0.1.0] — 2026-07-06
 
 Phase 1 MVP — desktop shell around the shared Vue frontend.

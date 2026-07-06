@@ -4,6 +4,7 @@ import { NButton, NIcon, NPopover, NTooltip, NAvatar } from 'naive-ui'
 import { LogOutOutline, SettingsOutline, ShieldCheckmarkOutline } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useApiImage } from '@/composables/useApiImage'
 
 const props = defineProps({
   mobile: { type: Boolean, default: false },
@@ -13,7 +14,9 @@ const props = defineProps({
 const authStore = useAuthStore()
 const router = useRouter()
 
-const avatarUrl = computed(() => authStore.user?.avatar_url || null)
+// useApiImage: direct URL on web; an axios-fetched blob: URL on desktop (the
+// webview can't load the remote '/api/…/avatar' <img> directly).
+const avatarUrl = useApiImage(() => authStore.user?.avatar_url || '')
 const isAdmin = computed(() => authStore.isAdmin)
 function openSettings() {
   router.push('/settings')
