@@ -178,42 +178,76 @@ func (h *API) GitlabAvatar(c *gin.Context) {
 		return
 	}
 
-	req, rerr := http.NewRequestWithContext(c, http.MethodGet, rawURL, nil)
-	if rerr != nil {
-		c.Redirect(http.StatusFound, rawURL)
-		return
-	}
-	// Attach the owner's token only when fetching from the GitLab host itself
-	// (never leak it to gravatar/external hosts). Best-effort — public avatars
-	// need no token.
+	// The owner's token, only when the URL host is the GitLab instance (never
+	// leaked to gravatar/external hosts). Best-effort — public avatars need none.
+	var token string
 	if integ, ierr := h.q.GetGitlabIntegrationByWorkspace(c, wsID); ierr == nil && integ.OwnerUserID != nil {
 		if cred, cerr := h.q.GetGitlabCredential(c, *integ.OwnerUserID); cerr == nil {
 			if gb, gerr := url.Parse(cred.BaseUrl); gerr == nil && gb.Host == target.Host {
-				if token, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
-					req.Header.Set("PRIVATE-TOKEN", token)
+				if t, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
+					token = t
 				}
 			}
 		}
 	}
-	// Don't auto-follow redirects: a redirecting GitLab/gravatar URL would both
-	// leak the token cross-host and serve a sign-in HTML page; we handle non-image
-	// responses by bouncing the client to the original URL instead (below).
+
+	if h.streamGitlabImage(c, rawURL, target.Host, token) {
+		return
+	}
+	// Couldn't fetch a usable image server-side — let the client load the original
+	// URL directly (works in a browser that can reach GitLab; other clients fall
+	// back to initials). No regression vs. the pre-proxy behaviour.
+	c.Redirect(http.StatusFound, rawURL)
+}
+
+// streamGitlabImage fetches an image server-side and streams it to the client,
+// returning true on success. It follows redirects (a GitLab avatar URL often 302s
+// to the actual file), stripping the GitLab token whenever the redirect leaves the
+// original host so it's never leaked. It tries the token as a PRIVATE-TOKEN header
+// first, then as a `?private_token=` query param (GitLab web/upload routes — unlike
+// the API — honour the param, not the header), which is what lets private-instance
+// avatars resolve for clients with no direct GitLab access.
+func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) bool {
+	attempts := []string{rawURL}
+	if token != "" {
+		sep := "?"
+		if strings.Contains(rawURL, "?") {
+			sep = "&"
+		}
+		attempts = append(attempts, rawURL+sep+"private_token="+url.QueryEscape(token))
+	}
 	client := *gitlab.NewHTTPClient()
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	resp, derr := client.Do(req)
-	if derr == nil {
-		defer func() { _ = resp.Body.Close() }()
+	client.CheckRedirect = func(r *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return http.ErrUseLastResponse
+		}
+		if r.URL.Host != ghost {
+			r.Header.Del("PRIVATE-TOKEN")
+		}
+		return nil
+	}
+	for _, u := range attempts {
+		req, rerr := http.NewRequestWithContext(c, http.MethodGet, u, nil)
+		if rerr != nil {
+			continue
+		}
+		if token != "" {
+			req.Header.Set("PRIVATE-TOKEN", token)
+		}
+		resp, derr := client.Do(req)
+		if derr != nil {
+			continue
+		}
 		ct := resp.Header.Get("Content-Type")
-		// Stream only a real image fetched directly (200, non-HTML). Anything else
-		// (3xx, sign-in HTML, egress failure) falls through to the redirect.
+		// Accept a real image only (200, non-text). A sign-in HTML page or a
+		// remaining 3xx means this attempt didn't authenticate — try the next.
 		if resp.StatusCode == http.StatusOK && ct != "" && !strings.HasPrefix(ct, "text/") {
 			c.Header("Cache-Control", "private, max-age=3600")
 			c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
-			return
+			_ = resp.Body.Close()
+			return true
 		}
+		_ = resp.Body.Close()
 	}
-	// Couldn't fetch a usable image server-side — let the client load the original
-	// URL directly (works in a browser that can reach GitLab; the mobile app falls
-	// back to initials). This guarantees no regression vs. the pre-proxy behaviour.
-	c.Redirect(http.StatusFound, rawURL)
+	return false
 }

@@ -40,7 +40,10 @@ export function useApiImage(getUrl) {
       // Ignore a resolved fetch for a URL we've since moved off of.
       if (getUrl() === want) src.value = obj
     } catch {
-      src.value = ''
+      // Blob fetch failed (e.g. the proxy 302-redirected cross-origin and the XHR
+      // hit CORS). Fall back to the direct URL so a plain <img> can still follow
+      // the redirect / load it (no-cors); onerror then shows initials.
+      if (getUrl() === want) src.value = absolutizeApiUrl(want)
     }
   }
   watch(getUrl, load, { immediate: true })
