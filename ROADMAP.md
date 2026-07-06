@@ -3,8 +3,8 @@
 Источник истины для «что сделано / что дальше». Обновлять по ходу работы (и в том же
 изменении правда важнее красоты). Детали реализации — в коде, CHANGELOG и auto-memory.
 
-Текущие версии — `make version`. На 2026-06-29: backend `0.65.0` ·
-frontend `0.106.0` · android `0.40.0`. Следующая миграция — `0040`.
+Текущие версии — `make version`. На 2026-07-06: backend `0.69.0` ·
+frontend `0.114.0` · android `0.41.0`. Следующая миграция — `0040`.
 
 ## Статус фаз (0–10)
 
@@ -438,10 +438,46 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
 в бэклоге ниже («Виртуализация колонок на web») + CHANGELOG. Кратко: IntersectionObserver-оконность,
 плейсхолдеры измеренной высоты, DnD не тронут, проверено через CDP.
 
+## 18. Этапы «Этап» M3 + Android-паритет 0.41.0 + web-багфиксы — ✅ СДЕЛАНО (2026-06-29…30)
+Завершающий проход по milestones и синхронизация клиентов (детали — в бэклоговом пункте «Этапы» ниже и
+в CHANGELOG):
+- **Milestones M3a–M3f полностью** (backend 0.66–0.68 / web 0.107–0.113): создание этапа на GL
+  (`POST /milestones/:id/gitlab`), группировка/сорт/фильтр доски «По этапам», Σ-оценка в заголовке
+  колонки-этапа, диапазон дат в чипе/пикере, пунктирные маркеры этапов на Timeline/Gantt, отдельный
+  кросс-проектный экран «Этапы» (`/milestones`, агрегирующий `GET /workspaces/:id/milestones` +
+  deep-link на доску с фильтром). **Остаток:** live-verify pull/push milestone + `title_desc` против
+  реального GitLab.
+- **Android-паритет 2 (android 0.41.0, commit `2dcde3a`):** порт «Этапы» (grouping/chip/picker/экран
+  «Этапы»/`MilestoneManager`/gantt-timeline-маркеры) + GitLab-**резолвер конфликтов** (ours/theirs/manual)
+  на Android. Online-first, без изменений бэкенда; lint+test+assembleDebug зелёные — остаётся device-verify.
+  Источник — auto-memory `project-android-parity-next-2026-06`.
+- **Web-багфиксы (web 0.113.6–0.113.8):** дропдаун выбора этапа не переносит период (`width: max-content`
+  + `nowrap`); кнопка «Открепить» приведена к текстовому стилю; чёрный экран после logout (единый корневой
+  `.app-shell` у `AppLayout`); тема/акцент трактуются как device-preference и переживают logout.
+
+## 19. Десктоп-приложение (Tauri v2, Windows/Linux) — 🚧 В РАБОТЕ (старт 2026-07-06)
+Новый **независимо версионируемый** компонент `desktop/` рядом с backend/frontend/android: обёртка
+существующего Vue-фронтенда в Tauri v2 + тесная интеграция с ОС (нативные уведомления, автозапуск, трей,
+фоновая доставка напоминаний через живой WS, буфер обмена с изображениями, ФС/диалоги, self-update).
+Ядро адаптации — runtime-конфигурируемый адрес сервера (фронт был завязан на same-origin). Полный план
+и гочи — в `.claude/plans/roadmap-cozy-creek.md`. Device-уведомления и device-каналы (раздел 9) уже
+готовы под это — десктоп подключается как `platform:'desktop'`, FCM не нужен.
+- **Фаза 0 — адаптации фронта+бэка — ✅ СДЕЛАНО** (frontend 0.114.0 / backend 0.69.0): `utils/serverBase.js`
+  (isTauri/serverBase/apiBaseURL/wsURL/absolutizeApiUrl), провод в api/useRealtime/UserAvatar/markdown,
+  логин-поповер адреса сервера в `AuthLayout.vue` (desktop-only), reflected-CORS мультиorigin с
+  `DESKTOP_CORS_ORIGINS`. **Web-поведение байт-идентично** (isTauri()=false → same-origin). lint/test/build
+  всех компонентов зелёные.
+- **Фаза 1 — MVP-десктоп** (скаффолд `desktop/src-tauri`, `dragDropEnabled:false`, prod-дефолт, нативные
+  уведомления, self-update, паритет загрузки файлов/буфера) — далее.
+- **Фаза 2 — ОС-интеграция** (трей/close-to-tray/автозапуск/single-instance, клик-уведомления→deep-link,
+  Linux clipboard-fallback, опц. хардлинг refresh-token в OS-keychain) — далее.
+- Windows-сборка (NSIS `.exe`) — нативно на Windows-машине пользователя; Linux (AppImage/.deb) — на dev-боксе.
+
 ## Что дальше (бэклог; приоритет не зафиксирован — выбирает пользователь)
 
 Большие фазы (уведомления, email, теги per-project, URL, повторы, прод-деплой) закрыты. Активная
-работа — новые представления (раздел 14). Прочие кандидаты (осознанность, не обязательства):
+работа — **десктоп-приложение (раздел 19, Tauri)**; новые представления (раздел 14) закрыты. Прочие
+кандидаты (осознанность, не обязательства):
 
 - **Оценка задач (estimation)** — ✅ **СДЕЛАНО** (backend 0.51 / web 0.84 / android 0.28, миграция
   **0030**). Канон `tasks.estimate` (nullable double) — число, единица которого резолвится из
@@ -578,3 +614,6 @@ Tessera зеркалит budget-go по структуре и конвенция
 - **Общий keystore:** Android-релизы Tessera подписываются ТЕМ ЖЕ ключом, что budget
   (`/home/msdnna/budget.jks`, alias `budget`) — см. скилл **tessera-android-release**.
 - **Per-component VERSION + единый CHANGELOG + bump-скрипт** — уже на месте, идентично budget.
+- **Десктоп-клиент — новая ниша, которой у budget нет.** Tessera добавляет 4-й компонент `desktop/`
+  (Tauri v2, раздел 19). Общие конвенции (свой VERSION + CHANGELOG + bump-кейс + lint/test-гейт)
+  распространяются на него; self-update зеркалит паттерн Android `latest.json`.
