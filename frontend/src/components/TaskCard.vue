@@ -550,8 +550,9 @@ async function submitAddSub() {
       @contextmenu.prevent.stop="onCtx"
     >
       <!-- hover quick-actions (a reference tracker-style): complete · add subtask · more.
-           On touch (no hover) only "more" persists — see @media(hover:none). -->
-      <div v-if="!nested" class="card-actions" @click.stop>
+           Hidden while renaming (they'd overlap the inline editor). On touch
+           (no hover) complete + more persist — see @media(hover:none). -->
+      <div v-if="!nested && !editingTitle" class="card-actions" @click.stop>
         <button
           class="ca-btn ca-complete"
           :title="done ? 'Вернуть в работу' : 'Отметить выполненной'"
@@ -567,14 +568,9 @@ async function submitAddSub() {
         </button>
       </div>
 
+      <!-- No on-card checkbox: completion lives in the hover bar / context menu
+           (the check icon left of the title was redundant). -->
       <div class="card-top">
-        <span
-          class="check"
-          :title="done ? 'Выполнено' : 'Отметить выполненной'"
-          @click.stop="toggleDone"
-        >
-          <n-icon :component="done ? CheckmarkCircle : EllipseOutline" :size="20" />
-        </span>
         <n-input
           v-if="editingTitle"
           ref="titleInput"
@@ -1109,8 +1105,8 @@ async function submitAddSub() {
   background: var(--t-hover);
   color: var(--t-primary);
 }
-/* Touch devices have no hover — keep only "more" reachable, always visible and
-   chrome-less so it reads as a secondary affordance. */
+/* Touch devices have no hover — keep complete + more persistently reachable
+   (there's no on-card checkbox anymore); add-subtask stays in the "⋯" menu. */
 @media (hover: none) {
   .card-actions {
     opacity: 1;
@@ -1120,7 +1116,6 @@ async function submitAddSub() {
     border: none;
     box-shadow: none;
   }
-  .ca-complete,
   .ca-sub {
     display: none;
   }
@@ -1161,6 +1156,19 @@ async function submitAddSub() {
   border-radius: 0 0 12px 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
+/* A CHILDLESS card's drop-to-nest target during a drag: don't paint the solid
+   emerging-list card (it read as stray empty space under every card) — just a
+   slim dashed accent slot that clearly says "drop here to nest". Higher
+   specificity so it wins over the .subs.list block above regardless of order. */
+.subs.list.pending {
+  min-height: 14px;
+  margin-top: 4px;
+  padding: 0;
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--t-primary) 45%, transparent);
+  border-radius: 8px;
+  box-shadow: none;
+}
 .title-edit {
   flex: 1;
   width: 100%;
@@ -1170,18 +1178,10 @@ async function submitAddSub() {
   align-items: flex-start;
   gap: 8px;
 }
-/* Checkbox box height matches the title's first-line box (20px) so the glyph
-   centres on the first line even when the title wraps to two. */
 .check {
   cursor: pointer;
   color: var(--t-text3);
   display: inline-flex;
-  align-items: center;
-  height: 20px;
-  flex: none;
-}
-.card.done .check {
-  color: var(--t-primary);
 }
 .card.done .title {
   text-decoration: line-through;
@@ -1203,14 +1203,12 @@ async function submitAddSub() {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
-/* meta row: number + GitLab chip, indented to sit under the title text
-   (checkbox 20px + gap 8px). */
+/* meta row: number + GitLab chip, directly under the title. */
 .card-sub {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 3px;
-  padding-left: 28px;
 }
 .tnum {
   flex: none;
@@ -1319,8 +1317,12 @@ async function submitAddSub() {
 .pill-text {
   font-size: 11px;
 }
-/* description indicator: icon-only pill; hover opens the rendered-markdown card */
+/* description indicator: icon-only pill; hover opens the rendered-markdown card.
+   It's a <div>, so pin the box model like .est-pill to match the sibling pills. */
 .desc-pill {
+  box-sizing: border-box;
+  height: 22px;
+  line-height: 1;
   padding: 2px 5px;
 }
 .desc-pop {

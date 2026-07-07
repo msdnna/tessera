@@ -28,16 +28,16 @@ export function useDateLocale() {
     const todayEpoch = Math.round(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000)
     const diff = dueEpoch - todayEpoch
     const en = locale.startsWith('en')
-    if (diff === 0) return en ? 'Today' : 'Сегодня'
-    if (diff === 1) return en ? 'Tomorrow' : 'Завтра'
-    if (diff === -1) return en ? 'Yesterday' : 'Вчера'
+    if (diff === 0) return en ? 'Today' : 'сегодня'
+    if (diff === 1) return en ? 'Tomorrow' : 'завтра'
+    if (diff === -1) return en ? 'Yesterday' : 'вчера'
     const firstDay = theme.weekStart === 0 ? 0 : 1
     if (Math.abs(diff) <= 6 && weekStartDay(dueEpoch, firstDay) === weekStartDay(todayEpoch, firstDay)) {
-      const wd = new Date(dueEpoch * 86400000).toLocaleDateString(locale, {
+      // Locale short weekday: ru is already lowercase ("пн"); leave as-is.
+      return new Date(dueEpoch * 86400000).toLocaleDateString(locale, {
         weekday: 'short',
         timeZone: 'UTC',
       })
-      return wd.charAt(0).toUpperCase() + wd.slice(1)
     }
     return ''
   }
