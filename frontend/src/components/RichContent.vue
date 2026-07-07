@@ -2,8 +2,6 @@
 import { ref, watch, onMounted, nextTick } from 'vue'
 import { renderRich } from '@/utils/markdown'
 import { useThemeStore } from '@/stores/theme'
-import { isTauri, serverBase } from '@/utils/serverBase'
-import { fetchImageObjectURL } from '@/composables/useApiImage'
 
 // Renders Markdown (via renderRich → sanitised HTML) and then asynchronously
 // turns ```mermaid fenced blocks into SVG diagrams. Mermaid is loaded lazily
@@ -36,28 +34,6 @@ function build() {
   }
   html.value = out || (props.empty ? `<em class="rc-empty">${props.empty}</em>` : '')
   nextTick(renderMermaid)
-  nextTick(hydrateDesktopImages)
-}
-
-// Desktop: inline images point at the remote server ('<base>/api/uploads/…' or the
-// GitLab asset proxy, absolutized by the markdown sanitiser hook), which the
-// webview won't load as a cross-origin <img>. Swap each to an axios-fetched blob:
-// URL. No-op on web (same-origin <img> loads fine).
-async function hydrateDesktopImages() {
-  if (!isTauri()) return
-  const el = root.value
-  if (!el) return
-  const prefix = serverBase() + '/api/'
-  for (const img of el.querySelectorAll('img[src]')) {
-    const src = img.getAttribute('src')
-    if (!src || !src.startsWith(prefix) || img.dataset.blobbed) continue
-    img.dataset.blobbed = '1'
-    try {
-      img.src = await fetchImageObjectURL(src)
-    } catch {
-      /* leave the original src (shows a broken image) */
-    }
-  }
 }
 
 // A self-originated checkbox toggle already flipped (and animated) the box in the

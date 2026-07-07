@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -200,22 +202,39 @@ func (h *API) GitlabAvatar(c *gin.Context) {
 	c.Redirect(http.StatusFound, rawURL)
 }
 
+// imgAttempt is one server-side fetch of the avatar with a specific credential
+// placement. GitLab authenticates differently across its endpoints, so we try the
+// PAT as a Bearer header (what the API/GraphQL accept), a PRIVATE-TOKEN header, and
+// a `?private_token=` query param (older web/upload routes) before giving up.
+type imgAttempt struct {
+	url    string
+	header string // header name, or "" for none
+	value  string
+}
+
 // streamGitlabImage fetches an image server-side and streams it to the client,
 // returning true on success. It follows redirects (a GitLab avatar URL often 302s
-// to the actual file), stripping the GitLab token whenever the redirect leaves the
-// original host so it's never leaked. It tries the token as a PRIVATE-TOKEN header
-// first, then as a `?private_token=` query param (GitLab web/upload routes — unlike
-// the API — honour the param, not the header), which is what lets private-instance
-// avatars resolve for clients with no direct GitLab access.
+// to the actual file), stripping the credential whenever the redirect leaves the
+// original host so it's never leaked. On total failure it logs the last GitLab
+// response (status + content-type + a short body snippet) so a session-only route
+// (private instance, no PAT support on /uploads/-/system/user/avatar) is diagnosable.
 func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) bool {
-	attempts := []string{rawURL}
+	var attempts []imgAttempt
 	if token != "" {
 		sep := "?"
 		if strings.Contains(rawURL, "?") {
 			sep = "&"
 		}
-		attempts = append(attempts, rawURL+sep+"private_token="+url.QueryEscape(token))
+		attempts = []imgAttempt{
+			{rawURL, "Authorization", "Bearer " + token},
+			{rawURL, "PRIVATE-TOKEN", token},
+			{rawURL + sep + "private_token=" + url.QueryEscape(token), "", ""},
+		}
+	} else {
+		// External host (e.g. gravatar) — no credential to send.
+		attempts = []imgAttempt{{rawURL, "", ""}}
 	}
+
 	client := *gitlab.NewHTTPClient()
 	client.CheckRedirect = func(r *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
@@ -223,19 +242,24 @@ func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) boo
 		}
 		if r.URL.Host != ghost {
 			r.Header.Del("PRIVATE-TOKEN")
+			r.Header.Del("Authorization")
 		}
 		return nil
 	}
-	for _, u := range attempts {
-		req, rerr := http.NewRequestWithContext(c, http.MethodGet, u, nil)
+
+	var lastStatus int
+	var lastCT, lastBody string
+	for _, a := range attempts {
+		req, rerr := http.NewRequestWithContext(c, http.MethodGet, a.url, nil)
 		if rerr != nil {
 			continue
 		}
-		if token != "" {
-			req.Header.Set("PRIVATE-TOKEN", token)
+		if a.header != "" {
+			req.Header.Set(a.header, a.value)
 		}
 		resp, derr := client.Do(req)
 		if derr != nil {
+			lastStatus, lastCT, lastBody = 0, "", derr.Error()
 			continue
 		}
 		ct := resp.Header.Get("Content-Type")
@@ -247,7 +271,13 @@ func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) boo
 			_ = resp.Body.Close()
 			return true
 		}
+		snippet := make([]byte, 120)
+		n, _ := io.ReadFull(io.LimitReader(resp.Body, 120), snippet)
+		lastStatus, lastCT, lastBody = resp.StatusCode, ct, strings.TrimSpace(string(snippet[:n]))
 		_ = resp.Body.Close()
 	}
+	log.Printf("gitlab avatar proxy: could not fetch %q server-side (last status=%d ct=%q body=%q) — "+
+		"the instance's avatar web route likely needs a session cookie the PAT can't provide",
+		rawURL, lastStatus, lastCT, lastBody)
 	return false
 }
