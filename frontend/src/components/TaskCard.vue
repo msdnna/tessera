@@ -21,6 +21,8 @@ import {
   TimerOutline,
   RibbonOutline,
   WarningOutline,
+  EllipsisHorizontal,
+  ReorderThreeOutline,
 } from '@vicons/ionicons5'
 
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
@@ -35,6 +37,7 @@ import { formatEstimate, formatEstimateFull, estimateTooltip, sumEstimates } fro
 import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
+import RichContent from './RichContent.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
@@ -81,6 +84,32 @@ const newTagName = ref('')
 const editingTitle = ref(false)
 const titleEdit = ref('')
 const titleInput = ref(null)
+// The title is clamped to 2 lines; show the full-text tooltip only when it
+// actually overflows (measured on hover, like a pill tooltip).
+const titleEl = ref(null)
+const titleTruncated = ref(false)
+function checkTruncated() {
+  const el = titleEl.value
+  titleTruncated.value = !!el && el.scrollHeight > el.clientHeight + 1
+}
+// Single click on the title opens the modal (like the rest of the card), double
+// click edits it. A real double-click fires click→click→dblclick, so debounce
+// the open just for the title: dblclick cancels the pending open and edits.
+let titleClickTimer = null
+function onTitleClick() {
+  if (titleClickTimer) return
+  titleClickTimer = setTimeout(() => {
+    titleClickTimer = null
+    emit('open', props.task.id)
+  }, 220)
+}
+function onTitleDblClick() {
+  if (titleClickTimer) {
+    clearTimeout(titleClickTimer)
+    titleClickTimer = null
+  }
+  startTitleEdit()
+}
 function startTitleEdit() {
   titleEdit.value = props.task.title
   editingTitle.value = true
@@ -520,6 +549,24 @@ async function submitAddSub() {
       @click="emit('open', task.id)"
       @contextmenu.prevent.stop="onCtx"
     >
+      <!-- hover quick-actions (a reference tracker-style): complete · add subtask · more.
+           On touch (no hover) only "more" persists — see @media(hover:none). -->
+      <div v-if="!nested" class="card-actions" @click.stop>
+        <button
+          class="ca-btn ca-complete"
+          :title="done ? 'Вернуть в работу' : 'Отметить выполненной'"
+          @click.stop="toggleDone"
+        >
+          <n-icon :component="done ? CheckmarkCircle : CheckmarkOutline" :size="15" />
+        </button>
+        <button class="ca-btn ca-sub" title="Добавить подзадачу" @click.stop="startAddSub">
+          <n-icon :component="GitBranchOutline" :size="15" />
+        </button>
+        <button class="ca-btn ca-more" title="Ещё" @click.stop="onCtx">
+          <n-icon :component="EllipsisHorizontal" :size="16" />
+        </button>
+      </div>
+
       <div class="card-top">
         <span
           class="check"
@@ -538,13 +585,24 @@ async function submitAddSub() {
           @keyup.enter="commitTitle"
           @blur="commitTitle"
         />
-        <span
-          v-else
-          class="title"
-          title="Клик — изменить; клик по карточке — открыть"
-          @click.stop="startTitleEdit"
-          >{{ task.title }}</span
-        >
+        <n-tooltip v-else :disabled="!titleTruncated" placement="top-start" :style="{ maxWidth: '320px' }">
+          <template #trigger>
+            <span
+              ref="titleEl"
+              class="title"
+              @mouseenter="checkTruncated"
+              @click.stop="onTitleClick"
+              @dblclick.stop="onTitleDblClick"
+              >{{ task.title }}</span
+            >
+          </template>
+          {{ task.title }}
+        </n-tooltip>
+      </div>
+
+      <!-- meta line: task number + GitLab issue link, on their own row so long
+           titles never wrap around them (kept aligned under the title text). -->
+      <div v-if="task.number || task.gitlab_iid" class="card-sub">
         <span v-if="task.number" class="tnum">#{{ task.number }}</span>
         <a
           v-if="task.gitlab_iid"
@@ -653,6 +711,28 @@ async function submitAddSub() {
           Этап: {{ taskMilestone.title }}{{ taskMilestone.state === 'closed' ? ' (закрыт)' : '' }}
           <template v-if="milestoneRange(taskMilestone)"> · {{ milestoneRange(taskMilestone) }}</template>
         </n-tooltip>
+
+        <!-- description: shown only when set; hover previews the rendered markdown,
+             click opens the task. -->
+        <n-popover
+          v-if="task.description && task.description.trim()"
+          trigger="hover"
+          placement="top-start"
+          :style="{ padding: '0' }"
+        >
+          <template #trigger>
+            <div
+              class="pill set desc-pill"
+              title="Есть описание"
+              @click.stop="emit('open', task.id)"
+            >
+              <n-icon :component="ReorderThreeOutline" :size="14" />
+            </div>
+          </template>
+          <div class="desc-pop">
+            <RichContent :source="task.description" :members="members" />
+          </div>
+        </n-popover>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
         <n-popover trigger="click" placement="bottom-start">
@@ -888,20 +968,19 @@ async function submitAddSub() {
     </draggable>
     </transition>
 
-    <template v-if="!nested">
-      <div v-if="addingSub" class="sub-add-input" @click.stop>
-        <n-input
-          ref="subInput"
-          v-model:value="newSubTitle"
-          size="tiny"
-          placeholder="Название подзадачи, Enter"
-          @keyup.enter="submitAddSub"
-          @keyup.esc="addingSub = false"
-          @blur="submitAddSub"
-        />
-      </div>
-      <button v-else class="add-sub" @click.stop="startAddSub">＋ Создать подзадачу</button>
-    </template>
+    <!-- Adding a subtask is triggered from the hover action bar / context menu;
+         this is just the inline title input it reveals. -->
+    <div v-if="!nested && addingSub" class="sub-add-input" @click.stop>
+      <n-input
+        ref="subInput"
+        v-model:value="newSubTitle"
+        size="tiny"
+        placeholder="Название подзадачи, Enter"
+        @keyup.enter="submitAddSub"
+        @keyup.esc="addingSub = false"
+        @blur="submitAddSub"
+      />
+    </div>
 
     <n-dropdown
       trigger="manual"
@@ -987,6 +1066,68 @@ async function submitAddSub() {
   position: relative;
   z-index: 50;
 }
+/* Hover action bar — floats over the card's top-right corner; revealed on hover
+   (or keyboard focus within the card). Sits above the title, a reference tracker-style. */
+.card-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--t-surface);
+  border: 1px solid var(--t-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+  pointer-events: none;
+  z-index: 6;
+}
+.card:hover .card-actions,
+.card:focus-within .card-actions {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.ca-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--t-text2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ca-btn:hover {
+  background: var(--t-hover);
+  color: var(--t-primary);
+}
+/* Touch devices have no hover — keep only "more" reachable, always visible and
+   chrome-less so it reads as a secondary affordance. */
+@media (hover: none) {
+  .card-actions {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+  .ca-complete,
+  .ca-sub {
+    display: none;
+  }
+  .ca-btn {
+    color: var(--t-text3);
+  }
+}
 /* Background shared by subtask cards / the collapsed list. Tweak here:
    alternatives — var(--t-hover), var(--t-border) (greyer),
    color-mix(in srgb, var(--t-primary) 8%, var(--t-surface)) (accent). */
@@ -1022,16 +1163,22 @@ async function submitAddSub() {
 }
 .title-edit {
   flex: 1;
+  width: 100%;
 }
 .card-top {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
+/* Checkbox box height matches the title's first-line box (20px) so the glyph
+   centres on the first line even when the title wraps to two. */
 .check {
   cursor: pointer;
   color: var(--t-text3);
   display: inline-flex;
+  align-items: center;
+  height: 20px;
+  flex: none;
 }
 .card.done .check {
   color: var(--t-primary);
@@ -1040,19 +1187,35 @@ async function submitAddSub() {
   text-decoration: line-through;
   opacity: 0.6;
 }
+/* Title takes the full row and clamps to two lines with an ellipsis; the number
+   and GitLab chip live on the meta row below, so the title never wraps around
+   them (which used to squeeze it to one word per line). */
 .title {
   flex: 1;
+  min-width: 0;
   font-size: 14px;
+  line-height: 20px;
   color: var(--t-text1);
   cursor: pointer;
-  min-width: 0;
-  padding-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* meta row: number + GitLab chip, indented to sit under the title text
+   (checkbox 20px + gap 8px). */
+.card-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  padding-left: 28px;
 }
 .tnum {
   flex: none;
   font-size: 11px;
   color: var(--t-text3);
-  padding-top: 3px;
 }
 /* "synced from GitLab" chip — links to the source issue. */
 .gl-chip {
@@ -1155,6 +1318,17 @@ async function submitAddSub() {
 }
 .pill-text {
   font-size: 11px;
+}
+/* description indicator: icon-only pill; hover opens the rendered-markdown card */
+.desc-pill {
+  padding: 2px 5px;
+}
+.desc-pop {
+  max-width: 340px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  font-size: 13px;
 }
 .chip {
   font-size: 11px;
@@ -1370,34 +1544,6 @@ async function submitAddSub() {
 }
 .sub-add-input {
   margin-top: 6px;
-}
-.add-sub {
-  margin-top: 6px;
-  width: 100%;
-  background: transparent;
-  border: none;
-  color: var(--t-text3);
-  font-size: 10px;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  padding: 4px;
-  border-radius: 6px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.tw:hover .add-sub {
-  opacity: 1;
-}
-.add-sub:hover {
-  background: var(--t-hover);
-}
-/* Touch devices have no hover, so always show it — but kept pale so it reads as
-   secondary to the column's main "+ Создать задачу". */
-@media (hover: none) {
-  .add-sub {
-    opacity: 0.55;
-  }
 }
 /* Subtask collapse/expand: cross-fade + slight slide when the board toggles
    between the compact rows ("list") and full property cards ("stack"). The

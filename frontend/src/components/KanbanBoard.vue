@@ -35,6 +35,7 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useThemeStore } from '@/stores/theme'
+import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
@@ -44,6 +45,7 @@ import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
+import BoardActivityToasts from './BoardActivityToasts.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardListView from './BoardListView.vue'
@@ -55,8 +57,11 @@ import BoardGanttView from './BoardGanttView.vue'
 const props = defineProps({ boardId: { type: String, required: true } })
 
 const message = useMessage()
+const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const boardViewStore = useBoardViewStore()
+// Live board-activity toasts (separate from the bell): fed from realtime events.
+const activityToasts = ref(null)
 // `layout` lives in the store so the header switcher and the board stay in sync.
 const { layout } = storeToRefs(boardViewStore)
 // Timeline + Gantt share the same time-axis substrate (swimlanes, status sort/
@@ -1249,9 +1254,40 @@ useRealtime((ev) => {
   }
   // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
+  // Board-activity toast for create/move on THIS board (any actor).
+  if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
   if (dragging.value || Date.now() < suppressReloadUntil) return
   scheduleReload()
 })
+
+// Raise a live activity toast for a task create/move on the currently-open board.
+// The verb for a move is refined by comparing the event's completion state to the
+// card we still hold locally (the board reload is debounced, so the pre-move state
+// is intact here): entering/leaving the done boundary reads as completed/reopened.
+function pushActivity(ev) {
+  const t = ev.data
+  if (!t || typeof t !== 'object' || t.board_id !== props.boardId) return
+  let verb = ev.type === 'task.created' ? 'created' : 'moved'
+  if (ev.type === 'task.moved') {
+    const prev = allTasks.value.find((x) => x.id === t.id)
+    const wasDone = !!prev?.completed_at
+    const isDone = !!t.completed_at
+    if (isDone && !wasDone) verb = 'completed'
+    else if (!isDone && wasDone) verb = 'reopened'
+  }
+  const actorId = ev.actor || t.created_by || null
+  const self = !!actorId && actorId === auth.user?.id
+  const m = actorId ? membersMap[actorId] : null
+  activityToasts.value?.push({
+    id: t.id,
+    number: t.number ?? null,
+    title: t.title || 'Задача',
+    verb,
+    actorId: m ? actorId : null,
+    actorName: m?.name || '',
+    self,
+  })
+}
 
 // Refresh just the project's milestones (after the manager edits them, or a remote
 // milestone change) without a full board reload.
@@ -1771,6 +1807,7 @@ watch(
       @open="openTask"
     />
 
+    <BoardActivityToasts ref="activityToasts" @open="openTask" />
   </n-spin>
 </template>
 

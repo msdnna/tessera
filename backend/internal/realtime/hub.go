@@ -12,10 +12,14 @@ import (
 )
 
 // Event is a server→client message. Scope lets clients filter to the
-// workspace/board they're viewing (scoping is wired in a later phase).
+// workspace/board they're viewing (scoping is wired in a later phase). Actor,
+// when set, carries the id of the user who triggered the event so clients can
+// attribute board-activity ("X created …"); it is absent for system/worker
+// actions (GitLab sync, recurrence).
 type Event struct {
 	Scope string          `json:"scope"`
 	Type  string          `json:"type"`
+	Actor string          `json:"actor,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 

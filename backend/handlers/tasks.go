@@ -99,7 +99,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		return
 	}
 	h.logEvent(c, t.ID, "created", nil)
-	h.broadcast(wsID, "task.created", t)
+	h.broadcastAs(c, wsID, "task.created", t)
 	c.JSON(http.StatusCreated, t)
 }
 
@@ -198,7 +198,7 @@ func (h *API) SetTaskParent(c *gin.Context) {
 		fail(c)
 		return
 	}
-	h.broadcast(wsID, "task.moved", updated)
+	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -360,7 +360,7 @@ func (h *API) UpdateTask(c *gin.Context) {
 	if t.Title != updated.Title || t.Description != updated.Description {
 		h.enqueueWriteback(c, id, actor, "title_desc", map[string]any{})
 	}
-	h.broadcast(wsID, "task.updated", updated)
+	h.broadcastAs(c, wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -528,7 +528,7 @@ func (h *API) MoveTask(c *gin.Context) {
 		h.enqueueWriteback(c, id, middleware.CurrentUser(c), "state",
 			map[string]any{"state": issueState(updated.CompletedAt != nil)})
 	}
-	h.broadcast(wsID, "task.moved", updated)
+	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -598,7 +598,7 @@ func (h *API) TransferTask(c *gin.Context) {
 		fail(c)
 		return
 	}
-	h.broadcast(wsID, "task.moved", updated)
+	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
 

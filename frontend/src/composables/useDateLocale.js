@@ -12,32 +12,74 @@ export function useDateLocale() {
     () => `${dateFormat.value} ${theme.timeFormat === '12h' ? 'hh:mm a' : 'HH:mm'}`,
   )
 
-  // formatDue renders a task due date compactly: day + month (+ year when not the
-  // current one), and the time only when it isn't midnight — so date-only tasks
-  // (and legacy rows, which default to 00:00) stay terse while timed ones show the
-  // hour. Honours the user's 12h/24h preference.
+  // The Monday-anchored epoch-day of the week a given epoch-day belongs to, using
+  // the user's week start (0 = Sun, 1 = Mon). Two dates in the same week share it.
+  function weekStartDay(epochDay, firstDay) {
+    const dow = new Date(epochDay * 86400000).getUTCDay() // 0 = Sun … 6 = Sat
+    const offset = (dow - firstDay + 7) % 7
+    return epochDay - offset
+  }
+
+  // relativeDay returns "Сегодня"/"Завтра"/"Вчера" (or the localized weekday when
+  // the date is elsewhere in the current week), else '' to fall back to an
+  // absolute date. y/mo/day are the due's calendar components.
+  function relativeDay(y, mo, day, now, locale) {
+    const dueEpoch = Math.round(Date.UTC(y, mo, day) / 86400000)
+    const todayEpoch = Math.round(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000)
+    const diff = dueEpoch - todayEpoch
+    const en = locale.startsWith('en')
+    if (diff === 0) return en ? 'Today' : 'Сегодня'
+    if (diff === 1) return en ? 'Tomorrow' : 'Завтра'
+    if (diff === -1) return en ? 'Yesterday' : 'Вчера'
+    const firstDay = theme.weekStart === 0 ? 0 : 1
+    if (Math.abs(diff) <= 6 && weekStartDay(dueEpoch, firstDay) === weekStartDay(todayEpoch, firstDay)) {
+      const wd = new Date(dueEpoch * 86400000).toLocaleDateString(locale, {
+        weekday: 'short',
+        timeZone: 'UTC',
+      })
+      return wd.charAt(0).toUpperCase() + wd.slice(1)
+    }
+    return ''
+  }
+
+  // formatDue renders a task due date compactly. Near dates read as relative
+  // shorthand ("Завтра", or a weekday within the current week); otherwise day +
+  // month (+ year when not the current one). The time is appended only when the
+  // due carries a real time-of-day — so date-only tasks (and legacy 00:00 rows)
+  // stay terse while timed ones show the hour. Honours the 12h/24h preference.
   function formatDue(dateStr) {
     if (!dateStr) return ''
     const d = new Date(dateStr)
     const locale = theme.language === 'en' ? 'en-GB' : 'ru-RU'
+    const now = new Date()
     // A pure UTC-midnight value is a date-only due (e.g. a GitLab issue/milestone
-    // date — no time of day). Render the calendar date in UTC so the local-tz
-    // offset doesn't push it to "03:00"; show no time. Manual dues anchor to local
-    // midnight (a non-zero UTC time), so they fall through to the logic below.
-    if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
-      const o = { day: '2-digit', month: 'short', timeZone: 'UTC' }
-      if (d.getUTCFullYear() !== new Date().getUTCFullYear()) o.year = 'numeric'
-      return d.toLocaleDateString(locale, o)
+    // date — no time of day). Read its calendar day in UTC so the local-tz offset
+    // doesn't push it to "03:00". Manual dues anchor to local midnight (a non-zero
+    // UTC time), so their calendar day and time come from the local components.
+    const dateOnly =
+      d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0
+    const y = dateOnly ? d.getUTCFullYear() : d.getFullYear()
+    const mo = dateOnly ? d.getUTCMonth() : d.getMonth()
+    const day = dateOnly ? d.getUTCDate() : d.getDate()
+
+    let time = ''
+    if (!dateOnly && (d.getHours() !== 0 || d.getMinutes() !== 0)) {
+      time = d.toLocaleTimeString(locale, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: theme.timeFormat === '12h',
+      })
     }
-    const opts = { day: '2-digit', month: 'short' }
-    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
-    if (d.getHours() !== 0 || d.getMinutes() !== 0) {
-      opts.hour = '2-digit'
-      opts.minute = '2-digit'
-      opts.hour12 = theme.timeFormat === '12h'
-      return d.toLocaleString(locale, opts)
-    }
-    return d.toLocaleDateString(locale, opts)
+
+    const rel = relativeDay(y, mo, day, now, locale)
+    if (rel) return time ? `${rel}, ${time}` : rel
+
+    const o = dateOnly
+      ? { day: '2-digit', month: 'short', timeZone: 'UTC' }
+      : { day: '2-digit', month: 'short' }
+    if (y !== now.getFullYear()) o.year = 'numeric'
+    const dateLabel = d.toLocaleDateString(locale, o)
+    return time ? `${dateLabel}, ${time}` : dateLabel
   }
 
   return { firstDayOfWeek, dateFormat, dateTimeFormat, formatDue }

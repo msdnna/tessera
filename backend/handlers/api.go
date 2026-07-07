@@ -106,11 +106,25 @@ func (h *API) requireManager(c *gin.Context, workspaceID uuid.UUID) bool {
 
 // broadcast fans a domain event out to connected clients scoped to a workspace.
 func (h *API) broadcast(workspaceID uuid.UUID, eventType string, payload any) {
+	h.broadcastEvent(workspaceID, eventType, "", payload)
+}
+
+// broadcastAs is broadcast with the acting user attached, so clients can
+// attribute the event to a person (board-activity toasts). Use it for
+// user-initiated actions that carry a gin.Context.
+func (h *API) broadcastAs(c *gin.Context, workspaceID uuid.UUID, eventType string, payload any) {
+	h.broadcastEvent(workspaceID, eventType, middleware.CurrentUser(c).String(), payload)
+}
+
+// broadcastEvent marshals the payload and fans the event out; actor may be "".
+func (h *API) broadcastEvent(workspaceID uuid.UUID, eventType, actor string, payload any) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
-	h.hub.Broadcast(realtime.Event{Scope: workspaceID.String(), Type: eventType, Data: data})
+	h.hub.Broadcast(realtime.Event{
+		Scope: workspaceID.String(), Type: eventType, Actor: actor, Data: data,
+	})
 }
 
 // parseID reads a uuid path param, writing 400 on failure.
