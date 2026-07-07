@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.116.3] — 2026-07-07
+- **Хотфикс: `useApiImage` падал на computed-ref.** Упрощение 0.116.2 вызывало аргумент как функцию
+  (`getUrl()`), но `UserAvatar` передаёт computed-ref → `TypeError: e is not a function` в setup, из-за
+  чего рушился рендер карточек/аватаров и «ломался фронт». Теперь через `toValue()` — принимает ref,
+  геттер и строку. Добавлен unit-тест `tests/apiImage.spec.js` на все три формы.
+
 ### [0.116.2] — 2026-07-07
 - **Откат blob-обёртки картинок на обычный `<img>`.** Диагностика показала, что webview Tauri **грузит**
   удалённые кросс-origin `<img>` (запрос реально уходит на сервер) — значит blob-фетч через axios (0.115.1)
