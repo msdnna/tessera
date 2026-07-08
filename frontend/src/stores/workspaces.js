@@ -62,6 +62,18 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     boardsByProject.value = { ...boardsByProject.value, [projectId]: res.data || [] }
   }
 
+  // Patch a single loaded board in place (e.g. after a rename / icon change) so the
+  // sidebar tree reflects it without a full reload.
+  function upsertBoard(board) {
+    if (!board?.project_id) return
+    const list = boardsByProject.value[board.project_id]
+    if (!list) return
+    boardsByProject.value = {
+      ...boardsByProject.value,
+      [board.project_id]: list.map((b) => (b.id === board.id ? { ...b, ...board } : b)),
+    }
+  }
+
   // tree helpers (groups/projects are flat; build the tree by parent_id/group_id)
   function childGroups(parentId) {
     return groups.value
@@ -104,6 +116,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     groups,
     projects,
     boardsByProject,
+    upsertBoard,
     loadWorkspaces,
     selectWorkspace,
     refresh,

@@ -90,6 +90,9 @@ const fv = (k) => props.fieldVis?.[k] !== false
 // Card-size composition: compact shows only the title; medium a curated subset;
 // large everything. The per-field fieldVis toggles further refine within that.
 const isCompact = computed(() => props.cardSize === 'compact')
+// Compact cards still show subtasks, but always collapsed and name-only (no
+// checkbox / priority dot / due), so the expanded stack never applies there.
+const subsExpanded = computed(() => props.subtasksExpanded && !isCompact.value)
 const SIZE_FIELDS = {
   compact: [],
   medium: ['number', 'priority', 'due', 'tags', 'assignee'],
@@ -114,23 +117,6 @@ const hasAnyPill = computed(
     (show('assignee') &&
       (props.showEmpty || author.value || assignees.value.length || glAssignees.value.length)),
 )
-// Stacked mode: fields as "icon + value" rows (value aligned on a vertical axis;
-// unset → dash). Description is intentionally excluded. Respects size + fieldVis.
-const stackedRows = computed(() => {
-  const rows = []
-  const add = (key, icon, value, color) => {
-    if (!show(key)) return
-    if (!value && !props.showEmpty) return
-    rows.push({ key, icon, value: value || '—', color: value ? color : undefined })
-  }
-  add('priority', FlagOutline, props.task.priority ? PRIORITY_LABELS[props.task.priority] : '', PRIORITY_COLORS[props.task.priority])
-  add('due', CalendarClearOutline, due.value)
-  add('assignee', PersonAddOutline, assigneeNames.value)
-  add('tags', PricetagOutline, taskTags.value.map((t) => t.name).join(', '))
-  add('estimate', TimerOutline, estText.value ? `${estIsRollup.value ? 'Σ ' : ''}${estText.value}` : '')
-  add('milestone', RibbonOutline, taskMilestone.value?.title)
-  return rows
-})
 
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
 // renders flat without a header.
@@ -670,11 +656,7 @@ async function submitAddSub() {
         </a>
       </div>
 
-      <div
-        v-if="stackFields ? hasConflict || stackedRows.length : hasAnyPill"
-        class="pills"
-        :class="{ stacked: stackFields }"
-      >
+      <div v-if="hasAnyPill" class="pills" :class="{ stacked: stackFields }">
         <!-- unresolved GitLab write-back conflict on this task -->
         <n-tooltip v-if="hasConflict">
           <template #trigger>
@@ -689,21 +671,13 @@ async function submitAddSub() {
           Конфликт обратной записи GitLab — нажмите, чтобы разрешить
         </n-tooltip>
 
-        <!-- stacked mode: "icon + value" rows, values aligned on a vertical axis;
-             unset fields show a dash. Display-only (click the card to edit). -->
-        <template v-if="stackFields">
-          <div v-for="r in stackedRows" :key="r.key" class="sfield">
-            <n-icon :component="r.icon" :size="14" class="sfield-ic" :style="r.color ? { color: r.color } : {}" />
-            <span class="sfield-val" :class="{ empty: r.value === '—' }">{{ r.value }}</span>
-          </div>
-        </template>
-
-        <!-- horizontal pills (default) -->
-        <template v-else>
+        <!-- Fields render as horizontal pills, or (stack mode) as full-width
+             "icon + value" rows — same triggers/pickers, so every field stays
+             clickable; hover highlights the row (see .pills.stacked CSS). -->
         <!-- priority -->
-        <n-popover v-if="show('priority') && (showEmpty || task.priority)" trigger="click" placement="bottom-start">
+        <n-popover v-if="show('priority') && (showEmpty || task.priority || stackFields)" trigger="click" placement="bottom-start">
           <template #trigger>
-            <button class="pill" :class="{ set: task.priority }" @click.stop>
+            <button class="pill" :class="{ set: task.priority }" :title="stackFields ? 'Приоритет' : ''" @click.stop>
               <n-icon
                 :component="FlagOutline"
                 :size="13"
@@ -716,6 +690,9 @@ async function submitAddSub() {
                     : {}
                 "
               />
+              <span v-if="stackFields" class="pill-text" :class="{ 'sf-empty': !task.priority }">{{
+                task.priority ? PRIORITY_LABELS[task.priority] : '—'
+              }}</span>
             </button>
           </template>
           <div class="menu">
@@ -732,11 +709,12 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- due date: opens the calendar directly -->
-        <n-popover v-if="show('due') && (showEmpty || due)" trigger="click" placement="bottom-start">
+        <n-popover v-if="show('due') && (showEmpty || due || stackFields)" trigger="click" placement="bottom-start">
           <template #trigger>
-            <button class="pill" :class="{ set: due, overdue }" @click.stop>
+            <button class="pill" :class="{ set: due, overdue }" :title="stackFields ? 'Срок' : ''" @click.stop>
               <n-icon :component="CalendarClearOutline" :size="13" />
               <span v-if="due" class="pill-text">{{ due }}</span>
+              <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
               <n-icon
                 v-if="task.recurrence"
                 :component="RepeatOutline"
@@ -758,32 +736,41 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
-        <n-tooltip v-if="show('estimate') && estText">
+        <n-tooltip v-if="show('estimate') && (estText || stackFields)">
           <template #trigger>
-            <div class="pill set est-pill">
+            <div class="pill" :class="{ set: estText, 'est-pill': estText }" :title="stackFields ? 'Оценка' : ''">
               <n-icon :component="TimerOutline" :size="13" />
-              <span class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
+              <span v-if="estText" class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
+              <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
             </div>
           </template>
-          {{ estTooltip }}
+          {{ estText ? estTooltip : 'Оценка' }}
         </n-tooltip>
 
         <!-- milestone («Этап»): display-only chip; editing lives in the task modal -->
-        <n-tooltip v-if="show('milestone') && taskMilestone">
+        <n-tooltip v-if="show('milestone') && (taskMilestone || stackFields)">
           <template #trigger>
-            <div class="pill set ms-pill" :class="{ closed: taskMilestone.state === 'closed' }">
+            <div
+              class="pill"
+              :class="{ set: taskMilestone, 'ms-pill': taskMilestone, closed: taskMilestone && taskMilestone.state === 'closed' }"
+              :title="stackFields ? 'Этап' : ''"
+            >
               <n-icon :component="RibbonOutline" :size="13" />
-              <span class="pill-text">{{ taskMilestone.title }}</span>
+              <span v-if="taskMilestone" class="pill-text">{{ taskMilestone.title }}</span>
+              <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
             </div>
           </template>
-          Этап: {{ taskMilestone.title }}{{ taskMilestone.state === 'closed' ? ' (закрыт)' : '' }}
-          <template v-if="milestoneRange(taskMilestone)"> · {{ milestoneRange(taskMilestone) }}</template>
+          <template v-if="taskMilestone">
+            Этап: {{ taskMilestone.title }}{{ taskMilestone.state === 'closed' ? ' (закрыт)' : '' }}
+            <template v-if="milestoneRange(taskMilestone)"> · {{ milestoneRange(taskMilestone) }}</template>
+          </template>
+          <template v-else>Этап</template>
         </n-tooltip>
 
-        <!-- description: shown only when set; hover previews the rendered markdown,
-             click opens the task. -->
+        <!-- description: shown only when set (and not in stack mode); hover previews
+             the rendered markdown, click opens the task. -->
         <n-popover
-          v-if="show('description') && task.description && task.description.trim()"
+          v-if="show('description') && !stackFields && task.description && task.description.trim()"
           trigger="hover"
           placement="top-start"
           :style="{ padding: '0' }"
@@ -803,15 +790,15 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
-        <n-popover v-if="show('tags') && (showEmpty || taskTags.length)" trigger="click" placement="bottom-start">
+        <n-popover v-if="show('tags') && (showEmpty || taskTags.length || stackFields)" trigger="click" placement="bottom-start">
           <template #trigger>
             <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
               <template #trigger>
-                <button v-if="!taskTags.length" class="pill" @click.stop>
+                <button v-if="!stackFields && !taskTags.length" class="pill" @click.stop>
                   <n-icon :component="PricetagOutline" :size="13" />
                 </button>
                 <button
-                  v-else
+                  v-else-if="!stackFields"
                   class="pill tag-pill"
                   :style="{
                     border: '1px solid transparent',
@@ -828,6 +815,27 @@ async function submitAddSub() {
                     >{{ taskTags[0].name }}</span
                   >
                   <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
+                </button>
+                <!-- stacked: leading tag icon + colored chip (like the task modal) -->
+                <button v-else class="pill" title="Теги" @click.stop>
+                  <n-icon
+                    :component="PricetagOutline"
+                    :size="13"
+                    :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
+                  />
+                  <span
+                    v-if="taskTags.length"
+                    class="tag-chip"
+                    :style="{ background: tagPillBg(taskTags[0].color), color: tagText(taskTags[0].color) }"
+                  >
+                    <span
+                      class="tname accent-grad-text"
+                      :style="{ '--grad': hueGrad(tagText(taskTags[0].color)) }"
+                      >{{ taskTags[0].name }}</span
+                    >
+                    <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
+                  </span>
+                  <span v-else class="pill-text sf-empty">—</span>
                 </button>
               </template>
               <div class="preview">
@@ -883,7 +891,7 @@ async function submitAddSub() {
            group right-aligns (margin-left:auto) and stays right-aligned even
            when it wraps to its own line. -->
         <div
-          v-if="show('assignee') && (showEmpty || author || assignees.length || glAssignees.length)"
+          v-if="show('assignee') && (showEmpty || author || assignees.length || glAssignees.length || stackFields)"
           class="people"
         >
           <n-popover
@@ -894,7 +902,13 @@ async function submitAddSub() {
             <template #trigger>
               <n-tooltip placement="top">
                 <template #trigger>
-                  <button class="pill assignee-pill" @click.stop>
+                  <button class="pill assignee-pill" :title="stackFields ? 'Исполнитель' : ''" @click.stop>
+                    <n-icon
+                      v-if="stackFields"
+                      :component="PersonAddOutline"
+                      :size="13"
+                      class="sf-people-ic"
+                    />
                     <UserAvatar
                       v-if="author && !authorIsAssignee"
                       class="avatar author-ava"
@@ -917,10 +931,15 @@ async function submitAddSub() {
                       :name="g.name || g"
                     />
                     <n-icon
-                      v-if="!author && !assignees.length && !glAssignees.length"
+                      v-if="!stackFields && !author && !assignees.length && !glAssignees.length"
                       :component="PersonAddOutline"
                       :size="13"
                     />
+                    <span
+                      v-else-if="stackFields && !author && !assignees.length && !glAssignees.length"
+                      class="pill-text sf-empty"
+                      >—</span
+                    >
                   </button>
                 </template>
                 <div class="people-tip">
@@ -971,7 +990,6 @@ async function submitAddSub() {
             </div>
           </n-popover>
         </div>
-        </template>
       </div>
     </div>
     <!-- /.card -->
@@ -982,15 +1000,16 @@ async function submitAddSub() {
          drop hint while a board drag is in progress. -->
     <transition name="sub-morph" mode="out-in">
     <draggable
-      v-if="!nested && !isCompact"
-      :key="subtasksExpanded ? 'stack' : 'list'"
+      v-if="!nested"
+      :key="subsExpanded ? 'stack' : 'list'"
       :list="subModel"
       group="tasks"
       item-key="id"
       class="subs"
       :class="{
-        stack: subtasksExpanded,
-        list: !subtasksExpanded,
+        stack: subsExpanded,
+        list: !subsExpanded,
+        compact: isCompact,
         collapsed: !subModel.length && !dragging,
         pending: !subModel.length && dragging,
       }"
@@ -1001,7 +1020,7 @@ async function submitAddSub() {
       @change="onSubChange"
     >
       <template #item="{ element: s, index }">
-        <div v-if="subtasksExpanded" class="sub-layer" :style="{ zIndex: 40 - index }">
+        <div v-if="subsExpanded" class="sub-layer" :style="{ zIndex: 40 - index }">
           <TaskCard
             :task="s"
             :subtasks="[]"
@@ -1034,16 +1053,16 @@ async function submitAddSub() {
                 @click="emit('open', s.id)"
                 @contextmenu.prevent.stop="onCtx($event, s)"
               >
-                <span class="check sm" @click.stop="toggleSubDone(s)">
+                <span v-if="!isCompact" class="check sm" @click.stop="toggleSubDone(s)">
                   <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
                 </span>
                 <span
-                  v-if="s.priority"
+                  v-if="!isCompact && s.priority"
                   class="pr-dot"
                   :style="{ background: hueGradVert(PRIORITY_COLORS[s.priority]) }"
                 />
                 <span class="sub-title">{{ s.title }}</span>
-                <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+                <span v-if="!isCompact && subDue(s)" class="sub-due">{{ subDue(s) }}</span>
               </div>
             </template>
             <TaskMiniCard :task="s" :tags-map="tagsMap" :members-map="membersMap" />
@@ -1331,37 +1350,55 @@ async function submitAddSub() {
   gap: 6px;
   margin-top: 8px;
 }
-/* Stacked pills (customize view): one field per row, left-aligned. */
+/* Stacked mode (customize view): the same pill triggers, laid out as full-width
+   "icon + value" rows. Field icons stay flush-left so values align on one axis;
+   rows highlight on hover and remain clickable (open the same pickers). */
 .pills.stacked {
   flex-direction: column;
   align-items: stretch;
-  gap: 3px;
+  gap: 1px;
 }
 .pills.stacked .people {
   margin-left: 0;
+  width: 100%;
 }
-/* A stacked field row: fixed icon column + value, so all values line up on a
-   vertical axis. Unset values render as a muted dash. */
-.sfield {
-  display: grid;
-  grid-template-columns: 18px 1fr;
-  align-items: center;
-  gap: 7px;
-  min-height: 20px;
+.pills.stacked .pill,
+.pills.stacked .assignee-pill {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 26px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
 }
-.sfield-ic {
+.pills.stacked .pill:hover,
+.pills.stacked .assignee-pill:hover {
+  background: var(--t-hover);
+}
+.pills.stacked .pill .n-icon,
+.pills.stacked .sf-people-ic {
+  flex: none;
+}
+.pills.stacked .sf-empty {
   color: var(--t-text3);
-  justify-self: center;
 }
-.sfield-val {
-  font-size: 12px;
-  color: var(--t-text2);
+/* Colored tag chip inside a stacked row (semi-rounded, like the task modal). */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+}
+.tag-chip .tname {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.sfield-val.empty {
-  color: var(--t-text3);
 }
 .pill {
   display: inline-flex;

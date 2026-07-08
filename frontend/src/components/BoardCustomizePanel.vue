@@ -59,26 +59,27 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
 <template>
   <n-drawer v-model:show="show" :width="340" placement="right">
     <n-drawer-content title="Настроить вид" closable :native-scrollbar="false">
-      <!-- Board: icon + colour (like projects/groups) + name -->
+      <!-- Board: name, then icon + colour (like projects/groups) -->
       <div class="sec">
         <div class="sec-lbl">Доска</div>
-        <div class="board-row">
+        <n-input
+          v-model:value="boardName"
+          size="small"
+          placeholder="Название доски"
+          @blur="emit('update-board', { name: boardName })"
+          @keyup.enter="emit('update-board', { name: boardName })"
+        />
+        <div class="board-icp">
           <IconColorPicker
             :icon="boardIcon"
             :color="boardColor"
             :mode="boardIconMode"
             :initials="boardInitials"
+            fallback-kanban
             allow-upload
             @update:icon="(v) => emit('update-board', { icon: v })"
             @update:color="(v) => emit('update-board', { color: v })"
             @update:mode="(v) => emit('update-board', { icon_mode: v })"
-          />
-          <n-input
-            v-model:value="boardName"
-            size="small"
-            placeholder="Название доски"
-            @blur="emit('update-board', { name: boardName })"
-            @keyup.enter="emit('update-board', { name: boardName })"
           />
         </div>
       </div>
@@ -91,7 +92,7 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
         <n-radio-group v-model:value="cardSize" size="small">
           <n-radio-button value="compact">Компактно</n-radio-button>
           <n-radio-button value="medium">Средне</n-radio-button>
-          <n-radio-button value="large">Крупно</n-radio-button>
+          <n-radio-button value="large">Расширенно</n-radio-button>
         </n-radio-group>
       </div>
 
@@ -197,13 +198,13 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.board-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.board-row .n-input {
-  flex: 1;
+/* Board icon/colour picker: left-align its rows (the shared component centres by
+   default, which reads oddly in this left-aligned settings panel). */
+.board-icp :deep(.icons),
+.board-icp :deep(.swatches),
+.board-icp :deep(.mode-toggle) {
+  justify-content: flex-start;
+  align-self: flex-start;
 }
 .row {
   display: flex;

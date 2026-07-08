@@ -166,6 +166,7 @@ async function updateBoard(patch) {
     })
     board.value = data
     boardName.value = data.name
+    wsStore.upsertBoard(data) // reflect rename/icon/colour in the sidebar tree
   } catch (e) {
     message.error(e.message)
     boardName.value = board.value.name
