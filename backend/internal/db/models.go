@@ -20,6 +20,9 @@ type Board struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	DoneColumnID *uuid.UUID `json:"done_column_id"`
 	Slug         string     `json:"slug"`
+	Icon         string     `json:"icon"`
+	Color        string     `json:"color"`
+	IconMode     string     `json:"icon_mode"`
 }
 
 type BoardColumn struct {

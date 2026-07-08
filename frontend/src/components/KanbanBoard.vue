@@ -147,12 +147,25 @@ const customizeOpen = ref(false)
 // loaded board; committed via boards.update on blur/enter).
 const boardName = ref('')
 watch(board, (b) => (boardName.value = b?.name || ''))
-async function renameBoard(name) {
-  const n = (name || '').trim()
-  if (!n || !board.value || n === board.value.name) return
+// Save board meta (name / icon / colour / icon_mode) from the customize panel. We
+// always send the full current meta so an icon change doesn't drop the name and
+// vice-versa; the backend still merges tri-state, this just keeps it simple.
+async function updateBoard(patch) {
+  if (!board.value) return
+  const name = (patch.name ?? board.value.name ?? '').trim()
+  if (!name) {
+    boardName.value = board.value.name
+    return
+  }
   try {
-    await boards.update(board.value.id, { name: n })
-    board.value = { ...board.value, name: n }
+    const { data } = await boards.update(board.value.id, {
+      name,
+      icon: patch.icon ?? board.value.icon ?? '',
+      color: patch.color ?? board.value.color ?? '',
+      icon_mode: patch.icon_mode ?? board.value.icon_mode ?? 'badge',
+    })
+    board.value = data
+    boardName.value = data.name
   } catch (e) {
     message.error(e.message)
     boardName.value = board.value.name
@@ -181,6 +194,16 @@ function colCollapsedNow(dcol) {
 function toggleCollapse(dcol) {
   colCollapse[dcol.key] = !isColCollapsed(dcol)
 }
+// Turning "auto-collapse empty" ON must collapse EVERY empty column — including
+// ones the user previously expanded by hand (a stale explicit `false` override
+// would otherwise beat the auto rule, which reads as "the toggle does nothing").
+// Clear overrides on empty columns whenever the toggle flips on.
+watch(autoCollapseEmpty, (on) => {
+  if (!on) return
+  for (const dcol of displayColumns.value) {
+    if (colCount(dcol) === 0 && dcol.key in colCollapse) delete colCollapse[dcol.key]
+  }
+})
 // Composer bar: collapsed to a single row (clipping overflow chips) so the
 // right-side tool buttons stay in view; tapping expands it to full height and
 // slides the tools off-screen. Collapses again on an outside click.
@@ -879,15 +902,16 @@ const GAP = 12
 const ADD_COL_W = 220
 const COL_MIN = 220 // narrowest a column may get before we switch to scrolling
 const COL_MAX = 420
-// Card-size presets (customize view): a width cap for the column and a scale
-// factor the cards read via the `--card-scale` CSS var for font/padding density.
+// Card-size presets (customize view): the size changes the card composition (see
+// TaskCard) AND the column width band — compact is title-only so it can be narrow,
+// large carries every field so it's wider. Medium keeps the current width band.
 const CARD_SIZES = {
-  compact: { scale: 0.9, cap: 300 },
-  medium: { scale: 1, cap: COL_MAX },
-  large: { scale: 1.1, cap: 480 },
+  compact: { min: 160, cap: 230 },
+  medium: { min: COL_MIN, cap: COL_MAX },
+  large: { min: 300, cap: 560 },
 }
 const cardCap = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).cap)
-const cardScale = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).scale)
+const cardMin = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).min)
 const colWidth = computed(() => {
   const cw = containerWidth.value
   if (!cw) return 280 // pre-measure fallback
@@ -899,15 +923,12 @@ const colWidth = computed(() => {
   // so sub-pixel rounding can't trip the horizontal scrollbar.
   const reserved = (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 4
   const w = Math.floor((cw - reserved) / n)
-  // Fill the viewport while comfortable; once columns would get narrower than
-  // COL_MIN, stop shrinking and let the board scroll horizontally instead. The
-  // upper bound is the chosen card size's cap (compact narrower, large wider).
-  return Math.min(Math.max(w, COL_MIN), cardCap.value)
+  // Fill the viewport while comfortable; the width band comes from the chosen card
+  // size (compact narrower, large wider), so columns never get too narrow to hold
+  // their fields and scroll horizontally once they'd shrink past the band's min.
+  return Math.min(Math.max(w, cardMin.value), cardCap.value)
 })
-const colStyleVars = computed(() => ({
-  '--col-w': colWidth.value + 'px',
-  '--card-scale': cardScale.value,
-}))
+const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 
 // User-chosen board background (preference): a CSS colour or an image URL.
 const themeStore = useThemeStore()
@@ -1924,6 +1945,7 @@ watch(
                       :field-vis="fieldVis"
                       :show-empty="showEmpty"
                       :stack-fields="stackFields"
+                      :card-size="cardSize"
                       @open="openTask"
                       @changed="onChanged"
                     />
@@ -2012,11 +2034,14 @@ watch(
       :facet-chips="facetChips"
       :add-options="addOptions"
       :current-view-name="currentViewName"
+      :board-icon="board?.icon || ''"
+      :board-color="board?.color || ''"
+      :board-icon-mode="board?.icon_mode || 'badge'"
       @set-field="setFieldVis"
       @add-facet="onAddFacet"
       @remove-chip="removeChip"
       @chip-click="onChipClick"
-      @rename-board="renameBoard"
+      @update-board="updateBoard"
     />
   </n-spin>
 </template>

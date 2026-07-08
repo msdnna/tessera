@@ -31,7 +31,7 @@ SELECT coalesce(max(position), 0)::double precision FROM boards WHERE project_id
 
 -- name: UpdateBoard :one
 UPDATE boards
-SET name = $2, position = $3, updated_at = now()
+SET name = $2, position = $3, icon = $4, color = $5, icon_mode = $6, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

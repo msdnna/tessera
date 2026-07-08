@@ -206,13 +206,30 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name string `json:"name" binding:"required"`
+		Name     string  `json:"name" binding:"required"`
+		Icon     *string `json:"icon"`
+		Color    *string `json:"color"`
+		IconMode *string `json:"icon_mode"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	updated, err := h.q.UpdateBoard(c, db.UpdateBoardParams{ID: id, Name: req.Name, Position: b.Position})
+	// Icon/colour/mode are optional (tri-state): absent keeps the current value so
+	// a rename-only call (e.g. the sidebar) doesn't wipe the board's icon.
+	icon, color, iconMode := b.Icon, b.Color, b.IconMode
+	if req.Icon != nil {
+		icon = *req.Icon
+	}
+	if req.Color != nil {
+		color = *req.Color
+	}
+	if req.IconMode != nil {
+		iconMode = normIconMode(*req.IconMode)
+	}
+	updated, err := h.q.UpdateBoard(c, db.UpdateBoardParams{
+		ID: id, Name: req.Name, Position: b.Position, Icon: icon, Color: color, IconMode: iconMode,
+	})
 	if err != nil {
 		fail(c)
 		return

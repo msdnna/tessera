@@ -74,16 +74,63 @@ const props = defineProps({
   wsId: { type: String, default: null },
   projectId: { type: String, default: null },
   // Customize-view: per-field pill visibility (key → false hides), whether empty
-  // (unset) pills render, and whether pills stack vertically vs. wrap horizontally.
+  // (unset) pills render, whether pills stack vertically, and the card size preset
+  // which controls the card's composition (compact = title only, medium = key
+  // fields, large = everything).
   fieldVis: { type: Object, default: () => ({}) },
   showEmpty: { type: Boolean, default: true },
   stackFields: { type: Boolean, default: false },
+  cardSize: { type: String, default: 'medium' },
 })
 const emit = defineEmits(['open', 'changed'])
 
 // A field is visible unless its customize toggle is explicitly false (missing key
 // defaults to shown → back-compat with older saved views).
 const fv = (k) => props.fieldVis?.[k] !== false
+// Card-size composition: compact shows only the title; medium a curated subset;
+// large everything. The per-field fieldVis toggles further refine within that.
+const isCompact = computed(() => props.cardSize === 'compact')
+const SIZE_FIELDS = {
+  compact: [],
+  medium: ['number', 'priority', 'due', 'tags', 'assignee'],
+  large: null, // null = all fields allowed
+}
+const sizeAllows = (k) => {
+  const set = SIZE_FIELDS[props.cardSize] ?? null
+  return set === null ? true : set.includes(k)
+}
+// A field renders when the size preset allows it AND its fieldVis toggle is on.
+const show = (k) => sizeAllows(k) && fv(k)
+// Whether the pills row has any content (drives whether we render the container).
+const hasAnyPill = computed(
+  () =>
+    hasConflict.value ||
+    (show('priority') && (props.showEmpty || props.task.priority)) ||
+    (show('due') && (props.showEmpty || due.value)) ||
+    (show('estimate') && estText.value) ||
+    (show('milestone') && taskMilestone.value) ||
+    (show('description') && props.task.description && props.task.description.trim()) ||
+    (show('tags') && (props.showEmpty || taskTags.value.length)) ||
+    (show('assignee') &&
+      (props.showEmpty || author.value || assignees.value.length || glAssignees.value.length)),
+)
+// Stacked mode: fields as "icon + value" rows (value aligned on a vertical axis;
+// unset → dash). Description is intentionally excluded. Respects size + fieldVis.
+const stackedRows = computed(() => {
+  const rows = []
+  const add = (key, icon, value, color) => {
+    if (!show(key)) return
+    if (!value && !props.showEmpty) return
+    rows.push({ key, icon, value: value || '—', color: value ? color : undefined })
+  }
+  add('priority', FlagOutline, props.task.priority ? PRIORITY_LABELS[props.task.priority] : '', PRIORITY_COLORS[props.task.priority])
+  add('due', CalendarClearOutline, due.value)
+  add('assignee', PersonAddOutline, assigneeNames.value)
+  add('tags', PricetagOutline, taskTags.value.map((t) => t.name).join(', '))
+  add('estimate', TimerOutline, estText.value ? `${estIsRollup.value ? 'Σ ' : ''}${estText.value}` : '')
+  add('milestone', RibbonOutline, taskMilestone.value?.title)
+  return rows
+})
 
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
 // renders flat without a header.
@@ -608,10 +655,10 @@ async function submitAddSub() {
 
       <!-- meta line: task number + GitLab issue link, on their own row so long
            titles never wrap around them (kept aligned under the title text). -->
-      <div v-if="(fv('number') && task.number) || (fv('gitlab') && task.gitlab_iid)" class="card-sub">
-        <span v-if="fv('number') && task.number" class="tnum">#{{ task.number }}</span>
+      <div v-if="(show('number') && task.number) || (show('gitlab') && task.gitlab_iid)" class="card-sub">
+        <span v-if="show('number') && task.number" class="tnum">#{{ task.number }}</span>
         <a
-          v-if="fv('gitlab') && task.gitlab_iid"
+          v-if="show('gitlab') && task.gitlab_iid"
           class="gl-chip"
           :href="task.gitlab_url"
           target="_blank"
@@ -623,7 +670,11 @@ async function submitAddSub() {
         </a>
       </div>
 
-      <div class="pills" :class="{ stacked: stackFields }">
+      <div
+        v-if="stackFields ? hasConflict || stackedRows.length : hasAnyPill"
+        class="pills"
+        :class="{ stacked: stackFields }"
+      >
         <!-- unresolved GitLab write-back conflict on this task -->
         <n-tooltip v-if="hasConflict">
           <template #trigger>
@@ -638,8 +689,19 @@ async function submitAddSub() {
           Конфликт обратной записи GitLab — нажмите, чтобы разрешить
         </n-tooltip>
 
+        <!-- stacked mode: "icon + value" rows, values aligned on a vertical axis;
+             unset fields show a dash. Display-only (click the card to edit). -->
+        <template v-if="stackFields">
+          <div v-for="r in stackedRows" :key="r.key" class="sfield">
+            <n-icon :component="r.icon" :size="14" class="sfield-ic" :style="r.color ? { color: r.color } : {}" />
+            <span class="sfield-val" :class="{ empty: r.value === '—' }">{{ r.value }}</span>
+          </div>
+        </template>
+
+        <!-- horizontal pills (default) -->
+        <template v-else>
         <!-- priority -->
-        <n-popover v-if="fv('priority') && (showEmpty || task.priority)" trigger="click" placement="bottom-start">
+        <n-popover v-if="show('priority') && (showEmpty || task.priority)" trigger="click" placement="bottom-start">
           <template #trigger>
             <button class="pill" :class="{ set: task.priority }" @click.stop>
               <n-icon
@@ -670,7 +732,7 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- due date: opens the calendar directly -->
-        <n-popover v-if="fv('due') && (showEmpty || due)" trigger="click" placement="bottom-start">
+        <n-popover v-if="show('due') && (showEmpty || due)" trigger="click" placement="bottom-start">
           <template #trigger>
             <button class="pill" :class="{ set: due, overdue }" @click.stop>
               <n-icon :component="CalendarClearOutline" :size="13" />
@@ -696,7 +758,7 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
-        <n-tooltip v-if="fv('estimate') && estText">
+        <n-tooltip v-if="show('estimate') && estText">
           <template #trigger>
             <div class="pill set est-pill">
               <n-icon :component="TimerOutline" :size="13" />
@@ -707,7 +769,7 @@ async function submitAddSub() {
         </n-tooltip>
 
         <!-- milestone («Этап»): display-only chip; editing lives in the task modal -->
-        <n-tooltip v-if="fv('milestone') && taskMilestone">
+        <n-tooltip v-if="show('milestone') && taskMilestone">
           <template #trigger>
             <div class="pill set ms-pill" :class="{ closed: taskMilestone.state === 'closed' }">
               <n-icon :component="RibbonOutline" :size="13" />
@@ -721,7 +783,7 @@ async function submitAddSub() {
         <!-- description: shown only when set; hover previews the rendered markdown,
              click opens the task. -->
         <n-popover
-          v-if="fv('description') && task.description && task.description.trim()"
+          v-if="show('description') && task.description && task.description.trim()"
           trigger="hover"
           placement="top-start"
           :style="{ padding: '0' }"
@@ -741,7 +803,7 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
-        <n-popover v-if="fv('tags') && (showEmpty || taskTags.length)" trigger="click" placement="bottom-start">
+        <n-popover v-if="show('tags') && (showEmpty || taskTags.length)" trigger="click" placement="bottom-start">
           <template #trigger>
             <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
               <template #trigger>
@@ -821,7 +883,7 @@ async function submitAddSub() {
            group right-aligns (margin-left:auto) and stays right-aligned even
            when it wraps to its own line. -->
         <div
-          v-if="fv('assignee') && (showEmpty || author || assignees.length || glAssignees.length)"
+          v-if="show('assignee') && (showEmpty || author || assignees.length || glAssignees.length)"
           class="people"
         >
           <n-popover
@@ -909,6 +971,7 @@ async function submitAddSub() {
             </div>
           </n-popover>
         </div>
+        </template>
       </div>
     </div>
     <!-- /.card -->
@@ -919,7 +982,7 @@ async function submitAddSub() {
          drop hint while a board drag is in progress. -->
     <transition name="sub-morph" mode="out-in">
     <draggable
-      v-if="!nested"
+      v-if="!nested && !isCompact"
       :key="subtasksExpanded ? 'stack' : 'list'"
       :list="subModel"
       group="tasks"
@@ -954,6 +1017,7 @@ async function submitAddSub() {
             :field-vis="fieldVis"
             :show-empty="showEmpty"
             :stack-fields="stackFields"
+            :card-size="cardSize"
             @open="emit('open', $event)"
             @changed="emit('changed')"
           />
@@ -1063,10 +1127,7 @@ async function submitAddSub() {
   background: var(--card-fill);
   border: 1px solid var(--t-border);
   border-radius: 12px;
-  /* Card size preset (customize view): --card-scale is set on the board container
-     and scales the padding density + title (below); defaults to 1 so medium is
-     pixel-identical to before. */
-  padding: calc(8px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
+  padding: 8px 10px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
 }
@@ -1221,8 +1282,8 @@ async function submitAddSub() {
 .title {
   flex: 1;
   min-width: 0;
-  font-size: calc(14px * var(--card-scale, 1));
-  line-height: calc(20px * var(--card-scale, 1));
+  font-size: 14px;
+  line-height: 20px;
   color: var(--t-text1);
   cursor: pointer;
   display: -webkit-box;
@@ -1270,13 +1331,37 @@ async function submitAddSub() {
   gap: 6px;
   margin-top: 8px;
 }
-/* Stacked pills (customize view): one pill per row, left-aligned. */
+/* Stacked pills (customize view): one field per row, left-aligned. */
 .pills.stacked {
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  gap: 3px;
 }
 .pills.stacked .people {
   margin-left: 0;
+}
+/* A stacked field row: fixed icon column + value, so all values line up on a
+   vertical axis. Unset values render as a muted dash. */
+.sfield {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 7px;
+  min-height: 20px;
+}
+.sfield-ic {
+  color: var(--t-text3);
+  justify-self: center;
+}
+.sfield-val {
+  font-size: 12px;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sfield-val.empty {
+  color: var(--t-text3);
 }
 .pill {
   display: inline-flex;

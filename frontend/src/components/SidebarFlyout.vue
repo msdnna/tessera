@@ -51,6 +51,16 @@ function openBoard(b) {
   router.push(`/project/${props.node.slug}/board/${b.slug}`)
   emit('navigate')
 }
+
+// A board may carry its own icon/colour/mode (set in the customize panel) — render
+// it like a project icon when set, else fall back to the generic grid glyph.
+const boardHasIcon = (b) => !!(b.icon || (b.color && b.color !== 'transparent'))
+const boardInitials = (b) => (b.name || '?').trim().slice(0, 2).toUpperCase()
+const boardBare = (b) => b.icon_mode === 'icon' || b.color === 'transparent'
+const boardGlyph = (b) =>
+  b.icon_mode === 'icon' ? (b.color && b.color !== 'transparent' ? b.color : 'var(--t-primary)') : ''
+const boardBox = (b) =>
+  boardBare(b) ? { background: 'transparent' } : { background: b.color || 'var(--t-primary)' }
 </script>
 
 <template>
@@ -70,7 +80,15 @@ function openBoard(b) {
         :class="{ active: route.params.projectSlug === node.slug && route.params.boardSlug === b.slug }"
         @click="openBoard(b)"
       >
-        <n-icon :component="GridOutline" :size="14" />
+        <span
+          v-if="boardHasIcon(b)"
+          class="picon fly-bicon"
+          :class="{ 'picon-bare': boardBare(b) }"
+          :style="boardBox(b)"
+        >
+          <ProjectIcon :icon="b.icon" :initials="boardInitials(b)" :size="11" :color="boardGlyph(b)" />
+        </span>
+        <n-icon v-else :component="GridOutline" :size="14" />
         <span class="fly-board-name">{{ b.name }}</span>
       </button>
       <n-text v-if="!boards.length" depth="3" class="fly-empty">нет досок</n-text>
@@ -140,6 +158,12 @@ function openBoard(b) {
 }
 .picon-bare {
   color: var(--t-text1);
+}
+/* Board icon in the flyout row sits where the grid glyph did — a touch smaller. */
+.fly-bicon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
 }
 .fly-name {
   white-space: nowrap;

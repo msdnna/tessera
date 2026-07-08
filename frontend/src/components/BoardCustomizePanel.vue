@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import {
   NDrawer,
   NDrawerContent,
@@ -11,6 +12,7 @@ import {
   NIcon,
 } from 'naive-ui'
 import { AddOutline, GitBranchOutline } from '@vicons/ionicons5'
+import IconColorPicker from './IconColorPicker.vue'
 
 // Two-way settings (bound to the board view in KanbanBoard). All persist via the
 // parent's saved-view + localStorage machinery.
@@ -31,8 +33,14 @@ const props = defineProps({
   facetChips: { type: Array, default: () => [] },
   addOptions: { type: Array, default: () => [] },
   currentViewName: { type: String, default: '' },
+  // Board branding (icon/colour/mode), mirrors projects/groups via IconColorPicker.
+  boardIcon: { type: String, default: '' },
+  boardColor: { type: String, default: '' },
+  boardIconMode: { type: String, default: 'badge' },
 })
-const emit = defineEmits(['set-field', 'add-facet', 'remove-chip', 'chip-click', 'rename-board'])
+const emit = defineEmits(['set-field', 'add-facet', 'remove-chip', 'chip-click', 'update-board'])
+
+const boardInitials = computed(() => (boardName.value || '?').trim().slice(0, 2).toUpperCase())
 
 const FIELDS = [
   { key: 'priority', label: 'Приоритет' },
@@ -51,16 +59,28 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
 <template>
   <n-drawer v-model:show="show" :width="340" placement="right">
     <n-drawer-content title="Настроить вид" closable :native-scrollbar="false">
-      <!-- Board name (icon = future/Phase C) -->
+      <!-- Board: icon + colour (like projects/groups) + name -->
       <div class="sec">
         <div class="sec-lbl">Доска</div>
-        <n-input
-          v-model:value="boardName"
-          size="small"
-          placeholder="Название доски"
-          @blur="emit('rename-board', boardName)"
-          @keyup.enter="emit('rename-board', boardName)"
-        />
+        <div class="board-row">
+          <IconColorPicker
+            :icon="boardIcon"
+            :color="boardColor"
+            :mode="boardIconMode"
+            :initials="boardInitials"
+            allow-upload
+            @update:icon="(v) => emit('update-board', { icon: v })"
+            @update:color="(v) => emit('update-board', { color: v })"
+            @update:mode="(v) => emit('update-board', { icon_mode: v })"
+          />
+          <n-input
+            v-model:value="boardName"
+            size="small"
+            placeholder="Название доски"
+            @blur="emit('update-board', { name: boardName })"
+            @keyup.enter="emit('update-board', { name: boardName })"
+          />
+        </div>
       </div>
 
       <n-divider />
@@ -176,6 +196,14 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
   color: var(--t-text3);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+.board-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.board-row .n-input {
+  flex: 1;
 }
 .row {
   display: flex;

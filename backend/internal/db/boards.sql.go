@@ -60,7 +60,7 @@ func (q *Queries) BoardsMissingSlug(ctx context.Context) ([]BoardsMissingSlugRow
 const createBoard = `-- name: CreateBoard :one
 INSERT INTO boards (project_id, name, slug, position)
 VALUES ($1, $2, $3, $4)
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode
 `
 
 type CreateBoardParams struct {
@@ -87,6 +87,9 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 		&i.UpdatedAt,
 		&i.DoneColumnID,
 		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
 	)
 	return i, err
 }
@@ -143,7 +146,7 @@ func (q *Queries) DeleteColumn(ctx context.Context, id uuid.UUID) error {
 }
 
 const getBoard = `-- name: GetBoard :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE id = $1
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE id = $1
 `
 
 func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
@@ -158,12 +161,15 @@ func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
 		&i.UpdatedAt,
 		&i.DoneColumnID,
 		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
 	)
 	return i, err
 }
 
 const getBoardBySlug = `-- name: GetBoardBySlug :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE slug = $1 LIMIT 1
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE slug = $1 LIMIT 1
 `
 
 // GetBoardBySlug returns the first board with this slug (legacy global lookup,
@@ -180,12 +186,15 @@ func (q *Queries) GetBoardBySlug(ctx context.Context, slug string) (Board, error
 		&i.UpdatedAt,
 		&i.DoneColumnID,
 		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
 	)
 	return i, err
 }
 
 const getBoardInProjectBySlug = `-- name: GetBoardInProjectBySlug :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE project_id = $1 AND slug = $2
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE project_id = $1 AND slug = $2
 `
 
 type GetBoardInProjectBySlugParams struct {
@@ -205,6 +214,9 @@ func (q *Queries) GetBoardInProjectBySlug(ctx context.Context, arg GetBoardInPro
 		&i.UpdatedAt,
 		&i.DoneColumnID,
 		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
 	)
 	return i, err
 }
@@ -229,7 +241,7 @@ func (q *Queries) GetColumn(ctx context.Context, id uuid.UUID) (BoardColumn, err
 }
 
 const listBoards = `-- name: ListBoards :many
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug FROM boards WHERE project_id = $1 ORDER BY position
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE project_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board, error) {
@@ -250,6 +262,9 @@ func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board,
 			&i.UpdatedAt,
 			&i.DoneColumnID,
 			&i.Slug,
+			&i.Icon,
+			&i.Color,
+			&i.IconMode,
 		); err != nil {
 			return nil, err
 		}
@@ -338,7 +353,7 @@ const setBoardDoneColumn = `-- name: SetBoardDoneColumn :one
 UPDATE boards
 SET done_column_id = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode
 `
 
 type SetBoardDoneColumnParams struct {
@@ -358,6 +373,9 @@ func (q *Queries) SetBoardDoneColumn(ctx context.Context, arg SetBoardDoneColumn
 		&i.UpdatedAt,
 		&i.DoneColumnID,
 		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
 	)
 	return i, err
 }
@@ -378,19 +396,29 @@ func (q *Queries) SetBoardSlug(ctx context.Context, arg SetBoardSlugParams) erro
 
 const updateBoard = `-- name: UpdateBoard :one
 UPDATE boards
-SET name = $2, position = $3, updated_at = now()
+SET name = $2, position = $3, icon = $4, color = $5, icon_mode = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode
 `
 
 type UpdateBoardParams struct {
 	ID       uuid.UUID `json:"id"`
 	Name     string    `json:"name"`
 	Position float64   `json:"position"`
+	Icon     string    `json:"icon"`
+	Color    string    `json:"color"`
+	IconMode string    `json:"icon_mode"`
 }
 
 func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board, error) {
-	row := q.db.QueryRow(ctx, updateBoard, arg.ID, arg.Name, arg.Position)
+	row := q.db.QueryRow(ctx, updateBoard,
+		arg.ID,
+		arg.Name,
+		arg.Position,
+		arg.Icon,
+		arg.Color,
+		arg.IconMode,
+	)
 	var i Board
 	err := row.Scan(
 		&i.ID,
@@ -401,6 +429,9 @@ func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board
 		&i.UpdatedAt,
 		&i.DoneColumnID,
 		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
 	)
 	return i, err
 }
