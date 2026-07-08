@@ -15,7 +15,6 @@ import {
   useMessage,
 } from 'naive-ui'
 import {
-  GitBranchOutline,
   GitNetworkOutline,
   SaveOutline,
   FolderOpenOutline,
@@ -23,6 +22,7 @@ import {
   AddOutline,
   ChevronForwardOutline,
   ChevronBackOutline,
+  SettingsOutline,
 } from '@vicons/ionicons5'
 import {
   boards,
@@ -48,6 +48,7 @@ import TaskModal from './TaskModal.vue'
 import BoardActivityToasts from './BoardActivityToasts.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
+import BoardCustomizePanel from './BoardCustomizePanel.vue'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
@@ -115,6 +116,71 @@ const subtasksExpanded = ref(false) // full property cards vs compact rows
 // resets the composer to no-group/no-sort; `autoActive` below stays on only
 // while it remains in that state, so adding any grouping/sort silently exits it.
 const autoSort = ref(false)
+
+// ── column collapse + card/board customization (bound to the saved view) ──
+// colCollapse stores EXPLICIT per-column overrides (key → true collapsed / false
+// expanded). Absence means "follow the auto rule". A reactive object (not a Set)
+// so Vue's deep watch tracks it and an auto-collapsed empty column can still be
+// manually expanded (an explicit `false` wins over autoCollapseEmpty).
+const colCollapse = reactive({})
+const autoCollapseEmpty = ref(false)
+const cardSize = ref('medium') // 'compact' | 'medium' | 'large'
+const stackFields = ref(false) // pills stacked vertically vs. horizontal wrap
+const showEmpty = ref(true) // render empty (unset) placeholder pills
+const autosaveView = ref(false) // auto re-save the loaded named view on change
+function defaultFieldVis() {
+  return {
+    priority: true,
+    due: true,
+    assignee: true,
+    tags: true,
+    estimate: true,
+    milestone: true,
+    description: true,
+    number: true,
+    gitlab: true,
+  }
+}
+const fieldVis = reactive(defaultFieldVis())
+const customizeOpen = ref(false)
+// Board-name mirror for the customize panel's rename input (kept in sync with the
+// loaded board; committed via boards.update on blur/enter).
+const boardName = ref('')
+watch(board, (b) => (boardName.value = b?.name || ''))
+async function renameBoard(name) {
+  const n = (name || '').trim()
+  if (!n || !board.value || n === board.value.name) return
+  try {
+    await boards.update(board.value.id, { name: n })
+    board.value = { ...board.value, name: n }
+  } catch (e) {
+    message.error(e.message)
+    boardName.value = board.value.name
+  }
+}
+function setFieldVis(key, val) {
+  fieldVis[key] = val
+}
+
+function colCount(dcol) {
+  return (lists.value[dcol.key] || []).length
+}
+// Effective collapsed state: explicit override wins, else the auto-empty rule.
+function isColCollapsed(dcol) {
+  const k = dcol.key
+  if (k in colCollapse) return colCollapse[k]
+  return autoCollapseEmpty.value && colCount(dcol) === 0
+}
+// Force every column to render expanded during a drag so SortableJS, the card
+// virtualization and the edge auto-scroll all see normal column geometry — this
+// is what makes dropping a card INTO a collapsed column work (see the drag
+// handlers). Columns re-collapse on drag end.
+function colCollapsedNow(dcol) {
+  return !dragging.value && isColCollapsed(dcol)
+}
+function toggleCollapse(dcol) {
+  colCollapse[dcol.key] = !isColCollapsed(dcol)
+}
 // Composer bar: collapsed to a single row (clipping overflow chips) so the
 // right-side tool buttons stay in view; tapping expands it to full height and
 // slides the tools off-screen. Collapses again on an outside click.
@@ -524,6 +590,13 @@ function defaultToolbar(forLayout) {
     subtasksExpanded: false,
     autoSort: false,
     filters: { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
+    colCollapse: {},
+    autoCollapseEmpty: false,
+    cardSize: 'medium',
+    stackFields: false,
+    showEmpty: true,
+    fieldVis: defaultFieldVis(),
+    autosaveView: false,
   }
 }
 function snapshotToolbar() {
@@ -542,6 +615,13 @@ function snapshotToolbar() {
       due: filters.due,
       q: filters.q,
     },
+    colCollapse: { ...colCollapse },
+    autoCollapseEmpty: autoCollapseEmpty.value,
+    cardSize: cardSize.value,
+    stackFields: stackFields.value,
+    showEmpty: showEmpty.value,
+    fieldVis: { ...fieldVis },
+    autosaveView: autosaveView.value,
   }
 }
 function loadToolbar(s) {
@@ -555,6 +635,20 @@ function loadToolbar(s) {
     { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
     s.filters || {},
   )
+  loadCustomize(s)
+}
+// Restore the customize-view state (collapse + card/field settings). Split out so
+// both loadToolbar and applyViewConfig share it; every key defaults so older
+// saved views / localStorage blobs missing them stay valid (back-compat).
+function loadCustomize(s) {
+  for (const k of Object.keys(colCollapse)) delete colCollapse[k]
+  Object.assign(colCollapse, s.colCollapse || {})
+  autoCollapseEmpty.value = !!s.autoCollapseEmpty
+  cardSize.value = s.cardSize || 'medium'
+  stackFields.value = !!s.stackFields
+  showEmpty.value = s.showEmpty !== false
+  Object.assign(fieldVis, defaultFieldVis(), s.fieldVis || {})
+  autosaveView.value = !!s.autosaveView
 }
 
 function writeView() {
@@ -630,7 +724,25 @@ watch(layout, (newL, oldL) => {
     persistView()
   })
 })
-watch([groupMode, tagPrefix, sortLevels, subtasksExpanded, autoSort, filters], persistView, { deep: true })
+watch(
+  [
+    groupMode,
+    tagPrefix,
+    sortLevels,
+    subtasksExpanded,
+    autoSort,
+    filters,
+    colCollapse,
+    autoCollapseEmpty,
+    cardSize,
+    stackFields,
+    showEmpty,
+    fieldVis,
+    autosaveView,
+  ],
+  persistView,
+  { deep: true },
+)
 
 // ── saved views (per-user, server-side; cross-device) ──
 const savedViews = ref([])
@@ -661,6 +773,13 @@ function currentViewConfig() {
     sortLevels: sortLevels.value,
     subtasksExpanded: subtasksExpanded.value,
     filters: { ...filters },
+    colCollapse: { ...colCollapse },
+    autoCollapseEmpty: autoCollapseEmpty.value,
+    cardSize: cardSize.value,
+    stackFields: stackFields.value,
+    showEmpty: showEmpty.value,
+    fieldVis: { ...fieldVis },
+    autosaveView: autosaveView.value,
   }
 }
 function applyViewConfig(c) {
@@ -678,6 +797,7 @@ function applyViewConfig(c) {
     { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
     c.filters || {},
   )
+  loadCustomize(c)
 }
 async function saveView() {
   const name = (newViewName.value || currentViewName.value).trim()
@@ -714,6 +834,30 @@ async function deleteView(v) {
     message.error(e.message)
   }
 }
+// Autosave: when enabled and a named view is loaded, re-save it (debounced,
+// silent) as the toolbar/customize state changes. Guarded by restoring/swapping
+// like persistView so applying a view doesn't immediately re-save it.
+let autosaveTimer = null
+async function autosaveCurrent() {
+  const name = currentViewName.value.trim()
+  if (!name) return
+  try {
+    await boards.saveView(props.boardId, { name, config: currentViewConfig() })
+  } catch {
+    /* silent — a failed autosave shouldn't nag; manual save still surfaces errors */
+  }
+}
+watch(
+  () => (autosaveView.value && currentViewName.value ? JSON.stringify(currentViewConfig()) : ''),
+  (sig) => {
+    if (!sig || restoring || swapping) return
+    if (autosaveTimer) clearTimeout(autosaveTimer)
+    autosaveTimer = setTimeout(() => {
+      autosaveTimer = null
+      autosaveCurrent()
+    }, 700)
+  },
+)
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
@@ -735,6 +879,15 @@ const GAP = 12
 const ADD_COL_W = 220
 const COL_MIN = 220 // narrowest a column may get before we switch to scrolling
 const COL_MAX = 420
+// Card-size presets (customize view): a width cap for the column and a scale
+// factor the cards read via the `--card-scale` CSS var for font/padding density.
+const CARD_SIZES = {
+  compact: { scale: 0.9, cap: 300 },
+  medium: { scale: 1, cap: COL_MAX },
+  large: { scale: 1.1, cap: 480 },
+}
+const cardCap = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).cap)
+const cardScale = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).scale)
 const colWidth = computed(() => {
   const cw = containerWidth.value
   if (!cw) return 280 // pre-measure fallback
@@ -747,10 +900,14 @@ const colWidth = computed(() => {
   const reserved = (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 4
   const w = Math.floor((cw - reserved) / n)
   // Fill the viewport while comfortable; once columns would get narrower than
-  // COL_MIN, stop shrinking and let the board scroll horizontally instead.
-  return Math.min(Math.max(w, COL_MIN), COL_MAX)
+  // COL_MIN, stop shrinking and let the board scroll horizontally instead. The
+  // upper bound is the chosen card size's cap (compact narrower, large wider).
+  return Math.min(Math.max(w, COL_MIN), cardCap.value)
 })
-const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
+const colStyleVars = computed(() => ({
+  '--col-w': colWidth.value + 'px',
+  '--card-scale': cardScale.value,
+}))
 
 // User-chosen board background (preference): a CSS colour or an image URL.
 const themeStore = useThemeStore()
@@ -1531,13 +1688,13 @@ watch(
               size="small"
               quaternary
               class="ngrad bar-btn"
-              :type="subtasksExpanded ? 'primary' : 'default'"
-              @click="subtasksExpanded = !subtasksExpanded"
+              :type="customizeOpen ? 'primary' : 'default'"
+              @click="customizeOpen = true"
             >
-              <template #icon><n-icon :component="GitBranchOutline" /></template>
+              <template #icon><n-icon :component="SettingsOutline" /></template>
             </n-button>
           </template>
-          {{ subtasksExpanded ? 'Свернуть подзадачи' : 'Развернуть подзадачи' }}
+          Настроить вид
         </n-tooltip>
 
         <!-- saved views: load (folder) + save (disk) -->
@@ -1700,7 +1857,19 @@ watch(
           @change="onColumnReorder"
         >
           <template #item="{ element: dcol }">
-            <div class="col" :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }">
+            <div
+              class="col"
+              :class="{ collapsed: colCollapsedNow(dcol) }"
+              :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }"
+            >
+              <!-- Collapsed strip: rotated title + count, click to expand. The real
+                   header + card list stay in the DOM below (hidden via CSS) so the
+                   drop target survives. -->
+              <div v-if="colCollapsedNow(dcol)" class="col-strip" title="Развернуть колонку" @click="toggleCollapse(dcol)">
+                <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
+                <span class="strip-title">{{ dcol.name }}</span>
+                <span class="strip-count">{{ (lists[dcol.key] || []).length }}</span>
+              </div>
               <ColumnHeader
                 :dcol="dcol"
                 :count="(lists[dcol.key] || []).length"
@@ -1708,8 +1877,10 @@ watch(
                 :editable="groupMode === 'status'"
                 :is-done="groupMode === 'status' && dcol.key === doneColumnId"
                 :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
+                :collapsed="isColCollapsed(dcol)"
                 @changed="onChanged"
                 @set-done="onSetDone"
+                @toggle-collapse="toggleCollapse(dcol)"
               />
               <draggable
                 :list="lists[dcol.key]"
@@ -1730,7 +1901,7 @@ watch(
                 <template #item="{ element, index }">
                   <div :ref="(el) => regCard(el, element.id)" class="card-wrap">
                     <div
-                      v-if="!(vis[element.id] ?? index < 12)"
+                      v-if="colCollapsedNow(dcol) || !(vis[element.id] ?? index < 12)"
                       class="card-ph"
                       :style="{ height: (cardH[element.id] || VCARD_EST) + 'px' }"
                     />
@@ -1750,6 +1921,9 @@ watch(
                       :milestones-map="milestonesMap"
                       :ws-id="wsStore.currentId"
                       :project-id="board?.project_id"
+                      :field-vis="fieldVis"
+                      :show-empty="showEmpty"
+                      :stack-fields="stackFields"
                       @open="openTask"
                       @changed="onChanged"
                     />
@@ -1824,6 +1998,26 @@ watch(
     />
 
     <BoardActivityToasts ref="activityToasts" @open="openTask" />
+
+    <BoardCustomizePanel
+      v-model:show="customizeOpen"
+      v-model:board-name="boardName"
+      v-model:card-size="cardSize"
+      v-model:stack-fields="stackFields"
+      v-model:show-empty="showEmpty"
+      v-model:auto-collapse-empty="autoCollapseEmpty"
+      v-model:subtasks-expanded="subtasksExpanded"
+      v-model:autosave-view="autosaveView"
+      :field-vis="fieldVis"
+      :facet-chips="facetChips"
+      :add-options="addOptions"
+      :current-view-name="currentViewName"
+      @set-field="setFieldVis"
+      @add-facet="onAddFacet"
+      @remove-chip="removeChip"
+      @chip-click="onChipClick"
+      @rename-board="renameBoard"
+    />
   </n-spin>
 </template>
 
@@ -2226,6 +2420,70 @@ watch(
   background:
     linear-gradient(var(--t-surface-alt), var(--t-surface-alt)) padding-box,
     var(--col-grad) border-box;
+}
+/* Collapsed column → a narrow strip. The header, card list and add-task button
+   stay mounted (the SortableJS drop target must survive) but are hidden; the
+   `.col-strip` overlay shows the rotated title + count. During a drag every
+   column force-expands (see colCollapsedNow) so drops land normally. */
+.col.collapsed {
+  width: 44px;
+  flex: 0 0 44px;
+  padding: 8px 2px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.col.collapsed :deep(.col-head),
+.col.collapsed .drop,
+.col.collapsed .add-btn,
+.col.collapsed .add-task-input {
+  display: none;
+}
+.col-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.strip-chevron {
+  font-size: 15px;
+  color: var(--t-text3);
+  flex: none;
+}
+.strip-title {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-weight: 600;
+  color: var(--t-text1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 260px;
+}
+.strip-count {
+  font-size: 12px;
+  color: var(--t-text3);
+  background: var(--t-hover);
+  border-radius: 10px;
+  padding: 0 7px;
+  flex: none;
+}
+/* Mobile: columns are one-per-screen, so collapse to a strip would be awkward —
+   keep full width and hide the strip. */
+@media (max-width: 768px) {
+  .col.collapsed {
+    width: var(--col-w, 280px);
+    flex: 0 0 var(--col-w, 280px);
+    padding: 10px;
+  }
+  .col.collapsed :deep(.col-head),
+  .col.collapsed .drop,
+  .col.collapsed .add-btn {
+    display: revert;
+  }
+  .col-strip {
+    display: none;
+  }
 }
 .col-head {
   display: flex;

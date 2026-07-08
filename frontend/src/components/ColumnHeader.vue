@@ -9,6 +9,7 @@ import {
   EllipseOutline,
   ContrastOutline,
   CreateOutline,
+  ChevronBackOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -22,8 +23,9 @@ const props = defineProps({
   editable: { type: Boolean, default: false }, // status columns only
   isDone: { type: Boolean, default: false }, // task-completing column
   first: { type: Boolean, default: false }, // leftmost column (To-Do icon)
+  collapsed: { type: Boolean, default: false }, // rendered as a narrow strip
 })
-const emit = defineEmits(['changed', 'set-done'])
+const emit = defineEmits(['changed', 'set-done', 'toggle-collapse'])
 
 // a reference tracker-style status glyph: done = check, first = empty circle, middle =
 // half (in-progress). Tinted with the column colour.
@@ -161,6 +163,15 @@ async function removeCol() {
     <span v-else class="col-title col-drag" @dblclick="startRename">{{ dcol.name }}</span>
     <span class="count">{{ count }}</span>
     <span v-if="estimate" class="col-est" title="Суммарная оценка задач этапа">Σ {{ estimate }}</span>
+    <n-button
+      text
+      size="tiny"
+      class="col-collapse"
+      title="Свернуть колонку"
+      @click.stop="emit('toggle-collapse')"
+    >
+      <n-icon :component="ChevronBackOutline" />
+    </n-button>
     <n-popover v-if="editable" v-model:show="settingsOpen" trigger="click" placement="bottom-end">
       <template #trigger>
         <n-button text size="tiny" class="col-menu">
@@ -262,6 +273,14 @@ async function removeCol() {
 }
 .col-menu {
   font-size: 16px;
+}
+.col-collapse {
+  font-size: 15px;
+  color: var(--t-text3);
+  flex: none;
+}
+.col-collapse:hover {
+  color: var(--t-text1);
 }
 .settings {
   width: 220px;

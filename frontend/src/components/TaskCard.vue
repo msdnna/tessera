@@ -73,8 +73,17 @@ const props = defineProps({
   milestonesMap: { type: Object, default: () => ({}) },
   wsId: { type: String, default: null },
   projectId: { type: String, default: null },
+  // Customize-view: per-field pill visibility (key → false hides), whether empty
+  // (unset) pills render, and whether pills stack vertically vs. wrap horizontally.
+  fieldVis: { type: Object, default: () => ({}) },
+  showEmpty: { type: Boolean, default: true },
+  stackFields: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open', 'changed'])
+
+// A field is visible unless its customize toggle is explicitly false (missing key
+// defaults to shown → back-compat with older saved views).
+const fv = (k) => props.fieldVis?.[k] !== false
 
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
 // renders flat without a header.
@@ -599,10 +608,10 @@ async function submitAddSub() {
 
       <!-- meta line: task number + GitLab issue link, on their own row so long
            titles never wrap around them (kept aligned under the title text). -->
-      <div v-if="task.number || task.gitlab_iid" class="card-sub">
-        <span v-if="task.number" class="tnum">#{{ task.number }}</span>
+      <div v-if="(fv('number') && task.number) || (fv('gitlab') && task.gitlab_iid)" class="card-sub">
+        <span v-if="fv('number') && task.number" class="tnum">#{{ task.number }}</span>
         <a
-          v-if="task.gitlab_iid"
+          v-if="fv('gitlab') && task.gitlab_iid"
           class="gl-chip"
           :href="task.gitlab_url"
           target="_blank"
@@ -614,7 +623,7 @@ async function submitAddSub() {
         </a>
       </div>
 
-      <div class="pills">
+      <div class="pills" :class="{ stacked: stackFields }">
         <!-- unresolved GitLab write-back conflict on this task -->
         <n-tooltip v-if="hasConflict">
           <template #trigger>
@@ -630,7 +639,7 @@ async function submitAddSub() {
         </n-tooltip>
 
         <!-- priority -->
-        <n-popover trigger="click" placement="bottom-start">
+        <n-popover v-if="fv('priority') && (showEmpty || task.priority)" trigger="click" placement="bottom-start">
           <template #trigger>
             <button class="pill" :class="{ set: task.priority }" @click.stop>
               <n-icon
@@ -661,7 +670,7 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- due date: opens the calendar directly -->
-        <n-popover trigger="click" placement="bottom-start">
+        <n-popover v-if="fv('due') && (showEmpty || due)" trigger="click" placement="bottom-start">
           <template #trigger>
             <button class="pill" :class="{ set: due, overdue }" @click.stop>
               <n-icon :component="CalendarClearOutline" :size="13" />
@@ -687,7 +696,7 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
-        <n-tooltip v-if="estText">
+        <n-tooltip v-if="fv('estimate') && estText">
           <template #trigger>
             <div class="pill set est-pill">
               <n-icon :component="TimerOutline" :size="13" />
@@ -698,7 +707,7 @@ async function submitAddSub() {
         </n-tooltip>
 
         <!-- milestone («Этап»): display-only chip; editing lives in the task modal -->
-        <n-tooltip v-if="taskMilestone">
+        <n-tooltip v-if="fv('milestone') && taskMilestone">
           <template #trigger>
             <div class="pill set ms-pill" :class="{ closed: taskMilestone.state === 'closed' }">
               <n-icon :component="RibbonOutline" :size="13" />
@@ -712,7 +721,7 @@ async function submitAddSub() {
         <!-- description: shown only when set; hover previews the rendered markdown,
              click opens the task. -->
         <n-popover
-          v-if="task.description && task.description.trim()"
+          v-if="fv('description') && task.description && task.description.trim()"
           trigger="hover"
           placement="top-start"
           :style="{ padding: '0' }"
@@ -732,7 +741,7 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
-        <n-popover trigger="click" placement="bottom-start">
+        <n-popover v-if="fv('tags') && (showEmpty || taskTags.length)" trigger="click" placement="bottom-start">
           <template #trigger>
             <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
               <template #trigger>
@@ -811,7 +820,10 @@ async function submitAddSub() {
            breakdown; click opens the assignee picker (search + recent). The
            group right-aligns (margin-left:auto) and stays right-aligned even
            when it wraps to its own line. -->
-        <div class="people">
+        <div
+          v-if="fv('assignee') && (showEmpty || author || assignees.length || glAssignees.length)"
+          class="people"
+        >
           <n-popover
             trigger="click"
             placement="bottom-end"
@@ -939,6 +951,9 @@ async function submitAddSub() {
             :gitlab-members="gitlabMembers"
             :ws-id="wsId"
             :project-id="projectId"
+            :field-vis="fieldVis"
+            :show-empty="showEmpty"
+            :stack-fields="stackFields"
             @open="emit('open', $event)"
             @changed="emit('changed')"
           />
@@ -1048,7 +1063,10 @@ async function submitAddSub() {
   background: var(--card-fill);
   border: 1px solid var(--t-border);
   border-radius: 12px;
-  padding: 8px 10px;
+  /* Card size preset (customize view): --card-scale is set on the board container
+     and scales the padding density + title (below); defaults to 1 so medium is
+     pixel-identical to before. */
+  padding: calc(8px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
 }
@@ -1203,8 +1221,8 @@ async function submitAddSub() {
 .title {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: calc(14px * var(--card-scale, 1));
+  line-height: calc(20px * var(--card-scale, 1));
   color: var(--t-text1);
   cursor: pointer;
   display: -webkit-box;
@@ -1251,6 +1269,14 @@ async function submitAddSub() {
   align-items: center;
   gap: 6px;
   margin-top: 8px;
+}
+/* Stacked pills (customize view): one pill per row, left-aligned. */
+.pills.stacked {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.pills.stacked .people {
+  margin-left: 0;
 }
 .pill {
   display: inline-flex;
