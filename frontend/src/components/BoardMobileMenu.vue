@@ -3,12 +3,6 @@ import { ref, computed, h } from 'vue'
 import { NButton, NIcon, NDropdown, NModal, NCard } from 'naive-ui'
 import {
   EllipsisVerticalOutline,
-  GridOutline,
-  ListOutline,
-  CalendarClearOutline,
-  AppsOutline,
-  BarChartOutline,
-  GitNetworkOutline,
   PricetagsOutline,
   ArchiveOutline,
   CheckmarkOutline,
@@ -16,18 +10,21 @@ import {
 import { useBoardViewStore } from '@/stores/boardView'
 import TagManager from './TagManager.vue'
 import ArchiveModal from './ArchiveModal.vue'
+import TesseraIcon from './TesseraIcon.vue'
 
 const store = useBoardViewStore()
 const tagsOpen = ref(false)
 
 const renderIcon = (comp) => () => h(NIcon, null, { default: () => h(comp) })
+// Tessera icon-pack glyph for the view (layout) menu entries.
+const renderVIcon = (name) => () => h(TesseraIcon, { name, size: 18 })
 const layouts = [
-  { key: 'layout:board', label: 'Доска', icon: renderIcon(GridOutline) },
-  { key: 'layout:list', label: 'Список', icon: renderIcon(ListOutline) },
-  { key: 'layout:calendar', label: 'Календарь', icon: renderIcon(CalendarClearOutline) },
-  { key: 'layout:timeline', label: 'Таймлайн', icon: renderIcon(BarChartOutline) },
-  { key: 'layout:gantt', label: 'Гант', icon: renderIcon(GitNetworkOutline) },
-  { key: 'layout:matrix', label: 'Матрица', icon: renderIcon(AppsOutline) },
+  { key: 'layout:board', label: 'Доска', icon: renderVIcon('layout-kanban') },
+  { key: 'layout:list', label: 'Список', icon: renderVIcon('layout-list') },
+  { key: 'layout:calendar', label: 'Календарь', icon: renderVIcon('layout-calendar') },
+  { key: 'layout:timeline', label: 'Таймлайн', icon: renderVIcon('layout-timeline') },
+  { key: 'layout:gantt', label: 'Гант', icon: renderVIcon('layout-gantt') },
+  { key: 'layout:matrix', label: 'Матрица', icon: renderVIcon('layout-matrix') },
 ]
 const options = computed(() => [
   { key: 'view', type: 'group', label: 'Представление', children: layouts },

@@ -5,7 +5,7 @@ import { NIcon, NText } from 'naive-ui'
 import { FolderOutline } from '@vicons/ionicons5'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import ProjectIcon from './ProjectIcon.vue'
-import KanbanIcon from './icons/KanbanIcon.vue'
+import TesseraIcon from './TesseraIcon.vue'
 
 // SidebarFlyout — recursive content for the collapsed-rail hover menu. Renders a
 // group (folder + its nested groups/projects) or a project (icon + its boards).
@@ -88,15 +88,16 @@ const boardBox = (b) =>
           :style="boardBox(b)"
         >
           <ProjectIcon v-if="b.icon" :icon="b.icon" :initials="boardInitials(b)" :size="11" :color="boardGlyph(b)" />
-          <n-icon
+          <TesseraIcon
             v-else
-            :component="KanbanIcon"
+            name="layout-kanban"
+            :variant="boardBare(b) ? 'outline' : 'filled'"
             :size="12"
             :style="boardBare(b) && boardGlyph(b) ? { color: boardGlyph(b) } : {}"
           />
         </span>
         <!-- default board (no custom icon/colour): the kanban glyph -->
-        <n-icon v-else :component="KanbanIcon" :size="14" />
+        <TesseraIcon v-else name="layout-kanban" :size="14" />
         <span class="fly-board-name">{{ b.name }}</span>
       </button>
       <n-text v-if="!boards.length" depth="3" class="fly-empty">нет досок</n-text>

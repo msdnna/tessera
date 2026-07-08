@@ -3,7 +3,7 @@ import { ref, computed, h, render } from 'vue'
 import { NIcon, NDropdown, NModal, NCard, NInput, useMessage } from 'naive-ui'
 import { FolderOutline } from '@vicons/ionicons5'
 import { PROJECT_ICONS, sanitizeIconSvg } from '@/utils/projectIcons'
-import KanbanIcon from './icons/KanbanIcon.vue'
+import TesseraIcon from './TesseraIcon.vue'
 
 const props = defineProps({
   icon: { type: String, default: '' },
@@ -119,7 +119,7 @@ function onIconFile(e) {
         @click="emit('update:icon', '')"
       >
         <n-icon v-if="fallbackFolder" :component="FolderOutline" :size="16" />
-        <n-icon v-else-if="fallbackKanban" :component="KanbanIcon" :size="16" />
+        <TesseraIcon v-else-if="fallbackKanban" name="layout-kanban" :size="16" />
         <template v-else>{{ initials }}</template>
       </button>
       <button

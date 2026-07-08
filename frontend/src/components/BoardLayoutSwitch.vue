@@ -1,23 +1,17 @@
 <script setup>
-import { NButton, NIcon } from 'naive-ui'
-import {
-  GridOutline,
-  ListOutline,
-  CalendarClearOutline,
-  AppsOutline,
-  BarChartOutline,
-  GitNetworkOutline,
-} from '@vicons/ionicons5'
+import { NButton } from 'naive-ui'
 import { useBoardViewStore } from '@/stores/boardView'
+import TesseraIcon from './TesseraIcon.vue'
 
 const store = useBoardViewStore()
+// Tessera icon-pack names per visualization (filled when active for emphasis).
 const opts = [
-  { value: 'board', label: 'Доска', icon: GridOutline },
-  { value: 'list', label: 'Список', icon: ListOutline },
-  { value: 'calendar', label: 'Календарь', icon: CalendarClearOutline },
-  { value: 'timeline', label: 'Таймлайн', icon: BarChartOutline },
-  { value: 'gantt', label: 'Гант', icon: GitNetworkOutline },
-  { value: 'matrix', label: 'Матрица', icon: AppsOutline },
+  { value: 'board', label: 'Доска', icon: 'layout-kanban' },
+  { value: 'list', label: 'Список', icon: 'layout-list' },
+  { value: 'calendar', label: 'Календарь', icon: 'layout-calendar' },
+  { value: 'timeline', label: 'Таймлайн', icon: 'layout-timeline' },
+  { value: 'gantt', label: 'Гант', icon: 'layout-gantt' },
+  { value: 'matrix', label: 'Матрица', icon: 'layout-matrix' },
 ]
 </script>
 
@@ -32,7 +26,9 @@ const opts = [
       :type="store.layout === o.value ? 'primary' : 'default'"
       @click="store.layout = o.value"
     >
-      <template #icon><n-icon :component="o.icon" /></template>
+      <template #icon>
+        <TesseraIcon :name="o.icon" :variant="store.layout === o.value ? 'filled' : 'outline'" />
+      </template>
       {{ o.label }}
     </n-button>
   </div>

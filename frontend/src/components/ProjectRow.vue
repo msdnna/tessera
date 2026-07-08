@@ -12,7 +12,6 @@ import {
   useMessage,
 } from 'naive-ui'
 import {
-  GridOutline,
   EllipsisHorizontalOutline,
   ChevronForwardOutline,
   AddOutline,
@@ -31,6 +30,7 @@ import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import ProjectIcon from './ProjectIcon.vue'
+import TesseraIcon from './TesseraIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
 import ConfirmByName from './ConfirmByName.vue'
 import EstimationModal from './EstimationModal.vue'
@@ -146,6 +146,17 @@ const bare = computed(() => iconMode.value || props.project.color === 'transpare
 const glyphColor = computed(() =>
   iconMode.value ? (colored.value ? props.project.color : 'var(--t-primary)') : '',
 )
+
+// Board-node icon (same badge/icon logic per board): a board can carry its own
+// icon/colour (set in the board customize panel); default is the kanban glyph.
+const boardColored = (b) => b.color && b.color !== 'transparent'
+const boardHasIcon = (b) => !!(b.icon || boardColored(b))
+const boardBare = (b) => b.icon_mode === 'icon' || b.color === 'transparent'
+const boardBox = (b) =>
+  boardBare(b) ? { background: 'transparent' } : { background: hueGrad(b.color || 'var(--t-primary)') }
+const boardGlyph = (b) =>
+  b.icon_mode === 'icon' ? (boardColored(b) ? b.color : 'var(--t-primary)') : ''
+const boardInitials = (b) => (b.name || '?').trim().slice(0, 2).toUpperCase()
 const confirmDelete = ref(false)
 function remove() {
   confirmDelete.value = true
@@ -354,7 +365,30 @@ async function addBoard() {
         @touchcancel="bCancel"
       >
         <span class="chev-spacer" />
-        <span class="bicon"><n-icon :component="GridOutline" :size="15" /></span>
+        <span class="bicon">
+          <span
+            v-if="boardHasIcon(b)"
+            class="picon bicon-box"
+            :class="{ 'picon-bare': boardBare(b) }"
+            :style="boardBox(b)"
+          >
+            <ProjectIcon
+              v-if="b.icon"
+              :icon="b.icon"
+              :initials="boardInitials(b)"
+              :size="12"
+              :color="boardGlyph(b)"
+            />
+            <TesseraIcon
+              v-else
+              name="layout-kanban"
+              :variant="boardBare(b) ? 'outline' : 'filled'"
+              :size="12"
+              :style="boardBare(b) && boardGlyph(b) ? { color: boardGlyph(b) } : {}"
+            />
+          </span>
+          <TesseraIcon v-else name="layout-kanban" :size="15" />
+        </span>
         <n-input
           v-if="editingBoardId === b.id"
           :ref="(el) => el && (boardEditInput = el)"
