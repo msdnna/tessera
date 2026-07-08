@@ -23,21 +23,26 @@ export function useDateLocale() {
   // relativeDay returns "Сегодня"/"Завтра"/"Вчера" (or the localized weekday when
   // the date is elsewhere in the current week), else '' to fall back to an
   // absolute date. y/mo/day are the due's calendar components.
-  function relativeDay(y, mo, day, now, locale) {
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+  // `long` = capitalised words + full weekday names (used outside pills, where the
+  // lowercase abbreviated form would clash with capitalised siblings like priority).
+  function relativeDay(y, mo, day, now, locale, long = false) {
     const dueEpoch = Math.round(Date.UTC(y, mo, day) / 86400000)
     const todayEpoch = Math.round(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000)
     const diff = dueEpoch - todayEpoch
     const en = locale.startsWith('en')
-    if (diff === 0) return en ? 'Today' : 'сегодня'
-    if (diff === 1) return en ? 'Tomorrow' : 'завтра'
-    if (diff === -1) return en ? 'Yesterday' : 'вчера'
+    if (diff === 0) return en ? 'Today' : long ? 'Сегодня' : 'сегодня'
+    if (diff === 1) return en ? 'Tomorrow' : long ? 'Завтра' : 'завтра'
+    if (diff === -1) return en ? 'Yesterday' : long ? 'Вчера' : 'вчера'
     const firstDay = theme.weekStart === 0 ? 0 : 1
     if (Math.abs(diff) <= 6 && weekStartDay(dueEpoch, firstDay) === weekStartDay(todayEpoch, firstDay)) {
-      // Locale short weekday: ru is already lowercase ("пн"); leave as-is.
-      return new Date(dueEpoch * 86400000).toLocaleDateString(locale, {
-        weekday: 'short',
+      // Short lowercase weekday in pills ("пн"); full capitalised weekday elsewhere
+      // ("Понедельник") so it doesn't read as an abbreviation next to other fields.
+      const wd = new Date(dueEpoch * 86400000).toLocaleDateString(locale, {
+        weekday: long ? 'long' : 'short',
         timeZone: 'UTC',
       })
+      return long ? cap(wd) : wd
     }
     return ''
   }
@@ -47,7 +52,7 @@ export function useDateLocale() {
   // month (+ year when not the current one). The time is appended only when the
   // due carries a real time-of-day — so date-only tasks (and legacy 00:00 rows)
   // stay terse while timed ones show the hour. Honours the 12h/24h preference.
-  function formatDue(dateStr) {
+  function formatDue(dateStr, { long = false } = {}) {
     if (!dateStr) return ''
     const d = new Date(dateStr)
     const locale = theme.language === 'en' ? 'en-GB' : 'ru-RU'
@@ -71,14 +76,14 @@ export function useDateLocale() {
       })
     }
 
-    const rel = relativeDay(y, mo, day, now, locale)
+    const rel = relativeDay(y, mo, day, now, locale, long)
     if (rel) return time ? `${rel}, ${time}` : rel
 
     const o = dateOnly
       ? { day: '2-digit', month: 'short', timeZone: 'UTC' }
       : { day: '2-digit', month: 'short' }
     if (y !== now.getFullYear()) o.year = 'numeric'
-    const dateLabel = d.toLocaleDateString(locale, o)
+    const dateLabel = cap(d.toLocaleDateString(locale, o))
     return time ? `${dateLabel}, ${time}` : dateLabel
   }
 

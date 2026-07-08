@@ -43,6 +43,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useDateLocale } from '@/composables/useDateLocale'
+import { useTagFit } from '@/composables/useTagFit'
 
 const theme = useThemeStore()
 const wsStore = useWorkspacesStore()
@@ -168,6 +169,10 @@ async function commitTitle() {
 const taskTags = computed(() =>
   (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
 )
+// Stacked tags row: fit as many chips as the row width allows, rest → +N.
+const stagValEl = ref(null)
+const stagMeasureEl = ref(null)
+const { visibleCount: visibleTagCount } = useTagFit(stagValEl, stagMeasureEl, taskTags, { pad: 4 })
 const taskMilestone = computed(() =>
   props.task.milestone_id ? props.milestonesMap[props.task.milestone_id] || null : null,
 )
@@ -254,6 +259,9 @@ const pickerMembers = computed(() => {
 })
 
 const due = computed(() => formatDue(props.task.due_date))
+// Long form (capitalised, full weekday) for the stacked row, where the terse
+// lowercase pill form would clash with capitalised siblings like the priority.
+const dueLong = computed(() => formatDue(props.task.due_date, { long: true }))
 // Overdue: due date in the past on a not-yet-done task.
 const overdue = computed(
   () => !!props.task.due_date && !done.value && Date.parse(props.task.due_date) < Date.now(),
@@ -713,7 +721,7 @@ async function submitAddSub() {
           <template #trigger>
             <button class="pill" :class="{ set: due, overdue }" :title="stackFields ? 'Срок' : ''" @click.stop>
               <n-icon :component="CalendarClearOutline" :size="13" />
-              <span v-if="due" class="pill-text">{{ due }}</span>
+              <span v-if="due" class="pill-text">{{ stackFields ? dueLong : due }}</span>
               <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
               <n-icon
                 v-if="task.recurrence"
@@ -816,24 +824,31 @@ async function submitAddSub() {
                   >
                   <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
                 </button>
-                <!-- stacked: leading tag icon + colored chip (like the task modal) -->
+                <!-- stacked: leading tag icon + outlined-oval chips that fit on the
+                     row, rest → +N (same behaviour as the task modal). -->
                 <button v-else class="pill" title="Теги" @click.stop>
                   <n-icon
                     :component="PricetagOutline"
                     :size="13"
                     :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
                   />
-                  <span
-                    v-if="taskTags.length"
-                    class="tag-chip"
-                    :style="{ background: tagPillBg(taskTags[0].color), color: tagText(taskTags[0].color) }"
-                  >
+                  <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
                     <span
-                      class="tname accent-grad-text"
-                      :style="{ '--grad': hueGrad(tagText(taskTags[0].color)) }"
-                      >{{ taskTags[0].name }}</span
+                      v-for="t in taskTags.slice(0, visibleTagCount)"
+                      :key="t.id"
+                      class="mchip"
+                      :style="{ background: tagPillBg(t.color, true) }"
                     >
-                    <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
+                      <span class="accent-grad-text" :style="{ '--grad': hueGrad(tagText(t.color)) }">{{
+                        t.name
+                      }}</span>
+                    </span>
+                    <span v-if="visibleTagCount < taskTags.length" class="mchip chip-more"
+                      >+{{ taskTags.length - visibleTagCount }}</span
+                    >
+                    <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
+                      <span v-for="t in taskTags" :key="`m${t.id}`" class="mchip">{{ t.name }}</span>
+                    </span>
                   </span>
                   <span v-else class="pill-text sf-empty">—</span>
                 </button>
@@ -1362,9 +1377,15 @@ async function submitAddSub() {
   margin-left: 0;
   width: 100%;
 }
+/* box-sizing:border-box is the key fix: <button> pills default to border-box but
+   the display-only <div> pills (estimate/milestone) are content-box, so width:100%
+   + padding made them overflow the card and mismatch height. Force border-box so
+   every row is the same height and its hover spans exactly the card width. */
 .pills.stacked .pill,
 .pills.stacked .assignee-pill {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
   justify-content: flex-start;
   gap: 8px;
   min-height: 26px;
@@ -1372,32 +1393,74 @@ async function submitAddSub() {
   border: 1px solid transparent;
   background: transparent;
   border-radius: 6px;
+  overflow: hidden;
 }
 .pills.stacked .pill:hover,
 .pills.stacked .assignee-pill:hover {
   background: var(--t-hover);
 }
-.pills.stacked .pill .n-icon,
-.pills.stacked .sf-people-ic {
+.pills.stacked .pill .n-icon {
   flex: none;
+}
+.pills.stacked .pill-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pills.stacked .sf-empty {
   color: var(--t-text3);
 }
-/* Colored tag chip inside a stacked row (semi-rounded, like the task modal). */
-.tag-chip {
+/* Assignee row: keep the avatar overlap cascade (no flex gap between avatars),
+   give the field icon its own spacing, and paint the avatar ring in the row's
+   current background so it doesn't flash white on the grey hover. */
+.pills.stacked .assignee-pill {
+  gap: 0;
+}
+.pills.stacked .sf-people-ic {
+  margin-right: 8px;
+  flex: none;
+}
+.pills.stacked .sf-people-ic + .avatar {
+  margin-left: 0;
+}
+.pills.stacked .assignee-pill:hover .avatar {
+  border-color: var(--t-hover);
+}
+/* Stacked tags row: chips that fit, rest → +N (mirrors the task modal). */
+.stag-val {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 7px;
-  border-radius: 6px;
-  font-size: 11px;
+  gap: 6px;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
-.tag-chip .tname {
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Outlined-oval tag chip: gradient border-box + soft fill (via inline background),
+   like the modal. The 1px transparent border is on every chip incl. the invisible
+   measurement copies so widths match exactly. */
+.mchip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  flex: none;
+  white-space: nowrap;
+}
+.mchip.chip-more {
+  color: var(--t-text3);
+  background: var(--t-surface-alt);
+}
+/* Invisible natural-width measurement row (never sliced). */
+.stag-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  gap: 6px;
+  visibility: hidden;
+  pointer-events: none;
   white-space: nowrap;
 }
 .pill {

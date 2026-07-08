@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NModal,
@@ -65,6 +65,7 @@ import {
 } from '@/utils/estimation'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
+import { useTagFit } from '@/composables/useTagFit'
 import DueEditor from './DueEditor.vue'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
@@ -240,52 +241,12 @@ const tagObjs = computed(() =>
 const tagPickerGroups = computed(() => buildTagGroups(props.tags, props.tagPrefixNames))
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 
-// The tags trigger shows as many WHOLE tag chips as fit on one line, then a
-// "+N". To pick the count without a render⇄measure feedback loop, an invisible
-// measurement row (natural widths, never sliced) is measured against the
-// trigger's width, reserving room for the +N chip when not everything fits.
+// The tags trigger shows as many WHOLE tag chips as fit on one line, then "+N"
+// (shared with the stacked card row via useTagFit — which also re-observes the
+// trigger on remount, fixing the "reopen shows only 1 chip" bug).
 const tagsValEl = ref(null)
 const tagsMeasureEl = ref(null)
-const visibleTagCount = ref(99)
-const PLUS_N_W = 46 // reserved px for the "+N" chip (incl. gap)
-let tagsRO = null
-function fitCount(avail, widths, gap, reserve) {
-  let used = 0
-  let n = 0
-  for (let i = 0; i < widths.length; i++) {
-    const add = widths[i] + (i > 0 ? gap : 0)
-    if (used + add + reserve > avail) break
-    used += add
-    n++
-  }
-  return n
-}
-function measureTags() {
-  const val = tagsValEl.value
-  const measure = tagsMeasureEl.value
-  if (!val || !measure) return
-  const avail = val.clientWidth - 24 // button h-padding
-  const widths = [...measure.children].map((ch) => ch.offsetWidth)
-  if (!widths.length || avail <= 0) {
-    visibleTagCount.value = widths.length
-    return
-  }
-  let n = fitCount(avail, widths, 6, 0)
-  if (n < widths.length) n = fitCount(avail, widths, 6, PLUS_N_W) // make room for +N
-  visibleTagCount.value = Math.max(n, 1) // always show at least one
-}
-watch(
-  [tagObjs, tagsValEl],
-  () => {
-    nextTick(measureTags)
-    if (tagsValEl.value && typeof ResizeObserver !== 'undefined' && !tagsRO) {
-      tagsRO = new ResizeObserver(() => measureTags())
-      tagsRO.observe(tagsValEl.value)
-    }
-  },
-  { immediate: true },
-)
-onBeforeUnmount(() => tagsRO?.disconnect())
+const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs)
 const assigneeObjs = computed(() =>
   selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
 )
