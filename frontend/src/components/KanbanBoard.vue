@@ -995,6 +995,12 @@ const filteredTasks = computed(() => {
       (t) => t.title.toLowerCase().includes(q) || (t.number != null && `#${t.number}`.includes(q)),
     )
 
+  return sortByLevels(arr)
+})
+
+// Apply the composer's multi-level sort to a task array (empty sort = stored order,
+// returned as a fresh copy so callers never mutate the source).
+function sortByLevels(arr) {
   const s = [...arr]
   if (sortLevels.value.length) {
     s.sort((a, b) => {
@@ -1006,6 +1012,16 @@ const filteredTasks = computed(() => {
     })
   }
   return s
+}
+
+// Subtasks mirror the parent sort: when a composer sort is active each parent's
+// children follow it too; with no sort we keep the raw stored order so on-card
+// drag-reorder stays authoritative.
+const sortedSubtasksByParent = computed(() => {
+  if (!sortLevels.value.length) return subtasksByParent.value
+  const out = {}
+  for (const [pid, subs] of Object.entries(subtasksByParent.value)) out[pid] = sortByLevels(subs)
+  return out
 })
 
 // The board's task-completing column: explicit if set, else the rightmost.
@@ -1652,7 +1668,7 @@ watch(
       <BoardMatrixView
         v-else-if="layout === 'matrix'"
         :tasks="filteredTasks"
-        :subtasks-by-parent="subtasksByParent"
+        :subtasks-by-parent="sortedSubtasksByParent"
         :subtasks-expanded="subtasksExpanded"
         :columns="columns"
         :tags-map="tagsMap"
@@ -1721,7 +1737,7 @@ watch(
                     <TaskCard
                       v-else
                       :task="element"
-                      :subtasks="subtasksByParent[element.id] || []"
+                      :subtasks="sortedSubtasksByParent[element.id] || []"
                       :subtasks-expanded="subtasksExpanded"
                       :dragging="dragging"
                       :columns="columns"

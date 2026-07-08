@@ -38,6 +38,7 @@ import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
 import RichContent from './RichContent.vue'
+import TaskMiniCard from './TaskMiniCard.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
@@ -942,23 +943,32 @@ async function submitAddSub() {
             @changed="emit('changed')"
           />
         </div>
-        <div
-          v-else
-          class="subrow"
-          :class="{ done: s.completed_at }"
-          @click="emit('open', s.id)"
-          @contextmenu.prevent.stop="onCtx($event, s)"
-        >
-          <span class="check sm" @click.stop="toggleSubDone(s)">
-            <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
-          </span>
-          <span
-            v-if="s.priority"
-            class="pr-dot"
-            :style="{ background: hueGradVert(PRIORITY_COLORS[s.priority]) }"
-          />
-          <span class="sub-title">{{ s.title }}</span>
-          <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+        <!-- Plain wrapper is the draggable item root: vuedraggable needs a single
+             real element per item, so the hover n-popover lives INSIDE it (making
+             the popover the item root breaks Sortable → the whole parent card drags). -->
+        <div v-else class="subrow-slot">
+          <n-popover trigger="hover" placement="right" :delay="250">
+            <template #trigger>
+              <div
+                class="subrow"
+                :class="{ done: s.completed_at }"
+                @click="emit('open', s.id)"
+                @contextmenu.prevent.stop="onCtx($event, s)"
+              >
+                <span class="check sm" @click.stop="toggleSubDone(s)">
+                  <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
+                </span>
+                <span
+                  v-if="s.priority"
+                  class="pr-dot"
+                  :style="{ background: hueGradVert(PRIORITY_COLORS[s.priority]) }"
+                />
+                <span class="sub-title">{{ s.title }}</span>
+                <span v-if="subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+              </div>
+            </template>
+            <TaskMiniCard :task="s" :tags-map="tagsMap" :members-map="membersMap" />
+          </n-popover>
         </div>
       </template>
     </draggable>
