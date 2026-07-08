@@ -2496,6 +2496,12 @@ watch(
   inset: 0;
   z-index: 2;
 }
+/* …but don't render a card preview inside the strip: the placeholders and the
+   dragged card SortableJS relocates here stay invisible, so the collapsed column
+   just acts as a plain drop zone (the drop still lands — see onColChange). */
+.cols.dragging .col.collapsed .drop > * {
+  visibility: hidden;
+}
 .col-strip {
   display: flex;
   flex-direction: column;
