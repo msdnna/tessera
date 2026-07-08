@@ -185,12 +185,12 @@ function isColCollapsed(dcol) {
   if (k in colCollapse) return colCollapse[k]
   return autoCollapseEmpty.value && colCount(dcol) === 0
 }
-// Force every column to render expanded during a drag so SortableJS, the card
-// virtualization and the edge auto-scroll all see normal column geometry — this
-// is what makes dropping a card INTO a collapsed column work (see the drag
-// handlers). Columns re-collapse on drag end.
+// Collapsed columns stay collapsed even during a drag (the layout doesn't jump —
+// the freed width is already redistributed to the expanded columns). Dropping a
+// card ONTO a collapsed column works via a full-column drop overlay revealed while
+// dragging (see `.cols.dragging .col.collapsed .drop` + onColChange's top-insert).
 function colCollapsedNow(dcol) {
-  return !dragging.value && isColCollapsed(dcol)
+  return isColCollapsed(dcol)
 }
 function toggleCollapse(dcol) {
   colCollapse[dcol.key] = !isColCollapsed(dcol)
@@ -901,6 +901,7 @@ watch(boardScroll, (el) => {
 })
 const GAP = 12
 const ADD_COL_W = 220
+const STRIP_W = 44 // collapsed-column strip width (keep in sync with .col.collapsed)
 const COL_MIN = 220 // narrowest a column may get before we switch to scrolling
 const COL_MAX = 420
 // Card-size presets (customize view): the size changes the card composition (see
@@ -919,11 +920,21 @@ const colWidth = computed(() => {
   // Mobile: one column a little under full width so the next one peeks and the
   // swipe (scroll-snap, see CSS) reads as a smooth page-turn.
   if (isMobile.value) return Math.max(cw - 28, 200)
-  const n = displayColumns.value.length || 1
-  // Reserve the "+ колонка" tile (status mode) + the gaps, plus a few px slack
-  // so sub-pixel rounding can't trip the horizontal scrollbar.
-  const reserved = (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 4
-  const w = Math.floor((cw - reserved) / n)
+  // Collapsed columns render as a 44px strip (see .col.collapsed) — reserve their
+  // fixed width and divide the rest among the EXPANDED columns only, so collapsing
+  // a column hands its width to the neighbours instead of leaving a gap on the right.
+  const cols = displayColumns.value
+  const n = cols.length || 1
+  const nCollapsed = cols.filter((c) => isColCollapsed(c)).length
+  const nExpanded = Math.max(n - nCollapsed, 1)
+  // Reserve the "+ колонка" tile (status mode) + the gaps + the collapsed strips,
+  // plus a few px slack so sub-pixel rounding can't trip the horizontal scrollbar.
+  const reserved =
+    (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) +
+    (n - 1) * GAP +
+    4 +
+    nCollapsed * STRIP_W
+  const w = Math.floor((cw - reserved) / nExpanded)
   // Fill the viewport while comfortable; the width band comes from the chosen card
   // size (compact narrower, large wider), so columns never get too narrow to hold
   // their fields and scroll horizontally once they'd shrink past the band's min.
@@ -1314,8 +1325,12 @@ async function onColChange(evt, dcol) {
       const info = evt.added || evt.moved
       if (info) {
         const arr = lists.value[dcol.key]
-        const before = arr[info.newIndex - 1]
-        const after = arr[info.newIndex + 1]
+        // Dropping onto a collapsed column: Sortable's newIndex is meaningless
+        // (its items are hidden placeholders behind the drop overlay), so pin the
+        // card to the top — before = nothing, after = the first existing card.
+        const collapsed = evt.added && isColCollapsed(dcol)
+        const before = collapsed ? null : arr[info.newIndex - 1]
+        const after = collapsed ? arr.find((t) => t.id !== info.element.id) : arr[info.newIndex + 1]
         // A subtask dragged out onto a column becomes top-level again.
         if (evt.added && info.element.parent_id) {
           await tasksApi.setParent(info.element.id, null)
@@ -1870,6 +1885,7 @@ watch(
           handle=".col-drag"
           :disabled="groupMode !== 'status'"
           class="cols"
+          :class="{ dragging }"
           :animation="150"
           :delay="160"
           :delay-on-touch-only="true"
@@ -1882,7 +1898,12 @@ watch(
             <div
               class="col"
               :class="{ collapsed: colCollapsedNow(dcol) }"
-              :style="{ '--col-accent': dcol.color || 'var(--t-primary)' }"
+              :style="{
+                '--col-accent': dcol.color || 'var(--t-primary)',
+                '--col-tint': dcol.color
+                  ? `color-mix(in srgb, ${dcol.color} 6%, var(--t-surface-alt))`
+                  : 'var(--t-surface-alt)',
+              }"
             >
               <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
@@ -2440,18 +2461,21 @@ watch(
   /* Light 1px border on the sides/bottom (like the cards), plus a 3px gradient
      TOP accent: the top border is transparent and reveals the gradient painted
      on the border-box (wrapping the rounded top corners); the other borders stay
-     the opaque neutral colour, and padding-box keeps the column fill flat. */
+     the opaque neutral colour, and padding-box carries a soft same-hue wash of the
+     column colour (a reference tracker-style, ~6%; neutral columns fall back to flat surface). */
   border: 1px solid var(--t-border);
   border-top: 3px solid transparent;
   background:
-    linear-gradient(var(--t-surface-alt), var(--t-surface-alt)) padding-box,
+    linear-gradient(var(--col-tint, var(--t-surface-alt)), var(--col-tint, var(--t-surface-alt))) padding-box,
     var(--col-grad) border-box;
 }
 /* Collapsed column → a narrow strip. The header, card list and add-task button
    stay mounted (the SortableJS drop target must survive) but are hidden; the
-   `.col-strip` overlay shows the rotated title + count. During a drag every
-   column force-expands (see colCollapsedNow) so drops land normally. */
+   `.col-strip` overlay shows the rotated title + count. Collapsed columns stay
+   collapsed during a drag; a full-column drop overlay (below) lets a dragged card
+   land on the strip and get inserted at the top (see onColChange). */
 .col.collapsed {
+  position: relative;
   width: 44px;
   flex: 0 0 44px;
   padding: 8px 2px;
@@ -2463,6 +2487,14 @@ watch(
 .col.collapsed .add-btn,
 .col.collapsed .add-task-input {
   display: none;
+}
+/* While dragging, reveal the collapsed column's card list as a transparent
+   full-column drop zone laid over the strip so SortableJS can accept the drop. */
+.cols.dragging .col.collapsed .drop {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
 }
 .col-strip {
   display: flex;

@@ -26,11 +26,16 @@ const props = defineProps({
 const emit = defineEmits(['changed', 'set-done', 'toggle-collapse'])
 
 // a reference tracker-style status glyph from the Tessera icon pack: done = check circle,
-// first = empty circle, middle = in-progress (half). Filled for done so it stands
-// out; the glyph is tinted flat with the column colour (matches the pack preview).
-const statusName = computed(() =>
-  props.isDone ? 'status-done' : props.first ? 'status-todo' : 'status-progress',
-)
+// first = empty circle, review = eye, other middle = in-progress (half). Filled for
+// done so it stands out; the glyph is tinted flat with the column colour (matches
+// the pack preview). Review columns are detected by name (no explicit column type).
+const REVIEW_RE = /рассмотр|ревью|review|проверк/i
+const statusName = computed(() => {
+  if (props.isDone) return 'status-done'
+  if (props.first) return 'status-todo'
+  if (REVIEW_RE.test(props.dcol.name || '')) return 'status-review-eye'
+  return 'status-progress'
+})
 const statusVariant = computed(() => (props.isDone ? 'filled' : 'outline'))
 // Tint the glyph with the column colour; fall back to the accent (same as the
 // column's top bar) rather than a dull grey so the icon always reads as coloured.
