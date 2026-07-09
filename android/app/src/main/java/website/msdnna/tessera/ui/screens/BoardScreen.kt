@@ -352,6 +352,8 @@ private fun BoardToolbar(
 ) {
     val c = Tessera.colors
     var viewsMenu by remember { mutableStateOf(false) }
+    var customizeOpen by remember { mutableStateOf(false) }
+    if (customizeOpen) BoardCustomizePanel(state, vm) { customizeOpen = false }
     Row(
         Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -390,6 +392,8 @@ private fun BoardToolbar(
                         SavedViewsPopover(state = state, vm = vm, onClose = { viewsMenu = false })
                     }
                 }
+                // Board appearance: card density / fields / columns (web gear panel).
+                ToolIcon(Ion.SETTINGS, active = customizeOpen) { customizeOpen = true }
             }
         }
     }

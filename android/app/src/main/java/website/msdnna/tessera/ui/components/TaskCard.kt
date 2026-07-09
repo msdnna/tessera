@@ -150,7 +150,7 @@ fun TaskCard(
                     bottom = if (nested) 12.dp else 10.dp,
                 ),
         ) {
-            CardHeader(task, vm, onOpen, showMenu = !compact, onAddSubtask = { addingSub = true })
+            CardHeader(task, state, vm, onOpen, showMenu = !compact, onAddSubtask = { addingSub = true })
             if (onOpenConflict != null && conflictTaskIds.contains(task.id)) {
                 Spacer(Modifier.height(6.dp))
                 ConflictPill { onOpenConflict(task) }
@@ -223,6 +223,7 @@ fun TaskCard(
 @Composable
 private fun CardHeader(
     task: Task,
+    state: BoardUiState,
     vm: BoardViewModel,
     onOpen: (Task) -> Unit,
     showMenu: Boolean,
@@ -230,6 +231,9 @@ private fun CardHeader(
 ) {
     val c = Tessera.colors
     var editing by remember(task.id) { mutableStateOf(false) }
+    // Meta row (#number / GitLab !iid) is gated by card density + per-field toggles.
+    val showNumber = state.cardShows("number") && task.number != null
+    val showGitlab = state.cardShows("gitlab") && task.gitlabIid != null
 
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -274,31 +278,33 @@ private fun CardHeader(
         }
         // Meta row: task number + GitLab issue link, indented under the title (19dp
         // checkbox + 8dp gap) so long titles never wrap around them.
-        if (task.number != null || task.gitlabIid != null) {
+        if (showNumber || showGitlab) {
             Row(
                 Modifier.padding(start = 27.dp, top = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                task.number?.let {
-                    Text("#$it", color = c.text3, fontSize = 11.sp)
+                if (showNumber) {
+                    task.number?.let { Text("#$it", color = c.text3, fontSize = 11.sp) }
                 }
-                task.gitlabIid?.let { iid ->
-                    if (task.number != null) Spacer(Modifier.width(6.dp))
-                    val ctx = LocalContext.current
-                    Row(
-                        Modifier.clip(RoundedCornerShape(RadiusSm))
-                            .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
-                            .clickableNoRipple {
-                                task.gitlabUrl?.let { url ->
-                                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                if (showGitlab) {
+                    task.gitlabIid?.let { iid ->
+                        if (showNumber) Spacer(Modifier.width(6.dp))
+                        val ctx = LocalContext.current
+                        Row(
+                            Modifier.clip(RoundedCornerShape(RadiusSm))
+                                .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                                .clickableNoRipple {
+                                    task.gitlabUrl?.let { url ->
+                                        runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                                    }
                                 }
-                            }
-                            .padding(horizontal = 5.dp, vertical = 1.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IonIcon(Ion.GITLAB, size = 10.dp, tint = c.text2)
-                        Spacer(Modifier.width(2.dp))
-                        Text("!$iid", color = c.text2, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IonIcon(Ion.GITLAB, size = 10.dp, tint = c.text2)
+                            Spacer(Modifier.width(2.dp))
+                            Text("!$iid", color = c.text2, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
@@ -420,17 +426,57 @@ fun InlineTitleEditor(
 
 @Composable
 private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
+    // Compact density = title only, no pills (web cardSize=compact → SIZE_FIELDS=[]).
+    if (state.isCompactCard) return
+
+    val showEmpty = state.showEmpty
+    val hasDue = !task.dueDate.isNullOrBlank()
+    val hasTags = task.tagIds.isNotEmpty()
+    val hasAssignee = task.assigneeIds.isNotEmpty() || task.gitlabAssignees.isNotEmpty() ||
+        task.createdBy != null || task.gitlabAuthor != null
+
+    // web: show(k) = sizeAllows(k) && fieldVis(k); the "always-on" fields
+    // (priority/due/tags/assignee) additionally hide when empty && !showEmpty.
+    val showPriority = state.cardShows("priority") && (showEmpty || task.priority > 0)
+    val showDue = state.cardShows("due") && (showEmpty || hasDue)
+    val showTags = state.cardShows("tags") && (showEmpty || hasTags)
+    val showEstimate = state.cardShows("estimate") // pill self-hides when blank
+    val showMilestone = state.cardShows("milestone") // pill self-hides when unset
+    val showDescription = state.cardShows("description") && !state.stackFields
+    val showAssignee = state.cardShows("assignee") && (showEmpty || hasAssignee)
+
+    // Stacked layout: each field on its own row (web stackFields). Description is
+    // omitted in stack mode (web parity).
+    if (state.stackFields) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (showPriority) PriorityPill(task, vm)
+            if (showDue) DuePill(task, state, vm)
+            if (showEstimate) EstimatePill(task, state)
+            if (showTags) TagsPill(task, state, vm)
+            if (showMilestone) MilestonePill(task, state)
+            if (showAssignee) AssigneesPill(task, state, vm)
+        }
+        return
+    }
+
+    // Inline: the field pills wrap (FlowRow) with the assignee pinned to the right.
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        PriorityPill(task, vm)
-        Spacer(Modifier.width(6.dp))
-        DuePill(task, state, vm)
-        EstimatePill(task, state)
-        DescriptionPill(task, state)
-        Spacer(Modifier.width(6.dp))
-        TagsPill(task, state, vm)
-        MilestonePill(task, state)
-        Spacer(Modifier.weight(1f))
-        AssigneesPill(task, state, vm)
+        FlowRow(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (showPriority) PriorityPill(task, vm)
+            if (showDue) DuePill(task, state, vm)
+            if (showEstimate) EstimatePill(task, state)
+            if (showDescription) DescriptionPill(task, state)
+            if (showTags) TagsPill(task, state, vm)
+            if (showMilestone) MilestonePill(task, state)
+        }
+        if (showAssignee) {
+            Spacer(Modifier.width(6.dp))
+            AssigneesPill(task, state, vm)
+        }
     }
 }
 
@@ -460,7 +506,6 @@ private fun ConflictPill(onClick: () -> Unit) {
 private fun MilestonePill(task: Task, state: BoardUiState) {
     val c = Tessera.colors
     val ms = task.milestoneId?.let { state.milestonesMap[it] } ?: return
-    Spacer(Modifier.width(6.dp))
     Box(Modifier.alpha(if (ms.isClosed) 0.6f else 1f)) {
         Pill(onClick = {}, set = true) {
             IonIcon(Ion.ROCKET, size = 13.dp, tint = c.text2)
@@ -490,7 +535,6 @@ private fun EstimatePill(task: Task, state: BoardUiState) {
     val text = website.msdnna.tessera.util.Estimation.format(value, state.estimation)
     if (text.isBlank()) return
     val isRollup = own == null && rollup != null
-    Spacer(Modifier.width(6.dp))
     Pill(onClick = {}, set = true) {
         IonIcon(Ion.TIME, size = 13.dp, tint = c.text2)
         Spacer(Modifier.width(4.dp))
@@ -506,7 +550,6 @@ private fun DescriptionPill(task: Task, state: BoardUiState) {
     val c = Tessera.colors
     if (task.description.isBlank()) return
     var open by remember { mutableStateOf(false) }
-    Spacer(Modifier.width(6.dp))
     Box {
         Pill(onClick = { open = true }, set = true) {
             IonIcon(Ion.MENU, size = 13.dp, tint = c.text2)

@@ -28,6 +28,17 @@ data class BoardViewConfig(
     /** When true, empty columns auto-collapse into a strip unless an explicit
      *  [colCollapse] override says otherwise (web autoCollapseEmpty parity). */
     @SerializedName("autoCollapseEmpty") val autoCollapseEmpty: Boolean = false,
+    /** Card density: "compact" (title only) | "medium" (key fields) | "large" (all). */
+    @SerializedName("cardSize") val cardSize: String = "medium",
+    /** Pills stacked vertically (icon+value rows) instead of an inline wrap. */
+    @SerializedName("stackFields") val stackFields: Boolean = false,
+    /** Show empty priority/due/tags/assignee fields as add-affordances (web showEmpty). */
+    @SerializedName("showEmpty") val showEmpty: Boolean = true,
+    /** Per-field visibility: fieldKey → true/false. Missing key = visible.
+     *  Keys: priority|due|assignee|tags|estimate|milestone|description|number|gitlab. */
+    @SerializedName("fieldVis") val fieldVis: Map<String, Boolean> = emptyMap(),
+    /** Auto-persist the current named view on every change (web autosaveView). */
+    @SerializedName("autosaveView") val autosaveView: Boolean = false,
     @SerializedName("filters") val filters: BoardViewFilters = BoardViewFilters(),
 )
 

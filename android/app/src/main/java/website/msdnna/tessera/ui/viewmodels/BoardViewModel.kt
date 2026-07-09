@@ -118,6 +118,16 @@ data class BoardUiState(
     val colCollapse: Map<String, Boolean> = emptyMap(),
     /** Auto-collapse empty columns into a strip unless overridden (web autoCollapseEmpty). */
     val autoCollapseEmpty: Boolean = false,
+    /** Card density: "compact" | "medium" | "large" (web cardSize). */
+    val cardSize: String = "medium",
+    /** Pills stacked vertically instead of inline-wrapped (web stackFields). */
+    val stackFields: Boolean = false,
+    /** Show empty priority/due/tags/assignee as add-affordances (web showEmpty). */
+    val showEmpty: Boolean = true,
+    /** Per-field visibility overrides (web fieldVis): fieldKey → true/false, missing = visible. */
+    val fieldVis: Map<String, Boolean> = emptyMap(),
+    /** Auto-persist the current named view on every change (web autosaveView). */
+    val autosaveView: Boolean = false,
     val doneColumnId: String? = null,
     val filter: BoardFilter = BoardFilter(),
     /** Ordered multi-level sort. Empty = manual (position) order. */
@@ -151,6 +161,24 @@ data class BoardUiState(
      *  [colCollapse] override wins, otherwise auto-collapse applies to empty lanes. */
     fun isLaneCollapsed(laneId: String, count: Int): Boolean =
         colCollapse[laneId] ?: (autoCollapseEmpty && count == 0)
+
+    /** Card density: compact renders the title only (no pills). */
+    val isCompactCard: Boolean get() = cardSize == "compact"
+
+    /** A field's own visibility toggle (web fieldVis): missing key = visible. */
+    fun fieldOn(key: String): Boolean = fieldVis[key] != false
+
+    /** Whether [key] renders on a card at the current density AND its visibility
+     *  toggle (web `show(k) = sizeAllows(k) && fv(k)`). compact = none, medium =
+     *  the key-field subset, large = all. */
+    fun cardShows(key: String): Boolean {
+        val sizeAllows = when (cardSize) {
+            "compact" -> false
+            "medium" -> key in MEDIUM_CARD_FIELDS
+            else -> true // large (and any unknown) = all fields
+        }
+        return sizeAllows && fieldOn(key)
+    }
 
     /** Full column list, drag-position source — NOT filtered (DnD needs every card). */
     fun tasksIn(columnId: String): List<Task> =
@@ -606,6 +634,34 @@ class BoardViewModel(
         persistView()
     }
 
+    // ── card customization (kanban) ───────────────────────────────────────────
+
+    fun setCardSize(size: String) {
+        _state.update { it.copy(cardSize = size) }
+        persistView()
+    }
+
+    fun setStackFields(on: Boolean) {
+        _state.update { it.copy(stackFields = on) }
+        persistView()
+    }
+
+    fun setShowEmpty(on: Boolean) {
+        _state.update { it.copy(showEmpty = on) }
+        persistView()
+    }
+
+    /** Flips a single field's on-card visibility (web fieldVis toggle). */
+    fun setFieldVisible(key: String, on: Boolean) {
+        _state.update { it.copy(fieldVis = it.fieldVis + (key to on)) }
+        persistView()
+    }
+
+    fun setAutosaveView(on: Boolean) {
+        _state.update { it.copy(autosaveView = on) }
+        persistView()
+    }
+
     // ── saved views (server-side) ────────────────────────────────────────────
 
     /** Saves (upserts) the current toolbar state as a named server-side view. */
@@ -890,6 +946,10 @@ private fun BoardUiState.coerceGroupingFor(mode: BoardViewMode): BoardUiState {
     }
 }
 
+/** Fields rendered on a "medium"-density card (web SIZE_FIELDS.medium). "compact"
+ *  renders none, "large" renders all. */
+private val MEDIUM_CARD_FIELDS = setOf("number", "priority", "due", "tags", "assignee")
+
 /** Snapshots the toolbar state into a [BoardViewConfig] (web-compatible). */
 private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
     layout = layoutKey(s.viewMode),
@@ -900,6 +960,11 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
     autoSort = s.autoSort,
     colCollapse = s.colCollapse,
     autoCollapseEmpty = s.autoCollapseEmpty,
+    cardSize = s.cardSize,
+    stackFields = s.stackFields,
+    showEmpty = s.showEmpty,
+    fieldVis = s.fieldVis,
+    autosaveView = s.autosaveView,
     filters = BoardViewFilters(
         priorities = s.filter.priorities.toList(),
         assignees = s.filter.assigneeIds.toList(),
@@ -928,6 +993,11 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
     autoSort = c.autoSort,
     colCollapse = c.colCollapse,
     autoCollapseEmpty = c.autoCollapseEmpty,
+    cardSize = c.cardSize.ifBlank { "medium" },
+    stackFields = c.stackFields,
+    showEmpty = c.showEmpty,
+    fieldVis = c.fieldVis,
+    autosaveView = c.autosaveView,
     filter = BoardFilter(
         query = c.filters.q,
         priorities = c.filters.priorities.toSet(),
