@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +23,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -37,11 +40,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.IonIcon
@@ -52,8 +62,11 @@ import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.softShadow
+import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.ui.viewmodels.BoardActivity
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
@@ -87,6 +100,8 @@ fun BoardScreen(
     // «Конфликт» pill and opens the resolver focused on the tapped task.
     val conflictsVm: website.msdnna.tessera.ui.viewmodels.ConflictsViewModel = viewModel()
     val conflictsState by conflictsVm.state.collectAsStateWithLifecycle()
+    // Live board-activity toasts (separate from the bell), fed by realtime events.
+    val activity by vm.activity.collectAsStateWithLifecycle()
 
     LaunchedEffect(board.id, workspaceId) { vm.load(board.id, workspaceId) }
 
@@ -209,6 +224,117 @@ fun BoardScreen(
 
     if (archiveOpen) ArchiveModal(state = state, vm = vm, onDismiss = onCloseArchive)
     if (tagsOpen) TagManagerModal(state = state, vm = vm, onDismiss = onCloseTags)
+
+    BoardActivityOverlay(
+        items = activity,
+        boardId = board.id,
+        onOpen = { openTaskId = it },
+        onDismiss = vm::dismissActivity,
+    )
+}
+
+/**
+ * A transient bottom-left stack of board-activity toasts (web BoardActivityToasts
+ * parity): who created/moved/completed a task on this board, with Open + Copy-link
+ * quick actions. Fed from realtime events; not the bell notification centre.
+ */
+@Composable
+private fun BoardActivityOverlay(
+    items: List<BoardActivity>,
+    boardId: String,
+    onOpen: (String) -> Unit,
+    onDismiss: (Long) -> Unit,
+) {
+    if (items.isEmpty()) return
+    val clipboard = LocalClipboardManager.current
+    Box(Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.BottomStart) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items.forEach { a ->
+                ActivityToast(
+                    activity = a,
+                    onOpen = { onOpen(a.taskId) },
+                    onCopy = {
+                        val num = a.number?.toString() ?: a.taskId
+                        clipboard.setText(AnnotatedString("${RetrofitClient.serverRoot}/board/$boardId?task=$num"))
+                    },
+                    onClose = { onDismiss(a.key) },
+                )
+            }
+        }
+    }
+}
+
+/** Verb → (label, icon, accent colour) for an activity toast. */
+private fun activityVerbMeta(verb: String): Triple<String, String, Color> = when (verb) {
+    "created" -> Triple("создал(а) задачу", Ion.ADD, Color(0xFF7C5CFF))
+    "completed" -> Triple("завершил(а) задачу", Ion.CHECK_CIRCLE, Color(0xFF18A058))
+    "reopened" -> Triple("вернул(а) в работу", Ion.ELLIPSE, Color(0xFFE0922F))
+    else -> Triple("переместил(а) задачу", Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
+}
+
+@Composable
+private fun ActivityToast(
+    activity: BoardActivity,
+    onOpen: () -> Unit,
+    onCopy: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val c = Tessera.colors
+    val (verbText, icon, color) = activityVerbMeta(activity.verb)
+    var copied by remember(activity.key) { mutableStateOf(false) }
+    val shape = RoundedCornerShape(RadiusLg)
+    Row(
+        Modifier.widthIn(max = 320.dp).softShadow(shape, elevation = 6.dp).clip(shape)
+            .background(c.surface).border(1.dp, c.border, shape).padding(10.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(
+            Modifier.size(30.dp).clip(CircleShape).background(color.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            IonIcon(icon, size = 17.dp, tint = color)
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (activity.self) "Вы" else activity.actorName.ifBlank { "Кто-то" },
+                    color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(verbText, color = c.text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(
+                activity.title,
+                color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(RadiusSm)).background(accentGradient(c.primary))
+                        .clickableNoRipple(onClick = onOpen).padding(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Text("Открыть", color = c.onPrimary, fontSize = 12.sp)
+                }
+                Box(
+                    Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                        .clickableNoRipple {
+                            onCopy()
+                            copied = true
+                        }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Text(if (copied) "Скопировано" else "Ссылка", color = c.text2, fontSize = 12.sp)
+                }
+            }
+        }
+        Spacer(Modifier.width(4.dp))
+        IonIcon(
+            Ion.CLOSE, size = 15.dp, tint = c.text3,
+            modifier = Modifier.clip(CircleShape).clickableNoRipple(onClick = onClose),
+        )
+    }
 }
 
 /**

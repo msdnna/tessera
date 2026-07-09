@@ -68,6 +68,18 @@ private val TagPalette = listOf(
     "#7c5cff", "#2f80ed", "#0eb0a9", "#18a058", "#f0a020", "#e0533d", "#eb2f96",
 )
 
+/** A transient board-activity toast (mirrors the web BoardActivityToasts): who did
+ *  what on the currently-open board. Not persisted — pure live activity. */
+data class BoardActivity(
+    val key: Long,
+    val taskId: String,
+    val number: Long?,
+    val title: String,
+    val verb: String, // created | moved | completed | reopened
+    val actorName: String,
+    val self: Boolean,
+)
+
 data class BoardUiState(
     val loading: Boolean = true,
     val error: String? = null,
@@ -216,10 +228,24 @@ class BoardViewModel(
     private val _state = MutableStateFlow(BoardUiState())
     val state: StateFlow<BoardUiState> = _state.asStateFlow()
 
+    // Live board-activity toasts (separate from the bell): fed from realtime events.
+    private val _activity = MutableStateFlow<List<BoardActivity>>(emptyList())
+    val activity: StateFlow<List<BoardActivity>> = _activity.asStateFlow()
+    private var activitySeq = 0L
+
     private val gson = Gson()
     private var boardId: String = ""
     private var workspaceId: String = ""
     private var projectId: String = "" // the board's project — scopes tags
+
+    // Current user id, tracked to flag own actions in the activity feed.
+    private var currentUserId: String = ""
+
+    init {
+        viewModelScope.launch {
+            AppContainer.prefs.user.collect { currentUserId = it?.id ?: "" }
+        }
+    }
 
     // Realtime: a live socket reloads the board on workspace-scoped events. A
     // suppress window after our own mutations avoids a redundant echo reload;
@@ -314,12 +340,54 @@ class BoardViewModel(
         ) {
             return
         }
+        // Board-activity toast for create/move on THIS board (any actor) — shown
+        // regardless of the reload suppression below so own actions confirm too.
+        if (ev.type == "task.created" || ev.type == "task.moved") pushActivity(ev)
         if (dragging || SystemClock.elapsedRealtime() < suppressUntil) return
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
             delay(REALTIME_DEBOUNCE_MS)
             if (!dragging) silentReload()
         }
+    }
+
+    /** Builds an activity toast from a create/move event on the current board. The
+     *  move verb is refined by comparing the event's completion state to the card we
+     *  still hold locally (reload is debounced), so crossing the done boundary reads
+     *  as completed/reopened. */
+    private fun pushActivity(ev: RealtimeEvent) {
+        val data = ev.data ?: return
+        val t = runCatching { gson.fromJson(data, Task::class.java) }.getOrNull() ?: return
+        if (t.boardId != boardId) return
+        var verb = if (ev.type == "task.created") "created" else "moved"
+        if (ev.type == "task.moved") {
+            val prev = _state.value.tasks.firstOrNull { it.id == t.id }
+            val wasDone = prev?.isCompleted == true
+            if (t.isCompleted && !wasDone) verb = "completed"
+            else if (!t.isCompleted && wasDone) verb = "reopened"
+        }
+        val actorId = ev.actor.ifBlank { t.createdBy ?: "" }
+        val self = actorId.isNotBlank() && actorId == currentUserId
+        val actorName = _state.value.membersMap[actorId]?.name ?: ""
+        val entry = BoardActivity(
+            key = ++activitySeq,
+            taskId = t.id,
+            number = t.number,
+            title = t.title.ifBlank { "Задача" },
+            verb = verb,
+            actorName = actorName,
+            self = self,
+        )
+        _activity.update { (it + entry).takeLast(3) }
+        viewModelScope.launch {
+            delay(ACTIVITY_TTL_MS)
+            dismissActivity(entry.key)
+        }
+    }
+
+    /** Dismiss a board-activity toast (auto after a timeout, or manual close). */
+    fun dismissActivity(key: Long) {
+        _activity.update { list -> list.filterNot { it.key == key } }
     }
 
     /** Refreshes board data without the loading spinner (for live updates). */
@@ -755,6 +823,7 @@ class BoardViewModel(
     private companion object {
         const val REALTIME_DEBOUNCE_MS = 300L
         const val SUPPRESS_MS = 1500L
+        const val ACTIVITY_TTL_MS = 6500L
     }
 }
 

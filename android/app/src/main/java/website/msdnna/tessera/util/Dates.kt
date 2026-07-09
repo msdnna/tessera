@@ -10,6 +10,47 @@ private val months = listOf(
     "янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек",
 )
 
+// Short weekday names, indexed by Calendar.DAY_OF_WEEK - 1 (1 = Sunday … 7 = Saturday).
+private val weekdaysShort = listOf("вс", "пн", "вт", "ср", "чт", "пт", "сб")
+
+/**
+ * A relative day label for near-future/near-past dues, mirroring the web
+ * `formatDue`: «Сегодня»/«Завтра»/«Вчера», or a capitalised weekday when the date
+ * is elsewhere in the current (Monday-anchored) week. Returns "" to fall back to an
+ * absolute date. [y]/[mo0]/[d] are the due's calendar components (mo0 zero-based).
+ */
+private fun relativeDue(y: Int, mo0: Int, d: Int): String {
+    val due = Calendar.getInstance().apply {
+        clear()
+        set(y, mo0, d)
+    }
+    val today = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val diff = Math.round((due.timeInMillis - today.timeInMillis) / 86_400_000.0).toInt()
+    when (diff) {
+        0 -> return "сегодня"
+        1 -> return "завтра"
+        -1 -> return "вчера"
+    }
+    if (Math.abs(diff) <= 6 && sameWeek(due, today)) {
+        // weekdaysShort is already lowercase ("пн") — keep it lowercase, web parity.
+        return weekdaysShort[due.get(Calendar.DAY_OF_WEEK) - 1]
+    }
+    return ""
+}
+
+/** True when two dates fall in the same Monday-anchored calendar week. */
+private fun sameWeek(a: Calendar, b: Calendar): Boolean {
+    val ca = (a.clone() as Calendar).apply { firstDayOfWeek = Calendar.MONDAY }
+    val cb = (b.clone() as Calendar).apply { firstDayOfWeek = Calendar.MONDAY }
+    return ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR) &&
+        ca.get(Calendar.WEEK_OF_YEAR) == cb.get(Calendar.WEEK_OF_YEAR)
+}
+
 /**
  * Formats an ISO-8601 timestamp (e.g. `2026-06-10T00:00:00Z`) to a short
  * `10 июн` label. String-based to avoid java.time desugaring on minSdk 24.
@@ -91,23 +132,35 @@ fun dueLabel(iso: String?, withTime: Boolean = true): String {
     return if (withTime && (hh != 0 || mm != 0)) "$date, %02d:%02d".format(hh, mm) else date
 }
 
-/** A compact due label for cards: `10 июн` plus `14:30` when a time is set. */
+/**
+ * A compact due label for cards. Near dates read as relative shorthand
+ * («Завтра», or a weekday within the current week); otherwise `10 июн` (+ year
+ * when not current), plus `14:30` when a time is set. Mirrors the web `formatDue`.
+ */
 fun dueShort(iso: String?): String {
     if (iso.isNullOrBlank() || iso.length < 10) return ""
     val millis = parseInstantMillis(iso) ?: return shortDate(iso)
-    // A pure UTC-midnight instant is a date-only due (GitLab/legacy) — render the
-    // UTC calendar date, no time, so a +03:00 server offset doesn't push it to
-    // "03:00". A real timed/local-midnight due falls through to local rendering.
-    if (isUtcMidnight(millis)) return utcShortDate(millis)
-    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    // A pure UTC-midnight instant is a date-only due (GitLab/legacy) — read its
+    // calendar date in UTC so a +03:00 server offset doesn't push it to "03:00".
+    // A real timed/local-midnight due falls through to local rendering.
+    val utcMid = isUtcMidnight(millis)
+    val cal = Calendar.getInstance(if (utcMid) TimeZone.getTimeZone("UTC") else TimeZone.getDefault())
+        .apply { timeInMillis = millis }
     val day = cal.get(Calendar.DAY_OF_MONTH)
-    val month = months[cal.get(Calendar.MONTH)]
+    val mo0 = cal.get(Calendar.MONTH)
     val year = cal.get(Calendar.YEAR)
+    val time = if (!utcMid) {
+        val hh = cal.get(Calendar.HOUR_OF_DAY)
+        val mm = cal.get(Calendar.MINUTE)
+        if (hh != 0 || mm != 0) "%02d:%02d".format(hh, mm) else ""
+    } else {
+        ""
+    }
+    val rel = relativeDue(year, mo0, day)
+    if (rel.isNotEmpty()) return if (time.isNotEmpty()) "$rel $time" else rel
     val suffix = if (year.toString() == currentYear()) "" else " $year"
-    val hh = cal.get(Calendar.HOUR_OF_DAY)
-    val mm = cal.get(Calendar.MINUTE)
-    val date = "$day $month$suffix"
-    return if (hh != 0 || mm != 0) "$date %02d:%02d".format(hh, mm) else date
+    val date = "$day ${months[mo0]}$suffix"
+    return if (time.isNotEmpty()) "$date $time" else date
 }
 
 /**
@@ -148,16 +201,6 @@ private fun isUtcMidnight(millis: Long): Boolean {
     return cal.get(Calendar.HOUR_OF_DAY) == 0 &&
         cal.get(Calendar.MINUTE) == 0 &&
         cal.get(Calendar.SECOND) == 0
-}
-
-/** `10 июн` (+ year when not current) from the UTC calendar date of [millis]. */
-private fun utcShortDate(millis: Long): String {
-    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
-    val day = cal.get(Calendar.DAY_OF_MONTH)
-    val month = months[cal.get(Calendar.MONTH)]
-    val year = cal.get(Calendar.YEAR)
-    val suffix = if (year.toString() == currentYear()) "" else " $year"
-    return "$day $month$suffix"
 }
 
 /** `4 июн. 2026 г.` from the UTC calendar date of [millis]. */

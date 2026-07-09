@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,7 +45,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -105,6 +105,9 @@ fun TaskCard(
     // Subtask cards are a touch lighter than the parent — surface mixed 70/30
     // with the page background (mirrors the web's color-mix).
     val subtaskSurface = lerp(c.cardSurface, c.bg, 0.30f)
+    // Adding a subtask is triggered from the "⋯" menu (no persistent button under
+    // the card — that reclaims the empty space); this reveals the inline field.
+    var addingSub by remember(task.id) { mutableStateOf(false) }
 
     Column(modifier.fillMaxWidth()) {
         // Parent draws on top (zIndex above any subtasks) so the subtask cards
@@ -147,7 +150,7 @@ fun TaskCard(
                     bottom = if (nested) 12.dp else 10.dp,
                 ),
         ) {
-            CardHeader(task, vm, onOpen, showMenu = !compact)
+            CardHeader(task, vm, onOpen, showMenu = !compact, onAddSubtask = { addingSub = true })
             if (onOpenConflict != null && conflictTaskIds.contains(task.id)) {
                 Spacer(Modifier.height(6.dp))
                 ConflictPill { onOpenConflict(task) }
@@ -211,72 +214,94 @@ fun TaskCard(
                 }
             }
         }
-        if (!nested && !compact) AddSubtaskRow(task, vm)
+        if (!nested && !compact && addingSub) {
+            SubtaskCreateField(task, vm, onDone = { addingSub = false })
+        }
     }
 }
 
 @Composable
-private fun CardHeader(task: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, showMenu: Boolean) {
+private fun CardHeader(
+    task: Task,
+    vm: BoardViewModel,
+    onOpen: (Task) -> Unit,
+    showMenu: Boolean,
+    onAddSubtask: () -> Unit,
+) {
     val c = Tessera.colors
     var editing by remember(task.id) { mutableStateOf(false) }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        IonIcon(
-            if (task.isCompleted) Ion.CHECK_CIRCLE else Ion.ELLIPSE,
-            size = 19.dp,
-            tint = if (task.isCompleted) c.primary else c.text3,
-            gradient = task.isCompleted,
-            modifier = Modifier.clip(CircleShape).clickableNoRipple { vm.toggleDone(task) },
-        )
-        Spacer(Modifier.width(8.dp))
-        if (editing) {
-            InlineTitleEditor(
-                initial = task.title,
-                onCommit = {
-                    editing = false
-                    if (it != task.title) vm.renameTask(task, it)
-                },
-                onCancel = { editing = false },
-                modifier = Modifier.weight(1f),
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IonIcon(
+                if (task.isCompleted) Ion.CHECK_CIRCLE else Ion.ELLIPSE,
+                size = 19.dp,
+                tint = if (task.isCompleted) c.primary else c.text3,
+                gradient = task.isCompleted,
+                modifier = Modifier.clip(CircleShape).clickableNoRipple { vm.toggleDone(task) },
             )
-        } else {
-            Text(
-                task.title,
-                color = c.text1,
-                fontSize = 14.sp,
-                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
-                // Tap opens the modal. No long-press-to-edit here: it would steal
-                // the long-press from the card's drag gesture and pop the keyboard
-                // mid-drag. Renaming is via the "⋯" menu / the modal.
-                modifier = Modifier.weight(1f).clickableNoRipple { onOpen(task) },
-            )
-        }
-        task.number?.let {
-            Spacer(Modifier.width(6.dp))
-            Text("#$it", color = c.text3, fontSize = 11.sp)
-        }
-        task.gitlabIid?.let { iid ->
-            Spacer(Modifier.width(6.dp))
-            val ctx = LocalContext.current
-            Row(
-                Modifier.clip(RoundedCornerShape(RadiusSm))
-                    .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
-                    .clickableNoRipple {
-                        task.gitlabUrl?.let { url ->
-                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                        }
-                    }
-                    .padding(horizontal = 5.dp, vertical = 1.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IonIcon(Ion.GITLAB, size = 10.dp, tint = c.text2)
+            Spacer(Modifier.width(8.dp))
+            if (editing) {
+                InlineTitleEditor(
+                    initial = task.title,
+                    onCommit = {
+                        editing = false
+                        if (it != task.title) vm.renameTask(task, it)
+                    },
+                    onCancel = { editing = false },
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Text(
+                    task.title,
+                    color = c.text1,
+                    fontSize = 14.sp,
+                    // Clamp to two lines so a long title never wraps one word per
+                    // line around the number/GitLab badge (now on the row below).
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
+                    // Tap opens the modal. No long-press-to-edit here: it would steal
+                    // the long-press from the card's drag gesture and pop the keyboard
+                    // mid-drag. Renaming is via the "⋯" menu / the modal.
+                    modifier = Modifier.weight(1f).clickableNoRipple { onOpen(task) },
+                )
+            }
+            if (showMenu) {
                 Spacer(Modifier.width(2.dp))
-                Text("!$iid", color = c.text2, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                CardMenu(task, vm, onOpen, onEditTitle = { editing = true }, onAddSubtask = onAddSubtask)
             }
         }
-        if (showMenu) {
-            Spacer(Modifier.width(2.dp))
-            CardMenu(task, vm, onOpen, onEditTitle = { editing = true })
+        // Meta row: task number + GitLab issue link, indented under the title (19dp
+        // checkbox + 8dp gap) so long titles never wrap around them.
+        if (task.number != null || task.gitlabIid != null) {
+            Row(
+                Modifier.padding(start = 27.dp, top = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                task.number?.let {
+                    Text("#$it", color = c.text3, fontSize = 11.sp)
+                }
+                task.gitlabIid?.let { iid ->
+                    if (task.number != null) Spacer(Modifier.width(6.dp))
+                    val ctx = LocalContext.current
+                    Row(
+                        Modifier.clip(RoundedCornerShape(RadiusSm))
+                            .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                            .clickableNoRipple {
+                                task.gitlabUrl?.let { url ->
+                                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                                }
+                            }
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IonIcon(Ion.GITLAB, size = 10.dp, tint = c.text2)
+                        Spacer(Modifier.width(2.dp))
+                        Text("!$iid", color = c.text2, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
         }
     }
 }
@@ -284,7 +309,13 @@ private fun CardHeader(task: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, s
 /** The card's "⋯" quick-actions menu (open / toggle done / rename / archive /
  *  delete). Archive + delete confirm via a popover before acting. */
 @Composable
-private fun CardMenu(task: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, onEditTitle: () -> Unit) {
+private fun CardMenu(
+    task: Task,
+    vm: BoardViewModel,
+    onOpen: (Task) -> Unit,
+    onEditTitle: () -> Unit,
+    onAddSubtask: () -> Unit,
+) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     var confirmArchive by remember { mutableStateOf(false) }
@@ -307,6 +338,10 @@ private fun CardMenu(task: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, onE
             TMenuItem("Переименовать", icon = Ion.PENCIL, onClick = {
                 menu = false
                 onEditTitle()
+            })
+            TMenuItem("Создать подзадачу", icon = Ion.GIT_BRANCH, onClick = {
+                menu = false
+                onAddSubtask()
             })
             TMenuDivider()
             TMenuItem("В архив", icon = Ion.ARCHIVE, onClick = {
@@ -390,6 +425,7 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
         Spacer(Modifier.width(6.dp))
         DuePill(task, state, vm)
         EstimatePill(task, state)
+        DescriptionPill(task, state)
         Spacer(Modifier.width(6.dp))
         TagsPill(task, state, vm)
         MilestonePill(task, state)
@@ -459,6 +495,27 @@ private fun EstimatePill(task: Task, state: BoardUiState) {
         IonIcon(Ion.TIME, size = 13.dp, tint = c.text2)
         Spacer(Modifier.width(4.dp))
         Text((if (isRollup) "Σ " else "") + text, color = c.text2, fontSize = 11.sp)
+    }
+}
+
+/** Display-only description indicator: shown only when the task has a description;
+ *  tapping opens a popover with the rendered markdown (web hover-preview parity —
+ *  touch has no hover, so it's a tap). */
+@Composable
+private fun DescriptionPill(task: Task, state: BoardUiState) {
+    val c = Tessera.colors
+    if (task.description.isBlank()) return
+    var open by remember { mutableStateOf(false) }
+    Spacer(Modifier.width(6.dp))
+    Box {
+        Pill(onClick = { open = true }, set = true) {
+            IonIcon(Ion.MENU, size = 13.dp, tint = c.text2)
+        }
+        TDropdown(expanded = open, onDismiss = { open = false }, scrollable = true) {
+            Box(Modifier.width(280.dp).heightIn(max = 320.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                RichContent(source = task.description, mentions = state.members.map { it.name })
+            }
+        }
     }
 }
 
@@ -788,29 +845,18 @@ private fun SubtaskRow(sub: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, mo
     }
 }
 
+/** The inline "new subtask" title field, revealed by the card's "⋯" → «Создать
+ *  подзадачу» (no persistent button under the card — web parity). */
 @Composable
-private fun AddSubtaskRow(task: Task, vm: BoardViewModel) {
-    val c = Tessera.colors
-    var adding by remember { mutableStateOf(false) }
-    if (adding) {
-        Box(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-            InlineCreateField(
-                placeholder = "Название подзадачи, Enter",
-                onCommit = {
-                    vm.createTask(task.columnId, it, parentId = task.id)
-                    adding = false
-                },
-                onDismiss = { adding = false },
-            )
-        }
-    } else {
-        Text(
-            "+ СОЗДАТЬ ПОДЗАДАЧУ",
-            color = c.text3.copy(alpha = 0.7f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().clickableNoRipple { adding = true }.padding(top = 10.dp, bottom = 4.dp),
+private fun SubtaskCreateField(task: Task, vm: BoardViewModel, onDone: () -> Unit) {
+    Box(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        InlineCreateField(
+            placeholder = "Название подзадачи, Enter",
+            onCommit = {
+                vm.createTask(task.columnId, it, parentId = task.id)
+                onDone()
+            },
+            onDismiss = onDone,
         )
     }
 }
