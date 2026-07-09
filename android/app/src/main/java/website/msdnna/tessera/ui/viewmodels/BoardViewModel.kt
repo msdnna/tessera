@@ -113,6 +113,11 @@ data class BoardUiState(
     /** "Авто" (Gantt only): order rows by the blocking-dependency graph instead of
      *  the list order. Only takes effect via [autoActive] (no grouping/sort). */
     val autoSort: Boolean = false,
+    /** Per-column collapse override (web colCollapse): laneId → true(collapsed)/
+     *  false(expanded). Absence = follow the auto rule. */
+    val colCollapse: Map<String, Boolean> = emptyMap(),
+    /** Auto-collapse empty columns into a strip unless overridden (web autoCollapseEmpty). */
+    val autoCollapseEmpty: Boolean = false,
     val doneColumnId: String? = null,
     val filter: BoardFilter = BoardFilter(),
     /** Ordered multi-level sort. Empty = manual (position) order. */
@@ -141,6 +146,11 @@ data class BoardUiState(
      *  grouping or sort transparently turns it off (web `autoActive` parity). */
     val autoActive: Boolean
         get() = viewMode == BoardViewMode.Gantt && autoSort && groupMode == "none" && sortLevels.isEmpty()
+
+    /** Effective collapsed state of a lane (web isColCollapsed): an explicit
+     *  [colCollapse] override wins, otherwise auto-collapse applies to empty lanes. */
+    fun isLaneCollapsed(laneId: String, count: Int): Boolean =
+        colCollapse[laneId] ?: (autoCollapseEmpty && count == 0)
 
     /** Full column list, drag-position source — NOT filtered (DnD needs every card). */
     fun tasksIn(columnId: String): List<Task> =
@@ -577,6 +587,25 @@ class BoardViewModel(
         persistView()
     }
 
+    // ── column collapse (kanban) ──────────────────────────────────────────────
+
+    /** Flips a lane's collapsed state via an explicit override, then persists.
+     *  [currentlyCollapsed] is the effective state the UI is showing. */
+    fun toggleColumnCollapse(laneId: String, currentlyCollapsed: Boolean) {
+        _state.update { it.copy(colCollapse = it.colCollapse + (laneId to !currentlyCollapsed)) }
+        persistView()
+    }
+
+    /** Toggles the auto-collapse-empty rule. Turning it ON drops explicit overrides
+     *  on the now-empty lanes so the rule visibly takes effect (web watch parity). */
+    fun setAutoCollapseEmpty(on: Boolean, emptyLaneIds: Set<String>) {
+        _state.update { st ->
+            val cleaned = if (on) st.colCollapse.filterKeys { it !in emptyLaneIds } else st.colCollapse
+            st.copy(autoCollapseEmpty = on, colCollapse = cleaned)
+        }
+        persistView()
+    }
+
     // ── saved views (server-side) ────────────────────────────────────────────
 
     /** Saves (upserts) the current toolbar state as a named server-side view. */
@@ -869,6 +898,8 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
     sortLevels = s.sortLevels,
     subtasksExpanded = s.subtasksExpanded,
     autoSort = s.autoSort,
+    colCollapse = s.colCollapse,
+    autoCollapseEmpty = s.autoCollapseEmpty,
     filters = BoardViewFilters(
         priorities = s.filter.priorities.toList(),
         assignees = s.filter.assigneeIds.toList(),
@@ -895,6 +926,8 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
     sortLevels = c.sortLevels,
     subtasksExpanded = c.subtasksExpanded,
     autoSort = c.autoSort,
+    colCollapse = c.colCollapse,
+    autoCollapseEmpty = c.autoCollapseEmpty,
     filter = BoardFilter(
         query = c.filters.q,
         priorities = c.filters.priorities.toSet(),

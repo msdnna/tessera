@@ -59,6 +59,9 @@ object Ion {
     const val ELLIPSE = "ellipse"
     const val CHECK_CIRCLE = "check_circle"
     const val CONTRAST = "contrast"
+
+    /** ⅔-pie status glyph for "review/проверка" columns (web status-review parity). */
+    const val STATUS_REVIEW = "status_review"
     const val LIST = "list"
     const val PRICETAGS = "pricetags"
     const val PRICETAG = "pricetag"

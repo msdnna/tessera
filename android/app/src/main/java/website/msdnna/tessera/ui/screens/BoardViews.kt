@@ -86,10 +86,12 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
@@ -99,6 +101,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -154,6 +157,83 @@ import website.msdnna.tessera.util.shortDate
 
 /** A kanban lane: title, swatch, count, cards, and (status lanes) a + button. */
 private class Lane(val id: String, val title: String, val color: String?, val tasks: List<Task>, val canAdd: Boolean)
+
+/** Column names matching this get the ⅔-pie review status glyph (web REVIEW_RE parity). */
+private val REVIEW_RE = Regex("рассмотр|ревью|review|проверк", RegexOption.IGNORE_CASE)
+
+/**
+ * A collapsed kanban column: a narrow 44dp strip with a chevron, the card count
+ * and the vertically-rotated title. Tapping re-expands it; a card can still be
+ * dropped onto it (the strip registers column drop bounds → the card lands in
+ * this column). Mirrors the web collapsed column — the freed width is absorbed by
+ * the horizontal scroll (mobile board), so no width redistribution is needed.
+ */
+@Composable
+private fun ColumnStrip(
+    lane: Lane,
+    laneColor: Color,
+    laneHasColor: Boolean,
+    surface: Color,
+    drag: BoardDragState?,
+    onExpand: () -> Unit,
+) {
+    Column(
+        Modifier.animatePlacement().width(44.dp).fillMaxHeight()
+            .clip(RoundedCornerShape(RadiusLg))
+            .topAccentFrame(
+                accent = laneColor,
+                surface = surface,
+                border = Tessera.colors.border,
+                barHeight = 3.dp,
+                radius = RadiusLg,
+                gradient = laneHasColor,
+            )
+            .then(if (drag != null) Modifier.dropColumn(drag, lane.id) else Modifier)
+            .clickableNoRipple(onClick = onExpand)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(2.dp)) // clear the coloured top strip drawn by the frame
+        IonIcon(Ion.CHEVRON_FORWARD, size = 14.dp, tint = laneColor, gradient = laneHasColor)
+        Spacer(Modifier.height(8.dp))
+        Text("${lane.tasks.size}", color = Tessera.colors.text3, fontSize = 12.sp)
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
+            Text(
+                lane.title,
+                color = Tessera.colors.text1,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.rotateVertical(),
+            )
+        }
+    }
+}
+
+/** Lays a composable out rotated a quarter-turn (reading bottom-to-top), measured
+ *  against swapped constraints so its layout footprint matches the rotated size —
+ *  for the collapsed column's vertical title. */
+private fun Modifier.rotateVertical(): Modifier = this
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(
+            Constraints(
+                minWidth = constraints.minHeight,
+                maxWidth = constraints.maxHeight,
+                minHeight = constraints.minWidth,
+                maxHeight = constraints.maxWidth,
+            ),
+        )
+        layout(placeable.height, placeable.width) {
+            placeable.place(
+                x = (placeable.height - placeable.width) / 2,
+                y = (placeable.width - placeable.height) / 2,
+            )
+        }
+    }
+    .graphicsLayer { rotationZ = -90f }
 
 @Composable
 fun KanbanView(
@@ -267,151 +347,183 @@ fun KanbanView(
                     val laneHasColor = !lane.color.isNullOrBlank()
                     val column = state.columns.firstOrNull { it.id == lane.id }
                     var renamingCol by remember { mutableStateOf(false) }
-                    // The dragged column stays in place but dimmed (a full ghost
-                    // clone tracks the finger) — no collapse, so it doesn't jump.
-                    Column(
-                        Modifier.animatePlacement().width(colWidth).fillMaxHeight()
-                            .dragDim(lane.id == draggingColId),
-                    ) {
+                    val collapsed = state.isLaneCollapsed(lane.id, lane.tasks.size)
+                    // Column body tint: a barely-there wash of the column colour over
+                    // the surface (web --col-tint, 6% color-mix); flat when uncoloured.
+                    val colTint = if (laneHasColor) {
+                        lerp(Tessera.colors.surfaceAlt, laneColor, 0.06f)
+                    } else {
+                        Tessera.colors.surfaceAlt
+                    }
+                    if (collapsed) {
+                        // A narrow strip (rotated title + count); a drop still lands on
+                        // it (dropColumn bounds), tap re-expands. Web collapsed-column parity.
+                        ColumnStrip(
+                            lane = lane,
+                            laneColor = laneColor,
+                            laneHasColor = laneHasColor,
+                            surface = colTint,
+                            drag = if (lane.canAdd) drag else null,
+                            onExpand = { vm.toggleColumnCollapse(lane.id, true) },
+                        )
+                    } else {
+                        // The dragged column stays in place but dimmed (a full ghost
+                        // clone tracks the finger) — no collapse, so it doesn't jump.
                         Column(
-                            Modifier.fillMaxWidth()
-                                .clip(RoundedCornerShape(RadiusLg))
-                                .topAccentFrame(
-                                    accent = laneColor,
-                                    surface = Tessera.colors.surfaceAlt,
-                                    border = Tessera.colors.border,
-                                    barHeight = 3.dp,
-                                    radius = RadiusLg,
-                                    gradient = laneHasColor,
-                                )
-                                .then(if (lane.canAdd) Modifier.dropColumn(drag, lane.id) else Modifier),
+                            Modifier.animatePlacement().width(colWidth).fillMaxHeight()
+                                .dragDim(lane.id == draggingColId),
                         ) {
-                            Spacer(Modifier.height(4.dp)) // clear the coloured top strip drawn by the frame
-                            Row(
+                            Column(
                                 Modifier.fillMaxWidth()
-                                    // Long-press the header to drag the whole column.
-                                    .then(
-                                        if (lane.canAdd && column != null) {
-                                            Modifier.draggableColumn(drag, column) { onDropColumn(lane.id) }
-                                        } else {
-                                            Modifier
-                                        },
+                                    .clip(RoundedCornerShape(RadiusLg))
+                                    .topAccentFrame(
+                                        accent = laneColor,
+                                        surface = colTint,
+                                        border = Tessera.colors.border,
+                                        barHeight = 3.dp,
+                                        radius = RadiusLg,
+                                        gradient = laneHasColor,
                                     )
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                                    .then(if (lane.canAdd) Modifier.dropColumn(drag, lane.id) else Modifier),
                             ) {
-                                val laneIcon = when {
-                                    state.groupByMilestone -> Ion.ROCKET
-                                    state.groupByTag -> Ion.PRICETAG
-                                    lane.id == state.doneColumnId -> Ion.CHECK_CIRCLE
-                                    lane.id == state.sortedColumns.firstOrNull()?.id -> Ion.ELLIPSE
-                                    else -> Ion.CONTRAST
-                                }
-                                IonIcon(laneIcon, size = 16.dp, tint = laneColor, gradient = laneHasColor)
-                                Spacer(Modifier.width(8.dp))
-                                if (renamingCol && column != null) {
-                                    InlineTitleEditor(
-                                        initial = lane.title,
-                                        onCommit = { name ->
-                                            vm.renameColumn(column, name)
-                                            renamingCol = false
-                                        },
-                                        onCancel = { renamingCol = false },
-                                        modifier = Modifier.weight(1f),
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                } else {
-                                    Text(
-                                        lane.title,
-                                        color = Tessera.colors.text1,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        // Tap the title to rename inline (status lanes only).
-                                        modifier = Modifier.weight(1f)
-                                            .then(if (lane.canAdd) Modifier.clickableNoRipple { renamingCol = true } else Modifier),
-                                    )
-                                }
-                                // Σ estimate of the milestone's cards (web parity: shown
-                                // only when grouped «По этапам», in the board's unit).
-                                if (state.groupByMilestone) {
-                                    val eff = remember(lane.tasks, state.estimation) {
-                                        Estimation.sum(lane.tasks.map { it.estimate })
-                                            ?.let { Estimation.format(it, state.estimation).ifBlank { null } }
-                                    }
-                                    if (eff != null) {
-                                        Text(
-                                            "Σ $eff",
-                                            color = Tessera.colors.text3,
-                                            fontSize = 12.sp,
-                                            modifier = Modifier.padding(end = 8.dp),
+                                Spacer(Modifier.height(4.dp)) // clear the coloured top strip drawn by the frame
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        // Long-press the header to drag the whole column.
+                                        .then(
+                                            if (lane.canAdd && column != null) {
+                                                Modifier.draggableColumn(drag, column) { onDropColumn(lane.id) }
+                                            } else {
+                                                Modifier
+                                            },
                                         )
-                                    }
-                                }
-                                // Count sits just left of the column menu, both pinned right.
-                                Text("${lane.tasks.size}", color = Tessera.colors.text3, fontSize = 13.sp)
-                                if (lane.canAdd) {
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    // Collapse control (web ColumnHeader chevron): shrinks the
+                                    // column to a strip. Left-pointing = chevron_forward flipped.
+                                    IonIcon(
+                                        Ion.CHEVRON_FORWARD,
+                                        modifier = Modifier.rotate(180f)
+                                            .clickableNoRipple { vm.toggleColumnCollapse(lane.id, false) },
+                                        size = 14.dp,
+                                        tint = Tessera.colors.text3,
+                                    )
                                     Spacer(Modifier.width(6.dp))
-                                    ColumnMenu(lane, state, vm, onRename = { renamingCol = true })
-                                }
-                            }
-                            // Cards are virtualised: a column with 100s of cards (e.g.
-                            // an imported "Done" lane) composes only the visible window,
-                            // not every card. The header above stays fixed; this list
-                            // scrolls beneath it (web parity). weight(fill = false) lets a
-                            // short column still hug its content instead of stretching.
-                            //
-                            // LazyColumn disposes off-screen cards, which is safe here:
-                            // there is no vertical auto-scroll during a card drag, so the
-                            // dragged card (collapsed in place via dragCollapse) stays in
-                            // the composed window and its long-press gesture node survives.
-                            // Disposed cards drop their stale entry from `cardBounds`
-                            // (see draggableCard) so drop resolution only ever considers
-                            // on-screen cards — the same set the finger can actually reach.
-                            LazyColumn(
-                                Modifier.fillMaxWidth().weight(1f, fill = false),
-                                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                items(lane.tasks, key = { it.id }) { task ->
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        // A faded copy of the dragged card marks the landing
-                                        // slot (the dragged card itself collapses + floats).
-                                        if (colDrop?.columnId == lane.id && colDrop.afterId == task.id) {
-                                            DraggedPreview(drag.dragging, state, vm)
-                                        }
-                                        TaskCard(
-                                            task = task,
-                                            state = state,
-                                            vm = vm,
-                                            onOpen = onOpenTask,
-                                            modifier = Modifier.fadeInOnAppear().animatePlacement().dragCollapse(task.id == draggingId),
-                                            drag = if (lane.canAdd) drag else null,
-                                            onDropTask = if (lane.canAdd) onDropTask else null,
-                                            nestSlot = nestDrop?.takeIf { it.parentId == task.id }?.let { it.beforeId to it.afterId },
-                                            conflictTaskIds = conflictTaskIds,
-                                            onOpenConflict = onOpenConflict,
+                                    val laneIcon = when {
+                                        state.groupByMilestone -> Ion.ROCKET
+                                        state.groupByTag -> Ion.PRICETAG
+                                        lane.id == state.doneColumnId -> Ion.CHECK_CIRCLE
+                                        lane.id == state.sortedColumns.firstOrNull()?.id -> Ion.ELLIPSE
+                                        REVIEW_RE.containsMatchIn(lane.title) -> Ion.STATUS_REVIEW
+                                        else -> Ion.CONTRAST
+                                    }
+                                    IonIcon(laneIcon, size = 16.dp, tint = laneColor, gradient = laneHasColor)
+                                    Spacer(Modifier.width(8.dp))
+                                    if (renamingCol && column != null) {
+                                        InlineTitleEditor(
+                                            initial = lane.title,
+                                            onCommit = { name ->
+                                                vm.renameColumn(column, name)
+                                                renamingCol = false
+                                            },
+                                            onCancel = { renamingCol = false },
+                                            modifier = Modifier.weight(1f),
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    } else {
+                                        Text(
+                                            lane.title,
+                                            color = Tessera.colors.text1,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            // Tap the title to rename inline (status lanes only).
+                                            modifier = Modifier.weight(1f)
+                                                .then(if (lane.canAdd) Modifier.clickableNoRipple { renamingCol = true } else Modifier),
                                         )
                                     }
+                                    // Σ estimate of the milestone's cards (web parity: shown
+                                    // only when grouped «По этапам», in the board's unit).
+                                    if (state.groupByMilestone) {
+                                        val eff = remember(lane.tasks, state.estimation) {
+                                            Estimation.sum(lane.tasks.map { it.estimate })
+                                                ?.let { Estimation.format(it, state.estimation).ifBlank { null } }
+                                        }
+                                        if (eff != null) {
+                                            Text(
+                                                "Σ $eff",
+                                                color = Tessera.colors.text3,
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.padding(end = 8.dp),
+                                            )
+                                        }
+                                    }
+                                    // Count sits just left of the column menu, both pinned right.
+                                    Text("${lane.tasks.size}", color = Tessera.colors.text3, fontSize = 13.sp)
+                                    if (lane.canAdd) {
+                                        Spacer(Modifier.width(6.dp))
+                                        ColumnMenu(lane, state, vm, onRename = { renamingCol = true })
+                                    }
                                 }
-                                if (lane.canAdd) {
-                                    item(key = "__footer__") {
+                                // Cards are virtualised: a column with 100s of cards (e.g.
+                                // an imported "Done" lane) composes only the visible window,
+                                // not every card. The header above stays fixed; this list
+                                // scrolls beneath it (web parity). weight(fill = false) lets a
+                                // short column still hug its content instead of stretching.
+                                //
+                                // LazyColumn disposes off-screen cards, which is safe here:
+                                // there is no vertical auto-scroll during a card drag, so the
+                                // dragged card (collapsed in place via dragCollapse) stays in
+                                // the composed window and its long-press gesture node survives.
+                                // Disposed cards drop their stale entry from `cardBounds`
+                                // (see draggableCard) so drop resolution only ever considers
+                                // on-screen cards — the same set the finger can actually reach.
+                                LazyColumn(
+                                    Modifier.fillMaxWidth().weight(1f, fill = false),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    items(lane.tasks, key = { it.id }) { task ->
                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            if (colDrop?.columnId == lane.id && colDrop.afterId == null && drag.dragging != null) {
+                                            // A faded copy of the dragged card marks the landing
+                                            // slot (the dragged card itself collapses + floats).
+                                            if (colDrop?.columnId == lane.id && colDrop.afterId == task.id) {
                                                 DraggedPreview(drag.dragging, state, vm)
                                             }
-                                            if (addingColumn == lane.id) {
-                                                InlineCreateField(
-                                                    placeholder = "Название задачи, Enter",
-                                                    onCommit = {
-                                                        vm.createTask(lane.id, it)
-                                                        addingColumn = null
-                                                    },
-                                                    onDismiss = { addingColumn = null },
-                                                )
-                                            } else {
-                                                CreateText("+ СОЗДАТЬ ЗАДАЧУ") { addingColumn = lane.id }
+                                            TaskCard(
+                                                task = task,
+                                                state = state,
+                                                vm = vm,
+                                                onOpen = onOpenTask,
+                                                modifier = Modifier.fadeInOnAppear().animatePlacement().dragCollapse(task.id == draggingId),
+                                                drag = if (lane.canAdd) drag else null,
+                                                onDropTask = if (lane.canAdd) onDropTask else null,
+                                                nestSlot = nestDrop?.takeIf { it.parentId == task.id }?.let { it.beforeId to it.afterId },
+                                                conflictTaskIds = conflictTaskIds,
+                                                onOpenConflict = onOpenConflict,
+                                            )
+                                        }
+                                    }
+                                    if (lane.canAdd) {
+                                        item(key = "__footer__") {
+                                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                if (colDrop?.columnId == lane.id && colDrop.afterId == null && drag.dragging != null) {
+                                                    DraggedPreview(drag.dragging, state, vm)
+                                                }
+                                                if (addingColumn == lane.id) {
+                                                    InlineCreateField(
+                                                        placeholder = "Название задачи, Enter",
+                                                        onCommit = {
+                                                            vm.createTask(lane.id, it)
+                                                            addingColumn = null
+                                                        },
+                                                        onDismiss = { addingColumn = null },
+                                                    )
+                                                } else {
+                                                    CreateText("+ СОЗДАТЬ ЗАДАЧУ") { addingColumn = lane.id }
+                                                }
                                             }
                                         }
                                     }

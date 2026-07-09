@@ -22,6 +22,12 @@ data class BoardViewConfig(
     @SerializedName("sortLevels") val sortLevels: List<SortLevel> = emptyList(),
     @SerializedName("subtasksExpanded") val subtasksExpanded: Boolean = false,
     @SerializedName("autoSort") val autoSort: Boolean = false,
+    /** Per-column explicit collapse override: columnId → true(collapsed)/false(expanded).
+     *  Absence = follow the auto rule. Object (not list) for web interop. */
+    @SerializedName("colCollapse") val colCollapse: Map<String, Boolean> = emptyMap(),
+    /** When true, empty columns auto-collapse into a strip unless an explicit
+     *  [colCollapse] override says otherwise (web autoCollapseEmpty parity). */
+    @SerializedName("autoCollapseEmpty") val autoCollapseEmpty: Boolean = false,
     @SerializedName("filters") val filters: BoardViewFilters = BoardViewFilters(),
 )
 
