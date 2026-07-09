@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import website.msdnna.tessera.data.model.Board
+import website.msdnna.tessera.ui.components.ColumnScopePicker
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TSwitch
 import website.msdnna.tessera.ui.components.clickableNoRipple
@@ -61,7 +63,13 @@ private val CARD_FIELDS = listOf(
  * (cross-device with web). Board name/icon/color live elsewhere (not yet ported).
  */
 @Composable
-fun BoardCustomizePanel(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Unit) {
+fun BoardCustomizePanel(
+    state: BoardUiState,
+    vm: BoardViewModel,
+    board: Board,
+    onUpdateBoard: (icon: String, color: String, iconMode: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val c = Tessera.colors
     // Empty status columns whose explicit override should clear when auto-collapse
     // turns on (web watch parity) — mirrors the VM's isLaneCollapsed rule.
@@ -76,6 +84,16 @@ fun BoardCustomizePanel(state: BoardUiState, vm: BoardViewModel, onDismiss: () -
             Text("Вид доски", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(14.dp))
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                SectionLabel("Иконка и цвет доски")
+                ColumnScopePicker(
+                    color = board.color,
+                    icon = board.icon,
+                    onColor = { onUpdateBoard(board.icon, it, board.iconMode) },
+                    onIcon = { onUpdateBoard(it, board.color, board.iconMode) },
+                    iconMode = board.iconMode,
+                    onIconMode = { onUpdateBoard(board.icon, board.color, it) },
+                )
+
                 SectionLabel("Размер карточки")
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CARD_SIZES.forEach { (key, label) ->

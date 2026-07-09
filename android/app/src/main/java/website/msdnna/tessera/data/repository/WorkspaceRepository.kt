@@ -69,7 +69,13 @@ class WorkspaceRepository {
 
     suspend fun boards(projectId: String): List<Board> = api.boards(projectId).orEmpty()
     suspend fun createBoard(projectId: String, name: String): Board = api.createBoard(projectId, NameRequest(name))
-    suspend fun renameBoard(boardId: String, name: String): Board = api.updateBoard(boardId, NameRequest(name))
+    suspend fun renameBoard(boardId: String, name: String): Board =
+        api.updateBoard(boardId, website.msdnna.tessera.data.model.UpdateBoardRequest(name))
+
+    /** Updates a board's name + icon/colour/mode (tri-state; null keeps current). */
+    suspend fun updateBoardMeta(boardId: String, name: String, icon: String?, color: String?, iconMode: String?): Board =
+        api.updateBoard(boardId, website.msdnna.tessera.data.model.UpdateBoardRequest(name, icon, color, iconMode))
+
     suspend fun deleteBoard(boardId: String) = api.deleteBoard(boardId)
 
     suspend fun columns(boardId: String): List<BoardColumn> = api.columns(boardId).orEmpty()

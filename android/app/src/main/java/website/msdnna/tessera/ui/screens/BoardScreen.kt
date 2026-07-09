@@ -136,8 +136,22 @@ fun BoardScreen(
     // the tools off and a tap anywhere outside the bar (the board area) collapses
     // it again — the same defocus-on-outside-tap as the tag editor.
     var composerExpanded by remember(board.id) { mutableStateOf(false) }
+    // Local copy so an icon/colour edit reflects live in the customize panel; the
+    // sidebar tree is refreshed separately via wsVm.updateBoard → loadBoards.
+    var currentBoard by remember(board.id) { mutableStateOf(board) }
     Column(Modifier.fillMaxSize()) {
-        BoardToolbar(state = state, vm = vm, expanded = composerExpanded, setExpanded = { composerExpanded = it })
+        BoardToolbar(
+            state = state,
+            vm = vm,
+            board = currentBoard,
+            onUpdateBoard = { icon, color, mode ->
+                wsVm.updateBoard(currentBoard.projectId, currentBoard.id, currentBoard.name, icon, color, mode) {
+                    currentBoard = it
+                }
+            },
+            expanded = composerExpanded,
+            setExpanded = { composerExpanded = it },
+        )
         HorizontalDivider(color = Tessera.colors.border)
 
         Box(Modifier.fillMaxSize()) {
@@ -347,13 +361,17 @@ private fun ActivityToast(
 private fun BoardToolbar(
     state: BoardUiState,
     vm: BoardViewModel,
+    board: Board,
+    onUpdateBoard: (icon: String, color: String, iconMode: String) -> Unit,
     expanded: Boolean,
     setExpanded: (Boolean) -> Unit,
 ) {
     val c = Tessera.colors
     var viewsMenu by remember { mutableStateOf(false) }
     var customizeOpen by remember { mutableStateOf(false) }
-    if (customizeOpen) BoardCustomizePanel(state, vm) { customizeOpen = false }
+    if (customizeOpen) {
+        BoardCustomizePanel(state, vm, board, onUpdateBoard) { customizeOpen = false }
+    }
     Row(
         Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

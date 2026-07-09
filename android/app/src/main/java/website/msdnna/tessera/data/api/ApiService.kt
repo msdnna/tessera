@@ -187,7 +187,7 @@ interface ApiService {
     suspend fun board(@Path("id") boardId: String): Board
 
     @PATCH("boards/{id}")
-    suspend fun updateBoard(@Path("id") boardId: String, @Body body: NameRequest): Board
+    suspend fun updateBoard(@Path("id") boardId: String, @Body body: website.msdnna.tessera.data.model.UpdateBoardRequest): Board
 
     @DELETE("boards/{id}")
     suspend fun deleteBoard(@Path("id") boardId: String)

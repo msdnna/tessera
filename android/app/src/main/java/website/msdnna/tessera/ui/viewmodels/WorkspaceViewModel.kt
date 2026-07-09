@@ -243,6 +243,22 @@ class WorkspaceViewModel(
         loadBoards(projectId)
     }
 
+    /** Updates a board's name + icon/colour/mode, then refreshes the sidebar tree.
+     *  [onUpdated] receives the fresh board so the caller can update local state. */
+    fun updateBoard(
+        projectId: String,
+        boardId: String,
+        name: String,
+        icon: String?,
+        color: String?,
+        iconMode: String?,
+        onUpdated: (Board) -> Unit = {},
+    ) = launchCatching {
+        val updated = repo.updateBoardMeta(boardId, name, icon, color, iconMode)
+        loadBoards(projectId)
+        onUpdated(updated)
+    }
+
     fun deleteBoard(projectId: String, boardId: String) = launchCatching {
         repo.deleteBoard(boardId)
         loadBoards(projectId)

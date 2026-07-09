@@ -56,6 +56,19 @@ data class Board(
     @SerializedName("name") val name: String = "",
     @SerializedName("position") val position: Double = 0.0,
     @SerializedName("done_column_id") val doneColumnId: String? = null,
+    // Own icon/colour/mode (mig 0040), mirroring projects/groups — shown in the sidebar.
+    @SerializedName("icon") val icon: String = "",
+    @SerializedName("color") val color: String = "",
+    @SerializedName("icon_mode") val iconMode: String = "badge",
+)
+
+/** Board update: [name] required; icon/colour/mode are tri-state — a null field is
+ *  omitted by Gson so the server keeps its current value (backend UpdateBoard). */
+data class UpdateBoardRequest(
+    @SerializedName("name") val name: String,
+    @SerializedName("icon") val icon: String? = null,
+    @SerializedName("color") val color: String? = null,
+    @SerializedName("icon_mode") val iconMode: String? = null,
 )
 
 /** A board column. Mirrors sqlc `BoardColumn`. */
