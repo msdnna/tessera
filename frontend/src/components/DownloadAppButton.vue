@@ -1,15 +1,16 @@
 <script setup>
-// A circular tool button (login screen, web only) that reveals a dropdown of app
-// downloads. The trigger shows the visitor's detected-platform logo plus a small
-// down-chevron (so it reads as a dropdown before it's opened) inside the same
-// round shape as the theme/server tool buttons. Its own styles live here because
-// AuthLayout's `.auth-tool-btn` is scoped and wouldn't reach this child.
+// App-download control on the login screen (web only). Two shapes:
 //
-// The popover lists every available build with valid, version-correct URLs pulled
-// from the published manifests at runtime (see composables/useDownloads.js). The
-// detected platform is listed first. Single-variant platforms (Windows / Android)
-// collapse to one clickable row; multi-variant Linux shows a label + its formats,
-// with the recommended one (AppImage) badged.
+//  - The visitor's platform HAS a build → a full split button
+//    «⤓ Загрузить для <ОС> | ▾»: the labelled part downloads that platform's
+//    recommended build directly (AppImage on Linux), the caret opens the full
+//    per-platform menu.
+//  - No build for this platform (mac / iOS / unknown) → a round icon button that
+//    just opens the menu; no caret is drawn.
+//
+// Rounded ends match the sibling tool buttons. Links are version-correct URLs
+// pulled from the published manifests at runtime (see composables/useDownloads.js
+// and DownloadMenu.vue).
 import { computed } from 'vue'
 import { NIcon, NPopover } from 'naive-ui'
 import {
@@ -20,6 +21,7 @@ import {
   ChevronDownOutline,
 } from '@vicons/ionicons5'
 import { useDownloads } from '@/composables/useDownloads'
+import DownloadMenu from '@/components/DownloadMenu.vue'
 
 const { detected, android, windows, linux } = useDownloads()
 
@@ -49,6 +51,7 @@ const groups = computed(() => {
         icon: meta.icon,
         version: data.version,
         single: !multi,
+        recommend: meta.recommend,
         variants: data.variants.map((v) => ({
           ...v,
           recommended: multi && v.format === meta.recommend,
@@ -57,80 +60,118 @@ const groups = computed(() => {
     })
 })
 
-// Trigger icon: the detected platform's logo when we have a build for it,
-// otherwise a neutral download glyph (mac / unknown, or manifests still loading).
-const triggerIcon = computed(() => {
-  const meta = META[detected.value]
-  if (meta && DATA[detected.value]?.value) return meta.icon
-  return DownloadOutline
+// The group for the visitor's own platform, if we ship a build for it.
+const detectedGroup = computed(() => groups.value.find((g) => g.key === detected.value) || null)
+
+// The one-click download for the split button: the platform's recommended
+// variant (AppImage on Linux), else its sole build.
+const primary = computed(() => {
+  const g = detectedGroup.value
+  if (!g) return null
+  return g.variants.find((v) => v.format === g.recommend) || g.variants[0]
 })
 </script>
 
 <template>
-  <n-popover v-if="groups.length" trigger="click" placement="bottom-end">
+  <!-- Current platform has a build → labelled split button. -->
+  <div v-if="detectedGroup" class="dl-split">
+    <a
+      class="dl-split-main"
+      :href="primary.url"
+      download
+      rel="noopener"
+      :title="`Загрузить для ${detectedGroup.name}`"
+    >
+      <n-icon :component="detectedGroup.icon" :size="18" />
+      <span class="dl-split-label">Загрузить для {{ detectedGroup.name }}</span>
+    </a>
+    <span class="dl-split-sep" aria-hidden="true" />
+    <n-popover trigger="click" placement="bottom-end">
+      <template #trigger>
+        <button class="dl-split-caret" type="button" aria-label="Другие платформы">
+          <n-icon :component="ChevronDownOutline" :size="14" />
+        </button>
+      </template>
+      <DownloadMenu :groups="groups" />
+    </n-popover>
+  </div>
+
+  <!-- No build for this platform → round icon button, dropdown only, no caret. -->
+  <n-popover v-else-if="groups.length" trigger="click" placement="bottom-end">
     <template #trigger>
       <button
-        class="dl-trigger"
+        class="dl-round"
         type="button"
         title="Скачать приложение"
         aria-label="Скачать приложение"
       >
-        <n-icon :component="triggerIcon" :size="18" />
-        <n-icon :component="ChevronDownOutline" :size="11" class="dl-trigger-caret" />
+        <n-icon :component="DownloadOutline" :size="18" />
       </button>
     </template>
-    <div class="dl-pop">
-      <div class="dl-title">Скачать приложение</div>
-      <template v-for="g in groups" :key="g.key">
-        <!-- Single build (Windows / Android): the whole platform row is the link. -->
-        <a
-          v-if="g.single"
-          class="dl-platform dl-platform--link"
-          :href="g.variants[0].url"
-          download
-          rel="noopener"
-        >
-          <n-icon :component="g.icon" :size="18" class="dl-platform-icon" />
-          <span class="dl-platform-name">{{ g.name }}</span>
-          <span v-if="g.version" class="dl-ver">v{{ g.version }}</span>
-        </a>
-        <!-- Multiple builds (Linux): platform label + one row per format. -->
-        <div v-else class="dl-group">
-          <div class="dl-platform">
-            <n-icon :component="g.icon" :size="18" class="dl-platform-icon" />
-            <span class="dl-platform-name">{{ g.name }}</span>
-            <span v-if="g.version" class="dl-ver">v{{ g.version }}</span>
-          </div>
-          <a
-            v-for="v in g.variants"
-            :key="v.format"
-            class="dl-item"
-            :href="v.url"
-            download
-            rel="noopener"
-          >
-            <n-icon :component="DownloadOutline" :size="15" class="dl-item-icon" />
-            <span class="dl-item-label">{{ v.label }}</span>
-            <span v-if="v.recommended" class="dl-badge">рекоменд.</span>
-          </a>
-        </div>
-      </template>
-    </div>
+    <DownloadMenu :groups="groups" />
   </n-popover>
 </template>
 
 <style scoped>
-/* Round tool button matching AuthLayout's `.auth-tool-btn` (scoped there, so
-   restated here), with a compact down-chevron beside the platform glyph so it
-   reads as a dropdown without breaking the circular shape. */
-.dl-trigger {
-  position: relative;
+/* Split button — neutral, fully-rounded ends to echo the circular tool buttons. */
+.dl-split {
+  display: inline-flex;
+  align-items: stretch;
+  height: 40px;
+  border: 1px solid var(--t-border);
+  border-radius: 20px;
+  background: var(--t-surface);
+  overflow: hidden;
+}
+.dl-split-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 15px;
+  color: var(--t-text1);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.dl-split-main:hover {
+  background: var(--t-hover, rgba(124, 108, 255, 0.1));
+  color: var(--t-primary);
+}
+.dl-split-sep {
+  width: 1px;
+  background: var(--t-border);
+  flex: none;
+}
+.dl-split-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  border: none;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.dl-split-caret:hover {
+  background: var(--t-hover, rgba(124, 108, 255, 0.1));
+  color: var(--t-primary);
+}
+
+/* Round icon button — same footprint/style as the theme & server tool buttons
+   (their `.auth-tool-btn` is scoped to AuthLayout, so it's restated here). */
+.dl-round {
   width: 40px;
   height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1px;
   border-radius: 50%;
   border: 1px solid var(--t-border);
   background: var(--t-surface);
@@ -141,108 +182,8 @@ const triggerIcon = computed(() => {
     color 0.15s ease,
     border-color 0.15s ease;
 }
-.dl-trigger:hover {
+.dl-round:hover {
   color: var(--t-primary);
   border-color: var(--t-primary);
-}
-.dl-trigger-caret {
-  color: var(--t-text3, var(--t-text2));
-  transition: color 0.15s ease;
-}
-.dl-trigger:hover .dl-trigger-caret {
-  color: var(--t-primary);
-}
-
-.dl-pop {
-  width: 250px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.dl-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--t-text1);
-}
-.dl-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* Platform row — a label above its format list, or (single build) a link itself. */
-.dl-platform {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  color: var(--t-text1);
-}
-.dl-platform-icon {
-  color: var(--t-text2);
-  flex: none;
-}
-.dl-platform-name {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-}
-.dl-platform--link {
-  text-decoration: none;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-}
-.dl-platform--link:hover {
-  background: var(--t-hover, rgba(124, 108, 255, 0.1));
-  color: var(--t-primary);
-}
-.dl-platform--link:hover .dl-platform-icon {
-  color: var(--t-primary);
-}
-.dl-ver {
-  flex: none;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--t-text3, var(--t-text2));
-  font-variant-numeric: tabular-nums;
-}
-
-.dl-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 12px;
-  border-radius: 8px;
-  color: var(--t-text1);
-  text-decoration: none;
-  font-size: 13px;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-}
-.dl-item:hover {
-  background: var(--t-hover, rgba(124, 108, 255, 0.1));
-  color: var(--t-primary);
-}
-.dl-item-icon {
-  color: var(--t-text3, var(--t-text2));
-  flex: none;
-}
-.dl-item:hover .dl-item-icon {
-  color: var(--t-primary);
-}
-.dl-item-label {
-  flex: 1;
-}
-.dl-badge {
-  flex: none;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 1px 7px;
-  border-radius: 999px;
-  color: #fff;
-  background: var(--t-accent-grad-subtle, var(--t-primary));
 }
 </style>
