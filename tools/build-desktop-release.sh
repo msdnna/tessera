@@ -39,7 +39,9 @@ mkdir -p "$DIST"
 
 echo "==> Building Tessera desktop $VERSION — .deb (direct download)"
 ( cd "$SRC_TAURI" && cargo tauri build --bundles deb )
-find "$BUNDLE/deb" -maxdepth 1 -name '*.deb' -exec cp {} "$DIST/" \; 2>/dev/null || true
+# Take the freshly-built .deb (the bundle dir holds only the current version).
+DEB="$(find "$BUNDLE/deb" -maxdepth 1 -name '*.deb' | head -1 || true)"
+[ -n "$DEB" ] && cp "$DEB" "$DIST/"
 
 # The AppImage is the Linux self-update target (Tauri updates AppImages in place),
 # but it needs a FUSE-capable environment (linuxdeploy) — this fails under some
@@ -47,11 +49,20 @@ find "$BUNDLE/deb" -maxdepth 1 -name '*.deb' -exec cp {} "$DIST/" \; 2>/dev/null
 echo "==> Building AppImage (Linux self-update target)"
 ( cd "$SRC_TAURI" && APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=1 cargo tauri build --bundles appimage ) \
   || echo "WARN: AppImage bundling failed (needs FUSE/linuxdeploy) — no Linux self-update this run"
-
-LINUX_BLOCK=""
 APPIMAGE="$(find "$BUNDLE/appimage" -maxdepth 1 -name '*.AppImage' | head -1 || true)"
+[ -n "$APPIMAGE" ] && cp "$APPIMAGE" "${APPIMAGE}.sig" "$DIST/" 2>/dev/null || true
+
+# Windows (NSIS) and future .rpm are built elsewhere and dropped into $DIST. Match
+# the CURRENT release version so STALE installers from older builds left in $DIST
+# are ignored — the manifest advertises exactly one version per format.
+WIN_EXE="$(find "$DIST" -maxdepth 1 -name "*_${VERSION}_*-setup.exe" | head -1 || true)"
+RPM="$(find "$DIST" -maxdepth 1 -name "*${VERSION}*.rpm" | head -1 || true)"
+
+# --- Signed updater `platforms` block (consumed by the Tauri updater) ----------
+# Absolute URLs (the updater requires them) + minisign signatures. AppImage is the
+# in-place Linux update target; Windows is the NSIS installer.
+LINUX_BLOCK=""
 if [ -n "$APPIMAGE" ] && [ -f "${APPIMAGE}.sig" ]; then
-  cp "$APPIMAGE" "${APPIMAGE}.sig" "$DIST/"
   LINUX_BLOCK=$(cat <<JSON
     "linux-x86_64": {
       "signature": "$(cat "${APPIMAGE}.sig")",
@@ -61,9 +72,6 @@ JSON
 )
   echo "==> Linux updater artifact: $(basename "$APPIMAGE")"
 fi
-
-# Merge any Windows artifacts already dropped into $DIST (built on Windows).
-WIN_EXE="$(find "$DIST" -maxdepth 1 -name '*-setup.exe' | head -1 || true)"
 WIN_BLOCK=""
 if [ -n "$WIN_EXE" ] && [ -f "${WIN_EXE}.sig" ]; then
   WIN_BLOCK=$(cat <<JSON
@@ -73,9 +81,9 @@ if [ -n "$WIN_EXE" ] && [ -f "${WIN_EXE}.sig" ]; then
     }
 JSON
 )
-  echo "==> Merged Windows artifact: $(basename "$WIN_EXE")"
+  echo "==> Windows updater artifact: $(basename "$WIN_EXE")"
 else
-  echo "==> No Windows artifact in $DIST (build it on Windows and re-run to include)"
+  echo "==> No Windows $VERSION artifact in $DIST (drop *_${VERSION}_*-setup.exe + .sig to include)"
 fi
 
 # Join the present platform blocks with a comma.
@@ -92,22 +100,13 @@ if [ -z "$PLATFORMS" ]; then
 fi
 
 # --- Direct-download catalogue for the web login page --------------------------
-# Separate from the signed `platforms` updater block above (which the Tauri
-# updater consumes and which lists only the in-place-updatable AppImage). This
-# `downloads` block needs no signatures and lists EVERY artifact present in
-# $DIST so the website's "Скачать приложение" button can offer all Linux formats
-# (AppImage / .deb / future .rpm) and the Windows installer. The updater ignores
-# unknown top-level keys, so co-locating it here keeps one published manifest.
-dl_array() {
-  # Args: <format> <path>...; prints comma-joined {"format","url"} for real files.
-  local fmt="$1" out="" first=1 f; shift
-  for f in "$@"; do
-    [ -f "$f" ] || continue
-    [ $first -eq 1 ] || out+=","
-    first=0
-    out+="$(printf '{"format":"%s","url":"%s/%s"}' "$fmt" "$BASE_URL" "$(basename "$f")")"
-  done
-  printf '%s' "$out"
+# Consumed only by the website's "Скачать приложение" button — no signatures, and
+# exactly ONE entry per (platform, format) at the current version (stale files in
+# $DIST are ignored). Stored as bare FILENAMES so the site resolves them RELATIVE
+# to whatever origin serves it (`<serverBase>/desktop/<file>`, same-origin on web)
+# — no hard-coded public domain, mirroring how the Android APK link is built.
+dl_obj() { # $1=format $2=path — prints {"format","file"} when the file exists
+  [ -n "$2" ] && [ -f "$2" ] && printf '{"format":"%s","file":"%s"}' "$1" "$(basename "$2")"
 }
 join_csv() { # comma-join non-empty args
   local out="" a
@@ -117,12 +116,9 @@ join_csv() { # comma-join non-empty args
   done
   printf '%s' "$out"
 }
-# AppImage first — it's the recommended (in-place self-updating) Linux variant.
-LINUX_DL="$(join_csv \
-  "$(dl_array appimage "$DIST"/*.AppImage)" \
-  "$(dl_array deb "$DIST"/*.deb)" \
-  "$(dl_array rpm "$DIST"/*.rpm)")"
-WIN_DL="$(dl_array exe "$DIST"/*-setup.exe)"
+# AppImage first — the recommended (in-place self-updating) Linux variant.
+LINUX_DL="$(join_csv "$(dl_obj appimage "$APPIMAGE")" "$(dl_obj deb "$DEB")" "$(dl_obj rpm "$RPM")")"
+WIN_DL="$(dl_obj exe "$WIN_EXE")"
 
 cat > "$DIST/latest.json" <<JSON
 {

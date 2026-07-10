@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.124.3] — 2026-07-10
+- **Ссылки на десктоп-сборки — относительные (отвязка от домена):** URL Windows/Linux
+  строятся из имени файла в манифесте как `<serverBase>/desktop/<file>` (на web —
+  same-origin `/desktop/...`), как и APK. Захардкоженного `tessera.msdnna.website`
+  в кнопках больше нет. Поддержан новый формат `downloads`-записей `{format, file}`
+  (старый `{format, url}` тоже читается).
+
 ### [0.124.2] — 2026-07-10
 - **Кнопка скачивания — две формы по детекту платформы:**
   - **Есть сборка под текущую ОС** (Windows/Linux/Android) → полноценная split-кнопка

@@ -39,11 +39,18 @@ async function fetchJson(url) {
   }
 }
 
-function normalizeVariants(list) {
+function normalizeVariants(list, base) {
   if (!Array.isArray(list)) return null
   const out = list
-    .filter((v) => v && v.url)
-    .map((v) => ({ format: v.format || 'file', label: labelFor(v.format), url: v.url }))
+    .map((v) => {
+      if (!v) return null
+      // `file` = bare filename → resolve relative to the serving origin (same as
+      // the Android APK); `url` = legacy absolute URL (older manifests).
+      const url = v.file ? `${base}/desktop/${v.file}` : v.url
+      if (!url) return null
+      return { format: v.format || 'file', label: labelFor(v.format), url }
+    })
+    .filter(Boolean)
   return out.length ? out : null
 }
 
@@ -88,12 +95,12 @@ export function useDownloads() {
     if (desk) {
       const dl = desk.downloads || {}
       const lin =
-        normalizeVariants(dl.linux) ||
+        normalizeVariants(dl.linux, base) ||
         fallbackVariant(desk.platforms?.['linux-x86_64']?.url, 'appimage')
       if (lin) linux.value = { version: desk.version || '', variants: lin }
 
       const win =
-        normalizeVariants(dl.windows) ||
+        normalizeVariants(dl.windows, base) ||
         fallbackVariant(desk.platforms?.['windows-x86_64']?.url, 'exe')
       if (win) windows.value = { version: desk.version || '', variants: win }
     }

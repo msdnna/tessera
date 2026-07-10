@@ -7,11 +7,19 @@ is versioned independently (`desktop/VERSION`), like the other components.
 ## [0.2.1] — 2026-07-10
 
 - **`downloads`-каталог в публикуемом `latest.json`** (`tools/build-desktop-release.sh`):
-  рядом с подписанным `platforms`-блоком updater'а теперь пишется несигнатурный
-  `downloads` со ВСЕМИ артефактами из `desktop-dist/` (Linux: AppImage/`.deb`/будущий
-  `.rpm`, Windows: `.exe`) — из него web-логин строит валидные ссылки на скачивание.
-  Формат апдейтера не тронут (лишний ключ он игнорирует). AppImage идёт первым как
-  рекомендуемый (self-updating) Linux-вариант.
+  рядом с подписанным `platforms`-блоком updater'а пишется несигнатурный `downloads`
+  с артефактами (Linux: AppImage/`.deb`/будущий `.rpm`, Windows: `.exe`) — из него
+  web-логин строит ссылки на скачивание. Формат апдейтера не тронут (лишний ключ он
+  игнорирует). AppImage идёт первым как рекомендуемый (self-updating) Linux-вариант.
+- **Ровно один файл на формат — текущей версии.** Раньше скрипт глобал `desktop-dist/`
+  и вписывал КАЖДЫЙ installer (включая старые версии) → дубли в меню. Теперь: deb/AppImage
+  берутся из свежего билд-вывода, Windows `.exe`/`.rpm` матчатся по `*_<VERSION>_*`
+  (устаревшие файлы в `desktop-dist/` игнорируются). Это же исправляет и `platforms`-блок
+  апдейтера (мог указывать на старый `.exe`).
+- **Относительные ссылки в `downloads`.** Записи хранят имя файла (`{format, file}`),
+  а не абсолютный URL — сайт резолвит их относительно своего origin
+  (`<serverBase>/desktop/<file>`), без захардкоженного `tessera.msdnna.website`
+  (как APK). Подписанный `platforms`-блок остаётся с абсолютным URL (требование Tauri).
 
 ## [0.2.0] — 2026-07-07
 
