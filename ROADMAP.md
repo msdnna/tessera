@@ -490,6 +490,14 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
   инлайн-картинки шли через axios→`blob:` (`useApiImage`); devtools включены в релиз для отладки.
 - Windows-сборка (NSIS `.exe`) — нативно на Windows-машине пользователя (`desktop/build-windows.ps1`, т.к.
   cargo не собирает по UNC-пути); Linux (`.deb` на dev-боксе, AppImage — на нативном Linux/CI).
+- **Кнопки скачивания на логине (web 0.124.0 / desktop 0.2.1) — ✅ СДЕЛАНО:** web-only выпадающая
+  кнопка «Скачать приложение» в шапке `AuthLayout`; иконка = детект платформы браузера; ссылки строятся
+  в рантайме из `/apks/latest.json` + `/desktop/latest.json` (`useDownloads`, `DownloadAppButton`), без
+  хардкода версий. `build-desktop-release.sh` пишет `downloads`-каталог всех артефактов в манифест.
+  **Бэклог:** сейчас для Linux собираем **AppImage + `.deb`** (targets `["nsis","appimage","deb"]`);
+  **`.rpm` НЕ собираем** — добавить `"rpm"` в `desktop/src-tauri/tauri.conf.json` bundle.targets +
+  `rpmbuild` в окружение сборки (Fedora/openSUSE-охват). UI уже готов показать `.rpm` автоматически,
+  как только он появится в `downloads`-каталоге манифеста.
 
 ## Что дальше (бэклог; приоритет не зафиксирован — выбирает пользователь)
 
