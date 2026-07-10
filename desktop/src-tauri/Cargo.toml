@@ -1,6 +1,6 @@
 [package]
 name = "tessera-desktop"
-version = "0.2.0"
+version = "0.2.1"
 description = "Tessera desktop app"
 authors = ["msdnna"]
 edition = "2021"
