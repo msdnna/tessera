@@ -60,8 +60,12 @@ object Ion {
     const val CHECK_CIRCLE = "check_circle"
     const val CONTRAST = "contrast"
 
-    /** ⅔-pie status glyph for "review/проверка" columns (web status-review parity). */
+    /** Column status glyphs (own icon pack, web status-* parity): empty circle /
+     *  half-pie / ⅔-pie / filled-check-circle. */
+    const val STATUS_TODO = "status_todo"
+    const val STATUS_PROGRESS = "status_progress"
     const val STATUS_REVIEW = "status_review"
+    const val STATUS_DONE = "status_done"
     const val LIST = "list"
     const val PRICETAGS = "pricetags"
     const val PRICETAG = "pricetag"

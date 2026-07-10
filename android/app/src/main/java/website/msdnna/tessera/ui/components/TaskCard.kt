@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -150,7 +151,12 @@ fun TaskCard(
                     bottom = if (nested) 12.dp else 10.dp,
                 ),
         ) {
-            CardHeader(task, state, vm, onOpen, showMenu = !compact, onAddSubtask = { addingSub = true })
+            CardHeader(
+                task, state, vm, onOpen,
+                showMenu = !compact,
+                showAddSub = !nested && !compact,
+                onAddSubtask = { addingSub = true },
+            )
             if (onOpenConflict != null && conflictTaskIds.contains(task.id)) {
                 Spacer(Modifier.height(6.dp))
                 ConflictPill { onOpenConflict(task) }
@@ -227,6 +233,7 @@ private fun CardHeader(
     vm: BoardViewModel,
     onOpen: (Task) -> Unit,
     showMenu: Boolean,
+    showAddSub: Boolean,
     onAddSubtask: () -> Unit,
 ) {
     val c = Tessera.colors
@@ -270,6 +277,12 @@ private fun CardHeader(
                     // mid-drag. Renaming is via the "⋯" menu / the modal.
                     modifier = Modifier.weight(1f).clickableNoRipple { onOpen(task) },
                 )
+            }
+            // Quick "add subtask" (web hover-action-bar parity; touch has no hover so
+            // it's a persistent affordance next to the menu, top-level cards only).
+            if (showAddSub) {
+                Spacer(Modifier.width(2.dp))
+                IonIconButton(Ion.GIT_BRANCH, onClick = onAddSubtask, boxSize = 24.dp, iconSize = 15.dp, tint = c.text3)
             }
             if (showMenu) {
                 Spacer(Modifier.width(2.dp))
@@ -445,16 +458,64 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
     val showDescription = state.cardShows("description") && !state.stackFields
     val showAssignee = state.cardShows("assignee") && (showEmpty || hasAssignee)
 
-    // Stacked layout: each field on its own row (web stackFields). Description is
-    // omitted in stack mode (web parity).
+    // Stacked layout (web stackFields): aligned "icon → value" rows instead of
+    // pills, with a dash placeholder for empty fields. Display-only — a tap falls
+    // through to the card body → opens the modal (where every field is editable).
+    // Description is omitted in stack mode (web parity).
     if (state.stackFields) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (showPriority) PriorityPill(task, vm)
-            if (showDue) DuePill(task, state, vm)
-            if (showEstimate) EstimatePill(task, state)
-            if (showTags) TagsPill(task, state, vm)
-            if (showMilestone) MilestonePill(task, state)
-            if (showAssignee) AssigneesPill(task, state, vm)
+        val c = Tessera.colors
+        val overdue = !task.isCompleted && isOverdue(task.dueDate)
+        val estOwn = task.estimate
+        val estRollup = website.msdnna.tessera.util.Estimation.sum(
+            state.subtasks.filter { it.parentId == task.id }.map { it.estimate },
+        )
+        val estText = website.msdnna.tessera.util.Estimation.format(estOwn ?: estRollup, state.estimation)
+        val ms = task.milestoneId?.let { state.milestonesMap[it] }
+        val taskTags = task.tagIds.mapNotNull { state.tags[it] }
+        val assigneeNames = (task.assigneeIds.mapNotNull { state.membersMap[it]?.name } + task.gitlabAssignees)
+            .joinToString(", ")
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (showPriority) {
+                val on = task.priority > 0
+                StackField(Ion.FLAG, if (on) PriorityColors[task.priority] else c.text3, gradient = on) {
+                    StackValue(if (on) PriorityLabels[task.priority] else "")
+                }
+            }
+            if (showDue) {
+                StackField(Ion.CALENDAR, if (overdue) Color(0xFFE0533D) else c.text2) {
+                    StackValue(dueShort(task.dueDate), tint = if (overdue) Color(0xFFE0533D) else c.text2)
+                    if (task.recurrence != null) {
+                        Spacer(Modifier.width(4.dp))
+                        IonIcon(Ion.REPEAT, size = 11.dp, tint = c.text3)
+                    }
+                }
+            }
+            if (showEstimate) {
+                StackField(Ion.TIME, c.text2) {
+                    StackValue((if (estOwn == null && estRollup != null) "Σ " else "") + estText)
+                }
+            }
+            if (showTags) {
+                StackField(Ion.PRICETAG, c.text2) {
+                    if (taskTags.isEmpty()) {
+                        StackValue("")
+                    } else {
+                        Text(
+                            taskTags.first().name + if (taskTags.size > 1) " +${taskTags.size - 1}" else "",
+                            color = readableHue(parseHexColor(taskTags.first().color, c.text3), c.isDark),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            if (showMilestone) {
+                StackField(Ion.ROCKET, c.text2) { StackValue(ms?.title ?: "") }
+            }
+            if (showAssignee) {
+                StackField(Ion.PEOPLE, c.text3) { StackValue(assigneeNames) }
+            }
         }
         return
     }
@@ -478,6 +539,34 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
             AssigneesPill(task, state, vm)
         }
     }
+}
+
+/** A stacked-mode field row: the icon in a fixed leading column + the value, so
+ *  every field's value aligns to the same vertical line (web `.pills.stacked`). */
+@Composable
+private fun StackField(icon: String, iconTint: Color, gradient: Boolean = false, value: @Composable RowScope.() -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(22.dp), contentAlignment = Alignment.CenterStart) {
+            IonIcon(icon, size = 14.dp, tint = iconTint, gradient = gradient)
+        }
+        value()
+    }
+}
+
+/** A stacked-field value, or a muted dash when the field is empty. */
+@Composable
+private fun StackValue(text: String, tint: Color = Tessera.colors.text2) {
+    val c = Tessera.colors
+    Text(
+        text.ifBlank { "—" },
+        color = if (text.isBlank()) c.text3 else tint,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 /** Amber «Конфликт» pill for a task with an unresolved GitLab write-back conflict;

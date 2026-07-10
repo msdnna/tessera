@@ -413,10 +413,10 @@ fun KanbanView(
                                     val laneIcon = when {
                                         state.groupByMilestone -> Ion.ROCKET
                                         state.groupByTag -> Ion.PRICETAG
-                                        lane.id == state.doneColumnId -> Ion.CHECK_CIRCLE
-                                        lane.id == state.sortedColumns.firstOrNull()?.id -> Ion.ELLIPSE
+                                        lane.id == state.doneColumnId -> Ion.STATUS_DONE
+                                        lane.id == state.sortedColumns.firstOrNull()?.id -> Ion.STATUS_TODO
                                         REVIEW_RE.containsMatchIn(lane.title) -> Ion.STATUS_REVIEW
-                                        else -> Ion.CONTRAST
+                                        else -> Ion.STATUS_PROGRESS
                                     }
                                     IonIcon(laneIcon, size = 16.dp, tint = laneColor, gradient = laneHasColor)
                                     Spacer(Modifier.width(8.dp))

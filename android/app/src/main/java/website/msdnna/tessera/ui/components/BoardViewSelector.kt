@@ -30,8 +30,10 @@ import website.msdnna.tessera.ui.theme.accentByKey
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.Ion
 
-/** One segment of [HSegmentedSelector]: an icon over a small caption. */
-data class SegmentOption(val label: String, val icon: String)
+/** One segment of [HSegmentedSelector]: an icon over a small caption. [iconActive]
+ *  is the glyph shown when the segment is selected (icon-pack outline→filled swap);
+ *  defaults to [icon] for single-variant icons. */
+data class SegmentOption(val label: String, val icon: String, val iconActive: String = icon)
 
 /**
  * A horizontal 3-(or-n)-segment selector — an icon above a small caption per
@@ -47,11 +49,11 @@ fun HSegmentedSelector(
     modifier: Modifier = Modifier,
 ) {
     val c = Tessera.colors
+    // No container fill/shadow: the tiles sit flat on the popup surface so there's
+    // no grey ring around the selector (matches the web layout switch).
     Row(
         modifier
-            .softShadow(RoundedCornerShape(RadiusMd), elevation = 6.dp)
             .clip(RoundedCornerShape(RadiusMd))
-            .background(c.surfaceAlt)
             .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
@@ -67,7 +69,7 @@ fun HSegmentedSelector(
                     .padding(top = 11.dp, bottom = 5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                IonIcon(opt.icon, size = 22.dp, tint = fg)
+                IonIcon(if (active) opt.iconActive else opt.icon, size = 22.dp, tint = fg)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     opt.label,

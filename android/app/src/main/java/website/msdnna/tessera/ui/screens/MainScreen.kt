@@ -439,13 +439,19 @@ private val ViewModes = listOf(
     website.msdnna.tessera.ui.viewmodels.BoardViewMode.Gantt,
     website.msdnna.tessera.ui.viewmodels.BoardViewMode.Matrix,
 )
+
+// View-mode segments use the custom icon pack (web layout-*): outline when idle,
+// filled when the segment is active.
+private fun viewSeg(label: String, base: String) =
+    website.msdnna.tessera.ui.components.SegmentOption(label, "layout_${base}_outline", "layout_${base}_filled")
+
 private val ViewSegments = listOf(
-    website.msdnna.tessera.ui.components.SegmentOption("Доска", Ion.GRID),
-    website.msdnna.tessera.ui.components.SegmentOption("Список", Ion.LIST),
-    website.msdnna.tessera.ui.components.SegmentOption("Календарь", Ion.CALENDAR),
-    website.msdnna.tessera.ui.components.SegmentOption("Таймлайн", Ion.TIME),
-    website.msdnna.tessera.ui.components.SegmentOption("Гант", Ion.GIT_MERGE),
-    website.msdnna.tessera.ui.components.SegmentOption("Матрица", Ion.APPS),
+    viewSeg("Доска", "kanban"),
+    viewSeg("Список", "list"),
+    viewSeg("Календарь", "calendar"),
+    viewSeg("Таймлайн", "timeline"),
+    viewSeg("Гант", "gantt"),
+    viewSeg("Матрица", "matrix"),
 )
 
 /**
