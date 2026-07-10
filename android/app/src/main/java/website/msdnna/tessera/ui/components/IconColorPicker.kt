@@ -45,6 +45,7 @@ fun ColumnScopePicker(
     onIcon: (String) -> Unit,
     iconMode: String? = null,
     onIconMode: ((String) -> Unit)? = null,
+    fallbackIcon: String? = null,
 ) {
     val c = Tessera.colors
     val tint = parseHexColor(color, c.text2)
@@ -83,9 +84,14 @@ fun ColumnScopePicker(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // "No icon" reset (initials / folder fallback).
+        // "No icon" reset. For boards this is the default (kanban) glyph, so the
+        // user sees and can re-select it; elsewhere a plain "×" (initials/folder).
         IconTile(selected = classifyIcon(icon) !is IconKind.Curated, onClick = { onIcon("") }) {
-            IonIcon(Ion.CLOSE, size = 15.dp, tint = c.text3)
+            if (fallbackIcon != null) {
+                ProjectIcon(name = "", icon = "", color = color, size = 18.dp, iconMode = iconMode ?: "badge", fallbackGlyph = fallbackIcon)
+            } else {
+                IonIcon(Ion.CLOSE, size = 15.dp, tint = c.text3)
+            }
         }
         CuratedIconKeys.forEach { key ->
             val selected = icon == key

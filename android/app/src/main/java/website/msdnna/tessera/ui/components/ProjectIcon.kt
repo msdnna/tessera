@@ -42,12 +42,14 @@ fun ProjectIcon(
     size: Dp = 22.dp,
     fallbackFolder: Boolean = false,
     iconMode: String = "badge",
+    fallbackGlyph: String? = null,
 ) {
     val c = Tessera.colors
     val parsed = parseHexColor(color, c.text2)
     val hasColor = color.isNotBlank() && !color.equals("transparent", ignoreCase = true)
     val kind = classifyIcon(icon)
-    val tintableGlyph = kind is IconKind.Curated || (kind is IconKind.None && fallbackFolder)
+    val tintableGlyph = kind is IconKind.Curated ||
+        (kind is IconKind.None && (fallbackFolder || fallbackGlyph != null))
     val badge = iconMode != "icon" && hasColor && tintableGlyph
 
     // Badge mode: the colour fills the box, the glyph rides neutral (web `.gicon`).
@@ -57,7 +59,7 @@ fun ProjectIcon(
             modifier.size(size).clip(RoundedCornerShape(5.dp)).background(accentGradient(parsed)),
             contentAlignment = Alignment.Center,
         ) {
-            val glyph = (kind as? IconKind.Curated)?.ion ?: Ion.FOLDER
+            val glyph = (kind as? IconKind.Curated)?.ion ?: fallbackGlyph ?: Ion.FOLDER
             IonIcon(glyph, size = size * 0.66f, tint = onBox)
         }
         return
@@ -82,10 +84,19 @@ fun ProjectIcon(
             modifier = modifier.size(size),
         )
 
-        IconKind.None -> if (fallbackFolder) {
-            IonIcon(Ion.FOLDER, modifier = modifier, size = size, tint = if (iconMode == "icon" && hasColor) parsed else c.text3)
-        } else {
-            InitialsTile(name, color, modifier, size, plain = iconMode == "icon" && hasColor)
+        IconKind.None -> when {
+            fallbackGlyph != null -> IonIcon(
+                fallbackGlyph, modifier = modifier, size = size,
+                tint = if (iconMode == "icon" && hasColor) parsed else c.text3,
+                gradient = iconMode == "icon" && hasColor,
+            )
+
+            fallbackFolder -> IonIcon(
+                Ion.FOLDER, modifier = modifier, size = size,
+                tint = if (iconMode == "icon" && hasColor) parsed else c.text3,
+            )
+
+            else -> InitialsTile(name, color, modifier, size, plain = iconMode == "icon" && hasColor)
         }
     }
 }

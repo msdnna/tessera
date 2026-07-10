@@ -92,6 +92,7 @@ fun BoardCustomizePanel(
                     onIcon = { onUpdateBoard(it, board.color, board.iconMode) },
                     iconMode = board.iconMode,
                     onIconMode = { onUpdateBoard(board.icon, board.color, it) },
+                    fallbackIcon = "layout_kanban_outline",
                 )
 
                 SectionLabel("Размер карточки")

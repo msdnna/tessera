@@ -87,6 +87,7 @@ import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TSwitch
 import website.msdnna.tessera.ui.components.TabItem
+import website.msdnna.tessera.ui.components.TagChipsFit
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.UnderlineTabs
 import website.msdnna.tessera.ui.components.clickableNoRipple
@@ -795,41 +796,13 @@ private fun TagsValue(
     var menu by remember { mutableStateOf(false) }
     val chosen = tags.filter { it.id in taskTagIds }
     Box {
-        Row(
-            Modifier.clickableNoRipple { menu = true },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
+        Box(Modifier.fillMaxWidth().clickableNoRipple { menu = true }) {
             if (chosen.isEmpty()) {
                 Text("Нет", color = c.text3, fontSize = 14.sp)
             } else {
-                // Show as many whole pills as fit on one line; the rest collapse to
-                // a "+N" chip (no wrapping a tag name onto a second line).
-                val maxVisible = 3
-                chosen.take(maxVisible).forEach { t ->
-                    val base = parseHexColor(t.color, c.text3)
-                    val text = readableHue(base, c.isDark)
-                    Box(
-                        Modifier.clip(RoundedCornerShape(RadiusSm)).background(accentGradient(base.copy(alpha = 0.18f)))
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            t.name,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            softWrap = false,
-                            style = TextStyle(brush = accentGradient(text)),
-                        )
-                    }
-                }
-                val extra = chosen.size - maxVisible
-                if (extra > 0) {
-                    Box(
-                        Modifier.clip(RoundedCornerShape(RadiusSm)).background(c.surfaceAlt)
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                    ) { Text("+$extra", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
-                }
+                // As many whole chips as fit on one line; the rest collapse to a "+N"
+                // chip (web tag-fit) — no clipping a tag name.
+                TagChipsFit(chosen, Modifier.fillMaxWidth())
             }
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {

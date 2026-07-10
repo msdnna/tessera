@@ -59,7 +59,6 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
-import website.msdnna.tessera.util.parseHexColor
 
 // ── Layout metrics ────────────────────────────────────────────────────────────
 // Per-nesting-level indent. Must match the projection step used by the DnD code
@@ -526,17 +525,12 @@ private fun BoardRow(board: Board, projectId: String, ctx: TreeCtx) {
         Spacer(Modifier.width(16.dp)) // chevron slot (boards have no children)
         Spacer(Modifier.width(4.dp))
         Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-            when {
-                // A chosen board icon renders like project/group icons (badge or glyph).
-                board.icon.isNotBlank() ->
-                    ProjectIcon(board.name, board.icon, board.color, size = 18.dp, iconMode = board.iconMode)
-
-                // Colour-only: tint the default grid glyph.
-                board.color.isNotBlank() ->
-                    IonIcon(Ion.GRID, size = 16.dp, tint = parseHexColor(board.color, c.text3), gradient = true)
-
-                else -> IonIcon(Ion.GRID, size = 16.dp, tint = c.text3)
-            }
+            // Board icon: the chosen glyph (badge/icon), else the default kanban glyph
+            // (web board default), coloured/badged like projects & groups.
+            ProjectIcon(
+                board.name, board.icon, board.color,
+                size = 18.dp, iconMode = board.iconMode, fallbackGlyph = "layout_kanban_outline",
+            )
         }
         Spacer(Modifier.width(9.dp))
         if (renaming) {
