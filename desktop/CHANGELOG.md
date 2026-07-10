@@ -20,6 +20,11 @@ is versioned independently (`desktop/VERSION`), like the other components.
   а не абсолютный URL — сайт резолвит их относительно своего origin
   (`<serverBase>/desktop/<file>`), без захардкоженного `tessera.msdnna.website`
   (как APK). Подписанный `platforms`-блок остаётся с абсолютным URL (требование Tauri).
+- **AppImage-сборка в WSL чинится в самом скрипте.** WSL подмешивает Windows-пути в
+  `PATH` (`…/WindowsApps`), и `linuxdeploy` (boost::filesystem) падает на них с
+  «Permission denied» → обобщённое `failed to run linuxdeploy`. Скрипт теперь под WSL
+  вычищает `/mnt/*` из `PATH`. Прочие пререквизиты AppImage в WSL (ставятся один раз):
+  `sudo apt install -y libfuse2t64 patchelf`.
 
 ## [0.2.0] — 2026-07-07
 

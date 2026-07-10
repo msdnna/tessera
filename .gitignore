@@ -23,6 +23,20 @@ frontend/dist/
 !.yarn/patches
 .pnp.*
 yarn-error.log
+# Yarn Berry lives under frontend/ — same rules, anchored there (install-state.gz
+# is machine-local install cache, regenerated on every yarn run).
+frontend/.yarn/*
+!frontend/.yarn/patches
+frontend/.pnp.*
+
+# Desktop release artifacts belong in desktop-dist/ (bind-mounted, gitignored),
+# never in the tracked desktop/ source dir — keep stray binaries out of git.
+desktop/*.exe
+desktop/*.exe.sig
+desktop/*.deb
+desktop/*.AppImage
+desktop/*.AppImage.sig
+desktop/latest.json
 
 # Android (Phase 8)
 android/build/

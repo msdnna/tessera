@@ -20,6 +20,17 @@ SRC_TAURI="$ROOT/desktop/src-tauri"
 DIST="$ROOT/desktop-dist"
 VERSION="$(tr -d '[:space:]' < "$ROOT/desktop/VERSION")"
 
+# WSL: interop injects Windows dirs into PATH (…/System32/…/WindowsApps). While
+# bundling the AppImage, linuxdeploy walks every PATH entry and its boost::filesystem
+# throws "Permission denied" on those Windows paths → aborts with the opaque
+# `failed to run linuxdeploy`. Drop /mnt/* from PATH for this script's environment
+# (Linux tooling only; the .deb path doesn't need it but it's harmless).
+# AppImage in WSL also needs `libfuse2t64` (fuse2 compat) + `patchelf` installed.
+if grep -qi microsoft /proc/version 2>/dev/null; then
+  PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/mnt/' | paste -sd:)"
+  export PATH
+fi
+
 : "${TESSERA_SIGNING_KEY_FILE:=$HOME/.tessera/tessera-desktop-updater.key}"
 : "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:=}"
 
