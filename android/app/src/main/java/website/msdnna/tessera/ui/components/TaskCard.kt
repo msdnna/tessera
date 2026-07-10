@@ -41,6 +41,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,6 +57,7 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.PriorityColors
@@ -242,16 +245,23 @@ private fun CardHeader(
     val showNumber = state.cardShows("number") && task.number != null
     val showGitlab = state.cardShows("gitlab") && task.gitlabIid != null
 
+    // Completion toggle: leading on subtask/compact cards; on regular top-level
+    // cards it moves into the quick-action group (next to add-subtask), web parity.
+    val completeToggle = @Composable { sz: Dp ->
+        IonIcon(
+            if (task.isCompleted) Ion.CHECK_CIRCLE else Ion.ELLIPSE,
+            size = sz,
+            tint = if (task.isCompleted) c.primary else c.text3,
+            gradient = task.isCompleted,
+            modifier = Modifier.clip(CircleShape).clickableNoRipple { vm.toggleDone(task) },
+        )
+    }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IonIcon(
-                if (task.isCompleted) Ion.CHECK_CIRCLE else Ion.ELLIPSE,
-                size = 19.dp,
-                tint = if (task.isCompleted) c.primary else c.text3,
-                gradient = task.isCompleted,
-                modifier = Modifier.clip(CircleShape).clickableNoRipple { vm.toggleDone(task) },
-            )
-            Spacer(Modifier.width(8.dp))
+            if (!showAddSub) {
+                completeToggle(19.dp)
+                Spacer(Modifier.width(8.dp))
+            }
             if (editing) {
                 InlineTitleEditor(
                     initial = task.title,
@@ -278,9 +288,11 @@ private fun CardHeader(
                     modifier = Modifier.weight(1f).clickableNoRipple { onOpen(task) },
                 )
             }
-            // Quick "add subtask" (web hover-action-bar parity; touch has no hover so
-            // it's a persistent affordance next to the menu, top-level cards only).
+            // Quick-action group (web hover-action-bar parity; touch has no hover so
+            // it's persistent, top-level cards only): complete + add-subtask.
             if (showAddSub) {
+                Spacer(Modifier.width(2.dp))
+                completeToggle(18.dp)
                 Spacer(Modifier.width(2.dp))
                 IonIconButton(Ion.GIT_BRANCH, onClick = onAddSubtask, boxSize = 24.dp, iconSize = 15.dp, tint = c.text3)
             }
@@ -289,11 +301,11 @@ private fun CardHeader(
                 CardMenu(task, vm, onOpen, onEditTitle = { editing = true }, onAddSubtask = onAddSubtask)
             }
         }
-        // Meta row: task number + GitLab issue link, indented under the title (19dp
-        // checkbox + 8dp gap) so long titles never wrap around them.
+        // Meta row: task number + GitLab issue link, aligned under the title — 27dp
+        // in when a leading checkbox is present (19dp + 8dp gap), else flush left.
         if (showNumber || showGitlab) {
             Row(
-                Modifier.padding(start = 27.dp, top = 3.dp),
+                Modifier.padding(start = if (showAddSub) 0.dp else 27.dp, top = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (showNumber) {
@@ -458,64 +470,17 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
     val showDescription = state.cardShows("description") && !state.stackFields
     val showAssignee = state.cardShows("assignee") && (showEmpty || hasAssignee)
 
-    // Stacked layout (web stackFields): aligned "icon → value" rows instead of
-    // pills, with a dash placeholder for empty fields. Display-only — a tap falls
-    // through to the card body → opens the modal (where every field is editable).
-    // Description is omitted in stack mode (web parity).
+    // Stacked layout (web stackFields): each field is an aligned "icon → value" row
+    // with its OWN inline picker (same as the pill), a dash for empty, generous row
+    // spacing for touch. Description is omitted in stack mode (web parity).
     if (state.stackFields) {
-        val c = Tessera.colors
-        val overdue = !task.isCompleted && isOverdue(task.dueDate)
-        val estOwn = task.estimate
-        val estRollup = website.msdnna.tessera.util.Estimation.sum(
-            state.subtasks.filter { it.parentId == task.id }.map { it.estimate },
-        )
-        val estText = website.msdnna.tessera.util.Estimation.format(estOwn ?: estRollup, state.estimation)
-        val ms = task.milestoneId?.let { state.milestonesMap[it] }
-        val taskTags = task.tagIds.mapNotNull { state.tags[it] }
-        val assigneeNames = (task.assigneeIds.mapNotNull { state.membersMap[it]?.name } + task.gitlabAssignees)
-            .joinToString(", ")
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (showPriority) {
-                val on = task.priority > 0
-                StackField(Ion.FLAG, if (on) PriorityColors[task.priority] else c.text3, gradient = on) {
-                    StackValue(if (on) PriorityLabels[task.priority] else "")
-                }
-            }
-            if (showDue) {
-                StackField(Ion.CALENDAR, if (overdue) Color(0xFFE0533D) else c.text2) {
-                    StackValue(dueShort(task.dueDate), tint = if (overdue) Color(0xFFE0533D) else c.text2)
-                    if (task.recurrence != null) {
-                        Spacer(Modifier.width(4.dp))
-                        IonIcon(Ion.REPEAT, size = 11.dp, tint = c.text3)
-                    }
-                }
-            }
-            if (showEstimate) {
-                StackField(Ion.TIME, c.text2) {
-                    StackValue((if (estOwn == null && estRollup != null) "Σ " else "") + estText)
-                }
-            }
-            if (showTags) {
-                StackField(Ion.PRICETAG, c.text2) {
-                    if (taskTags.isEmpty()) {
-                        StackValue("")
-                    } else {
-                        Text(
-                            taskTags.first().name + if (taskTags.size > 1) " +${taskTags.size - 1}" else "",
-                            color = readableHue(parseHexColor(taskTags.first().color, c.text3), c.isDark),
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-            if (showMilestone) {
-                StackField(Ion.ROCKET, c.text2) { StackValue(ms?.title ?: "") }
-            }
-            if (showAssignee) {
-                StackField(Ion.PEOPLE, c.text3) { StackValue(assigneeNames) }
-            }
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            if (showPriority) PriorityPill(task, vm, stacked = true)
+            if (showDue) DuePill(task, state, vm, stacked = true)
+            if (showEstimate) EstimatePill(task, state, stacked = true)
+            if (showTags) TagsPill(task, state, vm, stacked = true)
+            if (showMilestone) MilestonePill(task, state, stacked = true)
+            if (showAssignee) AssigneesPill(task, state, vm, stacked = true)
         }
         return
     }
@@ -544,9 +509,18 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
 /** A stacked-mode field row: the icon in a fixed leading column + the value, so
  *  every field's value aligns to the same vertical line (web `.pills.stacked`). */
 @Composable
-private fun StackField(icon: String, iconTint: Color, gradient: Boolean = false, value: @Composable RowScope.() -> Unit) {
+private fun StackField(
+    icon: String,
+    iconTint: Color,
+    gradient: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    value: @Composable RowScope.() -> Unit,
+) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusSm))
+            .then(if (onClick != null) Modifier.clickableNoRipple(onClick = onClick) else Modifier)
+            .padding(vertical = 6.dp, horizontal = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(22.dp), contentAlignment = Alignment.CenterStart) {
@@ -567,6 +541,77 @@ private fun StackValue(text: String, tint: Color = Tessera.colors.text2) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
+}
+
+/** Coloured tag chips filling the available width, with a "+N" chip for the
+ *  remainder (web `.pills.stacked` tag fit). All chips + every possible "+n" are
+ *  composed; only the fitting subset is placed (unplaced children aren't drawn). */
+@Composable
+private fun TagChipsFit(tags: List<Tag>, modifier: Modifier = Modifier) {
+    Layout(
+        modifier = modifier,
+        content = {
+            tags.forEach { MiniTagChip(it) }
+            for (n in 1..tags.size) OverflowChip(n)
+        },
+    ) { measurables, constraints ->
+        val n = tags.size
+        val chip = measurables.take(n).map { it.measure(Constraints()) }
+        val over = measurables.drop(n).map { it.measure(Constraints()) } // over[k-1] = "+k"
+        val gap = 4.dp.roundToPx()
+        val maxW = constraints.maxWidth
+        fun width(k: Int) = if (k <= 0) 0 else chip.take(k).sumOf { it.width } + (k - 1) * gap
+        var k = n
+        if (width(n) > maxW) {
+            k = 0
+            for (cand in n downTo 0) {
+                val rem = n - cand
+                val ovW = if (rem > 0) over[rem - 1].width + (if (cand > 0) gap else 0) else 0
+                if (width(cand) + ovW <= maxW) {
+                    k = cand
+                    break
+                }
+            }
+        }
+        val ov = if (k < n) over[n - k - 1] else null
+        val placed = chip.take(k)
+        val h = (placed.map { it.height } + listOfNotNull(ov?.height)).maxOrNull() ?: 0
+        val total = width(k) + (if (ov != null) (if (k > 0) gap else 0) + ov.width else 0)
+        layout(total.coerceAtMost(maxW), h) {
+            var x = 0
+            placed.forEach { p ->
+                p.place(x, (h - p.height) / 2)
+                x += p.width + gap
+            }
+            ov?.let { p -> p.place(x, (h - p.height) / 2) }
+        }
+    }
+}
+
+/** A small solid-colour tag chip (web modal chip style). */
+@Composable
+private fun MiniTagChip(tag: Tag) {
+    val c = Tessera.colors
+    val base = parseHexColor(tag.color, c.text3)
+    Box(
+        Modifier.clip(RoundedCornerShape(10.dp))
+            .background(lerp(c.cardSurface, base, 0.18f))
+            .border(1.dp, base.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
+        Text(tag.name, fontSize = 11.sp, color = readableHue(base, c.isDark), maxLines = 1)
+    }
+}
+
+/** The "+N" overflow chip for tags that didn't fit. */
+@Composable
+private fun OverflowChip(n: Int) {
+    val c = Tessera.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(10.dp)).background(c.surfaceAlt).padding(horizontal = 7.dp, vertical = 2.dp),
+    ) {
+        Text("+$n", fontSize = 10.sp, color = c.text3, maxLines = 1)
+    }
 }
 
 /** Amber «Конфликт» pill for a task with an unresolved GitLab write-back conflict;
@@ -592,9 +637,16 @@ private fun ConflictPill(onClick: () -> Unit) {
  *  the milestone is closed. Only shown when the task is assigned one (web parity;
  *  assigning/clearing happens in the task modal). */
 @Composable
-private fun MilestonePill(task: Task, state: BoardUiState) {
+private fun MilestonePill(task: Task, state: BoardUiState, stacked: Boolean = false) {
     val c = Tessera.colors
-    val ms = task.milestoneId?.let { state.milestonesMap[it] } ?: return
+    val ms = task.milestoneId?.let { state.milestonesMap[it] }
+    if (stacked) {
+        StackField(Ion.ROCKET, c.text2) {
+            StackValue(ms?.title ?: "", tint = if (ms?.isClosed == true) c.text3 else c.text2)
+        }
+        return
+    }
+    if (ms == null) return
     Box(Modifier.alpha(if (ms.isClosed) 0.6f else 1f)) {
         Pill(onClick = {}, set = true) {
             IonIcon(Ion.ROCKET, size = 13.dp, tint = c.text2)
@@ -614,7 +666,7 @@ private fun MilestonePill(task: Task, state: BoardUiState) {
 /** Display-only estimate chip: the task's own estimate, or — when unset — the
  *  rollup sum of its subtasks ("Σ …"). Editing happens in the task modal. */
 @Composable
-private fun EstimatePill(task: Task, state: BoardUiState) {
+private fun EstimatePill(task: Task, state: BoardUiState, stacked: Boolean = false) {
     val c = Tessera.colors
     val own = task.estimate
     val rollup = website.msdnna.tessera.util.Estimation.sum(
@@ -622,8 +674,12 @@ private fun EstimatePill(task: Task, state: BoardUiState) {
     )
     val value = own ?: rollup
     val text = website.msdnna.tessera.util.Estimation.format(value, state.estimation)
-    if (text.isBlank()) return
     val isRollup = own == null && rollup != null
+    if (stacked) {
+        StackField(Ion.TIME, c.text2) { StackValue(if (text.isBlank()) "" else (if (isRollup) "Σ " else "") + text) }
+        return
+    }
+    if (text.isBlank()) return
     Pill(onClick = {}, set = true) {
         IonIcon(Ion.TIME, size = 13.dp, tint = c.text2)
         Spacer(Modifier.width(4.dp))
@@ -652,14 +708,21 @@ private fun DescriptionPill(task: Task, state: BoardUiState) {
 }
 
 @Composable
-private fun PriorityPill(task: Task, vm: BoardViewModel) {
+private fun PriorityPill(task: Task, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
-    val color = if (task.priority > 0) PriorityColors[task.priority] else c.text3
+    val on = task.priority > 0
+    val color = if (on) PriorityColors[task.priority] else c.text3
     Box {
-        // Icon-only flag, tinted by priority (no text) — like the web.
-        Pill(onClick = { menu = true }, set = task.priority > 0) {
-            IonIcon(Ion.FLAG, size = 13.dp, tint = color, gradient = task.priority > 0)
+        if (stacked) {
+            StackField(Ion.FLAG, color, gradient = on, onClick = { menu = true }) {
+                StackValue(if (on) PriorityLabels[task.priority] else "")
+            }
+        } else {
+            // Icon-only flag, tinted by priority (no text) — like the web.
+            Pill(onClick = { menu = true }, set = on) {
+                IonIcon(Ion.FLAG, size = 13.dp, tint = color, gradient = on)
+            }
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
             PriorityLabels.forEachIndexed { i, label ->
@@ -681,12 +744,17 @@ private fun PriorityPill(task: Task, vm: BoardViewModel) {
 }
 
 @Composable
-private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
+private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     val taskTags = task.tagIds.mapNotNull { state.tags[it] }
     Box {
-        if (taskTags.isEmpty()) {
+        if (stacked) {
+            // Icon → coloured chips (as many as fit) + "+N" for the overflow (web parity).
+            StackField(Ion.PRICETAG, c.text2, onClick = { menu = true }) {
+                if (taskTags.isEmpty()) StackValue("") else TagChipsFit(taskTags, Modifier.weight(1f))
+            }
+        } else if (taskTags.isEmpty()) {
             Pill(onClick = { menu = true }) { IonIcon(Ion.PRICETAG, size = 13.dp, tint = c.text3) }
         } else {
             val first = taskTags.first()
@@ -769,7 +837,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
 }
 
 @Composable
-private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel) {
+private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
     val due = dueShort(task.dueDate)
@@ -781,17 +849,28 @@ private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel) {
         due.isNotBlank() -> c.text2
         else -> c.text3
     }
-    Pill(onClick = { picker = true }, set = due.isNotBlank()) {
-        IonIcon(Ion.CALENDAR, size = 13.dp, tint = tint)
-        if (due.isNotBlank()) {
-            Spacer(Modifier.width(4.dp))
-            Text(due, color = tint, fontSize = 11.sp)
+    if (stacked) {
+        // Capitalised value (web stack), no pill; opens the same date picker.
+        StackField(Ion.CALENDAR, tint, onClick = { picker = true }) {
+            StackValue(due.replaceFirstChar { it.uppercaseChar() }, tint = tint)
+            if (task.recurrence != null) {
+                Spacer(Modifier.width(4.dp))
+                IonIcon(Ion.REPEAT, size = 11.dp, tint = tint)
+            }
         }
-        if (task.recurrence != null) {
-            Spacer(Modifier.width(4.dp))
-            // Recur glyph inherits the pill's text colour (web 0.113.2) — the purple
-            // accent clashed on the dark theme.
-            IonIcon(Ion.REPEAT, size = 11.dp, tint = tint)
+    } else {
+        Pill(onClick = { picker = true }, set = due.isNotBlank()) {
+            IonIcon(Ion.CALENDAR, size = 13.dp, tint = tint)
+            if (due.isNotBlank()) {
+                Spacer(Modifier.width(4.dp))
+                Text(due, color = tint, fontSize = 11.sp)
+            }
+            if (task.recurrence != null) {
+                Spacer(Modifier.width(4.dp))
+                // Recur glyph inherits the pill's text colour (web 0.113.2) — the purple
+                // accent clashed on the dark theme.
+                IonIcon(Ion.REPEAT, size = 11.dp, tint = tint)
+            }
         }
     }
     if (picker) {
@@ -811,7 +890,7 @@ private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel) {
 }
 
 @Composable
-private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
+private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     val assignees = task.assigneeIds.mapNotNull { state.membersMap[it] }
@@ -834,25 +913,32 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel) {
         else -> false
     }
     val showAuthor = authorName != null && !authorIsAssignee
+    val isEmpty = authorName == null && assignees.isEmpty() && external.isEmpty()
+    // Author + assignees merged into one overlapping stack (card-coloured ring =
+    // the "cutout"): the muted author leads, then accent assignees.
+    val avatars: @Composable () -> Unit = {
+        Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
+            if (showAuthor) {
+                CardAvatar(
+                    authorName!!,
+                    muted = true,
+                    userId = if (task.gitlabAuthor == null) task.createdBy else null,
+                    avatarUrl = if (task.gitlabAuthor != null) task.gitlabAuthorAvatarUrl else null,
+                )
+            }
+            assignees.forEach { CardAvatar(it.name, muted = false, userId = it.userId) }
+            external.forEach { CardAvatar(it, muted = true) }
+        }
+    }
     Box {
-        Box(Modifier.clip(RoundedCornerShape(RadiusSm)).clickableNoRipple { menu = true }.padding(2.dp)) {
-            if (authorName == null && assignees.isEmpty() && external.isEmpty()) {
-                IonIcon(Ion.PERSON_ADD, size = 14.dp, tint = c.text3)
-            } else {
-                // Author + assignees merged into one overlapping stack (card-coloured
-                // ring = the "cutout"): the muted author leads, then accent assignees.
-                Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
-                    if (showAuthor) {
-                        CardAvatar(
-                            authorName,
-                            muted = true,
-                            userId = if (task.gitlabAuthor == null) task.createdBy else null,
-                            avatarUrl = if (task.gitlabAuthor != null) task.gitlabAuthorAvatarUrl else null,
-                        )
-                    }
-                    assignees.forEach { CardAvatar(it.name, muted = false, userId = it.userId) }
-                    external.forEach { CardAvatar(it, muted = true) }
-                }
+        if (stacked) {
+            // Icon → avatars (or a dash when unassigned); opens the same picker.
+            StackField(Ion.PEOPLE, c.text3, onClick = { menu = true }) {
+                if (isEmpty) StackValue("") else avatars()
+            }
+        } else {
+            Box(Modifier.clip(RoundedCornerShape(RadiusSm)).clickableNoRipple { menu = true }.padding(2.dp)) {
+                if (isEmpty) IonIcon(Ion.PERSON_ADD, size = 14.dp, tint = c.text3) else avatars()
             }
         }
         var query by remember { mutableStateOf("") }
