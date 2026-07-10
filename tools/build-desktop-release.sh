@@ -91,6 +91,39 @@ if [ -z "$PLATFORMS" ]; then
   exit 1
 fi
 
+# --- Direct-download catalogue for the web login page --------------------------
+# Separate from the signed `platforms` updater block above (which the Tauri
+# updater consumes and which lists only the in-place-updatable AppImage). This
+# `downloads` block needs no signatures and lists EVERY artifact present in
+# $DIST so the website's "Скачать приложение" button can offer all Linux formats
+# (AppImage / .deb / future .rpm) and the Windows installer. The updater ignores
+# unknown top-level keys, so co-locating it here keeps one published manifest.
+dl_array() {
+  # Args: <format> <path>...; prints comma-joined {"format","url"} for real files.
+  local fmt="$1" out="" first=1 f; shift
+  for f in "$@"; do
+    [ -f "$f" ] || continue
+    [ $first -eq 1 ] || out+=","
+    first=0
+    out+="$(printf '{"format":"%s","url":"%s/%s"}' "$fmt" "$BASE_URL" "$(basename "$f")")"
+  done
+  printf '%s' "$out"
+}
+join_csv() { # comma-join non-empty args
+  local out="" a
+  for a in "$@"; do
+    [ -n "$a" ] || continue
+    [ -z "$out" ] && out="$a" || out="$out,$a"
+  done
+  printf '%s' "$out"
+}
+# AppImage first — it's the recommended (in-place self-updating) Linux variant.
+LINUX_DL="$(join_csv \
+  "$(dl_array appimage "$DIST"/*.AppImage)" \
+  "$(dl_array deb "$DIST"/*.deb)" \
+  "$(dl_array rpm "$DIST"/*.rpm)")"
+WIN_DL="$(dl_array exe "$DIST"/*-setup.exe)"
+
 cat > "$DIST/latest.json" <<JSON
 {
   "version": "$VERSION",
@@ -98,6 +131,10 @@ cat > "$DIST/latest.json" <<JSON
   "pub_date": "$PUB_DATE",
   "platforms": {
 $PLATFORMS
+  },
+  "downloads": {
+    "linux": [$LINUX_DL],
+    "windows": [$WIN_DL]
   }
 }
 JSON

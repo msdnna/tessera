@@ -12,6 +12,7 @@ import { NIcon, NPopover, NInput, NButton } from 'naive-ui'
 import { SunnyOutline, MoonOutline, ServerOutline } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
+import DownloadAppButton from '@/components/DownloadAppButton.vue'
 
 defineProps({
   title: { type: String, default: '' },
@@ -84,6 +85,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="auth">
     <div class="auth-tools">
+      <!-- Web only: app-download dropdown (hidden inside the desktop app itself,
+           which self-updates). Leftmost of the tool cluster. -->
+      <DownloadAppButton v-if="!desktop" />
+
       <!-- Desktop only: server-address popover, sitting left of the theme toggle. -->
       <n-popover
         v-if="desktop"

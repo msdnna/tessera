@@ -4,6 +4,15 @@ All notable changes to the Tessera desktop app (Tauri v2) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/). The desktop app
 is versioned independently (`desktop/VERSION`), like the other components.
 
+## [0.2.1] — 2026-07-10
+
+- **`downloads`-каталог в публикуемом `latest.json`** (`tools/build-desktop-release.sh`):
+  рядом с подписанным `platforms`-блоком updater'а теперь пишется несигнатурный
+  `downloads` со ВСЕМИ артефактами из `desktop-dist/` (Linux: AppImage/`.deb`/будущий
+  `.rpm`, Windows: `.exe`) — из него web-логин строит валидные ссылки на скачивание.
+  Формат апдейтера не тронут (лишний ключ он игнорирует). AppImage идёт первым как
+  рекомендуемый (self-updating) Linux-вариант.
+
 ## [0.2.0] — 2026-07-07
 
 Phase 2 — OS integration.
