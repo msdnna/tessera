@@ -248,12 +248,13 @@ private fun CardHeader(
     // Completion toggle: leading on subtask/compact cards; on regular top-level
     // cards it moves into the quick-action group (next to add-subtask), web parity.
     val completeToggle = @Composable { sz: Dp ->
+        // Plain checkmark (web parity), not a circle: muted when open, accent when done.
         IonIcon(
-            if (task.isCompleted) Ion.CHECK_CIRCLE else Ion.ELLIPSE,
+            Ion.CHECK,
             size = sz,
             tint = if (task.isCompleted) c.primary else c.text3,
             gradient = task.isCompleted,
-            modifier = Modifier.clip(CircleShape).clickableNoRipple { vm.toggleDone(task) },
+            modifier = Modifier.clickableNoRipple { vm.toggleDone(task) },
         )
     }
     Column {
@@ -289,12 +290,19 @@ private fun CardHeader(
                 )
             }
             // Quick-action group (web hover-action-bar parity; touch has no hover so
-            // it's persistent, top-level cards only): complete + add-subtask.
+            // it's persistent, top-level cards only): complete + add-subtask + menu,
+            // all uniform 24dp/16dp icon buttons with even 2dp spacing.
             if (showAddSub) {
                 Spacer(Modifier.width(2.dp))
-                completeToggle(18.dp)
+                IonIconButton(
+                    Ion.CHECK,
+                    onClick = { vm.toggleDone(task) },
+                    boxSize = 24.dp,
+                    iconSize = 16.dp,
+                    tint = if (task.isCompleted) c.primary else c.text3,
+                )
                 Spacer(Modifier.width(2.dp))
-                IonIconButton(Ion.GIT_BRANCH, onClick = onAddSubtask, boxSize = 24.dp, iconSize = 15.dp, tint = c.text3)
+                IonIconButton(Ion.GIT_BRANCH, onClick = onAddSubtask, boxSize = 24.dp, iconSize = 16.dp, tint = c.text3)
             }
             if (showMenu) {
                 Spacer(Modifier.width(2.dp))
@@ -305,7 +313,7 @@ private fun CardHeader(
         // in when a leading checkbox is present (19dp + 8dp gap), else flush left.
         if (showNumber || showGitlab) {
             Row(
-                Modifier.padding(start = if (showAddSub) 0.dp else 27.dp, top = 3.dp),
+                Modifier.padding(start = if (showAddSub) 0.dp else 27.dp, top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (showNumber) {
@@ -576,8 +584,11 @@ private fun TagChipsFit(tags: List<Tag>, modifier: Modifier = Modifier) {
         val ov = if (k < n) over[n - k - 1] else null
         val placed = chip.take(k)
         val h = (placed.map { it.height } + listOfNotNull(ov?.height)).maxOrNull() ?: 0
-        val total = width(k) + (if (ov != null) (if (k > 0) gap else 0) + ov.width else 0)
-        layout(total.coerceAtMost(maxW), h) {
+        val content = width(k) + (if (ov != null) (if (k > 0) gap else 0) + ov.width else 0)
+        // Fill the slot exactly (bounded) so chips sit flush-left at x=0 — reporting a
+        // narrower width let the parent Row re-center the node (chips drifted centre).
+        val outW = if (constraints.hasBoundedWidth) maxW else content
+        layout(outW, h) {
             var x = 0
             placed.forEach { p ->
                 p.place(x, (h - p.height) / 2)
@@ -752,7 +763,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
         if (stacked) {
             // Icon → coloured chips (as many as fit) + "+N" for the overflow (web parity).
             StackField(Ion.PRICETAG, c.text2, onClick = { menu = true }) {
-                if (taskTags.isEmpty()) StackValue("") else TagChipsFit(taskTags, Modifier.weight(1f))
+                if (taskTags.isEmpty()) StackValue("") else TagChipsFit(taskTags, Modifier.fillMaxWidth())
             }
         } else if (taskTags.isEmpty()) {
             Pill(onClick = { menu = true }) { IonIcon(Ion.PRICETAG, size = 13.dp, tint = c.text3) }
