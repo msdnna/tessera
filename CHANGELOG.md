@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.128.0] — 2026-07-12
+- **Админка → GitLab OAuth:** добавлено поле **«Сервисный токен синка»** (PAT
+  сервис-аккаунта) — под ним идёт весь синк, без личных токенов пользователей;
+  плейсхолдер «сохранён», пустое значение не затирает. Подсказка разделяет две роли:
+  OAuth-приложение = вход, сервисный токен = синхронизация; задачи мапятся по
+  OAuth-идентичности. `admin.setOAuth` шлёт `service_token`.
+
 ### [0.127.0] — 2026-07-12
 - **Навигация по спринтам в дереве проекта:** контекстное меню проекта →
   «Показывать в дереве» (Доски / Этапы / Доски и этапы) + «Показывать закрытые
@@ -2304,6 +2311,25 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.74.0] — 2026-07-12
+- **Инстанс-широкая интеграция GitLab (сервис-токен) + идентичность через OAuth**
+  (миграция 0044). Отвязка синка от персональных PAT конкретных пользователей.
+  - **Идентичность:** `reconcileAssignees` теперь резолвит GL-ассайни **сначала через
+    `oauth_identities`** (кто вошёл через GitLab), потом через личный PAT — задачи
+    ложатся на OAuth-учётку человека, а не на владельца токена интеграции.
+  - **Сервис-токен:** admin задаёт `service_token` в `/admin/oauth/gitlab` (шифруется
+    AES-GCM в `oauth_providers.service_token_enc`). `serviceGitlabConn`/
+    `effectiveGitlabConn` — синк, issue-templates, создание issue, push milestone и
+    прокси ассетов/аватаров используют сервис-токен, если он задан, иначе fallback на
+    личный/owner PAT. Ручной синк принимается без личного PAT; авто-синк
+    (`ListDueSyncIntegrations`) работает без owner. Атрибуция созданных issue — по
+    GL-логину действующего пользователя (`actorGitlabUsername`).
+  - **Доступ:** конфиг привязок (`POST/PUT/DELETE /workspaces/:id/gitlab/integrations`)
+    теперь **только для глобального админа**; список и запуск синка остаются у
+    участников.
+  - Проверено e2e (tessera_test): member 403 на create/update/delete + 200 на list;
+    сервис-токен set/keep/no-leak; синк 202 и реальный запуск без личного PAT.
 
 ### [0.73.1] — 2026-07-12
 - **fix(oauth): корректный `redirect_uri` за обратным прокси.** За nginx

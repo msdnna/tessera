@@ -133,6 +133,52 @@ func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
 	}
 }
 
+// serviceGitlabConn returns the instance-wide GitLab connection (admin-configured
+// service account: base URL + decrypted token) when set. This is the preferred
+// credential for all sync/read/write operations in the OAuth era — it decouples the
+// integration from any individual user's personal PAT.
+func (h *API) serviceGitlabConn(ctx context.Context) (baseURL, token string, ok bool) {
+	p, err := h.q.GetOAuthProvider(ctx, "gitlab")
+	if err != nil || p.ServiceTokenEnc == "" || p.GlBaseUrl == "" {
+		return "", "", false
+	}
+	tok, derr := h.sealer.Decrypt(p.ServiceTokenEnc)
+	if derr != nil {
+		return "", "", false
+	}
+	return strings.TrimRight(p.GlBaseUrl, "/"), tok, true
+}
+
+// effectiveGitlabConn resolves the connection for an operation: the instance
+// service account when configured, else the given fallback user's personal PAT.
+// ok=false means neither is available (the caller should ask to configure GitLab).
+func (h *API) effectiveGitlabConn(ctx context.Context, fallbackUserID *uuid.UUID) (baseURL, token string, ok bool) {
+	if b, t, sok := h.serviceGitlabConn(ctx); sok {
+		return b, t, true
+	}
+	if fallbackUserID != nil {
+		if cred, err := h.q.GetGitlabCredential(ctx, *fallbackUserID); err == nil {
+			if t, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
+				return cred.BaseUrl, t, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// actorGitlabUsername resolves a Tessera user's GitLab username — from a connected
+// PAT credential, else their "Login with GitLab" OAuth identity — for attributing
+// actions performed under a shared service token. "" when unknown.
+func (h *API) actorGitlabUsername(ctx context.Context, userID uuid.UUID) string {
+	if cred, err := h.q.GetGitlabCredential(ctx, userID); err == nil && cred.GlUsername != "" {
+		return cred.GlUsername
+	}
+	if u, err := h.q.GetGitlabUsernameForUser(ctx, userID); err == nil {
+		return u
+	}
+	return ""
+}
+
 // fullIntegrationView enriches a stored row with the resolved estimation unit and
 // the board's project id.
 func (h *API) fullIntegrationView(c *gin.Context, integ db.GitlabIntegration) gitlabIntegrationView {
@@ -232,6 +278,11 @@ func (h *API) CreateGitlabIntegration(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
+	// GitLab is an instance-wide integration: only a global admin may (re)configure
+	// bindings. Members can still see the config (list) and trigger a sync.
+	if _, ok := h.requireGlobalAdmin(c); !ok {
+		return
+	}
 	var req integrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -272,6 +323,9 @@ func (h *API) CreateGitlabIntegration(c *gin.Context) {
 func (h *API) UpdateGitlabIntegration(c *gin.Context) {
 	integ, wsID, ok := h.integrationInWorkspace(c)
 	if !ok {
+		return
+	}
+	if _, ok := h.requireGlobalAdmin(c); !ok {
 		return
 	}
 	var req integrationRequest
@@ -321,6 +375,9 @@ func (h *API) DeleteGitlabIntegration(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if _, ok := h.requireGlobalAdmin(c); !ok {
+		return
+	}
 	if err := h.q.DeleteGitlabIntegration(c, integ.ID); err != nil {
 		fail(c)
 		return
@@ -357,7 +414,7 @@ func (h *API) integrationInWorkspace(c *gin.Context) (db.GitlabIntegration, uuid
 // ── Sync (pull) ────────────────────────────────────────────
 
 // SyncGitlab runs an on-demand pull for one binding (:integrationId), using the
-// requesting user's own credential.
+// instance service token when configured, else the requesting user's own PAT.
 func (h *API) SyncGitlab(c *gin.Context) {
 	integ, _, ok := h.integrationInWorkspace(c)
 	if !ok {
@@ -369,14 +426,20 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	}
 
 	uid := middleware.CurrentUser(c)
-	cred, err := h.q.GetGitlabCredential(c, uid)
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "connect your GitLab account first"})
-		return
-	}
-	if err != nil {
-		fail(c)
-		return
+	// A service token drives the sync when configured (recommended). Only when there
+	// is none do we require the caller's personal PAT.
+	var cred db.GitlabCredential
+	if _, _, hasService := h.serviceGitlabConn(c); !hasService {
+		var err error
+		cred, err = h.q.GetGitlabCredential(c, uid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "connect your GitLab account first, or ask an admin to set a service token"})
+			return
+		}
+		if err != nil {
+			fail(c)
+			return
+		}
 	}
 
 	// A large batch can take minutes — run it detached from the request so no proxy
@@ -426,20 +489,30 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		h.flushJournal(context.WithoutCancel(ctx), j)
 	}()
 
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
-	if err != nil {
-		return 0, 0, fmt.Errorf("decrypt stored token: %w", err)
+	// Credential: prefer the instance-wide service account; fall back to the
+	// caller-supplied per-user PAT (legacy). assignUser is the GitLab username used
+	// by the "assigned" scope — only meaningful for a personal token.
+	baseURL, token, assignUser := cred.BaseUrl, "", cred.GlUsername
+	if b, t, ok := h.serviceGitlabConn(ctx); ok {
+		baseURL, token, assignUser = b, t, "" // a service token has no "assigned to me"
+	} else {
+		t, derr := h.sealer.Decrypt(cred.TokenEnc)
+		if derr != nil {
+			return 0, 0, fmt.Errorf("decrypt stored token: %w", derr)
+		}
+		token = t
 	}
-	client := gitlab.New(cred.BaseUrl, token)
+	client := gitlab.New(baseURL, token)
 	// Discover issues per the integration scope: "all" pulls the whole project
 	// (full import), "assigned" only the credential owner's issues. Either way we
 	// also fetch every already-linked issue to keep it fresh (and reflect a
-	// reassignment away from the owner). Merge, deduped by global id.
+	// reassignment away from the owner). Merge, deduped by global id. Under a service
+	// token there's no "assigned to me", so we always do a full pull.
 	var assigned []gitlab.Issue
-	if integ.Scope == "all" {
+	if integ.Scope == "all" || assignUser == "" {
 		assigned, err = client.AllIssues(ctx, integ.ProjectPath)
 	} else {
-		assigned, err = client.AssignedIssues(ctx, integ.ProjectPath, cred.GlUsername)
+		assigned, err = client.AssignedIssues(ctx, integ.ProjectPath, assignUser)
 	}
 	if err != nil {
 		return 0, 0, err
@@ -641,23 +714,36 @@ func (h *API) RunSyncWorker(ctx context.Context) {
 // autoSyncDue syncs every integration whose interval has elapsed (the query
 // already filters for enabled + interval>0 + owner set + due).
 func (h *API) autoSyncDue(ctx context.Context) {
-	integs, err := h.q.ListAutoSyncIntegrations(ctx)
+	// A service token drives every due integration (no owner needed); otherwise only
+	// those with an owner credential.
+	_, _, hasService := h.serviceGitlabConn(ctx)
+	integs, err := h.q.ListDueSyncIntegrations(ctx)
 	if err != nil {
 		return
 	}
 	for _, integ := range integs {
-		if integ.OwnerUserID == nil {
-			continue
-		}
-		cred, err := h.q.GetGitlabCredential(ctx, *integ.OwnerUserID)
-		if err != nil {
-			continue // owner disconnected — skip until reconfigured
+		var cred db.GitlabCredential
+		actor := uuid.Nil
+		if hasService {
+			if integ.OwnerUserID != nil {
+				actor = *integ.OwnerUserID
+			}
+		} else {
+			if integ.OwnerUserID == nil {
+				continue
+			}
+			c, cerr := h.q.GetGitlabCredential(ctx, *integ.OwnerUserID)
+			if cerr != nil {
+				continue // owner disconnected — skip until reconfigured
+			}
+			cred = c
+			actor = *integ.OwnerUserID
 		}
 		// Skip if a manual (or previous auto) run for this integration is in flight.
 		if _, busy := runningSyncs.LoadOrStore(integ.ID, struct{}{}); busy {
 			continue
 		}
-		created, updated, serr := h.runSync(ctx, integ, cred, *integ.OwnerUserID, "auto")
+		created, updated, serr := h.runSync(ctx, integ, cred, actor, "auto")
 		runningSyncs.Delete(integ.ID)
 		if serr != nil {
 			log.Printf("gitlab auto-sync ws=%s: %v", integ.WorkspaceID, serr)
@@ -1085,11 +1171,13 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 	_ = h.q.DeleteGitlabSourcedAssignees(ctx, taskID) // only the sync-made set is rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))
 	for _, p := range people {
-		// Resolve the GitLab assignee to a Tessera user by their connected PAT
-		// credential, else by a "Login with GitLab" OAuth identity (canonical link).
-		uid, err := h.q.GetUserIDByGitlabUsername(ctx, p.Login)
+		// Resolve the GitLab assignee to a Tessera user. Prefer the "Login with
+		// GitLab" OAuth identity (the canonical, self-owned link) over a legacy
+		// connected-PAT credential — so a person's tasks land on the account they
+		// actually sign in with, not on whoever configured the integration token.
+		uid, err := h.q.GetUserIDByOAuthUsername(ctx, p.Login)
 		if err != nil {
-			uid, err = h.q.GetUserIDByOAuthUsername(ctx, p.Login)
+			uid, err = h.q.GetUserIDByGitlabUsername(ctx, p.Login)
 		}
 		if err == nil {
 			_ = h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"})

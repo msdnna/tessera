@@ -575,6 +575,54 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 	return items, nil
 }
 
+const listDueSyncIntegrations = `-- name: ListDueSyncIntegrations :many
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after FROM gitlab_integrations
+WHERE enabled
+  AND sync_interval_sec > 0
+  AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
+`
+
+// ListDueSyncIntegrations returns integrations due for unattended sync regardless
+// of an owner credential — used when an instance service token drives the sync.
+func (q *Queries) ListDueSyncIntegrations(ctx context.Context) ([]GitlabIntegration, error) {
+	rows, err := q.db.Query(ctx, listDueSyncIntegrations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitlabIntegration
+	for rows.Next() {
+		var i GitlabIntegration
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProjectPath,
+			&i.BoardID,
+			&i.LabelRules,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OwnerUserID,
+			&i.SyncIntervalSec,
+			&i.LastSyncedAt,
+			&i.DueSource,
+			&i.StartSource,
+			&i.Writeback,
+			&i.Name,
+			&i.Scope,
+			&i.ClosedPolicy,
+			&i.ClosedAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGitlabIntegrationsByWorkspace = `-- name: ListGitlabIntegrationsByWorkspace :many
 SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after FROM gitlab_integrations WHERE workspace_id = $1 ORDER BY name, created_at
 `

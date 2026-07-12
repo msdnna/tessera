@@ -89,9 +89,11 @@ const oauth = ref({
   gl_base_url: '',
   client_id: '',
   client_secret: '',
+  service_token: '',
   enabled: false,
   org_map: '{}',
   has_secret: false,
+  has_service_token: false,
 })
 const oauthSaving = ref(false)
 const callbackUrl = computed(() => `${window.location.origin}/api/auth/gitlab/callback`)
@@ -103,9 +105,11 @@ async function loadOAuth() {
       gl_base_url: data.gl_base_url || '',
       client_id: data.client_id || '',
       client_secret: '',
+      service_token: '',
       enabled: data.enabled === true,
       org_map: JSON.stringify(data.org_map ?? {}, null, 2),
       has_secret: data.has_secret === true,
+      has_service_token: data.has_service_token === true,
     }
   } catch {
     /* first-time config: keep defaults */
@@ -126,11 +130,14 @@ async function saveOAuth() {
       gl_base_url: oauth.value.gl_base_url.trim(),
       client_id: oauth.value.client_id.trim(),
       client_secret: oauth.value.client_secret, // empty keeps the stored one
+      service_token: oauth.value.service_token, // empty keeps the stored one
       enabled: oauth.value.enabled,
       org_map: orgMap,
     })
     oauth.value.client_secret = ''
+    oauth.value.service_token = ''
     oauth.value.has_secret = data.has_secret === true
+    oauth.value.has_service_token = data.has_service_token === true
     message.success('Настройки GitLab OAuth сохранены')
   } catch (e) {
     message.error(e.response?.data?.error || e.message)
@@ -163,9 +170,14 @@ onMounted(() => {
           <n-icon :component="LogoGitlab" class="oauth-ic" /> Вход через GitLab (OAuth)
         </h3>
         <p class="oauth-hint">
-          Создайте OAuth-приложение в GitLab (Admin → Applications или в группе) с
-          scope <code>read_api</code> и Redirect URI:
-          <code>{{ callbackUrl }}</code>
+          <b>Вход через GitLab:</b> создайте OAuth-приложение (Admin → Applications или
+          в группе), scope <code>read_api</code>, Redirect URI:
+          <code>{{ callbackUrl }}</code>. <b>«Включён вход»</b> показывает кнопку на
+          экране входа.<br />
+          <b>Синхронизация задач:</b> задайте <b>сервисный токен</b> (PAT сервис-аккаунта,
+          scope <code>api</code>) — под ним идёт весь синк, без личных токенов
+          пользователей. Задачи мапятся на учётки по OAuth-идентичности (кто вошёл через
+          GitLab), а не по владельцу токена интеграции.
         </p>
         <div class="oauth-grid">
           <label>URL GitLab</label>
@@ -180,7 +192,18 @@ onMounted(() => {
             size="small"
             :placeholder="oauth.has_secret ? '•••••• (сохранён; введите, чтобы заменить)' : 'client secret'"
           />
-          <label>Включён</label>
+          <label>
+            Сервисный токен синка
+            <span class="oauth-sub">PAT сервис-аккаунта; синк без личных токенов</span>
+          </label>
+          <n-input
+            v-model:value="oauth.service_token"
+            type="password"
+            show-password-on="click"
+            size="small"
+            :placeholder="oauth.has_service_token ? '•••••• (сохранён; введите, чтобы заменить)' : 'glpat-… (scope api)'"
+          />
+          <label>Включён вход</label>
           <div><n-switch v-model:value="oauth.enabled" /></div>
           <label>
             Org map

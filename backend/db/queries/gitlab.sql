@@ -86,6 +86,14 @@ WHERE enabled
   AND owner_user_id IS NOT NULL
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec));
 
+-- ListDueSyncIntegrations returns integrations due for unattended sync regardless
+-- of an owner credential — used when an instance service token drives the sync.
+-- name: ListDueSyncIntegrations :many
+SELECT * FROM gitlab_integrations
+WHERE enabled
+  AND sync_interval_sec > 0
+  AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec));
+
 -- ── Task ↔ work item link ──────────────────────────────────
 
 -- name: GetGitlabLinkByGlobalID :one

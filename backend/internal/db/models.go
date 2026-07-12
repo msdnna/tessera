@@ -298,6 +298,7 @@ type OauthProvider struct {
 	OrgMap          []byte    `json:"org_map"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	ServiceTokenEnc string    `json:"service_token_enc"`
 }
 
 type Project struct {

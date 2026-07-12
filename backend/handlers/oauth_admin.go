@@ -15,12 +15,13 @@ import (
 // oauthConfigView is the admin-facing OAuth config. The client secret is never
 // returned; has_secret only reports whether one is stored.
 type oauthConfigView struct {
-	Provider  string          `json:"provider"`
-	ClientID  string          `json:"client_id"`
-	GlBaseURL string          `json:"gl_base_url"`
-	Enabled   bool            `json:"enabled"`
-	OrgMap    json.RawMessage `json:"org_map"`
-	HasSecret bool            `json:"has_secret"`
+	Provider        string          `json:"provider"`
+	ClientID        string          `json:"client_id"`
+	GlBaseURL       string          `json:"gl_base_url"`
+	Enabled         bool            `json:"enabled"`
+	OrgMap          json.RawMessage `json:"org_map"`
+	HasSecret       bool            `json:"has_secret"`
+	HasServiceToken bool            `json:"has_service_token"`
 }
 
 // GetOAuthConfig returns the GitLab OAuth app config for the admin panel.
@@ -44,6 +45,7 @@ func (h *API) GetOAuthConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, oauthConfigView{
 		Provider: "gitlab", ClientID: p.ClientID, GlBaseURL: p.GlBaseUrl,
 		Enabled: p.Enabled, OrgMap: om, HasSecret: p.ClientSecretEnc != "",
+		HasServiceToken: p.ServiceTokenEnc != "",
 	})
 }
 
@@ -59,16 +61,18 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		GlBaseURL    string          `json:"gl_base_url"`
 		Enabled      bool            `json:"enabled"`
 		OrgMap       json.RawMessage `json:"org_map"`
+		ServiceToken string          `json:"service_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Keep the existing encrypted secret when none is supplied.
-	secretEnc := ""
+	// Keep the existing encrypted secret/service-token when none is supplied.
+	secretEnc, serviceEnc := "", ""
 	if existing, err := h.q.GetOAuthProvider(c, "gitlab"); err == nil {
 		secretEnc = existing.ClientSecretEnc
+		serviceEnc = existing.ServiceTokenEnc
 	}
 	if s := strings.TrimSpace(req.ClientSecret); s != "" {
 		enc, err := h.sealer.Encrypt(s)
@@ -77,6 +81,14 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 			return
 		}
 		secretEnc = enc
+	}
+	if s := strings.TrimSpace(req.ServiceToken); s != "" {
+		enc, err := h.sealer.Encrypt(s)
+		if err != nil {
+			fail(c)
+			return
+		}
+		serviceEnc = enc
 	}
 
 	orgMap := req.OrgMap
@@ -97,6 +109,7 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		GlBaseUrl:       strings.TrimRight(strings.TrimSpace(req.GlBaseURL), "/"),
 		Enabled:         req.Enabled,
 		OrgMap:          orgMap,
+		ServiceTokenEnc: serviceEnc,
 	})
 	if err != nil {
 		fail(c)
@@ -109,5 +122,6 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, oauthConfigView{
 		Provider: "gitlab", ClientID: p.ClientID, GlBaseURL: p.GlBaseUrl,
 		Enabled: p.Enabled, OrgMap: om, HasSecret: p.ClientSecretEnc != "",
+		HasServiceToken: p.ServiceTokenEnc != "",
 	})
 }

@@ -137,26 +137,18 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "milestone is already linked to GitLab"})
 		return
 	}
-	// Author with the acting user's credential when connected, else the owner's PAT.
+	// Connection: instance service token first, else the acting user's PAT, else the
+	// binding owner's PAT.
 	actor := middleware.CurrentUser(c)
-	cred, err := h.q.GetGitlabCredential(c, actor)
-	if err != nil {
-		if integ.OwnerUserID == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first"})
-			return
-		}
-		cred, err = h.q.GetGitlabCredential(c, *integ.OwnerUserID)
+	baseURL, token, ok := h.effectiveGitlabConn(c, &actor)
+	if !ok {
+		baseURL, token, ok = h.effectiveGitlabConn(c, integ.OwnerUserID)
 	}
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first"})
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first, or ask an admin to set a service token"})
 		return
 	}
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
-	if err != nil {
-		fail(c)
-		return
-	}
-	client := gitlab.New(cred.BaseUrl, token)
+	client := gitlab.New(baseURL, token)
 
 	created, err := client.CreateProjectMilestone(c, integ.ProjectPath, m.Title, m.Description, dateStr(m.StartDate), dateStr(m.DueDate))
 	if err != nil {

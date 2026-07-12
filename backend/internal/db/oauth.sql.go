@@ -55,6 +55,19 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 	return i, err
 }
 
+const getGitlabUsernameForUser = `-- name: GetGitlabUsernameForUser :one
+SELECT provider_username FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1
+`
+
+// GetGitlabUsernameForUser returns a user's GitLab username from their OAuth
+// identity (for attributing issues created under a shared service token).
+func (q *Queries) GetGitlabUsernameForUser(ctx context.Context, userID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getGitlabUsernameForUser, userID)
+	var provider_username string
+	err := row.Scan(&provider_username)
+	return provider_username, err
+}
+
 const getOAuthIdentity = `-- name: GetOAuthIdentity :one
 SELECT id, user_id, provider, provider_user_id, provider_username, provider_email, gl_base_url, created_at, updated_at FROM oauth_identities WHERE provider = $1 AND provider_user_id = $2
 `
@@ -83,7 +96,7 @@ func (q *Queries) GetOAuthIdentity(ctx context.Context, arg GetOAuthIdentityPara
 
 const getOAuthProvider = `-- name: GetOAuthProvider :one
 
-SELECT provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at FROM oauth_providers WHERE provider = $1
+SELECT provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc FROM oauth_providers WHERE provider = $1
 `
 
 // OAuth provider config + external identities (see migration 0042).
@@ -99,6 +112,7 @@ func (q *Queries) GetOAuthProvider(ctx context.Context, provider string) (OauthP
 		&i.OrgMap,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServiceTokenEnc,
 	)
 	return i, err
 }
@@ -163,16 +177,17 @@ func (q *Queries) UpsertOAuthIdentity(ctx context.Context, arg UpsertOAuthIdenti
 }
 
 const upsertOAuthProvider = `-- name: UpsertOAuthProvider :one
-INSERT INTO oauth_providers (provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, now())
+INSERT INTO oauth_providers (provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, service_token_enc, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, now())
 ON CONFLICT (provider) DO UPDATE
 SET client_id = EXCLUDED.client_id,
     client_secret_enc = EXCLUDED.client_secret_enc,
     gl_base_url = EXCLUDED.gl_base_url,
     enabled = EXCLUDED.enabled,
     org_map = EXCLUDED.org_map,
+    service_token_enc = EXCLUDED.service_token_enc,
     updated_at = now()
-RETURNING provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at
+RETURNING provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc
 `
 
 type UpsertOAuthProviderParams struct {
@@ -182,9 +197,10 @@ type UpsertOAuthProviderParams struct {
 	GlBaseUrl       string `json:"gl_base_url"`
 	Enabled         bool   `json:"enabled"`
 	OrgMap          []byte `json:"org_map"`
+	ServiceTokenEnc string `json:"service_token_enc"`
 }
 
-// UpsertOAuthProvider stores the admin-configured OAuth app for a provider.
+// UpsertOAuthProvider stores the admin-configured OAuth app + service token.
 func (q *Queries) UpsertOAuthProvider(ctx context.Context, arg UpsertOAuthProviderParams) (OauthProvider, error) {
 	row := q.db.QueryRow(ctx, upsertOAuthProvider,
 		arg.Provider,
@@ -193,6 +209,7 @@ func (q *Queries) UpsertOAuthProvider(ctx context.Context, arg UpsertOAuthProvid
 		arg.GlBaseUrl,
 		arg.Enabled,
 		arg.OrgMap,
+		arg.ServiceTokenEnc,
 	)
 	var i OauthProvider
 	err := row.Scan(
@@ -204,6 +221,7 @@ func (q *Queries) UpsertOAuthProvider(ctx context.Context, arg UpsertOAuthProvid
 		&i.OrgMap,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServiceTokenEnc,
 	)
 	return i, err
 }

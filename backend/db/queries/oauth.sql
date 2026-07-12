@@ -3,16 +3,17 @@
 -- name: GetOAuthProvider :one
 SELECT * FROM oauth_providers WHERE provider = $1;
 
--- UpsertOAuthProvider stores the admin-configured OAuth app for a provider.
+-- UpsertOAuthProvider stores the admin-configured OAuth app + service token.
 -- name: UpsertOAuthProvider :one
-INSERT INTO oauth_providers (provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, now())
+INSERT INTO oauth_providers (provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, service_token_enc, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, now())
 ON CONFLICT (provider) DO UPDATE
 SET client_id = EXCLUDED.client_id,
     client_secret_enc = EXCLUDED.client_secret_enc,
     gl_base_url = EXCLUDED.gl_base_url,
     enabled = EXCLUDED.enabled,
     org_map = EXCLUDED.org_map,
+    service_token_enc = EXCLUDED.service_token_enc,
     updated_at = now()
 RETURNING *;
 
@@ -35,6 +36,11 @@ RETURNING *;
 -- recorded OAuth identity (login-grade link, complements gitlab_credentials).
 -- name: GetUserIDByOAuthUsername :one
 SELECT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_username = $1;
+
+-- GetGitlabUsernameForUser returns a user's GitLab username from their OAuth
+-- identity (for attributing issues created under a shared service token).
+-- name: GetGitlabUsernameForUser :one
+SELECT provider_username FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1;
 
 -- CreateOAuthUser provisions a GitLab-authenticated account: no password (bcrypt of
 -- "" never matches), email pre-verified (GitLab vouches for it), provider marked.

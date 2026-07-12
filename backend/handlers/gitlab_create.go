@@ -58,11 +58,6 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "task is already linked to a GitLab issue"})
 		return
 	}
-	if integ.OwnerUserID == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "integration has no owner credential"})
-		return
-	}
-
 	// Optional description override (e.g. an issue-template-prefilled body the user
 	// edited in the modal); falls back to the task's own description.
 	var req struct {
@@ -74,23 +69,20 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		description = *req.Description
 	}
 
-	// Author with the acting user's credential when they've connected one (better
-	// attribution), else the integration owner's PAT.
+	// Connection: instance service token first, else the acting user's PAT, else the
+	// binding owner's PAT.
 	actor := middleware.CurrentUser(c)
-	cred, err := h.q.GetGitlabCredential(c, actor)
-	if err != nil {
-		cred, err = h.q.GetGitlabCredential(c, *integ.OwnerUserID)
+	baseURL, token, ok := h.effectiveGitlabConn(c, &actor)
+	if !ok {
+		baseURL, token, ok = h.effectiveGitlabConn(c, integ.OwnerUserID)
 	}
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first"})
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first, or ask an admin to set a service token"})
 		return
 	}
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
-	if err != nil {
-		fail(c)
-		return
-	}
-	client := gitlab.New(cred.BaseUrl, token)
+	client := gitlab.New(baseURL, token)
+	// Attribute the issue link to the acting user's GitLab identity when known.
+	authorLogin := h.actorGitlabUsername(c, actor)
 	rules := parseRules(integ.LabelRules)
 
 	labels := h.buildCreateLabels(c, task, rules, wb)
@@ -122,7 +114,7 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		GlUpdatedAt: nil,
 		TitleHash:   hashStr(task.Title), DescHash: hashStr(description),
 		LabelsHash:        hashStr(strings.Join(labels, "\n")),
-		GlAuthor:          cred.GlUsername,
+		GlAuthor:          authorLogin,
 		GlLastState:       state,
 	}); cerr != nil {
 		log.Printf("gitlab create issue: link task %s failed: %v", id, cerr)
@@ -257,20 +249,16 @@ func (h *API) ListGitlabIssueTemplates(c *gin.Context) {
 		}
 	}
 	uid := middleware.CurrentUser(c)
-	cred, err := h.q.GetGitlabCredential(c, uid)
-	if err != nil && integ.OwnerUserID != nil {
-		cred, err = h.q.GetGitlabCredential(c, *integ.OwnerUserID)
+	// Service token first, else the caller's PAT, else the binding owner's PAT.
+	baseURL, token, ok := h.effectiveGitlabConn(c, &uid)
+	if !ok {
+		baseURL, token, ok = h.effectiveGitlabConn(c, integ.OwnerUserID)
 	}
-	if err != nil {
+	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "connect your GitLab account first"})
 		return
 	}
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
-	if err != nil {
-		fail(c)
-		return
-	}
-	client := gitlab.New(cred.BaseUrl, token)
+	client := gitlab.New(baseURL, token)
 	tpls, err := client.IssueTemplates(c, integ.ProjectPath)
 	if err != nil {
 		log.Printf("gitlab issue templates ws=%s: %v", wsID, err)

@@ -28,6 +28,21 @@ import (
 
 var uploadRe = regexp.MustCompile(`/uploads/[^\s)"'<>]+`)
 
+// assetGitlabConn resolves the connection for the asset/avatar proxies: the
+// instance service token first, else any workspace binding owner's PAT. Returns the
+// (trimmed) base URL + decrypted token.
+func (h *API) assetGitlabConn(c *gin.Context, wsID uuid.UUID) (string, string, bool) {
+	if b, t, ok := h.serviceGitlabConn(c); ok {
+		return b, t, true
+	}
+	if cred, ok := h.firstOwnerCred(c, wsID); ok {
+		if t, err := h.sealer.Decrypt(cred.TokenEnc); err == nil {
+			return strings.TrimRight(cred.BaseUrl, "/"), t, true
+		}
+	}
+	return "", "", false
+}
+
 // firstOwnerCred returns the credential of the first workspace binding that has an
 // owner set. The asset/avatar proxies only need any valid token for the GitLab
 // instance (all bindings of a user share one self-hosted instance), so any owner's
@@ -106,18 +121,11 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		c.Status(http.StatusForbidden)
 		return
 	}
-	cred, ok := h.firstOwnerCred(c, wsID)
+	base, token, ok := h.assetGitlabConn(c, wsID)
 	if !ok {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
-	if err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-
-	base := strings.TrimRight(cred.BaseUrl, "/")
 	rest := strings.TrimPrefix(relPath, "/uploads/")
 
 	// The signed URL doesn't carry the GitLab project (an upload secret is unique
@@ -219,11 +227,9 @@ func (h *API) GitlabAvatar(c *gin.Context) {
 	// The owner's token, only when the URL host is the GitLab instance (never
 	// leaked to gravatar/external hosts). Best-effort — public avatars need none.
 	var token string
-	if cred, ok := h.firstOwnerCred(c, wsID); ok {
-		if gb, gerr := url.Parse(cred.BaseUrl); gerr == nil && gb.Host == target.Host {
-			if t, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
-				token = t
-			}
+	if base, t, ok := h.assetGitlabConn(c, wsID); ok {
+		if gb, gerr := url.Parse(base); gerr == nil && gb.Host == target.Host {
+			token = t
 		}
 	}
 
