@@ -35,9 +35,10 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		return
 	}
 
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
+	// Resolve the binding by the task's own board (multi-binding).
+	integ, err := h.q.GetGitlabIntegrationByBoard(c, task.BoardID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no GitLab integration configured for this workspace"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "task is not on a GitLab integration board"})
 		return
 	}
 	if err != nil {
@@ -51,10 +52,6 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 	wb := parseWriteback(integ.Writeback)
 	if !wb.PushCreate {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "issue creation from tasks is disabled for this integration"})
-		return
-	}
-	if task.BoardID != integ.BoardID {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "task is not on the GitLab integration board"})
 		return
 	}
 	if _, lerr := h.q.GetGitlabLinkByTask(c, id); lerr == nil {
@@ -237,14 +234,27 @@ func (h *API) ListGitlabIssueTemplates(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusOK, []gitlab.IssueTemplate{})
-		return
-	}
+	// Pick the binding by ?integration_id (create-issue modal knows the task's
+	// board's binding); fall back to the workspace's first binding.
+	rows, err := h.q.ListGitlabIntegrationsByWorkspace(c, wsID)
 	if err != nil {
 		fail(c)
 		return
+	}
+	if len(rows) == 0 {
+		c.JSON(http.StatusOK, []gitlab.IssueTemplate{})
+		return
+	}
+	integ := rows[0]
+	if want := c.Query("integration_id"); want != "" {
+		if wid, perr := uuid.Parse(want); perr == nil {
+			for _, r := range rows {
+				if r.ID == wid {
+					integ = r
+					break
+				}
+			}
+		}
 	}
 	uid := middleware.CurrentUser(c)
 	cred, err := h.q.GetGitlabCredential(c, uid)

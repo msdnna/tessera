@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"tessera/internal/db"
 	"tessera/internal/gitlab"
 )
 
@@ -26,6 +27,26 @@ import (
 // signature is the capability, like Tessera's own public uploads.
 
 var uploadRe = regexp.MustCompile(`/uploads/[^\s)"'<>]+`)
+
+// firstOwnerCred returns the credential of the first workspace binding that has an
+// owner set. The asset/avatar proxies only need any valid token for the GitLab
+// instance (all bindings of a user share one self-hosted instance), so any owner's
+// credential works.
+func (h *API) firstOwnerCred(c *gin.Context, wsID uuid.UUID) (db.GitlabCredential, bool) {
+	rows, err := h.q.ListGitlabIntegrationsByWorkspace(c, wsID)
+	if err != nil {
+		return db.GitlabCredential{}, false
+	}
+	for _, integ := range rows {
+		if integ.OwnerUserID == nil {
+			continue
+		}
+		if cred, cerr := h.q.GetGitlabCredential(c, *integ.OwnerUserID); cerr == nil {
+			return cred, true
+		}
+	}
+	return db.GitlabCredential{}, false
+}
 
 // signAsset is the HMAC over (workspace, relative path).
 func (h *API) signAsset(wsID uuid.UUID, p string) string {
@@ -85,13 +106,8 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		c.Status(http.StatusForbidden)
 		return
 	}
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
-	if err != nil || integ.OwnerUserID == nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	cred, err := h.q.GetGitlabCredential(c, *integ.OwnerUserID)
-	if err != nil {
+	cred, ok := h.firstOwnerCred(c, wsID)
+	if !ok {
 		c.Status(http.StatusNotFound)
 		return
 	}
@@ -102,56 +118,76 @@ func (h *API) GitlabAsset(c *gin.Context) {
 	}
 
 	base := strings.TrimRight(cred.BaseUrl, "/")
-	projectPath := strings.Trim(integ.ProjectPath, "/")
-
-	// GitLab 17.4+ exposes a PAT-authenticated uploads API; try it first and
-	// stream the bytes. relPath "/uploads/<secret>/<file>" → ".../uploads/<secret>/<file>".
 	rest := strings.TrimPrefix(relPath, "/uploads/")
-	apiURL := base + "/api/v4/projects/" + url.QueryEscape(projectPath) + "/uploads/" + rest
-	if req, rerr := http.NewRequestWithContext(c, http.MethodGet, apiURL, nil); rerr == nil {
-		req.Header.Set("PRIVATE-TOKEN", token)
-		if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
-			if resp.StatusCode == http.StatusOK {
-				defer func() { _ = resp.Body.Close() }()
-				ct := resp.Header.Get("Content-Type")
-				if ct == "" {
-					ct = "application/octet-stream"
-				}
-				c.Header("Cache-Control", "private, max-age=3600")
-				c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
-				return
+
+	// The signed URL doesn't carry the GitLab project (an upload secret is unique
+	// per instance, and the same signature scheme predates multi-binding). Try each
+	// of the workspace's bindings' projects — all share one GitLab instance/owner
+	// token — and stream from the first that resolves. The set is tiny.
+	projectPaths := []string{}
+	if rows, rerr := h.q.ListGitlabIntegrationsByWorkspace(c, wsID); rerr == nil {
+		for _, integ := range rows {
+			if p := strings.Trim(integ.ProjectPath, "/"); p != "" {
+				projectPaths = append(projectPaths, p)
 			}
-			_ = resp.Body.Close()
 		}
 	}
 
-	// Older GitLab (< 17.4) has no uploads API. Stream the web /uploads/ route
-	// server-side (best-effort PRIVATE-TOKEN; works for public projects) instead
-	// of redirecting — a redirect to the GitLab host only resolves for a browser
-	// with a GitLab session, never for the mobile app. On failure fall through to
-	// 404 so the client shows its own fallback rather than a broken redirect.
-	webURL := base + "/" + projectPath + relPath
-	if req, rerr := http.NewRequestWithContext(c, http.MethodGet, webURL, nil); rerr == nil {
-		req.Header.Set("PRIVATE-TOKEN", token)
-		if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
-			defer func() { _ = resp.Body.Close() }()
-			ct := resp.Header.Get("Content-Type")
-			// A sign-in redirect serves HTML — only stream real binary content.
-			if resp.StatusCode == http.StatusOK && !strings.HasPrefix(ct, "text/html") {
-				if ct == "" {
-					ct = "application/octet-stream"
+	var lastWebURL string
+	for _, projectPath := range projectPaths {
+		// GitLab 17.4+ exposes a PAT-authenticated uploads API; try it first and
+		// stream the bytes. relPath "/uploads/<secret>/<file>" → ".../uploads/<secret>/<file>".
+		apiURL := base + "/api/v4/projects/" + url.QueryEscape(projectPath) + "/uploads/" + rest
+		if req, rerr := http.NewRequestWithContext(c, http.MethodGet, apiURL, nil); rerr == nil {
+			req.Header.Set("PRIVATE-TOKEN", token)
+			if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
+				if resp.StatusCode == http.StatusOK {
+					defer func() { _ = resp.Body.Close() }()
+					ct := resp.Header.Get("Content-Type")
+					if ct == "" {
+						ct = "application/octet-stream"
+					}
+					c.Header("Cache-Control", "private, max-age=3600")
+					c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+					return
 				}
-				c.Header("Cache-Control", "private, max-age=3600")
-				c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
-				return
+				_ = resp.Body.Close()
+			}
+		}
+
+		// Older GitLab (< 17.4) has no uploads API. Stream the web /uploads/ route
+		// server-side (best-effort PRIVATE-TOKEN; works for public projects) instead
+		// of redirecting — a redirect to the GitLab host only resolves for a browser
+		// with a GitLab session, never for the mobile app.
+		webURL := base + "/" + projectPath + relPath
+		lastWebURL = webURL
+		if req, rerr := http.NewRequestWithContext(c, http.MethodGet, webURL, nil); rerr == nil {
+			req.Header.Set("PRIVATE-TOKEN", token)
+			if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
+				ct := resp.Header.Get("Content-Type")
+				// A sign-in redirect serves HTML — only stream real binary content.
+				if resp.StatusCode == http.StatusOK && !strings.HasPrefix(ct, "text/html") {
+					defer func() { _ = resp.Body.Close() }()
+					if ct == "" {
+						ct = "application/octet-stream"
+					}
+					c.Header("Cache-Control", "private, max-age=3600")
+					c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+					return
+				}
+				_ = resp.Body.Close()
 			}
 		}
 	}
 	// Couldn't stream the file server-side (no uploads API, session-gated web
-	// route, egress failure). Bounce the client to the GitLab web URL — a browser
-	// with a GitLab session loads it directly, mirroring the avatar proxy's
+	// route, egress failure). Bounce the client to the last GitLab web URL — a
+	// browser with a GitLab session loads it directly, mirroring the avatar proxy's
 	// fallback. (The mobile app can't follow this, but it had no access either.)
-	c.Redirect(http.StatusFound, webURL)
+	if lastWebURL == "" {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.Redirect(http.StatusFound, lastWebURL)
 }
 
 // GitlabAvatar proxies a signed absolute GitLab avatar URL: it verifies the HMAC,
@@ -183,12 +219,10 @@ func (h *API) GitlabAvatar(c *gin.Context) {
 	// The owner's token, only when the URL host is the GitLab instance (never
 	// leaked to gravatar/external hosts). Best-effort — public avatars need none.
 	var token string
-	if integ, ierr := h.q.GetGitlabIntegrationByWorkspace(c, wsID); ierr == nil && integ.OwnerUserID != nil {
-		if cred, cerr := h.q.GetGitlabCredential(c, *integ.OwnerUserID); cerr == nil {
-			if gb, gerr := url.Parse(cred.BaseUrl); gerr == nil && gb.Host == target.Host {
-				if t, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
-					token = t
-				}
+	if cred, ok := h.firstOwnerCred(c, wsID); ok {
+		if gb, gerr := url.Parse(cred.BaseUrl); gerr == nil && gb.Host == target.Host {
+			if t, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
+				token = t
 			}
 		}
 	}

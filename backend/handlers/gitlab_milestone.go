@@ -118,9 +118,11 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 	if !ok {
 		return
 	}
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
+	// Resolve the binding whose target board lives in the milestone's project
+	// (GitLab milestones are project-scoped).
+	integ, err := h.q.GetGitlabIntegrationByProject(c, m.ProjectID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no GitLab integration configured for this workspace"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this project has no GitLab integration"})
 		return
 	}
 	if err != nil {
@@ -129,17 +131,6 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 	}
 	if !integ.Enabled {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "GitLab integration is disabled"})
-		return
-	}
-	// The milestone must live in the integration board's project (GitLab milestones
-	// are project-scoped, and the integration maps to exactly one GL project).
-	pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID)
-	if perr != nil {
-		fail(c)
-		return
-	}
-	if m.ProjectID != pid {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "milestone is not in the GitLab-linked project"})
 		return
 	}
 	if _, lerr := h.q.GetGitlabMilestoneLink(c, id); lerr == nil {

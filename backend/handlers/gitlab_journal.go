@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 )
@@ -185,31 +183,23 @@ func toSyncActionDTO(a db.GitlabSyncAction) syncActionDTO {
 	}
 }
 
-// integrationForWorkspace resolves the workspace's GitLab integration after a
-// membership check, writing the appropriate error response on failure.
-func (h *API) integrationForWorkspace(c *gin.Context) (db.GitlabIntegration, bool) {
+// journalWorkspace resolves the :id workspace after a membership check, writing
+// the appropriate error response on failure.
+func (h *API) journalWorkspace(c *gin.Context) (uuid.UUID, bool) {
 	wsID, ok := parseID(c, "id")
 	if !ok {
-		return db.GitlabIntegration{}, false
+		return uuid.Nil, false
 	}
 	if !h.requireMember(c, wsID) {
-		return db.GitlabIntegration{}, false
+		return uuid.Nil, false
 	}
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no GitLab integration configured for this workspace"})
-		return db.GitlabIntegration{}, false
-	}
-	if err != nil {
-		fail(c)
-		return db.GitlabIntegration{}, false
-	}
-	return integ, true
+	return wsID, true
 }
 
-// ListGitlabSyncRuns returns the integration's recent sync runs, newest first.
+// ListGitlabSyncRuns returns recent sync runs across every binding of the
+// workspace, newest first.
 func (h *API) ListGitlabSyncRuns(c *gin.Context) {
-	integ, ok := h.integrationForWorkspace(c)
+	wsID, ok := h.journalWorkspace(c)
 	if !ok {
 		return
 	}
@@ -219,7 +209,7 @@ func (h *API) ListGitlabSyncRuns(c *gin.Context) {
 			limit = int32(n)
 		}
 	}
-	runs, err := h.q.ListGitlabSyncRuns(c, db.ListGitlabSyncRunsParams{IntegrationID: integ.ID, Limit: limit})
+	runs, err := h.q.ListGitlabSyncRunsByWorkspace(c, db.ListGitlabSyncRunsByWorkspaceParams{WorkspaceID: wsID, Limit: limit})
 	if err != nil {
 		fail(c)
 		return
@@ -231,9 +221,9 @@ func (h *API) ListGitlabSyncRuns(c *gin.Context) {
 }
 
 // ListGitlabSyncActions returns the actions of one run (scoped to the workspace's
-// integration), in sequence order.
+// bindings), in sequence order.
 func (h *API) ListGitlabSyncActions(c *gin.Context) {
-	integ, ok := h.integrationForWorkspace(c)
+	wsID, ok := h.journalWorkspace(c)
 	if !ok {
 		return
 	}
@@ -241,7 +231,7 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if _, err := h.q.GetGitlabSyncRun(c, db.GetGitlabSyncRunParams{ID: runID, IntegrationID: integ.ID}); err != nil {
+	if _, err := h.q.GetGitlabSyncRunInWorkspace(c, db.GetGitlabSyncRunInWorkspaceParams{ID: runID, WorkspaceID: wsID}); err != nil {
 		if notFound(c, err) {
 			return
 		}
@@ -263,7 +253,7 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 // RetryGitlabWriteback re-enqueues a failed push action by re-creating its outbox
 // row from the recorded payload, so the worker delivers it again.
 func (h *API) RetryGitlabWriteback(c *gin.Context) {
-	integ, ok := h.integrationForWorkspace(c)
+	wsID, ok := h.journalWorkspace(c)
 	if !ok {
 		return
 	}
@@ -271,7 +261,7 @@ func (h *API) RetryGitlabWriteback(c *gin.Context) {
 	if !ok {
 		return
 	}
-	action, err := h.q.GetGitlabSyncAction(c, db.GetGitlabSyncActionParams{ID: actionID, IntegrationID: integ.ID})
+	action, err := h.q.GetGitlabSyncActionInWorkspace(c, db.GetGitlabSyncActionInWorkspaceParams{ID: actionID, WorkspaceID: wsID})
 	if err != nil {
 		if notFound(c, err) {
 			return
@@ -297,7 +287,7 @@ func (h *API) RetryGitlabWriteback(c *gin.Context) {
 		payload = json.RawMessage("{}")
 	}
 	if err := h.q.CreateGitlabWriteback(c, db.CreateGitlabWritebackParams{
-		TaskID: *action.TaskID, IntegrationID: integ.ID, ChangeKind: detail.ChangeKind, Payload: payload,
+		TaskID: *action.TaskID, IntegrationID: action.RunIntegrationID, ChangeKind: detail.ChangeKind, Payload: payload,
 	}); err != nil {
 		fail(c)
 		return

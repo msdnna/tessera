@@ -89,6 +89,16 @@ JOIN tasks t ON t.id = w.task_id
 WHERE w.integration_id = $1 AND w.status = 'conflict'
 ORDER BY w.updated_at DESC;
 
+-- ListOpenConflictsByWorkspace aggregates every open conflict across a workspace's
+-- bindings (multi-binding conflicts inbox), newest first.
+-- name: ListOpenConflictsByWorkspace :many
+SELECT w.*, t.title AS task_title, t.number AS task_number
+FROM gitlab_writebacks w
+JOIN tasks t ON t.id = w.task_id
+JOIN gitlab_integrations i ON i.id = w.integration_id
+WHERE i.workspace_id = $1 AND w.status = 'conflict'
+ORDER BY w.updated_at DESC;
+
 -- ReArmConflict re-queues a resolved conflict for delivery (ours/manual): the
 -- worker re-fetches GitLab and pushes the now-acknowledged value. Records the choice.
 -- name: ReArmConflict :exec

@@ -311,12 +311,17 @@ export const gitlab = {
   getConnection: () => api.get('/gitlab/connection'),
   connect: (data) => api.post('/gitlab/connection', data), // { base_url, token }
   disconnect: () => api.delete('/gitlab/connection'),
-  // Per-workspace integration config + manual sync.
-  getIntegration: (wsId) => api.get(`/workspaces/${wsId}/gitlab/integration`),
-  setIntegration: (wsId, data) => api.put(`/workspaces/${wsId}/gitlab/integration`, data),
+  // Per-workspace integration bindings (multi-binding: several GL project → board).
+  listIntegrations: (wsId) => api.get(`/workspaces/${wsId}/gitlab/integrations`),
+  createIntegration: (wsId, data) => api.post(`/workspaces/${wsId}/gitlab/integrations`, data),
+  updateIntegration: (wsId, integId, data) =>
+    api.put(`/workspaces/${wsId}/gitlab/integrations/${integId}`, data),
+  deleteIntegration: (wsId, integId) =>
+    api.delete(`/workspaces/${wsId}/gitlab/integrations/${integId}`),
   // skipLoader: sync is intentionally long and shows its own in-modal loader, so
   // it must not trigger the global slow/offline overlay.
-  sync: (wsId) => api.post(`/workspaces/${wsId}/gitlab/sync`, null, { skipLoader: true }),
+  sync: (wsId, integId) =>
+    api.post(`/workspaces/${wsId}/gitlab/integrations/${integId}/sync`, null, { skipLoader: true }),
   // Sync journal: run/action history + retry of a failed push.
   syncRuns: (wsId, limit = 50) => api.get(`/workspaces/${wsId}/gitlab/sync-runs`, { params: { limit } }),
   syncRunActions: (wsId, runId) => api.get(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions`),
@@ -325,7 +330,8 @@ export const gitlab = {
   // Create a GitLab issue from a task (returns the new link view) + the project's
   // issue templates for prefilling the description.
   createIssue: (taskId, data) => api.post(`/tasks/${taskId}/gitlab-issue`, data),
-  issueTemplates: (wsId) => api.get(`/workspaces/${wsId}/gitlab/issue-templates`),
+  issueTemplates: (wsId, integId) =>
+    api.get(`/workspaces/${wsId}/gitlab/issue-templates`, integId ? { params: { integration_id: integId } } : undefined),
   // Write-back conflicts: open-conflict inbox + interactive resolution.
   conflicts: (wsId) => api.get(`/workspaces/${wsId}/gitlab/conflicts`),
   resolveConflict: (taskId, conflictId, data) =>

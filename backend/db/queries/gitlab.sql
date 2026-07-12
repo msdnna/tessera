@@ -21,21 +21,43 @@ DELETE FROM gitlab_credentials WHERE user_id = $1;
 
 -- ── Per-workspace integration ──────────────────────────────
 
--- name: UpsertGitlabIntegration :one
-INSERT INTO gitlab_integrations (workspace_id, project_path, board_id, label_rules, enabled, owner_user_id, sync_interval_sec, due_source, start_source, writeback, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-ON CONFLICT (workspace_id) DO UPDATE
-SET project_path = EXCLUDED.project_path,
-    board_id = EXCLUDED.board_id,
-    label_rules = EXCLUDED.label_rules,
-    enabled = EXCLUDED.enabled,
-    owner_user_id = EXCLUDED.owner_user_id,
-    sync_interval_sec = EXCLUDED.sync_interval_sec,
-    due_source = EXCLUDED.due_source,
-    start_source = EXCLUDED.start_source,
-    writeback = EXCLUDED.writeback,
-    updated_at = now()
+-- name: CreateGitlabIntegration :one
+INSERT INTO gitlab_integrations (
+    workspace_id, name, project_path, board_id, label_rules, enabled, owner_user_id,
+    sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now())
 RETURNING *;
+
+-- name: UpdateGitlabIntegration :one
+UPDATE gitlab_integrations
+SET name = $2, project_path = $3, board_id = $4, label_rules = $5, enabled = $6,
+    owner_user_id = $7, sync_interval_sec = $8, due_source = $9, start_source = $10,
+    writeback = $11, scope = $12, closed_policy = $13, closed_after = $14, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: DeleteGitlabIntegration :exec
+DELETE FROM gitlab_integrations WHERE id = $1;
+
+-- name: GetGitlabIntegration :one
+SELECT * FROM gitlab_integrations WHERE id = $1;
+
+-- name: ListGitlabIntegrationsByWorkspace :many
+SELECT * FROM gitlab_integrations WHERE workspace_id = $1 ORDER BY name, created_at;
+
+-- GetGitlabIntegrationByBoard resolves the binding that mirrors into a given board
+-- (task-scoped operations: create-issue, board-scoped sync).
+-- name: GetGitlabIntegrationByBoard :one
+SELECT * FROM gitlab_integrations WHERE board_id = $1;
+
+-- GetGitlabIntegrationByProject resolves a binding whose target board lives in a
+-- project (milestone push is project-scoped). Picks the oldest when several.
+-- name: GetGitlabIntegrationByProject :one
+SELECT i.* FROM gitlab_integrations i
+JOIN boards b ON b.id = i.board_id
+WHERE b.project_id = $1
+ORDER BY i.created_at
+LIMIT 1;
 
 -- MarkGitlabDueOverridden flags a linked task's due as user-set so the sync stops
 -- touching it. No-op when the task isn't linked.
@@ -49,9 +71,6 @@ UPDATE gitlab_links SET estimate_overridden = true WHERE task_id = $1;
 -- stops touching it. No-op when the task isn't linked.
 -- name: MarkGitlabStartOverridden :exec
 UPDATE gitlab_links SET start_overridden = true WHERE task_id = $1;
-
--- name: GetGitlabIntegrationByWorkspace :one
-SELECT * FROM gitlab_integrations WHERE workspace_id = $1;
 
 -- MarkGitlabSynced stamps the integration's last successful sync time.
 -- name: MarkGitlabSynced :exec

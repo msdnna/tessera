@@ -280,11 +280,15 @@ func main() {
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)
 			protected.POST("/gitlab/connection", rh.ConnectGitlab)
 			protected.DELETE("/gitlab/connection", rh.DisconnectGitlab)
-			protected.GET("/workspaces/:id/gitlab/integration", rh.GetGitlabIntegration)
-			protected.PUT("/workspaces/:id/gitlab/integration", rh.SetGitlabIntegration)
+			// Multi-binding: a workspace can mirror several GitLab projects, each
+			// into its own board.
+			protected.GET("/workspaces/:id/gitlab/integrations", rh.ListGitlabIntegrations)
+			protected.POST("/workspaces/:id/gitlab/integrations", rh.CreateGitlabIntegration)
+			protected.PUT("/workspaces/:id/gitlab/integrations/:integrationId", rh.UpdateGitlabIntegration)
+			protected.DELETE("/workspaces/:id/gitlab/integrations/:integrationId", rh.DeleteGitlabIntegration)
+			protected.POST("/workspaces/:id/gitlab/integrations/:integrationId/sync", rh.SyncGitlab)
 			protected.GET("/workspaces/:id/gitlab/members", rh.ListGitlabMembers)
 			protected.GET("/workspaces/:id/gitlab/issue-templates", rh.ListGitlabIssueTemplates)
-			protected.POST("/workspaces/:id/gitlab/sync", rh.SyncGitlab)
 			// Sync journal: run/action history + retry of failed pushes.
 			protected.GET("/workspaces/:id/gitlab/sync-runs", rh.ListGitlabSyncRuns)
 			protected.GET("/workspaces/:id/gitlab/sync-runs/:runId/actions", rh.ListGitlabSyncActions)

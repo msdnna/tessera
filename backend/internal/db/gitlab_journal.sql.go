@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -154,6 +155,60 @@ func (q *Queries) GetGitlabSyncAction(ctx context.Context, arg GetGitlabSyncActi
 	return i, err
 }
 
+const getGitlabSyncActionInWorkspace = `-- name: GetGitlabSyncActionInWorkspace :one
+SELECT a.id, a.run_id, a.seq, a.direction, a.entity_type, a.op, a.task_id, a.gl_iid, a.summary, a.detail, a.status, a.error, a.created_at, r.integration_id AS run_integration_id
+FROM gitlab_sync_actions a
+JOIN gitlab_sync_runs r ON r.id = a.run_id
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE a.id = $1 AND i.workspace_id = $2
+`
+
+type GetGitlabSyncActionInWorkspaceParams struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+type GetGitlabSyncActionInWorkspaceRow struct {
+	ID               uuid.UUID  `json:"id"`
+	RunID            uuid.UUID  `json:"run_id"`
+	Seq              int32      `json:"seq"`
+	Direction        string     `json:"direction"`
+	EntityType       string     `json:"entity_type"`
+	Op               string     `json:"op"`
+	TaskID           *uuid.UUID `json:"task_id"`
+	GlIid            *int64     `json:"gl_iid"`
+	Summary          string     `json:"summary"`
+	Detail           []byte     `json:"detail"`
+	Status           string     `json:"status"`
+	Error            string     `json:"error"`
+	CreatedAt        time.Time  `json:"created_at"`
+	RunIntegrationID uuid.UUID  `json:"run_integration_id"`
+}
+
+// GetGitlabSyncActionInWorkspace fetches an action scoped to a workspace (across
+// all its bindings), returning its run's integration_id so a retry can re-enqueue.
+func (q *Queries) GetGitlabSyncActionInWorkspace(ctx context.Context, arg GetGitlabSyncActionInWorkspaceParams) (GetGitlabSyncActionInWorkspaceRow, error) {
+	row := q.db.QueryRow(ctx, getGitlabSyncActionInWorkspace, arg.ID, arg.WorkspaceID)
+	var i GetGitlabSyncActionInWorkspaceRow
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.Seq,
+		&i.Direction,
+		&i.EntityType,
+		&i.Op,
+		&i.TaskID,
+		&i.GlIid,
+		&i.Summary,
+		&i.Detail,
+		&i.Status,
+		&i.Error,
+		&i.CreatedAt,
+		&i.RunIntegrationID,
+	)
+	return i, err
+}
+
 const getGitlabSyncRun = `-- name: GetGitlabSyncRun :one
 SELECT id, integration_id, kind, trigger, actor_id, status, created_count, updated_count, deleted_count, action_count, error, started_at, finished_at FROM gitlab_sync_runs WHERE id = $1 AND integration_id = $2
 `
@@ -166,6 +221,40 @@ type GetGitlabSyncRunParams struct {
 // GetGitlabSyncRun fetches a run scoped to its integration (ownership check).
 func (q *Queries) GetGitlabSyncRun(ctx context.Context, arg GetGitlabSyncRunParams) (GitlabSyncRun, error) {
 	row := q.db.QueryRow(ctx, getGitlabSyncRun, arg.ID, arg.IntegrationID)
+	var i GitlabSyncRun
+	err := row.Scan(
+		&i.ID,
+		&i.IntegrationID,
+		&i.Kind,
+		&i.Trigger,
+		&i.ActorID,
+		&i.Status,
+		&i.CreatedCount,
+		&i.UpdatedCount,
+		&i.DeletedCount,
+		&i.ActionCount,
+		&i.Error,
+		&i.StartedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
+const getGitlabSyncRunInWorkspace = `-- name: GetGitlabSyncRunInWorkspace :one
+SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at FROM gitlab_sync_runs r
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE r.id = $1 AND i.workspace_id = $2
+`
+
+type GetGitlabSyncRunInWorkspaceParams struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// GetGitlabSyncRunInWorkspace fetches a run scoped to a workspace (ownership check
+// across all its bindings).
+func (q *Queries) GetGitlabSyncRunInWorkspace(ctx context.Context, arg GetGitlabSyncRunInWorkspaceParams) (GitlabSyncRun, error) {
+	row := q.db.QueryRow(ctx, getGitlabSyncRunInWorkspace, arg.ID, arg.WorkspaceID)
 	var i GitlabSyncRun
 	err := row.Scan(
 		&i.ID,
@@ -239,6 +328,55 @@ type ListGitlabSyncRunsParams struct {
 
 func (q *Queries) ListGitlabSyncRuns(ctx context.Context, arg ListGitlabSyncRunsParams) ([]GitlabSyncRun, error) {
 	rows, err := q.db.Query(ctx, listGitlabSyncRuns, arg.IntegrationID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitlabSyncRun
+	for rows.Next() {
+		var i GitlabSyncRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.IntegrationID,
+			&i.Kind,
+			&i.Trigger,
+			&i.ActorID,
+			&i.Status,
+			&i.CreatedCount,
+			&i.UpdatedCount,
+			&i.DeletedCount,
+			&i.ActionCount,
+			&i.Error,
+			&i.StartedAt,
+			&i.FinishedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGitlabSyncRunsByWorkspace = `-- name: ListGitlabSyncRunsByWorkspace :many
+SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at FROM gitlab_sync_runs r
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE i.workspace_id = $1
+ORDER BY r.started_at DESC
+LIMIT $2
+`
+
+type ListGitlabSyncRunsByWorkspaceParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Limit       int32     `json:"limit"`
+}
+
+// ListGitlabSyncRunsByWorkspace aggregates recent runs across every binding in a
+// workspace (multi-binding journal), newest first.
+func (q *Queries) ListGitlabSyncRunsByWorkspace(ctx context.Context, arg ListGitlabSyncRunsByWorkspaceParams) ([]GitlabSyncRun, error) {
+	rows, err := q.db.Query(ctx, listGitlabSyncRunsByWorkspace, arg.WorkspaceID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

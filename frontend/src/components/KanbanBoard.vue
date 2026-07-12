@@ -103,6 +103,7 @@ const gitlabMembersMap = reactive({})
 // "Создать issue в GitLab" action in the task modal.
 const gitlabCanCreate = ref(false)
 const gitlabFetchTemplates = ref(false)
+const gitlabIntegrationId = ref(null)
 const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
 // Project milestones («Этап»), keyed by id; cards/modal resolve a task's milestone_id.
@@ -1123,7 +1124,7 @@ async function loadWorkspaceMeta() {
     wsApi.members(wsId),
     projectsApi.tagPrefixes(projectId).catch(() => ({ data: [] })),
     wsApi.gitlabMembers(wsId).catch(() => ({ data: [] })),
-    gitlabApi.getIntegration(wsId).catch(() => ({ data: {} })),
+    gitlabApi.listIntegrations(wsId).catch(() => ({ data: { integrations: [] } })),
     projectsApi.milestones(projectId).catch(() => ({ data: [] })),
   ])
   for (const k of Object.keys(tagsMap)) delete tagsMap[k]
@@ -1134,13 +1135,11 @@ async function loadWorkspaceMeta() {
   for (const m of mem.data || []) membersMap[m.user_id] = m
   for (const k of Object.keys(gitlabMembersMap)) delete gitlabMembersMap[k]
   for (const g of glMem.data || []) gitlabMembersMap[g.gl_user_id] = g
-  // Issue-creation is offered only on the configured integration board.
-  const gi = glInt.data || {}
+  // Issue-creation is offered only on the binding that targets THIS board.
+  const gi = (glInt.data?.integrations || []).find((b) => b.board_id === props.boardId) || {}
+  gitlabIntegrationId.value = gi.id || null
   gitlabCanCreate.value =
-    gi.configured === true &&
-    gi.enabled === true &&
-    gi.board_id === props.boardId &&
-    gi.writeback?.push_create === true
+    gi.enabled === true && gi.writeback?.push_create === true
   gitlabFetchTemplates.value = gitlabCanCreate.value && gi.writeback?.fetch_templates === true
   for (const k of Object.keys(tagPrefixNames)) delete tagPrefixNames[k]
   for (const p of pfx.data || []) tagPrefixNames[p.prefix] = p.label
@@ -2036,6 +2035,7 @@ watch(
       :milestones="milestonesList"
       :gitlab-can-create="gitlabCanCreate"
       :gitlab-fetch-templates="gitlabFetchTemplates"
+      :gitlab-integration-id="gitlabIntegrationId"
       @update:show="(v) => v || closeTask()"
       @changed="onChanged"
       @open="openTask"

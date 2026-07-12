@@ -85,6 +85,7 @@ const props = defineProps({
   milestones: { type: Array, default: () => [] },
   gitlabCanCreate: { type: Boolean, default: false },
   gitlabFetchTemplates: { type: Boolean, default: false },
+  gitlabIntegrationId: { type: String, default: null },
 })
 const emit = defineEmits(['update:show', 'changed', 'open'])
 
@@ -490,7 +491,7 @@ async function loadGlTemplates() {
   glTemplate.value = null
   if (!props.gitlabFetchTemplates || !props.wsId) return
   try {
-    const res = await glApi.issueTemplates(props.wsId)
+    const res = await glApi.issueTemplates(props.wsId, props.gitlabIntegrationId)
     glTemplates.value = res.data || []
   } catch {
     glTemplates.value = []

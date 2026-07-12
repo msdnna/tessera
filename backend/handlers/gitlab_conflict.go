@@ -280,16 +280,7 @@ func (h *API) ListGitlabConflicts(c *gin.Context) {
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusOK, []conflictDTO{})
-		return
-	}
-	if err != nil {
-		fail(c)
-		return
-	}
-	rows, err := h.q.ListOpenConflicts(c, integ.ID)
+	rows, err := h.q.ListOpenConflictsByWorkspace(c, wsID)
 	if err != nil {
 		fail(c)
 		return

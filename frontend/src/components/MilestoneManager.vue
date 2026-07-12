@@ -54,12 +54,13 @@ async function load() {
   glLinkable.value = false
   if (props.wsId) {
     try {
-      const { data } = await glApi.getIntegration(props.wsId)
-      glLinkable.value =
-        data?.configured === true &&
-        data?.enabled === true &&
-        data?.writeback?.push_milestone === true &&
-        data?.project_id === props.projectId
+      const { data } = await glApi.listIntegrations(props.wsId)
+      glLinkable.value = (data.integrations || []).some(
+        (b) =>
+          b.enabled === true &&
+          b.writeback?.push_milestone === true &&
+          b.project_id === props.projectId,
+      )
     } catch {
       glLinkable.value = false
     }

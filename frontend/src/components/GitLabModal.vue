@@ -72,7 +72,26 @@ async function disconnect() {
   }
 }
 
-// ── integration (per-workspace) ──
+// ── integration bindings (per-workspace, multi-binding) ──
+// A workspace can mirror several GitLab projects, each into its own board. The
+// form below edits the currently-selected binding; `currentId === null` means a
+// new, not-yet-saved binding.
+const integrations = ref([]) // list of binding views
+const currentId = ref(null) // selected binding id, or null for a new one
+const defaultRules = ref(null) // server-provided default rules for new bindings
+const name = ref('')
+const scope = ref('all') // 'all' | 'assigned'
+const closedPolicy = ref('archive_closed_sprints') // 'all' | 'archive_closed_sprints' | 'period'
+const closedAfter = ref(null) // epoch ms for 'period'
+const scopeOptions = [
+  { label: 'Все задачи проекта', value: 'all' },
+  { label: 'Только назначенные на меня', value: 'assigned' },
+]
+const closedPolicyOptions = [
+  { label: 'Закрытые из закрытых спринтов — в архив', value: 'archive_closed_sprints' },
+  { label: 'Все закрытые — на доску (в «Готово»)', value: 'all' },
+  { label: 'Только закрытые за период', value: 'period' },
+]
 const projectPath = ref('')
 const boardId = ref(null)
 const enabled = ref(true)
@@ -226,10 +245,55 @@ async function loadColumns(id) {
   }
 }
 
-async function loadIntegration() {
+// loadList fetches every binding of the workspace, then selects the first (or
+// starts a fresh form when there are none).
+async function loadList() {
   if (!props.wsId) return
   try {
-    const { data } = await glApi.getIntegration(props.wsId)
+    const { data } = await glApi.listIntegrations(props.wsId)
+    integrations.value = data.integrations || []
+    defaultRules.value = data.default_rules || null
+    if (integrations.value.length) {
+      await selectBinding(integrations.value[0].id)
+    } else {
+      newBinding()
+    }
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+// bindingLabel renders a short caption for the selector.
+function bindingLabel(b) {
+  const board = boardOptions.value.find((o) => o.value === b.board_id)
+  return b.name || b.project_path || (board ? board.label : 'привязка')
+}
+const bindingOptions = computed(() =>
+  integrations.value.map((b) => ({ label: bindingLabel(b), value: b.id })),
+)
+
+async function selectBinding(id) {
+  const b = integrations.value.find((x) => x.id === id)
+  if (!b) {
+    newBinding()
+    return
+  }
+  currentId.value = b.id
+  await applyBinding(b)
+}
+
+// newBinding resets the form for an unsaved binding, seeding server default rules.
+function newBinding() {
+  currentId.value = null
+  applyBinding({ label_rules: defaultRules.value || {} })
+}
+
+async function applyBinding(data) {
+  name.value = data.name || ''
+  scope.value = data.scope || 'all'
+  closedPolicy.value = data.closed_policy || 'archive_closed_sprints'
+  closedAfter.value = data.closed_after ? new Date(data.closed_after).getTime() : null
+  {
     projectPath.value = data.project_path || ''
     boardId.value = data.board_id || null
     enabled.value = data.enabled !== false
@@ -268,8 +332,6 @@ async function loadIntegration() {
     }))
     if (boardId.value) await loadColumns(boardId.value)
     await loadPrefixNames()
-  } catch (e) {
-    message.error(e.message)
   }
 }
 
@@ -310,13 +372,20 @@ async function save() {
   }
   saving.value = true
   try {
-    const { data } = await glApi.setIntegration(props.wsId, {
+    const payload = {
+      name: name.value.trim(),
       project_path: projectPath.value.trim(),
       board_id: boardId.value,
       enabled: enabled.value,
       sync_interval_sec: Number(intervalSec.value),
       due_source: dueSource.value,
       start_source: startSource.value,
+      scope: scope.value,
+      closed_policy: closedPolicy.value,
+      closed_after:
+        closedPolicy.value === 'period' && closedAfter.value
+          ? new Date(closedAfter.value).toISOString()
+          : null,
       label_rules,
       writeback: {
         enabled: wbEnabled.value,
@@ -332,8 +401,19 @@ async function save() {
         push_create: wbCreate.value,
         fetch_templates: wbCreate.value && wbFetchTemplates.value,
       },
-    })
+    }
+    const { data } = currentId.value
+      ? await glApi.updateIntegration(props.wsId, currentId.value, payload)
+      : await glApi.createIntegration(props.wsId, payload)
+    currentId.value = data.id
     lastSynced.value = data.last_synced_at || lastSynced.value
+    // Refresh the binding list so the selector reflects the new/updated row.
+    try {
+      const list = await glApi.listIntegrations(props.wsId)
+      integrations.value = list.data.integrations || []
+    } catch {
+      /* non-critical */
+    }
     // Persist friendly prefix names to the target project. Merge over the loaded
     // set so prefixes without a rule here aren't dropped; a blanked name removes.
     const pid = targetProjectId.value
@@ -361,7 +441,25 @@ async function save() {
   }
 }
 
+async function deleteBinding() {
+  if (!currentId.value) {
+    newBinding()
+    return
+  }
+  try {
+    await glApi.deleteIntegration(props.wsId, currentId.value)
+    message.success('Привязка удалена')
+    await loadList()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
 async function syncNow() {
+  if (!currentId.value) {
+    message.warning('Сначала сохраните привязку')
+    return
+  }
   syncing.value = true
   try {
     // Baseline: the newest existing run, so we can tell our new run apart.
@@ -374,7 +472,7 @@ async function syncNow() {
     }
     // The sync now runs in the background (large batches used to drop the long
     // request). Kick it off, then poll the journal for the run to finish.
-    await glApi.sync(props.wsId)
+    await glApi.sync(props.wsId, currentId.value)
     const startedAt = Date.now()
     const MAX_MS = 30 * 60 * 1000
     let settled = false
@@ -445,7 +543,7 @@ watch(
     if (!show) return
     if (!gl.loaded) await gl.load()
     await loadBoards()
-    await loadIntegration()
+    await loadList()
     loadConflictCount()
   },
   { immediate: false },
@@ -511,8 +609,40 @@ watch(
 
       <!-- INTEGRATION (only when connected) -->
       <section v-if="gl.connected" class="gl-sec">
-        <h4 class="gl-h">Интеграция пространства</h4>
+        <h4 class="gl-h">Привязки GitLab → доска</h4>
+        <!-- Multi-binding selector: pick a binding to edit, add a new one, or
+             delete the current one. -->
+        <div class="gl-bindbar">
+          <n-select
+            :value="currentId"
+            :options="bindingOptions"
+            size="small"
+            placeholder="Новая привязка"
+            :consistent-menu-width="false"
+            style="flex: 1 1 auto"
+            @update:value="selectBinding"
+          />
+          <n-button size="small" tertiary title="Новая привязка" @click="newBinding">
+            <template #icon><n-icon :component="AddOutline" /></template>
+          </n-button>
+          <n-popconfirm
+            v-if="currentId"
+            :positive-button-props="{ type: 'error' }"
+            positive-text="Удалить"
+            @positive-click="deleteBinding"
+          >
+            <template #trigger>
+              <n-button size="small" tertiary type="error" title="Удалить привязку">
+                <template #icon><n-icon :component="TrashOutline" /></template>
+              </n-button>
+            </template>
+            Удалить привязку? Синхронизированные задачи останутся, связь с GitLab пропадёт.
+          </n-popconfirm>
+        </div>
         <div class="gl-grid">
+          <n-text depth="3" class="lbl">Название (необязательно)</n-text>
+          <n-input v-model:value="name" size="small" placeholder="напр. Скрам-борд" />
+
           <n-text depth="3" class="lbl">Проект GitLab (полный путь)</n-text>
           <n-input v-model:value="projectPath" size="small" placeholder="group/project" />
 
@@ -533,6 +663,17 @@ watch(
 
           <n-text depth="3" class="lbl">Источник начала</n-text>
           <n-select v-model:value="startSource" :options="startSourceOptions" size="small" />
+
+          <n-text depth="3" class="lbl">Что переносить</n-text>
+          <n-select v-model:value="scope" :options="scopeOptions" size="small" />
+
+          <n-text depth="3" class="lbl">Закрытые задачи</n-text>
+          <n-select v-model:value="closedPolicy" :options="closedPolicyOptions" size="small" />
+
+          <template v-if="closedPolicy === 'period'">
+            <n-text depth="3" class="lbl">Закрытые не старше</n-text>
+            <n-date-picker v-model:value="closedAfter" type="date" size="small" clearable />
+          </template>
 
           <n-text depth="3" class="lbl">Включена</n-text>
           <div><n-switch v-model:value="enabled" /></div>

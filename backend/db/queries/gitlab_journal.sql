@@ -25,9 +25,25 @@ WHERE integration_id = $1
 ORDER BY started_at DESC
 LIMIT $2;
 
+-- ListGitlabSyncRunsByWorkspace aggregates recent runs across every binding in a
+-- workspace (multi-binding journal), newest first.
+-- name: ListGitlabSyncRunsByWorkspace :many
+SELECT r.* FROM gitlab_sync_runs r
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE i.workspace_id = $1
+ORDER BY r.started_at DESC
+LIMIT $2;
+
 -- GetGitlabSyncRun fetches a run scoped to its integration (ownership check).
 -- name: GetGitlabSyncRun :one
 SELECT * FROM gitlab_sync_runs WHERE id = $1 AND integration_id = $2;
+
+-- GetGitlabSyncRunInWorkspace fetches a run scoped to a workspace (ownership check
+-- across all its bindings).
+-- name: GetGitlabSyncRunInWorkspace :one
+SELECT r.* FROM gitlab_sync_runs r
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE r.id = $1 AND i.workspace_id = $2;
 
 -- name: ListGitlabSyncActions :many
 SELECT * FROM gitlab_sync_actions
@@ -38,6 +54,15 @@ ORDER BY seq;
 SELECT a.* FROM gitlab_sync_actions a
 JOIN gitlab_sync_runs r ON r.id = a.run_id
 WHERE a.id = $1 AND r.integration_id = $2;
+
+-- GetGitlabSyncActionInWorkspace fetches an action scoped to a workspace (across
+-- all its bindings), returning its run's integration_id so a retry can re-enqueue.
+-- name: GetGitlabSyncActionInWorkspace :one
+SELECT a.*, r.integration_id AS run_integration_id
+FROM gitlab_sync_actions a
+JOIN gitlab_sync_runs r ON r.id = a.run_id
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE a.id = $1 AND i.workspace_id = $2;
 
 -- PruneGitlabSyncRuns keeps only the most recent $2 runs of an integration; older
 -- runs (and their actions, via ON DELETE CASCADE) are dropped so the journal stays

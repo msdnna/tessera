@@ -99,6 +99,8 @@ func (h *API) DisconnectGitlab(c *gin.Context) {
 // decoded from JSONB into the typed rule engine config).
 type gitlabIntegrationView struct {
 	Configured      bool             `json:"configured"`
+	ID              *uuid.UUID       `json:"id"`
+	Name            string           `json:"name"`
 	ProjectPath     string           `json:"project_path"`
 	BoardID         *uuid.UUID       `json:"board_id"`
 	ProjectID       *uuid.UUID       `json:"project_id"` // the integration board's project (for milestone gating)
@@ -106,6 +108,9 @@ type gitlabIntegrationView struct {
 	SyncIntervalSec int32            `json:"sync_interval_sec"`
 	DueSource       string           `json:"due_source"`
 	StartSource     string           `json:"start_source"`
+	Scope           string           `json:"scope"`
+	ClosedPolicy    string           `json:"closed_policy"`
+	ClosedAfter     *time.Time       `json:"closed_after"`
 	LastSyncedAt    *time.Time       `json:"last_synced_at"`
 	LabelRules      gitlab.Rules     `json:"label_rules"`
 	Writeback       gitlab.Writeback `json:"writeback"`
@@ -117,44 +122,31 @@ type gitlabIntegrationView struct {
 // integrationView projects a stored integration row into its JSON view.
 func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
 	bid := integ.BoardID
+	iid := integ.ID
 	return gitlabIntegrationView{
-		Configured: true, ProjectPath: integ.ProjectPath, BoardID: &bid,
+		Configured: true, ID: &iid, Name: integ.Name, ProjectPath: integ.ProjectPath, BoardID: &bid,
 		Enabled: integ.Enabled, SyncIntervalSec: integ.SyncIntervalSec,
 		DueSource: integ.DueSource, StartSource: integ.StartSource, LastSyncedAt: integ.LastSyncedAt,
+		Scope: integ.Scope, ClosedPolicy: integ.ClosedPolicy, ClosedAfter: integ.ClosedAfter,
 		LabelRules: parseRules(integ.LabelRules),
 		Writeback:  parseWriteback(integ.Writeback),
 	}
 }
 
-// GetGitlabIntegration returns the workspace's integration config, or an
-// unconfigured view pre-filled with default rules so the UI can render a form.
-func (h *API) GetGitlabIntegration(c *gin.Context) {
-	wsID, ok := parseID(c, "id")
-	if !ok {
-		return
-	}
-	if !h.requireMember(c, wsID) {
-		return
-	}
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusOK, gitlabIntegrationView{LabelRules: gitlab.DefaultRules()})
-		return
-	}
-	if err != nil {
-		fail(c)
-		return
-	}
+// fullIntegrationView enriches a stored row with the resolved estimation unit and
+// the board's project id.
+func (h *API) fullIntegrationView(c *gin.Context, integ db.GitlabIntegration) gitlabIntegrationView {
 	view := integrationView(integ)
 	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
 	if pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID); perr == nil {
 		view.ProjectID = &pid
 	}
-	c.JSON(http.StatusOK, view)
+	return view
 }
 
-// SetGitlabIntegration creates or updates the workspace's integration config.
-func (h *API) SetGitlabIntegration(c *gin.Context) {
+// ListGitlabIntegrations returns every GitLab binding of the workspace plus the
+// default label rules so the UI can pre-fill a new-binding form.
+func (h *API) ListGitlabIntegrations(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok {
 		return
@@ -162,26 +154,36 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	var req struct {
-		ProjectPath     string          `json:"project_path" binding:"required"`
-		BoardID         uuid.UUID       `json:"board_id" binding:"required"`
-		Enabled         bool            `json:"enabled"`
-		SyncIntervalSec int32           `json:"sync_interval_sec"`
-		DueSource       string          `json:"due_source"`
-		StartSource     string          `json:"start_source"`
-		LabelRules      json.RawMessage `json:"label_rules"`
-		Writeback       json.RawMessage `json:"writeback"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	rows, err := h.q.ListGitlabIntegrationsByWorkspace(c, wsID)
+	if err != nil {
+		fail(c)
 		return
 	}
-	// The target board must live in this workspace.
-	boardWs, err := h.q.WorkspaceIDForBoard(c, req.BoardID)
-	if err != nil || boardWs != wsID {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "board does not belong to this workspace"})
-		return
+	views := make([]gitlabIntegrationView, 0, len(rows))
+	for _, integ := range rows {
+		views = append(views, h.fullIntegrationView(c, integ))
 	}
+	c.JSON(http.StatusOK, gin.H{"integrations": views, "default_rules": gitlab.DefaultRules()})
+}
+
+// integrationRequest is the shared create/update body for a binding.
+type integrationRequest struct {
+	Name            string          `json:"name"`
+	ProjectPath     string          `json:"project_path" binding:"required"`
+	BoardID         uuid.UUID       `json:"board_id" binding:"required"`
+	Enabled         bool            `json:"enabled"`
+	SyncIntervalSec int32           `json:"sync_interval_sec"`
+	DueSource       string          `json:"due_source"`
+	StartSource     string          `json:"start_source"`
+	Scope           string          `json:"scope"`
+	ClosedPolicy    string          `json:"closed_policy"`
+	ClosedAfter     *time.Time      `json:"closed_after"`
+	LabelRules      json.RawMessage `json:"label_rules"`
+	Writeback       json.RawMessage `json:"writeback"`
+}
+
+// normalize validates and defaults the request fields in place.
+func (req *integrationRequest) normalize() {
 	if req.SyncIntervalSec < 0 {
 		req.SyncIntervalSec = 0
 	}
@@ -195,49 +197,34 @@ func (h *API) SetGitlabIntegration(c *gin.Context) {
 	default:
 		req.StartSource = "created"
 	}
-
-	rules := req.LabelRules
-	if len(rules) == 0 || string(rules) == "null" || string(rules) == "{}" {
-		// Seed with defaults on first configuration.
-		def, _ := json.Marshal(gitlab.DefaultRules())
-		rules = def
+	switch req.Scope {
+	case "assigned", "all":
+	default:
+		req.Scope = "all"
 	}
-
-	// Normalise write-back config through the typed struct (unknown/garbage → all
-	// off) so only the recognised flags are persisted.
-	wbRaw, _ := json.Marshal(parseWriteback(req.Writeback))
-
-	// The configuring user's credential drives unattended sync.
-	owner := middleware.CurrentUser(c)
-	integ, err := h.q.UpsertGitlabIntegration(c, db.UpsertGitlabIntegrationParams{
-		WorkspaceID:     wsID,
-		ProjectPath:     strings.TrimSpace(req.ProjectPath),
-		BoardID:         req.BoardID,
-		LabelRules:      rules,
-		Enabled:         req.Enabled,
-		OwnerUserID:     &owner,
-		SyncIntervalSec: req.SyncIntervalSec,
-		DueSource:       req.DueSource,
-		StartSource:     req.StartSource,
-		Writeback:       wbRaw,
-	})
-	if err != nil {
-		fail(c)
-		return
+	switch req.ClosedPolicy {
+	case "all", "archive_closed_sprints", "period":
+	default:
+		req.ClosedPolicy = "archive_closed_sprints"
 	}
-	view := integrationView(integ)
-	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
-	if pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID); perr == nil {
-		view.ProjectID = &pid
+	if req.ClosedPolicy != "period" {
+		req.ClosedAfter = nil
 	}
-	c.JSON(http.StatusOK, view)
+	req.ProjectPath = strings.TrimSpace(req.ProjectPath)
+	req.Name = strings.TrimSpace(req.Name)
 }
 
-// ── Sync (pull) ────────────────────────────────────────────
+// rulesOrDefault seeds label rules with the default taxonomy when empty.
+func rulesOrDefault(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
+		def, _ := json.Marshal(gitlab.DefaultRules())
+		return def
+	}
+	return raw
+}
 
-// SyncGitlab runs an on-demand pull for the workspace's integration, using the
-// requesting user's own credential.
-func (h *API) SyncGitlab(c *gin.Context) {
+// CreateGitlabIntegration adds a new GitLab project → board binding to the workspace.
+func (h *API) CreateGitlabIntegration(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok {
 		return
@@ -245,14 +232,135 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-
-	integ, err := h.q.GetGitlabIntegrationByWorkspace(c, wsID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no GitLab integration configured for this workspace"})
+	var req integrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	boardWs, err := h.q.WorkspaceIDForBoard(c, req.BoardID)
+	if err != nil || boardWs != wsID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "board does not belong to this workspace"})
+		return
+	}
+	req.normalize()
+	wbRaw, _ := json.Marshal(parseWriteback(req.Writeback))
+	owner := middleware.CurrentUser(c)
+	integ, err := h.q.CreateGitlabIntegration(c, db.CreateGitlabIntegrationParams{
+		WorkspaceID:     wsID,
+		Name:            req.Name,
+		ProjectPath:     req.ProjectPath,
+		BoardID:         req.BoardID,
+		LabelRules:      rulesOrDefault(req.LabelRules),
+		Enabled:         req.Enabled,
+		OwnerUserID:     &owner,
+		SyncIntervalSec: req.SyncIntervalSec,
+		DueSource:       req.DueSource,
+		StartSource:     req.StartSource,
+		Writeback:       wbRaw,
+		Scope:           req.Scope,
+		ClosedPolicy:    req.ClosedPolicy,
+		ClosedAfter:     req.ClosedAfter,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
+		return
+	}
+	c.JSON(http.StatusOK, h.fullIntegrationView(c, integ))
+}
+
+// UpdateGitlabIntegration edits an existing binding (selected by :integrationId).
+func (h *API) UpdateGitlabIntegration(c *gin.Context) {
+	integ, wsID, ok := h.integrationInWorkspace(c)
+	if !ok {
+		return
+	}
+	var req integrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	boardWs, err := h.q.WorkspaceIDForBoard(c, req.BoardID)
+	if err != nil || boardWs != wsID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "board does not belong to this workspace"})
+		return
+	}
+	req.normalize()
+	wbRaw, _ := json.Marshal(parseWriteback(req.Writeback))
+	// Keep the existing owner credential unless unset (re-owning is a separate concern).
+	owner := integ.OwnerUserID
+	if owner == nil {
+		u := middleware.CurrentUser(c)
+		owner = &u
+	}
+	updated, err := h.q.UpdateGitlabIntegration(c, db.UpdateGitlabIntegrationParams{
+		ID:              integ.ID,
+		Name:            req.Name,
+		ProjectPath:     req.ProjectPath,
+		BoardID:         req.BoardID,
+		LabelRules:      rulesOrDefault(req.LabelRules),
+		Enabled:         req.Enabled,
+		OwnerUserID:     owner,
+		SyncIntervalSec: req.SyncIntervalSec,
+		DueSource:       req.DueSource,
+		StartSource:     req.StartSource,
+		Writeback:       wbRaw,
+		Scope:           req.Scope,
+		ClosedPolicy:    req.ClosedPolicy,
+		ClosedAfter:     req.ClosedAfter,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
+		return
+	}
+	c.JSON(http.StatusOK, h.fullIntegrationView(c, updated))
+}
+
+// DeleteGitlabIntegration removes a binding (its links/journal/writebacks cascade).
+func (h *API) DeleteGitlabIntegration(c *gin.Context) {
+	integ, _, ok := h.integrationInWorkspace(c)
+	if !ok {
+		return
+	}
+	if err := h.q.DeleteGitlabIntegration(c, integ.ID); err != nil {
+		fail(c)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// integrationInWorkspace resolves the :integrationId path param, verifying the
+// caller is a member of :id and the binding belongs to that workspace.
+func (h *API) integrationInWorkspace(c *gin.Context) (db.GitlabIntegration, uuid.UUID, bool) {
+	wsID, ok := parseID(c, "id")
+	if !ok {
+		return db.GitlabIntegration{}, uuid.Nil, false
+	}
+	if !h.requireMember(c, wsID) {
+		return db.GitlabIntegration{}, uuid.Nil, false
+	}
+	integID, ok := parseID(c, "integrationId")
+	if !ok {
+		return db.GitlabIntegration{}, uuid.Nil, false
+	}
+	integ, err := h.q.GetGitlabIntegration(c, integID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && integ.WorkspaceID != wsID) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "integration not found"})
+		return db.GitlabIntegration{}, uuid.Nil, false
 	}
 	if err != nil {
 		fail(c)
+		return db.GitlabIntegration{}, uuid.Nil, false
+	}
+	return integ, wsID, true
+}
+
+// ── Sync (pull) ────────────────────────────────────────────
+
+// SyncGitlab runs an on-demand pull for one binding (:integrationId), using the
+// requesting user's own credential.
+func (h *API) SyncGitlab(c *gin.Context) {
+	integ, _, ok := h.integrationInWorkspace(c)
+	if !ok {
 		return
 	}
 	if !integ.Enabled {

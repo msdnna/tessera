@@ -112,7 +112,7 @@ func (q *Queries) CreateGitlabWriteback(ctx context.Context, arg CreateGitlabWri
 
 const getGitlabIntegrationByID = `-- name: GetGitlabIntegrationByID :one
 
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback FROM gitlab_integrations WHERE id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after FROM gitlab_integrations WHERE id = $1
 `
 
 // GitLab write-back (phase B): outbox queue + the integration lookup the worker
@@ -135,6 +135,10 @@ func (q *Queries) GetGitlabIntegrationByID(ctx context.Context, id uuid.UUID) (G
 		&i.DueSource,
 		&i.StartSource,
 		&i.Writeback,
+		&i.Name,
+		&i.Scope,
+		&i.ClosedPolicy,
+		&i.ClosedAfter,
 	)
 	return i, err
 }
@@ -266,6 +270,75 @@ func (q *Queries) ListOpenConflicts(ctx context.Context, integrationID uuid.UUID
 	var items []ListOpenConflictsRow
 	for rows.Next() {
 		var i ListOpenConflictsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.IntegrationID,
+			&i.ChangeKind,
+			&i.Payload,
+			&i.Status,
+			&i.Attempts,
+			&i.LastError,
+			&i.NextAttemptAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Conflict,
+			&i.Resolution,
+			&i.ResolvedBy,
+			&i.ResolvedAt,
+			&i.TaskTitle,
+			&i.TaskNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenConflictsByWorkspace = `-- name: ListOpenConflictsByWorkspace :many
+SELECT w.id, w.task_id, w.integration_id, w.change_kind, w.payload, w.status, w.attempts, w.last_error, w.next_attempt_at, w.created_at, w.updated_at, w.conflict, w.resolution, w.resolved_by, w.resolved_at, t.title AS task_title, t.number AS task_number
+FROM gitlab_writebacks w
+JOIN tasks t ON t.id = w.task_id
+JOIN gitlab_integrations i ON i.id = w.integration_id
+WHERE i.workspace_id = $1 AND w.status = 'conflict'
+ORDER BY w.updated_at DESC
+`
+
+type ListOpenConflictsByWorkspaceRow struct {
+	ID            uuid.UUID  `json:"id"`
+	TaskID        uuid.UUID  `json:"task_id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ChangeKind    string     `json:"change_kind"`
+	Payload       []byte     `json:"payload"`
+	Status        string     `json:"status"`
+	Attempts      int32      `json:"attempts"`
+	LastError     string     `json:"last_error"`
+	NextAttemptAt time.Time  `json:"next_attempt_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	Conflict      []byte     `json:"conflict"`
+	Resolution    string     `json:"resolution"`
+	ResolvedBy    *uuid.UUID `json:"resolved_by"`
+	ResolvedAt    *time.Time `json:"resolved_at"`
+	TaskTitle     string     `json:"task_title"`
+	TaskNumber    *int64     `json:"task_number"`
+}
+
+// ListOpenConflictsByWorkspace aggregates every open conflict across a workspace's
+// bindings (multi-binding conflicts inbox), newest first.
+func (q *Queries) ListOpenConflictsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListOpenConflictsByWorkspaceRow, error) {
+	rows, err := q.db.Query(ctx, listOpenConflictsByWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOpenConflictsByWorkspaceRow
+	for rows.Next() {
+		var i ListOpenConflictsByWorkspaceRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TaskID,

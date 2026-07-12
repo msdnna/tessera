@@ -77,6 +77,10 @@ type GitlabIntegration struct {
 	DueSource       string     `json:"due_source"`
 	StartSource     string     `json:"start_source"`
 	Writeback       []byte     `json:"writeback"`
+	Name            string     `json:"name"`
+	Scope           string     `json:"scope"`
+	ClosedPolicy    string     `json:"closed_policy"`
+	ClosedAfter     *time.Time `json:"closed_after"`
 }
 
 type GitlabLink struct {
