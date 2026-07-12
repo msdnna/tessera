@@ -2305,6 +2305,15 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.73.1] — 2026-07-12
+- **fix(oauth): корректный `redirect_uri` за обратным прокси.** За nginx
+  (`proxy_set_header Host $host`) заголовок Host приходил без порта, и без
+  `PUBLIC_URL` бэкенд строил `redirect_uri` на порту 80 (`http://localhost/...`),
+  из-за чего GitLab отвечал «redirect URI is not valid». `oauthBaseURL` теперь
+  предпочитает `X-Forwarded-Host` (несёт host:port) и `X-Forwarded-Proto`; nginx
+  проксирует эти заголовки (`$http_host`/`$scheme`). `PUBLIC_URL` по-прежнему имеет
+  приоритет и остаётся рекомендованной прод-настройкой.
+
 ### [0.73.0] — 2026-07-12
 - **Полный перенос задач проекта из GitLab + навигация по спринтам:**
   - `integration.scope='all'` тянет ВЕСЬ проект (не только назначенное на владельца

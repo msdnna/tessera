@@ -30,7 +30,16 @@ func (h *AuthHandler) oauthBaseURL(c *gin.Context) string {
 	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
 		scheme = "https"
 	}
-	return scheme + "://" + c.Request.Host
+	// Behind a reverse proxy, the Host header may be rewritten without the public
+	// port (nginx `proxy_set_header Host $host` drops it), which would generate a
+	// redirect_uri on the wrong port. Prefer X-Forwarded-Host (carries host:port)
+	// when the proxy sets it; fall back to the request Host. Setting PUBLIC_URL
+	// always wins and is the recommended production config.
+	host := c.Request.Host
+	if xfh := c.GetHeader("X-Forwarded-Host"); xfh != "" {
+		host = xfh
+	}
+	return scheme + "://" + host
 }
 
 func (h *AuthHandler) gitlabRedirectURI(c *gin.Context) string {
