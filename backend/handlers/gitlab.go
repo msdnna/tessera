@@ -1425,9 +1425,16 @@ func (h *API) ListGitlabMembers(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(rows))
 	for _, m := range rows {
+		// Prefer the OAuth-identity mapping, else a connected-PAT mapping. Non-nil
+		// means this GitLab member already has a Tessera account (for UI dedup).
+		mapped := m.TesseraUserID
+		if mapped == nil {
+			mapped = m.TesseraUserIDPat
+		}
 		out = append(out, gin.H{
 			"gl_user_id": m.GlUserID, "gl_username": m.GlUsername,
 			"gl_name": m.GlName, "gl_avatar_url": m.GlAvatarUrl,
+			"tessera_user_id": mapped,
 		})
 	}
 	c.JSON(http.StatusOK, out)

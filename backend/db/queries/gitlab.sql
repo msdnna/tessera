@@ -199,11 +199,20 @@ ON CONFLICT (integration_id, gl_user_id) DO UPDATE SET
 -- name: DeleteStaleGitlabProjectMembers :exec
 DELETE FROM gitlab_project_members WHERE integration_id = $1 AND NOT (gl_user_id = ANY($2::bigint[]));
 
+-- ListGitlabProjectMembersByWorkspace returns the assignable GitLab roster, each
+-- annotated with the Tessera user it maps to (via OAuth identity or connected PAT),
+-- so the UI can dedup members that already have a Tessera account.
 -- name: ListGitlabProjectMembersByWorkspace :many
-SELECT m.gl_user_id, m.gl_username, m.gl_name, m.gl_avatar_url, m.access_level
+SELECT DISTINCT ON (m.gl_user_id)
+  m.gl_user_id, m.gl_username, m.gl_name, m.gl_avatar_url, m.access_level,
+  oi.user_id AS tessera_user_id,
+  gc.user_id AS tessera_user_id_pat
 FROM gitlab_project_members m
 JOIN gitlab_integrations i ON i.id = m.integration_id
-WHERE i.workspace_id = $1 ORDER BY m.gl_name;
+LEFT JOIN oauth_identities oi ON oi.provider = 'gitlab' AND oi.provider_username = m.gl_username
+LEFT JOIN gitlab_credentials gc ON gc.gl_username = m.gl_username
+WHERE i.workspace_id = $1
+ORDER BY m.gl_user_id, m.gl_name;
 
 -- name: GetGitlabMemberIDByUsername :one
 SELECT gl_user_id FROM gitlab_project_members WHERE integration_id = $1 AND gl_username = $2;

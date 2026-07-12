@@ -667,20 +667,31 @@ func (q *Queries) ListGitlabIntegrationsByWorkspace(ctx context.Context, workspa
 }
 
 const listGitlabProjectMembersByWorkspace = `-- name: ListGitlabProjectMembersByWorkspace :many
-SELECT m.gl_user_id, m.gl_username, m.gl_name, m.gl_avatar_url, m.access_level
+SELECT DISTINCT ON (m.gl_user_id)
+  m.gl_user_id, m.gl_username, m.gl_name, m.gl_avatar_url, m.access_level,
+  oi.user_id AS tessera_user_id,
+  gc.user_id AS tessera_user_id_pat
 FROM gitlab_project_members m
 JOIN gitlab_integrations i ON i.id = m.integration_id
-WHERE i.workspace_id = $1 ORDER BY m.gl_name
+LEFT JOIN oauth_identities oi ON oi.provider = 'gitlab' AND oi.provider_username = m.gl_username
+LEFT JOIN gitlab_credentials gc ON gc.gl_username = m.gl_username
+WHERE i.workspace_id = $1
+ORDER BY m.gl_user_id, m.gl_name
 `
 
 type ListGitlabProjectMembersByWorkspaceRow struct {
-	GlUserID    int64  `json:"gl_user_id"`
-	GlUsername  string `json:"gl_username"`
-	GlName      string `json:"gl_name"`
-	GlAvatarUrl string `json:"gl_avatar_url"`
-	AccessLevel int32  `json:"access_level"`
+	GlUserID         int64      `json:"gl_user_id"`
+	GlUsername       string     `json:"gl_username"`
+	GlName           string     `json:"gl_name"`
+	GlAvatarUrl      string     `json:"gl_avatar_url"`
+	AccessLevel      int32      `json:"access_level"`
+	TesseraUserID    *uuid.UUID `json:"tessera_user_id"`
+	TesseraUserIDPat *uuid.UUID `json:"tessera_user_id_pat"`
 }
 
+// ListGitlabProjectMembersByWorkspace returns the assignable GitLab roster, each
+// annotated with the Tessera user it maps to (via OAuth identity or connected PAT),
+// so the UI can dedup members that already have a Tessera account.
 func (q *Queries) ListGitlabProjectMembersByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListGitlabProjectMembersByWorkspaceRow, error) {
 	rows, err := q.db.Query(ctx, listGitlabProjectMembersByWorkspace, workspaceID)
 	if err != nil {
@@ -696,6 +707,8 @@ func (q *Queries) ListGitlabProjectMembersByWorkspace(ctx context.Context, works
 			&i.GlName,
 			&i.GlAvatarUrl,
 			&i.AccessLevel,
+			&i.TesseraUserID,
+			&i.TesseraUserIDPat,
 		); err != nil {
 			return nil, err
 		}

@@ -138,6 +138,8 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	}
 	// Group-membership → workspace access, refreshed on every login.
 	h.applyOrgMap(c, p, token, glUser, user)
+	// Mirror the GitLab avatar onto the Tessera account (once, when none is set).
+	h.syncOAuthAvatar(c, p, token, glUser, user)
 
 	access, refresh, ok := h.mintTokens(c, user)
 	if !ok {
@@ -203,6 +205,22 @@ func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glU
 	h.acceptPendingInvitations(c, user)
 	h.upsertIdentity(c, user.ID, providerUserID, glUser, p.GlBaseUrl)
 	return user, nil
+}
+
+// syncOAuthAvatar stores the GitLab avatar as the user's Tessera avatar, but only
+// when they have none — a manually uploaded avatar is never overwritten. Best-effort.
+func (h *AuthHandler) syncOAuthAvatar(c *gin.Context, p db.OauthProvider, token string, glUser gitlab.OAuthUserInfo, user db.User) {
+	if glUser.AvatarURL == "" {
+		return
+	}
+	if has, err := h.q.UserHasAvatar(c, user.ID); err == nil && has {
+		return
+	}
+	ct, data, err := gitlab.FetchAvatar(c, p.GlBaseUrl, glUser.AvatarURL, token)
+	if err != nil || len(data) == 0 {
+		return
+	}
+	_ = h.q.UpsertUserAvatar(c, db.UpsertUserAvatarParams{UserID: user.ID, ContentType: ct, Bytes: data})
 }
 
 func (h *AuthHandler) upsertIdentity(c *gin.Context, userID uuid.UUID, providerUserID string, glUser gitlab.OAuthUserInfo, baseURL string) {

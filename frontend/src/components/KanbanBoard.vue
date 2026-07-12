@@ -111,7 +111,11 @@ const membersList = computed(() => Object.values(membersMap))
 // Project milestones («Этап»), keyed by id; cards/modal resolve a task's milestone_id.
 const milestonesMap = reactive({})
 const milestonesList = computed(() => Object.values(milestonesMap))
-const gitlabMembersList = computed(() => Object.values(gitlabMembersMap))
+// GitLab roster minus members that already map to a Tessera user in this workspace
+// (they appear in the Tessera member list instead — avoids showing one person twice).
+const gitlabMembersList = computed(() =>
+  Object.values(gitlabMembersMap).filter((g) => !(g.tessera_user_id && membersMap[g.tessera_user_id])),
+)
 
 // view controls (layout comes from the store, above)
 const subtasksExpanded = ref(false) // full property cards vs compact rows
@@ -327,9 +331,15 @@ const dueOptions = [
   { label: 'Без срока', value: 'none' },
 ]
 const priorityFilterOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
-const memberFilterOptions = computed(() =>
-  membersList.value.map((m) => ({ label: m.name, value: m.user_id })),
-)
+const memberFilterOptions = computed(() => [
+  ...membersList.value.map((m) => ({ label: m.name, value: m.user_id })),
+  // GitLab-only assignees (no Tessera account) — value prefixed `gl:` so the filter
+  // matches against gitlab_assignee_logins.
+  ...gitlabMembersList.value.map((g) => ({
+    label: `${g.gl_name || g.gl_username} (GitLab)`,
+    value: `gl:${g.gl_username}`,
+  })),
+])
 // Tag filter menu, grouped by prefix (friendly names). Naive `type:'group'`
 // renders inline section headers — works on desktop and the mobile drill alike.
 // A single prefix-less bucket stays flat (no redundant header).
@@ -385,9 +395,17 @@ const facetChips = computed(() => {
   filters.priorities.forEach((p) =>
     out.push({ kind: 'priority', value: p, label: `Приоритет: ${PRIORITY_LABELS[p]}` }),
   )
-  filters.assignees.forEach((a) =>
-    out.push({ kind: 'assignee', value: a, label: `Исполнитель: ${membersMap[a]?.name || '—'}` }),
-  )
+  filters.assignees.forEach((a) => {
+    let name
+    if (typeof a === 'string' && a.startsWith('gl:')) {
+      const u = a.slice(3)
+      const g = gitlabMembersList.value.find((x) => x.gl_username === u)
+      name = (g && (g.gl_name || g.gl_username)) || u
+    } else {
+      name = membersMap[a]?.name || '—'
+    }
+    out.push({ kind: 'assignee', value: a, label: `Исполнитель: ${name}` })
+  })
   filters.tags.forEach((t) =>
     out.push({ kind: 'tag', value: t, label: `Тег: ${tagsMap[t]?.name || '—'}` }),
   )
@@ -1192,7 +1210,13 @@ const filteredTasks = computed(() => {
   let arr = allTasks.value
   if (filters.priorities.length) arr = arr.filter((t) => filters.priorities.includes(t.priority))
   if (filters.assignees.length)
-    arr = arr.filter((t) => (t.assignee_ids || []).some((a) => filters.assignees.includes(a)))
+    arr = arr.filter((t) => {
+      const ids = t.assignee_ids || []
+      const logins = t.gitlab_assignee_logins || []
+      return filters.assignees.some((a) =>
+        typeof a === 'string' && a.startsWith('gl:') ? logins.includes(a.slice(3)) : ids.includes(a),
+      )
+    })
   if (filters.tags.length)
     arr = arr.filter((t) => (t.tag_ids || []).some((id) => filters.tags.includes(id)))
   if (filters.statuses.length) arr = arr.filter((t) => filters.statuses.includes(t.column_id))
