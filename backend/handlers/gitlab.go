@@ -209,7 +209,16 @@ func (h *API) ListGitlabIntegrations(c *gin.Context) {
 	for _, integ := range rows {
 		views = append(views, h.fullIntegrationView(c, integ))
 	}
-	c.JSON(http.StatusOK, gin.H{"integrations": views, "default_rules": gitlab.DefaultRules()})
+	// service_configured: an instance-wide service token is set, so bindings can be
+	// configured/synced without a personal PAT. is_admin: only admins may mutate.
+	_, _, serviceOK := h.serviceGitlabConn(c)
+	caller, _ := h.q.GetUserByID(c, middleware.CurrentUser(c))
+	c.JSON(http.StatusOK, gin.H{
+		"integrations":       views,
+		"default_rules":      gitlab.DefaultRules(),
+		"service_configured": serviceOK,
+		"is_admin":           caller.IsAdmin,
+	})
 }
 
 // integrationRequest is the shared create/update body for a binding.

@@ -79,6 +79,10 @@ async function disconnect() {
 const integrations = ref([]) // list of binding views
 const currentId = ref(null) // selected binding id, or null for a new one
 const defaultRules = ref(null) // server-provided default rules for new bindings
+// Instance-wide service token configured (admin) → bindings work without a personal
+// PAT. isAdmin → the current user may create/edit/delete bindings.
+const serviceConfigured = ref(false)
+const isAdmin = ref(false)
 const name = ref('')
 const scope = ref('all') // 'all' | 'assigned'
 const closedPolicy = ref('archive_closed_sprints') // 'all' | 'archive_closed_sprints' | 'period'
@@ -253,6 +257,8 @@ async function loadList() {
     const { data } = await glApi.listIntegrations(props.wsId)
     integrations.value = data.integrations || []
     defaultRules.value = data.default_rules || null
+    serviceConfigured.value = data.service_configured === true
+    isAdmin.value = data.is_admin === true
     if (integrations.value.length) {
       await selectBinding(integrations.value[0].id)
     } else {
@@ -567,6 +573,13 @@ watch(
       <!-- ACCOUNT -->
       <section class="gl-sec">
         <h4 class="gl-h">Аккаунт</h4>
+        <p v-if="serviceConfigured" class="gl-wb-hint">
+          <n-text depth="3">
+            Синхронизация идёт под <b>системным сервисным токеном</b> (задаётся админом
+            в панели администрирования). Личный токен ниже подключать не обязательно —
+            он нужен лишь как запасной вариант для операций от вашего имени.
+          </n-text>
+        </p>
         <template v-if="gl.connected">
           <div class="gl-conn">
             <div>
@@ -607,9 +620,16 @@ watch(
         </template>
       </section>
 
-      <!-- INTEGRATION (only when connected) -->
-      <section v-if="gl.connected" class="gl-sec">
+      <!-- INTEGRATION — available when a personal PAT is connected OR an instance
+           service token is configured (admin). -->
+      <section v-if="gl.connected || serviceConfigured" class="gl-sec">
         <h4 class="gl-h">Привязки GitLab → доска</h4>
+        <p v-if="!isAdmin" class="gl-wb-hint">
+          <n-text depth="3">
+            Изменять привязки может только администратор. Вам доступен просмотр и запуск
+            синхронизации.
+          </n-text>
+        </p>
         <!-- Multi-binding selector: pick a binding to edit, add a new one, or
              delete the current one. -->
         <div class="gl-bindbar">
@@ -622,11 +642,11 @@ watch(
             style="flex: 1 1 auto"
             @update:value="selectBinding"
           />
-          <n-button size="small" tertiary title="Новая привязка" @click="newBinding">
+          <n-button size="small" tertiary title="Новая привязка" :disabled="!isAdmin" @click="newBinding">
             <template #icon><n-icon :component="AddOutline" /></template>
           </n-button>
           <n-popconfirm
-            v-if="currentId"
+            v-if="currentId && isAdmin"
             :positive-button-props="{ type: 'error' }"
             positive-text="Удалить"
             @positive-click="deleteBinding"
@@ -859,7 +879,16 @@ watch(
                 </n-dropdown>
               </n-button-group>
             </n-badge>
-            <n-button type="primary" size="medium" :loading="saving" @click="save">Сохранить</n-button>
+            <n-button
+              type="primary"
+              size="medium"
+              :loading="saving"
+              :disabled="!isAdmin"
+              :title="isAdmin ? '' : 'Изменять привязки может только администратор'"
+              @click="save"
+            >
+              Сохранить
+            </n-button>
           </div>
         </div>
       </section>
