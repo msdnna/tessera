@@ -55,6 +55,29 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 	return i, err
 }
 
+const getGitlabAvatarForUser = `-- name: GetGitlabAvatarForUser :one
+SELECT m.gl_avatar_url
+FROM gitlab_project_members m
+WHERE m.gl_avatar_url <> ''
+  AND m.gl_username IN (
+    SELECT oi.provider_username FROM oauth_identities oi WHERE oi.user_id = $1 AND oi.provider = 'gitlab'
+    UNION
+    SELECT gc.gl_username FROM gitlab_credentials gc WHERE gc.user_id = $1
+  )
+LIMIT 1
+`
+
+// GetGitlabAvatarForUser returns the (already-proxied) GitLab avatar URL for a
+// Tessera user, resolved from the synced project-member roster via their GitLab
+// identity (OAuth login or connected PAT). Lets an OAuth account show its GitLab
+// avatar without a separate download.
+func (q *Queries) GetGitlabAvatarForUser(ctx context.Context, userID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getGitlabAvatarForUser, userID)
+	var gl_avatar_url string
+	err := row.Scan(&gl_avatar_url)
+	return gl_avatar_url, err
+}
+
 const getGitlabUsernameForUser = `-- name: GetGitlabUsernameForUser :one
 SELECT provider_username FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1
 `

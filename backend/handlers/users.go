@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/auth"
 	"tessera/internal/db"
@@ -72,6 +74,10 @@ func buildUserDTO(c *gin.Context, q *db.Queries, u db.User) userDTO {
 	}
 	if has, err := q.UserHasAvatar(c, u.ID); err == nil && has {
 		dto.AvatarURL = "/api/users/" + u.ID.String() + "/avatar"
+	} else if av, aerr := q.GetGitlabAvatarForUser(c, u.ID); aerr == nil && av != "" {
+		// No uploaded avatar → fall back to the GitLab avatar from the synced roster
+		// (already a signed proxy URL that renders like the ones on cards).
+		dto.AvatarURL = av
 	}
 	return dto
 }
@@ -267,7 +273,14 @@ func (h *API) GetUserAvatar(c *gin.Context) {
 		return
 	}
 	av, err := h.q.GetUserAvatar(c, id)
-	if notFound(c, err) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No uploaded avatar → fall back to the synced GitLab avatar (a same-origin
+		// signed proxy URL); redirect so <img> loads it transparently.
+		if gl, gerr := h.q.GetGitlabAvatarForUser(c, id); gerr == nil && gl != "" {
+			c.Redirect(http.StatusFound, gl)
+			return
+		}
+		c.Status(http.StatusNotFound)
 		return
 	}
 	if err != nil {

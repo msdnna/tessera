@@ -85,45 +85,6 @@ func OAuthUser(ctx context.Context, baseURL, accessToken string) (OAuthUserInfo,
 	return u, nil
 }
 
-// FetchAvatar downloads a user's avatar image (GitLab-hosted or gravatar). A
-// relative/instance URL is resolved against baseURL; the access token is sent only
-// to the GitLab instance host (never to gravatar/external). Returns content-type + bytes.
-func FetchAvatar(ctx context.Context, baseURL, avatarURL, accessToken string) (string, []byte, error) {
-	if avatarURL == "" {
-		return "", nil, fmt.Errorf("no avatar url")
-	}
-	u := avatarURL
-	if !strings.HasPrefix(u, "http") {
-		u = strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(avatarURL, "/")
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return "", nil, err
-	}
-	if gb, e := url.Parse(strings.TrimRight(baseURL, "/")); e == nil && accessToken != "" {
-		if tu, e2 := url.Parse(u); e2 == nil && tu.Host == gb.Host {
-			req.Header.Set("Authorization", "Bearer "+accessToken)
-		}
-	}
-	resp, err := NewHTTPClient().Do(req)
-	if err != nil {
-		return "", nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return "", nil, fmt.Errorf("avatar http %d", resp.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		return "", nil, err
-	}
-	ct := resp.Header.Get("Content-Type")
-	if ct == "" || !strings.HasPrefix(ct, "image/") {
-		ct = "image/png"
-	}
-	return ct, data, nil
-}
-
 // OAuthUserGroupPaths returns the set of GitLab group full-paths the user belongs
 // to (any access level), used to match the org_map. Paginated; capped defensively.
 func OAuthUserGroupPaths(ctx context.Context, baseURL, accessToken string) (map[string]bool, error) {
