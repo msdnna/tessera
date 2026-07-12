@@ -1045,7 +1045,13 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 	_ = h.q.DeleteGitlabSourcedAssignees(ctx, taskID) // only the sync-made set is rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))
 	for _, p := range people {
-		if uid, err := h.q.GetUserIDByGitlabUsername(ctx, p.Login); err == nil {
+		// Resolve the GitLab assignee to a Tessera user by their connected PAT
+		// credential, else by a "Login with GitLab" OAuth identity (canonical link).
+		uid, err := h.q.GetUserIDByGitlabUsername(ctx, p.Login)
+		if err != nil {
+			uid, err = h.q.GetUserIDByOAuthUsername(ctx, p.Login)
+		}
+		if err == nil {
 			_ = h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"})
 			tesseraIDs = append(tesseraIDs, uid)
 		} else {

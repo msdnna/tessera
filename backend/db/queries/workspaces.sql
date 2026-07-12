@@ -40,6 +40,9 @@ VALUES ($1, $2, $3)
 ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role
 RETURNING *;
 
+-- name: GetMembershipRole :one
+SELECT role FROM memberships WHERE workspace_id = $1 AND user_id = $2;
+
 -- name: GetMembership :one
 SELECT * FROM memberships WHERE workspace_id = $1 AND user_id = $2;
 

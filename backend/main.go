@@ -41,7 +41,7 @@ func main() {
 
 	versionHandler := handlers.NewVersionHandler(appVersion)
 	wsHandler := handlers.NewWSHandler(hub)
-	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, mailer, cfg.PublicURL)
+	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	rh := handlers.NewAPI(queries, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	// Give boards/notes that predate the slug column a human-readable slug.
 	rh.BackfillSlugs(context.Background())
@@ -84,6 +84,10 @@ func main() {
 		api.POST("/auth/verify-email", authHandler.VerifyEmail)
 		api.POST("/auth/forgot-password", authHandler.ForgotPassword)
 		api.POST("/auth/reset-password", authHandler.ResetPassword)
+		// GitLab OAuth ("Login with GitLab"): public discovery + redirect flow.
+		api.GET("/auth/providers", authHandler.Providers)
+		api.GET("/auth/gitlab/authorize", authHandler.GitlabAuthorize)
+		api.GET("/auth/gitlab/callback", authHandler.GitlabCallback)
 
 		// Live updates. Per-workspace scoping + WS auth land in a later phase.
 		api.GET("/ws", wsHandler.Connect)
@@ -145,6 +149,9 @@ func main() {
 			protected.PATCH("/admin/users/:id/active", rh.SetUserActive)
 			protected.PATCH("/admin/users/:id/admin", rh.SetUserAdmin)
 			protected.POST("/admin/users/:id/reset-link", rh.CreateUserResetLink)
+			// GitLab OAuth app config (admin-only).
+			protected.GET("/admin/oauth/gitlab", rh.GetOAuthConfig)
+			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)
 
 			// Project groups & projects (nested under a workspace).
 			protected.POST("/workspaces/:id/groups", rh.CreateProjectGroup)

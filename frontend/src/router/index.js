@@ -28,6 +28,13 @@ const routes = [
   },
   // Accepting an invite needs a signed-in session (the email must match).
   { path: '/invite', component: () => import('@/views/AcceptInviteView.vue') },
+  // GitLab OAuth handoff: parses the session from the URL fragment. `open` so it
+  // runs regardless of the (about-to-change) auth state.
+  {
+    path: '/oauth/callback',
+    component: () => import('@/views/OAuthCallbackView.vue'),
+    meta: { open: true },
+  },
   {
     path: '/',
     component: () => import('@/components/AppLayout.vue'),

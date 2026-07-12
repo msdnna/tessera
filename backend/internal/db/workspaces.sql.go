@@ -109,6 +109,22 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (M
 	return i, err
 }
 
+const getMembershipRole = `-- name: GetMembershipRole :one
+SELECT role FROM memberships WHERE workspace_id = $1 AND user_id = $2
+`
+
+type GetMembershipRoleParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	UserID      uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetMembershipRole(ctx context.Context, arg GetMembershipRoleParams) (string, error) {
+	row := q.db.QueryRow(ctx, getMembershipRole, arg.WorkspaceID, arg.UserID)
+	var role string
+	err := row.Scan(&role)
+	return role, err
+}
+
 const getWorkspace = `-- name: GetWorkspace :one
 SELECT id, name, owner_id, created_at, updated_at, task_counter, estimation FROM workspaces WHERE id = $1
 `

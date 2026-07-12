@@ -83,6 +83,10 @@ export const auth = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   me: () => api.get('/auth/me'),
+  // Which external login providers are enabled (for the "Continue with GitLab" button).
+  providers: () => api.get('/auth/providers'),
+  // Full-page navigation target that starts the GitLab OAuth redirect flow.
+  gitlabAuthorizeUrl: () => `${apiBaseURL()}/auth/gitlab/authorize`,
 }
 
 export const accountFlows = {
@@ -115,6 +119,9 @@ export const admin = {
   setActive: (id, active) => api.patch(`/admin/users/${id}/active`, { active }),
   setAdmin: (id, isAdmin) => api.patch(`/admin/users/${id}/admin`, { admin: isAdmin }),
   resetLink: (id) => api.post(`/admin/users/${id}/reset-link`),
+  // GitLab OAuth app config.
+  getOAuth: () => api.get('/admin/oauth/gitlab'),
+  setOAuth: (data) => api.put('/admin/oauth/gitlab', data),
 }
 
 export const workspaces = {

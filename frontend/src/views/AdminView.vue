@@ -1,7 +1,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { NButton, NTag, NPopconfirm, NIcon, NSpin, NInput, useMessage } from 'naive-ui'
-import { ShieldCheckmarkOutline, KeyOutline, SearchOutline } from '@vicons/ionicons5'
+import { NButton, NTag, NPopconfirm, NIcon, NSpin, NInput, NSwitch, useMessage } from 'naive-ui'
+import {
+  ShieldCheckmarkOutline,
+  KeyOutline,
+  SearchOutline,
+  LogoGitlab,
+} from '@vicons/ionicons5'
 import { admin } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -79,7 +84,65 @@ async function copyResetLink(u) {
   }
 }
 
-onMounted(load)
+// ── GitLab OAuth app config ──
+const oauth = ref({
+  gl_base_url: '',
+  client_id: '',
+  client_secret: '',
+  enabled: false,
+  org_map: '{}',
+  has_secret: false,
+})
+const oauthSaving = ref(false)
+const callbackUrl = computed(() => `${window.location.origin}/api/auth/gitlab/callback`)
+
+async function loadOAuth() {
+  try {
+    const { data } = await admin.getOAuth()
+    oauth.value = {
+      gl_base_url: data.gl_base_url || '',
+      client_id: data.client_id || '',
+      client_secret: '',
+      enabled: data.enabled === true,
+      org_map: JSON.stringify(data.org_map ?? {}, null, 2),
+      has_secret: data.has_secret === true,
+    }
+  } catch {
+    /* first-time config: keep defaults */
+  }
+}
+
+async function saveOAuth() {
+  let orgMap
+  try {
+    orgMap = JSON.parse(oauth.value.org_map || '{}')
+  } catch {
+    message.error('org_map: некорректный JSON')
+    return
+  }
+  oauthSaving.value = true
+  try {
+    const { data } = await admin.setOAuth({
+      gl_base_url: oauth.value.gl_base_url.trim(),
+      client_id: oauth.value.client_id.trim(),
+      client_secret: oauth.value.client_secret, // empty keeps the stored one
+      enabled: oauth.value.enabled,
+      org_map: orgMap,
+    })
+    oauth.value.client_secret = ''
+    oauth.value.has_secret = data.has_secret === true
+    message.success('Настройки GitLab OAuth сохранены')
+  } catch (e) {
+    message.error(e.response?.data?.error || e.message)
+  } finally {
+    oauthSaving.value = false
+  }
+}
+
+onMounted(() => {
+  load()
+  loadOAuth()
+})
 </script>
 
 <template>
@@ -92,6 +155,51 @@ onMounted(load)
           Администрирование
         </h2>
         <span class="sub">Пользователи экземпляра — {{ users.length }}</span>
+      </div>
+
+      <!-- GitLab OAuth ("Войти через GitLab") -->
+      <div class="oauth-card">
+        <h3 class="oauth-h">
+          <n-icon :component="LogoGitlab" class="oauth-ic" /> Вход через GitLab (OAuth)
+        </h3>
+        <p class="oauth-hint">
+          Создайте OAuth-приложение в GitLab (Admin → Applications или в группе) с
+          scope <code>read_api</code> и Redirect URI:
+          <code>{{ callbackUrl }}</code>
+        </p>
+        <div class="oauth-grid">
+          <label>URL GitLab</label>
+          <n-input v-model:value="oauth.gl_base_url" size="small" placeholder="https://gitlab.example.com" />
+          <label>Application ID</label>
+          <n-input v-model:value="oauth.client_id" size="small" placeholder="client id" />
+          <label>Secret</label>
+          <n-input
+            v-model:value="oauth.client_secret"
+            type="password"
+            show-password-on="click"
+            size="small"
+            :placeholder="oauth.has_secret ? '•••••• (сохранён; введите, чтобы заменить)' : 'client secret'"
+          />
+          <label>Включён</label>
+          <div><n-switch v-model:value="oauth.enabled" /></div>
+          <label>
+            Org map
+            <span class="oauth-sub">GL-группа → доступ к пространству</span>
+          </label>
+          <n-input
+            v-model:value="oauth.org_map"
+            type="textarea"
+            size="small"
+            :autosize="{ minRows: 4, maxRows: 14 }"
+            placeholder='{ "group/path": { "workspace_id": "uuid", "admins": ["login"], "users": true } }'
+            class="oauth-mono"
+          />
+        </div>
+        <div class="oauth-foot">
+          <n-button type="primary" size="small" :loading="oauthSaving" @click="saveOAuth">
+            Сохранить
+          </n-button>
+        </div>
       </div>
 
       <n-input v-model:value="query" placeholder="Поиск по имени или почте" clearable class="search">
@@ -198,6 +306,60 @@ onMounted(load)
 .search {
   margin-bottom: 14px;
   max-width: 360px;
+}
+.oauth-card {
+  border: 1px solid var(--t-border);
+  background: var(--t-surface);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.oauth-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--t-text1);
+}
+.oauth-ic {
+  color: var(--t-primary);
+}
+.oauth-hint {
+  font-size: 12px;
+  color: var(--t-text3);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.oauth-hint code {
+  background: var(--t-fill-2, rgba(140, 140, 160, 0.14));
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.oauth-grid {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 10px 12px;
+  align-items: center;
+}
+.oauth-grid > label {
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.oauth-sub {
+  display: block;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.oauth-mono :deep(textarea) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.oauth-foot {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
 }
 .list {
   display: flex;

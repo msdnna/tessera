@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -12,21 +13,28 @@ import (
 	"tessera/internal/auth"
 	"tessera/internal/db"
 	"tessera/internal/mail"
+	"tessera/internal/secrets"
 	"tessera/middleware"
 )
 
-// AuthHandler serves the authentication endpoints (login, refresh, invites, reset).
+// AuthHandler serves the authentication endpoints (login, refresh, invites, reset,
+// GitLab OAuth).
 type AuthHandler struct {
 	q         *db.Queries
 	secret    string
+	sealer    *secrets.Sealer // decrypts the OAuth client secret at rest
 	mailer    mail.Mailer
 	publicURL string
 }
 
 // NewAuthHandler returns an AuthHandler with the given queries, signing secret,
-// mailer, and public base URL.
-func NewAuthHandler(q *db.Queries, secret string, mailer mail.Mailer, publicURL string) *AuthHandler {
-	return &AuthHandler{q: q, secret: secret, mailer: mailer, publicURL: publicURL}
+// encryption key (for the OAuth client secret), mailer, and public base URL.
+func NewAuthHandler(q *db.Queries, secret, encryptionKey string, mailer mail.Mailer, publicURL string) *AuthHandler {
+	sealer, err := secrets.NewSealer(encryptionKey)
+	if err != nil {
+		log.Fatalf("failed to init auth secret sealer: %v", err)
+	}
+	return &AuthHandler{q: q, secret: secret, sealer: sealer, mailer: mailer, publicURL: publicURL}
 }
 
 type authResponse struct {
@@ -166,17 +174,19 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	})
 }
 
-// issue mints an access + refresh pair and stores the refresh hash.
-func (h *AuthHandler) issue(c *gin.Context, user db.User) {
+// mintTokens creates an access + refresh pair and stores the refresh hash. On
+// failure it writes a 500 and returns ok=false. Shared by issue() (JSON response)
+// and the OAuth callback (redirect handoff).
+func (h *AuthHandler) mintTokens(c *gin.Context, user db.User) (access, refresh string, ok bool) {
 	access, err := auth.NewAccessToken(h.secret, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return
+		return "", "", false
 	}
 	refresh, hash, err := auth.NewRefreshToken()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return
+		return "", "", false
 	}
 	if _, err := h.q.CreateRefreshToken(c, db.CreateRefreshTokenParams{
 		UserID:    user.ID,
@@ -184,6 +194,15 @@ func (h *AuthHandler) issue(c *gin.Context, user db.User) {
 		ExpiresAt: time.Now().Add(auth.RefreshTokenTTL),
 	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return "", "", false
+	}
+	return access, refresh, true
+}
+
+// issue mints an access + refresh pair and returns them with the user profile.
+func (h *AuthHandler) issue(c *gin.Context, user db.User) {
+	access, refresh, ok := h.mintTokens(c, user)
+	if !ok {
 		return
 	}
 	c.JSON(http.StatusOK, authResponse{

@@ -53,6 +53,21 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('tessera_user', JSON.stringify(u))
   }
 
+  // loginWithTokens completes an OAuth redirect handoff: the callback delivers the
+  // access + refresh pair in the URL fragment (no user/preferences), so we persist
+  // them and then load the profile via /auth/me.
+  async function loginWithTokens(access, refresh) {
+    token.value = access
+    refreshToken.value = refresh || ''
+    localStorage.setItem('tessera_token', token.value)
+    if (refreshToken.value) localStorage.setItem('tessera_refresh_token', refreshToken.value)
+    else localStorage.removeItem('tessera_refresh_token')
+    const res = await auth.me()
+    user.value = res.data.user
+    localStorage.setItem('tessera_user', JSON.stringify(user.value))
+    if (res.data.preferences) useThemeStore().hydrate(res.data.preferences)
+  }
+
   // verify confirms a stored token is still valid on app start.
   async function verify() {
     if (!token.value) return
@@ -77,5 +92,6 @@ export const useAuthStore = defineStore('auth', () => {
     verify,
     setAuth,
     setUser,
+    loginWithTokens,
   }
 })

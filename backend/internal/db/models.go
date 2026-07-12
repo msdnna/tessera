@@ -277,6 +277,29 @@ type NotificationRoute struct {
 	UpdatedAt  time.Time   `json:"updated_at"`
 }
 
+type OauthIdentity struct {
+	ID               uuid.UUID `json:"id"`
+	UserID           uuid.UUID `json:"user_id"`
+	Provider         string    `json:"provider"`
+	ProviderUserID   string    `json:"provider_user_id"`
+	ProviderUsername string    `json:"provider_username"`
+	ProviderEmail    string    `json:"provider_email"`
+	GlBaseUrl        string    `json:"gl_base_url"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type OauthProvider struct {
+	Provider        string    `json:"provider"`
+	ClientID        string    `json:"client_id"`
+	ClientSecretEnc string    `json:"client_secret_enc"`
+	GlBaseUrl       string    `json:"gl_base_url"`
+	Enabled         bool      `json:"enabled"`
+	OrgMap          []byte    `json:"org_map"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
 type Project struct {
 	ID          uuid.UUID        `json:"id"`
 	WorkspaceID uuid.UUID        `json:"workspace_id"`

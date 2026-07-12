@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.126.0] — 2026-07-12
+- **«Войти через GitLab»:** на экранах входа и регистрации — кнопка OAuth (видна,
+  когда провайдер включён через `/auth/providers`); полностраничный редирект на
+  `/api/auth/gitlab/authorize`. Новый роут `/oauth/callback` принимает сессию из
+  URL-fragment (токены не попадают в логи), грузит профиль через `/auth/me` и
+  чистит URL. Баннер ошибок OAuth на экране входа.
+- **Админка → «Вход через GitLab (OAuth)»:** карточка настройки OAuth-приложения
+  (URL GitLab, Application ID, Secret — «сохранён»-плейсхолдер, вкл/выкл, `org_map`
+  JSON-редактор) + подсказка с Redirect URI. `admin.getOAuth`/`setOAuth`.
+
 ### [0.125.0] — 2026-07-12
 - **Мультипривязка GitLab в модалке интеграции:** секция «Интеграция пространства»
   заменена на «Привязки GitLab → доска» со списком-селектором привязок
@@ -2281,6 +2291,25 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   (full drag & drop kanban lands in Phase 4).
 
 ## backend
+
+### [0.72.0] — 2026-07-12
+- **«Войти через GitLab» (OAuth) + единый маппинг идентичности** (миграция 0042):
+  - `oauth_providers` — admin-настраиваемое OAuth-приложение (client_id, зашифрованный
+    client_secret тем же AES-GCM, gl_base_url, enabled, `org_map` jsonb). Роуты
+    `GET/PUT /admin/oauth/gitlab` (только admin).
+  - Флоу Authorization Code (confidential app, без PKCE): `GET /auth/gitlab/authorize`
+    (redirect + CSRF-state в короткоживущей cookie) → `GET /auth/gitlab/callback`
+    (обмен кода, `/user`, провижнинг, `org_map`, выдача пары токенов через
+    URL-fragment). `GET /auth/providers` — публичный список включённых провайдеров.
+  - Провижнинг: известная identity → тот же юзер; совпадение email → линковка
+    (GL-email считаем верифицированным); иначе авто-регистрация (`provider='gitlab'`,
+    `password_hash=''` — bcrypt пустой строки не проходит, вход паролем невозможен;
+    `email_verified=true`, личное пространство, приём инвайтов).
+  - **AWX-style org_map**: `{ "<gl-группа>": { workspace_id, admins:[...], users:bool } }`
+    — на каждом входе членство в GL-группе выдаёт роль admin/member в целевом
+    пространстве (идемпотентно, не понижает owner). Требует scope `read_api`.
+  - `oauth_identities` — канонический линк GL↔Tessera; `reconcileAssignees` теперь
+    резолвит GL-ассайни и через него (не только через личный PAT).
 
 ### [0.71.0] — 2026-07-12
 - **GitLab: несколько привязок проект→доска на пространство** (миграция 0041): снят

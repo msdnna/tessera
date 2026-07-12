@@ -1,8 +1,10 @@
 <script setup>
-import { ref } from 'vue'
-import { NForm, NFormItem, NInput, NButton } from 'naive-ui'
+import { ref, onMounted } from 'vue'
+import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
+import { LogoGitlab } from '@vicons/ionicons5'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
 
 const email = ref('')
@@ -13,6 +15,34 @@ const errors = ref({}) // per-field validation messages
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
+
+const gitlabEnabled = ref(false)
+
+const OAUTH_ERRORS = {
+  state_mismatch: 'Сессия входа устарела. Попробуйте ещё раз.',
+  not_configured: 'Вход через GitLab не настроен.',
+  account_disabled: 'Учётная запись деактивирована.',
+  exchange_failed: 'Не удалось авторизоваться в GitLab.',
+  userinfo_failed: 'Не удалось получить профиль GitLab.',
+}
+
+onMounted(async () => {
+  // Show a banner if the OAuth callback bounced back with an error.
+  const oe = route.query.oauth_error
+  if (typeof oe === 'string' && oe) {
+    formError.value = OAUTH_ERRORS[oe] || 'Не удалось войти через GitLab.'
+  }
+  try {
+    const { data } = await auth.providers()
+    gitlabEnabled.value = data?.gitlab === true
+  } catch {
+    gitlabEnabled.value = false
+  }
+})
+
+function loginWithGitlab() {
+  window.location.href = auth.gitlabAuthorizeUrl()
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -71,9 +101,40 @@ async function submit() {
       </n-form-item>
       <n-button type="primary" block :loading="loading" @click="submit">Войти</n-button>
     </n-form>
+    <template v-if="gitlabEnabled">
+      <div class="auth-or"><span>или</span></div>
+      <n-button block class="gl-oauth-btn" @click="loginWithGitlab">
+        <template #icon><n-icon :component="LogoGitlab" /></template>
+        Войти через GitLab
+      </n-button>
+    </template>
     <div class="auth-foot">
       <router-link to="/forgot-password">Забыли пароль?</router-link>
     </div>
     <div class="auth-foot">Нет аккаунта? <router-link to="/register">Регистрация</router-link></div>
   </auth-layout>
 </template>
+
+<style scoped>
+.auth-or {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 14px 0 12px;
+  color: var(--t-text-3, #8a8a99);
+  font-size: 12px;
+}
+.auth-or::before,
+.auth-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--t-border, rgba(140, 140, 160, 0.25));
+}
+.auth-or span {
+  padding: 0 10px;
+}
+.gl-oauth-btn {
+  --n-border-hover: var(--t-accent, #7c5cff);
+}
+</style>
