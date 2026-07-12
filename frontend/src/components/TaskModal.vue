@@ -29,6 +29,7 @@ import {
   CheckmarkCircle,
   EllipseOutline,
   ArchiveOutline,
+  ArrowUndoOutline,
   GitMergeOutline,
   LogoGitlab,
   RepeatOutline,
@@ -86,8 +87,11 @@ const props = defineProps({
   gitlabCanCreate: { type: Boolean, default: false },
   gitlabFetchTemplates: { type: Boolean, default: false },
   gitlabIntegrationId: { type: String, default: null },
+  // Archive view: the task is shown read-only (no edits/comments); the footer
+  // offers Restore instead of Save/Archive/Delete.
+  readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['update:show', 'changed', 'open'])
+const emit = defineEmits(['update:show', 'changed', 'open', 'restore'])
 
 const store = useWorkspacesStore()
 const theme = useThemeStore()
@@ -392,6 +396,7 @@ function buildPayload() {
 }
 // Tappable fields persist immediately; Save commits the text fields.
 async function applyMeta() {
+  if (props.readonly) return
   try {
     const res = await tasksApi.update(props.taskId, buildPayload())
     task.value = res.data
@@ -522,6 +527,7 @@ async function createGlIssue() {
   }
 }
 async function save() {
+  if (props.readonly) return
   try {
     await tasksApi.update(props.taskId, buildPayload())
     emit('changed')
@@ -736,6 +742,7 @@ function startEditComment(c) {
   editingCommentBody.value = c.body
 }
 async function saveComment() {
+  if (props.readonly) return
   const body = editingCommentBody.value.trim()
   if (!body) return
   try {
@@ -957,9 +964,14 @@ function eventText(e) {
             <n-icon :component="LogoGitlab" :size="13" />
             <span>GitLab !{{ task.gitlab.iid }}</span>
           </a>
-          <n-input v-model:value="title" placeholder="Название задачи" class="title-input plain" />
+          <n-input
+            v-model:value="title"
+            placeholder="Название задачи"
+            class="title-input plain"
+            :readonly="readonly"
+          />
 
-          <div class="props">
+          <div class="props" :class="{ 'tm-ro': readonly }">
             <!-- priority -->
             <div class="prow">
               <span class="plabel"><n-icon :component="FlagOutline" :size="15" /> Приоритет</span>
@@ -1332,7 +1344,13 @@ function eventText(e) {
                 @update:value="applyGlTemplate"
               />
             </div>
+            <RichContent
+              v-if="readonly"
+              :source="description || '_Нет описания_'"
+              :members="members"
+            />
             <MarkdownEditor
+              v-else
               :key="taskId"
               v-model="description"
               placeholder="Добавьте описание…"
@@ -1414,7 +1432,7 @@ function eventText(e) {
                   </div>
                 </div>
                 <div v-if="!comments.length" class="empty-hint">Комментариев пока нет</div>
-                <div class="comment-add">
+                <div v-if="!readonly" class="comment-add">
                   <MarkdownEditor
                     ref="commentEditor"
                     v-model="newComment"
@@ -1622,7 +1640,17 @@ function eventText(e) {
       </n-spin>
 
       <template #footer>
-        <div class="footer">
+        <div v-if="readonly" class="footer">
+          <span class="ro-note">Архивная задача — только просмотр</span>
+          <n-space :wrap="false" :size="8">
+            <n-button @click="close">Закрыть</n-button>
+            <n-button type="primary" @click="emit('restore', taskId)">
+              <template #icon><n-icon :component="ArrowUndoOutline" /></template>
+              Вернуть из архива
+            </n-button>
+          </n-space>
+        </div>
+        <div v-else class="footer">
           <n-space :wrap="false" :size="8">
             <n-popconfirm
               :positive-text="archiveHasSubs ? 'В архив вместе' : 'В архив'"
@@ -2079,6 +2107,14 @@ function eventText(e) {
   justify-content: space-between;
   flex-wrap: nowrap;
   gap: 8px;
+}
+/* Read-only (archive) modal: property pills become display-only so nothing edits. */
+.props.tm-ro :is(.pill, button, .n-select, .n-tag, [role='button']) {
+  pointer-events: none;
+}
+.ro-note {
+  font-size: 12px;
+  color: #b5792a;
 }
 /* Remove naive's tab-strip scroll shadow (shows in the overflow gutter on
    mobile where the tabs scroll horizontally). */

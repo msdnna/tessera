@@ -7,12 +7,14 @@ import {
   ArchiveOutline,
   CheckmarkOutline,
 } from '@vicons/ionicons5'
+import { useRoute, useRouter } from 'vue-router'
 import { useBoardViewStore } from '@/stores/boardView'
 import TagManager from './TagManager.vue'
-import ArchiveModal from './ArchiveModal.vue'
 import TesseraIcon from './TesseraIcon.vue'
 
 const store = useBoardViewStore()
+const route = useRoute()
+const router = useRouter()
 const tagsOpen = ref(false)
 
 const renderIcon = (comp) => () => h(NIcon, null, { default: () => h(comp) })
@@ -48,7 +50,11 @@ function renderLabel(option) {
 function onSelect(key) {
   if (key.startsWith('layout:')) store.layout = key.slice(7)
   else if (key === 'tags') tagsOpen.value = true
-  else if (key === 'archive') store.archiveOpen = true
+  else if (key === 'archive') {
+    const q = { ...route.query, archived: '1' }
+    delete q.milestone
+    router.push({ query: q })
+  }
 }
 function onChanged() {
   store.bumpReload()
@@ -73,6 +79,4 @@ function onChanged() {
       <TagManager :project-id="store.projectId" :tags="store.tagsList" @changed="onChanged" />
     </n-card>
   </n-modal>
-
-  <ArchiveModal v-model:show="store.archiveOpen" :board-id="store.boardId" @changed="onChanged" />
 </template>

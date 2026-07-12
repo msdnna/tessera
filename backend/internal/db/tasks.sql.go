@@ -364,18 +364,21 @@ LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
-WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
+WHERE t.board_id = $1 AND t.parent_id IS NULL
+  -- Active board (archived_at IS NULL) or the read-only archive view (IS NOT NULL).
+  AND (($2::boolean AND t.archived_at IS NOT NULL) OR (NOT $2::boolean AND t.archived_at IS NULL))
   AND (
-    (NOT $2::boolean AND $3::uuid IS NULL)             -- all (no scope)
-    OR ($2::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
-    OR ($3::uuid IS NOT NULL AND t.milestone_id = $3) -- one milestone
+    (NOT $3::boolean AND $4::uuid IS NULL)             -- all (no scope)
+    OR ($3::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
+    OR ($4::uuid IS NOT NULL AND t.milestone_id = $4) -- one milestone
   )
 GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name, gl.gl_author_avatar_url
-ORDER BY t.position
+ORDER BY CASE WHEN $2::boolean THEN t.archived_at END DESC NULLS LAST, t.position
 `
 
 type ListBoardTasksWithMetaParams struct {
 	BoardID     uuid.UUID  `json:"board_id"`
+	Archived    bool       `json:"archived"`
 	Backlog     bool       `json:"backlog"`
 	MilestoneID *uuid.UUID `json:"milestone_id"`
 }
@@ -418,8 +421,14 @@ type ListBoardTasksWithMetaRow struct {
 // ListBoardTasksWithMeta returns top-level board tasks with their tag and
 // assignee ids aggregated, so the kanban can render chips and group by tag
 // without an extra round-trip per card.
+// Newest-archived first in the archive; board position otherwise.
 func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasksWithMetaParams) ([]ListBoardTasksWithMetaRow, error) {
-	rows, err := q.db.Query(ctx, listBoardTasksWithMeta, arg.BoardID, arg.Backlog, arg.MilestoneID)
+	rows, err := q.db.Query(ctx, listBoardTasksWithMeta,
+		arg.BoardID,
+		arg.Archived,
+		arg.Backlog,
+		arg.MilestoneID,
+	)
 	if err != nil {
 		return nil, err
 	}

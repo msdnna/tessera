@@ -122,7 +122,8 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 	}
 	// Optional milestone scope (sprint navigation): ?milestone=<uuid> shows one
 	// sprint, ?milestone=backlog shows tasks with no milestone, absent shows all.
-	params := db.ListBoardTasksWithMetaParams{BoardID: boardID}
+	// ?archived=1 returns the board's archived tasks (read-only archive view).
+	params := db.ListBoardTasksWithMetaParams{BoardID: boardID, Archived: c.Query("archived") == "1"}
 	switch m := c.Query("milestone"); {
 	case m == "backlog":
 		params.Backlog = true

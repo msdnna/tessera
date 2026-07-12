@@ -31,14 +31,17 @@ LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
-WHERE t.board_id = @board_id AND t.parent_id IS NULL AND t.archived_at IS NULL
+WHERE t.board_id = @board_id AND t.parent_id IS NULL
+  -- Active board (archived_at IS NULL) or the read-only archive view (IS NOT NULL).
+  AND ((@archived::boolean AND t.archived_at IS NOT NULL) OR (NOT @archived::boolean AND t.archived_at IS NULL))
   AND (
     (NOT @backlog::boolean AND sqlc.narg('milestone_id')::uuid IS NULL)             -- all (no scope)
     OR (@backlog::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
     OR (sqlc.narg('milestone_id')::uuid IS NOT NULL AND t.milestone_id = sqlc.narg('milestone_id')) -- one milestone
   )
 GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name, gl.gl_author_avatar_url
-ORDER BY t.position;
+-- Newest-archived first in the archive; board position otherwise.
+ORDER BY CASE WHEN @archived::boolean THEN t.archived_at END DESC NULLS LAST, t.position;
 
 -- name: ListSubtasks :many
 SELECT * FROM tasks WHERE parent_id = $1 ORDER BY position;

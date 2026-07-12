@@ -1,16 +1,26 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { NButton, NPopover, NIcon } from 'naive-ui'
 import { PricetagsOutline, ArchiveOutline, RibbonOutline } from '@vicons/ionicons5'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import TagManager from './TagManager.vue'
-import ArchiveModal from './ArchiveModal.vue'
 import MilestoneManager from './MilestoneManager.vue'
 
 const store = useBoardViewStore()
 const wsStore = useWorkspacesStore()
+const route = useRoute()
+const router = useRouter()
 const msShow = ref(false)
+
+// Archive is a read-only scope of the board itself (?archived=1) — reuses all
+// filters/grouping. Drop any sprint scope when entering it.
+function openArchive() {
+  const q = { ...route.query, archived: '1' }
+  delete q.milestone
+  router.push({ query: q })
+}
 const projectName = computed(
   () => wsStore.projects.find((p) => p.id === store.projectId)?.name || '',
 )
@@ -43,12 +53,11 @@ function onChanged() {
       Этапы
     </n-button>
 
-    <n-button size="small" quaternary @click="store.archiveOpen = true">
+    <n-button size="small" quaternary @click="openArchive">
       <template #icon><n-icon :component="ArchiveOutline" /></template>
       Архив
     </n-button>
 
-    <ArchiveModal v-model:show="store.archiveOpen" :board-id="store.boardId" @changed="onChanged" />
     <MilestoneManager
       v-model:show="msShow"
       :project-id="store.projectId"

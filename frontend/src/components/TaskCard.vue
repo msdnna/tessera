@@ -23,6 +23,7 @@ import {
   WarningOutline,
   EllipsisHorizontal,
   ReorderThreeOutline,
+  ArrowUndoOutline,
 } from '@vicons/ionicons5'
 
 // Render a dropdown-option icon (naive's `icon` option field wants a render fn).
@@ -82,8 +83,11 @@ const props = defineProps({
   showEmpty: { type: Boolean, default: true },
   stackFields: { type: Boolean, default: false },
   cardSize: { type: String, default: 'medium' },
+  // Archive view: card is display-only (no inline edits/DnD/menu); shows a Restore
+  // affordance instead. Clicking the card still opens the read-only task modal.
+  readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed'])
+const emit = defineEmits(['open', 'changed', 'restore'])
 
 // A field is visible unless its customize toggle is explicitly false (missing key
 // defaults to shown → back-compat with older saved views).
@@ -155,6 +159,7 @@ function onTitleDblClick() {
   startTitleEdit()
 }
 function startTitleEdit() {
+  if (props.readonly) return
   titleEdit.value = props.task.title
   editingTitle.value = true
   nextTick(() => titleInput.value?.focus?.())
@@ -395,6 +400,7 @@ function baseOf(t) {
   }
 }
 function onCtx(e, target) {
+  if (props.readonly) return // archive view: no context menu
   if (pressMoved()) return // the finger moved (a drag) — don't pop the menu
   ctxTarget.value = target || props.task
   ctxShow.value = false
@@ -559,6 +565,7 @@ function subDue(s) {
   return formatDue(s.due_date)
 }
 async function toggleSubDone(s) {
+  if (props.readonly) return
   await tasksApi.update(s.id, {
     title: s.title,
     description: s.description || '',
@@ -595,15 +602,21 @@ async function submitAddSub() {
   <div class="tw">
     <div
       class="card"
-      :class="{ done, nested, 'has-subs': !nested && subtasks.length, 'has-prio': task.priority }"
+      :class="{ done, nested, 'has-subs': !nested && subtasks.length, 'has-prio': task.priority, 'tc-readonly': readonly }"
       :style="cardStyle"
       @click="emit('open', task.id)"
       @contextmenu.prevent.stop="onCtx"
     >
+      <!-- Archive view: a single Restore affordance replaces the edit action bar. -->
+      <div v-if="readonly && !nested" class="card-actions" @click.stop>
+        <button class="ca-btn ca-restore" title="Вернуть из архива" @click.stop="emit('restore', task.id)">
+          <n-icon :component="ArrowUndoOutline" :size="15" />
+        </button>
+      </div>
       <!-- hover quick-actions (a reference tracker-style): complete · add subtask · more.
            Hidden while renaming (they'd overlap the inline editor). On touch
            (no hover) complete + more persist — see @media(hover:none). -->
-      <div v-if="!nested && !editingTitle" class="card-actions" @click.stop>
+      <div v-if="!nested && !editingTitle && !readonly" class="card-actions" @click.stop>
         <button
           class="ca-btn ca-complete"
           :title="done ? 'Вернуть в работу' : 'Отметить выполненной'"
@@ -1184,6 +1197,17 @@ async function submitAddSub() {
 .card.has-subs {
   position: relative;
   z-index: 50;
+}
+/* Archive (read-only) card: property pills/checkboxes become display-only so a
+   click passes through to open the read-only modal; only the Restore button acts. */
+.card.tc-readonly .pill,
+.card.tc-readonly .check,
+.card.tc-readonly .assignee-pill,
+.card.tc-readonly .tag-chip {
+  pointer-events: none;
+}
+.card.tc-readonly .ca-restore {
+  color: #b5792a;
 }
 /* Hover action bar — floats over the card's top-right corner; revealed on hover
    (or keyboard focus within the card). Sits above the title, a reference tracker-style. */

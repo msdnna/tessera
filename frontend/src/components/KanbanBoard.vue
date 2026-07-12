@@ -25,6 +25,7 @@ import {
   SettingsOutline,
   RibbonOutline,
   CloseOutline,
+  ArchiveOutline,
 } from '@vicons/ionicons5'
 import {
   boards,
@@ -40,7 +41,6 @@ import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
-import { useOverlayBack } from '@/composables/useOverlayBack'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { tagNamespace, prefixLabel, buildTagGroups } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
@@ -258,6 +258,15 @@ const groupTags = computed(() =>
 // Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
 const sortLevels = ref([])
 const filters = reactive({ priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' })
+
+// Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
+// create, no inline edits) with a Restore action. Reuses all board filters/grouping.
+const archivedMode = computed(() => route.query.archived === '1')
+function exitArchive() {
+  const q = { ...route.query }
+  delete q.archived
+  router.replace({ query: q })
+}
 
 // Sprint scope (navigation overlay): ?milestone=<uuid|backlog>. Drives the
 // server-side task scope and shows a removable chip; clearing it returns the full
@@ -1023,9 +1032,6 @@ function closeTask() {
     router.replace({ query: q })
   }
 }
-// …and the board archive modal (shared via the store, rendered in two menus).
-const archiveOpen = computed(() => boardViewStore.archiveOpen)
-useOverlayBack(archiveOpen, () => (boardViewStore.archiveOpen = false))
 
 const dragging = ref(false) // reactive: also shown to cards for the nest dropzone
 let suppressReloadUntil = 0
@@ -1131,12 +1137,16 @@ async function load(id) {
   try {
     // Sprint navigation: the URL ?milestone=<uuid|backlog> scopes the board to one
     // milestone server-side, so a huge project never loads all its cards at once.
+    // ?archived=1 loads the read-only archive instead (subtasks skipped — they are
+    // archived together with their parents).
+    const archived = route.query.archived === '1'
     const ms = route.query.milestone
+    const params = archived ? { archived: 1 } : ms ? { milestone: ms } : undefined
     const [b, c, t, s] = await Promise.all([
       boards.get(id),
       boards.columns(id),
-      boards.tasks(id, ms ? { milestone: ms } : undefined),
-      boards.subtasks(id),
+      boards.tasks(id, params),
+      archived ? Promise.resolve({ data: [] }) : boards.subtasks(id),
     ])
     board.value = b.data
     columns.value = c.data || []
@@ -1675,11 +1685,23 @@ watch(
   () => applyTaskQuery(),
 )
 // Switching sprints on the same board (only the query changes, no remount) reloads
-// the milestone-scoped task set.
+// the milestone-scoped task set. Entering/leaving the archive reloads too.
 watch(
-  () => route.query.milestone,
+  () => [route.query.milestone, route.query.archived],
   () => load(props.boardId),
 )
+
+// Restore a task from the archive view (the only mutation allowed there).
+async function restoreFromArchive(taskId) {
+  try {
+    await tasksApi.restore(taskId)
+    allTasks.value = allTasks.value.filter((t) => t.id !== taskId)
+    rebuildLists()
+    message.success('Задача возвращена из архива')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
 </script>
 
 <template>
@@ -1690,6 +1712,12 @@ watch(
            a task-name search on the right. (Layout + Теги/Архив live in the
            global header now.) -->
       <div ref="subbarEl" class="subbar">
+        <!-- Archive banner: read-only view of archived tasks with all board filters. -->
+        <span v-if="archivedMode" class="ms-scope-chip archive-chip" title="Архив — только чтение">
+          <n-icon :component="ArchiveOutline" />
+          <span class="ms-scope-label">Архив (только чтение)</span>
+          <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="exitArchive" />
+        </span>
         <!-- Sprint scope chip (navigation overlay from the sidebar). Removing it
              returns the full board and de-highlights the sprint node. -->
         <span v-if="milestoneScope" class="ms-scope-chip" title="Показан один спринт">
@@ -1933,7 +1961,7 @@ watch(
           group="columns"
           item-key="key"
           handle=".col-drag"
-          :disabled="groupMode !== 'status'"
+          :disabled="groupMode !== 'status' || archivedMode"
           class="cols"
           :class="{ dragging }"
           :animation="150"
@@ -1983,6 +2011,7 @@ watch(
                 ghost-class="ghost"
                 filter=".add-sub, .sub-add-input"
                 :prevent-on-filter="false"
+                :disabled="archivedMode"
                 :animation="150"
                 :delay="160"
                 :delay-on-touch-only="true"
@@ -2018,29 +2047,33 @@ watch(
                       :show-empty="showEmpty"
                       :stack-fields="stackFields"
                       :card-size="cardSize"
+                      :readonly="archivedMode"
                       @open="openTask"
                       @changed="onChanged"
+                      @restore="restoreFromArchive"
                     />
                   </div>
                 </template>
               </draggable>
 
-              <div v-if="addingInColumn === dcol.key" class="add-task-input">
-                <n-input
-                  :ref="(el) => (taskInput = el)"
-                  v-model:value="newTaskTitle"
-                  type="textarea"
-                  size="small"
-                  :autosize="{ minRows: 1, maxRows: 4 }"
-                  placeholder="Название задачи, Enter — создать"
-                  @keyup.enter.prevent="submitAddTask(dcol)"
-                  @keyup.esc="cancelAddTask"
-                  @blur="submitAddTask(dcol)"
-                />
-              </div>
-              <n-button v-else text size="tiny" class="add-btn" @click="startAddTask(dcol)">
-                ＋ Создать задачу
-              </n-button>
+              <template v-if="!archivedMode">
+                <div v-if="addingInColumn === dcol.key" class="add-task-input">
+                  <n-input
+                    :ref="(el) => (taskInput = el)"
+                    v-model:value="newTaskTitle"
+                    type="textarea"
+                    size="small"
+                    :autosize="{ minRows: 1, maxRows: 4 }"
+                    placeholder="Название задачи, Enter — создать"
+                    @keyup.enter.prevent="submitAddTask(dcol)"
+                    @keyup.esc="cancelAddTask"
+                    @blur="submitAddTask(dcol)"
+                  />
+                </div>
+                <n-button v-else text size="tiny" class="add-btn" @click="startAddTask(dcol)">
+                  ＋ Создать задачу
+                </n-button>
+              </template>
             </div>
           </template>
         </draggable>
@@ -2087,9 +2120,11 @@ watch(
       :gitlab-can-create="gitlabCanCreate"
       :gitlab-fetch-templates="gitlabFetchTemplates"
       :gitlab-integration-id="gitlabIntegrationId"
+      :readonly="archivedMode"
       @update:show="(v) => v || closeTask()"
       @changed="onChanged"
       @open="openTask"
+      @restore="restoreFromArchive"
     />
 
     <BoardActivityToasts ref="activityToasts" @open="openTask" />
@@ -2157,6 +2192,12 @@ watch(
 }
 .ms-scope-x:hover {
   opacity: 1;
+}
+/* Archive banner: neutral amber tone to signal a read-only mode. */
+.archive-chip {
+  color: #b5792a;
+  background: color-mix(in srgb, #e0922f 15%, transparent);
+  border-color: color-mix(in srgb, #e0922f 38%, transparent);
 }
 /* Keep the loader vertically centred during the initial board load (the spin
    content would otherwise be empty → spinner pinned to the top before content). */
