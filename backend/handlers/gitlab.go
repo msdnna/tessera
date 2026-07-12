@@ -431,10 +431,16 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		return 0, 0, fmt.Errorf("decrypt stored token: %w", err)
 	}
 	client := gitlab.New(cred.BaseUrl, token)
-	// Issues currently assigned to me (discovers new) plus every issue we already
-	// linked (keeps them fresh and reflects a reassignment away from me — the
-	// task stays, the assignee changes). Merge, deduped by global id.
-	assigned, err := client.AssignedIssues(ctx, integ.ProjectPath, cred.GlUsername)
+	// Discover issues per the integration scope: "all" pulls the whole project
+	// (full import), "assigned" only the credential owner's issues. Either way we
+	// also fetch every already-linked issue to keep it fresh (and reflect a
+	// reassignment away from the owner). Merge, deduped by global id.
+	var assigned []gitlab.Issue
+	if integ.Scope == "all" {
+		assigned, err = client.AllIssues(ctx, integ.ProjectPath)
+	} else {
+		assigned, err = client.AssignedIssues(ctx, integ.ProjectPath, cred.GlUsername)
+	}
 	if err != nil {
 		return 0, 0, err
 	}
@@ -448,6 +454,23 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		return 0, 0, err
 	}
 	issues := mergeIssues(assigned, linked)
+
+	// closed_policy=period: don't import NEW closed issues older than the cutoff
+	// (keeps the initial import bounded); already-linked ones keep syncing.
+	if integ.ClosedPolicy == "period" && integ.ClosedAfter != nil {
+		linkedSet := make(map[int64]bool, len(linkedIids))
+		for _, id := range linkedIids {
+			linkedSet[id] = true
+		}
+		kept := issues[:0]
+		for _, is := range issues {
+			if is.State == "closed" && is.UpdatedAt != nil && is.UpdatedAt.Before(*integ.ClosedAfter) && !linkedSet[is.IID] {
+				continue
+			}
+			kept = append(kept, is)
+		}
+		issues = kept
+	}
 
 	// Refresh the assignable project-member roster (best-effort: a failure here
 	// must not abort the issue sync).
@@ -560,6 +583,7 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 		if !ok {
 			continue
 		}
+		h.applyClosedPolicy(ctx, integ, issue, taskID)
 		if wasCreated {
 			created++
 		} else {
@@ -579,7 +603,8 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 				kstart := effectiveStart(kid, integ.StartSource)
 				kest := effectiveEstimate(kid, estimateUnit)
 				parentID := taskID
-				if _, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, kest, actorID, col.Name, j); kok {
+				if ktid, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, kest, actorID, col.Name, j); kok {
+					h.applyClosedPolicy(ctx, integ, kid, ktid)
 					if kc {
 						created++
 					} else {
@@ -1041,6 +1066,21 @@ func (h *API) syncProjectMembers(ctx context.Context, client *gitlab.Client, int
 // whose username maps to a Tessera user becomes a real (gitlab-sourced) assignee;
 // the rest are stored as external display-only assignees. Manual ('user')
 // assignees are left untouched.
+// applyClosedPolicy archives (or un-archives) a synced task per the integration's
+// closed_policy. For archive_closed_sprints a closed issue in a closed milestone is
+// moved to the archive; anything else (open issue, or closed issue in an open/no
+// milestone) stays on the board. Idempotent; a no-op for the other policies.
+func (h *API) applyClosedPolicy(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, taskID uuid.UUID) {
+	if integ.ClosedPolicy != "archive_closed_sprints" {
+		return
+	}
+	if issue.State == "closed" && issue.MilestoneState == "closed" {
+		_ = h.q.ArchiveTaskIfActive(ctx, taskID)
+	} else {
+		_ = h.q.RestoreTaskIfArchived(ctx, taskID)
+	}
+}
+
 func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, people []gitlab.Person) {
 	_ = h.q.DeleteGitlabSourcedAssignees(ctx, taskID) // only the sync-made set is rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))

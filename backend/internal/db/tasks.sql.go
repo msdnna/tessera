@@ -31,6 +31,18 @@ func (q *Queries) ArchiveTaskCascade(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const archiveTaskIfActive = `-- name: ArchiveTaskIfActive :exec
+UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1 AND archived_at IS NULL
+`
+
+// ArchiveTaskIfActive/RestoreTaskIfArchived are idempotent single-task variants for
+// the GitLab sync (closed_policy=archive_closed_sprints): no-op + no updated_at churn
+// when the task is already in the target state.
+func (q *Queries) ArchiveTaskIfActive(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, archiveTaskIfActive, id)
+	return err
+}
+
 const createTask = `-- name: CreateTask :one
 INSERT INTO tasks (
     board_id, column_id, parent_id, title, description, priority, due_date, start_date, estimate, position, created_by, number
@@ -353,9 +365,20 @@ LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
+  AND (
+    (NOT $2::boolean AND $3::uuid IS NULL)             -- all (no scope)
+    OR ($2::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
+    OR ($3::uuid IS NOT NULL AND t.milestone_id = $3) -- one milestone
+  )
 GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name, gl.gl_author_avatar_url
 ORDER BY t.position
 `
+
+type ListBoardTasksWithMetaParams struct {
+	BoardID     uuid.UUID  `json:"board_id"`
+	Backlog     bool       `json:"backlog"`
+	MilestoneID *uuid.UUID `json:"milestone_id"`
+}
 
 type ListBoardTasksWithMetaRow struct {
 	ID                    uuid.UUID        `json:"id"`
@@ -395,8 +418,8 @@ type ListBoardTasksWithMetaRow struct {
 // ListBoardTasksWithMeta returns top-level board tasks with their tag and
 // assignee ids aggregated, so the kanban can render chips and group by tag
 // without an extra round-trip per card.
-func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, boardID uuid.UUID) ([]ListBoardTasksWithMetaRow, error) {
-	rows, err := q.db.Query(ctx, listBoardTasksWithMeta, boardID)
+func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasksWithMetaParams) ([]ListBoardTasksWithMetaRow, error) {
+	rows, err := q.db.Query(ctx, listBoardTasksWithMeta, arg.BoardID, arg.Backlog, arg.MilestoneID)
 	if err != nil {
 		return nil, err
 	}
@@ -778,6 +801,15 @@ UPDATE tasks SET archived_at = NULL, updated_at = now() WHERE id = $1 OR parent_
 
 func (q *Queries) RestoreTask(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, restoreTask, id)
+	return err
+}
+
+const restoreTaskIfArchived = `-- name: RestoreTaskIfArchived :exec
+UPDATE tasks SET archived_at = NULL, updated_at = now() WHERE id = $1 AND archived_at IS NOT NULL
+`
+
+func (q *Queries) RestoreTaskIfArchived(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, restoreTaskIfArchived, id)
 	return err
 }
 

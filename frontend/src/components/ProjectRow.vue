@@ -20,6 +20,7 @@ import {
   OpenOutline,
   TimerOutline,
   RibbonOutline,
+  GitBranchOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -96,11 +97,72 @@ async function removeBoard(b) {
 const boards = computed(() => store.boardsByProject[props.project.id] || [])
 const initials = computed(() => (props.project.name || '?').trim().slice(0, 2).toUpperCase())
 
+// ── Sidebar tree mode: boards | milestones | both ──
+const treeMode = computed(() => props.project.tree_mode || 'boards')
+const showBoards = computed(() => treeMode.value === 'boards' || treeMode.value === 'both')
+const showMilestones = computed(() => treeMode.value === 'milestones' || treeMode.value === 'both')
+
+// Milestone (sprint) nodes are a navigation overlay over the project's board — a
+// sprint opens the (first) board scoped to that milestone; "Бэклог" = no milestone.
+const milestones = ref([])
+async function loadMilestones() {
+  if (!showMilestones.value) return
+  try {
+    milestones.value = (await projApi.milestones(props.project.id)).data || []
+  } catch {
+    milestones.value = []
+  }
+}
+
+// Per-project sprint-tree prefs (non-critical UX state → localStorage, not DB).
+const MS_PREF_KEY = `tessera_ms_tree_${props.project.id}`
+const showClosedSprints = ref(localStorage.getItem(MS_PREF_KEY) === '1')
+function toggleShowClosed() {
+  showClosedSprints.value = !showClosedSprints.value
+  localStorage.setItem(MS_PREF_KEY, showClosedSprints.value ? '1' : '0')
+}
+
+// Open sprints first, then by due date descending (recent/active on top).
+const displayMilestones = computed(() => {
+  let list = milestones.value.slice()
+  if (!showClosedSprints.value) list = list.filter((m) => m.state !== 'closed')
+  list.sort((a, b) => {
+    const ao = a.state === 'closed' ? 1 : 0
+    const bo = b.state === 'closed' ? 1 : 0
+    if (ao !== bo) return ao - bo
+    const ad = a.due_date ? new Date(a.due_date).getTime() : 0
+    const bd = b.due_date ? new Date(b.due_date).getTime() : 0
+    return bd - ad
+  })
+  return list
+})
+
+// Milestone navigation targets the project's first board (the overlay board).
+const msBoard = computed(() => boards.value[0] || null)
+function openMilestone(m) {
+  const b = msBoard.value
+  if (!b) {
+    message.warning('В проекте нет доски для отображения спринта')
+    return
+  }
+  router.push({
+    path: `/project/${props.project.slug}/board/${b.slug}`,
+    query: { milestone: m ? m.id : 'backlog' },
+  })
+}
+function msActive(m) {
+  return (
+    route.params.projectSlug === props.project.slug &&
+    String(route.query.milestone || '') === (m ? m.id : 'backlog')
+  )
+}
+
 async function toggle() {
   expanded.value = !expanded.value
   if (expanded.value && !store.boardsByProject[props.project.id]) {
     await store.loadBoards(props.project.id)
   }
+  if (expanded.value) loadMilestones()
 }
 
 // inline rename — click-outside saves if changed, else cancels
@@ -125,6 +187,7 @@ async function updateField(patch) {
       color: props.project.color || '',
       icon: props.project.icon || '',
       icon_mode: props.project.icon_mode || 'badge',
+      tree_mode: props.project.tree_mode || 'boards',
       group_id: props.project.group_id || null,
       ...patch,
     })
@@ -174,14 +237,35 @@ async function doRemove() {
 const pcShow = ref(false)
 const pcX = ref(0)
 const pcY = ref(0)
-const pcOptions = [
-  { label: 'Новая доска', key: 'add-board', icon: menuIcon(AddOutline) },
-  { type: 'divider', key: 'd1' },
-  { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
-  { label: 'Оценка задач…', key: 'estimation', icon: menuIcon(TimerOutline) },
-  { label: 'Этапы…', key: 'milestones', icon: menuIcon(RibbonOutline) },
-  { label: 'Удалить проект', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
-]
+const pcOptions = computed(() => {
+  const opts = [
+    { label: 'Новая доска', key: 'add-board', icon: menuIcon(AddOutline) },
+    { type: 'divider', key: 'd1' },
+    { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+    { label: 'Оценка задач…', key: 'estimation', icon: menuIcon(TimerOutline) },
+    { label: 'Этапы…', key: 'milestones', icon: menuIcon(RibbonOutline) },
+    {
+      label: 'Показывать в дереве',
+      key: 'tree-mode',
+      icon: menuIcon(GitBranchOutline),
+      children: [
+        { label: (treeMode.value === 'boards' ? '● ' : '○ ') + 'Доски', key: 'tm-boards' },
+        { label: (treeMode.value === 'milestones' ? '● ' : '○ ') + 'Этапы (спринты)', key: 'tm-milestones' },
+        { label: (treeMode.value === 'both' ? '● ' : '○ ') + 'Доски и этапы', key: 'tm-both' },
+      ],
+    },
+  ]
+  if (showMilestones.value) {
+    opts.push({
+      label: (showClosedSprints.value ? '☑ ' : '☐ ') + 'Показывать закрытые спринты',
+      key: 'toggle-closed',
+      icon: menuIcon(RibbonOutline),
+    })
+  }
+  opts.push({ type: 'divider', key: 'd2' })
+  opts.push({ label: 'Удалить проект', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } })
+  return opts
+})
 function onProjectCtx(e) {
   if (pressMoved()) return
   pcShow.value = false
@@ -195,6 +279,10 @@ function onProjectCtxSelect(key) {
   else if (key === 'rename') startRename()
   else if (key === 'estimation') estShow.value = true
   else if (key === 'milestones') msShow.value = true
+  else if (key === 'tm-boards') updateField({ tree_mode: 'boards' })
+  else if (key === 'tm-milestones') updateField({ tree_mode: 'milestones' })
+  else if (key === 'tm-both') updateField({ tree_mode: 'both' })
+  else if (key === 'toggle-closed') toggleShowClosed()
   else if (key === 'delete') remove()
 }
 
@@ -257,9 +345,14 @@ watch(
   expanded,
   (v) => {
     if (v && !store.boardsByProject[props.project.id]) store.loadBoards(props.project.id)
+    if (v) loadMilestones()
   },
   { immediate: true },
 )
+// Reload sprint nodes when the tree mode flips to include milestones.
+watch(showMilestones, (v) => {
+  if (v && expanded.value) loadMilestones()
+})
 
 // inline board creation via the "+" button
 function startAddBoard() {
@@ -353,11 +446,38 @@ async function addBoard() {
     </div>
 
     <div v-if="expanded" class="boards">
+      <!-- Sprint (milestone) nodes: a navigation overlay over the project's board.
+           Shown when tree mode includes milestones. "Бэклог" = tasks with no sprint. -->
+      <template v-if="showMilestones">
+        <div
+          v-for="m in displayMilestones"
+          :key="m.id"
+          class="row board-row ms-row"
+          :class="{ active: msActive(m), closed: m.state === 'closed' }"
+          @click="openMilestone(m)"
+        >
+          <span class="chev-spacer" />
+          <span class="bicon"><n-icon :component="RibbonOutline" /></span>
+          <span class="name">{{ m.title }}</span>
+        </div>
+        <div
+          class="row board-row ms-row"
+          :class="{ active: msActive(null) }"
+          @click="openMilestone(null)"
+        >
+          <span class="chev-spacer" />
+          <span class="bicon"><n-icon :component="GitBranchOutline" /></span>
+          <span class="name">Бэклог</span>
+        </div>
+        <n-text v-if="!displayMilestones.length" depth="3" class="empty">нет спринтов</n-text>
+      </template>
+
+      <template v-if="showBoards">
       <div
         v-for="b in boards"
         :key="b.id"
         class="row board-row"
-        :class="{ active: route.params.projectSlug === project.slug && route.params.boardSlug === b.slug }"
+        :class="{ active: route.params.projectSlug === project.slug && route.params.boardSlug === b.slug && !route.query.milestone }"
         @click="editingBoardId !== b.id && router.push(`/project/${project.slug}/board/${b.slug}`)"
         @contextmenu.prevent.stop="onBoardCtx($event, b)"
         @touchstart.passive="bStart($event, b)"
@@ -437,6 +557,7 @@ async function addBoard() {
         />
       </div>
       <n-text v-if="!boards.length && !addingBoard" depth="3" class="empty">нет досок</n-text>
+      </template>
     </div>
 
     <n-dropdown
@@ -577,6 +698,15 @@ async function addBoard() {
   background: color-mix(in srgb, var(--t-primary) 16%, transparent);
   color: var(--t-primary);
   font-weight: 600;
+}
+.ms-row .bicon {
+  color: var(--t-primary);
+}
+.ms-row.closed {
+  opacity: 0.62;
+}
+.ms-row.closed .bicon {
+  color: var(--t-text3);
 }
 .empty {
   font-size: 12px;

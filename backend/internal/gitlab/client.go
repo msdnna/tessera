@@ -208,6 +208,12 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 	return c.queryIssues(ctx, projectPath, map[string]any{"username": username})
 }
 
+// AllIssues returns every issue in projectPath regardless of assignee (integration
+// scope "all" — full project import). Paginated; can be large.
+func (c *Client) AllIssues(ctx context.Context, projectPath string) ([]Issue, error) {
+	return c.queryIssues(ctx, projectPath, map[string]any{})
+}
+
 // IssuesByIIDs returns the issues with the given iids regardless of assignee
 // (used to keep already-linked tasks fresh after a reassignment). Empty iids
 // returns nothing.

@@ -198,7 +198,8 @@ export const boards = {
   remove: (id) => api.delete(`/boards/${id}`),
   columns: (id) => api.get(`/boards/${id}/columns`),
   createColumn: (id, data) => api.post(`/boards/${id}/columns`, data),
-  tasks: (id) => api.get(`/boards/${id}/tasks`),
+  // params.milestone: '<uuid>' scopes to one sprint, 'backlog' to no-sprint tasks.
+  tasks: (id, params) => api.get(`/boards/${id}/tasks`, params ? { params } : undefined),
   subtasks: (id) => api.get(`/boards/${id}/subtasks`),
   archive: (id) => api.get(`/boards/${id}/archive`),
   // Whole-board blocking dependency graph for the Gantt view (raw edge rows).

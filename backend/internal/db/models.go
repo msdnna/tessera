@@ -313,6 +313,7 @@ type Project struct {
 	Slug        string           `json:"slug"`
 	Estimation  *json.RawMessage `json:"estimation"`
 	IconMode    string           `json:"icon_mode"`
+	TreeMode    string           `json:"tree_mode"`
 }
 
 type ProjectGroup struct {

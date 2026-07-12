@@ -18,6 +18,17 @@ func normIconMode(m string) string {
 	return "badge"
 }
 
+// normTreeMode validates the sidebar tree mode (what a project shows as children),
+// defaulting unknown/empty to "boards".
+func normTreeMode(m string) string {
+	switch m {
+	case "milestones", "both":
+		return m
+	default:
+		return "boards"
+	}
+}
+
 // ── Project groups ─────────────────────────────────────────
 
 // CreateProjectGroup adds a group to a workspace, optionally nested in a parent.
@@ -210,6 +221,7 @@ func (h *API) UpdateProject(c *gin.Context) {
 		Color    string     `json:"color"`
 		Icon     string     `json:"icon"`
 		IconMode string     `json:"icon_mode"`
+		TreeMode string     `json:"tree_mode"`
 		GroupID  *uuid.UUID `json:"group_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -219,6 +231,7 @@ func (h *API) UpdateProject(c *gin.Context) {
 	updated, err := h.q.UpdateProject(c, db.UpdateProjectParams{
 		ID: p.ID, Name: req.Name, Color: req.Color, Icon: req.Icon,
 		GroupID: req.GroupID, IconMode: normIconMode(req.IconMode),
+		TreeMode: normTreeMode(req.TreeMode),
 	})
 	if err != nil {
 		fail(c)

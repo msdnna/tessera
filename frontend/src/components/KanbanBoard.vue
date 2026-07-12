@@ -23,6 +23,8 @@ import {
   ChevronForwardOutline,
   ChevronBackOutline,
   SettingsOutline,
+  RibbonOutline,
+  CloseOutline,
 } from '@vicons/ionicons5'
 import {
   boards,
@@ -252,6 +254,22 @@ const groupTags = computed(() =>
 // Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
 const sortLevels = ref([])
 const filters = reactive({ priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' })
+
+// Sprint scope (navigation overlay): ?milestone=<uuid|backlog>. Drives the
+// server-side task scope and shows a removable chip; clearing it returns the full
+// board (and de-highlights the sidebar sprint node).
+const milestoneScope = computed(() => (route.query.milestone ? String(route.query.milestone) : ''))
+const milestoneScopeLabel = computed(() => {
+  const s = milestoneScope.value
+  if (!s) return ''
+  if (s === 'backlog') return 'Бэклог'
+  return milestonesMap[s]?.title || 'Спринт'
+})
+function clearMilestoneScope() {
+  const q = { ...route.query }
+  delete q.milestone
+  router.replace({ query: q })
+}
 const sortFieldOptions = [
   { label: 'Приоритет', value: 'priority' },
   { label: 'Срок', value: 'due' },
@@ -1093,10 +1111,13 @@ function scheduleReload() {
 async function load(id) {
   loading.value = true
   try {
+    // Sprint navigation: the URL ?milestone=<uuid|backlog> scopes the board to one
+    // milestone server-side, so a huge project never loads all its cards at once.
+    const ms = route.query.milestone
     const [b, c, t, s] = await Promise.all([
       boards.get(id),
       boards.columns(id),
-      boards.tasks(id),
+      boards.tasks(id, ms ? { milestone: ms } : undefined),
       boards.subtasks(id),
     ])
     board.value = b.data
@@ -1560,17 +1581,10 @@ async function applyTaskQuery() {
 // clean. It *replaces* the milestone facet (rather than appending) so re-entering
 // from the screen for a different milestone doesn't accumulate the previous one
 // that the saved view had persisted.
-function applyMilestoneQuery() {
-  const id = route.query.milestone
-  if (!id) return
-  const s = String(id)
-  if (milestonesMap[s]) {
-    filters.milestones = [s]
-  }
-  const q = { ...route.query }
-  delete q.milestone
-  router.replace({ query: q })
-}
+// Sprint scope is now driven by a persistent ?milestone=<uuid|backlog> param
+// (server-side scoped in load(), node-highlighted in the sidebar). Nothing to do
+// here — kept as a no-op so existing call sites stay valid.
+function applyMilestoneQuery() {}
 
 onMounted(async () => {
   ro = new ResizeObserver(() => measure())
@@ -1636,6 +1650,12 @@ watch(
   () => route.query.task,
   () => applyTaskQuery(),
 )
+// Switching sprints on the same board (only the query changes, no remount) reloads
+// the milestone-scoped task set.
+watch(
+  () => route.query.milestone,
+  () => load(props.boardId),
+)
 </script>
 
 <template>
@@ -1646,6 +1666,13 @@ watch(
            a task-name search on the right. (Layout + Теги/Архив live in the
            global header now.) -->
       <div ref="subbarEl" class="subbar">
+        <!-- Sprint scope chip (navigation overlay from the sidebar). Removing it
+             returns the full board and de-highlights the sprint node. -->
+        <span v-if="milestoneScope" class="ms-scope-chip" title="Показан один спринт">
+          <n-icon :component="RibbonOutline" />
+          <span class="ms-scope-label">{{ milestoneScopeLabel }}</span>
+          <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="clearMilestoneScope" />
+        </span>
         <!-- Composer bar: grouping / sort / filters as removable chips + an add
              menu + the name search, all in one wide bar (a reference tracker/GitLab-style).
              Collapsed to one row so the tools stay visible; tap to expand. -->
@@ -2079,6 +2106,33 @@ watch(
 }
 .subbar-spacer {
   flex: 1;
+}
+/* Sprint scope chip: a persistent, accent-tinted badge showing the active sprint. */
+.ms-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 3px 6px 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-primary);
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--t-primary) 34%, transparent);
+}
+.ms-scope-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ms-scope-x {
+  cursor: pointer;
+  opacity: 0.75;
+}
+.ms-scope-x:hover {
+  opacity: 1;
 }
 /* Keep the loader vertically centred during the initial board load (the spin
    content would otherwise be empty → spinner pinned to the top before content). */

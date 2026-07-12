@@ -26,7 +26,7 @@ SELECT coalesce(max(position), 0)::double precision FROM projects WHERE workspac
 
 -- name: UpdateProject :one
 UPDATE projects
-SET name = $2, color = $3, icon = $4, group_id = $5, icon_mode = $6, updated_at = now()
+SET name = $2, color = $3, icon = $4, group_id = $5, icon_mode = $6, tree_mode = $7, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

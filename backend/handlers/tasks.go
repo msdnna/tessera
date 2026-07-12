@@ -120,7 +120,18 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	tasks, err := h.q.ListBoardTasksWithMeta(c, boardID)
+	// Optional milestone scope (sprint navigation): ?milestone=<uuid> shows one
+	// sprint, ?milestone=backlog shows tasks with no milestone, absent shows all.
+	params := db.ListBoardTasksWithMetaParams{BoardID: boardID}
+	switch m := c.Query("milestone"); {
+	case m == "backlog":
+		params.Backlog = true
+	case m != "":
+		if mid, perr := uuid.Parse(m); perr == nil {
+			params.MilestoneID = &mid
+		}
+	}
+	tasks, err := h.q.ListBoardTasksWithMeta(c, params)
 	if err != nil {
 		fail(c)
 		return
