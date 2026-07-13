@@ -92,7 +92,7 @@ const scopeOptions = [
   { label: 'Только назначенные на меня', value: 'assigned' },
 ]
 const closedPolicyOptions = [
-  { label: 'Закрытые из закрытых спринтов — в архив', value: 'archive_closed_sprints' },
+  { label: 'Закрытые из закрытых этапов — в архив', value: 'archive_closed_sprints' },
   { label: 'Все закрытые — на доску (в «Готово»)', value: 'all' },
   { label: 'Только закрытые за период', value: 'period' },
 ]
@@ -987,7 +987,7 @@ watch(
   margin-bottom: 14px;
 }
 .gl-wb-hint {
-  margin: 8px 0 0;
+  margin: 8px 0 12px;
   font-size: 12px;
   line-height: 1.4;
 }

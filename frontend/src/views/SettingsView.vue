@@ -93,11 +93,15 @@ async function saveProfile() {
 // ── avatar ───────────────────────────────────────────────────────────────────
 const fileInput = ref(null)
 const avatarBust = ref(0) // cache-buster so a re-upload refreshes the <img>
-// Direct URL on web; axios-fetched blob: URL on desktop. The ?t buster changes the
+// Direct URL on web; axios-fetched blob: URL on desktop. The t buster changes the
 // URL on re-upload so both the browser cache and the blob cache miss and refetch.
-const avatarUrl = useApiImage(() =>
-  auth.user?.avatar_url ? `${auth.user.avatar_url}?t=${avatarBust.value}` : '',
-)
+// Use the right separator — a GitLab-OAuth avatar_url is a proxy URL that already
+// carries a query string (?ws=…&sig=…); a second "?" would corrupt its signature.
+const avatarUrl = useApiImage(() => {
+  const u = auth.user?.avatar_url
+  if (!u) return ''
+  return `${u}${u.includes('?') ? '&' : '?'}t=${avatarBust.value}`
+})
 const initials = computed(() => {
   const n = (auth.user?.name || auth.user?.email || '?').trim()
   const p = n.split(/\s+/)

@@ -30,6 +30,8 @@ const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 // Red icon for destructive menu entries (the label is reddened via the option's
 // props.style; NIcon needs the colour set explicitly — it doesn't inherit it).
 const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
+// Primary-tinted icon for the "selected" checkmark / checkbox in the tree menu.
+const primIcon = (icon) => () => h(NIcon, { color: 'var(--t-primary)' }, { default: () => h(icon) })
 import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -145,7 +147,7 @@ const msBoard = computed(() => boards.value[0] || null)
 function openMilestone(m) {
   const b = msBoard.value
   if (!b) {
-    message.warning('В проекте нет доски для отображения спринта')
+    message.warning('В проекте нет доски для отображения этапа')
     return
   }
   router.push({
@@ -252,17 +254,17 @@ const pcOptions = computed(() => {
       key: 'tree-mode',
       icon: menuIcon(GitBranchOutline),
       children: [
-        { label: 'Доски', key: 'tm-boards', icon: treeMode.value === 'boards' ? menuIcon(CheckmarkOutline) : undefined },
-        { label: 'Этапы (спринты)', key: 'tm-milestones', icon: treeMode.value === 'milestones' ? menuIcon(CheckmarkOutline) : undefined },
-        { label: 'Доски и этапы', key: 'tm-both', icon: treeMode.value === 'both' ? menuIcon(CheckmarkOutline) : undefined },
+        { label: 'Доски', key: 'tm-boards', icon: treeMode.value === 'boards' ? primIcon(CheckmarkOutline) : undefined },
+        { label: 'Этапы', key: 'tm-milestones', icon: treeMode.value === 'milestones' ? primIcon(CheckmarkOutline) : undefined },
+        { label: 'Доски и этапы', key: 'tm-both', icon: treeMode.value === 'both' ? primIcon(CheckmarkOutline) : undefined },
       ],
     },
   ]
   if (showMilestones.value) {
     opts.push({
-      label: 'Показывать закрытые спринты',
+      label: 'Показывать закрытые этапы',
       key: 'toggle-closed',
-      icon: menuIcon(showClosedSprints.value ? CheckboxOutline : SquareOutline),
+      icon: primIcon(showClosedSprints.value ? CheckboxOutline : SquareOutline),
     })
   }
   opts.push({ type: 'divider', key: 'd2' })
@@ -472,7 +474,7 @@ async function addBoard() {
           <span class="bicon"><n-icon :component="GitBranchOutline" /></span>
           <span class="name">Бэклог</span>
         </div>
-        <n-text v-if="!displayMilestones.length" depth="3" class="empty">нет спринтов</n-text>
+        <n-text v-if="!displayMilestones.length" depth="3" class="empty">нет этапов</n-text>
       </template>
 
       <template v-if="showBoards">

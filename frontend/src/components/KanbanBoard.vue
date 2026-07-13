@@ -276,7 +276,7 @@ const milestoneScopeLabel = computed(() => {
   const s = milestoneScope.value
   if (!s) return ''
   if (s === 'backlog') return 'Бэклог'
-  return milestonesMap[s]?.title || 'Спринт'
+  return milestonesMap[s]?.title || 'Этап'
 })
 function clearMilestoneScope() {
   const q = { ...route.query }
@@ -1687,11 +1687,16 @@ watch(
   () => route.query.task,
   () => applyTaskQuery(),
 )
-// Switching sprints on the same board (only the query changes, no remount) reloads
-// the milestone-scoped task set. Entering/leaving the archive reloads too.
+// Switching étapes on the same board (only the query changes, no remount) reloads
+// the scoped task set. Entering/leaving the archive reloads too.
 watch(
   () => [route.query.milestone, route.query.archived],
-  () => load(props.boardId),
+  ([ms]) => {
+    // Opening an étape via the project tree supersedes any manual étape filter in
+    // the composer — clear it, else the scope's tasks would be filtered away.
+    if (ms) filters.milestones = []
+    load(props.boardId)
+  },
 )
 
 // Restore a task from the archive view (the only mutation allowed there).
@@ -1723,7 +1728,7 @@ async function restoreFromArchive(taskId) {
         </span>
         <!-- Sprint scope chip (navigation overlay from the sidebar). Removing it
              returns the full board and de-highlights the sprint node. -->
-        <span v-if="milestoneScope" class="ms-scope-chip" title="Показан один спринт">
+        <span v-if="milestoneScope" class="ms-scope-chip" title="Показан один этап">
           <n-icon :component="RibbonOutline" />
           <span class="ms-scope-label">{{ milestoneScopeLabel }}</span>
           <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="clearMilestoneScope" />
@@ -2175,7 +2180,9 @@ async function restoreFromArchive(taskId) {
   align-items: center;
   gap: 5px;
   flex: none;
-  padding: 3px 6px 3px 8px;
+  height: 40px; /* match the composer bar's height */
+  box-sizing: border-box;
+  padding: 0 8px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
@@ -2297,7 +2304,9 @@ async function restoreFromArchive(taskId) {
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  padding: 2px 4px 2px 9px;
+  height: 22px; /* match the adjacent "add filter" (＋) button */
+  box-sizing: border-box;
+  padding: 0 4px 0 9px;
   border-radius: 6px;
   background: var(--t-hover);
   color: var(--t-text2);
