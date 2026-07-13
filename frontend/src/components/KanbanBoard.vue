@@ -91,8 +91,12 @@ const lists = ref({})
 // LazyColumn. Measuring before collapsing keeps placeholder height exact → no
 // jump. IO swaps are frozen during a drag so SortableJS sees a stable DOM.
 const VCARD_EST = 190 // placeholder px until a card has been measured
-const vis = reactive({}) // task id → in/near viewport (undefined = not yet known)
-const cardH = reactive({}) // task id → last measured px (from the rendered card)
+// Keyed by "columnKey::taskId", NOT taskId alone: under tag grouping one task can
+// appear in several columns at once, and a bare-id key would make those instances
+// share visibility/height — collapsing/leaking cards across columns while scrolling.
+const vis = reactive({}) // card key → in/near viewport (undefined = not yet known)
+const cardH = reactive({}) // card key → last measured px (from the rendered card)
+const cardKey = (dcol, el) => `${dcol.key}::${el.id}`
 let cardIO = null // toggles visibility by real viewport position
 let cardRO = null // measures rendered cards (settles after content layout)
 const tagsMap = reactive({})
@@ -2029,11 +2033,11 @@ async function restoreFromArchive(taskId) {
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element, index }">
-                  <div :ref="(el) => regCard(el, element.id)" class="card-wrap">
+                  <div :ref="(el) => regCard(el, cardKey(dcol, element))" class="card-wrap">
                     <div
-                      v-if="colCollapsedNow(dcol) || !(vis[element.id] ?? index < 12)"
+                      v-if="colCollapsedNow(dcol) || !(vis[cardKey(dcol, element)] ?? index < 12)"
                       class="card-ph"
-                      :style="{ height: (cardH[element.id] || VCARD_EST) + 'px' }"
+                      :style="{ height: (cardH[cardKey(dcol, element)] || VCARD_EST) + 'px' }"
                     />
                     <TaskCard
                       v-else
