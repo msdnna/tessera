@@ -241,23 +241,38 @@ async function resendVerify() {
       </label>
       <label class="field">
         <span>Отображаемое имя</span>
-        <n-input v-model:value="profile.name" placeholder="Как вас показывать" />
+        <n-input
+          v-model:value="profile.name"
+          placeholder="Как вас показывать"
+          :input-props="{ autocomplete: 'nickname' }"
+        />
       </label>
       <div class="grid3">
         <label class="field"
-          ><span>Фамилия</span><n-input v-model:value="profile.last_name"
+          ><span>Фамилия</span
+          ><n-input v-model:value="profile.last_name" :input-props="{ autocomplete: 'family-name' }"
         /></label>
-        <label class="field"><span>Имя</span><n-input v-model:value="profile.first_name" /></label>
         <label class="field"
-          ><span>Отчество</span><n-input v-model:value="profile.middle_name"
+          ><span>Имя</span
+          ><n-input v-model:value="profile.first_name" :input-props="{ autocomplete: 'given-name' }"
+        /></label>
+        <label class="field"
+          ><span>Отчество</span
+          ><n-input
+            v-model:value="profile.middle_name"
+            :input-props="{ autocomplete: 'additional-name' }"
         /></label>
       </div>
       <div class="grid2">
         <label class="field"
-          ><span>Место работы</span><n-input v-model:value="profile.company"
+          ><span>Место работы</span
+          ><n-input v-model:value="profile.company" :input-props="{ autocomplete: 'organization' }"
         /></label>
         <label class="field"
-          ><span>Должность</span><n-input v-model:value="profile.job_title"
+          ><span>Должность</span
+          ><n-input
+            v-model:value="profile.job_title"
+            :input-props="{ autocomplete: 'organization-title' }"
         /></label>
       </div>
       <label class="field">

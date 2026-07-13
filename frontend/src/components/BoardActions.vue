@@ -13,6 +13,8 @@ const wsStore = useWorkspacesStore()
 const route = useRoute()
 const router = useRouter()
 const msShow = ref(false)
+// Highlight «Архив» while the board is in the read-only archive scope.
+const isArchive = computed(() => route.query.archived === '1')
 
 // Archive is a read-only scope of the board itself (?archived=1) — reuses all
 // filters/grouping. Drop any sprint scope when entering it.
@@ -53,7 +55,13 @@ function onChanged() {
       Этапы
     </n-button>
 
-    <n-button size="small" quaternary @click="openArchive">
+    <n-button
+      size="small"
+      :quaternary="!isArchive"
+      :secondary="isArchive"
+      :type="isArchive ? 'primary' : undefined"
+      @click="isArchive ? null : openArchive()"
+    >
       <template #icon><n-icon :component="ArchiveOutline" /></template>
       Архив
     </n-button>

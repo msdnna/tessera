@@ -21,6 +21,9 @@ import {
   TimerOutline,
   RibbonOutline,
   GitBranchOutline,
+  CheckmarkOutline,
+  CheckboxOutline,
+  SquareOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -249,17 +252,17 @@ const pcOptions = computed(() => {
       key: 'tree-mode',
       icon: menuIcon(GitBranchOutline),
       children: [
-        { label: (treeMode.value === 'boards' ? '● ' : '○ ') + 'Доски', key: 'tm-boards' },
-        { label: (treeMode.value === 'milestones' ? '● ' : '○ ') + 'Этапы (спринты)', key: 'tm-milestones' },
-        { label: (treeMode.value === 'both' ? '● ' : '○ ') + 'Доски и этапы', key: 'tm-both' },
+        { label: 'Доски', key: 'tm-boards', icon: treeMode.value === 'boards' ? menuIcon(CheckmarkOutline) : undefined },
+        { label: 'Этапы (спринты)', key: 'tm-milestones', icon: treeMode.value === 'milestones' ? menuIcon(CheckmarkOutline) : undefined },
+        { label: 'Доски и этапы', key: 'tm-both', icon: treeMode.value === 'both' ? menuIcon(CheckmarkOutline) : undefined },
       ],
     },
   ]
   if (showMilestones.value) {
     opts.push({
-      label: (showClosedSprints.value ? '☑ ' : '☐ ') + 'Показывать закрытые спринты',
+      label: 'Показывать закрытые спринты',
       key: 'toggle-closed',
-      icon: menuIcon(RibbonOutline),
+      icon: menuIcon(showClosedSprints.value ? CheckboxOutline : SquareOutline),
     })
   }
   opts.push({ type: 'divider', key: 'd2' })

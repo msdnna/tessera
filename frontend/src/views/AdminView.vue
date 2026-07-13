@@ -181,9 +181,19 @@ onMounted(() => {
         </p>
         <div class="oauth-grid">
           <label>URL GitLab</label>
-          <n-input v-model:value="oauth.gl_base_url" size="small" placeholder="https://gitlab.example.com" />
+          <n-input
+            v-model:value="oauth.gl_base_url"
+            size="small"
+            placeholder="https://gitlab.example.com"
+            :input-props="{ autocomplete: 'off', name: 'oauth-base-url' }"
+          />
           <label>Application ID</label>
-          <n-input v-model:value="oauth.client_id" size="small" placeholder="client id" />
+          <n-input
+            v-model:value="oauth.client_id"
+            size="small"
+            placeholder="client id"
+            :input-props="{ autocomplete: 'off', name: 'oauth-client-id' }"
+          />
           <label>Secret</label>
           <n-input
             v-model:value="oauth.client_secret"
@@ -191,6 +201,7 @@ onMounted(() => {
             show-password-on="click"
             size="small"
             :placeholder="oauth.has_secret ? '•••••• (сохранён; введите, чтобы заменить)' : 'client secret'"
+            :input-props="{ autocomplete: 'new-password', name: 'oauth-secret' }"
           />
           <label>
             Сервисный токен синка
@@ -202,6 +213,7 @@ onMounted(() => {
             show-password-on="click"
             size="small"
             :placeholder="oauth.has_service_token ? '•••••• (сохранён; введите, чтобы заменить)' : 'glpat-… (scope api)'"
+            :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
           />
           <label>Включён вход</label>
           <div><n-switch v-model:value="oauth.enabled" /></div>

@@ -589,6 +589,9 @@ function onAddFacet(key) {
   } else if (key.startsWith('fm.')) {
     const v = key.slice(3)
     if (!filters.milestones.includes(v)) filters.milestones.push(v)
+    // Building a custom multi-sprint filter supersedes the tree's single-sprint
+    // scope — drop it so the full board loads and the client filter applies.
+    if (route.query.milestone) clearMilestoneScope()
   } else if (key.startsWith('fd.')) {
     filters.due = key.slice(3)
   }
@@ -2173,7 +2176,7 @@ async function restoreFromArchive(taskId) {
   gap: 5px;
   flex: none;
   padding: 3px 6px 3px 8px;
-  border-radius: 999px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   color: var(--t-primary);
@@ -2295,7 +2298,7 @@ async function restoreFromArchive(taskId) {
   gap: 4px;
   font-size: 12px;
   padding: 2px 4px 2px 9px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--t-hover);
   color: var(--t-text2);
   white-space: nowrap;

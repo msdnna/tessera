@@ -601,7 +601,12 @@ watch(
         <template v-else>
           <div class="gl-grid">
             <n-text depth="3" class="lbl">URL GitLab</n-text>
-            <n-input v-model:value="baseInput" size="small" placeholder="https://gitlab.example.com" />
+            <n-input
+              v-model:value="baseInput"
+              size="small"
+              placeholder="https://gitlab.example.com"
+              :input-props="{ autocomplete: 'off', name: 'gl-base-url' }"
+            />
             <n-text depth="3" class="lbl">Токен (PAT, scope read_api)</n-text>
             <n-input
               v-model:value="tokenInput"
@@ -609,6 +614,7 @@ watch(
               show-password-on="click"
               size="small"
               placeholder="glpat-…"
+              :input-props="{ autocomplete: 'new-password', name: 'gl-token' }"
               @keyup.enter="connect"
             />
           </div>
@@ -950,6 +956,13 @@ watch(
   margin-top: 18px;
   border-top: 1px solid var(--t-border);
   padding-top: 14px;
+}
+/* Binding selector row: dropdown + add/delete buttons aligned to its right. */
+.gl-bindbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 .gl-grid {
   display: grid;
