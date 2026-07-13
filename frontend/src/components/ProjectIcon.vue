@@ -41,5 +41,8 @@ const tint = computed(() => (props.color ? { color: props.color } : {}))
 .pi-img {
   object-fit: contain;
   display: block;
+  /* A user PNG downscaled to a ~13–22px badge looks soft with the default
+     interpolation; this hint makes Chromium use a sharper downscale for the logo. */
+  image-rendering: -webkit-optimize-contrast;
 }
 </style>

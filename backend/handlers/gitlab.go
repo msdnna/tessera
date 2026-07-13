@@ -698,6 +698,10 @@ func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.G
 	}
 
 	_ = h.q.MarkGitlabSynced(ctx, integ.ID)
+	// One board-level reload signal (no per-task toasts) so open boards refresh once.
+	if created+updated > 0 {
+		h.broadcast(wsID, "task.synced", gin.H{"board_id": integ.BoardID, "created": created, "updated": updated})
+	}
 	return created, updated, nil
 }
 
@@ -879,7 +883,9 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false)
 		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
-		h.broadcast(wsID, "task.created", t)
+		// No per-task broadcast during sync: a full import would flood every watcher
+		// with thousands of "created" activity toasts. runSync emits one board-level
+		// "task.synced" reload event when it finishes instead.
 
 		after := map[string]any{"title": issue.Title, "column": colName, "priority": res.Priority, "completed": completedAt != nil}
 		if dueDate != nil {
@@ -970,7 +976,8 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			t.Estimate = estimate
 		}
 		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
-		h.broadcast(wsID, "task.updated", t)
+		// No per-task broadcast during sync (see the create branch) — one reload
+		// event is emitted at the end of runSync.
 
 		// Diff the changed task fields for the journal (skip title/description when
 		// frozen — they were intentionally not applied, so there's no real change).

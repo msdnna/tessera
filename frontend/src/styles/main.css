@@ -512,3 +512,10 @@ body {
     animation: none !important;
   }
 }
+
+/* Tint the "Нет данных" (Naive n-empty) glyph in the accent colour, matching the
+   branded EmptyState placeholder, wherever an empty state appears (selects, etc.). */
+.n-empty .n-empty__icon {
+  color: var(--t-primary);
+  opacity: 0.85;
+}

@@ -36,6 +36,7 @@ import {
 } from '@/composables/useSidebarDnd'
 import SidebarNode from './SidebarNode.vue'
 import ProjectRow from './ProjectRow.vue'
+import EmptyState from './EmptyState.vue'
 import SidebarFooter from './SidebarFooter.vue'
 import WorkspaceTools from './WorkspaceTools.vue'
 import SidebarRailNode from './SidebarRailNode.vue'
@@ -242,9 +243,12 @@ async function createWorkspace() {
           <ProjectRow :project="element" :depth="0" />
         </template>
       </draggable>
-      <n-text v-if="!rootGroups.length && !ungrouped.length" depth="3" class="empty">
-        Пусто — создайте проект или группу через «+».
-      </n-text>
+      <EmptyState
+        v-if="!rootGroups.length && !ungrouped.length"
+        :icon="FolderOutline"
+        text="Проектов пока нет"
+        size="small"
+      />
     </n-scrollbar>
     <n-scrollbar v-else class="rail-scroll">
       <div class="rail">
