@@ -92,6 +92,7 @@ fun BoardScreen(
     onCloseArchive: () -> Unit = {},
     onCloseTags: () -> Unit = {},
     onTimelineLikeChanged: (Boolean) -> Unit = {},
+    onBoardGone: () -> Unit = {},
 ) {
     val vm: BoardViewModel = viewModel(key = "board-${board.id}")
     val state by vm.state.collectAsStateWithLifecycle()
@@ -105,6 +106,11 @@ fun BoardScreen(
     val activity by vm.activity.collectAsStateWithLifecycle()
 
     LaunchedEffect(board.id, workspaceId) { vm.load(board.id, workspaceId) }
+
+    // The board's project was deleted/transferred away (locally or from another
+    // client) → leave for Home without a «not found» toast (web parity).
+    val gone by vm.gone.collectAsStateWithLifecycle()
+    LaunchedEffect(gone) { if (gone) onBoardGone() }
 
     // Timeline/Gantt own pinch-zoom + horizontal pan; tell the host to suppress the
     // pull-to-refresh and drawer-edge gestures so they don't steal the pinch.

@@ -498,7 +498,11 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
             )
         },
         deleteMessage = "Проект «${project.name}» будет удалён со всеми досками и задачами. Действие необратимо.",
-        onDelete = { ctx.vm.deleteProject(project.id) },
+        onDelete = {
+            ctx.vm.deleteProject(project.id)
+            // Leave the project's board for Home if it's the one open (web parity).
+            ctx.host.onProjectGone(project.id)
+        },
         confirmName = project.name,
     )
     if (estimating) {

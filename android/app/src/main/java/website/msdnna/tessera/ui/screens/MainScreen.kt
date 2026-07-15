@@ -406,6 +406,7 @@ fun MainScreen(
                                 onCloseArchive = { boardArchiveOpen = false },
                                 onCloseTags = { boardTagsOpen = false },
                                 onTimelineLikeChanged = { boardTimelineLike = it },
+                                onBoardGone = { if (dest is MainDest.BoardView) dest = MainDest.Home },
                             )
                         }
                     }

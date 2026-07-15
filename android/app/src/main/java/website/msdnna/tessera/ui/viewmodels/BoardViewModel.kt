@@ -276,6 +276,11 @@ class BoardViewModel(
     // Live board-activity toasts (separate from the bell): fed from realtime events.
     private val _activity = MutableStateFlow<List<BoardActivity>>(emptyList())
     val activity: StateFlow<List<BoardActivity>> = _activity.asStateFlow()
+
+    // Set when this board's project is deleted/transferred elsewhere (realtime
+    // project.deleted) — the host leaves for Home (web navigate-home-on-delete).
+    private val _gone = MutableStateFlow(false)
+    val gone: StateFlow<Boolean> = _gone.asStateFlow()
     private var activitySeq = 0L
 
     private val gson = Gson()
@@ -384,6 +389,15 @@ class BoardViewModel(
      *  in-progress drags are filtered out. Debounced to coalesce bursts. */
     private fun onRealtimeEvent(ev: RealtimeEvent) {
         if (ev.scope != workspaceId) return
+        // This board's project was deleted or transferred away elsewhere → its board
+        // is gone; signal the host to leave for Home (web project.deleted handler).
+        if (ev.type == "project.deleted" &&
+            projectId.isNotBlank() &&
+            ev.data?.get("id")?.asString == projectId
+        ) {
+            _gone.value = true
+            return
+        }
         if (!ev.type.startsWith("task") && !ev.type.startsWith("column") &&
             !ev.type.startsWith("board") && !ev.type.startsWith("milestone")
         ) {
