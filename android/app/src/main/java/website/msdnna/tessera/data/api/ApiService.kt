@@ -189,6 +189,12 @@ interface ApiService {
     @DELETE("projects/{id}")
     suspend fun deleteProject(@Path("id") projectId: String)
 
+    @POST("projects/{id}/transfer")
+    suspend fun transferProject(
+        @Path("id") projectId: String,
+        @Body body: website.msdnna.tessera.data.model.TransferProjectRequest,
+    ): website.msdnna.tessera.data.model.TransferProjectResponse
+
     // ── Boards ──────────────────────────────────────────────────────────────
     @GET("projects/{id}/boards")
     suspend fun boards(@Path("id") projectId: String): List<Board>?

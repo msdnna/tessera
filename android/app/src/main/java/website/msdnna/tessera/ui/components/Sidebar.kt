@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,18 +44,22 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.User
+import website.msdnna.tessera.data.model.Workspace
 import website.msdnna.tessera.ui.theme.ConflictAmber
+import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
@@ -76,6 +82,14 @@ private sealed interface Creating {
     data class Board(val projectId: String) : Creating
 }
 
+/** Host callbacks the tree needs. [onOpenBoard] opens a board; [onProjectGone]
+ *  fires after a project is deleted/transferred so the host can leave its board
+ *  if it's the one open (web navigate-home-on-delete parity). */
+private class TreeHost(
+    val onOpenBoard: (Board) -> Unit,
+    val onProjectGone: (String) -> Unit,
+)
+
 /** Shared state threaded through the recursive tree nodes. */
 private class TreeCtx(
     val state: WorkspaceUiState,
@@ -86,7 +100,8 @@ private class TreeCtx(
     val setCreating: (Creating?) -> Unit,
     val renaming: String?,
     val setRenaming: (String?) -> Unit,
-    val onOpenBoard: (Board) -> Unit,
+    // Host callbacks bundled to keep the ctor within the parameter budget.
+    val host: TreeHost,
     val onDrop: (SbNode) -> Unit,
     val focus: FocusManager,
 ) {
@@ -119,6 +134,7 @@ fun Sidebar(
     onOpenSettings: () -> Unit,
     onOpenAdmin: () -> Unit,
     onOpenBoard: (Board) -> Unit,
+    onProjectGone: (String) -> Unit = {},
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
 ) {
@@ -152,7 +168,7 @@ fun Sidebar(
         state, vm, drag, flat,
         creating, { creating = it },
         renaming, { renaming = it },
-        onOpenBoard, onDrop, focus,
+        TreeHost(onOpenBoard, onProjectGone), onDrop, focus,
     )
 
     Box(
@@ -443,6 +459,7 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
     val expanded = project.id in ctx.state.expandedProjects
     val node = SbNode(project.id, SbKind.PROJECT, depth, project.groupId, project.name, project.icon, project.color, project.iconMode)
     var estimating by remember { mutableStateOf(false) }
+    var transferring by remember { mutableStateOf(false) }
     TreeRow(
         node = node,
         expanded = expanded,
@@ -464,6 +481,12 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                 close()
                 estimating = true
             })
+            if (ctx.state.workspaces.size > 1) {
+                TMenuItem("Перенести в другое пространство", icon = Ion.SEND, warn = true, onClick = {
+                    close()
+                    transferring = true
+                })
+            }
             TMenuDivider()
             ColumnScopePicker(
                 color = project.color,
@@ -488,6 +511,26 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
             onDismiss = { estimating = false },
         )
     }
+    if (transferring) {
+        val androidCtx = LocalContext.current
+        TransferProjectDialog(
+            project = project,
+            targets = ctx.state.workspaces.filter { it.id != ctx.state.currentId },
+            onTransfer = { targetId ->
+                ctx.vm.transferProject(project.id, targetId) { stripped ->
+                    ctx.host.onProjectGone(project.id)
+                    val msg = if (stripped > 0) {
+                        "Проект перенесён · снято исполнителей: $stripped"
+                    } else {
+                        "Проект перенесён"
+                    }
+                    android.widget.Toast.makeText(androidCtx, msg, android.widget.Toast.LENGTH_SHORT).show()
+                }
+                transferring = false
+            },
+            onDismiss = { transferring = false },
+        )
+    }
     if (expanded) {
         IndentedChildren {
             val boards = ctx.state.boardsByProject[project.id]
@@ -510,6 +553,55 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
     }
 }
 
+/** Modal to pick a target workspace for a project transfer (web ProjectRow parity):
+ *  a warning about what moves, a workspace list, and an orange-toned confirm. */
+@Composable
+private fun TransferProjectDialog(
+    project: Project,
+    targets: List<Workspace>,
+    onTransfer: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = Tessera.colors
+    var selected by remember { mutableStateOf<String?>(null) }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(18.dp),
+        ) {
+            Text("Перенести проект", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Проект «${project.name}» переедет в выбранное пространство со всеми досками, " +
+                    "задачами, тегами и заметками. В новом пространстве он окажется без группы. " +
+                    "Исполнители, не состоящие в целевом пространстве, будут сняты с задач.",
+                color = c.text3, fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                targets.forEach { ws ->
+                    val on = ws.id == selected
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusSm))
+                            .then(if (on) Modifier.background(c.primary.copy(alpha = 0.12f)) else Modifier)
+                            .clickableNoRipple { selected = ws.id }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(ws.name, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        if (on) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                TButton("Отмена", kind = TButtonKind.Ghost, onClick = onDismiss)
+                Spacer(Modifier.width(8.dp))
+                TButton("Перенести", enabled = selected != null, onClick = { selected?.let(onTransfer) })
+            }
+        }
+    }
+}
+
 @Composable
 private fun BoardRow(board: Board, projectId: String, ctx: TreeCtx) {
     val c = Tessera.colors
@@ -518,7 +610,7 @@ private fun BoardRow(board: Board, projectId: String, ctx: TreeCtx) {
     val renaming = ctx.renaming == board.id
     Row(
         Modifier.fillMaxWidth().animatePlacement().clip(RoundedCornerShape(RadiusSm))
-            .then(if (!renaming) Modifier.clickableNoRipple { ctx.clickRow { ctx.onOpenBoard(board) } } else Modifier)
+            .then(if (!renaming) Modifier.clickableNoRipple { ctx.clickRow { ctx.host.onOpenBoard(board) } } else Modifier)
             .padding(end = 6.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

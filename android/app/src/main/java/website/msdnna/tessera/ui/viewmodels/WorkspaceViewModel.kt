@@ -184,6 +184,14 @@ class WorkspaceViewModel(
         refreshSilently()
     }
 
+    /** Transfers [projectId] to [targetWorkspaceId], then refreshes the tree. [onDone]
+     *  receives the number of assignees stripped (non-members of the target). */
+    fun transferProject(projectId: String, targetWorkspaceId: String, onDone: (Int) -> Unit) = launchCatching {
+        val stripped = repo.transferProject(projectId, targetWorkspaceId)
+        refreshSilently()
+        onDone(stripped)
+    }
+
     /** Two-level estimation config; null clears it (inherit). */
     fun setProjectEstimation(projectId: String, config: website.msdnna.tessera.data.model.EstimationConfig?) = launchCatching {
         repo.setProjectEstimation(projectId, config)

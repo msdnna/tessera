@@ -133,3 +133,15 @@ data class MoveProjectRequest(
     @SerializedName("before_id") val beforeId: String?,
     @SerializedName("after_id") val afterId: String?,
 )
+
+/** POST /projects/:id/transfer — move a project to another workspace. */
+data class TransferProjectRequest(
+    @SerializedName("workspace_id") val workspaceId: String,
+)
+
+/** Response of a project transfer: the moved project + how many assignees were
+ *  stripped (they weren't members of the target workspace). */
+data class TransferProjectResponse(
+    @SerializedName("project") val project: Project? = null,
+    @SerializedName("stripped_assignees") val strippedAssignees: Int = 0,
+)

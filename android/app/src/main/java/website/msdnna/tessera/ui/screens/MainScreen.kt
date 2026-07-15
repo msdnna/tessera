@@ -304,6 +304,13 @@ fun MainScreen(
                     onOpenSettings = { go(MainDest.Settings) },
                     onOpenAdmin = { go(MainDest.Admin) },
                     onOpenBoard = { board -> go(MainDest.BoardView(board)) },
+                    onProjectGone = { projectId ->
+                        // A project was deleted/transferred — leave its board for Home
+                        // if it's the one open (web navigate-home-on-delete parity).
+                        if ((dest as? MainDest.BoardView)?.board?.projectId == projectId) {
+                            dest = MainDest.Home
+                        }
+                    },
                     updateVersion = updateAvailable?.let { "v${it.version}" },
                     onUpdate = {
                         scope.launch { drawerState.close() }

@@ -56,6 +56,13 @@ class WorkspaceRepository {
 
     suspend fun deleteProject(projectId: String) = api.deleteProject(projectId)
 
+    /** Transfers a project to another workspace; returns the stripped-assignee count. */
+    suspend fun transferProject(projectId: String, workspaceId: String): Int =
+        api.transferProject(
+            projectId,
+            website.msdnna.tessera.data.model.TransferProjectRequest(workspaceId),
+        ).strippedAssignees
+
     /** Two-level estimation config; null clears it (inherit). */
     suspend fun setProjectEstimation(
         projectId: String,

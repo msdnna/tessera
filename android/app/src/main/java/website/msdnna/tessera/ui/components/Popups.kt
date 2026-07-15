@@ -47,6 +47,7 @@ import androidx.compose.ui.window.PopupProperties
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
+import website.msdnna.tessera.ui.theme.TesseraWarning
 import website.msdnna.tessera.ui.theme.accentGradient
 
 /**
@@ -134,16 +135,24 @@ fun TMenuItem(
     onClick: () -> Unit,
     icon: String? = null,
     danger: Boolean = false,
+    warn: Boolean = false,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     val c = Tessera.colors
-    val color = if (danger) TesseraDanger else c.text1
+    // warn (orange) = dangerous-but-not-destructive (e.g. transfer); danger (red) =
+    // destructive (delete). Mirrors the web warnIcon / dangerIcon distinction.
+    val accent = when {
+        danger -> TesseraDanger
+        warn -> TesseraWarning
+        else -> null
+    }
+    val color = accent ?: c.text1
     Row(
         Modifier.fillMaxWidth().clickableNoRipple(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            IonIcon(icon, size = 16.dp, tint = if (danger) TesseraDanger else c.text2)
+            IonIcon(icon, size = 16.dp, tint = accent ?: c.text2)
             Spacer(Modifier.width(10.dp))
         }
         Text(label, color = color, fontSize = 14.sp, modifier = Modifier.weight(1f))
