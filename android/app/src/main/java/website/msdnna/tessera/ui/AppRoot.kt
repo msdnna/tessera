@@ -61,6 +61,22 @@ private const val VERIFY_TIMEOUT_MS = 30_000L
 
 private val BrandPurple = Color(0xFF7C6CFF)
 
+/** Result of the GitLab OAuth deep link handed up from [MainActivity]. */
+sealed interface OAuthResult {
+    data class Success(val access: String, val refresh: String) : OAuthResult
+    data class Error(val message: String) : OAuthResult
+}
+
+/** Maps a backend OAuth error code to a Russian message (mirrors web LoginView). */
+private fun oauthErrorMessage(code: String): String = when (code) {
+    "not_configured" -> "Вход через GitLab не настроен на сервере"
+    "state_mismatch" -> "Сессия входа устарела — попробуйте ещё раз"
+    "exchange_failed", "userinfo_failed" -> "Не удалось получить данные от GitLab"
+    "account_disabled" -> "Аккаунт отключён"
+    "no_tokens", "no_data" -> "Вход не был завершён"
+    else -> "Не удалось войти через GitLab"
+}
+
 /** Outcome of the startup session check, driving the gate below. */
 private sealed interface Boot {
     data object Loading : Boot
@@ -77,11 +93,14 @@ private sealed interface Boot {
 fun AppRoot(
     openTaskId: String? = null,
     onOpenTaskHandled: () -> Unit = {},
+    oauthResult: OAuthResult? = null,
+    onOAuthHandled: () -> Unit = {},
 ) {
     val prefs = AppContainer.prefs
     val scope = rememberCoroutineScope()
     val authRepo = remember { AuthRepository() }
     val profileRepo = remember { ProfileRepository() }
+    var oauthError by remember { mutableStateOf<String?>(null) }
 
     val accentKey by prefs.accentKey.collectAsStateWithLifecycle(initialValue = "purple")
     val isDark by prefs.darkMode.collectAsStateWithLifecycle(initialValue = false)
@@ -128,6 +147,26 @@ fun AppRoot(
                 onSuccess = { if (it == null) Boot.ConnectError else Boot.Done },
                 onFailure = { if (isAuthError(it)) Boot.AuthError else Boot.ConnectError },
             )
+    }
+
+    // A returning OAuth deep link: persist the handed-back session (→ token flow
+    // flips the gate to Main), or surface the error on the auth screen.
+    LaunchedEffect(oauthResult) {
+        when (val r = oauthResult) {
+            null -> {}
+
+            is OAuthResult.Success -> {
+                oauthError = null
+                runCatching { authRepo.loginWithTokens(r.access, r.refresh) }
+                    .onFailure { boot = if (isAuthError(it)) Boot.AuthError else Boot.ConnectError }
+                onOAuthHandled()
+            }
+
+            is OAuthResult.Error -> {
+                oauthError = oauthErrorMessage(r.message)
+                onOAuthHandled()
+            }
+        }
     }
 
     // Keep the network client's server URL in sync with prefs changes.
@@ -187,6 +226,8 @@ fun AppRoot(
                     // Pre-login the theme lives only in local prefs (no user yet);
                     // it's reconciled with the server pref after sign-in.
                     onToggleTheme = { scope.launch { prefs.setDarkMode(!isDark) } },
+                    oauthError = oauthError,
+                    onOAuthErrorShown = { oauthError = null },
                 )
 
                 else -> MainScreen(

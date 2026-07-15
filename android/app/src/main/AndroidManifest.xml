@@ -32,6 +32,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- OAuth deep link: the backend callback redirects the Custom Tab to
+                 tessera://oauth/callback#access_token=…&refresh_token=… (or
+                 #oauth_error=…), which MainActivity picks up in onNewIntent. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="tessera" android:host="oauth" />
+            </intent-filter>
         </activity>
 
         <!-- Shares downloaded attachments (cacheDir/attachments) to other apps. -->

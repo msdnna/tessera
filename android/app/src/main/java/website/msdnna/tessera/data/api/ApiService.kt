@@ -15,6 +15,7 @@ import website.msdnna.tessera.data.model.AddRelationRequest
 import website.msdnna.tessera.data.model.AddTagRequest
 import website.msdnna.tessera.data.model.AdminUser
 import website.msdnna.tessera.data.model.Attachment
+import website.msdnna.tessera.data.model.AuthProviders
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.AvatarResponse
 import website.msdnna.tessera.data.model.Board
@@ -87,6 +88,9 @@ interface ApiService {
 
     @GET("auth/me")
     suspend fun me(): MeResponse
+
+    @GET("auth/providers")
+    suspend fun authProviders(): AuthProviders
 
     // ── self-service profile / preferences / avatar (U1) ──
     @PATCH("users/me")

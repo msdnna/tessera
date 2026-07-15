@@ -103,6 +103,10 @@ object RetrofitClient {
         return if (trimmed.endsWith("/api")) "$trimmed/" else "$trimmed/api/"
     }
 
+    /** Public `<server>/api/` base for a server URL — used to build the OAuth
+     *  authorize URL opened in a Custom Tab (which bypasses Retrofit). */
+    fun apiBaseUrl(serverUrl: String): String = buildApiUrl(serverUrl)
+
     private fun buildService(baseUrl: String): ApiService {
         val client = OkHttpClient.Builder()
             .addInterceptor { chain ->

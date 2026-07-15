@@ -13,6 +13,7 @@ import website.msdnna.tessera.util.errorMessage
 data class AuthUiState(
     val loading: Boolean = false,
     val error: String? = null,
+    val gitlabEnabled: Boolean = false,
 )
 
 /** Drives the login / register submission. Session persistence happens in the
@@ -30,6 +31,18 @@ class AuthViewModel(
     fun register(email: String, name: String, password: String) = submit {
         repo.register(email, name, password)
     }
+
+    /** Probe the server for enabled OAuth providers so the login screen can show
+     *  the «Войти через GitLab» button. Best-effort — silence on failure. */
+    fun loadProviders() {
+        viewModelScope.launch {
+            runCatching { repo.providers() }.getOrNull()?.let { p ->
+                _state.update { it.copy(gitlabEnabled = p.gitlab) }
+            }
+        }
+    }
+
+    fun setError(message: String) = _state.update { it.copy(error = message) }
 
     fun clearError() = _state.update { it.copy(error = null) }
 

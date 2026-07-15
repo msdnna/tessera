@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui.screens
 
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -42,6 +44,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -71,6 +75,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.repository.ProfileRepository
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.MtLogo
@@ -100,10 +105,28 @@ fun AuthScreen(
     onServerUrlChange: (String) -> Unit,
     isDark: Boolean = false,
     onToggleTheme: () -> Unit = {},
+    oauthError: String? = null,
+    onOAuthErrorShown: () -> Unit = {},
     vm: AuthViewModel = viewModel(),
 ) {
     val c = Tessera.colors
     val state by vm.state.collectAsStateWithLifecycle()
+    val ctx = LocalContext.current
+
+    // Probe enabled OAuth providers once; surface any OAuth deep-link error.
+    LaunchedEffect(Unit) { vm.loadProviders() }
+    LaunchedEffect(oauthError) {
+        if (!oauthError.isNullOrBlank()) {
+            vm.setError(oauthError)
+            onOAuthErrorShown()
+        }
+    }
+
+    fun launchGitlabOAuth() {
+        val url = RetrofitClient.apiBaseUrl(serverUrl) + "auth/gitlab/authorize?platform=android"
+        runCatching { CustomTabsIntent.Builder().build().launchUrl(ctx, Uri.parse(url)) }
+            .onFailure { vm.setError("Не удалось открыть браузер для входа") }
+    }
 
     // Logo sized so its WIDTH is half the screen (MtLogo's width = height * 120/100).
     val logoSize = (LocalConfiguration.current.screenWidthDp.dp * 0.5f) / (120f / 100f)
@@ -249,6 +272,13 @@ fun AuthScreen(
                     if (register) vm.register(email, name, password) else vm.login(email, password)
                 },
             )
+
+            if (state.gitlabEnabled) {
+                Spacer(Modifier.height(14.dp))
+                AuthDivider()
+                Spacer(Modifier.height(14.dp))
+                AuthOAuthButton(text = "Войти через GitLab", onClick = ::launchGitlabOAuth)
+            }
 
             if (!register) {
                 Spacer(Modifier.height(12.dp))
@@ -404,6 +434,38 @@ private fun AuthField(
                 },
             )
         }
+    }
+}
+
+/** «— или —» rule separating the password form from the OAuth button. */
+@Composable
+private fun AuthDivider() {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f).height(1.dp).background(Color.White.copy(alpha = 0.25f)))
+        Text(
+            "или",
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+        Box(Modifier.weight(1f).height(1.dp).background(Color.White.copy(alpha = 0.25f)))
+    }
+}
+
+/** Outlined secondary CTA on the purple gradient — opens the OAuth Custom Tab. */
+@Composable
+private fun AuthOAuthButton(text: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(RadiusMd))
+            .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(RadiusMd))
+            .clickableNoRipple(onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

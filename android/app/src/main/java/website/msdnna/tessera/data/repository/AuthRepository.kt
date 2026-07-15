@@ -2,6 +2,7 @@ package website.msdnna.tessera.data.repository
 
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.model.AuthProviders
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.LoginRequest
 import website.msdnna.tessera.data.model.Preferences
@@ -24,6 +25,22 @@ class AuthRepository {
     suspend fun register(email: String, name: String, password: String): User {
         val res = AppContainer.api().register(RegisterRequest(email.trim(), name.trim(), password))
         return persist(res)
+    }
+
+    /** Which external login providers the server offers (drives the OAuth button). */
+    suspend fun providers(): AuthProviders = AppContainer.api().authProviders()
+
+    /** Completes an OAuth login: the deep link already carried the token pair, so
+     *  push it into the client, fetch the profile, then persist the session
+     *  atomically. Mirrors the web `OAuthCallbackView`. */
+    suspend fun loginWithTokens(access: String, refresh: String): User {
+        RetrofitClient.authToken = access
+        RetrofitClient.refreshToken = refresh
+        val me = AppContainer.api().me()
+        val user = me.user ?: User()
+        prefs.setSession(access to refresh, user)
+        prefs.setPreferences(me.preferences ?: Preferences())
+        return user
     }
 
     /** Validates the stored token against /auth/me, refreshing the profile + prefs. */

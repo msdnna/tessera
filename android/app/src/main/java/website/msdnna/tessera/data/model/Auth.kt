@@ -40,6 +40,11 @@ data class AuthResponse(
     @SerializedName("preferences") val preferences: Preferences? = null,
 )
 
+/** GET /auth/providers — which external login providers are configured+enabled. */
+data class AuthProviders(
+    @SerializedName("gitlab") val gitlab: Boolean = false,
+)
+
 /** Response shape of GET /auth/me (user + preferences). */
 data class MeResponse(
     @SerializedName("user") val user: User? = null,

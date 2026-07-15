@@ -5,6 +5,17 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.48.0 — 2026-07-16
+- **Вход через GitLab (OAuth)** — паритет с web. На экране входа при включённом на
+  сервере провайдере появляется кнопка «Войти через GitLab»: она открывает
+  Chrome Custom Tab с `…/api/auth/gitlab/authorize?platform=android`; после подтверждения
+  бэкенд возвращает сессию через deep-link `tessera://oauth/callback#access_token=…`,
+  который перехватывает `MainActivity` и передаёт токены в `AppRoot` → приложение сразу
+  логинится. Секрет OAuth-приложения остаётся на сервере (confidential-app). Ошибки OAuth
+  (`#oauth_error=…`) показываются на экране входа человекочитаемым сообщением.
+  Требует бэкенд be ≥ 0.77.1 (мобильная ветка редиректа). Добавлена зависимость
+  `androidx.browser` (Custom Tabs) и intent-filter `tessera://oauth` в манифесте.
+
 ## 0.47.2 — 2026-07-09
 - **Дефолт-иконка доски = канбан** (web board default): доска без своей иконки рисует
   канбан-глиф из пака (а не сетку) в дереве сайдбара — с той же badge/color-логикой,
