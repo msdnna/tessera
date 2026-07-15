@@ -314,9 +314,25 @@ fun KanbanView(
             // (blur), mirroring the web's tap-away behaviour.
             .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } },
     ) {
-        // Columns sit a clear margin short of full width so the next column
-        // peeks in (like the web mobile board); the row snaps column to column.
-        val colWidth = maxWidth - 52.dp
+        // Columns sit a clear margin short of full width so the next column peeks
+        // in (mobile board); the row snaps column to column. When some columns are
+        // collapsed to strips, their freed width is redistributed across the
+        // expanded columns so those grow (web width-redistribution parity), capped
+        // by the card-size band. With nothing collapsed this is the plain peek width.
+        val peekWidth = maxWidth - 52.dp
+        val collapsedCount = lanes.count { state.isLaneCollapsed(it.id, it.tasks.size) }
+        val expandedCount = (lanes.size - collapsedCount).coerceAtLeast(1)
+        val widthCap = when (state.cardSize) {
+            "compact" -> 340.dp
+            "large" -> 600.dp
+            else -> 520.dp
+        }
+        val colWidth = if (collapsedCount == 0) {
+            peekWidth
+        } else {
+            val freedPerExpanded = ((44.dp + 12.dp) * collapsedCount) / expandedCount
+            (peekWidth + freedPerExpanded).coerceAtMost(maxOf(widthCap, peekWidth))
+        }
         // One "page" = a column plus the 12dp inter-column gap; the snap fling
         // settles the scroll on a whole number of these so a column locks to the
         // left edge after a flick/drag-release.
