@@ -34,6 +34,8 @@ const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 // Red icon for destructive menu entries (the label is reddened via the option's
 // props.style; NIcon needs the colour set explicitly — it doesn't inherit it).
 const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
+// Orange (warning) icon for dangerous-but-not-destructive entries (e.g. transfer).
+const warnIcon = (icon) => () => h(NIcon, { color: '#f0a020' }, { default: () => h(icon) })
 // Primary-tinted icon for the "selected" checkmark / checkbox in the tree menu.
 const primIcon = (icon) => () => h(NIcon, { color: 'var(--t-primary)' }, { default: () => h(icon) })
 import { projects as projApi, boards as boardsApi } from '@/api'
@@ -272,7 +274,7 @@ const pcOptions = computed(() => {
     })
   }
   opts.push({ type: 'divider', key: 'd2' })
-  opts.push({ label: 'Перенести в другое пространство', key: 'transfer', icon: dangerIcon(SwapHorizontalOutline), props: { style: 'color:#e0533d' } })
+  opts.push({ label: 'Перенести в другое пространство', key: 'transfer', icon: warnIcon(SwapHorizontalOutline), props: { style: 'color:#f0a020' } })
   opts.push({ label: 'Удалить проект', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } })
   return opts
 })
