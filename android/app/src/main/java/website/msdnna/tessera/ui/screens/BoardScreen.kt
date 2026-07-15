@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
@@ -153,6 +154,11 @@ fun BoardScreen(
             setExpanded = { composerExpanded = it },
         )
         HorizontalDivider(color = Tessera.colors.border)
+
+        if (state.milestones.isNotEmpty()) {
+            SprintScopeBar(state = state, onSelect = vm::setMilestoneScope)
+            HorizontalDivider(color = Tessera.colors.border)
+        }
 
         Box(Modifier.fillMaxSize()) {
             val boardContent: @Composable () -> Unit = {
@@ -284,6 +290,72 @@ private fun activityVerbMeta(verb: String): Triple<String, String, Color> = when
     "completed" -> Triple("завершил(а) задачу", Ion.CHECK_CIRCLE, Color(0xFF18A058))
     "reopened" -> Triple("вернул(а) в работу", Ion.ELLIPSE, Color(0xFFE0922F))
     else -> Triple("переместил(а) задачу", Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
+}
+
+/**
+ * Sprint scope bar (web parity): server-side navigation between sprints on boards
+ * that have milestones. Picks «Все задачи» / «Бэклог» / a milestone; the selection
+ * re-scopes the board on the server (for large GitLab imports). A removable chip
+ * marks an active sprint scope.
+ */
+@Composable
+private fun SprintScopeBar(
+    state: website.msdnna.tessera.ui.viewmodels.BoardUiState,
+    onSelect: (String?) -> Unit,
+) {
+    val c = Tessera.colors
+    var open by remember { mutableStateOf(false) }
+    val scope = state.milestoneScope
+    val label = when (scope) {
+        null -> "Все задачи"
+        "backlog" -> "Бэклог"
+        else -> state.milestonesMap[scope]?.title ?: "Спринт"
+    }
+    val active = scope != null
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box {
+            Row(
+                Modifier.clip(RoundedCornerShape(RadiusSm))
+                    .background(if (active) accentGradient(c.primary) else SolidColor(c.surface))
+                    .border(1.dp, if (active) Color.Transparent else c.border, RoundedCornerShape(RadiusSm))
+                    .clickableNoRipple { open = true }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IonIcon(Ion.GIT_MERGE, size = 14.dp, tint = if (active) c.onPrimary else c.text3)
+                Spacer(Modifier.width(6.dp))
+                Text("Спринт: $label", color = if (active) c.onPrimary else c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.width(4.dp))
+                IonIcon(Ion.CHEVRON_DOWN, size = 12.dp, tint = if (active) c.onPrimary else c.text3)
+            }
+            TDropdown(expanded = open, onDismiss = { open = false }) {
+                TMenuItem("Все задачи", onClick = {
+                    open = false
+                    onSelect(null)
+                })
+                TMenuItem("Бэклог (без спринта)", onClick = {
+                    open = false
+                    onSelect("backlog")
+                })
+                state.milestones.forEach { m ->
+                    TMenuItem(m.title, onClick = {
+                        open = false
+                        onSelect(m.id)
+                    })
+                }
+            }
+        }
+        if (active) {
+            Spacer(Modifier.width(8.dp))
+            IonIcon(
+                Ion.CLOSE, size = 16.dp, tint = c.text3,
+                modifier = Modifier.clip(CircleShape).clickableNoRipple { onSelect(null) },
+            )
+        }
+    }
 }
 
 @Composable

@@ -138,6 +138,9 @@ data class BoardUiState(
     val currentViewName: String? = null,
     /** Archived cards for the Archive modal (null = not yet loaded). */
     val archived: List<Task>? = null,
+    /** Server-side sprint scope: <milestone uuid> shows one sprint, "backlog" shows
+     *  milestone-less tasks, null shows all. For large GitLab imports (web parity). */
+    val milestoneScope: String? = null,
     /** True while a pull-to-refresh is in flight (no full-screen spinner). */
     val refreshing: Boolean = false,
 ) {
@@ -304,7 +307,7 @@ class BoardViewModel(
             val board = runCatching { repo.board(boardId) }.getOrNull()
             projectId = board?.projectId ?: ""
             val columns = repo.columns(boardId)
-            val tasks = repo.tasks(boardId)
+            val tasks = repo.tasks(boardId, _state.value.milestoneScope)
             val subtasks = repo.subtasks(boardId)
             val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
             val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
@@ -434,7 +437,7 @@ class BoardViewModel(
         val board = runCatching { repo.board(boardId) }.getOrNull()
         projectId = board?.projectId ?: projectId
         val columns = repo.columns(boardId)
-        val tasks = repo.tasks(boardId)
+        val tasks = repo.tasks(boardId, _state.value.milestoneScope)
         val subtasks = repo.subtasks(boardId)
         val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
         val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
@@ -890,10 +893,18 @@ class BoardViewModel(
     }
 
     private suspend fun refreshTasks() {
-        val tasks = repo.tasks(boardId)
+        val tasks = repo.tasks(boardId, _state.value.milestoneScope)
         val subtasks = repo.subtasks(boardId)
         _state.update { it.copy(tasks = tasks, subtasks = subtasks) }
         markLocalChange()
+    }
+
+    /** Server-side sprint scope (web parity): reload the board showing only [scope]
+     *  (<milestone uuid> | "backlog" | null = all). For large GitLab imports. */
+    fun setMilestoneScope(scope: String?) {
+        if (_state.value.milestoneScope == scope) return
+        _state.update { it.copy(milestoneScope = scope) }
+        launchCatching { refreshTasks() }
     }
 
     private fun launchCatching(block: suspend () -> Unit) {

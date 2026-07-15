@@ -10,6 +10,7 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
+import retrofit2.http.Query
 import website.msdnna.tessera.data.model.AddAssigneeRequest
 import website.msdnna.tessera.data.model.AddRelationRequest
 import website.msdnna.tessera.data.model.AddTagRequest
@@ -232,8 +233,13 @@ interface ApiService {
     @GET("tasks/{id}")
     suspend fun task(@Path("id") taskId: String): TaskDetail
 
+    // milestone: <uuid> shows one sprint, "backlog" shows milestone-less tasks,
+    // null shows all (server-side sprint scope — for large GitLab imports).
     @GET("boards/{id}/tasks")
-    suspend fun boardTasks(@Path("id") boardId: String): List<Task>?
+    suspend fun boardTasks(
+        @Path("id") boardId: String,
+        @Query("milestone") milestone: String? = null,
+    ): List<Task>?
 
     @GET("boards/{id}/subtasks")
     suspend fun boardSubtasks(@Path("id") boardId: String): List<Task>?
