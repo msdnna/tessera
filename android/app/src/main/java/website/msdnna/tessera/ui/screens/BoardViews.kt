@@ -498,15 +498,15 @@ fun KanbanView(
                                                 vm = vm,
                                                 onOpen = onOpenTask,
                                                 modifier = Modifier.fadeInOnAppear().animatePlacement().dragCollapse(task.id == draggingId),
-                                                drag = if (lane.canAdd) drag else null,
-                                                onDropTask = if (lane.canAdd) onDropTask else null,
+                                                drag = if (lane.canAdd && !state.archivedMode) drag else null,
+                                                onDropTask = if (lane.canAdd && !state.archivedMode) onDropTask else null,
                                                 nestSlot = nestDrop?.takeIf { it.parentId == task.id }?.let { it.beforeId to it.afterId },
                                                 conflictTaskIds = conflictTaskIds,
                                                 onOpenConflict = onOpenConflict,
                                             )
                                         }
                                     }
-                                    if (lane.canAdd) {
+                                    if (lane.canAdd && !state.archivedMode) {
                                         item(key = "__footer__") {
                                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 if (colDrop?.columnId == lane.id && colDrop.afterId == null && drag.dragging != null) {
@@ -535,7 +535,7 @@ fun KanbanView(
             }
             // "+ column" placeholder at the end of the status lanes (web parity):
             // tap names a new column; a blank entry cancels back to the tile.
-            if (!state.groupByTag && !state.groupByMilestone) {
+            if (!state.groupByTag && !state.groupByMilestone && !state.archivedMode) {
                 Column(Modifier.width(colWidth)) {
                     if (addingNewColumn) {
                         Column(

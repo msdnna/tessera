@@ -138,6 +138,10 @@ data class BoardUiState(
     val currentViewName: String? = null,
     /** Archived cards for the Archive modal (null = not yet loaded). */
     val archived: List<Task>? = null,
+    /** Read-only archive scope: when true, [tasks] holds the board's ARCHIVED tasks
+     *  (rendered through the normal views with all filters/grouping/sort, but no
+     *  mutations — only restore). Web parity (archive-as-board). */
+    val archivedMode: Boolean = false,
     /** Server-side sprint scope: <milestone uuid> shows one sprint, "backlog" shows
      *  milestone-less tasks, null shows all. For large GitLab imports (web parity). */
     val milestoneScope: String? = null,
@@ -731,15 +735,45 @@ class BoardViewModel(
         _state.update { it.copy(archived = repo.archived(boardId)) }
     }
 
+    /** Enter the read-only archive scope: load the board's archived tasks into
+     *  [tasks] so the normal views render them (with all filters/grouping/sort),
+     *  but no mutations. Subtasks are archived with their parents → cleared. */
+    fun enterArchive() = launchCatching {
+        _state.update { it.copy(archivedMode = true) }
+        val tasks = repo.tasks(boardId, archived = true)
+        _state.update { it.copy(tasks = tasks, subtasks = emptyList()) }
+    }
+
+    /** Leave the archive scope and reload the live board. */
+    fun exitArchive() {
+        if (!_state.value.archivedMode) return
+        _state.update { it.copy(archivedMode = false) }
+        load(boardId, workspaceId)
+    }
+
+    /** Reloads the archived-scope task list after a restore/delete. */
+    private suspend fun reloadArchiveScope() {
+        val tasks = repo.tasks(boardId, archived = true)
+        _state.update { it.copy(tasks = tasks, archived = repo.archived(boardId)) }
+    }
+
     fun restoreFromArchive(taskId: String) = launchCatching {
         repo.restoreTask(taskId)
-        _state.update { it.copy(archived = repo.archived(boardId)) }
-        refreshTasks()
+        if (_state.value.archivedMode) {
+            reloadArchiveScope()
+        } else {
+            _state.update { it.copy(archived = repo.archived(boardId)) }
+            refreshTasks()
+        }
     }
 
     fun deleteFromArchive(taskId: String) = launchCatching {
         repo.deleteTask(taskId)
-        _state.update { it.copy(archived = repo.archived(boardId)) }
+        if (_state.value.archivedMode) {
+            reloadArchiveScope()
+        } else {
+            _state.update { it.copy(archived = repo.archived(boardId)) }
+        }
     }
 
     fun createTask(columnId: String, title: String, parentId: String? = null) = launchCatching {

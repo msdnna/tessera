@@ -235,10 +235,12 @@ interface ApiService {
 
     // milestone: <uuid> shows one sprint, "backlog" shows milestone-less tasks,
     // null shows all (server-side sprint scope — for large GitLab imports).
+    // archived=1 returns the board's archived tasks (read-only archive scope).
     @GET("boards/{id}/tasks")
     suspend fun boardTasks(
         @Path("id") boardId: String,
         @Query("milestone") milestone: String? = null,
+        @Query("archived") archived: Int? = null,
     ): List<Task>?
 
     @GET("boards/{id}/subtasks")

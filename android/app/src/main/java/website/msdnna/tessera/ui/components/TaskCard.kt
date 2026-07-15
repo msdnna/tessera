@@ -135,7 +135,8 @@ fun TaskCard(
                 // long-press detectors in one spot would fight. Nested (subtask)
                 // cards are dragged via their outer `subtaskDrag` modifier instead.
                 .then(
-                    if (!nested && drag != null && onDropTask != null) {
+                    // No card drag in the read-only archive scope.
+                    if (!nested && drag != null && onDropTask != null && !state.archivedMode) {
                         Modifier.draggableCard(drag, task) { onDropTask(task) }
                     } else {
                         Modifier
@@ -165,7 +166,16 @@ fun TaskCard(
                 ConflictPill { onOpenConflict(task) }
             }
             Spacer(Modifier.height(8.dp))
-            PillsRow(task, state, vm)
+            if (state.archivedMode) {
+                // Read-only: show the pills but swallow their edit taps — tapping
+                // anywhere on them just opens the (read) modal.
+                Box {
+                    PillsRow(task, state, vm)
+                    Spacer(Modifier.matchParentSize().clickableNoRipple { onOpen(task) })
+                }
+            } else {
+                PillsRow(task, state, vm)
+            }
         }
 
         // Render the subtask area when there are subtasks OR this card is the
@@ -241,6 +251,7 @@ private fun CardHeader(
 ) {
     val c = Tessera.colors
     var editing by remember(task.id) { mutableStateOf(false) }
+    val archived = state.archivedMode
     // Meta row (#number / GitLab !iid) is gated by card density + per-field toggles.
     val showNumber = state.cardShows("number") && task.number != null
     val showGitlab = state.cardShows("gitlab") && task.gitlabIid != null
@@ -259,7 +270,7 @@ private fun CardHeader(
     }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!showAddSub) {
+            if (!showAddSub && !archived) {
                 completeToggle(19.dp)
                 Spacer(Modifier.width(8.dp))
             }
@@ -291,8 +302,9 @@ private fun CardHeader(
             }
             // Quick-action group (web hover-action-bar parity; touch has no hover so
             // it's persistent, top-level cards only): complete + add-subtask + menu,
-            // all uniform 24dp/16dp icon buttons with even 2dp spacing.
-            if (showAddSub) {
+            // all uniform 24dp/16dp icon buttons with even 2dp spacing. Suppressed in
+            // the read-only archive scope, which shows a restore/delete menu instead.
+            if (showAddSub && !archived) {
                 Spacer(Modifier.width(2.dp))
                 IonIconButton(
                     Ion.CHECK,
@@ -306,7 +318,11 @@ private fun CardHeader(
             }
             if (showMenu) {
                 Spacer(Modifier.width(2.dp))
-                CardMenu(task, vm, onOpen, onEditTitle = { editing = true }, onAddSubtask = onAddSubtask)
+                if (archived) {
+                    ArchiveCardMenu(task, vm, onOpen)
+                } else {
+                    CardMenu(task, vm, onOpen, onEditTitle = { editing = true }, onAddSubtask = onAddSubtask)
+                }
             }
         }
         // Meta row: task number + GitLab issue link, aligned under the title — 27dp
@@ -410,6 +426,42 @@ private fun CardMenu(
             onConfirm = {
                 confirmDelete = false
                 vm.delete(task.id)
+            },
+            onDismiss = { confirmDelete = false },
+        )
+    }
+}
+
+/** Read-only archive scope card menu: open (view), restore, or delete forever. */
+@Composable
+private fun ArchiveCardMenu(task: Task, vm: BoardViewModel, onOpen: (Task) -> Unit) {
+    val c = Tessera.colors
+    var menu by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    Box {
+        IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 24.dp, iconSize = 16.dp, tint = c.text3)
+        TDropdown(expanded = menu, onDismiss = { menu = false }) {
+            TMenuItem("Открыть", icon = Ion.DOCUMENT_TEXT, onClick = {
+                menu = false
+                onOpen(task)
+            })
+            TMenuItem("Вернуть из архива", icon = Ion.ELLIPSE, onClick = {
+                menu = false
+                vm.restoreFromArchive(task.id)
+            })
+            TMenuDivider()
+            TMenuItem("Удалить навсегда", icon = Ion.TRASH, danger = true, onClick = {
+                menu = false
+                confirmDelete = true
+            })
+        }
+        TConfirmPopover(
+            expanded = confirmDelete,
+            message = "Удалить задачу «${task.title}» навсегда? Это действие необратимо.",
+            confirmText = "Удалить",
+            onConfirm = {
+                confirmDelete = false
+                vm.deleteFromArchive(task.id)
             },
             onDismiss = { confirmDelete = false },
         )

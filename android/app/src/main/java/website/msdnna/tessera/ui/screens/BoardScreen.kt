@@ -131,7 +131,9 @@ fun BoardScreen(
             onInitialMilestoneConsumed()
         }
     }
-    LaunchedEffect(archiveOpen) { if (archiveOpen) vm.loadArchived() }
+    // Archive opens as a read-only board scope (web parity): the board renders the
+    // archived tasks with all filters/grouping/sort; leaving restores the live view.
+    LaunchedEffect(archiveOpen) { if (archiveOpen) vm.enterArchive() else vm.exitArchive() }
 
     // Composer collapsed by default so the tools stay aligned; expanding slides
     // the tools off and a tap anywhere outside the bar (the board area) collapses
@@ -155,7 +157,10 @@ fun BoardScreen(
         )
         HorizontalDivider(color = Tessera.colors.border)
 
-        if (state.milestones.isNotEmpty()) {
+        if (state.archivedMode) {
+            ArchiveBanner(onExit = onCloseArchive)
+            HorizontalDivider(color = Tessera.colors.border)
+        } else if (state.milestones.isNotEmpty()) {
             SprintScopeBar(state = state, onSelect = vm::setMilestoneScope)
             HorizontalDivider(color = Tessera.colors.border)
         }
@@ -242,7 +247,6 @@ fun BoardScreen(
         )
     }
 
-    if (archiveOpen) ArchiveModal(state = state, vm = vm, onDismiss = onCloseArchive)
     if (tagsOpen) TagManagerModal(state = state, vm = vm, onDismiss = onCloseTags)
 
     BoardActivityOverlay(
@@ -290,6 +294,29 @@ private fun activityVerbMeta(verb: String): Triple<String, String, Color> = when
     "completed" -> Triple("завершил(а) задачу", Ion.CHECK_CIRCLE, Color(0xFF18A058))
     "reopened" -> Triple("вернул(а) в работу", Ion.ELLIPSE, Color(0xFFE0922F))
     else -> Triple("переместил(а) задачу", Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
+}
+
+/** Read-only archive banner: marks the board as the archive scope and offers exit. */
+@Composable
+private fun ArchiveBanner(onExit: () -> Unit) {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth().background(c.surfaceAlt).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IonIcon(Ion.ARCHIVE, size = 15.dp, tint = c.text3)
+        Spacer(Modifier.width(8.dp))
+        Text("Архив (только чтение)", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+        Row(
+            Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                .clickableNoRipple(onClick = onExit).padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IonIcon(Ion.CLOSE, size = 13.dp, tint = c.text2)
+            Spacer(Modifier.width(4.dp))
+            Text("Выйти", color = c.text2, fontSize = 13.sp)
+        }
+    }
 }
 
 /**

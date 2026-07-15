@@ -40,8 +40,8 @@ class BoardRepository {
         api.moveColumn(columnId, website.msdnna.tessera.data.model.ColumnMoveRequest(beforeId, afterId))
     suspend fun setDoneColumn(boardId: String, columnId: String?) =
         api.setDoneColumn(boardId, website.msdnna.tessera.data.model.SetDoneColumnRequest(columnId))
-    suspend fun tasks(boardId: String, milestone: String? = null): List<Task> =
-        api.boardTasks(boardId, milestone).orEmpty()
+    suspend fun tasks(boardId: String, milestone: String? = null, archived: Boolean = false): List<Task> =
+        api.boardTasks(boardId, milestone, if (archived) 1 else null).orEmpty()
     suspend fun subtasks(boardId: String): List<Task> = api.boardSubtasks(boardId).orEmpty()
     suspend fun dependencies(boardId: String): List<website.msdnna.tessera.data.model.BoardDependency> =
         api.boardDependencies(boardId).orEmpty()
