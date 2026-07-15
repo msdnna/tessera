@@ -42,7 +42,7 @@ func main() {
 	versionHandler := handlers.NewVersionHandler(appVersion)
 	wsHandler := handlers.NewWSHandler(hub)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
-	rh := handlers.NewAPI(queries, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL)
+	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	// Give boards/notes that predate the slug column a human-readable slug.
 	rh.BackfillSlugs(context.Background())
 
@@ -183,6 +183,7 @@ func main() {
 			protected.GET("/projects/:id", rh.GetProject)
 			protected.PATCH("/projects/:id", rh.UpdateProject)
 			protected.PATCH("/projects/:id/move", rh.MoveProject)
+			protected.POST("/projects/:id/transfer", rh.TransferProject)
 			protected.DELETE("/projects/:id", rh.DeleteProject)
 			protected.POST("/projects/:id/boards", rh.CreateBoard)
 			protected.GET("/projects/:id/boards", rh.ListBoards)

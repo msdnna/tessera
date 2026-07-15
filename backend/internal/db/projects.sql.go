@@ -288,6 +288,43 @@ func (q *Queries) SetProjectSlug(ctx context.Context, arg SetProjectSlugParams) 
 	return err
 }
 
+const transferProject = `-- name: TransferProject :one
+UPDATE projects
+SET workspace_id = $2, group_id = NULL, position = $3, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode
+`
+
+type TransferProjectParams struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Position    float64   `json:"position"`
+}
+
+// TransferProject moves a project to another workspace, dropping it at the root
+// (ungrouped) since groups belong to the source workspace. Denormalized
+// workspace_id on tags/tag_prefixes/notes is re-stamped separately in the same tx.
+func (q *Queries) TransferProject(ctx context.Context, arg TransferProjectParams) (Project, error) {
+	row := q.db.QueryRow(ctx, transferProject, arg.ID, arg.WorkspaceID, arg.Position)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.GroupID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Icon,
+		&i.Slug,
+		&i.Estimation,
+		&i.IconMode,
+		&i.TreeMode,
+	)
+	return i, err
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects
 SET name = $2, color = $3, icon = $4, group_id = $5, icon_mode = $6, tree_mode = $7, updated_at = now()

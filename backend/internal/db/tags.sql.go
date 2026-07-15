@@ -269,6 +269,22 @@ func (q *Queries) ListWorkspaceTags(ctx context.Context, workspaceID uuid.UUID) 
 	return items, nil
 }
 
+const reassignProjectTagsWorkspace = `-- name: ReassignProjectTagsWorkspace :exec
+UPDATE tags SET workspace_id = $2 WHERE project_id = $1
+`
+
+type ReassignProjectTagsWorkspaceParams struct {
+	ProjectID   uuid.UUID `json:"project_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// ReassignProjectTagsWorkspace re-stamps the denormalized workspace_id on all of
+// a project's tags. Used when a project is transferred between workspaces.
+func (q *Queries) ReassignProjectTagsWorkspace(ctx context.Context, arg ReassignProjectTagsWorkspaceParams) error {
+	_, err := q.db.Exec(ctx, reassignProjectTagsWorkspace, arg.ProjectID, arg.WorkspaceID)
+	return err
+}
+
 const removeTaskAssignee = `-- name: RemoveTaskAssignee :exec
 DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2
 `
@@ -295,6 +311,34 @@ type RemoveTaskTagParams struct {
 func (q *Queries) RemoveTaskTag(ctx context.Context, arg RemoveTaskTagParams) error {
 	_, err := q.db.Exec(ctx, removeTaskTag, arg.TaskID, arg.TagID)
 	return err
+}
+
+const stripNonMemberAssignees = `-- name: StripNonMemberAssignees :execrows
+DELETE FROM task_assignees ta
+USING tasks t, boards b
+WHERE ta.task_id = t.id
+  AND t.board_id = b.id
+  AND b.project_id = $1
+  AND NOT EXISTS (
+    SELECT 1 FROM memberships m
+    WHERE m.workspace_id = $2 AND m.user_id = ta.user_id
+  )
+`
+
+type StripNonMemberAssigneesParams struct {
+	ProjectID   uuid.UUID `json:"project_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// StripNonMemberAssignees removes assignees from a project's tasks who are not
+// members of the given (target) workspace. Used after a project is transferred so
+// no dangling assignments remain. Returns the number of rows removed.
+func (q *Queries) StripNonMemberAssignees(ctx context.Context, arg StripNonMemberAssigneesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, stripNonMemberAssignees, arg.ProjectID, arg.WorkspaceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateTag = `-- name: UpdateTag :one

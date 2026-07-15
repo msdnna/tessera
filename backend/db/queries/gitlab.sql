@@ -39,6 +39,14 @@ RETURNING *;
 -- name: DeleteGitlabIntegration :exec
 DELETE FROM gitlab_integrations WHERE id = $1;
 
+-- ReassignProjectGitlabWorkspace moves the workspace_id of any GitLab integration
+-- bound to a board inside the given project, so the integration follows the project
+-- when it is transferred between workspaces (links/members reference integration_id
+-- and stay intact).
+-- name: ReassignProjectGitlabWorkspace :exec
+UPDATE gitlab_integrations SET workspace_id = $2
+WHERE board_id IN (SELECT id FROM boards WHERE project_id = $1);
+
 -- name: GetGitlabIntegration :one
 SELECT * FROM gitlab_integrations WHERE id = $1;
 

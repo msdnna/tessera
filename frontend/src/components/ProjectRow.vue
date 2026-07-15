@@ -9,6 +9,9 @@ import {
   NPopconfirm,
   NText,
   NDropdown,
+  NModal,
+  NCard,
+  NSelect,
   useMessage,
 } from 'naive-ui'
 import {
@@ -24,6 +27,7 @@ import {
   CheckmarkOutline,
   CheckboxOutline,
   SquareOutline,
+  SwapHorizontalOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -268,6 +272,7 @@ const pcOptions = computed(() => {
     })
   }
   opts.push({ type: 'divider', key: 'd2' })
+  opts.push({ label: 'Перенести в другое пространство', key: 'transfer', icon: dangerIcon(SwapHorizontalOutline), props: { style: 'color:#e0533d' } })
   opts.push({ label: 'Удалить проект', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } })
   return opts
 })
@@ -288,7 +293,44 @@ function onProjectCtxSelect(key) {
   else if (key === 'tm-milestones') updateField({ tree_mode: 'milestones' })
   else if (key === 'tm-both') updateField({ tree_mode: 'both' })
   else if (key === 'toggle-closed') toggleShowClosed()
+  else if (key === 'transfer') openTransfer()
   else if (key === 'delete') remove()
+}
+
+// ── Transfer project to another workspace (dangerous) ──
+const transferShow = ref(false)
+const transferTarget = ref(null)
+const transferBusy = ref(false)
+// Other workspaces the user belongs to — the current one is excluded (nothing to
+// move to). `store.list` holds every workspace the user can access.
+const transferOptions = computed(() =>
+  store.list.filter((w) => w.id !== store.currentId).map((w) => ({ label: w.name, value: w.id })),
+)
+function openTransfer() {
+  transferTarget.value = null
+  transferShow.value = true
+}
+async function doTransfer() {
+  if (!transferTarget.value || transferBusy.value) return
+  transferBusy.value = true
+  try {
+    const res = await projApi.transfer(props.project.id, { workspace_id: transferTarget.value })
+    transferShow.value = false
+    const stripped = res.data?.stripped_assignees || 0
+    message.success(
+      stripped > 0
+        ? `Проект перенесён. Снято исполнителей (не участников пространства): ${stripped}`
+        : 'Проект перенесён в другое пространство',
+    )
+    // The project just left the current workspace — if a board of it is open,
+    // it no longer belongs here, so return home. Then refresh the tree.
+    if (route.params.projectSlug === props.project.slug) router.push('/')
+    await store.refresh()
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    transferBusy.value = false
+  }
 }
 
 // Milestones («Этап») manager for this project.
@@ -594,6 +636,50 @@ async function addBoard() {
       @confirm="doRemove"
     />
 
+    <n-modal v-model:show="transferShow">
+      <n-card
+        title="Перенести в другое пространство"
+        style="max-width: 440px"
+        role="dialog"
+        :bordered="false"
+      >
+        <div class="transfer-body">
+          <p class="transfer-warn">
+            Проект «{{ project.name }}» будет перенесён в выбранное пространство
+            <strong>со всеми досками, задачами, тегами и заметками</strong>. В новом
+            пространстве проект окажется без группы. Исполнители, не состоящие в
+            целевом пространстве, будут сняты с задач.
+          </p>
+          <n-select
+            v-model:value="transferTarget"
+            :options="transferOptions"
+            placeholder="Выберите пространство"
+            :disabled="transferBusy"
+          />
+          <n-text v-if="!transferOptions.length" depth="3" class="transfer-empty">
+            Нет других пространств — сначала создайте ещё одно.
+          </n-text>
+        </div>
+        <template #footer>
+          <div class="transfer-actions">
+            <n-button size="small" :disabled="transferBusy" @click="transferShow = false">
+              Отмена
+            </n-button>
+            <n-button
+              type="warning"
+              size="small"
+              :disabled="!transferTarget"
+              :loading="transferBusy"
+              @click="doTransfer"
+            >
+              <template #icon><n-icon :component="SwapHorizontalOutline" /></template>
+              Перенести
+            </n-button>
+          </div>
+        </template>
+      </n-card>
+    </n-modal>
+
     <EstimationModal
       v-model:show="estShow"
       scope="project"
@@ -735,5 +821,24 @@ async function addBoard() {
   flex-direction: column;
   gap: 8px;
   width: 190px;
+}
+.transfer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.transfer-warn {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--t-text2);
+}
+.transfer-empty {
+  font-size: 12px;
+}
+.transfer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>

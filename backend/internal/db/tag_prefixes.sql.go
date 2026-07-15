@@ -84,6 +84,22 @@ func (q *Queries) ListWorkspaceTagPrefixes(ctx context.Context, workspaceID uuid
 	return items, nil
 }
 
+const reassignProjectTagPrefixesWorkspace = `-- name: ReassignProjectTagPrefixesWorkspace :exec
+UPDATE tag_prefixes SET workspace_id = $2 WHERE project_id = $1
+`
+
+type ReassignProjectTagPrefixesWorkspaceParams struct {
+	ProjectID   uuid.UUID `json:"project_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// ReassignProjectTagPrefixesWorkspace re-stamps workspace_id on a project's tag
+// prefixes, used when the project is transferred between workspaces.
+func (q *Queries) ReassignProjectTagPrefixesWorkspace(ctx context.Context, arg ReassignProjectTagPrefixesWorkspaceParams) error {
+	_, err := q.db.Exec(ctx, reassignProjectTagPrefixesWorkspace, arg.ProjectID, arg.WorkspaceID)
+	return err
+}
+
 const upsertTagPrefix = `-- name: UpsertTagPrefix :one
 INSERT INTO tag_prefixes (project_id, workspace_id, prefix, label)
 VALUES ($1, $2, $3, $4)

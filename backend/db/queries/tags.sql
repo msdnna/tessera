@@ -31,6 +31,11 @@ UPDATE tags SET name = $2, color = $3 WHERE id = $1 RETURNING *;
 -- name: DeleteTag :exec
 DELETE FROM tags WHERE id = $1;
 
+-- ReassignProjectTagsWorkspace re-stamps the denormalized workspace_id on all of
+-- a project's tags. Used when a project is transferred between workspaces.
+-- name: ReassignProjectTagsWorkspace :exec
+UPDATE tags SET workspace_id = $2 WHERE project_id = $1;
+
 -- name: AddTaskTag :exec
 INSERT INTO task_tags (task_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;
 
@@ -49,6 +54,20 @@ INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOT
 
 -- name: RemoveTaskAssignee :exec
 DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2;
+
+-- StripNonMemberAssignees removes assignees from a project's tasks who are not
+-- members of the given (target) workspace. Used after a project is transferred so
+-- no dangling assignments remain. Returns the number of rows removed.
+-- name: StripNonMemberAssignees :execrows
+DELETE FROM task_assignees ta
+USING tasks t, boards b
+WHERE ta.task_id = t.id
+  AND t.board_id = b.id
+  AND b.project_id = $1
+  AND NOT EXISTS (
+    SELECT 1 FROM memberships m
+    WHERE m.workspace_id = $2 AND m.user_id = ta.user_id
+  );
 
 -- name: ListTaskAssignees :many
 SELECT u.id, u.email, u.name

@@ -15,3 +15,8 @@ RETURNING *;
 
 -- name: DeleteTagPrefixesForProject :exec
 DELETE FROM tag_prefixes WHERE project_id = $1;
+
+-- ReassignProjectTagPrefixesWorkspace re-stamps workspace_id on a project's tag
+-- prefixes, used when the project is transferred between workspaces.
+-- name: ReassignProjectTagPrefixesWorkspace :exec
+UPDATE tag_prefixes SET workspace_id = $2 WHERE project_id = $1;

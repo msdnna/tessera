@@ -44,5 +44,14 @@ SET group_id = $2, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- TransferProject moves a project to another workspace, dropping it at the root
+-- (ungrouped) since groups belong to the source workspace. Denormalized
+-- workspace_id on tags/tag_prefixes/notes is re-stamped separately in the same tx.
+-- name: TransferProject :one
+UPDATE projects
+SET workspace_id = $2, group_id = NULL, position = $3, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteProject :exec
 DELETE FROM projects WHERE id = $1;

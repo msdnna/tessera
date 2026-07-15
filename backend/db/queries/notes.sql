@@ -24,5 +24,10 @@ SET title = $2, body = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- ReassignProjectNotesWorkspace re-stamps workspace_id on notes tied to a project,
+-- used when the project is transferred between workspaces.
+-- name: ReassignProjectNotesWorkspace :exec
+UPDATE notes SET workspace_id = $2 WHERE project_id = $1;
+
 -- name: DeleteNote :exec
 DELETE FROM notes WHERE id = $1;

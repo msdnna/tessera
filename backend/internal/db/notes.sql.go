@@ -160,6 +160,22 @@ func (q *Queries) NotesMissingSlug(ctx context.Context) ([]NotesMissingSlugRow, 
 	return items, nil
 }
 
+const reassignProjectNotesWorkspace = `-- name: ReassignProjectNotesWorkspace :exec
+UPDATE notes SET workspace_id = $2 WHERE project_id = $1
+`
+
+type ReassignProjectNotesWorkspaceParams struct {
+	ProjectID   *uuid.UUID `json:"project_id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+}
+
+// ReassignProjectNotesWorkspace re-stamps workspace_id on notes tied to a project,
+// used when the project is transferred between workspaces.
+func (q *Queries) ReassignProjectNotesWorkspace(ctx context.Context, arg ReassignProjectNotesWorkspaceParams) error {
+	_, err := q.db.Exec(ctx, reassignProjectNotesWorkspace, arg.ProjectID, arg.WorkspaceID)
+	return err
+}
+
 const setNoteSlug = `-- name: SetNoteSlug :exec
 UPDATE notes SET slug = $2 WHERE id = $1
 `

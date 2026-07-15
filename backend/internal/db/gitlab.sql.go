@@ -820,6 +820,25 @@ func (q *Queries) PinGitlabAssignee(ctx context.Context, arg PinGitlabAssigneePa
 	return err
 }
 
+const reassignProjectGitlabWorkspace = `-- name: ReassignProjectGitlabWorkspace :exec
+UPDATE gitlab_integrations SET workspace_id = $2
+WHERE board_id IN (SELECT id FROM boards WHERE project_id = $1)
+`
+
+type ReassignProjectGitlabWorkspaceParams struct {
+	ProjectID   uuid.UUID `json:"project_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// ReassignProjectGitlabWorkspace moves the workspace_id of any GitLab integration
+// bound to a board inside the given project, so the integration follows the project
+// when it is transferred between workspaces (links/members reference integration_id
+// and stay intact).
+func (q *Queries) ReassignProjectGitlabWorkspace(ctx context.Context, arg ReassignProjectGitlabWorkspaceParams) error {
+	_, err := q.db.Exec(ctx, reassignProjectGitlabWorkspace, arg.ProjectID, arg.WorkspaceID)
+	return err
+}
+
 const removeGitlabAssignee = `-- name: RemoveGitlabAssignee :exec
 DELETE FROM task_gitlab_assignees WHERE task_id = $1 AND gl_username = $2
 `

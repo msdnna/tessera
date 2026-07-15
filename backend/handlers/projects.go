@@ -271,6 +271,96 @@ func (h *API) MoveProject(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
+// TransferProject moves a project — with all its boards, tasks, tags, notes and
+// GitLab bindings — to another workspace. A dangerous operation: it re-stamps the
+// denormalized workspace_id across the project's tags/tag_prefixes/notes and any
+// GitLab integrations, and strips assignees who aren't members of the target
+// workspace. Requires membership in BOTH the source (checked by loadProject) and
+// the target workspace. The project lands ungrouped at the target's root.
+func (h *API) TransferProject(c *gin.Context) {
+	p, ok := h.loadProject(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		WorkspaceID uuid.UUID `json:"workspace_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.WorkspaceID == p.WorkspaceID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "project is already in this workspace"})
+		return
+	}
+	if !h.requireMember(c, req.WorkspaceID) {
+		return
+	}
+
+	// Position at the end of the target workspace's root.
+	maxPos, err := h.q.MaxProjectPosition(c, req.WorkspaceID)
+	if err != nil {
+		fail(c)
+		return
+	}
+
+	tx, err := h.pool.Begin(c)
+	if err != nil {
+		fail(c)
+		return
+	}
+	defer tx.Rollback(c) //nolint:errcheck // no-op after a successful Commit
+	qtx := h.q.WithTx(tx)
+
+	updated, err := qtx.TransferProject(c, db.TransferProjectParams{
+		ID: p.ID, WorkspaceID: req.WorkspaceID, Position: positionBetween(&maxPos, nil),
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	if err := qtx.ReassignProjectTagsWorkspace(c, db.ReassignProjectTagsWorkspaceParams{
+		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
+	}); err != nil {
+		fail(c)
+		return
+	}
+	if err := qtx.ReassignProjectTagPrefixesWorkspace(c, db.ReassignProjectTagPrefixesWorkspaceParams{
+		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
+	}); err != nil {
+		fail(c)
+		return
+	}
+	if err := qtx.ReassignProjectNotesWorkspace(c, db.ReassignProjectNotesWorkspaceParams{
+		ProjectID: &p.ID, WorkspaceID: req.WorkspaceID,
+	}); err != nil {
+		fail(c)
+		return
+	}
+	if err := qtx.ReassignProjectGitlabWorkspace(c, db.ReassignProjectGitlabWorkspaceParams{
+		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
+	}); err != nil {
+		fail(c)
+		return
+	}
+	stripped, err := qtx.StripNonMemberAssignees(c, db.StripNonMemberAssigneesParams{
+		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
+	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	if err := tx.Commit(c); err != nil {
+		fail(c)
+		return
+	}
+
+	// The project leaves the source workspace and joins the target — tell both.
+	h.broadcast(p.WorkspaceID, "project.deleted", gin.H{"id": p.ID})
+	h.broadcast(req.WorkspaceID, "project.created", updated)
+	c.JSON(http.StatusOK, gin.H{"project": updated, "stripped_assignees": stripped})
+}
+
 // DeleteProject removes a project and everything under it.
 func (h *API) DeleteProject(c *gin.Context) {
 	p, ok := h.loadProject(c)

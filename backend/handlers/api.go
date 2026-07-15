@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"tessera/internal/db"
 	"tessera/internal/mail"
@@ -24,6 +25,7 @@ import (
 // API holds the dependencies shared by all resource handlers.
 type API struct {
 	q         *db.Queries
+	pool      *pgxpool.Pool // for multi-statement transactions (e.g. project transfer)
 	hub       *realtime.Hub
 	uploadDir string
 	sealer    *secrets.Sealer          // encrypts secrets at rest (GitLab PATs, channel secrets)
@@ -35,7 +37,7 @@ type API struct {
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from
 // the configured encryption key.
-func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir, encryptionKey string, mailer mail.Mailer, publicURL string) *API {
+func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, encryptionKey string, mailer mail.Mailer, publicURL string) *API {
 	sealer, err := secrets.NewSealer(encryptionKey)
 	if err != nil {
 		// config.New guarantees a non-empty key, so this is unreachable in practice.
@@ -43,7 +45,7 @@ func NewAPI(q *db.Queries, hub *realtime.Hub, uploadDir, encryptionKey string, m
 	}
 	ak := sha256.Sum256([]byte(encryptionKey + ":gitlab-asset"))
 	return &API{
-		q: q, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:],
+		q: q, pool: pool, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:],
 		mailer: mailer, publicURL: publicURL, senders: buildSenders(mailer),
 	}
 }

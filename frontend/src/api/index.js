@@ -159,6 +159,8 @@ export const projects = {
   get: (id) => api.get(`/projects/${id}`),
   update: (id, data) => api.patch(`/projects/${id}`, data),
   move: (id, data) => api.patch(`/projects/${id}/move`, data),
+  // Dangerous: move a project (with all boards/tasks) to another workspace.
+  transfer: (id, data) => api.post(`/projects/${id}/transfer`, data),
   remove: (id) => api.delete(`/projects/${id}`),
   boards: (id) => api.get(`/projects/${id}/boards`),
   createBoard: (id, data) => api.post(`/projects/${id}/boards`, data),
