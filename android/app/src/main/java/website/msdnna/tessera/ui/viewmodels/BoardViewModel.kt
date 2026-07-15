@@ -299,6 +299,10 @@ class BoardViewModel(
     private var reloadJob: Job? = null
     private var suppressUntil = 0L
 
+    // Sliding-window burst guard for activity toasts (anti-flood on sync).
+    private var activityWindowStart = 0L
+    private var activityWindowCount = 0
+
     @Volatile var dragging = false
 
     fun load(boardId: String, workspaceId: String) {
@@ -404,6 +408,15 @@ class BoardViewModel(
         val data = ev.data ?: return
         val t = runCatching { gson.fromJson(data, Task::class.java) }.getOrNull() ?: return
         if (t.boardId != boardId) return
+        // Anti-flood: during a burst (e.g. a GitLab sync touching many tasks) drop
+        // the individual toasts — the board still reloads via the debounced path.
+        val now = SystemClock.elapsedRealtime()
+        if (now - activityWindowStart > ACTIVITY_BURST_WINDOW_MS) {
+            activityWindowStart = now
+            activityWindowCount = 0
+        }
+        activityWindowCount++
+        if (activityWindowCount > ACTIVITY_BURST_MAX) return
         var verb = if (ev.type == "task.created") "created" else "moved"
         if (ev.type == "task.moved") {
             val prev = _state.value.tasks.firstOrNull { it.id == t.id }
@@ -954,6 +967,11 @@ class BoardViewModel(
         const val REALTIME_DEBOUNCE_MS = 300L
         const val SUPPRESS_MS = 1500L
         const val ACTIVITY_TTL_MS = 6500L
+
+        // Burst guard: more than MAX activity events within WINDOW (e.g. a GitLab
+        // sync creating/moving many tasks) stops the per-event toast flood.
+        const val ACTIVITY_BURST_WINDOW_MS = 4000L
+        const val ACTIVITY_BURST_MAX = 5
     }
 }
 
