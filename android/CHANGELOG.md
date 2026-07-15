@@ -5,6 +5,13 @@ All notable changes to the Android app. Versioned independently via
 
 ## Unreleased
 
+## 0.49.0 — 2026-07-16
+- **Админ-настройка GitLab OAuth** в панели «Администрирование» — паритет с web.
+  Свёртываемая карточка «Вход через GitLab (OAuth)» (`GET/PUT /admin/oauth/gitlab`):
+  GitLab URL, Client ID, Client Secret (write-only, пусто = не менять), инстанс-широкий
+  сервис-токен (write-only), тумблер «включён», редактор `org_map` (JSON), и подсказка
+  с Callback URL для OAuth-приложения GitLab. Все ручки перепроверяют admin на сервере.
+
 ## 0.48.0 — 2026-07-16
 - **Вход через GitLab (OAuth)** — паритет с web. На экране входа при включённом на
   сервере провайдере появляется кнопка «Войти через GitLab»: она открывает

@@ -39,18 +39,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.AdminUser
+import website.msdnna.tessera.data.model.OAuthConfigRequest
 import website.msdnna.tessera.data.model.SetActiveRequest
 import website.msdnna.tessera.data.model.SetAdminRequest
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
+import website.msdnna.tessera.ui.components.TCard
 import website.msdnna.tessera.ui.components.TConfirmDialog
 import website.msdnna.tessera.ui.components.TFormError
+import website.msdnna.tessera.ui.components.TSwitch
 import website.msdnna.tessera.ui.components.TTextField
+import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
@@ -148,6 +154,9 @@ fun AdminScreen() {
             Spacer(Modifier.width(8.dp))
             Text("Администрирование", color = c.text1, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
+        Spacer(Modifier.height(12.dp))
+        OAuthConfigCard()
+        Spacer(Modifier.height(14.dp))
         Text("Пользователи экземпляра — ${users.size}", color = c.text3, fontSize = 13.sp)
         Spacer(Modifier.height(12.dp))
         TTextField(value = query, onValueChange = { query = it }, placeholder = "Поиск по имени или почте")
@@ -197,6 +206,154 @@ fun AdminScreen() {
             },
             onDismiss = { confirmActive = null },
         )
+    }
+}
+
+/**
+ * Admin config for the GitLab OAuth provider (login-with-GitLab) — mirrors the web
+ * admin panel's OAuth card. Collapsible; loads lazily on first expand. The client
+ * secret and instance-wide service token are write-only: an empty field keeps the
+ * stored value (a placeholder reports whether one is set). `org_map` is edited as
+ * raw JSON (group-path → {workspace_id, admins, users}).
+ */
+@Composable
+private fun OAuthConfigCard() {
+    val c = Tessera.colors
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    val api = AppContainer.api()
+    val pretty = remember { GsonBuilder().setPrettyPrinting().create() }
+
+    var expanded by remember { mutableStateOf(false) }
+    var loaded by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    var glBaseUrl by remember { mutableStateOf("") }
+    var clientId by remember { mutableStateOf("") }
+    var clientSecret by remember { mutableStateOf("") }
+    var serviceToken by remember { mutableStateOf("") }
+    var enabled by remember { mutableStateOf(false) }
+    var orgMapText by remember { mutableStateOf("{}") }
+    var hasSecret by remember { mutableStateOf(false) }
+    var hasServiceToken by remember { mutableStateOf(false) }
+
+    suspend fun load() {
+        loading = true
+        error = null
+        runCatching { api.getOAuthConfig() }
+            .onSuccess { cfg ->
+                glBaseUrl = cfg.glBaseUrl
+                clientId = cfg.clientId
+                enabled = cfg.enabled
+                hasSecret = cfg.hasSecret
+                hasServiceToken = cfg.hasServiceToken
+                orgMapText = pretty.toJson(cfg.orgMap ?: JsonParser.parseString("{}"))
+                clientSecret = ""
+                serviceToken = ""
+                loaded = true
+            }
+            .onFailure { error = it.message ?: "Не удалось загрузить настройки OAuth" }
+        loading = false
+    }
+
+    LaunchedEffect(expanded) { if (expanded && !loaded) load() }
+
+    fun save() {
+        val orgMapEl = runCatching { JsonParser.parseString(orgMapText.ifBlank { "{}" }) }.getOrNull()
+        if (orgMapEl == null || !orgMapEl.isJsonObject) {
+            error = "org_map: ожидается JSON-объект"
+            return
+        }
+        saving = true
+        error = null
+        scope.launch {
+            runCatching {
+                api.setOAuthConfig(
+                    OAuthConfigRequest(
+                        clientId = clientId.trim(),
+                        clientSecret = clientSecret,
+                        glBaseUrl = glBaseUrl.trim(),
+                        enabled = enabled,
+                        orgMap = orgMapEl,
+                        serviceToken = serviceToken,
+                    ),
+                )
+            }
+                .onSuccess { cfg ->
+                    hasSecret = cfg.hasSecret
+                    hasServiceToken = cfg.hasServiceToken
+                    clientSecret = ""
+                    serviceToken = ""
+                    orgMapText = pretty.toJson(cfg.orgMap ?: JsonParser.parseString("{}"))
+                    android.widget.Toast
+                        .makeText(ctx, "Настройки OAuth сохранены", android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                }
+                .onFailure { error = it.message ?: "Не удалось сохранить настройки" }
+            saving = false
+        }
+    }
+
+    val callbackUrl = RetrofitClient.serverRoot + "/api/auth/gitlab/callback"
+
+    TCard(Modifier.fillMaxWidth()) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().clickableNoRipple { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IonIcon(Ion.GITLAB, size = 18.dp, tint = c.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("Вход через GitLab (OAuth)", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                if (enabled) Badge("включён", c.primary)
+                Spacer(Modifier.width(6.dp))
+                IonIcon(if (expanded) Ion.CHEVRON_DOWN else Ion.CHEVRON_FORWARD, size = 18.dp, tint = c.text3)
+            }
+
+            if (expanded) {
+                Spacer(Modifier.height(12.dp))
+                if (loading) {
+                    Text("Загрузка…", color = c.text3, fontSize = 13.sp)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TTextField(glBaseUrl, { glBaseUrl = it }, label = "GitLab URL", placeholder = "https://gitlab.example.com")
+                        TTextField(clientId, { clientId = it }, label = "Client ID")
+                        TTextField(
+                            clientSecret,
+                            { clientSecret = it },
+                            label = "Client Secret",
+                            placeholder = if (hasSecret) "(сохранён — введите, чтобы заменить)" else "",
+                            isPassword = true,
+                        )
+                        TTextField(
+                            serviceToken,
+                            { serviceToken = it },
+                            label = "Сервис-токен (PAT, инстанс-широкий)",
+                            placeholder = if (hasServiceToken) "(сохранён — введите, чтобы заменить)" else "glpat-…",
+                            isPassword = true,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Включён", color = c.text2, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            TSwitch(checked = enabled, onCheckedChange = { enabled = it })
+                        }
+                        TTextField(
+                            orgMapText,
+                            { orgMapText = it },
+                            label = "org_map (JSON: путь-группы → {workspace_id, admins, users})",
+                            singleLine = false,
+                        )
+                        Text("Callback URL (укажите в OAuth-приложении GitLab):", color = c.text3, fontSize = 12.sp)
+                        Text(callbackUrl, color = c.text2, fontSize = 12.sp)
+                        TFormError(error)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TButton("Сохранить", enabled = !saving, loading = saving, onClick = ::save)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

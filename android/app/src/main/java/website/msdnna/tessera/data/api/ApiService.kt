@@ -40,6 +40,8 @@ import website.msdnna.tessera.data.model.MeResponse
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
 import website.msdnna.tessera.data.model.NameRequest
+import website.msdnna.tessera.data.model.OAuthConfig
+import website.msdnna.tessera.data.model.OAuthConfigRequest
 import website.msdnna.tessera.data.model.PasswordChange
 import website.msdnna.tessera.data.model.PinGitlabAssigneeRequest
 import website.msdnna.tessera.data.model.Preferences
@@ -134,6 +136,12 @@ interface ApiService {
 
     @POST("admin/users/{id}/reset-link")
     suspend fun adminResetLink(@Path("id") id: String): LinkResponse
+
+    @GET("admin/oauth/gitlab")
+    suspend fun getOAuthConfig(): OAuthConfig
+
+    @PUT("admin/oauth/gitlab")
+    suspend fun setOAuthConfig(@Body body: OAuthConfigRequest): OAuthConfig
 
     // ── Workspaces ──────────────────────────────────────────────────────────
     @GET("workspaces")
