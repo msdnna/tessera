@@ -21,12 +21,17 @@ import {
   RibbonOutline,
   AddOutline,
   FolderOutline,
+  EllipsisHorizontalOutline,
+  TrashOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
-import { useRoute } from 'vue-router'
+const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
+import { useRoute, useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useAuthStore } from '@/stores/auth'
+import ConfirmByName from './ConfirmByName.vue'
 import {
   moveSidebarGroup,
   moveSidebarProject,
@@ -49,8 +54,10 @@ defineProps({
 })
 
 const store = useWorkspacesStore()
+const auth = useAuthStore()
 const message = useMessage()
 const route = useRoute()
+const router = useRouter()
 
 const wsOptions = computed(() => store.list.map((w) => ({ label: w.name, value: w.id })))
 const rootGroups = computed(() => store.childGroups(null))
@@ -120,6 +127,40 @@ async function createWorkspace() {
     message.error(e.message)
   }
 }
+
+// Workspace settings menu — deletion is owner-only (server enforces it too).
+const isOwner = computed(() => !!store.current && store.current.owner_id === auth.user?.id)
+const wsMenuOptions = computed(() =>
+  isOwner.value
+    ? [
+        {
+          label: 'Удалить пространство',
+          key: 'delete',
+          icon: dangerIcon(TrashOutline),
+          props: { style: 'color:#e0533d' },
+        },
+      ]
+    : [],
+)
+const wsDeleteShow = ref(false)
+function onWsMenuSelect(key) {
+  if (key === 'delete') {
+    if (store.list.length <= 1) {
+      message.warning('Нельзя удалить единственное пространство')
+      return
+    }
+    wsDeleteShow.value = true
+  }
+}
+async function deleteWorkspace() {
+  try {
+    await store.removeWorkspace(store.currentId)
+    message.success('Пространство удалено')
+    router.push('/') // the tree fully changed — land on Home
+  } catch (e) {
+    message.error(e.message)
+  }
+}
 </script>
 
 <template>
@@ -154,6 +195,17 @@ async function createWorkspace() {
       >
         <n-icon :component="AddOutline" />
       </n-button>
+      <n-dropdown
+        v-if="!narrow && wsMenuOptions.length"
+        trigger="click"
+        placement="bottom-end"
+        :options="wsMenuOptions"
+        @select="onWsMenuSelect"
+      >
+        <n-button quaternary circle size="small" title="Настройки пространства">
+          <n-icon :component="EllipsisHorizontalOutline" />
+        </n-button>
+      </n-dropdown>
     </div>
 
     <nav class="nav">
@@ -283,6 +335,14 @@ async function createWorkspace() {
         </template>
       </n-card>
     </n-modal>
+
+    <ConfirmByName
+      v-model:show="wsDeleteShow"
+      :name="store.current?.name || ''"
+      title="Удалить пространство"
+      message="Пространство будет удалено со всеми проектами, досками и задачами. Действие необратимо."
+      @confirm="deleteWorkspace"
+    />
   </div>
 </template>
 

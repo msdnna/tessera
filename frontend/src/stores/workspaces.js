@@ -24,6 +24,14 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     if (currentId.value) await selectWorkspace(currentId.value)
   }
 
+  // Delete a workspace (owner only, enforced server-side) and re-sync the list.
+  // If the deleted one was active, loadWorkspaces() re-picks the first available.
+  async function removeWorkspace(id) {
+    await wsApi.remove(id)
+    if (currentId.value === id) currentId.value = ''
+    await loadWorkspaces()
+  }
+
   async function selectWorkspace(id) {
     currentId.value = id
     localStorage.setItem('tessera_ws', id)
@@ -119,6 +127,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     upsertBoard,
     loadWorkspaces,
     selectWorkspace,
+    removeWorkspace,
     refresh,
     loadBoards,
     childGroups,

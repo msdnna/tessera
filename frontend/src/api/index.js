@@ -128,6 +128,8 @@ export const workspaces = {
   list: () => api.get('/workspaces'),
   get: (id) => api.get(`/workspaces/${id}`),
   create: (data) => api.post('/workspaces', data),
+  // Dangerous: delete a workspace with everything in it (owner only, 403 otherwise).
+  remove: (id) => api.delete(`/workspaces/${id}`),
   members: (id) => api.get(`/workspaces/${id}/members`),
   gitlabMembers: (id) => api.get(`/workspaces/${id}/gitlab/members`),
   addMember: (id, data) => api.post(`/workspaces/${id}/members`, data),

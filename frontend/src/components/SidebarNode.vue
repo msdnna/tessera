@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, h } from 'vue'
 import draggable from 'vuedraggable'
-import { NIcon, NButton, NInput, NDropdown, NPopover, NPopconfirm, useMessage } from 'naive-ui'
+import { NIcon, NButton, NInput, NDropdown, NPopover, NPopconfirm, NModal, NCard, useMessage } from 'naive-ui'
 import {
   FolderOutline,
   ChevronForwardOutline,
@@ -73,8 +73,12 @@ function onCtxSelect(key) {
   if (key === 'add-project') onAdd('project')
   else if (key === 'add-group') onAdd('group')
   else if (key === 'rename') startRename()
-  else if (key === 'delete') remove()
+  else if (key === 'delete') confirmDelete.value = true
 }
+
+// Context-menu delete needs its own confirmation (the settings-popover path uses
+// an inline n-popconfirm; the dropdown menu can't host one, so it opens a modal).
+const confirmDelete = ref(false)
 
 const initials = computed(() => (props.group.name || '?').trim().slice(0, 2).toUpperCase())
 
@@ -293,6 +297,21 @@ async function commitRename() {
       @select="onCtxSelect"
       @clickoutside="ctxShow = false"
     />
+
+    <n-modal v-model:show="confirmDelete">
+      <n-card :title="`Удалить группу «${group.name}»?`" style="max-width: 400px" role="dialog" :bordered="false">
+        <p class="confirm-msg">Подгруппы удалятся, проекты станут без группы. Действие необратимо.</p>
+        <template #footer>
+          <div class="confirm-actions">
+            <n-button size="small" @click="confirmDelete = false">Отмена</n-button>
+            <n-button type="error" size="small" @click="confirmDelete = false; remove()">
+              <template #icon><n-icon :component="TrashOutline" /></template>
+              Удалить
+            </n-button>
+          </div>
+        </template>
+      </n-card>
+    </n-modal>
   </div>
 </template>
 
@@ -361,6 +380,17 @@ async function commitRename() {
   width: 200px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+.confirm-msg {
+  margin: 0;
+  color: var(--t-text2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: 8px;
 }
 </style>
