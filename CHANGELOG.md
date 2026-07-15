@@ -2426,6 +2426,15 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.77.1] — 2026-07-16
+- **feat: OAuth-вход возвращает сессию в мобильное приложение (Android).**
+  `GET /api/auth/gitlab/authorize?platform=android` помечает `state` мобильным
+  маркером; по нему `GitlabCallback` отдаёт итог не на web-страницу SPA, а через
+  deep-link `tessera://oauth/callback#access_token=…&refresh_token=…` (при ошибке —
+  `#oauth_error=…`), который перехватывает `MainActivity`. Секрет клиента остаётся
+  на сервере (confidential-app), мобильный клиент — чистый потребитель токенов.
+  Аддитивно, без миграций; web-поток не меняется.
+
 ### [0.77.0] — 2026-07-16
 - **feat: перенос проекта между пространствами** — `POST /projects/:id/transfer`
   `{workspace_id}`. Переносит проект со всем поддеревом (доски → колонки → задачи →

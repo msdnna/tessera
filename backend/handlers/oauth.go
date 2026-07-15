@@ -19,6 +19,19 @@ import (
 
 const oauthStateCookie = "gl_oauth_state"
 
+// oauthMobileScheme is the custom-scheme deep link the Android app registers. When the
+// flow is initiated from the mobile client (?platform=android), the callback hands the
+// session (or error) back through this URI instead of the web SPA route — Chrome Custom
+// Tab redirects to it, MainActivity picks up the fragment. The confidential-app secret
+// never leaves the server, so the mobile client stays a pure public consumer of tokens.
+const oauthMobileScheme = "tessera://oauth/callback"
+
+// oauthMobileState marks a `state` value as originating from the mobile client. The
+// marker rides through GitLab and comes back in the callback query, so the callback
+// knows which handoff target to use. It is inside the CSRF-checked state (mirrored in
+// the cookie), so it can't be forged independently of the state itself.
+const oauthMobileState = "m."
+
 // oauthBaseURL is the externally-reachable origin used to build redirect URIs and
 // the post-login handoff. Prefers the configured PublicURL; falls back to the
 // request's scheme+host (dev).
@@ -59,8 +72,13 @@ func (h *AuthHandler) Providers(c *gin.Context) {
 // GitlabAuthorize redirects the browser to GitLab's authorization endpoint with a
 // CSRF `state` mirrored in a short-lived cookie.
 func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
+	mobile := c.Query("platform") == "android"
 	p, err := h.q.GetOAuthProvider(c, "gitlab")
 	if err != nil || !p.Enabled || p.ClientID == "" || p.GlBaseUrl == "" {
+		if mobile {
+			c.Redirect(http.StatusFound, oauthMobileScheme+"#"+url.Values{"oauth_error": {"not_configured"}}.Encode())
+			return
+		}
 		c.Redirect(http.StatusFound, h.oauthBaseURL(c)+"/login?oauth_error=not_configured")
 		return
 	}
@@ -70,6 +88,9 @@ func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
 		return
 	}
 	state := hex.EncodeToString(buf)
+	if mobile {
+		state = oauthMobileState + state
+	}
 	secure := strings.HasPrefix(h.oauthBaseURL(c), "https")
 	// SameSite=Lax so the cookie survives GitLab's top-level GET redirect back.
 	c.SetSameSite(http.SameSiteLaxMode)
@@ -90,7 +111,15 @@ func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
 // session back to the SPA via the URL fragment (never logged/sent to the server).
 func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	base := h.oauthBaseURL(c)
+	// The mobile marker lives inside the state value, which is echoed back untouched by
+	// GitLab — safe to read here for choosing the handoff target even before the CSRF
+	// check (a forged prefix only changes where an *error* is delivered).
+	mobile := strings.HasPrefix(c.Query("state"), oauthMobileState)
 	redirectErr := func(reason string) {
+		if mobile {
+			c.Redirect(http.StatusFound, oauthMobileScheme+"#"+url.Values{"oauth_error": {reason}}.Encode())
+			return
+		}
 		c.Redirect(http.StatusFound, base+"/login?oauth_error="+url.QueryEscape(reason))
 	}
 
@@ -144,6 +173,10 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 		return // mintTokens already wrote a 500
 	}
 	frag := url.Values{"access_token": {access}, "refresh_token": {refresh}}
+	if mobile {
+		c.Redirect(http.StatusFound, oauthMobileScheme+"#"+frag.Encode())
+		return
+	}
 	c.Redirect(http.StatusFound, base+"/oauth/callback#"+frag.Encode())
 }
 
