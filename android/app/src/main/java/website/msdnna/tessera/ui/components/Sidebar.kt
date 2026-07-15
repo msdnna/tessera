@@ -144,6 +144,7 @@ fun Sidebar(
     var addWorkspace by remember { mutableStateOf(false) }
     var wsMenu by remember { mutableStateOf(false) }
     var wsEstimating by remember { mutableStateOf(false) }
+    var confirmDeleteWs by remember { mutableStateOf(false) }
     var addMenu by remember { mutableStateOf(false) }
     var showTheme by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf<Creating?>(null) }
@@ -236,6 +237,13 @@ fun Sidebar(
                                 wsMenu = false
                                 wsEstimating = true
                             })
+                            // Owner-only, and never the last workspace (server re-checks).
+                            if (state.current?.ownerId == user?.id && state.workspaces.size > 1) {
+                                TMenuItem("Удалить пространство", icon = Ion.TRASH, danger = true, onClick = {
+                                    wsMenu = false
+                                    confirmDeleteWs = true
+                                })
+                            }
                         }
                     }
                 }
@@ -342,6 +350,19 @@ fun Sidebar(
                 inherited = website.msdnna.tessera.util.Estimation.DEFAULT,
                 onSave = { vm.setWorkspaceEstimation(ws.id, it) },
                 onDismiss = { wsEstimating = false },
+            )
+        }
+        if (confirmDeleteWs) {
+            TConfirmByNameDialog(
+                title = "Удалить пространство",
+                message = "Пространство «${ws.name}» и все его проекты, доски и задачи будут " +
+                    "удалены безвозвратно. Введите название для подтверждения.",
+                name = ws.name,
+                onConfirm = {
+                    confirmDeleteWs = false
+                    vm.removeWorkspace(ws.id) { onOpenHome() }
+                },
+                onDismiss = { confirmDeleteWs = false },
             )
         }
     }

@@ -20,6 +20,8 @@ class WorkspaceRepository {
     suspend fun createWorkspace(name: String): Workspace =
         api.createWorkspace(website.msdnna.tessera.data.model.NameRequest(name))
 
+    suspend fun deleteWorkspace(id: String) = api.deleteWorkspace(id)
+
     suspend fun groups(workspaceId: String): List<ProjectGroup> = api.groups(workspaceId).orEmpty()
     suspend fun projects(workspaceId: String): List<Project> = api.projects(workspaceId).orEmpty()
 

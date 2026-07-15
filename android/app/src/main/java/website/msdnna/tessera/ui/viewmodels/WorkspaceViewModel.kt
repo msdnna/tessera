@@ -77,6 +77,25 @@ class WorkspaceViewModel(
         selectWorkspace(ws.id)
     }
 
+    /** Owner-only workspace deletion (server re-checks). If the deleted workspace
+     *  was active, switches to the first remaining one and calls [onGone] so the
+     *  host can leave for Home. Refuses to delete the only workspace. */
+    fun removeWorkspace(id: String, onGone: () -> Unit) = launchCatching {
+        if (_state.value.workspaces.size <= 1) {
+            _state.update { it.copy(error = "Нельзя удалить единственное пространство") }
+            return@launchCatching
+        }
+        val wasCurrent = _state.value.currentId == id
+        repo.deleteWorkspace(id)
+        val list = repo.listWorkspaces()
+        _state.update { it.copy(workspaces = list) }
+        if (wasCurrent) {
+            val next = list.firstOrNull()?.id ?: ""
+            if (next.isNotBlank()) selectWorkspace(next)
+            onGone()
+        }
+    }
+
     fun selectWorkspace(id: String) = launchCatching {
         prefs.setCurrentWorkspaceId(id)
         _state.update { it.copy(currentId = id, boardsByProject = emptyMap()) }

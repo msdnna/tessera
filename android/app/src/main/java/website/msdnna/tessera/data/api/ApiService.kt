@@ -151,6 +151,9 @@ interface ApiService {
     @POST("workspaces")
     suspend fun createWorkspace(@Body body: NameRequest): Workspace
 
+    @DELETE("workspaces/{id}")
+    suspend fun deleteWorkspace(@Path("id") id: String)
+
     // ── Project groups ──────────────────────────────────────────────────────
     @GET("workspaces/{id}/groups")
     suspend fun groups(@Path("id") workspaceId: String): List<ProjectGroup>?
