@@ -597,20 +597,34 @@ interface ApiService {
     @DELETE("gitlab/connection")
     suspend fun gitlabDisconnect()
 
-    @GET("workspaces/{id}/gitlab/integration")
-    suspend fun gitlabIntegration(
+    @GET("workspaces/{id}/gitlab/integrations")
+    suspend fun gitlabIntegrations(
         @Path("id") workspaceId: String,
+    ): website.msdnna.tessera.data.model.GitlabIntegrationsResponse
+
+    @POST("workspaces/{id}/gitlab/integrations")
+    suspend fun gitlabCreateIntegration(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.GitlabIntegrationRequest,
     ): website.msdnna.tessera.data.model.GitlabIntegration
 
-    @PUT("workspaces/{id}/gitlab/integration")
-    suspend fun gitlabSetIntegration(
+    @PUT("workspaces/{id}/gitlab/integrations/{integrationId}")
+    suspend fun gitlabUpdateIntegration(
         @Path("id") workspaceId: String,
-        @Body body: website.msdnna.tessera.data.model.GitlabSetIntegrationRequest,
+        @Path("integrationId") integrationId: String,
+        @Body body: website.msdnna.tessera.data.model.GitlabIntegrationRequest,
     ): website.msdnna.tessera.data.model.GitlabIntegration
 
-    @POST("workspaces/{id}/gitlab/sync")
-    suspend fun gitlabSync(
+    @DELETE("workspaces/{id}/gitlab/integrations/{integrationId}")
+    suspend fun gitlabDeleteIntegration(
         @Path("id") workspaceId: String,
+        @Path("integrationId") integrationId: String,
+    )
+
+    @POST("workspaces/{id}/gitlab/integrations/{integrationId}/sync")
+    suspend fun gitlabSyncIntegration(
+        @Path("id") workspaceId: String,
+        @Path("integrationId") integrationId: String,
     ): website.msdnna.tessera.data.model.GitlabSyncResult
 
     @GET("workspaces/{id}/gitlab/sync-runs")

@@ -32,14 +32,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.data.model.GitlabIntegration
+import website.msdnna.tessera.data.model.GitlabIntegrationRequest
 import website.msdnna.tessera.data.model.GitlabRule
 import website.msdnna.tessera.data.model.GitlabRules
-import website.msdnna.tessera.data.model.GitlabSetIntegrationRequest
 import website.msdnna.tessera.data.model.GitlabWriteback
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TCard
+import website.msdnna.tessera.ui.components.TConfirmDialog
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TFormError
 import website.msdnna.tessera.ui.components.TMenuItem
@@ -76,6 +78,13 @@ private val ActionOptions = listOf(
 private val MatchTypeOptions = listOf("prefix" to "Префикс", "regex" to "Regex")
 private val DefaultActionOptions = listOf("tag" to "Создавать тег", "ignore" to "Игнорировать")
 private val MapActions = setOf("status", "priority", "board")
+private val ScopeOptions = listOf(
+    "assigned" to "Только назначенные мне", "all" to "Все задачи проекта",
+)
+private val ClosedPolicyOptions = listOf(
+    "all" to "Импортировать все", "archive_closed_sprints" to "Архивировать закрытые спринты",
+    "period" to "Только за период",
+)
 
 /** GitLab settings: connect a PAT account, configure the per-workspace
  *  integration (project → board, interval, due source) with a generic label
@@ -114,9 +123,9 @@ fun GitLabSettingsScreen(
 
         AccountCard(state, vm, workspaceId)
 
-        if (state.connected && state.integration != null) {
+        if (state.serviceConfigured || state.connected || state.integrations.isNotEmpty()) {
             Spacer(Modifier.height(16.dp))
-            IntegrationCard(state, vm, workspaceId, onOpenJournal)
+            BindingsSection(state, vm, workspaceId, onOpenJournal)
         }
         if (conflictCount > 0) {
             Spacer(Modifier.height(14.dp))
@@ -176,21 +185,139 @@ private fun AccountCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUiStat
     }
 }
 
+/** Lists a workspace's GitLab bindings (or the create/edit editor). Admins can
+ *  add/edit/delete bindings; members can trigger a manual sync. */
 @Composable
-private fun IntegrationCard(
+private fun BindingsSection(
     state: website.msdnna.tessera.ui.viewmodels.GitlabUiState,
     vm: GitlabViewModel,
     workspaceId: String,
     onOpenJournal: () -> Unit,
 ) {
     val c = Tessera.colors
-    val integ = state.integration!!
+    var editing by remember { mutableStateOf(false) }
+    var editTarget by remember { mutableStateOf<GitlabIntegration?>(null) }
+
+    fun openEditor(binding: GitlabIntegration?) {
+        editTarget = binding
+        editing = true
+        vm.prepareEditor(binding)
+    }
+
+    SectionLabel("Привязки GitLab")
+    if (editing) {
+        IntegrationEditor(
+            binding = editTarget,
+            state = state,
+            vm = vm,
+            workspaceId = workspaceId,
+            onClose = {
+                editing = false
+                editTarget = null
+            },
+        )
+        return
+    }
+
+    if (state.integrations.isEmpty()) {
+        Text("Привязок пока нет.", color = c.text3, fontSize = 13.sp)
+        Spacer(Modifier.height(8.dp))
+    } else {
+        state.integrations.forEach { integ ->
+            BindingRow(integ, state, vm, workspaceId, onEdit = { openEditor(integ) })
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+    if (state.isAdmin) {
+        DashedAddButton("Привязка", onClick = { openEditor(null) })
+    } else if (!state.serviceConfigured && !state.connected) {
+        Text("Подключите аккаунт GitLab, чтобы синхронизировать.", color = c.text3, fontSize = 12.sp)
+    }
+    Spacer(Modifier.height(12.dp))
+    TButton(
+        "Журнал синхронизации",
+        onClick = onOpenJournal,
+        kind = TButtonKind.Ghost,
+        icon = Ion.TIME,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** A single binding card: project → board, enabled/last-synced, sync + edit/delete. */
+@Composable
+private fun BindingRow(
+    integ: GitlabIntegration,
+    state: website.msdnna.tessera.ui.viewmodels.GitlabUiState,
+    vm: GitlabViewModel,
+    workspaceId: String,
+    onEdit: () -> Unit,
+) {
+    val c = Tessera.colors
+    val boardLabel = state.boards.find { it.id == integ.boardId }?.label ?: "—"
+    var confirmDelete by remember { mutableStateOf(false) }
+    val syncing = state.syncingId == integ.id
+    TCard {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(integ.name.ifBlank { integ.projectPath }, color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text("${integ.projectPath} → $boardLabel", color = c.text3, fontSize = 12.sp)
+                }
+                if (!integ.enabled) Text("выкл.", color = c.text3, fontSize = 11.sp)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Синхронизация: " +
+                    (integ.lastSyncedAt?.let { localDateTimeLabel(it) }.takeUnless { it.isNullOrBlank() } ?: "—"),
+                color = c.text3, fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                integ.id?.let { id ->
+                    TButton("Синхр.", onClick = { vm.sync(workspaceId, id) }, kind = TButtonKind.Secondary, loading = syncing, icon = Ion.REFRESH)
+                }
+                if (state.isAdmin) {
+                    TButton("Изменить", onClick = onEdit, kind = TButtonKind.Secondary)
+                    TButton("Удалить", onClick = { confirmDelete = true }, kind = TButtonKind.Ghost)
+                }
+            }
+        }
+    }
+    if (confirmDelete) {
+        TConfirmDialog(
+            title = "Удалить привязку",
+            message = "Удалить привязку «${integ.name.ifBlank { integ.projectPath }}»? Связи задач с GitLab будут разорваны.",
+            confirmText = "Удалить",
+            onConfirm = {
+                integ.id?.let { vm.deleteIntegration(workspaceId, it) }
+                confirmDelete = false
+            },
+            onDismiss = { confirmDelete = false },
+        )
+    }
+}
+
+/** Create ([binding] == null) or edit one binding: project→board, scope, closed
+ *  policy, interval, sources, write-back toggles and the label-rule editor. */
+@Composable
+private fun IntegrationEditor(
+    binding: GitlabIntegration?,
+    state: website.msdnna.tessera.ui.viewmodels.GitlabUiState,
+    vm: GitlabViewModel,
+    workspaceId: String,
+    onClose: () -> Unit,
+) {
+    val c = Tessera.colors
+    val integ = binding ?: GitlabIntegration()
+    var name by remember(integ) { mutableStateOf(integ.name) }
     var projectPath by remember(integ) { mutableStateOf(integ.projectPath) }
     var boardId by remember(integ) { mutableStateOf(integ.boardId) }
     var enabled by remember(integ) { mutableStateOf(integ.enabled) }
     var interval by remember(integ) { mutableStateOf(integ.syncIntervalSec) }
     var dueSource by remember(integ) { mutableStateOf(integ.dueSource) }
     var startSource by remember(integ) { mutableStateOf(integ.startSource) }
+    var scope by remember(integ) { mutableStateOf(integ.scope.ifBlank { "assigned" }) }
+    var closedPolicy by remember(integ) { mutableStateOf(integ.closedPolicy.ifBlank { "all" }) }
     var defaultColumn by remember(integ) { mutableStateOf(integ.labelRules.defaultColumn) }
     var defaultAction by remember(integ) { mutableStateOf(integ.labelRules.defaultAction) }
     var tagKeepPrefix by remember(integ) { mutableStateOf(integ.labelRules.tagKeepPrefix) }
@@ -210,7 +337,7 @@ private fun IntegrationCard(
         rules.forEach { r -> if (r.matchType == "prefix") r.label = state.prefixNames[canonPrefix(r.match)] ?: "" }
     }
 
-    SectionLabel("Интеграция пространства")
+    Field("Название") { TTextField(name, { name = it }, placeholder = "напр. Основной") }
     Field("Проект GitLab") { TTextField(projectPath, { projectPath = it }, placeholder = "group/project") }
     Field("Доска назначения") {
         TSelect(
@@ -222,6 +349,12 @@ private fun IntegrationCard(
                 vm.loadPrefixNamesForBoard(it)
             },
         )
+    }
+    Field("Область импорта") {
+        TSelect(ScopeOptions.find { it.first == scope }?.second ?: "—", ScopeOptions) { scope = it }
+    }
+    Field("Закрытые задачи") {
+        TSelect(ClosedPolicyOptions.find { it.first == closedPolicy }?.second ?: "—", ClosedPolicyOptions) { closedPolicy = it }
     }
     Field("Автосинхронизация") {
         TSelect(
@@ -253,10 +386,9 @@ private fun IntegrationCard(
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            "Изменения линкованных задач отправляются в GitLab под токеном владельца " +
-                "интеграции (нужен scope «api»). Статус — только открыть/закрыть issue по " +
-                "границе колонки «Готово»; метки «S:» не трогаются. Теги синхронизируют " +
-                "только метки тег-неймспейсов (не «S:»/«P:»); срок ставится на сам issue.",
+            "Изменения линкованных задач отправляются в GitLab под сервис-токеном " +
+                "инстанса или токеном владельца (нужен scope «api»). Статус — только " +
+                "открыть/закрыть issue по границе колонки «Готово»; метки «S:» не трогаются.",
             color = c.text3, fontSize = 12.sp,
         )
     }
@@ -279,23 +411,10 @@ private fun IntegrationCard(
     DashedAddButton("Правило", onClick = { rules.add(EditRule(GitlabRule())) })
 
     Spacer(Modifier.height(16.dp))
-    Text(
-        "Последняя синхронизация: " +
-            (integ.lastSyncedAt?.let { localDateTimeLabel(it) }.takeUnless { it.isNullOrBlank() } ?: "—"),
-        color = c.text3, fontSize = 12.sp,
-    )
-    Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        TButton("Отмена", onClick = onClose, kind = TButtonKind.Ghost, modifier = Modifier.weight(1f))
         TButton(
-            "Синхронизировать",
-            onClick = { vm.sync(workspaceId) },
-            kind = TButtonKind.Secondary,
-            loading = state.syncing,
-            icon = Ion.REFRESH,
-            modifier = Modifier.weight(1f),
-        )
-        TButton(
-            "Сохранить",
+            if (binding == null) "Создать" else "Сохранить",
             onClick = {
                 val bid = boardId
                 if (projectPath.isNotBlank() && bid != null) {
@@ -304,13 +423,20 @@ private fun IntegrationCard(
                     // tag-prefix store on save (canonical key, blank = remove).
                     val ruleLabels = rules.filter { it.matchType == "prefix" }
                         .associate { canonPrefix(it.match) to it.label }
-                    vm.save(
-                        workspaceId, pid, ruleLabels,
-                        GitlabSetIntegrationRequest(
-                            projectPath.trim(), bid, enabled, interval, dueSource, startSource,
-                            GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
-                            GitlabWriteback(wbEnabled, wbState, wbPriority, wbComments, wbLabels, wbDue, wbAssignees, wbEstimate && estimateTimeUnit),
+                    vm.saveIntegration(
+                        workspaceId, binding?.id, pid, ruleLabels,
+                        GitlabIntegrationRequest(
+                            name = name.trim(), projectPath = projectPath.trim(), boardId = bid,
+                            enabled = enabled, syncIntervalSec = interval, dueSource = dueSource,
+                            startSource = startSource, scope = scope, closedPolicy = closedPolicy,
+                            closedAfter = integ.closedAfter,
+                            labelRules = GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
+                            writeback = GitlabWriteback(
+                                wbEnabled, wbState, wbPriority, wbComments, wbLabels, wbDue,
+                                wbAssignees, wbEstimate && estimateTimeUnit,
+                            ),
                         ),
+                        onDone = onClose,
                     )
                 }
             },
@@ -318,14 +444,6 @@ private fun IntegrationCard(
             modifier = Modifier.weight(1f),
         )
     }
-    Spacer(Modifier.height(8.dp))
-    TButton(
-        "Журнал синхронизации",
-        onClick = onOpenJournal,
-        kind = TButtonKind.Ghost,
-        icon = Ion.TIME,
-        modifier = Modifier.fillMaxWidth(),
-    )
 }
 
 @Composable

@@ -172,10 +172,15 @@ fun MainScreen(
         glProjectId = if (state.currentId.isBlank()) {
             null
         } else {
-            val integ = runCatching { gitlabRepo.integration(state.currentId) }.getOrNull()
-            val boardId = integ?.boardId?.takeIf { integ.configured }
-            if (boardId == null) null
-            else state.boardsByProject.entries.firstOrNull { e -> e.value.any { it.id == boardId } }?.key
+            // Multiple bindings are possible; resolve the project of the first
+            // (prefer an enabled one) so milestone gating has a target.
+            val integs = runCatching { gitlabRepo.integrations(state.currentId).integrations }.getOrNull().orEmpty()
+            val boardId = (integs.firstOrNull { it.enabled } ?: integs.firstOrNull())?.boardId
+            if (boardId == null) {
+                null
+            } else {
+                state.boardsByProject.entries.firstOrNull { e -> e.value.any { it.id == boardId } }?.key
+            }
         }
     }
 

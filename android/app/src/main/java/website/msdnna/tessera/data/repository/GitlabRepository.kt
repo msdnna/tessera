@@ -4,7 +4,8 @@ import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.GitlabConnectRequest
 import website.msdnna.tessera.data.model.GitlabConnection
 import website.msdnna.tessera.data.model.GitlabIntegration
-import website.msdnna.tessera.data.model.GitlabSetIntegrationRequest
+import website.msdnna.tessera.data.model.GitlabIntegrationRequest
+import website.msdnna.tessera.data.model.GitlabIntegrationsResponse
 import website.msdnna.tessera.data.model.GitlabSyncResult
 
 /** A workspace board flattened for a picker: `id` + a `Project / Board` label.
@@ -22,10 +23,21 @@ class GitlabRepository {
         api.gitlabConnect(GitlabConnectRequest(baseUrl, token))
     suspend fun disconnect() = api.gitlabDisconnect()
 
-    suspend fun integration(workspaceId: String): GitlabIntegration = api.gitlabIntegration(workspaceId)
-    suspend fun setIntegration(workspaceId: String, req: GitlabSetIntegrationRequest): GitlabIntegration =
-        api.gitlabSetIntegration(workspaceId, req)
-    suspend fun sync(workspaceId: String): GitlabSyncResult = api.gitlabSync(workspaceId)
+    /** All GL bindings of a workspace + capability flags (service token / is_admin). */
+    suspend fun integrations(workspaceId: String): GitlabIntegrationsResponse =
+        api.gitlabIntegrations(workspaceId)
+
+    suspend fun createIntegration(workspaceId: String, req: GitlabIntegrationRequest): GitlabIntegration =
+        api.gitlabCreateIntegration(workspaceId, req)
+
+    suspend fun updateIntegration(workspaceId: String, id: String, req: GitlabIntegrationRequest): GitlabIntegration =
+        api.gitlabUpdateIntegration(workspaceId, id, req)
+
+    suspend fun deleteIntegration(workspaceId: String, id: String) =
+        api.gitlabDeleteIntegration(workspaceId, id)
+
+    suspend fun sync(workspaceId: String, integrationId: String): GitlabSyncResult =
+        api.gitlabSyncIntegration(workspaceId, integrationId)
 
     /** Sync-journal: recent runs, the actions of one run, and retrying a failed push. */
     suspend fun syncRuns(workspaceId: String): List<website.msdnna.tessera.data.model.GitlabSyncRun> =

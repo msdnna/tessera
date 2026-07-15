@@ -50,15 +50,25 @@ data class GitlabWriteback(
     @SerializedName("push_estimate") val pushEstimate: Boolean = false,
 )
 
-/** The workspace's GitLab integration config (mirrors backend `gitlabIntegrationView`). */
+/** One GitLab binding (GL-project → board). Multiple per workspace since be 0.71
+ *  (mirrors backend `gitlabIntegrationView`). */
 data class GitlabIntegration(
     @SerializedName("configured") val configured: Boolean = false,
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("name") val name: String = "",
     @SerializedName("project_path") val projectPath: String = "",
     @SerializedName("board_id") val boardId: String? = null,
+    // The integration board's project — used to resolve project-scoped tag-prefixes.
+    @SerializedName("project_id") val projectId: String? = null,
     @SerializedName("enabled") val enabled: Boolean = true,
     @SerializedName("sync_interval_sec") val syncIntervalSec: Int = 0,
     @SerializedName("due_source") val dueSource: String = "issue_milestone",
     @SerializedName("start_source") val startSource: String = "created",
+    // scope: assigned|all — how much of the GL project to import.
+    @SerializedName("scope") val scope: String = "assigned",
+    // closed_policy: all|archive_closed_sprints|period.
+    @SerializedName("closed_policy") val closedPolicy: String = "all",
+    @SerializedName("closed_after") val closedAfter: String? = null,
     @SerializedName("last_synced_at") val lastSyncedAt: String? = null,
     @SerializedName("label_rules") val labelRules: GitlabRules = GitlabRules(),
     @SerializedName("writeback") val writeback: GitlabWriteback = GitlabWriteback(),
@@ -67,13 +77,31 @@ data class GitlabIntegration(
     @SerializedName("estimation_unit") val estimationUnit: String = "time",
 )
 
-data class GitlabSetIntegrationRequest(
+/** GET /workspaces/:id/gitlab/integrations — all bindings + capability flags. */
+data class GitlabIntegrationsResponse(
+    @SerializedName("integrations") private val integrationsRaw: List<GitlabIntegration>? = null,
+    @SerializedName("default_rules") val defaultRules: GitlabRules = GitlabRules(),
+    // An instance-wide service token is set → bindings can be configured/synced
+    // without a personal PAT.
+    @SerializedName("service_configured") val serviceConfigured: Boolean = false,
+    // Only admins may create/update/delete bindings.
+    @SerializedName("is_admin") val isAdmin: Boolean = false,
+) {
+    val integrations: List<GitlabIntegration> get() = integrationsRaw.orEmpty()
+}
+
+/** Create/update body for a binding (POST/PUT …/gitlab/integrations[/:id]). */
+data class GitlabIntegrationRequest(
+    @SerializedName("name") val name: String,
     @SerializedName("project_path") val projectPath: String,
     @SerializedName("board_id") val boardId: String,
     @SerializedName("enabled") val enabled: Boolean,
     @SerializedName("sync_interval_sec") val syncIntervalSec: Int,
     @SerializedName("due_source") val dueSource: String,
     @SerializedName("start_source") val startSource: String,
+    @SerializedName("scope") val scope: String,
+    @SerializedName("closed_policy") val closedPolicy: String,
+    @SerializedName("closed_after") val closedAfter: String? = null,
     @SerializedName("label_rules") val labelRules: GitlabRules,
     @SerializedName("writeback") val writeback: GitlabWriteback,
 )
