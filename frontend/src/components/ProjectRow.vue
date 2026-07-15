@@ -238,6 +238,8 @@ function remove() {
 async function doRemove() {
   try {
     await projApi.remove(props.project.id)
+    // If a board of this project is open, it would start 404-ing — go Home first.
+    if (route.params.projectSlug === props.project.slug) router.push('/')
     await store.refresh()
   } catch (e) {
     message.error(e.message)

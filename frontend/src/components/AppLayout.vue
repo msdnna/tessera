@@ -8,6 +8,7 @@ import {
   NLayoutContent,
   NDrawer,
   NDrawerContent,
+  useMessage,
 } from 'naive-ui'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
@@ -33,6 +34,7 @@ const { isMobile } = useResponsive()
 const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
 const route = useRoute()
 const router = useRouter()
+const message = useMessage()
 
 // Desktop: native-notification click → focus window + open the task.
 useDesktopDeepLink(router)
@@ -70,7 +72,24 @@ onBeforeUnmount(stopDrag)
 useRealtime((ev) => {
   notes.onEvent(ev, authStore.user?.id)
   conflicts.onEvent(ev)
+  onProjectGone(ev)
 })
+
+// A project leaving the current workspace (deleted, or transferred elsewhere) fires
+// `project.deleted` in that workspace. Keep every connected client's tree in sync,
+// and — for anyone viewing a board of that project — bail to Home before the board
+// starts 404-ing (the "Не найдено" toast the user reported). The deleter/transferrer
+// already navigates locally; this no-ops for them (they're no longer on that route).
+function onProjectGone(ev) {
+  if (ev.type !== 'project.deleted' || ev.scope !== ws.currentId) return
+  const slug = route.params.projectSlug
+  const viewing = slug && ws.projects.find((p) => p.slug === slug)?.id === ev.data?.id
+  ws.refresh() // drop it from the sidebar tree for everyone in this workspace
+  if (viewing) {
+    message.info('Проект был удалён или перенесён в другое пространство — открыта «Главная»')
+    router.push('/')
+  }
+}
 
 const drawerOpen = ref(false)
 // Browser Back closes the mobile sidebar drawer instead of navigating.

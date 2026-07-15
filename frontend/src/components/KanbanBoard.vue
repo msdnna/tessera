@@ -1668,6 +1668,9 @@ onBeforeUnmount(() => {
   ro?.disconnect()
   cardIO?.disconnect()
   cardRO?.disconnect()
+  // Drop any pending debounced reload so it can't fire against a board we've just
+  // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
+  clearTimeout(reloadTimer)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
   onDragEnd()
   boardViewStore.reset()
