@@ -121,6 +121,9 @@ data class GitlabMember(
     @SerializedName("gl_username") val glUsername: String = "",
     @SerializedName("gl_name") val glName: String = "",
     @SerializedName("gl_avatar_url") val glAvatarUrl: String = "",
+    // Non-null when this GitLab member already has a linked Tessera account (via
+    // OAuth identity or a connected PAT) — used to dedup the assignee picker.
+    @SerializedName("tessera_user_id") val tesseraUserId: String? = null,
 )
 
 data class PinGitlabAssigneeRequest(

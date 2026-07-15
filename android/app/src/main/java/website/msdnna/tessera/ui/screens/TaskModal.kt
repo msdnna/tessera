@@ -684,6 +684,10 @@ private fun AssigneesValue(
                 }
             }
         }
+        // GitLab members already linked to a Tessera account (tesseraUserId) are
+        // shown once as the Tessera member (with a «GL» badge) and dropped from the
+        // GitLab sublist — dedup parity with web.
+        val linkedGlIds = gitlabMembers.mapNotNull { it.tesseraUserId }.toSet()
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
             members.forEach { m ->
                 val on = m.userId in assignees
@@ -695,20 +699,24 @@ private fun AssigneesValue(
                     MemberAvatar(22.dp, m.name, userId = m.userId)
                     Spacer(Modifier.width(8.dp))
                     Text(m.name, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    if (m.userId in linkedGlIds) {
+                        GlLinkBadge()
+                        Spacer(Modifier.width(6.dp))
+                    }
                     if (on) {
-                        Spacer(Modifier.width(8.dp))
                         IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
                     }
                 }
             }
-            if (gitlabMembers.isNotEmpty()) {
+            val unlinkedGl = gitlabMembers.filter { it.tesseraUserId == null }
+            if (unlinkedGl.isNotEmpty()) {
                 val assignedGl = gitlabAssignees.map { it.glUsername }.toSet()
                 Text(
                     "GitLab",
                     color = c.text3, fontSize = 10.sp,
                     modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 2.dp),
                 )
-                gitlabMembers.forEach { m ->
+                unlinkedGl.forEach { m ->
                     val label = m.glName.ifBlank { m.glUsername }
                     Row(
                         Modifier.fillMaxWidth().clickableNoRipple { onToggleGl(m) }
@@ -726,6 +734,18 @@ private fun AssigneesValue(
                 }
             }
         }
+    }
+}
+
+/** Small «GL» pill marking a Tessera member also linked to a GitLab account. */
+@Composable
+private fun GlLinkBadge() {
+    val c = Tessera.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(6.dp)).background(c.primary.copy(alpha = 0.14f))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    ) {
+        Text("GL", color = c.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
