@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/gitlab"
 	"tessera/middleware"
 )
 
@@ -206,7 +207,7 @@ func (h *API) SetTaskMilestone(c *gin.Context) {
 	}
 	// A manual milestone change on a GitLab-linked task wins over the sync.
 	_ = h.q.MarkGitlabMilestoneOverridden(c, id)
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "milestone", map[string]any{})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
 	if t, err := h.q.GetTask(c, id); err == nil {
 		h.broadcast(wsID, "task.updated", t)
 	}
@@ -228,7 +229,7 @@ func (h *API) ClearTaskMilestone(c *gin.Context) {
 		return
 	}
 	_ = h.q.MarkGitlabMilestoneOverridden(c, id)
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "milestone", map[string]any{})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
 	if t, err := h.q.GetTask(c, id); err == nil {
 		h.broadcast(wsID, "task.updated", t)
 	}

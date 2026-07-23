@@ -23,6 +23,8 @@ import {
   ChevronDownOutline,
   TimeOutline,
   WarningOutline,
+  CreateOutline,
+  CloseOutline,
 } from '@vicons/ionicons5'
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
@@ -104,18 +106,72 @@ const dueSource = ref('issue_milestone')
 const startSource = ref('created')
 const lastSynced = ref(null)
 // ── write-back (Tessera → GitLab), opt-in; all off by default ──
-const wbEnabled = ref(false)
-const wbState = ref(false)
-const wbPriority = ref(false)
-const wbComments = ref(false)
-const wbLabels = ref(false)
-const wbDue = ref(false)
-const wbAssignees = ref(false)
-const wbEstimate = ref(false)
-const wbMilestone = ref(false) // push the task's GitLab-linked milestone to the issue
-const wbTitleDesc = ref(false) // push task title/description to the issue (conflict-checked)
+const wbEnabled = ref(false) // master toggle for the whole binding table
 const wbCreate = ref(false) // allow creating GitLab issues from tasks (independent of write-back)
 const wbFetchTemplates = ref(false) // offer repo issue templates when creating
+// bindings is the customizable trigger→action table (replaces the fixed toggles).
+// Each entry: { enabled, trigger:{type,column_id,column_name,priority,completed,date_kind},
+//               action:{type,label,clear_prefix,state,date_kind,add_marker} }
+const bindings = ref([])
+// The modal expands into a right pane for editing either the write-back action
+// bindings or the GL→Tessera label-parsing rules. null = collapsed (single pane).
+const rightMode = ref(null) // null | 'actions' | 'rules'
+function openRight(mode) {
+  rightMode.value = rightMode.value === mode ? null : mode
+}
+
+const triggerTypeOptions = [
+  { label: 'Перемещение в колонку', value: 'column' },
+  { label: 'Флаг «Выполнено»', value: 'completion' },
+  { label: 'Изменение приоритета', value: 'priority' },
+  { label: 'Изменение срока', value: 'due' },
+  { label: 'Изменение исполнителей', value: 'assignees' },
+  { label: 'Изменение оценки', value: 'estimate' },
+  { label: 'Изменение этапа', value: 'milestone' },
+  { label: 'Заголовок / описание', value: 'title_desc' },
+  { label: 'Изменение тегов', value: 'labels' },
+  { label: 'Новый комментарий', value: 'comment' },
+]
+const actionTypeOptions = [
+  { label: 'Установить метку', value: 'set_label' },
+  { label: 'Закрыть / открыть issue', value: 'set_state' },
+  { label: 'Установить срок', value: 'set_due' },
+  { label: 'Установить исполнителей', value: 'set_assignees' },
+  { label: 'Установить оценку', value: 'set_estimate' },
+  { label: 'Установить этап', value: 'set_milestone' },
+  { label: 'Обновить заголовок/описание', value: 'set_title_desc' },
+  { label: 'Синхронизировать теги', value: 'reconcile_labels' },
+  { label: 'Написать комментарий', value: 'post_comment' },
+]
+const stateOptions = [
+  { label: 'Из флага «Выполнено»', value: '' },
+  { label: 'Закрыть issue', value: 'closed' },
+  { label: 'Открыть issue', value: 'opened' },
+]
+const dateKindOptions = [
+  { label: 'Срок (due)', value: 'due' },
+  { label: 'Начало (start) — для issue игнорируется', value: 'start' },
+]
+const completionOptions = [
+  { label: 'Любое изменение', value: null },
+  { label: 'Стало «Выполнено»', value: true },
+  { label: 'Снято «Выполнено»', value: false },
+]
+// The sensible default action for a freshly-picked trigger.
+const DEFAULT_ACTION_FOR = {
+  column: 'set_label',
+  completion: 'set_state',
+  priority: 'set_label',
+  due: 'set_due',
+  assignees: 'set_assignees',
+  estimate: 'set_estimate',
+  milestone: 'set_milestone',
+  title_desc: 'set_title_desc',
+  labels: 'reconcile_labels',
+  comment: 'post_comment',
+}
+const triggerLabel = (v) => triggerTypeOptions.find((o) => o.value === v)?.label || v
+const actionLabel = (v) => actionTypeOptions.find((o) => o.value === v)?.label || v
 // Resolved estimation unit of the integration board (from the integration GET);
 // the estimate toggle is only meaningful when it's "time".
 const estimationUnit = ref('time')
@@ -131,7 +187,9 @@ const boardProject = ref({}) // board id → project id, for prefix-name targeti
 // prefixes that have no rule here.
 const loadedPrefixNames = ref({})
 const targetProjectId = computed(() => boardProject.value[boardId.value] || null)
-const columnOptions = ref([])
+const columnOptions = ref([]) // {label:name, value:name} — for label-rules value maps
+const columnIdOptions = ref([]) // {label:name, value:id} — for column-move bindings
+const columnNameById = ref({}) // id → name, to stamp column_name on save
 const saving = ref(false)
 const syncing = ref(false)
 // The sync runs in the background (so a large batch can't drop the long request);
@@ -186,6 +244,9 @@ const startSourceOptions = [
   { label: 'Не синхронизировать', value: 'off' },
 ]
 const priorityLevelOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+// Priority qualifier for a binding trigger (null = any level). Declared here so it
+// follows priorityLevelOptions (avoids a temporal-dead-zone reference).
+const priorityQualOptions = [{ label: 'Любой приоритет', value: null }, ...priorityLevelOptions]
 
 const lastSyncedText = computed(() =>
   lastSynced.value
@@ -239,13 +300,21 @@ async function loadPrefixNames() {
 async function loadColumns(id) {
   if (!id) {
     columnOptions.value = []
+    columnIdOptions.value = []
+    columnNameById.value = {}
     return
   }
   try {
     const cols = (await boardsApi.columns(id)).data || []
     columnOptions.value = cols.map((c) => ({ label: c.name, value: c.name }))
+    columnIdOptions.value = cols.map((c) => ({ label: c.name, value: c.id }))
+    const m = {}
+    for (const c of cols) m[c.id] = c.name
+    columnNameById.value = m
   } catch {
     columnOptions.value = []
+    columnIdOptions.value = []
+    columnNameById.value = {}
   }
 }
 
@@ -309,15 +378,6 @@ async function applyBinding(data) {
     lastSynced.value = data.last_synced_at || null
     const wb = data.writeback || {}
     wbEnabled.value = wb.enabled === true
-    wbState.value = wb.push_state === true
-    wbPriority.value = wb.push_priority === true
-    wbComments.value = wb.push_comments === true
-    wbLabels.value = wb.push_labels === true
-    wbDue.value = wb.push_due === true
-    wbAssignees.value = wb.push_assignees === true
-    wbEstimate.value = wb.push_estimate === true
-    wbMilestone.value = wb.push_milestone === true
-    wbTitleDesc.value = wb.push_title_desc === true
     wbCreate.value = wb.push_create === true
     wbFetchTemplates.value = wb.fetch_templates === true
     estimationUnit.value = data.estimation_unit || 'time'
@@ -336,6 +396,13 @@ async function applyBinding(data) {
         v: rule.action === 'priority' ? Number(v) : v,
       })),
     }))
+    // Bindings: an explicit set wins; otherwise synthesize from the legacy toggles
+    // (using the just-parsed rules for priority inversion) so a legacy integration
+    // opens with an equivalent, editable default set.
+    bindings.value =
+      Array.isArray(wb.bindings) && wb.bindings.length
+        ? wb.bindings.map(normalizeBinding)
+        : synthesizeBindings(wb)
     if (boardId.value) await loadColumns(boardId.value)
     await loadPrefixNames()
   }
@@ -345,6 +412,155 @@ function onBoardChange(id) {
   boardId.value = id
   loadColumns(id)
   loadPrefixNames()
+}
+
+// ── write-back bindings ──
+
+// normalizeBinding fills a stored binding to the full UI shape (nullable qualifiers
+// stay null = "any"; clear_prefix defaults true only for a brand-new set_label).
+function normalizeBinding(b) {
+  const t = b.trigger || {}
+  const a = b.action || {}
+  return {
+    enabled: b.enabled !== false,
+    trigger: {
+      type: t.type || 'column',
+      column_id: t.column_id || '',
+      column_name: t.column_name || '',
+      priority: t.priority === 0 || t.priority ? t.priority : null,
+      completed: typeof t.completed === 'boolean' ? t.completed : null,
+      date_kind: t.date_kind || (t.type === 'due' ? 'due' : ''),
+    },
+    action: {
+      type: a.type || 'set_label',
+      label: a.label || '',
+      clear_prefix: a.clear_prefix === true, // stored explicitly (no omitempty) → trust it
+      state: a.state || '',
+      date_kind: a.date_kind || (a.type === 'set_due' ? 'due' : ''),
+      add_marker: a.add_marker === true,
+    },
+  }
+}
+
+// synthesizeBindings mirrors the backend's legacy-toggle synthesis so a pre-bindings
+// integration shows the equivalent default set (editable). Priority fans out to one
+// per-level set_label from the priority rule's inverted value map.
+function synthesizeBindings(wb) {
+  if (wb.enabled !== true) return []
+  const out = []
+  const mk = (trigger, action) => out.push(normalizeBinding({ enabled: true, trigger, action }))
+  if (wb.push_state) mk({ type: 'completion' }, { type: 'set_state', state: '' })
+  if (wb.push_priority) {
+    const pr = rules.value.find((r) => r.action === 'priority' && r.match_type === 'prefix')
+    if (pr) {
+      const byLevel = {}
+      let ambiguous = false
+      for (const m of pr.map) {
+        if (m.v == null || m.v === '') continue
+        if (byLevel[m.v] != null) ambiguous = true
+        byLevel[m.v] = m.k
+      }
+      if (!ambiguous) {
+        Object.entries(byLevel)
+          .sort((x, y) => Number(x[0]) - Number(y[0]))
+          .forEach(([lvl, val]) =>
+            mk(
+              { type: 'priority', priority: Number(lvl) },
+              { type: 'set_label', label: pr.match + val, clear_prefix: true },
+            ),
+          )
+      }
+    }
+  }
+  if (wb.push_comments) mk({ type: 'comment' }, { type: 'post_comment' })
+  if (wb.push_labels) mk({ type: 'labels' }, { type: 'reconcile_labels' })
+  if (wb.push_due) mk({ type: 'due', date_kind: 'due' }, { type: 'set_due', date_kind: 'due' })
+  if (wb.push_assignees) mk({ type: 'assignees' }, { type: 'set_assignees' })
+  if (wb.push_estimate) mk({ type: 'estimate' }, { type: 'set_estimate' })
+  if (wb.push_milestone) mk({ type: 'milestone' }, { type: 'set_milestone' })
+  if (wb.push_title_desc) mk({ type: 'title_desc' }, { type: 'set_title_desc' })
+  return out
+}
+
+// bindingTriggerText / bindingActionText render the compact row summary.
+function bindingTriggerText(b) {
+  const t = b.trigger
+  switch (t.type) {
+    case 'column':
+      return `Перенос → «${columnNameById.value[t.column_id] || t.column_name || '?'}»`
+    case 'priority':
+      return t.priority == null ? 'Приоритет (любой)' : `Приоритет: ${PRIORITY_LABELS[t.priority]}`
+    case 'completion':
+      return t.completed == null
+        ? 'Флаг «Выполнено»'
+        : t.completed
+          ? 'Стало «Выполнено»'
+          : 'Снято «Выполнено»'
+    case 'due':
+      return t.date_kind === 'start' ? 'Изменение начала' : 'Изменение срока'
+    default:
+      return triggerLabel(t.type)
+  }
+}
+function bindingActionText(b) {
+  const a = b.action
+  switch (a.type) {
+    case 'set_label':
+      return `метка «${a.label || '?'}»`
+    case 'set_state':
+      return a.state === 'closed' ? 'закрыть issue' : a.state === 'opened' ? 'открыть issue' : 'закрыть/открыть issue'
+    case 'post_comment':
+      return a.add_marker ? 'комментарий (+маркер)' : 'комментарий'
+    default:
+      return actionLabel(a.type).toLowerCase()
+  }
+}
+
+// Bindings are edited inline (as cards in the right pane), like the label rules —
+// no separate draft. Adding appends a blank card; changing a card's trigger/action
+// resets the now-irrelevant qualifiers so the card stays coherent.
+function addBinding() {
+  bindings.value.push(
+    normalizeBinding({ enabled: true, trigger: { type: 'column' }, action: { type: 'set_label', clear_prefix: true } }),
+  )
+}
+function removeBinding(i) {
+  bindings.value.splice(i, 1)
+}
+function onBindingTrigger(b, type) {
+  b.trigger.type = type
+  b.trigger.column_id = ''
+  b.trigger.column_name = ''
+  b.trigger.priority = null
+  b.trigger.completed = null
+  b.trigger.date_kind = type === 'due' ? 'due' : ''
+  onBindingAction(b, DEFAULT_ACTION_FOR[type] || 'set_label')
+}
+function onBindingAction(b, type) {
+  b.action.type = type
+  if (type === 'set_label' && !b.action.label) b.action.clear_prefix = true
+  if (type === 'set_due' && !b.action.date_kind) b.action.date_kind = 'due'
+}
+
+// serializeBinding strips a UI binding to the wire shape (only relevant fields).
+function serializeBinding(b) {
+  const t = { type: b.trigger.type }
+  if (t.type === 'column') {
+    t.column_id = b.trigger.column_id
+    t.column_name = columnNameById.value[b.trigger.column_id] || b.trigger.column_name || ''
+  }
+  if (t.type === 'priority' && b.trigger.priority != null) t.priority = b.trigger.priority
+  if (t.type === 'completion' && b.trigger.completed != null) t.completed = b.trigger.completed
+  if (t.type === 'due') t.date_kind = b.trigger.date_kind || 'due'
+  const a = { type: b.action.type }
+  if (a.type === 'set_label') {
+    a.label = b.action.label.trim()
+    a.clear_prefix = b.action.clear_prefix
+  }
+  if (a.type === 'set_state') a.state = b.action.state || ''
+  if (a.type === 'set_due') a.date_kind = b.action.date_kind || 'due'
+  if (a.type === 'post_comment') a.add_marker = b.action.add_marker
+  return { enabled: b.enabled !== false, trigger: t, action: a }
 }
 
 function addRule() {
@@ -395,17 +611,11 @@ async function save() {
       label_rules,
       writeback: {
         enabled: wbEnabled.value,
-        push_state: wbState.value,
-        push_priority: wbPriority.value,
-        push_comments: wbComments.value,
-        push_labels: wbLabels.value,
-        push_due: wbDue.value,
-        push_assignees: wbAssignees.value,
-        push_estimate: wbEstimate.value && estimationUnit.value === 'time',
-        push_milestone: wbMilestone.value,
-        push_title_desc: wbTitleDesc.value,
         push_create: wbCreate.value,
         fetch_templates: wbCreate.value && wbFetchTemplates.value,
+        // The binding table fully replaces the legacy toggles; a non-empty set makes
+        // the backend ignore them entirely.
+        bindings: wbEnabled.value ? bindings.value.map(serializeBinding) : [],
       },
     }
     const { data } = currentId.value
@@ -562,14 +772,19 @@ watch(
          dim/blur the WHOLE card (header + edges), while the card body scrolls in
          its own inner gl-scroll. -->
     <div class="gl-modal-wrap">
-      <n-card class="gl-card" style="width: 580px; max-width: 94vw" role="dialog">
+      <n-card
+        class="gl-card"
+        :style="{ width: rightMode ? 'min(1400px, 94vw)' : '580px', maxWidth: '94vw' }"
+        role="dialog"
+      >
         <template #header>
           <span class="gl-title">
             <n-icon :component="LogoGitlab" class="grad-icon" /> GitLab
           </span>
         </template>
 
-        <div class="gl-scroll">
+        <div class="gl-panes">
+          <div class="gl-left gl-scroll">
       <!-- ACCOUNT -->
       <section class="gl-sec">
         <h4 class="gl-h">Аккаунт</h4>
@@ -730,138 +945,44 @@ watch(
             описания перед созданием.
           </n-text>
         </p>
-        <div v-if="wbEnabled" class="gl-grid">
-          <n-text depth="3" class="lbl">Статус (закрыть/открыть issue)</n-text>
-          <div><n-switch v-model:value="wbState" size="small" /></div>
-
-          <n-text depth="3" class="lbl">Приоритет (метка P:)</n-text>
-          <div><n-switch v-model:value="wbPriority" size="small" /></div>
-
-          <n-text depth="3" class="lbl">Комментарии (как заметки)</n-text>
-          <div><n-switch v-model:value="wbComments" size="small" /></div>
-
-          <n-text depth="3" class="lbl">Теги (метки тег-неймспейсов)</n-text>
-          <div><n-switch v-model:value="wbLabels" size="small" /></div>
-
-          <n-text depth="3" class="lbl">Заголовок и описание</n-text>
-          <div><n-switch v-model:value="wbTitleDesc" size="small" /></div>
-
-          <n-text depth="3" class="lbl">Этап (milestone issue)</n-text>
-          <div><n-switch v-model:value="wbMilestone" size="small" /></div>
-
-          <n-text depth="3" class="lbl">Срок (due date issue)</n-text>
-          <div><n-switch v-model:value="wbDue" size="small" /></div>
-
-          <n-text depth="3" class="lbl">Исполнители (assignees issue)</n-text>
-          <div><n-switch v-model:value="wbAssignees" size="small" /></div>
-
-          <n-text depth="3" class="lbl">Оценка (timeEstimate)</n-text>
-          <div class="est-wb">
-            <n-switch v-model:value="wbEstimate" size="small" :disabled="estimationUnit !== 'time'" />
-            <n-text v-if="estimationUnit !== 'time'" depth="3" class="est-hint">
-              Доступно только когда единица оценки доски — «время».
+        <!-- Uniform "configure" buttons: each opens the right pane in its mode. The
+             lists/editors themselves live in the right pane. -->
+        <div class="gl-cfg-row">
+          <div class="gl-cfg-text">
+            <n-text depth="3" class="gl-cfg-title">Действия обратной записи</n-text>
+            <n-text depth="3" class="gl-cfg-hint">
+              Что делать на issue GitLab при изменениях задачи. Перенос в колонку ставит
+              метку статуса и не закрывает issue.
             </n-text>
           </div>
-        </div>
-        <p v-if="wbEnabled" class="gl-wb-hint">
-          <n-text depth="3">
-            Изменения линкованных задач отправляются в GitLab под токеном владельца
-            интеграции (нужен scope «api»). Статус — только открыть/закрыть issue по
-            границе колонки «Готово»; метки «S:» не трогаются. Теги синхронизируют
-            только метки тег-неймспейсов (не «S:»/«P:»); срок ставится на сам issue.
-            Исполнители: участники проекта GitLab назначаются в пикере исполнителей
-            (резолв в GL-аккаунт по members), assignee_ids issue перезаписываются.
-            Оценка синхронизируется двусторонне (GL timeEstimate ↔ задача), только при
-            единице оценки «время».
-          </n-text>
-        </p>
-
-        <!-- Generic rule engine -->
-        <h4 class="gl-h gl-h-sub">Правила меток</h4>
-        <div class="gl-grid gl-grid-rules">
-          <n-text depth="3" class="lbl">Колонка по умолчанию</n-text>
-          <n-select
-            v-model:value="defaultColumn"
-            :options="columnOptions"
+          <n-button
             size="small"
-            placeholder="напр. К работе"
-          />
-          <n-text depth="3" class="lbl">Прочие метки</n-text>
-          <n-select v-model:value="defaultAction" :options="defaultActionOptions" size="small" />
-          <n-text depth="3" class="lbl">Сохранять префикс тега</n-text>
-          <div><n-switch v-model:value="tagKeepPrefix" /></div>
+            :tertiary="rightMode !== 'actions'"
+            :type="rightMode === 'actions' ? 'primary' : 'default'"
+            :disabled="!wbEnabled"
+            @click="openRight('actions')"
+          >
+            <template #icon><n-icon :component="CreateOutline" /></template>
+            Настроить действия<template v-if="wbEnabled && bindings.length"> ({{ bindings.length }})</template>
+          </n-button>
         </div>
-
-        <div v-for="(rule, ri) in rules" :key="ri" class="gl-rcard">
-          <div class="gl-rrow">
-            <n-input
-              v-model:value="rule.match"
-              size="small"
-              placeholder="S: либо ^(T|C): "
-              class="gl-rmatch"
-            />
-            <n-select
-              v-model:value="rule.match_type"
-              :options="matchTypeOptions"
-              size="small"
-              class="gl-rtype"
-            />
-            <n-select
-              v-model:value="rule.action"
-              :options="actionOptions"
-              size="small"
-              class="gl-raction"
-            />
-            <n-button text size="tiny" type="error" @click="rules.splice(ri, 1)">
-              <n-icon :component="TrashOutline" />
-            </n-button>
+        <div class="gl-cfg-row">
+          <div class="gl-cfg-text">
+            <n-text depth="3" class="gl-cfg-title">Правила разбора меток GitLab</n-text>
+            <n-text depth="3" class="gl-cfg-hint">
+              Как входящие метки GitLab превращаются в статус, приоритет и теги при синхронизации.
+            </n-text>
           </div>
-          <div v-if="rule.match_type === 'prefix'" class="gl-ropt">
-            <n-text depth="3" class="lbl">Понятное имя</n-text>
-            <n-input
-              v-model:value="rule.label"
-              size="small"
-              placeholder="напр. Статус"
-              class="gl-rname"
-            />
-          </div>
-          <div v-if="rule.action === 'tag'" class="gl-ropt">
-            <n-text depth="3" class="lbl">Сохранять префикс</n-text>
-            <n-switch v-model:value="rule.keep_prefix" size="small" />
-          </div>
-          <div v-if="mapActions.includes(rule.action)" class="gl-rmap">
-            <div v-for="(m, mi) in rule.map" :key="mi" class="gl-rule">
-              <n-input
-                v-model:value="m.k"
-                size="small"
-                :placeholder="
-                  rule.action === 'board'
-                    ? 'Future'
-                    : rule.action === 'priority'
-                      ? 'Critical'
-                      : 'In review'
-                "
-              />
-              <n-select
-                v-model:value="m.v"
-                :options="mapTargetOptions(rule.action)"
-                size="small"
-                placeholder="→ значение"
-              />
-              <n-button text size="tiny" type="error" @click="rule.map.splice(mi, 1)">
-                <n-icon :component="TrashOutline" />
-              </n-button>
-            </div>
-            <n-button dashed size="tiny" type="primary" class="gl-add" @click="addMapRow(rule)">
-              <template #icon><n-icon :component="AddOutline" /></template>
-              Значение
-            </n-button>
-          </div>
+          <n-button
+            size="small"
+            :tertiary="rightMode !== 'rules'"
+            :type="rightMode === 'rules' ? 'primary' : 'default'"
+            @click="openRight('rules')"
+          >
+            <template #icon><n-icon :component="CreateOutline" /></template>
+            Настроить правила
+          </n-button>
         </div>
-        <n-button dashed size="small" type="primary" class="gl-add" @click="addRule">
-          <template #icon><n-icon :component="AddOutline" /></template>
-          Правило
-        </n-button>
 
         <div class="gl-footer">
           <span class="gl-synced">Последняя синхронизация: {{ lastSyncedText }}</span>
@@ -898,6 +1019,176 @@ watch(
           </div>
         </div>
       </section>
+          </div>
+          <!-- RIGHT PANE — expands the modal to edit the write-back actions or the
+               GL→Tessera label-parsing rules. -->
+          <div v-if="rightMode" class="gl-right gl-scroll">
+            <div class="gl-right-head">
+              <span class="gl-right-title">
+                {{ rightMode === 'actions' ? 'Действия обратной записи' : 'Правила разбора меток GitLab' }}
+              </span>
+              <n-button text size="small" aria-label="Закрыть" @click="rightMode = null">
+                <n-icon :component="CloseOutline" />
+              </n-button>
+            </div>
+
+            <!-- ACTIONS: write-back binding cards -->
+            <template v-if="rightMode === 'actions'">
+              <p class="gl-wb-hint">
+                <n-text depth="3">
+                  Каждое действие связывает событие в задаче Tessera с действием на issue
+                  GitLab (под токеном владельца интеграции, scope «api»). По умолчанию набор
+                  повторяет прежнее поведение записи.
+                </n-text>
+              </p>
+              <div v-if="!bindings.length" class="gl-binds-empty">
+                <n-text depth="3">Пока нет действий. Добавьте первое ниже.</n-text>
+              </div>
+              <div
+                v-for="(b, bi) in bindings"
+                :key="bi"
+                class="gl-rcard"
+                :class="{ 'gl-bind-off': !b.enabled }"
+              >
+                <div class="gl-bcard-head">
+                  <n-switch v-model:value="b.enabled" size="small" :disabled="!isAdmin" />
+                  <span class="gl-bcard-sum">
+                    {{ bindingTriggerText(b) }} →
+                    <span class="accent-grad-text">{{ bindingActionText(b) }}</span>
+                  </span>
+                  <n-button
+                    text
+                    size="tiny"
+                    type="error"
+                    title="Удалить"
+                    :disabled="!isAdmin"
+                    @click="removeBinding(bi)"
+                  >
+                    <n-icon :component="TrashOutline" />
+                  </n-button>
+                </div>
+                <div class="gl-grid">
+                  <n-text depth="3" class="lbl">Действие в Tessera</n-text>
+                  <n-select
+                    :value="b.trigger.type"
+                    :options="triggerTypeOptions"
+                    size="small"
+                    :disabled="!isAdmin"
+                    @update:value="(v) => onBindingTrigger(b, v)"
+                  />
+
+                  <template v-if="b.trigger.type === 'column'">
+                    <n-text depth="3" class="lbl">Целевая колонка</n-text>
+                    <n-select
+                      v-model:value="b.trigger.column_id"
+                      :options="columnIdOptions"
+                      size="small"
+                      placeholder="Выберите колонку"
+                      :disabled="!isAdmin"
+                    />
+                  </template>
+                  <template v-else-if="b.trigger.type === 'priority'">
+                    <n-text depth="3" class="lbl">Приоритет</n-text>
+                    <n-select v-model:value="b.trigger.priority" :options="priorityQualOptions" size="small" :disabled="!isAdmin" />
+                  </template>
+                  <template v-else-if="b.trigger.type === 'completion'">
+                    <n-text depth="3" class="lbl">Условие</n-text>
+                    <n-select v-model:value="b.trigger.completed" :options="completionOptions" size="small" :disabled="!isAdmin" />
+                  </template>
+                  <template v-else-if="b.trigger.type === 'due'">
+                    <n-text depth="3" class="lbl">Тип срока</n-text>
+                    <n-select v-model:value="b.trigger.date_kind" :options="dateKindOptions" size="small" :disabled="!isAdmin" />
+                  </template>
+
+                  <n-text depth="3" class="lbl">Действие в GitLab</n-text>
+                  <n-select
+                    :value="b.action.type"
+                    :options="actionTypeOptions"
+                    size="small"
+                    :disabled="!isAdmin"
+                    @update:value="(v) => onBindingAction(b, v)"
+                  />
+
+                  <template v-if="b.action.type === 'set_label'">
+                    <n-text depth="3" class="lbl">Метка</n-text>
+                    <n-input v-model:value="b.action.label" size="small" placeholder="напр. S: In Progress" :disabled="!isAdmin" />
+                    <n-text depth="3" class="lbl">Снимать метки того же префикса</n-text>
+                    <div><n-switch v-model:value="b.action.clear_prefix" size="small" :disabled="!isAdmin" /></div>
+                  </template>
+                  <template v-else-if="b.action.type === 'set_state'">
+                    <n-text depth="3" class="lbl">Состояние issue</n-text>
+                    <n-select v-model:value="b.action.state" :options="stateOptions" size="small" :disabled="!isAdmin" />
+                  </template>
+                  <template v-else-if="b.action.type === 'set_due'">
+                    <n-text depth="3" class="lbl">Тип срока</n-text>
+                    <n-select v-model:value="b.action.date_kind" :options="dateKindOptions" size="small" :disabled="!isAdmin" />
+                  </template>
+                  <template v-else-if="b.action.type === 'post_comment'">
+                    <n-text depth="3" class="lbl">Добавлять маркер Tessera</n-text>
+                    <div><n-switch v-model:value="b.action.add_marker" size="small" :disabled="!isAdmin" /></div>
+                  </template>
+                </div>
+              </div>
+              <n-button dashed size="small" type="primary" class="gl-add" :disabled="!isAdmin" @click="addBinding">
+                <template #icon><n-icon :component="AddOutline" /></template>
+                Действие
+              </n-button>
+            </template>
+
+            <!-- RULES: GL → Tessera label parsing -->
+            <template v-else>
+              <div class="gl-grid gl-grid-rules">
+                <n-text depth="3" class="lbl">Колонка по умолчанию</n-text>
+                <n-select v-model:value="defaultColumn" :options="columnOptions" size="small" placeholder="напр. К работе" />
+                <n-text depth="3" class="lbl">Прочие метки</n-text>
+                <n-select v-model:value="defaultAction" :options="defaultActionOptions" size="small" />
+                <n-text depth="3" class="lbl">Сохранять префикс тега</n-text>
+                <div><n-switch v-model:value="tagKeepPrefix" /></div>
+              </div>
+
+              <div v-for="(rule, ri) in rules" :key="ri" class="gl-rcard">
+                <div class="gl-rrow">
+                  <n-input v-model:value="rule.match" size="small" placeholder="S: либо ^(T|C): " class="gl-rmatch" />
+                  <n-select v-model:value="rule.match_type" :options="matchTypeOptions" size="small" class="gl-rtype" />
+                  <n-select v-model:value="rule.action" :options="actionOptions" size="small" class="gl-raction" />
+                  <n-button text size="tiny" type="error" @click="rules.splice(ri, 1)">
+                    <n-icon :component="TrashOutline" />
+                  </n-button>
+                </div>
+                <div v-if="rule.match_type === 'prefix'" class="gl-ropt">
+                  <n-text depth="3" class="lbl">Понятное имя</n-text>
+                  <n-input v-model:value="rule.label" size="small" placeholder="напр. Статус" class="gl-rname" />
+                </div>
+                <div v-if="rule.action === 'tag'" class="gl-ropt">
+                  <n-text depth="3" class="lbl">Сохранять префикс</n-text>
+                  <n-switch v-model:value="rule.keep_prefix" size="small" />
+                </div>
+                <div v-if="mapActions.includes(rule.action)" class="gl-rmap">
+                  <div v-for="(m, mi) in rule.map" :key="mi" class="gl-rule">
+                    <n-input
+                      v-model:value="m.k"
+                      size="small"
+                      :placeholder="
+                        rule.action === 'board' ? 'Future' : rule.action === 'priority' ? 'Critical' : 'In review'
+                      "
+                    />
+                    <n-select v-model:value="m.v" :options="mapTargetOptions(rule.action)" size="small" placeholder="→ значение" />
+                    <n-button text size="tiny" type="error" @click="rule.map.splice(mi, 1)">
+                      <n-icon :component="TrashOutline" />
+                    </n-button>
+                  </div>
+                  <n-button dashed size="tiny" type="primary" class="gl-add" @click="addMapRow(rule)">
+                    <template #icon><n-icon :component="AddOutline" /></template>
+                    Значение
+                  </n-button>
+                </div>
+              </div>
+              <n-button dashed size="small" type="primary" class="gl-add" @click="addRule">
+                <template #icon><n-icon :component="AddOutline" /></template>
+                Правило
+              </n-button>
+            </template>
+          </div>
         </div>
       </n-card>
       <!-- Branded loader while a sync runs — dims/blurs the whole modal card. -->
@@ -1088,6 +1379,99 @@ watch(
 .gl-footer-btns {
   display: flex;
   gap: 8px;
+}
+
+/* Two-pane body: left = main settings, right = expandable editor. Each pane
+   scrolls independently (both carry .gl-scroll). */
+.gl-panes {
+  display: flex;
+  align-items: stretch;
+}
+/* Both panes share the extra width when the modal expands (basis + grow), so a
+   wide screen gives each a comfortable working area instead of a fixed 400px. */
+.gl-left {
+  flex: 1 1 540px;
+  min-width: 0;
+}
+.gl-right {
+  flex: 1 1 560px;
+  min-width: 0;
+  border-left: 1px solid var(--t-border);
+  padding-left: 16px;
+  margin-left: 16px;
+}
+.gl-right-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.gl-right-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+/* Left-pane "configure" rows: label/hint + a button that opens the right pane. */
+.gl-cfg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--t-border);
+}
+.gl-cfg-text {
+  min-width: 0;
+}
+.gl-cfg-title {
+  display: block;
+  font-size: 13px;
+  color: var(--t-text2);
+}
+.gl-cfg-hint {
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+}
+/* Empty-state + per-binding card header (in the right pane). */
+.gl-binds-empty {
+  padding: 8px 2px 12px;
+  font-size: 12px;
+}
+.gl-bind-off {
+  opacity: 0.6;
+}
+.gl-bcard-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.gl-bcard-sum {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--t-text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Narrow screens: stack the two panes vertically so nothing overflows. */
+@media (max-width: 900px) {
+  .gl-panes {
+    flex-direction: column;
+  }
+  .gl-right {
+    flex: 1 1 auto;
+    width: auto;
+    border-left: none;
+    padding-left: 0;
+    margin-left: 0;
+    border-top: 1px solid var(--t-border);
+    padding-top: 14px;
+    margin-top: 14px;
+  }
 }
 
 /* Narrow screens: stack label-over-field, tighten the rule grids so nothing

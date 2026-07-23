@@ -1474,7 +1474,7 @@ func (h *API) PinTaskGitlabAssignee(c *gin.Context) {
 		return
 	}
 	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "gl_username": req.GlUsername})
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "assignees", map[string]any{})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -1498,6 +1498,6 @@ func (h *API) RemoveTaskGitlabAssignee(c *gin.Context) {
 		return
 	}
 	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "gl_username": username})
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "assignees", map[string]any{})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	c.Status(http.StatusNoContent)
 }

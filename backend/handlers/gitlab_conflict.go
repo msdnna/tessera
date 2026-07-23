@@ -117,7 +117,8 @@ const (
 // detection. Other kinds push directly (current behaviour).
 func conflictCheckedKind(kind string) bool {
 	switch kind {
-	case "due", "estimate", "title_desc", "state", "priority":
+	case "due", "estimate", "title_desc", "completion", "state", "priority":
+		// "state" is the legacy alias for "completion" (in-flight rows across upgrade).
 		return true
 	default:
 		return false
@@ -144,7 +145,7 @@ func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task 
 			Field: "estimate", Base: minutesStr(ptrFloat(snap.TimeEstimate)), Ours: minutesStr(task.Estimate),
 			Theirs: minutesStr(ptrFloat(issue.TimeEstimate / 60)), basePresent: ok,
 		}}
-	case "state":
+	case "completion", "state":
 		_, ok := present["state"]
 		return []conflictField{{
 			Field: "state", Base: snap.State, Ours: issueState(task.CompletedAt != nil),

@@ -54,18 +54,23 @@ func (h *API) enqueueWriteback(ctx context.Context, taskID, actorID uuid.UUID, k
 		return
 	}
 	wb := parseWriteback(integ.Writeback)
-	if !wb.Allows(kind) || integ.OwnerUserID == nil {
+	if integ.OwnerUserID == nil {
 		return
 	}
 
 	rules := parseRules(integ.LabelRules)
-	// Label write-back needs tag names to round-trip to full label titles; skip
-	// queuing doomed rows when the prefix is stripped.
-	if kind == "labels" && !rules.TagsInvertible() {
+	// Gate on the binding table: skip enqueuing a trigger no binding consumes.
+	// This subsumes the old per-kind Allows() check and the priority-invertibility
+	// guard (a non-invertible priority synthesizes no binding → resolves to nothing).
+	if len(wb.ResolveActions(triggerFromKind(kind, payload), rules)) == 0 {
 		return
 	}
-	_, prioInvertible := rules.InversePriority()
-	if !shouldPushWriteback(kind, payload, link.GlLastState, prioInvertible) {
+	// Label reconcile needs tag names to round-trip to full label titles; skip
+	// queuing doomed rows when the prefix is stripped.
+	if kind == gitlab.TrigLabels && !rules.TagsInvertible() {
+		return
+	}
+	if !shouldPushWriteback(kind, payload, link.GlLastState) {
 		return
 	}
 	// An open conflict for this (task, kind) already represents the pending intent;
@@ -94,25 +99,55 @@ func (h *API) enqueueWriteback(ctx context.Context, taskID, actorID uuid.UUID, k
 	}
 }
 
-// shouldPushWriteback is the pure loop-guard: given a change kind, its payload,
-// the link's last-known GitLab state, and whether the priority mapping inverts,
-// it decides whether the change is worth pushing. Never push a value GitLab
-// already has (state echo); skip priority when no single label can be formed.
-func shouldPushWriteback(kind string, payload map[string]any, lastState string, prioInvertible bool) bool {
-	switch kind {
-	case "state":
-		s, _ := payload["state"].(string)
-		return s != "" && s != lastState
-	case "priority":
-		return prioInvertible
-	case "comment", "labels", "due", "assignees", "estimate", "milestone", "title_desc":
-		// Loop-safe: only user-side handlers enqueue these (the pull uses a Nil
-		// actor); the worker reads the latest task state at push time. title_desc is
-		// additionally three-way conflict-checked before the push.
-		return true
-	default:
-		return false
+// shouldPushWriteback is the pure loop-guard: never push a value GitLab already
+// has. The only echo-prone trigger is completion→set_state (open/closed): skip when
+// the resulting state already equals the link's last-known GitLab state. Every other
+// trigger is loop-safe (the pull uses a Nil actor and never enqueues; the worker
+// reads the latest task state at push time; title_desc is additionally three-way
+// conflict-checked).
+func shouldPushWriteback(kind string, payload map[string]any, lastState string) bool {
+	if kind == gitlab.TrigCompletion || kind == "state" {
+		completed, _ := payload["completed"].(bool)
+		if s, ok := payload["state"].(string); ok { // legacy "state" payload
+			return s != "" && s != lastState
+		}
+		return issueState(completed) != lastState
 	}
+	return true
+}
+
+// triggerFromKind builds a BindTrigger from an enqueue kind + payload — the fast,
+// best-effort gate used at enqueue time. performWriteback re-derives the trigger
+// from live task state (resolveTrigger) as the authoritative source.
+func triggerFromKind(kind string, payload map[string]any) gitlab.BindTrigger {
+	if kind == "state" {
+		kind = gitlab.TrigCompletion // legacy alias
+	}
+	t := gitlab.BindTrigger{Type: kind}
+	switch kind {
+	case gitlab.TrigColumn:
+		t.ColumnID, _ = payload["column_id"].(string)
+		t.ColumnName, _ = payload["column_name"].(string)
+	case gitlab.TrigPriority:
+		if f, ok := payload["priority"].(float64); ok {
+			p := int32(f)
+			t.Priority = &p
+		}
+	case gitlab.TrigCompletion:
+		if b, ok := payload["completed"].(bool); ok {
+			t.Completed = &b
+		} else if s, ok := payload["state"].(string); ok { // legacy payload
+			b := s == "closed"
+			t.Completed = &b
+		}
+	case gitlab.TrigDue:
+		if dk, _ := payload["date_kind"].(string); dk != "" {
+			t.DateKind = dk
+		} else {
+			t.DateKind = "due"
+		}
+	}
+	return t
 }
 
 // RunGitlabWriteBackWorker drains the write-back outbox on a timer: claims due
@@ -214,9 +249,13 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 		prefix = "Issue #" + strconv.FormatInt(*iidPtr, 10)
 	}
 	switch kind {
-	case "state":
+	case "column":
+		return prefix + ": метка статуса"
+	case "completion", "state":
 		state := "открыто"
-		if s, _ := payload["state"].(string); s == "closed" {
+		if c, _ := payload["completed"].(bool); c {
+			state = "закрыто"
+		} else if s, _ := payload["state"].(string); s == "closed" { // legacy payload
 			state = "закрыто"
 		}
 		return prefix + ": состояние → " + state
@@ -286,9 +325,6 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
 	}
 	wb := parseWriteback(integ.Writeback)
-	if !wb.Allows(w.ChangeKind) {
-		return res, notify.Permanent(fmt.Errorf("write-back %q is disabled", w.ChangeKind))
-	}
 	if integ.OwnerUserID == nil {
 		return res, notify.Permanent(errors.New("integration has no owner credential"))
 	}
@@ -307,7 +343,22 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	var payload map[string]any
 	_ = json.Unmarshal(w.Payload, &payload)
 
-	// Conflict gate: for three-way-checked kinds, fetch the current issue and decide
+	// Resolve the trigger from LIVE task state (not the stale enqueue payload) so a
+	// conflict resolved in our favour, or a coalesced burst of moves, pushes the
+	// task's current value. Then map the trigger to 0..N bound actions.
+	rules := parseRules(integ.LabelRules)
+	trigger, terr := h.resolveTrigger(ctx, w, payload)
+	if terr != nil {
+		return res, terr
+	}
+	actions := wb.ResolveActions(trigger, rules)
+	if len(actions) == 0 {
+		// Config changed since enqueue (binding removed/disabled) — nothing to do.
+		res.result = "нет подходящего биндинга"
+		return res, nil
+	}
+
+	// Conflict gate: for three-way-checked triggers, fetch the current issue and decide
 	// whether to push (baseline clean), no-op (already in sync), or park as a conflict.
 	if conflictCheckedKind(w.ChangeKind) {
 		issues, ferr := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
@@ -317,7 +368,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		if len(issues) == 0 {
 			return res, notify.Permanent(errors.New("issue not found"))
 		}
-		decision, fields, derr := h.evalWritebackConflict(ctx, w, link, issues[0], integ.WorkspaceID, parseRules(integ.LabelRules))
+		decision, fields, derr := h.evalWritebackConflict(ctx, w, link, issues[0], integ.WorkspaceID, rules)
 		if derr != nil {
 			return res, derr
 		}
@@ -336,252 +387,345 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		// conflictProceed: fall through to the push.
 	}
 
-	switch w.ChangeKind {
-	case "state":
-		// Read the live task state (not the enqueue payload) so a conflict resolved
-		// in our favour pushes the task's current open/closed, never a stale value.
-		task, err := h.q.GetTask(ctx, w.TaskID)
-		if err != nil {
-			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
+	// Fan out: one trigger occurrence may bind to several actions (e.g. a column
+	// move that sets multiple labels). Any error aborts the row for retry.
+	var results []string
+	for _, act := range actions {
+		out, aerr := h.performAction(ctx, client, integ, w, path, iid, act, wb, rules, payload)
+		if aerr != nil {
+			return res, aerr
 		}
-		event, outcome := "reopen", "issue reopened"
-		if task.CompletedAt != nil {
-			event, outcome = "close", "issue closed"
+		if out != "" {
+			results = append(results, out)
 		}
-		if err := client.UpdateIssueState(ctx, path, iid, event); err != nil {
-			return res, err
-		}
-		res.result = outcome
-		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
-
-	case "priority":
-		rules := parseRules(integ.LabelRules)
-		inv, ok := rules.InversePriority()
-		if !ok {
-			return res, notify.Permanent(errors.New("priority label mapping is not invertible"))
-		}
-		// Live task priority (not the enqueue payload), for the same reason as state.
-		task, terr := h.q.GetTask(ctx, w.TaskID)
-		if terr != nil {
-			return res, notify.Permanent(fmt.Errorf("task gone: %w", terr))
-		}
-		prio := task.Priority
-		add, ok := inv[prio]
-		if !ok {
-			return res, notify.Permanent(fmt.Errorf("no GitLab label for priority %d", prio))
-		}
-		var remove []string
-		for _, lbl := range rules.AllPriorityLabels() {
-			if lbl != add {
-				remove = append(remove, lbl)
-			}
-		}
-		if err := client.SetIssueLabels(ctx, path, iid, []string{add}, remove); err != nil {
-			return res, err
-		}
-		res.result = "label «" + add + "» set"
-		if len(remove) > 0 {
-			res.result += ", removed " + strings.Join(remove, ", ")
-		}
-		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
-
-	case "labels":
-		rules := parseRules(integ.LabelRules)
-		if !rules.TagsInvertible() {
-			return res, notify.Permanent(errors.New("tag labels are not invertible (prefix stripped)"))
-		}
-		// Diff the issue's current tag-namespace labels against the task's tags;
-		// status/priority labels are excluded (owned by their own write-back path).
-		issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
-		if err != nil {
-			return res, err
-		}
-		if len(issues) == 0 {
-			return res, notify.Permanent(errors.New("issue not found"))
-		}
-		current := map[string]bool{}
-		for _, l := range issues[0].Labels {
-			if t := strings.TrimSpace(l.Title); rules.TagLabelClass(t) {
-				current[t] = true
-			}
-		}
-		tags, err := h.q.ListTaskTags(ctx, w.TaskID)
-		if err != nil {
-			return res, err // transient: retry
-		}
-		desired := map[string]bool{}
-		for _, tg := range tags {
-			if t := strings.TrimSpace(tg.Name); t != "" && rules.TagLabelClass(t) {
-				desired[t] = true
-			}
-		}
-		var add, remove []string
-		for t := range desired {
-			if !current[t] {
-				add = append(add, t)
-			}
-		}
-		for t := range current {
-			if !desired[t] {
-				remove = append(remove, t)
-			}
-		}
-		if len(add) == 0 && len(remove) == 0 {
-			res.result = "labels already in sync"
-			return res, nil
-		}
-		if err := client.SetIssueLabels(ctx, path, iid, add, remove); err != nil {
-			return res, err
-		}
-		res.result = "labels reconciled"
-		if len(add) > 0 {
-			res.result += " +[" + strings.Join(add, ", ") + "]"
-		}
-		if len(remove) > 0 {
-			res.result += " -[" + strings.Join(remove, ", ") + "]"
-		}
-		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
-
-	case "assignees":
-		// Replace the issue's assignees with the resolved Tessera-side set:
-		// Tessera-user assignees that have a connected GitLab account (their numeric
-		// gl_user_id) + user-pinned GitLab members (resolved via the members table).
-		// GitLab's assignee_ids is replace-all, so unresolvable assignees drop out.
-		ids := map[int64]bool{}
-		if tas, err := h.q.ListTaskAssignees(ctx, w.TaskID); err == nil {
-			for _, a := range tas {
-				if cred, cerr := h.q.GetGitlabCredential(ctx, a.ID); cerr == nil && cred.GlUserID != 0 {
-					ids[cred.GlUserID] = true
-				}
-			}
-		} else {
-			return res, err // transient
-		}
-		if gas, err := h.q.ListTaskGitlabAssignees(ctx, w.TaskID); err == nil {
-			for _, g := range gas {
-				if uid, gerr := h.q.GetGitlabMemberIDByUsername(ctx, db.GetGitlabMemberIDByUsernameParams{
-					IntegrationID: integ.ID, GlUsername: g.GlUsername,
-				}); gerr == nil && uid != 0 {
-					ids[uid] = true
-				}
-			}
-		} else {
-			return res, err // transient
-		}
-		list := make([]int64, 0, len(ids))
-		for id := range ids {
-			list = append(list, id)
-		}
-		if err := client.SetIssueAssignees(ctx, path, iid, list); err != nil {
-			return res, err
-		}
-		res.result = fmt.Sprintf("assignees set (%d)", len(list))
-		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
-
-	case "estimate":
-		// Only meaningful when the board's estimation unit is time; GitLab's
-		// timeEstimate is seconds, our canon is minutes.
-		if h.integrationEstimationUnit(ctx, integ) != "time" {
-			return res, notify.Permanent(errors.New("estimate write-back needs a time estimation unit"))
-		}
-		task, err := h.q.GetTask(ctx, w.TaskID)
-		if err != nil {
-			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
-		}
-		var minutes int64
-		if task.Estimate != nil {
-			minutes = int64(*task.Estimate)
-		}
-		if err := client.SetIssueTimeEstimate(ctx, path, iid, minutes); err != nil {
-			return res, err
-		}
-		if minutes <= 0 {
-			res.result = "estimate cleared"
-		} else {
-			res.result = fmt.Sprintf("estimate → %dm", minutes)
-		}
-		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
-
-	case "due":
-		task, err := h.q.GetTask(ctx, w.TaskID)
-		if err != nil {
-			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
-		}
-		date := ""
-		if task.DueDate != nil {
-			date = task.DueDate.UTC().Format("2006-01-02")
-		}
-		if err := client.UpdateIssueDueDate(ctx, path, iid, date); err != nil {
-			return res, err
-		}
-		if date == "" {
-			res.result = "due date cleared"
-		} else {
-			res.result = "due date → " + date
-		}
-		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
-
-	case "comment":
-		body, _ := payload["body"].(string)
-		if strings.TrimSpace(body) == "" {
-			res.result = "empty comment skipped"
-			return res, nil
-		}
-		gid, err := client.CreateIssueNote(ctx, path, iid, body)
-		if err != nil {
-			return res, err
-		}
-		res.result = "note posted"
-		// Tag the originating comment with the new note id so the next pull updates
-		// that row (ON CONFLICT gl_note_id) instead of inserting a duplicate.
-		if gid != "" {
-			if cidStr, _ := payload["comment_id"].(string); cidStr != "" {
-				if cid, perr := uuid.Parse(cidStr); perr == nil {
-					_ = h.q.SetCommentGlNoteID(ctx, db.SetCommentGlNoteIDParams{ID: cid, GlNoteID: &gid})
-				}
-			}
-		}
-
-	case "milestone":
-		task, err := h.q.GetTask(ctx, w.TaskID)
-		if err != nil {
-			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
-		}
-		var milestoneID int64 // 0 clears the issue's milestone
-		if task.MilestoneID != nil {
-			ml, lerr := h.q.GetGitlabMilestoneLink(ctx, *task.MilestoneID)
-			if lerr != nil {
-				// Native (non-GitLab) milestone — nothing to push, not an error.
-				res.result = "native milestone, not pushed"
-				return res, nil
-			}
-			milestoneID = ml.GlNumericID
-		}
-		if err := client.SetIssueMilestone(ctx, path, iid, milestoneID); err != nil {
-			return res, err
-		}
-		if milestoneID == 0 {
-			res.result = "milestone cleared"
-		} else {
-			res.result = "milestone set"
-		}
-		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
-
-	case "title_desc":
-		task, err := h.q.GetTask(ctx, w.TaskID)
-		if err != nil {
-			return res, notify.Permanent(fmt.Errorf("task gone: %w", err))
-		}
-		if err := client.UpdateIssueTitleDescription(ctx, path, iid, task.Title, task.Description); err != nil {
-			return res, err
-		}
-		res.result = "title/description updated"
-		h.refreshLinkSnapshot(ctx, client, integ, w.TaskID, path, iid)
-
-	default:
-		return res, notify.Permanent(fmt.Errorf("unknown change_kind %q", w.ChangeKind))
 	}
+	res.result = strings.Join(results, "; ")
 	return res, nil
+}
+
+// tesseraCommentMarker is the optional footer appended to a pushed comment when the
+// binding sets AddMarker, so a GitLab reader can tell the note originated in Tessera.
+const tesseraCommentMarker = "\n\n---\n_Отправлено через Tessera_"
+
+// resolveTrigger rebuilds the BindTrigger from the live task state (authoritative at
+// push time), falling back to the payload for fields with no live source (comment
+// body, due kind). "state" is the legacy alias for the "completion" trigger.
+func (h *API) resolveTrigger(ctx context.Context, w db.GitlabWriteback, payload map[string]any) (gitlab.BindTrigger, error) {
+	kind := w.ChangeKind
+	if kind == "state" {
+		kind = gitlab.TrigCompletion
+	}
+	t := gitlab.BindTrigger{Type: kind}
+	switch kind {
+	case gitlab.TrigColumn:
+		task, err := h.q.GetTask(ctx, w.TaskID)
+		if err != nil {
+			return t, notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
+		t.ColumnID = task.ColumnID.String()
+		if col, cerr := h.q.GetColumn(ctx, task.ColumnID); cerr == nil {
+			t.ColumnName = col.Name
+		}
+	case gitlab.TrigPriority:
+		task, err := h.q.GetTask(ctx, w.TaskID)
+		if err != nil {
+			return t, notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
+		p := task.Priority
+		t.Priority = &p
+	case gitlab.TrigCompletion:
+		task, err := h.q.GetTask(ctx, w.TaskID)
+		if err != nil {
+			return t, notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
+		b := task.CompletedAt != nil
+		t.Completed = &b
+	case gitlab.TrigDue:
+		if dk, _ := payload["date_kind"].(string); dk != "" {
+			t.DateKind = dk
+		} else {
+			t.DateKind = "due"
+		}
+	}
+	return t, nil
+}
+
+// performAction dispatches one resolved action to its GitLab-side executor. Each
+// executor reuses the existing client calls + refreshLinkSnapshot; extracting the
+// old switch cases verbatim keeps behaviour identical under the default synthesis.
+func (h *API) performAction(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, w db.GitlabWriteback, path string, iid int64, act gitlab.BindAction, wb gitlab.Writeback, rules gitlab.Rules, payload map[string]any) (string, error) {
+	switch act.Type {
+	case gitlab.ActSetState:
+		return h.performSetState(ctx, client, integ, w.TaskID, path, iid, act)
+	case gitlab.ActSetLabel:
+		return h.performSetLabel(ctx, client, integ, w.TaskID, path, iid, act, wb, rules)
+	case gitlab.ActReconcileLabels:
+		return h.performReconcileLabels(ctx, client, integ, w.TaskID, path, iid, rules)
+	case gitlab.ActSetDue:
+		return h.performSetDue(ctx, client, integ, w.TaskID, path, iid)
+	case gitlab.ActSetAssignees:
+		return h.performSetAssignees(ctx, client, integ, w.TaskID, path, iid)
+	case gitlab.ActSetEstimate:
+		return h.performSetEstimate(ctx, client, integ, w.TaskID, path, iid)
+	case gitlab.ActSetMilestone:
+		return h.performSetMilestone(ctx, client, integ, w.TaskID, path, iid)
+	case gitlab.ActPostComment:
+		return h.performPostComment(ctx, client, path, iid, act, payload)
+	case gitlab.ActSetTitleDesc:
+		return h.performSetTitleDesc(ctx, client, integ, w.TaskID, path, iid)
+	default:
+		return "", notify.Permanent(fmt.Errorf("unknown action %q", act.Type))
+	}
+}
+
+// performSetState closes or reopens the issue. act.State forces a state; the empty
+// default derives open/closed from the live completion flag (legacy behaviour).
+func (h *API) performSetState(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64, act gitlab.BindAction) (string, error) {
+	var closed bool
+	switch act.State {
+	case "closed":
+		closed = true
+	case "opened":
+		closed = false
+	default:
+		task, err := h.q.GetTask(ctx, taskID)
+		if err != nil {
+			return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
+		}
+		closed = task.CompletedAt != nil
+	}
+	event, outcome := "reopen", "issue reopened"
+	if closed {
+		event, outcome = "close", "issue closed"
+	}
+	if err := client.UpdateIssueState(ctx, path, iid, event); err != nil {
+		return "", err
+	}
+	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
+	return outcome, nil
+}
+
+// performSetLabel sets one label and (when ClearPrefix) removes its same-namespace
+// siblings, so status/priority labels stay mutually exclusive. This is the flagship
+// column→label path; it also serves synthesized per-value priority labels.
+func (h *API) performSetLabel(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64, act gitlab.BindAction, wb gitlab.Writeback, rules gitlab.Rules) (string, error) {
+	label := strings.TrimSpace(act.Label)
+	if label == "" {
+		return "empty label skipped", nil
+	}
+	var remove []string
+	if act.ClearPrefix {
+		remove = wb.SiblingLabels(label, rules)
+	}
+	if err := client.SetIssueLabels(ctx, path, iid, []string{label}, remove); err != nil {
+		return "", err
+	}
+	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
+	out := "label «" + label + "» set"
+	if len(remove) > 0 {
+		out += ", removed " + strings.Join(remove, ", ")
+	}
+	return out, nil
+}
+
+// performReconcileLabels diffs the issue's tag-namespace labels against the task's
+// tags (status/priority labels excluded — owned by their own paths).
+func (h *API) performReconcileLabels(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64, rules gitlab.Rules) (string, error) {
+	if !rules.TagsInvertible() {
+		return "", notify.Permanent(errors.New("tag labels are not invertible (prefix stripped)"))
+	}
+	issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+	if err != nil {
+		return "", err
+	}
+	if len(issues) == 0 {
+		return "", notify.Permanent(errors.New("issue not found"))
+	}
+	current := map[string]bool{}
+	for _, l := range issues[0].Labels {
+		if t := strings.TrimSpace(l.Title); rules.TagLabelClass(t) {
+			current[t] = true
+		}
+	}
+	tags, err := h.q.ListTaskTags(ctx, taskID)
+	if err != nil {
+		return "", err // transient: retry
+	}
+	desired := map[string]bool{}
+	for _, tg := range tags {
+		if t := strings.TrimSpace(tg.Name); t != "" && rules.TagLabelClass(t) {
+			desired[t] = true
+		}
+	}
+	var add, remove []string
+	for t := range desired {
+		if !current[t] {
+			add = append(add, t)
+		}
+	}
+	for t := range current {
+		if !desired[t] {
+			remove = append(remove, t)
+		}
+	}
+	if len(add) == 0 && len(remove) == 0 {
+		return "labels already in sync", nil
+	}
+	if err := client.SetIssueLabels(ctx, path, iid, add, remove); err != nil {
+		return "", err
+	}
+	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
+	out := "labels reconciled"
+	if len(add) > 0 {
+		out += " +[" + strings.Join(add, ", ") + "]"
+	}
+	if len(remove) > 0 {
+		out += " -[" + strings.Join(remove, ", ") + "]"
+	}
+	return out, nil
+}
+
+// performSetAssignees replaces the issue's assignees with the resolved Tessera-side
+// set (connected Tessera users' gl_user_id + pinned GitLab members). Replace-all, so
+// unresolvable assignees drop out.
+func (h *API) performSetAssignees(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) (string, error) {
+	ids := map[int64]bool{}
+	if tas, err := h.q.ListTaskAssignees(ctx, taskID); err == nil {
+		for _, a := range tas {
+			if cred, cerr := h.q.GetGitlabCredential(ctx, a.ID); cerr == nil && cred.GlUserID != 0 {
+				ids[cred.GlUserID] = true
+			}
+		}
+	} else {
+		return "", err // transient
+	}
+	if gas, err := h.q.ListTaskGitlabAssignees(ctx, taskID); err == nil {
+		for _, g := range gas {
+			if uid, gerr := h.q.GetGitlabMemberIDByUsername(ctx, db.GetGitlabMemberIDByUsernameParams{
+				IntegrationID: integ.ID, GlUsername: g.GlUsername,
+			}); gerr == nil && uid != 0 {
+				ids[uid] = true
+			}
+		}
+	} else {
+		return "", err // transient
+	}
+	list := make([]int64, 0, len(ids))
+	for id := range ids {
+		list = append(list, id)
+	}
+	if err := client.SetIssueAssignees(ctx, path, iid, list); err != nil {
+		return "", err
+	}
+	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
+	return fmt.Sprintf("assignees set (%d)", len(list)), nil
+}
+
+// performSetEstimate pushes the task estimate as the issue's timeEstimate (minutes;
+// only when the board's estimation unit is time).
+func (h *API) performSetEstimate(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) (string, error) {
+	if h.integrationEstimationUnit(ctx, integ) != "time" {
+		return "", notify.Permanent(errors.New("estimate write-back needs a time estimation unit"))
+	}
+	task, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
+	}
+	var minutes int64
+	if task.Estimate != nil {
+		minutes = int64(*task.Estimate)
+	}
+	if err := client.SetIssueTimeEstimate(ctx, path, iid, minutes); err != nil {
+		return "", err
+	}
+	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
+	if minutes <= 0 {
+		return "estimate cleared", nil
+	}
+	return fmt.Sprintf("estimate → %dm", minutes), nil
+}
+
+// performSetDue pushes the task's due date (empty clears it).
+func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) (string, error) {
+	task, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
+	}
+	date := ""
+	if task.DueDate != nil {
+		date = task.DueDate.UTC().Format("2006-01-02")
+	}
+	if err := client.UpdateIssueDueDate(ctx, path, iid, date); err != nil {
+		return "", err
+	}
+	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
+	if date == "" {
+		return "due date cleared", nil
+	}
+	return "due date → " + date, nil
+}
+
+// performPostComment posts a note to the issue (optionally with the Tessera marker),
+// and tags the originating comment with the note id so the next pull dedups it.
+func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, path string, iid int64, act gitlab.BindAction, payload map[string]any) (string, error) {
+	body, _ := payload["body"].(string)
+	if strings.TrimSpace(body) == "" {
+		return "empty comment skipped", nil
+	}
+	if act.AddMarker {
+		body += tesseraCommentMarker
+	}
+	gid, err := client.CreateIssueNote(ctx, path, iid, body)
+	if err != nil {
+		return "", err
+	}
+	if gid != "" {
+		if cidStr, _ := payload["comment_id"].(string); cidStr != "" {
+			if cid, perr := uuid.Parse(cidStr); perr == nil {
+				_ = h.q.SetCommentGlNoteID(ctx, db.SetCommentGlNoteIDParams{ID: cid, GlNoteID: &gid})
+			}
+		}
+	}
+	return "note posted", nil
+}
+
+// performSetMilestone pushes the task's GitLab-linked milestone (0 clears it; a
+// native milestone is a no-op, not an error).
+func (h *API) performSetMilestone(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) (string, error) {
+	task, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
+	}
+	var milestoneID int64 // 0 clears the issue's milestone
+	if task.MilestoneID != nil {
+		ml, lerr := h.q.GetGitlabMilestoneLink(ctx, *task.MilestoneID)
+		if lerr != nil {
+			return "native milestone, not pushed", nil
+		}
+		milestoneID = ml.GlNumericID
+	}
+	if err := client.SetIssueMilestone(ctx, path, iid, milestoneID); err != nil {
+		return "", err
+	}
+	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
+	if milestoneID == 0 {
+		return "milestone cleared", nil
+	}
+	return "milestone set", nil
+}
+
+// performSetTitleDesc pushes the task title/description to the issue (conflict-checked
+// upstream in performWriteback).
+func (h *API) performSetTitleDesc(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) (string, error) {
+	task, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
+	}
+	if err := client.UpdateIssueTitleDescription(ctx, path, iid, task.Title, task.Description); err != nil {
+		return "", err
+	}
+	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
+	return "title/description updated", nil
 }
 
 // refreshLinkSnapshot re-fetches the one issue we just pushed to and rewrites the

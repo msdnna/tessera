@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/gitlab"
 	"tessera/internal/recur"
 	"tessera/middleware"
 )
@@ -352,25 +353,27 @@ func (h *API) UpdateTask(c *gin.Context) {
 	}
 	// Mirror user-side changes back to a linked GitLab issue (opt-in per integration).
 	actor := middleware.CurrentUser(c)
+	// The explicit "Completed" flag is the legitimate source of a state push
+	// (drives set_state → close/reopen). Column moves use a separate trigger.
 	if (t.CompletedAt == nil) != (updated.CompletedAt == nil) {
-		h.enqueueWriteback(c, id, actor, "state", map[string]any{"state": issueState(updated.CompletedAt != nil)})
+		h.enqueueWriteback(c, id, actor, gitlab.TrigCompletion, map[string]any{"completed": updated.CompletedAt != nil})
 	}
 	if t.Priority != updated.Priority {
-		h.enqueueWriteback(c, id, actor, "priority", map[string]any{"priority": updated.Priority})
+		h.enqueueWriteback(c, id, actor, gitlab.TrigPriority, map[string]any{"priority": updated.Priority})
 	}
-	// Due-date push reads the latest task state at push time, so an empty payload
-	// is fine (also lets a burst of edits coalesce to one pending row).
+	// Due-date push reads the latest task state at push time, so the payload only
+	// carries the date kind (also lets a burst of edits coalesce to one pending row).
 	if !sameTime(t.DueDate, updated.DueDate) {
-		h.enqueueWriteback(c, id, actor, "due", map[string]any{})
+		h.enqueueWriteback(c, id, actor, gitlab.TrigDue, map[string]any{"date_kind": "due"})
 	}
 	if !sameEstimate(t.Estimate, updated.Estimate) {
-		h.enqueueWriteback(c, id, actor, "estimate", map[string]any{})
+		h.enqueueWriteback(c, id, actor, gitlab.TrigEstimate, map[string]any{})
 	}
 	// Title/description push reads the latest task state at push time (empty payload),
 	// and is conflict-checked — GitLab issue bodies get edited richly, so a naive
 	// overwrite is gated behind three-way detection.
 	if t.Title != updated.Title || t.Description != updated.Description {
-		h.enqueueWriteback(c, id, actor, "title_desc", map[string]any{})
+		h.enqueueWriteback(c, id, actor, gitlab.TrigTitleDesc, map[string]any{})
 	}
 	h.broadcastAs(c, wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)
@@ -535,10 +538,21 @@ func (h *API) MoveTask(c *gin.Context) {
 		}
 	}
 
-	// Mirror a completion change (crossing the board's done boundary) back to GitLab.
+	actor := middleware.CurrentUser(c)
+	// Mirror the move to GitLab as a "column" trigger (any column change) — this drives
+	// column→label bindings. It never pushes issue state, so a move alone can't close
+	// an issue (the decoupling requirement).
+	if t.ColumnID != req.ColumnID {
+		h.enqueueWriteback(c, id, actor, gitlab.TrigColumn,
+			map[string]any{"column_id": req.ColumnID.String(), "column_name": col.Name})
+	}
+	// A completion change here comes only from the board's done-column auto-complete;
+	// mirror it as a "completion" trigger (drives set_state) so a done column still
+	// closes the issue by default. Teams that don't want that make "Готово" a
+	// non-done column (no auto-complete → no completion trigger).
 	if (t.CompletedAt == nil) != (updated.CompletedAt == nil) {
-		h.enqueueWriteback(c, id, middleware.CurrentUser(c), "state",
-			map[string]any{"state": issueState(updated.CompletedAt != nil)})
+		h.enqueueWriteback(c, id, actor, gitlab.TrigCompletion,
+			map[string]any{"completed": updated.CompletedAt != nil})
 	}
 	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
@@ -740,7 +754,7 @@ func (h *API) AddTaskTag(c *gin.Context) {
 	h.broadcast(wsID, "task.tagged", gin.H{"task_id": id, "tag_id": req.TagID})
 	// Reconcile labels back to the linked issue (the worker reads the task's
 	// current tags, so the empty payload coalesces a burst into one row).
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "labels", map[string]any{})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigLabels, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -763,7 +777,7 @@ func (h *API) RemoveTaskTag(c *gin.Context) {
 		return
 	}
 	h.broadcast(wsID, "task.untagged", gin.H{"task_id": id, "tag_id": tagID})
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "labels", map[string]any{})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigLabels, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -793,7 +807,7 @@ func (h *API) AddTaskAssignee(c *gin.Context) {
 	h.notify(c, req.UserID, wsID, &id, "assigned",
 		fmt.Sprintf("%s назначил вам задачу #%s%s", h.actorName(c), taskRef(t.Number), shortCtx(t.Title)))
 	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "user_id": req.UserID})
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "assignees", map[string]any{})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -817,7 +831,7 @@ func (h *API) RemoveTaskAssignee(c *gin.Context) {
 	}
 	h.logEvent(c, id, "unassigned", map[string]any{"user_id": userID})
 	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "user_id": userID})
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), "assignees", map[string]any{})
+	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
