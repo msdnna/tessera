@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.data.model.GitlabBindAction
+import website.msdnna.tessera.data.model.GitlabBindTrigger
+import website.msdnna.tessera.data.model.GitlabBinding
 import website.msdnna.tessera.data.model.GitlabIntegration
 import website.msdnna.tessera.data.model.GitlabIntegrationRequest
 import website.msdnna.tessera.data.model.GitlabRule
@@ -84,6 +87,45 @@ private val ScopeOptions = listOf(
 private val ClosedPolicyOptions = listOf(
     "all" to "Импортировать все", "archive_closed_sprints" to "Архивировать закрытые спринты",
     "period" to "Только за период",
+)
+
+// ── write-back binding option lists (mirror web GitLabModal) ─────────────────
+private val TriggerTypeOptions = listOf(
+    "column" to "Перемещение в колонку", "completion" to "Флаг «Выполнено»",
+    "priority" to "Изменение приоритета", "due" to "Изменение срока",
+    "assignees" to "Изменение исполнителей", "estimate" to "Изменение оценки",
+    "milestone" to "Изменение этапа", "title_desc" to "Заголовок / описание",
+    "labels" to "Изменение тегов", "comment" to "Новый комментарий",
+)
+private val ActionTypeOptions = listOf(
+    "set_label" to "Установить метку", "set_state" to "Закрыть / открыть issue",
+    "set_due" to "Установить срок", "set_assignees" to "Установить исполнителей",
+    "set_estimate" to "Установить оценку", "set_milestone" to "Установить этап",
+    "set_title_desc" to "Обновить заголовок/описание", "reconcile_labels" to "Синхронизировать теги",
+    "post_comment" to "Написать комментарий",
+)
+private val StateOptions = listOf(
+    "" to "Из флага «Выполнено»", "closed" to "Закрыть issue", "opened" to "Открыть issue",
+)
+private val DateKindOptions = listOf(
+    "due" to "Срок (due)", "start" to "Начало (start) — для issue игнорируется",
+)
+
+// completion qualifier: "" = any change, "true"/"false" = became/cleared done.
+private val CompletionOptions = listOf(
+    "" to "Любое изменение", "true" to "Стало «Выполнено»", "false" to "Снято «Выполнено»",
+)
+
+// priority qualifier: "" = any level, "0".."4" = a specific level.
+private val PriorityQualOptions =
+    listOf("" to "Любой приоритет") + PriorityLabels.mapIndexed { i, l -> i.toString() to l }
+
+// The sensible default GitLab action for a freshly-picked trigger.
+private val DefaultActionForTrigger = mapOf(
+    "column" to "set_label", "completion" to "set_state", "priority" to "set_label",
+    "due" to "set_due", "assignees" to "set_assignees", "estimate" to "set_estimate",
+    "milestone" to "set_milestone", "title_desc" to "set_title_desc",
+    "labels" to "reconcile_labels", "comment" to "post_comment",
 )
 
 /** GitLab settings: connect a PAT account, configure the per-workspace
@@ -322,15 +364,17 @@ private fun IntegrationEditor(
     var defaultAction by remember(integ) { mutableStateOf(integ.labelRules.defaultAction) }
     var tagKeepPrefix by remember(integ) { mutableStateOf(integ.labelRules.tagKeepPrefix) }
     var wbEnabled by remember(integ) { mutableStateOf(integ.writeback.enabled) }
-    var wbState by remember(integ) { mutableStateOf(integ.writeback.pushState) }
-    var wbPriority by remember(integ) { mutableStateOf(integ.writeback.pushPriority) }
-    var wbComments by remember(integ) { mutableStateOf(integ.writeback.pushComments) }
-    var wbLabels by remember(integ) { mutableStateOf(integ.writeback.pushLabels) }
-    var wbDue by remember(integ) { mutableStateOf(integ.writeback.pushDue) }
-    var wbAssignees by remember(integ) { mutableStateOf(integ.writeback.pushAssignees) }
-    val estimateTimeUnit = integ.estimationUnit == "time"
-    var wbEstimate by remember(integ) { mutableStateOf(integ.writeback.pushEstimate && estimateTimeUnit) }
     val rules = remember(integ) { mutableStateListOf<EditRule>().apply { addAll(integ.labelRules.rules.map { EditRule(it) }) } }
+    // Write-back bindings: an explicit set wins; otherwise synthesize from the legacy
+    // toggles (using the just-built rules for priority inversion) so a pre-bindings
+    // integration opens with an equivalent, editable default set (web synthesizeBindings).
+    val bindings = remember(integ) {
+        mutableStateListOf<EditBinding>().apply {
+            val stored = integ.writeback.bindings
+            val initial = if (!stored.isNullOrEmpty()) stored else synthesizeBindings(integ.writeback, rules)
+            addAll(initial.map { EditBinding(it) })
+        }
+    }
     // Prefill each prefix rule's friendly name from the loaded store (web GitLabModal
     // loadPrefixNames). Re-runs when the target project's names load / change.
     LaunchedEffect(state.prefixNames, rules) {
@@ -370,27 +414,26 @@ private fun IntegrationEditor(
     }
     Field("Включена") { TSwitch(enabled, { enabled = it }) }
 
-    // Write-back (Tessera → GitLab), opt-in; all off by default (web GitLabModal).
+    // Write-back (Tessera → GitLab): customizable trigger→action bindings (web GitLabModal).
     Spacer(Modifier.height(14.dp))
     SectionLabel("Обратная запись в GitLab")
     Field("Включить запись") { TSwitch(wbEnabled, { wbEnabled = it }) }
     if (wbEnabled) {
-        Field("Статус (закрыть/открыть issue)") { TSwitch(wbState, { wbState = it }) }
-        Field("Приоритет (метка P:)") { TSwitch(wbPriority, { wbPriority = it }) }
-        Field("Комментарии (как заметки)") { TSwitch(wbComments, { wbComments = it }) }
-        Field("Теги (метки тег-неймспейсов)") { TSwitch(wbLabels, { wbLabels = it }) }
-        Field("Срок (due date issue)") { TSwitch(wbDue, { wbDue = it }) }
-        Field("Исполнители (assignees issue)") { TSwitch(wbAssignees, { wbAssignees = it }) }
-        Field(if (estimateTimeUnit) "Оценка (timeEstimate)" else "Оценка — только при единице «время»") {
-            TSwitch(wbEstimate, { wbEstimate = it }, enabled = estimateTimeUnit)
-        }
         Spacer(Modifier.height(4.dp))
         Text(
-            "Изменения линкованных задач отправляются в GitLab под сервис-токеном " +
-                "инстанса или токеном владельца (нужен scope «api»). Статус — только " +
-                "открыть/закрыть issue по границе колонки «Готово»; метки «S:» не трогаются.",
+            "Каждое действие связывает событие в задаче Tessera с действием на issue " +
+                "GitLab (под сервис-токеном инстанса или токеном владельца, scope «api»). " +
+                "По умолчанию набор повторяет прежнее поведение записи.",
             color = c.text3, fontSize = 12.sp,
         )
+        Spacer(Modifier.height(8.dp))
+        bindings.forEachIndexed { i, b ->
+            BindingCard(b, state.columnOptions, onRemove = { bindings.removeAt(i) })
+            Spacer(Modifier.height(8.dp))
+        }
+        DashedAddButton("Действие", onClick = {
+            bindings.add(EditBinding(GitlabBinding(action = GitlabBindAction(type = "set_label", clearPrefix = true))))
+        })
     }
 
     Spacer(Modifier.height(14.dp))
@@ -431,9 +474,18 @@ private fun IntegrationEditor(
                             startSource = startSource, scope = scope, closedPolicy = closedPolicy,
                             closedAfter = integ.closedAfter,
                             labelRules = GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),
+                            // A non-empty bindings set fully replaces the legacy flags on the
+                            // backend; push_create/fetch_templates are round-tripped so a
+                            // web-configured create-issue setup isn't clobbered.
                             writeback = GitlabWriteback(
-                                wbEnabled, wbState, wbPriority, wbComments, wbLabels, wbDue,
-                                wbAssignees, wbEstimate && estimateTimeUnit,
+                                enabled = wbEnabled,
+                                pushCreate = integ.writeback.pushCreate,
+                                fetchTemplates = integ.writeback.fetchTemplates,
+                                bindings = if (wbEnabled) {
+                                    bindings.map { b -> b.toBinding { id -> state.columnOptions.find { it.first == id }?.second ?: "" } }
+                                } else {
+                                    emptyList()
+                                },
                             ),
                         ),
                         onDone = onClose,
@@ -588,4 +640,215 @@ private class EditRule(rule: GitlabRule) {
         }
         return GitlabRule(match, matchType, action, vm, keepPrefix)
     }
+}
+
+// ── write-back binding card + editable model ─────────────────────────────────
+
+/** One write-back binding card: an enable toggle + summary, a trigger selector with
+ *  a type-specific qualifier, and a GitLab action selector with its parameters.
+ *  Mirrors the web GitLabModal binding cards; edited inline like [RuleCard]. */
+@Composable
+private fun BindingCard(b: EditBinding, columnOptions: List<Pair<String, String>>, onRemove: () -> Unit) {
+    val c = Tessera.colors
+    val columnName = columnOptions.find { it.first == b.columnId }?.second ?: b.columnName
+    TCard {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TSwitch(b.enabled, { b.enabled = it })
+                Spacer(Modifier.width(8.dp))
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${triggerSummary(b, columnName)} → ", color = c.text2, fontSize = 12.sp)
+                    Text(
+                        actionSummary(b),
+                        style = TextStyle(brush = accentGradient(c.primary)),
+                        fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    )
+                }
+                IonIcon(Ion.TRASH, size = 16.dp, tint = c.text3, modifier = Modifier.clickableNoRipple(onClick = onRemove))
+            }
+            Spacer(Modifier.height(6.dp))
+            Field("Действие в Tessera") {
+                TSelect(TriggerTypeOptions.find { it.first == b.triggerType }?.second ?: "—", TriggerTypeOptions) { b.onTrigger(it) }
+            }
+            when (b.triggerType) {
+                "column" -> Field("Целевая колонка") {
+                    TSelect(columnName.ifBlank { "Выберите колонку" }, columnOptions) { b.columnId = it }
+                }
+
+                "priority" -> Field("Приоритет") {
+                    TSelect(
+                        PriorityQualOptions.find { it.first == (b.priority?.toString() ?: "") }?.second ?: "—",
+                        PriorityQualOptions,
+                    ) { b.priority = it.toIntOrNull() }
+                }
+
+                "completion" -> Field("Условие") {
+                    TSelect(CompletionOptions.find { it.first == completedKey(b.completed) }?.second ?: "—", CompletionOptions) {
+                        b.completed = when (it) {
+                            "true" -> true
+                            "false" -> false
+                            else -> null
+                        }
+                    }
+                }
+
+                "due" -> Field("Тип срока") {
+                    TSelect(DateKindOptions.find { it.first == b.triggerDateKind }?.second ?: "—", DateKindOptions) { b.triggerDateKind = it }
+                }
+            }
+            Field("Действие в GitLab") {
+                TSelect(ActionTypeOptions.find { it.first == b.actionType }?.second ?: "—", ActionTypeOptions) { b.onAction(it) }
+            }
+            when (b.actionType) {
+                "set_label" -> {
+                    Field("Метка") { TTextField(b.label, { b.label = it }, placeholder = "напр. S: In Progress") }
+                    Field("Снимать метки того же префикса") { TSwitch(b.clearPrefix, { b.clearPrefix = it }) }
+                }
+
+                "set_state" -> Field("Состояние issue") {
+                    TSelect(StateOptions.find { it.first == b.state }?.second ?: "—", StateOptions) { b.state = it }
+                }
+
+                "set_due" -> Field("Тип срока") {
+                    TSelect(DateKindOptions.find { it.first == b.actionDateKind }?.second ?: "—", DateKindOptions) { b.actionDateKind = it }
+                }
+
+                "post_comment" -> Field("Добавлять маркер Tessera") { TSwitch(b.addMarker, { b.addMarker = it }) }
+            }
+        }
+    }
+}
+
+private fun completedKey(v: Boolean?): String = when (v) {
+    true -> "true"
+    false -> "false"
+    null -> ""
+}
+
+private fun triggerSummary(b: EditBinding, columnName: String): String = when (b.triggerType) {
+    "column" -> "Перенос → «${columnName.ifBlank { "?" }}»"
+
+    "priority" -> b.priority?.let { "Приоритет: ${PriorityLabels.getOrElse(it) { "?" }}" } ?: "Приоритет (любой)"
+
+    "completion" -> when (b.completed) {
+        null -> "Флаг «Выполнено»"
+        true -> "Стало «Выполнено»"
+        false -> "Снято «Выполнено»"
+    }
+
+    "due" -> if (b.triggerDateKind == "start") "Изменение начала" else "Изменение срока"
+
+    else -> TriggerTypeOptions.find { it.first == b.triggerType }?.second ?: b.triggerType
+}
+
+private fun actionSummary(b: EditBinding): String = when (b.actionType) {
+    "set_label" -> "метка «${b.label.ifBlank { "?" }}»"
+
+    "set_state" -> when (b.state) {
+        "closed" -> "закрыть issue"
+        "opened" -> "открыть issue"
+        else -> "закрыть/открыть issue"
+    }
+
+    "post_comment" -> if (b.addMarker) "комментарий (+маркер)" else "комментарий"
+
+    else -> (ActionTypeOptions.find { it.first == b.actionType }?.second ?: b.actionType).lowercase()
+}
+
+/** Compose-observable editable binding (like [EditRule]). [toBinding] strips it to
+ *  the wire shape (only the fields relevant to the picked trigger/action). */
+private class EditBinding(b: GitlabBinding) {
+    var enabled by mutableStateOf(b.enabled)
+    var triggerType by mutableStateOf(b.trigger.type.ifBlank { "column" })
+    var columnId by mutableStateOf(b.trigger.columnId ?: "")
+    var columnName by mutableStateOf(b.trigger.columnName ?: "")
+    var priority by mutableStateOf(b.trigger.priority)
+    var completed by mutableStateOf(b.trigger.completed)
+    var triggerDateKind by mutableStateOf(b.trigger.dateKind ?: if (b.trigger.type == "due") "due" else "")
+    var actionType by mutableStateOf(b.action.type.ifBlank { "set_label" })
+    var label by mutableStateOf(b.action.label ?: "")
+    var clearPrefix by mutableStateOf(b.action.clearPrefix)
+    var state by mutableStateOf(b.action.state ?: "")
+    var actionDateKind by mutableStateOf(b.action.dateKind ?: if (b.action.type == "set_due") "due" else "")
+    var addMarker by mutableStateOf(b.action.addMarker)
+
+    /** Switch the trigger type: reset now-irrelevant qualifiers, pick the default action. */
+    fun onTrigger(type: String) {
+        triggerType = type
+        columnId = ""
+        columnName = ""
+        priority = null
+        completed = null
+        triggerDateKind = if (type == "due") "due" else ""
+        onAction(DefaultActionForTrigger[type] ?: "set_label")
+    }
+
+    fun onAction(type: String) {
+        actionType = type
+        if (type == "set_label" && label.isBlank()) clearPrefix = true
+        if (type == "set_due" && actionDateKind.isBlank()) actionDateKind = "due"
+    }
+
+    fun toBinding(columnNameById: (String) -> String): GitlabBinding {
+        val t = when (triggerType) {
+            "column" -> GitlabBindTrigger(
+                type = "column", columnId = columnId,
+                columnName = columnNameById(columnId).ifBlank { columnName },
+            )
+
+            "priority" -> GitlabBindTrigger(type = "priority", priority = priority)
+
+            "completion" -> GitlabBindTrigger(type = "completion", completed = completed)
+
+            "due" -> GitlabBindTrigger(type = "due", dateKind = triggerDateKind.ifBlank { "due" })
+
+            else -> GitlabBindTrigger(type = triggerType)
+        }
+        val a = when (actionType) {
+            "set_label" -> GitlabBindAction(type = "set_label", label = label.trim(), clearPrefix = clearPrefix)
+            "set_state" -> GitlabBindAction(type = "set_state", state = state)
+            "set_due" -> GitlabBindAction(type = "set_due", dateKind = actionDateKind.ifBlank { "due" })
+            "post_comment" -> GitlabBindAction(type = "post_comment", addMarker = addMarker)
+            else -> GitlabBindAction(type = actionType)
+        }
+        return GitlabBinding(enabled, t, a)
+    }
+}
+
+/** Synthesize bindings from the legacy write-back flags so a pre-bindings integration
+ *  opens with an equivalent, editable set. Mirrors web GitLabModal synthesizeBindings
+ *  (and the backend `effectiveBindings`): priority fans out to one per-level set_label
+ *  from the priority rule's inverted value map. */
+private fun synthesizeBindings(wb: GitlabWriteback, rules: List<EditRule>): List<GitlabBinding> {
+    if (!wb.enabled) return emptyList()
+    val out = mutableListOf<GitlabBinding>()
+    fun add(t: GitlabBindTrigger, a: GitlabBindAction) = out.add(GitlabBinding(true, t, a))
+
+    if (wb.pushState) add(GitlabBindTrigger(type = "completion"), GitlabBindAction(type = "set_state", state = ""))
+    if (wb.pushPriority) {
+        val pr = rules.firstOrNull { it.action == "priority" && it.matchType == "prefix" }
+        if (pr != null) {
+            val byLevel = LinkedHashMap<String, String>() // level → gitlab value
+            var ambiguous = false
+            pr.map.forEach { m ->
+                if (m.v.isBlank()) return@forEach
+                if (byLevel.containsKey(m.v)) ambiguous = true
+                byLevel[m.v] = m.k
+            }
+            if (!ambiguous) {
+                byLevel.entries.sortedBy { it.key.toIntOrNull() ?: 0 }.forEach { (lvl, value) ->
+                    add(
+                        GitlabBindTrigger(type = "priority", priority = lvl.toIntOrNull()),
+                        GitlabBindAction(type = "set_label", label = pr.match + value, clearPrefix = true),
+                    )
+                }
+            }
+        }
+    }
+    if (wb.pushComments) add(GitlabBindTrigger(type = "comment"), GitlabBindAction(type = "post_comment"))
+    if (wb.pushLabels) add(GitlabBindTrigger(type = "labels"), GitlabBindAction(type = "reconcile_labels"))
+    if (wb.pushDue) add(GitlabBindTrigger(type = "due", dateKind = "due"), GitlabBindAction(type = "set_due", dateKind = "due"))
+    if (wb.pushAssignees) add(GitlabBindTrigger(type = "assignees"), GitlabBindAction(type = "set_assignees"))
+    if (wb.pushEstimate) add(GitlabBindTrigger(type = "estimate"), GitlabBindAction(type = "set_estimate"))
+    return out
 }

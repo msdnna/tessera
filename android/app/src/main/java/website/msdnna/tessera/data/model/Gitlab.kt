@@ -36,9 +36,43 @@ data class GitlabRules(
     val rules: List<GitlabRule> get() = rulesRaw.orEmpty()
 }
 
+/** One write-back binding trigger — the Tessera-side event. Mirrors backend
+ *  `gitlab.BindTrigger`. Nullable qualifiers (priority/completed) = "any";
+ *  Gson omits them when null (matches the backend `omitempty`). */
+data class GitlabBindTrigger(
+    @SerializedName("type") val type: String = "column",
+    @SerializedName("column_id") val columnId: String? = null,
+    @SerializedName("column_name") val columnName: String? = null,
+    @SerializedName("priority") val priority: Int? = null,
+    @SerializedName("completed") val completed: Boolean? = null,
+    @SerializedName("date_kind") val dateKind: String? = null,
+)
+
+/** One write-back binding action — the GitLab-side effect. Mirrors backend
+ *  `gitlab.BindAction`. `clear_prefix` is always on the wire (no omitempty). */
+data class GitlabBindAction(
+    @SerializedName("type") val type: String = "set_label",
+    @SerializedName("label") val label: String? = null,
+    @SerializedName("clear_prefix") val clearPrefix: Boolean = false,
+    @SerializedName("state") val state: String? = null,
+    @SerializedName("date_kind") val dateKind: String? = null,
+    @SerializedName("add_marker") val addMarker: Boolean = false,
+)
+
+/** One customizable write-back binding (Tessera trigger → GitLab action). Mirrors
+ *  backend `gitlab.Binding`. */
+data class GitlabBinding(
+    @SerializedName("enabled") val enabled: Boolean = true,
+    @SerializedName("trigger") val trigger: GitlabBindTrigger = GitlabBindTrigger(),
+    @SerializedName("action") val action: GitlabBindAction = GitlabBindAction(),
+)
+
 /** Opt-in write-back (Tessera → GitLab) config; mirrors backend `gitlab.Writeback`.
- *  All off by default. We round-trip the 7 toggles the editor exposes (the backend
- *  also carries push_title_desc / column_label_bindings, deferred features). */
+ *  All off by default. The legacy toggles are kept so a pre-bindings integration can
+ *  be synthesized into an editable binding set on load; a non-empty [bindings] takes
+ *  over completely (the backend ignores the legacy flags then). `push_create` /
+ *  `fetch_templates` are round-tripped only (no Android UI yet) so saving here never
+ *  clobbers a web-configured create-issue setup. */
 data class GitlabWriteback(
     @SerializedName("enabled") val enabled: Boolean = false,
     @SerializedName("push_state") val pushState: Boolean = false,
@@ -48,6 +82,9 @@ data class GitlabWriteback(
     @SerializedName("push_due") val pushDue: Boolean = false,
     @SerializedName("push_assignees") val pushAssignees: Boolean = false,
     @SerializedName("push_estimate") val pushEstimate: Boolean = false,
+    @SerializedName("push_create") val pushCreate: Boolean = false,
+    @SerializedName("fetch_templates") val fetchTemplates: Boolean = false,
+    @SerializedName("bindings") val bindings: List<GitlabBinding>? = null,
 )
 
 /** One GitLab binding (GL-project → board). Multiple per workspace since be 0.71

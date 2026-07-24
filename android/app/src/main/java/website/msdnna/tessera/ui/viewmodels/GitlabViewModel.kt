@@ -31,6 +31,9 @@ data class GitlabUiState(
     val boards: List<BoardOption> = emptyList(),
     // editor context: columns + prefix display names of the board being edited
     val columns: List<String> = emptyList(),
+    // column (id, name) pairs of the edited board — for the write-back binding
+    // column trigger (matches by stable id).
+    val columnOptions: List<Pair<String, String>> = emptyList(),
     val prefixNames: Map<String, String> = emptyMap(),
     val saving: Boolean = false,
     // id of the binding a sync is currently running for (null = none)
@@ -108,8 +111,8 @@ class GitlabViewModel : ViewModel() {
 
     fun loadColumns(boardId: String) {
         viewModelScope.launch {
-            val cols = runCatching { repo.columnNames(boardId) }.getOrDefault(emptyList())
-            _state.update { it.copy(columns = cols) }
+            val cols = runCatching { repo.columns(boardId) }.getOrDefault(emptyList())
+            _state.update { it.copy(columns = cols.map { c -> c.second }, columnOptions = cols) }
         }
     }
 
@@ -131,7 +134,7 @@ class GitlabViewModel : ViewModel() {
     fun prepareEditor(integ: GitlabIntegration?) {
         val boardId = integ?.boardId
         if (boardId.isNullOrBlank()) {
-            _state.update { it.copy(columns = emptyList(), prefixNames = emptyMap()) }
+            _state.update { it.copy(columns = emptyList(), columnOptions = emptyList(), prefixNames = emptyMap()) }
             return
         }
         loadColumns(boardId)

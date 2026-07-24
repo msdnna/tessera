@@ -73,6 +73,11 @@ class GitlabRepository {
     suspend fun columnNames(boardId: String): List<String> =
         api.columns(boardId).orEmpty().map { it.name }
 
+    /** The board's columns as (id, name) pairs — for the write-back binding column
+     *  trigger, which matches by stable id (falling back to name). */
+    suspend fun columns(boardId: String): List<Pair<String, String>> =
+        api.columns(boardId).orEmpty().map { it.id to it.name }
+
     /** A project's tag-prefix display names (for the GitLab rule editor). */
     suspend fun tagPrefixes(projectId: String): List<website.msdnna.tessera.data.model.TagPrefix> =
         api.tagPrefixes(projectId).orEmpty()
