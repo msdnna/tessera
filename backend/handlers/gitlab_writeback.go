@@ -325,18 +325,14 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
 	}
 	wb := parseWriteback(integ.Writeback)
-	if integ.OwnerUserID == nil {
-		return res, notify.Permanent(errors.New("integration has no owner credential"))
+	// Resolve the connection the OAuth-era way: instance service token first, else
+	// the integration owner's personal PAT. Using the owner's PAT directly broke
+	// OAuth-only setups (owner has an oauth_identity, no gitlab_credentials row).
+	baseURL, token, ok := h.effectiveGitlabConn(ctx, integ.OwnerUserID)
+	if !ok {
+		return res, notify.Permanent(errors.New("no GitLab credential available (service token or owner PAT)"))
 	}
-	cred, err := h.q.GetGitlabCredential(ctx, *integ.OwnerUserID)
-	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("owner credential gone: %w", err))
-	}
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
-	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("decrypt token: %w", err))
-	}
-	client := gitlab.New(cred.BaseUrl, token)
+	client := gitlab.New(baseURL, token)
 	path, iid := link.GlProjectPath, link.GlIid
 	res.wsID = integ.WorkspaceID
 
