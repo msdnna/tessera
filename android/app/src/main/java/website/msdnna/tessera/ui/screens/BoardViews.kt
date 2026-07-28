@@ -2028,21 +2028,36 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     }
 
     // Normalise the board's blocking edges to blocker→blocked and project them to
-    // arrow endpoints (finish of blocker → start of blocked). Skip dangling edges.
+    // arrow endpoints (finish of blocker → start of blocked). Endpoints resolve to
+    // top-level bars OR scheduled subtask sub-bars (web parity); skip dangling edges.
     val arrows = run {
         val byId = scheduled.associateBy { it.id }
+        val subById = state.subtasks.associateBy { it.id }
+        fun findTask(id: String): Task? = byId[id] ?: subById[id]
+
+        // Centre-Y (Dp from track top) of the bar for a top-level task or a drawn
+        // subtask sub-bar; null when the id isn't rendered (→ dangling edge, skipped).
+        fun anchorY(id: String): androidx.compose.ui.unit.Dp? {
+            rowTops[id]?.let { return it + 19.dp } // parent bar centre (top 7 + h/2 12)
+            val sub = subById[id] ?: return null
+            val parent = byId[sub.parentId] ?: return null
+            val parentTop = rowTops[sub.parentId] ?: return null
+            val idx = tlSubBars(state, parent).indexOfFirst { it.id == id }
+            if (idx < 0) return null
+            return parentTop + TL_SUB_TOP0 + TL_SUB_STEP * idx + TL_SUB_H / 2
+        }
         depEdges.mapNotNull { (blockerId, blockedId) ->
-            val tb = byId[blockerId] ?: return@mapNotNull null
-            val tk = byId[blockedId] ?: return@mapNotNull null
-            val yb = rowTops[blockerId] ?: return@mapNotNull null
-            val yk = rowTops[blockedId] ?: return@mapNotNull null
+            val tb = findTask(blockerId) ?: return@mapNotNull null
+            val tk = findTask(blockedId) ?: return@mapNotNull null
+            val yb = anchorY(blockerId) ?: return@mapNotNull null
+            val yk = anchorY(blockedId) ?: return@mapNotNull null
             val (lb, wb) = barGeom(tb)
             val (lk, _) = barGeom(tk)
             GanttArrow(
                 x1 = lb + wb, // blocker bar right edge
-                y1 = yb + 19.dp, // bar centre (top 7 + height/2 12)
+                y1 = yb,
                 x2 = lk, // blocked bar left edge
-                y2 = yk + 19.dp,
+                y2 = yk,
             )
         }
     }

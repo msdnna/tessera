@@ -93,6 +93,9 @@ data class BoardUiState(
     /** Canonical tag-prefix → friendly label (project-scoped). Drives the grouped
      *  group/filter menus and tag pickers; empty when none are configured. */
     val prefixNames: Map<String, String> = emptyMap(),
+    /** Canonical prefixes of GitLab label rules mapping to non-tag actions (status /
+     *  priority / …) on this board's integrations — hidden from the ADD tag-picker. */
+    val metaTagPrefixes: Set<String> = emptySet(),
     /** Resolved estimation unit config for this board's project (drives the
      *  estimate input/chip/aggregates). Falls back to the built-in default. */
     val estimation: website.msdnna.tessera.data.model.EstimationConfig =
@@ -204,7 +207,9 @@ data class BoardUiState(
                 t.number?.let { "#$it".contains(q) } == true
             val matchesPriority = filter.priorities.isEmpty() || t.priority in filter.priorities
             val matchesTags = filter.tagIds.isEmpty() || t.tagIds.any { it in filter.tagIds }
-            val matchesAssignees = filter.assigneeIds.isEmpty() || t.assigneeIds.any { it in filter.assigneeIds }
+            val matchesAssignees = filter.assigneeIds.isEmpty() ||
+                t.assigneeIds.any { it in filter.assigneeIds } ||
+                t.gitlabAssignees.any { "gl:$it" in filter.assigneeIds }
             val matchesStatus = filter.statuses.isEmpty() || t.columnId in filter.statuses
             val matchesMilestone = filter.milestoneIds.isEmpty() ||
                 (t.milestoneId ?: "__none__") in filter.milestoneIds
@@ -329,6 +334,7 @@ class BoardViewModel(
             val estimation = loadEstimation()
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
             val gitlabMembers = if (workspaceId.isNotBlank()) repo.gitlabMembers(workspaceId) else emptyList()
+            val metaTagPrefixes = loadMetaTagPrefixes()
             _state.update {
                 val base = it.copy(
                     loading = false,
@@ -341,6 +347,7 @@ class BoardViewModel(
                     tagList = tags,
                     milestones = milestones,
                     prefixNames = prefixNames,
+                    metaTagPrefixes = metaTagPrefixes,
                     estimation = estimation,
                     members = members,
                     gitlabMembers = gitlabMembers,
@@ -489,6 +496,16 @@ class BoardViewModel(
                 prefixNames = prefixNames,
             )
         }
+    }
+
+    /** Canonical GitLab meta-label prefixes for this board's integrations, hidden from
+     *  the ADD tag-picker (best-effort). Computed once on [load] — it rarely changes,
+     *  so realtime echoes skip the extra integrations call (like the estimation config). */
+    private suspend fun loadMetaTagPrefixes(): Set<String> {
+        if (workspaceId.isBlank() || boardId.isBlank()) return emptySet()
+        val integrations = repo.gitlabIntegrations(workspaceId).filter { it.boardId == boardId }
+        if (integrations.isEmpty()) return emptySet()
+        return integrations.flatMap { website.msdnna.tessera.util.metaPrefixesFromRules(it.labelRules.rules) }.toSet()
     }
 
     /** Loads the project's canonical prefix → label map (best-effort, empty on failure). */

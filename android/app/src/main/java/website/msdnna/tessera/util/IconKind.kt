@@ -119,10 +119,82 @@ object Ion {
 fun classifyIcon(icon: String?): IconKind {
     if (icon.isNullOrBlank()) return IconKind.None
     val trimmed = icon.trimStart()
+    // Strip a leading XML prolog / DOCTYPE (present in some exports, e.g. draw.io)
+    // so the `<svg…>` root is detected regardless of the preamble.
+    val svgBody = stripSvgPrologue(trimmed)
     return when {
         icon.startsWith("data:image") -> IconKind.Image(icon)
-        trimmed.startsWith("<svg") -> IconKind.Svg(icon)
+        svgBody.startsWith("<svg") -> IconKind.Svg(sanitizeSvgForAndroid(svgBody))
         curated[icon] != null -> IconKind.Curated(curated.getValue(icon))
         else -> IconKind.None
     }
+}
+
+/** Drop a leading `<?xml…?>` declaration and `<!DOCTYPE…>` (+ whitespace) so the
+ *  markup starts at the `<svg` root — Coil's SVG sniffer needs `<` first, and our
+ *  classifier keys off `<svg`. */
+private fun stripSvgPrologue(markup: String): String {
+    var s = markup.trimStart()
+    while (s.startsWith("<?") || s.startsWith("<!")) {
+        val end = s.indexOf('>')
+        if (end < 0) break
+        s = s.substring(end + 1).trimStart()
+    }
+    return s
+}
+
+private val DRAWIO_HELP_SWITCH_RE =
+    Regex("""<switch>(?:(?!</switch>).)*?Text is not SVG(?:(?!</switch>).)*?</switch>""", RegexOption.DOT_MATCHES_ALL)
+
+/**
+ * Make browser-oriented SVG markup render faithfully through Coil's AndroidSVG
+ * decoder, which lacks features a browser has:
+ *  - CSS `light-dark(a, b)` colour function → keep the light variant `a`
+ *    (AndroidSVG can't parse it and falls back to black);
+ *  - `Helvetica` font-family → `sans-serif` (no Helvetica on Android → serif
+ *    fallback; Helvetica is a sans face, so `sans-serif` maps to `Typeface.SANS_SERIF`);
+ *  - drop the draw.io "Text is not SVG - cannot display" `<switch>` fallback so it
+ *    doesn't render at small sizes.
+ */
+fun sanitizeSvgForAndroid(markup: String): String =
+    replaceLightDark(markup)
+        .replace("Helvetica", "sans-serif")
+        .replace(DRAWIO_HELP_SWITCH_RE, "")
+
+/** Replace every `light-dark(light, dark)` with its light variant. Paren-aware so
+ *  a nested `rgb(…, …, …)` argument (which contains commas) is handled correctly. */
+private fun replaceLightDark(s: String): String {
+    val marker = "light-dark("
+    var idx = s.indexOf(marker)
+    if (idx < 0) return s
+    val out = StringBuilder()
+    var cursor = 0
+    while (idx >= 0) {
+        out.append(s, cursor, idx)
+        val open = idx + marker.length
+        // Scan to the matching close paren, tracking depth and the top-level comma.
+        var depth = 1
+        var i = open
+        var commaAt = -1
+        while (i < s.length && depth > 0) {
+            when (s[i]) {
+                '(' -> depth++
+                ')' -> depth--
+                ',' -> if (depth == 1 && commaAt < 0) commaAt = i
+            }
+            if (depth == 0) break
+            i++
+        }
+        if (i >= s.length || commaAt < 0) {
+            // Malformed — leave the literal untouched and move on.
+            out.append(s, idx, open)
+            cursor = open
+        } else {
+            out.append(s.substring(open, commaAt).trim())
+            cursor = i + 1 // past the closing ')'
+        }
+        idx = s.indexOf(marker, cursor)
+    }
+    out.append(s, cursor, s.length)
+    return out.toString()
 }

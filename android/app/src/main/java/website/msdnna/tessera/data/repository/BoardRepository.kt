@@ -141,6 +141,11 @@ class BoardRepository {
     suspend fun removeAssignee(taskId: String, userId: String) = api.removeTaskAssignee(taskId, userId)
     suspend fun gitlabMembers(workspaceId: String): List<GitlabMember> =
         runCatching { api.gitlabMembers(workspaceId).orEmpty() }.getOrDefault(emptyList())
+
+    /** GitLab integrations of a workspace — used to derive which label prefixes are
+     *  meta (status/priority/…) and should be hidden from the tag-picker. */
+    suspend fun gitlabIntegrations(workspaceId: String): List<website.msdnna.tessera.data.model.GitlabIntegration> =
+        runCatching { api.gitlabIntegrations(workspaceId).integrations }.getOrDefault(emptyList())
     suspend fun pinGitlabAssignee(taskId: String, m: GitlabMember) =
         api.pinGitlabAssignee(taskId, PinGitlabAssigneeRequest(m.glUsername, m.glName, m.glAvatarUrl))
     suspend fun removeGitlabAssignee(taskId: String, username: String) = api.removeGitlabAssignee(taskId, username)

@@ -304,6 +304,10 @@ fun MainScreen(
                     onOpenSettings = { go(MainDest.Settings) },
                     onOpenAdmin = { go(MainDest.Admin) },
                     onOpenBoard = { board -> go(MainDest.BoardView(board)) },
+                    onOpenMilestone = { projectId, milestoneId ->
+                        openBoardWithMilestone(projectId, milestoneId)
+                        scope.launch { drawerState.close() }
+                    },
                     onProjectGone = { projectId ->
                         // A project was deleted/transferred — leave its board for Home
                         // if it's the one open (web navigate-home-on-delete parity).

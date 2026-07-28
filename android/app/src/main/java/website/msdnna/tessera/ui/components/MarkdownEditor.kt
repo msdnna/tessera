@@ -63,6 +63,19 @@ private const val MERMAID_SNIPPET = "\n```mermaid\ngraph TD\n  A[Старт] -->
 private val MENTION_RE = Regex("(^|\\s)@([^\\s@]*)$")
 
 /**
+ * One @-mention candidate for the editor's autocomplete (web `mentionItems` parity).
+ * [insert] is the text put after '@' — a Tessera display name, or a GitLab username
+ * (GitLab resolves it on write-back). [display] + avatar identify the picker row.
+ */
+data class MentionItem(
+    val insert: String,
+    val display: String,
+    val avatarUserId: String? = null,
+    val avatarSrc: String? = null,
+    val gitlab: Boolean = false,
+)
+
+/**
  * The web `MarkdownEditor`, native: a Написать / Просмотр tab pair, a borderless
  * textarea storing Markdown, a formatting toolbar (bold / italic / strike /
  * code / list / quote / heading) that wraps the current selection, plus buttons
@@ -79,9 +92,11 @@ fun MarkdownEditor(
     startInPreview: Boolean = false,
     onBlur: (() -> Unit)? = null,
     uploadImage: (suspend (ByteArray, String, String?) -> String?)? = null,
-    // Workspace member names for @-mentions; empty → mentions off.
-    mentions: List<String> = emptyList(),
+    // @-mention candidates (Tessera members + GitLab users); empty → mentions off.
+    mentions: List<MentionItem> = emptyList(),
 ) {
+    // Tokens (names / usernames) highlighted in the preview after an '@'.
+    val mentionTokens = remember(mentions) { mentions.map { it.insert } }
     val c = Tessera.colors
     var preview by remember { mutableStateOf(startInPreview) }
     var uploading by remember { mutableStateOf(false) }
@@ -159,7 +174,7 @@ fun MarkdownEditor(
                     // persists via onBlur (the description/comment save path).
                     RichContent(
                         value,
-                        mentions = mentions,
+                        mentions = mentionTokens,
                         interactive = true,
                         onToggleCheck = { i ->
                             onValueChange(toggleTaskMarker(value, i))
@@ -175,13 +190,15 @@ fun MarkdownEditor(
             val mq = if (mentions.isNotEmpty()) MENTION_RE.find(tfv.text.substring(0, caret)) else null
             val query = mq?.groupValues?.get(2)
             val matches = if (query != null) {
-                mentions.filter { it.contains(query, ignoreCase = true) }.take(8)
+                mentions.filter {
+                    it.display.contains(query, ignoreCase = true) || it.insert.contains(query, ignoreCase = true)
+                }.take(8)
             } else {
                 emptyList()
             }
-            fun pickMention(name: String) {
+            fun pickMention(item: MentionItem) {
                 val start = caret - (query?.length ?: 0) - 1
-                val ins = "@$name "
+                val ins = "@${item.insert} "
                 val text = tfv.text.substring(0, start) + ins + tfv.text.substring(caret)
                 update(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
             }
@@ -247,9 +264,10 @@ private fun FmtButton(content: @Composable (androidx.compose.ui.graphics.Color) 
     ) { content(c.text2) }
 }
 
-/** @-mention suggestion list shown under the textarea while typing "@…". */
+/** @-mention suggestion list shown under the textarea while typing "@…". Each row
+ *  shows the member/GitLab-user avatar + display name (web parity). */
 @Composable
-private fun MentionSuggestions(names: List<String>, onPick: (String) -> Unit) {
+private fun MentionSuggestions(items: List<MentionItem>, onPick: (MentionItem) -> Unit) {
     val c = Tessera.colors
     Column(
         Modifier
@@ -259,16 +277,22 @@ private fun MentionSuggestions(names: List<String>, onPick: (String) -> Unit) {
             .background(c.surfaceAlt)
             .border(1.dp, c.border, RoundedCornerShape(RadiusMd)),
     ) {
-        names.forEach { name ->
-            Text(
-                "@$name",
-                color = c.text1,
-                fontSize = 14.sp,
-                modifier = Modifier
+        items.forEach { item ->
+            Row(
+                Modifier
                     .fillMaxWidth()
-                    .clickableNoRipple { onPick(name) }
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-            )
+                    .clickableNoRipple { onPick(item) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MemberAvatar(22.dp, item.display, userId = item.avatarUserId, avatarUrl = item.avatarSrc, muted = item.gitlab)
+                Spacer(Modifier.width(10.dp))
+                Text(item.display, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                if (item.gitlab) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("GitLab", color = c.text3, fontSize = 11.sp)
+                }
+            }
         }
     }
 }

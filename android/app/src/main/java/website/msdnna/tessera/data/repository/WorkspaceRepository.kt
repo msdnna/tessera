@@ -51,7 +51,12 @@ class WorkspaceRepository {
         icon: String = project.icon,
         groupId: String? = project.groupId,
         iconMode: String = project.iconMode,
-    ): Project = api.updateProject(project.id, UpdateProjectRequest(name, color, icon, groupId, iconMode))
+        treeMode: String = project.treeMode,
+    ): Project = api.updateProject(project.id, UpdateProjectRequest(name, color, icon, groupId, iconMode, treeMode))
+
+    /** This project's milestones («Этапы»), for the sidebar stages tree. */
+    suspend fun milestones(projectId: String): List<website.msdnna.tessera.data.model.Milestone> =
+        api.milestones(projectId).orEmpty()
 
     suspend fun moveProject(projectId: String, groupId: String?, beforeId: String?, afterId: String?): Project =
         api.moveProject(projectId, website.msdnna.tessera.data.model.MoveProjectRequest(groupId, beforeId, afterId))

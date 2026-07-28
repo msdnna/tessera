@@ -24,8 +24,12 @@ data class WorkspaceUiState(
     val groups: List<ProjectGroup> = emptyList(),
     val projects: List<Project> = emptyList(),
     val boardsByProject: Map<String, List<Board>> = emptyMap(),
+    /** Lazily-loaded project milestones («Этапы») for the sidebar stages tree. */
+    val milestonesByProject: Map<String, List<website.msdnna.tessera.data.model.Milestone>> = emptyMap(),
     val expandedProjects: Set<String> = emptySet(),
     val expandedGroups: Set<String> = emptySet(),
+    /** Project ids whose stages tree shows closed milestones (persisted). */
+    val showClosedStages: Set<String> = emptySet(),
 ) {
     val current: Workspace? get() = workspaces.find { it.id == currentId }
 
@@ -57,6 +61,7 @@ class WorkspaceViewModel(
         // so the tree opens to where it was left and the right boards preload.
         val expandedGroups = prefs.expandedGroups.first()
         val expandedProjects = prefs.expandedProjects.first()
+        val showClosedStages = prefs.showClosedStages.first()
         val current = list.firstOrNull { it.id == saved }?.id ?: list.firstOrNull()?.id ?: ""
         _state.update {
             it.copy(
@@ -65,6 +70,7 @@ class WorkspaceViewModel(
                 currentId = current,
                 expandedGroups = expandedGroups,
                 expandedProjects = expandedProjects,
+                showClosedStages = showClosedStages,
             )
         }
         if (current.isNotBlank()) selectWorkspace(current)
@@ -98,14 +104,15 @@ class WorkspaceViewModel(
 
     fun selectWorkspace(id: String) = launchCatching {
         prefs.setCurrentWorkspaceId(id)
-        _state.update { it.copy(currentId = id, boardsByProject = emptyMap()) }
+        _state.update { it.copy(currentId = id, boardsByProject = emptyMap(), milestonesByProject = emptyMap()) }
         val groups = repo.groups(id)
         val projects = repo.projects(id)
         _state.update { it.copy(groups = groups, projects = projects) }
-        // Preload boards for any project restored as expanded (boards are lazy).
+        // Preload children for any project restored as expanded (lazy: boards always,
+        // milestones when its tree shows stages).
         _state.value.expandedProjects
             .filter { pid -> projects.any { it.id == pid } }
-            .forEach { loadBoards(it) }
+            .forEach { ensureProjectChildren(it) }
     }
 
     fun refresh() = launchCatching {
@@ -122,9 +129,24 @@ class WorkspaceViewModel(
             _state.update { it.copy(expandedProjects = expanded - projectId) }
         } else {
             _state.update { it.copy(expandedProjects = expanded + projectId) }
-            if (_state.value.boardsByProject[projectId] == null) loadBoards(projectId)
+            ensureProjectChildren(projectId)
         }
         persistExpansion()
+    }
+
+    /** Lazily load a project's boards (always — needed as a milestone's open target)
+     *  and its milestones (only when the tree shows stages). */
+    private fun ensureProjectChildren(projectId: String) {
+        if (_state.value.boardsByProject[projectId] == null) loadBoards(projectId)
+        val project = _state.value.projects.find { it.id == projectId }
+        if (project != null && project.treeMode != "boards" && _state.value.milestonesByProject[projectId] == null) {
+            loadMilestones(projectId)
+        }
+    }
+
+    fun loadMilestones(projectId: String) = launchCatching {
+        val ms = repo.milestones(projectId)
+        _state.update { it.copy(milestonesByProject = it.milestonesByProject + (projectId to ms)) }
     }
 
     fun toggleGroup(groupId: String) {
@@ -149,7 +171,7 @@ class WorkspaceViewModel(
             _state.update { it.copy(expandedProjects = it.expandedProjects + projectId) }
             persistExpansion()
         }
-        if (_state.value.boardsByProject[projectId] == null) loadBoards(projectId)
+        ensureProjectChildren(projectId)
     }
 
     /** Persist the current expand state so the tree restores on next launch. */
@@ -196,6 +218,26 @@ class WorkspaceViewModel(
     fun setProjectIconMode(project: Project, mode: String) = launchCatching {
         repo.updateProject(project, iconMode = mode)
         refreshSilently()
+    }
+
+    /** What the sidebar tree shows under this project: "boards" | "milestones" | "both". */
+    fun setProjectTreeMode(project: Project, mode: String) = launchCatching {
+        repo.updateProject(project, treeMode = mode)
+        refreshSilently()
+        // If the project is open and now shows stages, load them lazily.
+        if (project.id in _state.value.expandedProjects && mode != "boards" &&
+            _state.value.milestonesByProject[project.id] == null
+        ) {
+            loadMilestones(project.id)
+        }
+    }
+
+    /** Toggle whether this project's stages tree includes closed milestones (persisted). */
+    fun toggleShowClosedStages(projectId: String) {
+        val cur = _state.value.showClosedStages
+        val next = if (projectId in cur) cur - projectId else cur + projectId
+        _state.update { it.copy(showClosedStages = next) }
+        viewModelScope.launch { prefs.setShowClosedStages(next) }
     }
 
     fun deleteProject(projectId: String) = launchCatching {

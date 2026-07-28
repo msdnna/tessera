@@ -2,6 +2,7 @@ package website.msdnna.tessera.util
 
 import java.text.Collator
 import java.util.Locale
+import website.msdnna.tessera.data.model.GitlabRule
 import website.msdnna.tessera.data.model.Tag
 
 /*
@@ -41,13 +42,31 @@ fun prefixLabel(ns: String, prefixNames: Map<String, String> = emptyMap()): Stri
     return prefixNames[canonPrefix(ns)] ?: ns.trim()
 }
 
+/** Canonical prefixes of GitLab label rules that map a label to a NON-tag action
+ *  (status / priority / board / ignore / …). Those labels aren't user tags, so they
+ *  are hidden from the ADD tag-picker (web `metaPrefixesFromRules`). Only prefix-type
+ *  rules qualify — regex rules can't be reduced to a stable prefix, so their tags stay. */
+fun metaPrefixesFromRules(rules: List<GitlabRule>): Set<String> =
+    rules.asSequence()
+        .filter { it.matchType == "prefix" && it.action.isNotBlank() && it.action != "tag" }
+        .map { canonPrefix(it.match) }
+        .filter { it.isNotEmpty() }
+        .toSet()
+
 /** Groups a tag list by prefix namespace. Returns groups sorted alphabetically by
  *  label, with the prefix-less "Вне группы" bucket always last; tags within a group
- *  are sorted by name. [prefixNames] maps canonical prefix → friendly label. */
-fun buildTagGroups(tags: List<Tag>, prefixNames: Map<String, String> = emptyMap()): List<TagGroup> {
+ *  are sorted by name. [prefixNames] maps canonical prefix → friendly label.
+ *  [hidePrefixes] (canonical prefixes, e.g. from [metaPrefixesFromRules]) drops those
+ *  tags entirely — used to keep GitLab meta-labels out of the ADD picker. */
+fun buildTagGroups(
+    tags: List<Tag>,
+    prefixNames: Map<String, String> = emptyMap(),
+    hidePrefixes: Set<String> = emptySet(),
+): List<TagGroup> {
     val groups = LinkedHashMap<String, MutableList<Tag>>()
     for (t in tags) {
         val key = canonPrefix(tagNamespace(t.name))
+        if (key.isNotEmpty() && key in hidePrefixes) continue
         groups.getOrPut(key) { mutableListOf() }.add(t)
     }
     return groups.entries

@@ -45,6 +45,8 @@ data class Project(
     @SerializedName("icon") val icon: String = "",
     @SerializedName("color") val color: String = "",
     @SerializedName("icon_mode") val iconMode: String = "badge",
+    // What the sidebar tree shows under this project: boards | milestones | both.
+    @SerializedName("tree_mode") val treeMode: String = "boards",
     @SerializedName("position") val position: Double = 0.0,
     @SerializedName("estimation") val estimation: EstimationConfig? = null,
 )
@@ -110,6 +112,7 @@ data class UpdateProjectRequest(
     @SerializedName("icon") val icon: String = "",
     @SerializedName("group_id") val groupId: String? = null,
     @SerializedName("icon_mode") val iconMode: String = "badge",
+    @SerializedName("tree_mode") val treeMode: String = "boards",
 )
 
 data class UpdateGroupRequest(

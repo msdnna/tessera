@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
+import website.msdnna.tessera.ui.components.MemberAvatar
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TDropdown
@@ -176,8 +177,14 @@ fun BoardComposerBar(
                 )
             }
             f.assigneeIds.forEach { id ->
+                val name = if (id.startsWith("gl:")) {
+                    val u = id.removePrefix("gl:")
+                    state.gitlabMembers.find { it.glUsername == u }?.let { it.glName.ifBlank { it.glUsername } } ?: u
+                } else {
+                    state.membersMap[id]?.name ?: "—"
+                }
                 FacetChip(
-                    "Исполнитель: ${state.membersMap[id]?.name ?: "—"}",
+                    "Исполнитель: $name",
                     onRemove = { vm.setFilter(f.copy(assigneeIds = f.assigneeIds - id)) },
                 )
             }
@@ -346,18 +353,45 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                 "fa" -> {
                     BackRow { category = null }
                     state.members.filter { it.userId !in f.assigneeIds }.forEach { m ->
-                        TMenuItem(m.name.ifBlank { m.email }, onClick = {
-                            vm.setFilter(f.copy(assigneeIds = f.assigneeIds + m.userId))
-                            close()
-                        })
+                        val nm = m.name.ifBlank { m.email }
+                        TMenuItem(
+                            nm,
+                            onClick = {
+                                vm.setFilter(f.copy(assigneeIds = f.assigneeIds + m.userId))
+                                close()
+                            },
+                            leading = { MemberAvatar(22.dp, nm, userId = m.userId) },
+                        )
+                    }
+                    // GitLab-only assignees (no Tessera account) filter by "gl:<username>",
+                    // matched against a card's gitlab_assignees (web parity).
+                    val glUnlinked = state.gitlabMembers.filter {
+                        it.tesseraUserId == null && "gl:${it.glUsername}" !in f.assigneeIds
+                    }
+                    if (glUnlinked.isNotEmpty()) {
+                        MenuSectionHeader("GitLab")
+                        glUnlinked.forEach { m ->
+                            val nm = m.glName.ifBlank { m.glUsername }
+                            TMenuItem(
+                                nm,
+                                onClick = {
+                                    vm.setFilter(f.copy(assigneeIds = f.assigneeIds + "gl:${m.glUsername}"))
+                                    close()
+                                },
+                                leading = { MemberAvatar(22.dp, nm, avatarUrl = m.glAvatarUrl, muted = true) },
+                            )
+                        }
                     }
                 }
 
                 "ft" -> {
                     BackRow { category = null }
                     // Group the pickable tags by prefix; show section headers only
-                    // when more than one group exists (web «Фильтр: тег»).
-                    val groups = buildTagGroups(state.tagList.filter { it.id !in f.tagIds }, state.prefixNames)
+                    // when more than one group exists (web «Фильтр: тег»). GitLab
+                    // meta-labels (status/priority/…) are hidden from the picker.
+                    val groups = buildTagGroups(
+                        state.tagList.filter { it.id !in f.tagIds }, state.prefixNames, state.metaTagPrefixes,
+                    )
                     val headers = groups.size > 1
                     groups.forEach { g ->
                         if (headers) MenuSectionHeader(g.label)

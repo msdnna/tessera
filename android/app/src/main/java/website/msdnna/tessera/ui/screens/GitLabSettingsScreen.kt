@@ -85,7 +85,7 @@ private val ScopeOptions = listOf(
     "assigned" to "Только назначенные мне", "all" to "Все задачи проекта",
 )
 private val ClosedPolicyOptions = listOf(
-    "all" to "Импортировать все", "archive_closed_sprints" to "Архивировать закрытые спринты",
+    "all" to "Импортировать все", "archive_closed_sprints" to "Архивировать закрытые этапы",
     "period" to "Только за период",
 )
 

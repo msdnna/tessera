@@ -136,6 +136,7 @@ fun TMenuItem(
     icon: String? = null,
     danger: Boolean = false,
     warn: Boolean = false,
+    leading: @Composable (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     val c = Tessera.colors
@@ -151,7 +152,10 @@ fun TMenuItem(
         Modifier.fillMaxWidth().clickableNoRipple(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) {
+        if (leading != null) {
+            leading()
+            Spacer(Modifier.width(10.dp))
+        } else if (icon != null) {
             IonIcon(icon, size = 16.dp, tint = accent ?: c.text2)
             Spacer(Modifier.width(10.dp))
         }

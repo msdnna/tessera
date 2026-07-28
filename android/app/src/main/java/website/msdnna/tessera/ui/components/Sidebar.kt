@@ -88,6 +88,8 @@ private sealed interface Creating {
 private class TreeHost(
     val onOpenBoard: (Board) -> Unit,
     val onProjectGone: (String) -> Unit,
+    // Open a project's board scoped to a milestone ("backlog" = milestone-less tasks).
+    val onOpenMilestone: (projectId: String, milestoneId: String) -> Unit,
 )
 
 /** Shared state threaded through the recursive tree nodes. */
@@ -135,6 +137,7 @@ fun Sidebar(
     onOpenAdmin: () -> Unit,
     onOpenBoard: (Board) -> Unit,
     onProjectGone: (String) -> Unit = {},
+    onOpenMilestone: (projectId: String, milestoneId: String) -> Unit = { _, _ -> },
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
 ) {
@@ -169,7 +172,7 @@ fun Sidebar(
         state, vm, drag, flat,
         creating, { creating = it },
         renaming, { renaming = it },
-        TreeHost(onOpenBoard, onProjectGone), onDrop, focus,
+        TreeHost(onOpenBoard, onProjectGone, onOpenMilestone), onDrop, focus,
     )
 
     Box(
@@ -509,6 +512,34 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                 })
             }
             TMenuDivider()
+            Text(
+                "Показывать в дереве",
+                color = c.text3, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 2.dp),
+            )
+            listOf("boards" to "Доски", "milestones" to "Этапы", "both" to "Доски и этапы").forEach { (mode, label) ->
+                TMenuItem(
+                    label,
+                    onClick = {
+                        close()
+                        ctx.vm.setProjectTreeMode(project, mode)
+                    },
+                    trailing = {
+                        if (project.treeMode == mode) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+                    },
+                )
+            }
+            if (project.treeMode != "boards") {
+                val closedOn = project.id in ctx.state.showClosedStages
+                TMenuItem(
+                    "Показывать закрытые этапы",
+                    onClick = { ctx.vm.toggleShowClosedStages(project.id) },
+                    trailing = {
+                        if (closedOn) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
+                    },
+                )
+            }
+            TMenuDivider()
             ColumnScopePicker(
                 color = project.color,
                 icon = project.icon,
@@ -558,23 +589,69 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
     }
     if (expanded) {
         IndentedChildren {
-            val boards = ctx.state.boardsByProject[project.id]
-            if (boards == null) {
-                Text("Загрузка…", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp))
-            } else {
-                boards.forEach { b -> key(b.id) { BoardRow(b, project.id, ctx) } }
-                if (boards.isEmpty() && ctx.creating !is Creating.Board) {
-                    Text("Нет досок", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp))
+            val showMilestones = project.treeMode == "milestones" || project.treeMode == "both"
+            val showBoards = project.treeMode == "boards" || project.treeMode == "both"
+            if (showMilestones) {
+                val loaded = ctx.state.milestonesByProject[project.id]
+                if (loaded == null) {
+                    Text("Загрузка…", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp))
+                } else {
+                    // Backlog first, then open milestones (due asc, undated last), then
+                    // closed (only when the per-project toggle is on) — mirrors web ProjectRow.
+                    val showClosed = project.id in ctx.state.showClosedStages
+                    val ms = loaded
+                        .filter { showClosed || !it.isClosed }
+                        .sortedWith(compareBy({ it.isClosed }, { it.dueDate ?: "￿" }))
+                    MilestoneRow(project.id, null, "Бэклог", ctx)
+                    ms.forEach { m -> key(m.id) { MilestoneRow(project.id, m.id, m.title, ctx, closed = m.isClosed) } }
                 }
             }
-            val create = ctx.creating
-            if (create is Creating.Board && create.projectId == project.id) {
-                InlineCreateRow("Название доски", onDismiss = { ctx.setCreating(null) }) {
-                    ctx.vm.addBoard(project.id, it)
-                    ctx.setCreating(null)
+            if (showBoards) {
+                val boards = ctx.state.boardsByProject[project.id]
+                if (boards == null) {
+                    Text("Загрузка…", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp))
+                } else {
+                    boards.forEach { b -> key(b.id) { BoardRow(b, project.id, ctx) } }
+                    if (boards.isEmpty() && ctx.creating !is Creating.Board) {
+                        Text("Нет досок", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp))
+                    }
+                }
+                val create = ctx.creating
+                if (create is Creating.Board && create.projectId == project.id) {
+                    InlineCreateRow("Название доски", onDismiss = { ctx.setCreating(null) }) {
+                        ctx.vm.addBoard(project.id, it)
+                        ctx.setCreating(null)
+                    }
                 }
             }
         }
+    }
+}
+
+/** A stage («Этап») row in the sidebar tree: taps open the project's board scoped to
+ *  the milestone. [milestoneId] null → the "Бэклог" node (milestone-less tasks). */
+@Composable
+private fun MilestoneRow(projectId: String, milestoneId: String?, title: String, ctx: TreeCtx, closed: Boolean = false) {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth().animatePlacement().clip(RoundedCornerShape(RadiusSm))
+            .clickableNoRipple { ctx.clickRow { ctx.host.onOpenMilestone(projectId, milestoneId ?: "__none__") } }
+            .padding(end = 6.dp, top = 7.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Spacer(Modifier.width(16.dp)) // chevron slot (leaf row)
+        Spacer(Modifier.width(4.dp))
+        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+            IonIcon(if (milestoneId == null) Ion.GIT_BRANCH else Ion.ROCKET, size = 16.dp, tint = c.text3)
+        }
+        Spacer(Modifier.width(9.dp))
+        Text(
+            title,
+            color = if (closed) c.text3 else c.text2,
+            fontSize = 13.sp,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

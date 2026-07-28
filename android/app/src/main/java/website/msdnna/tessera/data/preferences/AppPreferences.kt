@@ -43,6 +43,9 @@ class AppPreferences(private val context: Context) {
         // Restored-on-launch UI state (online-first: UI state only, no domain data).
         val EXPANDED_GROUPS = stringSetPreferencesKey("expanded_groups")
         val EXPANDED_PROJECTS = stringSetPreferencesKey("expanded_projects")
+
+        // Project ids whose sidebar stages tree shows closed milestones (web `tessera_ms_tree_*`).
+        val SHOW_CLOSED_STAGES = stringSetPreferencesKey("show_closed_stages")
         val LAST_DEST = stringPreferencesKey("last_dest")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val RECENT_ASSIGNEES = stringPreferencesKey("recent_assignees")
@@ -192,6 +195,13 @@ class AppPreferences(private val context: Context) {
 
     suspend fun setExpandedProjects(ids: Set<String>) {
         context.dataStore.edit { it[Keys.EXPANDED_PROJECTS] = ids }
+    }
+
+    /** Per-project "show closed stages" toggle for the sidebar tree (web parity). */
+    val showClosedStages: Flow<Set<String>> = context.dataStore.data.map { it[Keys.SHOW_CLOSED_STAGES] ?: emptySet() }
+
+    suspend fun setShowClosedStages(ids: Set<String>) {
+        context.dataStore.edit { it[Keys.SHOW_CLOSED_STAGES] = ids }
     }
 
     /**

@@ -240,6 +240,7 @@ fun BoardScreen(
             projectId = board.projectId,
             tags = state.tagList,
             prefixNames = state.prefixNames,
+            metaTagPrefixes = state.metaTagPrefixes,
             members = state.members,
             gitlabMembers = state.gitlabMembers,
             milestones = state.milestones,
@@ -342,7 +343,7 @@ private fun SprintScopeBar(
     val label = when (scope) {
         null -> "Все задачи"
         "backlog" -> "Бэклог"
-        else -> state.milestonesMap[scope]?.title ?: "Спринт"
+        else -> state.milestonesMap[scope]?.title ?: "Этап"
     }
     val active = scope != null
     Row(
@@ -360,7 +361,7 @@ private fun SprintScopeBar(
             ) {
                 IonIcon(Ion.GIT_MERGE, size = 14.dp, tint = if (active) c.onPrimary else c.text3)
                 Spacer(Modifier.width(6.dp))
-                Text("Спринт: $label", color = if (active) c.onPrimary else c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text("Этап: $label", color = if (active) c.onPrimary else c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.width(4.dp))
                 IonIcon(Ion.CHEVRON_DOWN, size = 12.dp, tint = if (active) c.onPrimary else c.text3)
             }
@@ -369,7 +370,7 @@ private fun SprintScopeBar(
                     open = false
                     onSelect(null)
                 })
-                TMenuItem("Бэклог (без спринта)", onClick = {
+                TMenuItem("Бэклог (без этапа)", onClick = {
                     open = false
                     onSelect("backlog")
                 })

@@ -569,10 +569,13 @@ interface ApiService {
     ): website.msdnna.tessera.data.model.SearchResults
 
     // ── Home dashboard (#4) ───────────────────────────────────────────────────
+    // include_subtasks=1 also returns subtasks (for the relation picker, so a subtask
+    // can be linked). Default omits them — the Home dashboard shows top-level only.
     @GET("workspaces/{id}/tasks")
     suspend fun workspaceTasks(
         @Path("id") workspaceId: String,
         @retrofit2.http.Query("assignee") assignee: String? = null,
+        @retrofit2.http.Query("include_subtasks") includeSubtasks: Int? = null,
     ): List<website.msdnna.tessera.data.model.WorkspaceTask>?
 
     @GET("workspaces/{id}/summary")

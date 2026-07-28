@@ -47,9 +47,10 @@ class TaskRepository {
     suspend fun transfer(taskId: String, boardId: String, columnId: String? = null) =
         api.transferTask(taskId, website.msdnna.tessera.data.model.TransferTaskRequest(boardId, columnId))
 
-    /** Workspace tasks for the relation autocomplete (cross-board). */
+    /** Workspace tasks for the relation autocomplete (cross-board). Includes
+     *  subtasks so a subtask can be picked as a blocking relation (web parity). */
     suspend fun workspaceTasks(workspaceId: String): List<website.msdnna.tessera.data.model.WorkspaceTask> =
-        api.workspaceTasks(workspaceId).orEmpty()
+        api.workspaceTasks(workspaceId, includeSubtasks = 1).orEmpty()
 
     /** Downloads an attachment's bytes (auth'd) to a cache file, returning it. */
     suspend fun downloadAttachment(cacheDir: java.io.File, attachmentId: String, filename: String): java.io.File {

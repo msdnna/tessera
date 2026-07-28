@@ -78,6 +78,7 @@ import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.MarkdownEditor
+import website.msdnna.tessera.ui.components.MentionItem
 import website.msdnna.tessera.ui.components.RichContent
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
@@ -148,6 +149,7 @@ fun TaskModal(
     projectId: String,
     tags: List<Tag>,
     prefixNames: Map<String, String>,
+    metaTagPrefixes: Set<String> = emptySet(),
     members: List<Member>,
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
     milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
@@ -241,6 +243,7 @@ fun TaskModal(
                             onCreateMilestone = { t -> vm.createMilestoneAndAssign(t) { m -> extraMilestones = extraMilestones + m } },
                             tags = tags,
                             prefixNames = prefixNames,
+                            metaTagPrefixes = metaTagPrefixes,
                             members = members,
                             gitlabMembers = gitlabMembers,
                             parentCandidates = parentCandidates,
@@ -256,7 +259,7 @@ fun TaskModal(
                             startInPreview = detail.description.isNotBlank(),
                             onBlur = { vm.saveDescription(description) },
                             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
-                            mentions = members.map { it.name },
+                            mentions = buildMentionItems(members, gitlabMembers),
                         )
 
                         Spacer(Modifier.height(18.dp))
@@ -284,7 +287,7 @@ fun TaskModal(
                             label = "taskTab",
                         ) { t ->
                             when (t) {
-                                0 -> CommentsTab(vm, state.comments, members, me?.id)
+                                0 -> CommentsTab(vm, state.comments, members, gitlabMembers, me?.id)
 
                                 1 -> SubtasksTab(vm, detail.columnId, detail.subtasks) { currentId = it }
 
@@ -420,6 +423,7 @@ private fun PropertyGrid(
     onCreateMilestone: (String) -> Unit,
     tags: List<Tag>,
     prefixNames: Map<String, String>,
+    metaTagPrefixes: Set<String>,
     members: List<Member>,
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
     parentCandidates: List<Task>,
@@ -465,7 +469,7 @@ private fun PropertyGrid(
             PropRow(Ion.GITLAB, "GitLab") { GitlabLinkValue(gitlab) }
         }
         PropRow(Ion.PRICETAG, "Теги") {
-            TagsValue(taskTagIds, tags, prefixNames, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} })
+            TagsValue(taskTagIds, tags, prefixNames, metaTagPrefixes, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} })
         }
         if (milestones.isNotEmpty() || milestoneId != null) {
             PropRow(Ion.ROCKET, "Этап") {
@@ -809,6 +813,7 @@ private fun TagsValue(
     taskTagIds: List<String>,
     tags: List<Tag>,
     prefixNames: Map<String, String>,
+    metaTagPrefixes: Set<String>,
     onToggle: (String) -> Unit,
     onCreate: (String) -> Unit,
 ) {
@@ -827,7 +832,8 @@ private fun TagsValue(
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             // Group the chips by tag prefix; show headers only with >1 group (web parity).
-            val groups = buildTagGroups(tags, prefixNames)
+            // GitLab meta-labels (status/priority/…) are hidden from the ADD picker.
+            val groups = buildTagGroups(tags, prefixNames, metaTagPrefixes)
             val headers = groups.size > 1
             groups.forEach { g ->
                 if (headers) {
@@ -961,15 +967,43 @@ private fun MilestoneValue(
     }
 }
 
+/** @-mention candidates (web `mentionItems`): Tessera members insert their name;
+ *  GitLab-only users (no Tessera account) insert their username, which GitLab
+ *  resolves on write-back. Tessera-side notifications key off the name via
+ *  `detectMentions`, so GitLab users never generate a Tessera notification. */
+private fun buildMentionItems(
+    members: List<Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+): List<MentionItem> {
+    val tessera = members.map { MentionItem(insert = it.name, display = it.name, avatarUserId = it.userId) }
+    val gl = gitlabMembers.filter { it.tesseraUserId == null }.map {
+        MentionItem(
+            insert = it.glUsername,
+            display = it.glName.ifBlank { it.glUsername },
+            avatarSrc = it.glAvatarUrl,
+            gitlab = true,
+        )
+    }
+    return tessera + gl
+}
+
 // ── tabs ─────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun CommentsTab(vm: TaskDetailViewModel, comments: List<website.msdnna.tessera.data.model.Comment>, members: List<Member>, meId: String?) {
+private fun CommentsTab(
+    vm: TaskDetailViewModel,
+    comments: List<website.msdnna.tessera.data.model.Comment>,
+    members: List<Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    meId: String?,
+) {
     val c = Tessera.colors
     var draft by remember { mutableStateOf("") }
     var editingId by remember { mutableStateOf<String?>(null) }
     var editBody by remember { mutableStateOf("") }
-    val mentionNames = members.map { it.name }
+    val mentionItems = buildMentionItems(members, gitlabMembers)
+    // Highlight tokens for read-only comment rendering (names + GitLab usernames).
+    val mentionNames = mentionItems.map { it.insert }
 
     Column(Modifier.fillMaxWidth()) {
         if (comments.isEmpty()) {
@@ -1010,7 +1044,7 @@ private fun CommentsTab(vm: TaskDetailViewModel, comments: List<website.msdnna.t
                             onValueChange = { editBody = it },
                             placeholder = "Комментарий…",
                             minHeight = 56.dp,
-                            mentions = mentionNames,
+                            mentions = mentionItems,
                         )
                         Spacer(Modifier.height(6.dp))
                         Row {
@@ -1044,7 +1078,7 @@ private fun CommentsTab(vm: TaskDetailViewModel, comments: List<website.msdnna.t
             placeholder = "Написать комментарий… (@ — упоминание)",
             minHeight = 56.dp,
             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
-            mentions = mentionNames,
+            mentions = mentionItems,
         )
         Spacer(Modifier.height(8.dp))
         TButton("Отправить", onClick = {
