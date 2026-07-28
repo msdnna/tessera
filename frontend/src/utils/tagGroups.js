@@ -27,15 +27,33 @@ export function prefixLabel(ns, prefixNames = {}) {
   return prefixNames[canonPrefix(ns)] || ns.trim()
 }
 
+// Canonical prefixes governed by a non-"tag" GitLab label rule (status / priority /
+// group / board / ignore). Those labels drive a task field (or are dropped on sync),
+// so the matching tags shouldn't be manually addable in the tag picker — selecting
+// one just desyncs from the field. Only prefix-type rules qualify; regex rules can't
+// be reduced to a stable prefix, so their tags stay visible.
+export function metaPrefixesFromRules(rules) {
+  const out = new Set()
+  for (const r of rules?.rules || []) {
+    if ((r.match_type || 'prefix') !== 'prefix') continue
+    if (!r.action || r.action === 'tag') continue
+    const key = canonPrefix(r.match)
+    if (key) out.add(key)
+  }
+  return out
+}
+
 // Group a tag list by prefix namespace. Returns ordered groups
 // [{ key, label, prefix, tags }] sorted alphabetically by label, with the
 // prefix-less "Вне группы" bucket always last. Tags within a group are sorted
-// by name. prefixNames maps canonical prefix → friendly label.
-export function buildTagGroups(tags, prefixNames = {}) {
+// by name. prefixNames maps canonical prefix → friendly label. hidePrefixes (a Set of
+// canonical prefixes, e.g. from metaPrefixesFromRules) drops those tags entirely.
+export function buildTagGroups(tags, prefixNames = {}, hidePrefixes = null) {
   const groups = new Map()
   for (const t of tags || []) {
     const ns = tagNamespace(t.name)
     const key = canonPrefix(ns)
+    if (hidePrefixes && key && hidePrefixes.has(key)) continue
     if (!groups.has(key)) {
       groups.set(key, { key, label: prefixLabel(ns, prefixNames), prefix: ns, tags: [] })
     }

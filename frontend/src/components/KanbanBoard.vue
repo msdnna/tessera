@@ -42,7 +42,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { PRIORITY_LABELS } from '@/styles/tokens'
-import { tagNamespace, prefixLabel, buildTagGroups } from '@/utils/tagGroups'
+import { tagNamespace, prefixLabel, buildTagGroups, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
@@ -111,6 +111,9 @@ const gitlabMembersMap = reactive({})
 const gitlabCanCreate = ref(false)
 const gitlabFetchTemplates = ref(false)
 const gitlabIntegrationId = ref(null)
+// Canonical tag prefixes governed by non-"tag" GitLab rules (status/priority/…),
+// hidden from tag pickers. Rebuilt per board in loadBoardMeta.
+const metaTagPrefixes = ref(new Set())
 const tagsList = computed(() => Object.values(tagsMap))
 const membersList = computed(() => Object.values(membersMap))
 // Project milestones («Этап»), keyed by id; cards/modal resolve a task's milestone_id.
@@ -1220,6 +1223,14 @@ async function loadWorkspaceMeta() {
   gitlabCanCreate.value =
     gi.enabled === true && gi.writeback?.push_create === true
   gitlabFetchTemplates.value = gitlabCanCreate.value && gi.writeback?.fetch_templates === true
+  // Prefixes whose tags are governed by a status/priority/meta GitLab rule — hidden
+  // from tag pickers so they can't be toggled out of sync with the mapped field.
+  // Collected across every integration that targets this board (multi-binding).
+  const mp = new Set()
+  for (const bi of (glInt.data?.integrations || []).filter((b) => b.board_id === props.boardId)) {
+    for (const p of metaPrefixesFromRules(bi.label_rules)) mp.add(p)
+  }
+  metaTagPrefixes.value = mp
   for (const k of Object.keys(tagPrefixNames)) delete tagPrefixNames[k]
   for (const p of pfx.data || []) tagPrefixNames[p.prefix] = p.label
   // Mirror tags + prefix names + context to the store so the header Теги manager works.
@@ -2076,6 +2087,7 @@ async function restoreFromArchive(taskId) {
                       :members-map="membersMap"
                       :tags="tagsList"
                       :tag-prefix-names="tagPrefixNames"
+                      :meta-tag-prefixes="metaTagPrefixes"
                       :members="membersList"
                       :gitlab-members="gitlabMembersList"
                       :milestones-map="milestonesMap"
@@ -2152,6 +2164,7 @@ async function restoreFromArchive(taskId) {
       :project-id="board?.project_id"
       :tags="tagsList"
       :tag-prefix-names="tagPrefixNames"
+      :meta-tag-prefixes="metaTagPrefixes"
       :members="membersList"
       :gitlab-members="gitlabMembersList"
       :milestones="milestonesList"

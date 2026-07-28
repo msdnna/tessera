@@ -81,6 +81,9 @@ const props = defineProps({
   projectId: { type: String, default: null },
   tags: { type: Array, default: () => [] },
   tagPrefixNames: { type: Object, default: () => ({}) },
+  // Canonical tag prefixes governed by status/priority/meta GitLab rules — hidden
+  // from the tag picker so they can't be toggled out of sync with the mapped field.
+  metaTagPrefixes: { type: Set, default: () => new Set() },
   members: { type: Array, default: () => [] },
   gitlabMembers: { type: Array, default: () => [] },
   milestones: { type: Array, default: () => [] },
@@ -261,7 +264,9 @@ const tagObjs = computed(() =>
 )
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
 // renders flat without a header.
-const tagPickerGroups = computed(() => buildTagGroups(props.tags, props.tagPrefixNames))
+const tagPickerGroups = computed(() =>
+  buildTagGroups(props.tags, props.tagPrefixNames, props.metaTagPrefixes),
+)
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 
 // The tags trigger shows as many WHOLE tag chips as fit on one line, then "+N"

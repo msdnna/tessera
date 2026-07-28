@@ -70,6 +70,9 @@ const props = defineProps({
   membersMap: { type: Object, default: () => ({}) },
   tags: { type: Array, default: () => [] },
   tagPrefixNames: { type: Object, default: () => ({}) },
+  // Canonical tag prefixes governed by status/priority/meta GitLab rules — hidden
+  // from the tag picker so they can't be toggled out of sync with the mapped field.
+  metaTagPrefixes: { type: Set, default: () => new Set() },
   members: { type: Array, default: () => [] },
   gitlabMembers: { type: Array, default: () => [] },
   milestonesMap: { type: Object, default: () => ({}) },
@@ -125,7 +128,9 @@ const hasAnyPill = computed(
 
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
 // renders flat without a header.
-const tagPickerGroups = computed(() => buildTagGroups(props.tags, props.tagPrefixNames))
+const tagPickerGroups = computed(() =>
+  buildTagGroups(props.tags, props.tagPrefixNames, props.metaTagPrefixes),
+)
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 
 const newTagName = ref('')
