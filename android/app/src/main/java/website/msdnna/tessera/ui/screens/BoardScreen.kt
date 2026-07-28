@@ -129,10 +129,10 @@ fun BoardScreen(
     }
     // Deep-link «Этап» filter from the «Этапы» screen — apply AFTER the board loads
     // (load() applies the saved view config, which would otherwise clobber it).
-    var milestoneApplied by remember(board.id) { mutableStateOf(false) }
+    var milestoneApplied by remember(board.id, initialMilestoneId) { mutableStateOf(false) }
     LaunchedEffect(initialMilestoneId, state.loading) {
         if (initialMilestoneId != null && !state.loading && !milestoneApplied) {
-            vm.setMilestoneFilter(initialMilestoneId)
+            vm.setMilestoneScope(initialMilestoneId)
             milestoneApplied = true
             onInitialMilestoneConsumed()
         }
@@ -503,12 +503,7 @@ private fun BoardToolbar(
                 if (state.viewMode == BoardViewMode.Gantt) {
                     ToolIcon(Ion.GIT_NETWORK, active = state.autoActive) { vm.toggleAutoSort() }
                 }
-                // Expand subtasks — web GitBranchOutline. Hidden on the time-axis views
-                // (timeline/Gantt show one row per task; no subtask expansion there).
-                val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
-                if (!timelineLike) {
-                    ToolIcon(Ion.GIT_BRANCH, active = state.subtasksExpanded) { vm.toggleSubtasksExpanded() }
-                }
+                // Subtask expansion lives in the view-customize panel (gear), not the toolbar.
                 // Saved server-side views — popover (web folder button).
                 Box {
                     ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsMenu = true }

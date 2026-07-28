@@ -635,7 +635,7 @@ private fun MilestoneRow(projectId: String, milestoneId: String?, title: String,
     val c = Tessera.colors
     Row(
         Modifier.fillMaxWidth().animatePlacement().clip(RoundedCornerShape(RadiusSm))
-            .clickableNoRipple { ctx.clickRow { ctx.host.onOpenMilestone(projectId, milestoneId ?: "__none__") } }
+            .clickableNoRipple { ctx.clickRow { ctx.host.onOpenMilestone(projectId, milestoneId ?: "backlog") } }
             .padding(end = 6.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
