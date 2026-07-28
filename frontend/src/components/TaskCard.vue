@@ -189,8 +189,18 @@ const taskMilestone = computed(() =>
 const assignees = computed(() =>
   (props.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean),
 )
-// External GitLab assignees (no Tessera account) — display-only names.
-const glAssignees = computed(() => props.task.gitlab_assignees || [])
+// External GitLab assignees (no Tessera account). The board query carries only
+// their names/logins (no avatar), so resolve the avatar from the workspace
+// GitLab-members list by username — same source the picker/filter already use.
+const glAssignees = computed(() => {
+  const logins = props.task.gitlab_assignee_logins || []
+  const names = props.task.gitlab_assignees || []
+  if (!logins.length) return names.map((n) => ({ name: n }))
+  return logins.map((login) => {
+    const m = props.gitlabMembers.find((x) => x.gl_username === login)
+    return { login, name: m?.gl_name || login, avatar_url: m?.gl_avatar_url || null }
+  })
+})
 // Author (read-only): GitLab issue author for synced cards, else the Tessera
 // creator resolved from created_by.
 const author = computed(() => {
