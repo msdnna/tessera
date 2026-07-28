@@ -1,7 +1,6 @@
 package website.msdnna.tessera.ui.components
 
 import android.graphics.Matrix
-import android.graphics.RectF
 import android.provider.Settings
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
@@ -16,15 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.LinearGradientShader
-import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
@@ -32,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
-import website.msdnna.tessera.ui.theme.AccentGradientStrength
 import website.msdnna.tessera.ui.theme.Tessera
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,10 +114,10 @@ private class Seg(val a: St, val b: St, val ra: Float, val rb: Float, val dur: F
 
 private fun seg(a: St, b: St, ra: Float, rb: Float, dur: Float) = Seg(a, b, ra, rb, dur)
 
-// NB: the `corner` state (the "t" logo with the tile) is deliberately NOT a view
-// and there is no intro — the loader is purely the tile unfolding into app layouts,
-// so the brand logo no longer "plays" before it (parity with the web engine).
-private val VIEWS = listOf("kanban", "list", "timeline", "gantt", "matrix")
+// There is no intro; `corner` (the "t" logo with the tile) comes LAST — once per
+// cycle, after matrix — so the brand mark flashes at the end of the loop instead of
+// "playing" as a preamble before it (parity with the web engine).
+private val VIEWS = listOf("kanban", "list", "timeline", "gantt", "matrix", "corner")
 
 private val LOOP: List<Seg> = buildList {
     val cover = STATES.getValue("cover")
@@ -170,39 +163,22 @@ private fun frameAt(segs: List<Seg>, time: Float): Frame {
     return Frame(lerp(s.a.t, s.b.t, k), lerp(s.ra, s.rb, k), tiles)
 }
 
-/** Same-hue diagonal accent gradient over the given box (bottom-left dark →
- *  top-right light, base at centre) — the per-shape sibling of `accentGradient`,
- *  matching the web loader's per-tile `url(#t-accent-grad-svg)` fill. */
-private fun boxBrush(color: Color, gradient: Boolean, l: Float, t: Float, r: Float, b: Float): Brush {
-    if (!gradient) return SolidColor(color)
-    val darker = lerp(color, Color.Black, AccentGradientStrength).copy(alpha = color.alpha)
-    val lighter = lerp(color, Color.White, AccentGradientStrength).copy(alpha = color.alpha)
-    return ShaderBrush(
-        LinearGradientShader(
-            from = Offset(l, b),
-            to = Offset(r, t),
-            colors = listOf(darker, color, lighter),
-            colorStops = listOf(0f, 0.5f, 1f),
-        ),
-    )
-}
-
 /**
  * The brand loader. On the launch splash it's the white mark on the purple
- * gradient (`gradient = false`); in-app it's the accent-tinted mark on the app
+ * gradient (`color = White`); in-app it's the accent-tinted mark on the app
  * background. Replaces the generic CircularProgressIndicator.
  *
- * @param color    the mark colour (defaults to the active accent)
- * @param gradient when true, each tile/glyph carries the soft accent gradient
- *                 (parity with the web loader); pass `false` for a flat fill
- *                 (the white splash mark).
+ * Fill is a FLAT solid [color] (no per-tile gradient): a same-hue gradient would
+ * rotate with the spinning group and snap back each turn, reading as a glitch —
+ * so the loader stays flat, matching the web engine.
+ *
+ * @param color the mark colour (defaults to the active accent)
  */
 @Composable
 fun TesseraLoader(
     modifier: Modifier = Modifier,
     size: Dp = 66.dp,
     color: Color = Tessera.colors.primary,
-    gradient: Boolean = true,
 ) {
     // Glyph path, transformed into the 512-scene once.
     val glyphPath = remember {
@@ -213,9 +189,6 @@ fun TesseraLoader(
         }
         p.asAndroidPath().transform(m)
         p
-    }
-    val glyphBounds = remember(glyphPath) {
-        RectF().also { glyphPath.asAndroidPath().computeBounds(it, true) }
     }
 
     // Honour "remove animations" (developer options / accessibility): show the
@@ -249,7 +222,7 @@ fun TesseraLoader(
             if (frame.t > 0.001f) {
                 drawPath(
                     path = glyphPath,
-                    brush = boxBrush(color, gradient, glyphBounds.left, glyphBounds.top, glyphBounds.right, glyphBounds.bottom),
+                    color = color,
                     alpha = frame.t.coerceIn(0f, 1f),
                 )
             }
@@ -258,7 +231,7 @@ fun TesseraLoader(
                 frame.p.forEach { tile ->
                     if (tile.op > 0.001f && tile.w > 0f && tile.h > 0f) {
                         drawRoundRect(
-                            brush = boxBrush(color, gradient, tile.x, tile.y, tile.x + tile.w, tile.y + tile.h),
+                            color = color,
                             topLeft = Offset(tile.x, tile.y),
                             size = Size(max(0f, tile.w), max(0f, tile.h)),
                             cornerRadius = CornerRadius(tile.rx, tile.rx),

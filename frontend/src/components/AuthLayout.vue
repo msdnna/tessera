@@ -132,7 +132,7 @@ onBeforeUnmount(() => {
 
     <div class="auth-stage">
       <div class="auth-header">
-        <BrandLogo class="auth-logo" :height="30" />
+        <BrandLogo class="auth-logo" :height="22" :mark="false" />
         <span v-if="title" class="auth-title">{{ title }}</span>
       </div>
 

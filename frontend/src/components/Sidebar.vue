@@ -167,7 +167,9 @@ async function deleteWorkspace() {
 <template>
   <div class="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
     <div class="brand">
-      <BrandLogo class="brand-logo" :height="22" :wordmark="!collapsed" />
+      <!-- Expanded: wordmark sized so its text stays no taller than the tool icons
+           to its right. Collapsed rail: the mark, a touch larger. -->
+      <BrandLogo class="brand-logo" :height="collapsed ? 26 : 19" :mark="collapsed" :wordmark="!collapsed" />
       <!-- Tools live here (right of the logo) when expanded; when the rail is
            collapsed (desktop) they move to the header instead. -->
       <WorkspaceTools

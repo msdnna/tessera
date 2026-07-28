@@ -22,10 +22,11 @@ let handle = null
 function mount() {
   if (!host.value) return
   handle?.destroy()
-  // Accent → each tile/glyph carries the brand diagonal accent gradient (theme-
-  // reactive via the App.vue #t-accent-grad-svg def). White → flat white for the
-  // purple splash / coloured overlays. Mirrors the Android accentGradient/flat fill.
-  const paint = props.variant === 'white' ? '#ffffff' : 'url(#t-accent-grad-svg)'
+  // Solid fill (no per-tile gradient): a same-hue gradient rotates *with* the
+  // spinning group and snaps back on each turn, which reads as a glitch — so the
+  // accent variant paints flat `currentColor` (--t-primary, see CSS) and white
+  // paints flat white, mirroring the Android loader.
+  const paint = props.variant === 'white' ? '#ffffff' : 'currentColor'
   handle = mountTesseraLoader(host.value, { size: props.size, paint })
 }
 

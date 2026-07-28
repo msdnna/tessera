@@ -186,9 +186,9 @@ fun Sidebar(
                 Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 12.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Full brand lockup (mark + "tessera" wordmark), height matched to
-                // the header icons; icons stay right-aligned via the spacer.
-                BrandLockup(height = 22.dp)
+                // Expanded drawer shows the "tessera" wordmark alone (the mark is for
+                // the collapsed/compact contexts); height matched to the header icons.
+                BrandLockup(height = 22.dp, mark = false)
                 Spacer(Modifier.weight(1f))
                 Box {
                     IonIconButton(Ion.GIT_BRANCH, onClick = onOpenGitlab)

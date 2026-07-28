@@ -42,9 +42,10 @@ fun MtLogo(
 }
 
 /**
- * The full brand lockup: the "t" mark + the "tessera" wordmark, both accent-tinted
- * (with the soft gradient by default). [height] is the mark height; the wordmark is
- * optically smaller so its cap aligns with the glyph body. Mirrors the web BrandLogo.
+ * The brand lockup: the "t" [mark] and/or the "tessera" [wordmark], both accent-
+ * tinted (with the soft gradient by default). [height] is the box height; alongside
+ * the mark the wordmark is optically smaller, on its own it fills the height.
+ * Mirrors the web BrandLogo (expanded sidebar / login show the wordmark alone).
  */
 @Composable
 fun BrandLockup(
@@ -52,21 +53,25 @@ fun BrandLockup(
     height: Dp = 22.dp,
     tint: Color = Tessera.colors.primary,
     gradient: Boolean = true,
+    mark: Boolean = true,
+    wordmark: Boolean = true,
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(height * 0.28f),
     ) {
-        MtLogo(size = height, tint = tint, gradient = gradient)
-        Image(
-            painter = painterResource(R.drawable.ic_wordmark),
-            contentDescription = "tessera",
-            colorFilter = ColorFilter.tint(tint),
-            modifier = Modifier
-                .then(if (gradient) Modifier.accentGradientTint(tint) else Modifier)
-                .height(height * 0.6f)
-                .aspectRatio(3291f / 675f),
-        )
+        if (mark) MtLogo(size = height, tint = tint, gradient = gradient)
+        if (wordmark) {
+            Image(
+                painter = painterResource(R.drawable.ic_wordmark),
+                contentDescription = "tessera",
+                colorFilter = ColorFilter.tint(tint),
+                modifier = Modifier
+                    .then(if (gradient) Modifier.accentGradientTint(tint) else Modifier)
+                    .height(if (mark) height * 0.6f else height * 0.92f)
+                    .aspectRatio(3291f / 675f),
+            )
+        }
     }
 }
