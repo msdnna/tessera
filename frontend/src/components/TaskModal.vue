@@ -939,7 +939,7 @@ function eventText(e) {
 
 <template>
   <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <n-card style="width: 640px; max-width: 94vw" role="dialog" :bordered="false">
+    <n-card class="tm-card" role="dialog" :bordered="false">
       <n-spin :show="loading" :rotate="false">
         <template #icon><TesseraSpinner /></template>
         <div class="form">
@@ -994,6 +994,7 @@ function eventText(e) {
             :readonly="readonly"
           />
 
+          <div class="tm-col-left">
           <div class="props" :class="{ 'tm-ro': readonly }">
             <!-- priority -->
             <div class="prow">
@@ -1383,7 +1384,9 @@ function eventText(e) {
               @persist="saveDesc"
             />
           </div>
+          </div>
 
+          <div class="tm-col-right">
           <!-- Subtasks / comments / relations / files / history (#8) -->
           <!-- Keyed by task so the line indicator doesn't slide when switching
                between a task and its subtask / related task. -->
@@ -1659,6 +1662,7 @@ function eventText(e) {
               </div>
             </n-tab-pane>
           </n-tabs>
+          </div>
         </div>
       </n-spin>
 
@@ -1718,10 +1722,63 @@ function eventText(e) {
 </template>
 
 <style scoped>
+.tm-card {
+  width: 640px;
+  max-width: 94vw;
+}
 .form {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+/* Narrow (default): the column wrappers are transparent, so title / props /
+   description / tabs stack exactly as before. Two-column layout kicks in only
+   on wide screens below. The tabs node is never re-mounted (CSS-only reflow),
+   so tab + editor state survive resizing across the breakpoint. */
+.tm-col-left,
+.tm-col-right {
+  display: contents;
+}
+@media (min-width: 1100px) {
+  .tm-card {
+    width: min(1100px, 96vw);
+  }
+  .form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    column-gap: 20px;
+    align-items: start;
+  }
+  /* Head, GitLab line and title span both columns. */
+  .modal-head,
+  .gl-line,
+  .title-input {
+    grid-column: 1 / -1;
+  }
+  .tm-col-left {
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+  .tm-col-right {
+    grid-column: 2;
+    display: block;
+    min-width: 0;
+  }
+  /* Independent scroll per column (a reference tracker-style); footer lives in the card's
+     #footer slot so it stays pinned full-width. Viewport-based cap avoids
+     depending on the n-card/n-spin height cascade. */
+  .tm-col-left,
+  .tm-col-right {
+    max-height: calc(90vh - 220px);
+    overflow-y: auto;
+  }
+  /* Align the right column's tabs with the left column's first property row. */
+  .tm-col-right .detail-tabs {
+    margin-top: 0;
+  }
 }
 .title-input :deep(input) {
   font-size: 18px;
