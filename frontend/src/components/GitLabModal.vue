@@ -29,8 +29,8 @@ import {
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
-import GitLabJournalModal from '@/components/GitLabJournalModal.vue'
-import ConflictResolverModal from '@/components/ConflictResolverModal.vue'
+import GitLabJournalPanel from '@/components/GitLabJournalPanel.vue'
+import ConflictResolverPanel from '@/components/ConflictResolverPanel.vue'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PRIORITY_LABELS } from '@/styles/tokens'
@@ -115,7 +115,13 @@ const wbFetchTemplates = ref(false) // offer repo issue templates when creating
 const bindings = ref([])
 // The modal expands into a right pane for editing either the write-back action
 // bindings or the GL→Tessera label-parsing rules. null = collapsed (single pane).
-const rightMode = ref(null) // null | 'actions' | 'rules'
+const rightMode = ref(null) // null | 'actions' | 'rules' | 'journal' | 'conflicts'
+const RIGHT_TITLES = {
+  actions: 'Действия обратной записи',
+  rules: 'Правила разбора меток GitLab',
+  journal: 'Журнал синхронизации',
+  conflicts: 'Конфликты',
+}
 function openRight(mode) {
   rightMode.value = rightMode.value === mode ? null : mode
 }
@@ -727,22 +733,28 @@ async function syncNow() {
 }
 
 // ── sync journal + write-back conflicts ──
-const journalShow = ref(false)
-const conflictShow = ref(false)
+// Both now open inside the modal's right pane (rightMode), not separate modals.
+// The active section's menu item is highlighted so it's clear what's open.
 const conflictCount = ref(0)
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 const syncMenu = computed(() => [
-  { label: 'Журнал синхронизации', key: 'journal', icon: menuIcon(TimeOutline) },
+  {
+    label: 'Журнал синхронизации',
+    key: 'journal',
+    icon: menuIcon(TimeOutline),
+    props: { class: rightMode.value === 'journal' ? 'gl-menu-active' : '' },
+  },
   {
     label: conflictCount.value ? `Конфликты (${conflictCount.value})` : 'Конфликты',
     key: 'conflicts',
     icon: menuIcon(WarningOutline),
     disabled: !conflictCount.value,
+    props: { class: rightMode.value === 'conflicts' ? 'gl-menu-active' : '' },
   },
 ])
 function onSyncMenu(key) {
-  if (key === 'journal') journalShow.value = true
-  else if (key === 'conflicts') conflictShow.value = true
+  if (key === 'journal') openRight('journal')
+  else if (key === 'conflicts') openRight('conflicts')
 }
 async function loadConflictCount() {
   try {
@@ -1025,7 +1037,7 @@ watch(
           <div v-if="rightMode" class="gl-right gl-scroll">
             <div class="gl-right-head">
               <span class="gl-right-title">
-                {{ rightMode === 'actions' ? 'Действия обратной записи' : 'Правила разбора меток GitLab' }}
+                {{ RIGHT_TITLES[rightMode] }}
               </span>
               <n-button text size="small" aria-label="Закрыть" @click="rightMode = null">
                 <n-icon :component="CloseOutline" />
@@ -1136,7 +1148,7 @@ watch(
             </template>
 
             <!-- RULES: GL → Tessera label parsing -->
-            <template v-else>
+            <template v-else-if="rightMode === 'rules'">
               <div class="gl-grid gl-grid-rules">
                 <n-text depth="3" class="lbl">Колонка по умолчанию</n-text>
                 <n-select v-model:value="defaultColumn" :options="columnOptions" size="small" placeholder="напр. К работе" />
@@ -1188,6 +1200,16 @@ watch(
                 Правило
               </n-button>
             </template>
+
+            <!-- JOURNAL: sync run history -->
+            <git-lab-journal-panel v-else-if="rightMode === 'journal'" :ws-id="wsId" />
+
+            <!-- CONFLICTS: write-back conflict resolver -->
+            <conflict-resolver-panel
+              v-else-if="rightMode === 'conflicts'"
+              :ws-id="wsId"
+              @resolved="loadConflictCount"
+            />
           </div>
         </div>
       </n-card>
@@ -1195,12 +1217,6 @@ watch(
       <loader-overlay :show="syncing" contained :messages="SYNC_MESSAGES" :interval="2600" />
     </div>
   </n-modal>
-  <git-lab-journal-modal v-model:show="journalShow" :ws-id="wsId" />
-  <conflict-resolver-modal
-    v-model:show="conflictShow"
-    :ws-id="wsId"
-    @resolved="loadConflictCount"
-  />
 </template>
 
 <style scoped>
@@ -1208,6 +1224,18 @@ watch(
 .gl-sync-caret {
   padding-left: 6px;
   padding-right: 6px;
+}
+</style>
+
+<!-- Unscoped: the sync dropdown is teleported, so the active-item highlight
+     (shows which section — journal/conflicts — is open in the right pane)
+     can't be reached by a scoped selector. -->
+<style>
+.n-dropdown-option.gl-menu-active .n-dropdown-option-body,
+.n-dropdown-option-body.gl-menu-active {
+  color: var(--t-primary);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--t-primary) 12%, transparent);
 }
 </style>
 

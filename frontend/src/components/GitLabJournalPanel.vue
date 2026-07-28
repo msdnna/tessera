@@ -1,7 +1,7 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
-import { NModal, NCard, NIcon, NButton, useMessage } from 'naive-ui'
-import { LogoGitlab, OpenOutline, RefreshOutline } from '@vicons/ionicons5'
+import { ref, computed, watch, onMounted } from 'vue'
+import { NIcon, NButton, useMessage } from 'naive-ui'
+import { OpenOutline, RefreshOutline } from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
@@ -9,11 +9,11 @@ import { PRIORITY_LABELS } from '@/styles/tokens'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
 
+// Embeddable body of the GitLab sync journal — rendered inside the GitLab
+// integration modal's right pane (no modal/card wrapper of its own).
 const props = defineProps({
-  show: { type: Boolean, default: false },
   wsId: { type: String, default: null },
 })
-const emit = defineEmits(['update:show'])
 
 const message = useMessage()
 const theme = useThemeStore()
@@ -28,6 +28,11 @@ const selectedAction = ref(null) // { ...action, runId }
 const retrying = ref(false)
 
 async function loadRuns() {
+  if (!props.wsId) return
+  runs.value = []
+  actionsByRun.value = {}
+  expandedRunId.value = null
+  selectedAction.value = null
   loading.value = true
   try {
     const { data } = await glApi.syncRuns(props.wsId)
@@ -151,180 +156,154 @@ function pushPayloadText() {
   }
 }
 
-watch(
-  () => [props.show, props.wsId],
-  ([show]) => {
-    if (!show) return
-    runs.value = []
-    actionsByRun.value = {}
-    expandedRunId.value = null
-    selectedAction.value = null
-    loadRuns()
-  },
-  { immediate: false },
-)
+onMounted(loadRuns)
+watch(() => props.wsId, loadRuns)
+
+defineExpose({ reload: loadRuns })
 </script>
 
 <template>
-  <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <div class="j-wrap">
-      <n-card class="j-card" style="width: 880px; max-width: 96vw" role="dialog">
-        <template #header>
-          <span class="j-title">
-            <n-icon :component="LogoGitlab" class="grad-icon" /> Журнал синхронизации
-          </span>
-        </template>
-
-        <div class="j-body">
-          <!-- LEFT: runs + their actions -->
-          <div class="j-left">
+  <div class="jp-wrap">
+    <div class="j-body">
+      <!-- LEFT: runs + their actions -->
+      <div class="j-left">
+        <empty-state
+          v-if="!loading && !runs.length"
+          size="small"
+          text="Журнал пуст — синхронизация ещё не запускалась"
+        />
+        <div v-for="run in runs" :key="run.id" class="j-run" :class="{ open: expandedRunId === run.id }">
+          <button class="j-run-head" @click="toggleRun(run)">
+            <span class="j-kind" :class="run.kind">{{ run.kind === 'pull' ? 'Pull' : 'Push' }}</span>
+            <span class="j-run-main">
+              <span class="j-run-time">{{ fmtTime(run.started_at) }}</span>
+              <span class="j-run-meta">{{ TRIGGER_LABEL[run.trigger] }} · {{ runCounts(run) }}</span>
+            </span>
+            <span class="j-dot" :class="run.status" :title="STATUS_LABEL[run.status]" />
+          </button>
+          <div v-if="expandedRunId === run.id" class="j-actions">
+            <div v-if="loadingActions" class="j-muted">Загрузка…</div>
             <empty-state
-              v-if="!loading && !runs.length"
+              v-else-if="!(actionsByRun[run.id] || []).length"
               size="small"
-              text="Журнал пуст — синхронизация ещё не запускалась"
+              text="Нет записанных действий"
             />
-            <div v-for="run in runs" :key="run.id" class="j-run" :class="{ open: expandedRunId === run.id }">
-              <button class="j-run-head" @click="toggleRun(run)">
-                <span class="j-kind" :class="run.kind">{{ run.kind === 'pull' ? 'Pull' : 'Push' }}</span>
-                <span class="j-run-main">
-                  <span class="j-run-time">{{ fmtTime(run.started_at) }}</span>
-                  <span class="j-run-meta">{{ TRIGGER_LABEL[run.trigger] }} · {{ runCounts(run) }}</span>
-                </span>
-                <span class="j-dot" :class="run.status" :title="STATUS_LABEL[run.status]" />
-              </button>
-              <div v-if="expandedRunId === run.id" class="j-actions">
-                <div v-if="loadingActions" class="j-muted">Загрузка…</div>
-                <empty-state
-                  v-else-if="!(actionsByRun[run.id] || []).length"
-                  size="small"
-                  text="Нет записанных действий"
-                />
-                <button
-                  v-for="a in actionsByRun[run.id] || []"
-                  :key="a.id"
-                  class="j-action"
-                  :class="{ sel: selectedAction && selectedAction.id === a.id, fail: a.status === 'fail' }"
-                  @click="selectAction(run, a)"
-                >
-                  <span class="j-op" :class="a.op">{{ a.op }}</span>
-                  <span class="j-action-sum">{{ a.summary }}</span>
-                </button>
+            <button
+              v-for="a in actionsByRun[run.id] || []"
+              :key="a.id"
+              class="j-action"
+              :class="{ sel: selectedAction && selectedAction.id === a.id, fail: a.status === 'fail' }"
+              @click="selectAction(run, a)"
+            >
+              <span class="j-op" :class="a.op">{{ a.op }}</span>
+              <span class="j-action-sum">{{ a.summary }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: selected action detail / diff -->
+      <div class="j-right">
+        <empty-state
+          v-if="!selectedAction"
+          size="small"
+          text="Выберите действие, чтобы увидеть детали"
+        />
+        <template v-else>
+          <div class="j-d-head">
+            <span class="j-d-dir" :class="selectedAction.direction">
+              {{ selectedAction.direction === 'pull' ? 'GitLab → Tessera' : 'Tessera → GitLab' }}
+            </span>
+            <span class="j-d-sum">{{ selectedAction.summary }}</span>
+          </div>
+
+          <!-- pull: changed fields (update) -->
+          <div v-if="fields" class="j-sec">
+            <div v-for="[key, f] in orderedEntries(fields)" :key="key" class="j-field">
+              <span class="j-fl">{{ FIELD_LABELS[key] || key }}</span>
+              <div class="j-diff">
+                <span class="j-before">{{ fmtVal(key, f.before) }}</span>
+                <span class="j-arrow">→</span>
+                <span class="j-after">{{ fmtVal(key, f.after) }}</span>
               </div>
             </div>
           </div>
 
-          <!-- RIGHT: selected action detail / diff -->
-          <div class="j-right">
-            <empty-state
-              v-if="!selectedAction"
-              size="small"
-              text="Выберите действие, чтобы увидеть детали"
-            />
-            <template v-else>
-              <div class="j-d-head">
-                <span class="j-d-dir" :class="selectedAction.direction">
-                  {{ selectedAction.direction === 'pull' ? 'GitLab → Tessera' : 'Tessera → GitLab' }}
-                </span>
-                <span class="j-d-sum">{{ selectedAction.summary }}</span>
-              </div>
-
-              <!-- pull: changed fields (update) -->
-              <div v-if="fields" class="j-sec">
-                <div v-for="[key, f] in orderedEntries(fields)" :key="key" class="j-field">
-                  <span class="j-fl">{{ FIELD_LABELS[key] || key }}</span>
-                  <div class="j-diff">
-                    <span class="j-before">{{ fmtVal(key, f.before) }}</span>
-                    <span class="j-arrow">→</span>
-                    <span class="j-after">{{ fmtVal(key, f.after) }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- pull: created task snapshot -->
-              <div v-if="after" class="j-sec">
-                <div v-for="[key, v] in orderedEntries(after)" :key="key" class="j-field">
-                  <span class="j-fl">{{ FIELD_LABELS[key] || key }}</span>
-                  <span class="j-after">{{ fmtVal(key, v) }}</span>
-                </div>
-              </div>
-
-              <!-- tags -->
-              <div v-if="tags" class="j-sec">
-                <div class="j-fl">Теги</div>
-                <div class="j-chips">
-                  <span v-for="t in tags.added || []" :key="'a' + t" class="j-chip add">+ {{ t }}</span>
-                  <span v-for="t in tags.removed || []" :key="'r' + t" class="j-chip rem">− {{ t }}</span>
-                </div>
-              </div>
-
-              <!-- comments -->
-              <div v-if="comments && comments.added" class="j-sec">
-                <div class="j-fl">Новые комментарии ({{ comments.added }})</div>
-                <div v-for="(b, i) in comments.new || []" :key="i" class="j-comment">{{ b }}</div>
-              </div>
-
-              <!-- assignees -->
-              <div v-if="assignees && assignees.length" class="j-sec">
-                <div class="j-fl">Исполнители (GitLab)</div>
-                <div class="j-chips">
-                  <span v-for="a in assignees" :key="a" class="j-chip">{{ a }}</span>
-                </div>
-              </div>
-
-              <!-- push: payload + result/error -->
-              <div v-if="isPush" class="j-sec">
-                <div class="j-field">
-                  <span class="j-fl">Действие</span>
-                  <span class="j-after">{{ pushPayloadText() }}</span>
-                </div>
-                <div v-if="selectedAction.status === 'fail'" class="j-error">
-                  {{ selectedAction.error || detail.error || 'Ошибка доставки' }}
-                </div>
-                <div v-else-if="detail.result" class="j-ok">{{ detail.result }}</div>
-              </div>
-
-              <div class="j-d-foot">
-                <a v-if="detail.url" class="j-link" :href="detail.url" target="_blank" rel="noopener">
-                  <n-icon :component="OpenOutline" /> Открыть в GitLab
-                </a>
-                <n-button
-                  v-if="canRetry"
-                  size="small"
-                  type="primary"
-                  :loading="retrying"
-                  @click="retry"
-                >
-                  <template #icon><n-icon :component="RefreshOutline" /></template>
-                  Повторить
-                </n-button>
-              </div>
-            </template>
+          <!-- pull: created task snapshot -->
+          <div v-if="after" class="j-sec">
+            <div v-for="[key, v] in orderedEntries(after)" :key="key" class="j-field">
+              <span class="j-fl">{{ FIELD_LABELS[key] || key }}</span>
+              <span class="j-after">{{ fmtVal(key, v) }}</span>
+            </div>
           </div>
-        </div>
-      </n-card>
-      <loader-overlay :show="loading" contained />
+
+          <!-- tags -->
+          <div v-if="tags" class="j-sec">
+            <div class="j-fl">Теги</div>
+            <div class="j-chips">
+              <span v-for="t in tags.added || []" :key="'a' + t" class="j-chip add">+ {{ t }}</span>
+              <span v-for="t in tags.removed || []" :key="'r' + t" class="j-chip rem">− {{ t }}</span>
+            </div>
+          </div>
+
+          <!-- comments -->
+          <div v-if="comments && comments.added" class="j-sec">
+            <div class="j-fl">Новые комментарии ({{ comments.added }})</div>
+            <div v-for="(b, i) in comments.new || []" :key="i" class="j-comment">{{ b }}</div>
+          </div>
+
+          <!-- assignees -->
+          <div v-if="assignees && assignees.length" class="j-sec">
+            <div class="j-fl">Исполнители (GitLab)</div>
+            <div class="j-chips">
+              <span v-for="a in assignees" :key="a" class="j-chip">{{ a }}</span>
+            </div>
+          </div>
+
+          <!-- push: payload + result/error -->
+          <div v-if="isPush" class="j-sec">
+            <div class="j-field">
+              <span class="j-fl">Действие</span>
+              <span class="j-after">{{ pushPayloadText() }}</span>
+            </div>
+            <div v-if="selectedAction.status === 'fail'" class="j-error">
+              {{ selectedAction.error || detail.error || 'Ошибка доставки' }}
+            </div>
+            <div v-else-if="detail.result" class="j-ok">{{ detail.result }}</div>
+          </div>
+
+          <div class="j-d-foot">
+            <a v-if="detail.url" class="j-link" :href="detail.url" target="_blank" rel="noopener">
+              <n-icon :component="OpenOutline" /> Открыть в GitLab
+            </a>
+            <n-button
+              v-if="canRetry"
+              size="small"
+              type="primary"
+              :loading="retrying"
+              @click="retry"
+            >
+              <template #icon><n-icon :component="RefreshOutline" /></template>
+              Повторить
+            </n-button>
+          </div>
+        </template>
+      </div>
     </div>
-  </n-modal>
+    <loader-overlay :show="loading" contained />
+  </div>
 </template>
 
 <style scoped>
-.j-wrap {
+.jp-wrap {
   position: relative;
-  max-width: 96vw;
-  border-radius: 12px;
-}
-.j-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
 }
 .j-body {
   display: grid;
-  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
   gap: 0;
-  height: 60vh;
-  min-height: 360px;
+  height: 58vh;
+  min-height: 340px;
 }
 .j-left {
   overflow-y: auto;
