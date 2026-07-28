@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>tessera — лоадер: референс-реализация</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Fredoka,system-ui,sans-serif;background:#f4f2fb;color:#251f42;padding:36px}
+h1{font-size:24px;font-weight:600;margin:0 0 4px}p.sub{color:#6b6386;font-size:14px;margin:0 0 26px;max-width:640px}
+h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#8b84a8;margin:30px 0 14px}
+.row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.card{background:#fff;border:1px solid #eae7f7;border-radius:20px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.card .cap{font-size:12px;color:#8b84a8}
+.grad{background:linear-gradient(45deg,#6d5fe0,#7c6cff,#9183ff);border:none}.grad .cap{color:rgba(255,255,255,.85)}
+.phone{width:250px;height:330px;border-radius:26px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+.phone.splash{background:linear-gradient(45deg,#6d5fe0,#7c6cff,#9183ff)}.phone.light{background:#fff;border:1px solid #eae7f7}
+.brand{position:absolute;bottom:26px;display:flex;flex-direction:column;align-items:center}
+.brand b{font-weight:500;font-size:22px;letter-spacing:-.6px;color:#fff}
+.brand s{text-decoration:none;font-weight:400;font-size:11px;color:rgba(255,255,255,.6);margin-top:3px}
+.hint{position:absolute;bottom:30px;font-size:13px;color:rgba(60,48,110,.5)}
+code{background:#efedfb;padding:2px 6px;border-radius:6px;font-size:12px}
+pre{background:#1e1a33;color:#e6e1ff;padding:16px;border-radius:14px;overflow:auto;font-size:12px;line-height:1.55;max-width:760px}
+</style>
+</head>
+<body>
+<h1>tessera — лоадер</h1>
+<p class="sub">Референс-реализация фирменного лоадера. Вступление проигрывается один раз («t» с тессерой в углу → тессера растёт и закрывает букву), затем бесконечный цикл: тессера разворачивается в вид, сворачивается назад и медленно поворачивается на 90°. Виды: символ приложения, канбан, список, таймлайн, гант, матрица.</p>
+
+<h2>Экраны</h2>
+<div class="row">
+  <div class="card"><div class="phone splash"><div id="l1"></div><div class="brand"><b>tessera</b><s>by&nbsp;msdnna</s></div></div><span class="cap">Сплеш — белый на фиолетовом</span></div>
+  <div class="card"><div class="phone light"><div id="l2"></div><div class="hint">Загрузка…</div></div><span class="cap">Загрузка в приложении</span></div>
+</div>
+
+<h2>Размеры</h2>
+<div class="row">
+  <div class="card"><div id="l3"></div><span class="cap">160 · фиолетовый</span></div>
+  <div class="card grad"><div id="l4"></div><span class="cap">160 · белый</span></div>
+  <div class="card"><div id="l5"></div><span class="cap">72 · компактный</span></div>
+  <div class="card"><div id="l6"></div><span class="cap">40 · инлайн</span></div>
+</div>
+
+<h2>Подключение</h2>
+<pre>&lt;script src="tessera-loader.js"&gt;&lt;/script&gt;
+&lt;div id="loader"&gt;&lt;/div&gt;
+&lt;script&gt;
+  const l = mountTesseraLoader(document.getElementById('loader'), {
+    size: 140,          // px
+    paint: '#7c6cff',   // любой CSS-цвет или url(#gradient)
+    loop: true          // false — проиграть один раз и остановиться
+  });
+  // l.destroy() — снять лоадер
+&lt;/script&gt;</pre>
+<p class="sub">Геометрия всех кадров и тайминги — в <code>loader-states.json</code>. Спецификация для нативной реализации — в <code>README.md</code>.</p>
+
+<script src="tessera-loader.js"></script>
+<script>
+mountTesseraLoader(document.getElementById('l1'),{size:120,paint:'#fff'});
+mountTesseraLoader(document.getElementById('l2'),{size:120,paint:'#7c6cff'});
+mountTesseraLoader(document.getElementById('l3'),{size:160,paint:'#7c6cff'});
+mountTesseraLoader(document.getElementById('l4'),{size:160,paint:'#fff'});
+mountTesseraLoader(document.getElementById('l5'),{size:72,paint:'#7c6cff'});
+mountTesseraLoader(document.getElementById('l6'),{size:40,paint:'#7c6cff'});
+</script>
+</body>
+</html>

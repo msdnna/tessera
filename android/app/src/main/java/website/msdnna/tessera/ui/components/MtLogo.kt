@@ -14,9 +14,10 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradientTint
 
 /**
- * The in-app "mt" monogram. When [gradient] is on (the accent-tinted default) it
- * carries the soft accent gradient; pass `gradient = false` for a neutral
- * (grey) tint so it stays flat.
+ * The in-app tessera "t" mark (single glyph + corner tile). [size] is the glyph
+ * HEIGHT; the mark is taller than wide (~69×99), so width follows that aspect.
+ * When [gradient] is on (the accent-tinted default) it carries the soft accent
+ * gradient; pass `gradient = false` for a neutral (grey) tint so it stays flat.
  */
 @Composable
 fun MtLogo(
@@ -31,6 +32,6 @@ fun MtLogo(
         colorFilter = ColorFilter.tint(tint),
         modifier = modifier
             .then(if (gradient) Modifier.accentGradientTint(tint) else Modifier)
-            .size(width = size * (120f / 100f), height = size),
+            .size(width = size * (69.224f / 99.008f), height = size),
     )
 }

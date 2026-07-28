@@ -1,0 +1,49 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box}body{margin:0;font-family:Fredoka,system-ui,sans-serif;background:#f4f2fb;color:#251f42;padding:40px}h1{font-weight:600;font-size:28px;margin:0 0 4px}p.sub{color:#6b6386;margin:0 0 28px;font-size:14px}h2{font-size:15px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:#8b84a8;margin:34px 0 14px}.row{display:flex;flex-wrap:wrap;gap:20px;align-items:center}.card{background:#fff;border:1px solid #eae7f7;border-radius:18px;padding:22px;display:flex;flex-direction:column;align-items:center;gap:12px}.card.dark{background:linear-gradient(45deg,#6d5fe0,#7c6cff,#9183ff);border:none}.card .cap{font-size:12px;color:#8b84a8}.card.dark .cap{color:rgba(255,255,255,.8)}img{display:block}a{color:#6d5fe0;text-decoration:none;border-bottom:1px solid #c8c0f5}a:hover{color:#4b3bb3;border-bottom-color:#4b3bb3}code{background:#efedfb;padding:2px 6px;border-radius:6px;font-size:12px}</style></head><body>
+<h1>tessera — фирменные ассеты v2</h1><p class="sub">Строчная «t» + тессера · полное написание «tessera» · градиент #6D5FE0→#7C6CFF→#9183FF</p>
+
+<h2>Иконка</h2><div class="row">
+<div class="card"><img src="svg/icon.svg" width="150" height="150"><span class="cap">icon.svg</span></div>
+<div class="card"><img src="svg/icon-on-white.svg" width="150" height="150"><span class="cap">icon-on-white.svg</span></div>
+<div class="card"><img src="png/icon-512.png" width="150" height="150"><span class="cap">png/icon-512.png</span></div>
+</div>
+
+<h2>Знак</h2><div class="row">
+<div class="card"><img src="svg/mark-gradient.svg" height="90"><span class="cap">mark-gradient</span></div>
+<div class="card"><img src="svg/mark-black.svg" height="90"><span class="cap">mark-black</span></div>
+<div class="card"><img src="svg/mark-purple.svg" height="90"><span class="cap">mark-purple</span></div>
+<div class="card dark"><img src="svg/mark-white.svg" height="90"><span class="cap">mark-white</span></div>
+</div>
+
+<h2>Надпись</h2><div class="row">
+<div class="card"><img src="svg/wordmark.svg" height="54"><span class="cap">wordmark (тёмный)</span></div>
+<div class="card"><img src="svg/wordmark-gradient.svg" height="54"><span class="cap">wordmark-gradient</span></div>
+<div class="card dark"><img src="svg/wordmark-white.svg" height="54"><span class="cap">wordmark-white</span></div>
+<div class="card dark"><img src="svg/wordmark-deep.svg" height="54"><span class="cap">wordmark-deep</span></div>
+</div>
+
+<h2>Логотип</h2><div class="row">
+<div class="card"><img src="svg/logo-horizontal.svg" height="120"><span class="cap">logo-horizontal</span></div>
+<div class="card"><img src="svg/logo-vertical.svg" height="200"><span class="cap">logo-vertical</span></div>
+</div>
+<div class="row"><div class="card" style="padding:0;overflow:hidden"><img src="svg/logo-horizontal-on-purple.svg" height="150"><span class="cap" style="padding:10px">logo-horizontal-on-purple</span></div></div>
+
+<h2>Лоадер · анимированный</h2>
+<div class="row">
+<div class="card"><div id="pvl1"></div><span class="cap">фиолетовый на белом</span></div>
+<div class="card dark"><div id="pvl2"></div><span class="cap">белый на фиолетовом</span></div>
+<div class="card"><div id="pvl3"></div><span class="cap">компактный · 64</span></div>
+</div>
+<p class="sub" style="margin-top:10px">Живая реализация — <a href="loader/loader.html">loader/loader.html</a>. Движок без зависимостей: <code>loader/tessera-loader.js</code>, геометрия кадров и тайминги — <code>loader/loader-states.json</code>, спецификация для web и Android — <code>loader/README.md</code>.</p>
+<h2>Лоадер · статичная плитка</h2><div class="row">
+<div class="card dark"><img src="svg/loader-tessera-white.svg" width="80"><span class="cap">loader-tessera-white</span></div>
+<div class="card"><img src="svg/loader-tessera-purple.svg" width="80"><span class="cap">loader-tessera-purple</span></div>
+</div>
+<p class="sub" style="margin-top:8px">Для простого CSS/Lottie-вращения, когда полная анимация не нужна.</p>
+<script src="loader/tessera-loader.js"></script>
+<script>
+mountTesseraLoader(document.getElementById('pvl1'),{size:140,paint:'#7c6cff'});
+mountTesseraLoader(document.getElementById('pvl2'),{size:140,paint:'#fff'});
+mountTesseraLoader(document.getElementById('pvl3'),{size:64,paint:'#7c6cff'});
+</script>
+</body></html>

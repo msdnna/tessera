@@ -398,12 +398,13 @@ async function deleteWorkspace() {
   gap: 4px;
   padding: 2px 0;
 }
-/* The "mt" monogram (no badge, no wordmark), filled with the accent gradient via
-   a mask — mirrors the Android MtLogo. The glyph is wider than tall (120×100). */
+/* The tessera "t" mark (single glyph + corner tile, no wordmark), filled with the
+   accent gradient via a mask — mirrors the Android brand mark. The glyph is taller
+   than wide (~69×99), so height leads and width follows the aspect. */
 .brand-mark {
   display: block;
-  width: 34px;
-  height: 28px;
+  width: 21px;
+  height: 30px;
   flex: none;
   background: var(--t-accent-grad);
   -webkit-mask: url(/mark-white.svg) no-repeat center / contain;

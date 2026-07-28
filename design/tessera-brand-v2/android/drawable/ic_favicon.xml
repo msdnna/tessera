@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+  <path android:pathData="M11.28,0 H36.72 A11.28,11.28 0 0 1 48,11.28 V36.72 A11.28,11.28 0 0 1 36.72,48 H11.28 A11.28,11.28 0 0 1 0,36.72 V11.28 A11.28,11.28 0 0 1 11.28,0 Z">
+    <aapt:attr name="android:fillColor">
+      <gradient android:type="linear" android:startX="0" android:startY="48" android:endX="48" android:endY="0">
+        <item android:offset="0"   android:color="#FF6D5FE0"/>
+        <item android:offset="0.5" android:color="#FF7C6CFF"/>
+        <item android:offset="1"   android:color="#FF9183FF"/>
+      </gradient>
+    </aapt:attr>
+  </path>
+  <group android:translateX="7.629" android:translateY="8.294" android:scaleX="0.353" android:scaleY="0.353">
+    <group android:translateX="-72.952" android:translateY="86" android:scaleX="0.112" android:scaleY="0.112">
+      <path android:fillColor="#FFFFFFFF" android:pathData="M1101 9L1101 9Q1050 9 1013.500-2Q977-13 953-36Q929-59 917.500-94.500Q906-130 906-179L906-179L906-339L871-339Q842-340 830.500-356.500Q819-373 819-412L819-412Q819-448 833-465.500Q847-483 875-483L875-483L906-483L906-585Q906-605 909.500-621Q913-637 929-647.500Q945-658 981-658Q1017-658 1033-647Q1049-636 1052.500-619Q1056-602 1056-582L1056-582L1056-485L1123-487Q1142-487 1159-483.500Q1176-480 1187-464Q1198-448 1198-411L1198-411Q1198-377 1187.500-361Q1177-345 1160-340.500Q1143-336 1123-336L1123-336L1056-338L1056-185Q1056-169 1058.500-158.500Q1061-148 1066-143Q1071-138 1080-136Q1089-134 1102-134L1102-134Q1124-134 1141-130Q1158-126 1167.500-112Q1177-98 1177-65L1177-65Q1177-29 1166-13Q1155 3 1137.500 6Q1120 9 1101 9Z"/>
+    </group>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M61.5,2 H68.5 A5.5,5.5 0 0 1 74,7.5 V14.5 A5.5,5.5 0 0 1 68.5,20 H61.5 A5.5,5.5 0 0 1 56,14.5 V7.5 A5.5,5.5 0 0 1 61.5,2 Z"/>
+  </group>
+</vector>

@@ -26,7 +26,7 @@ backend/    Go + gin API (sqlc, pgx/v5, golang-migrate, WS-hub)
 frontend/   Vue 3 SPA (Vite, Naive UI, Pinia, Vue Router)
 android/    Kotlin + Compose клиент (online-first; см. android/ARCHITECTURE.md)
 tools/      bump-version.sh, build-android-release.sh
-design/     бренд-ассеты (design/tessera-brand/ — канон, не перегенерировать)
+design/     бренд-ассеты (design/tessera-brand-v2/ — канон, не перегенерировать)
 deploy/     прод-деплой (по мере необходимости)
 ```
 
@@ -139,9 +139,13 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
 - **Редактор описаний/комментариев — собственный `MarkdownEditor.vue`** (textarea +
   тулбар + Написать/Просмотр + @-mentions), хранит **Markdown**. **TipTap пробовали и
   отвергли** (тема/бандл) — не возвращать без явного запроса.
-- **Бренд:** канон в `design/tessera-brand/` (монограмма «mt» + плитка tessera, Fredoka,
-  градиент `#6D5FE0→#7C6CFF→#9183FF`). Сделано пользователем в Claude Design — **не
-  перегенерировать**. Android интегрирован; web-favicon — в рамках фронт-работы.
+- **Бренд:** канон в `design/tessera-brand-v2/` (одиночная строчная «t» + плитка
+  tessera, Fredoka, градиент `#6D5FE0→#7C6CFF→#9183FF`; монограмма «mt» из v1 больше
+  НЕ используется). Сделано пользователем — **не перегенерировать**. Интегрировано во
+  все клиенты (web/Android/desktop) в рамках ребренда 2026-07-28. Анимированный лоадер
+  живёт в `design/tessera-brand-v2/loader/` (`loader-states.json` — общий источник
+  чисел для web `src/utils/tesseraLoader.js` и Android `TesseraLoader.kt`, держать в
+  синхроне). v1 `design/tessera-brand/` оставлен в репо как история.
 
 ## Скиллы проекта (`.claude/skills/`)
 

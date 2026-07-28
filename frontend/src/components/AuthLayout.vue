@@ -231,8 +231,8 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Header above the card: monogram (no badge) on the left, screen title beside
-   it — mirrors the reference. The monogram is the white mark used as a CSS mask,
+/* Header above the card: brand mark (no badge) on the left, screen title beside
+   it — mirrors the reference. The mark is the white "t" glyph used as a CSS mask,
    tinted brand-purple in light mode and white in dark mode. */
 .auth-header {
   display: flex;
@@ -242,15 +242,12 @@ onBeforeUnmount(() => {
   margin: 0 4px 18px;
 }
 .auth-logo {
-  width: 40px;
-  height: 34px;
+  width: 28px;
+  height: 40px;
   flex: none;
   background-color: #6d5fe0;
   -webkit-mask: url(/mark-white.svg) center / contain no-repeat;
   mask: url(/mark-white.svg) center / contain no-repeat;
-  /* The monogram sits in the upper part of its viewBox, so box-centring leaves it
-     reading higher than the title — nudge it down onto the title's axis. */
-  transform: translateY(3px);
 }
 [data-theme='dark'] .auth-logo {
   background-color: #ffffff;
