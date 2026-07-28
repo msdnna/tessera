@@ -26,6 +26,14 @@ import {
   RibbonOutline,
   CloseOutline,
   ArchiveOutline,
+  AlbumsOutline,
+  SwapVerticalOutline,
+  FlagOutline,
+  PersonOutline,
+  PricetagOutline,
+  ListOutline,
+  CalendarOutline,
+  GitBranchOutline,
 } from '@vicons/ionicons5'
 import {
   boards,
@@ -225,8 +233,27 @@ watch(autoCollapseEmpty, (on) => {
 // slides the tools off-screen. Collapses again on an outside click.
 const composerExpanded = ref(false)
 const subbarEl = ref(null)
+let collapseTimer = null
 function expandComposer() {
+  if (collapseTimer) {
+    clearTimeout(collapseTimer)
+    collapseTimer = null
+  }
   composerExpanded.value = true
+}
+// Hover-driven collapse: leaving the bar collapses it after a short grace period,
+// unless a teleported menu (chip dropdown / picker) is open — closing that would
+// otherwise snap the bar shut mid-interaction. Re-entering cancels the timer.
+function scheduleCollapse() {
+  if (collapseTimer) clearTimeout(collapseTimer)
+  collapseTimer = setTimeout(() => {
+    collapseTimer = null
+    // Keep open while a teleported menu is up or focus is still inside the bar
+    // (e.g. the search input is being typed in).
+    if (document.querySelector('.n-dropdown-menu, .n-popover, .n-popselect, .n-base-select-menu')) return
+    if (subbarEl.value?.contains(document.activeElement)) return
+    composerExpanded.value = false
+  }, 260)
 }
 function onDocPointerDown(e) {
   if (!composerExpanded.value) return
@@ -411,45 +438,70 @@ function resetFilters() {
 // ── composer bar: grouping + sort + filters as removable chips ──
 // All facets render as chips over the existing state; an "add" dropdown mutates
 // the same refs. The search box lives in the bar too (filters.q).
+// Per-kind icon shown on composer chips in place of the text prefix
+// («Группировка:», «Сорт:», «Приоритет:» …). The customize panel still uses
+// the full `label` (with prefix) since it renders chips as plain text.
+const CHIP_ICONS = {
+  group: AlbumsOutline,
+  sort: SwapVerticalOutline,
+  priority: FlagOutline,
+  assignee: PersonOutline,
+  tag: PricetagOutline,
+  status: ListOutline,
+  milestone: RibbonOutline,
+  due: CalendarOutline,
+}
+function sortFieldLabel(field) {
+  return sortFieldOptions.find((o) => o.value === field)?.label || field
+}
 const facetChips = computed(() => {
   const out = []
-  out.push({ kind: 'group', label: `Группировка: ${groupModeLabel.value}` })
+  const g = groupModeLabel.value
+  out.push({ kind: 'group', icon: CHIP_ICONS.group, text: g, label: `Группировка: ${g}` })
   sortLevels.value.forEach((l, i) => {
-    const f = sortFieldOptions.find((o) => o.value === l.field)?.label || l.field
-    out.push({ kind: 'sort', i, label: `Сорт: ${f} ${l.dir === 'desc' ? '↓' : '↑'}` })
+    const f = sortFieldLabel(l.field)
+    const arrow = l.dir === 'desc' ? '↓' : '↑'
+    out.push({ kind: 'sort', i, icon: CHIP_ICONS.sort, text: `${f} ${arrow}`, label: `Сорт: ${f} ${arrow}` })
   })
-  filters.priorities.forEach((p) =>
-    out.push({ kind: 'priority', value: p, label: `Приоритет: ${PRIORITY_LABELS[p]}` }),
-  )
+  filters.priorities.forEach((p) => {
+    const t = PRIORITY_LABELS[p]
+    out.push({ kind: 'priority', value: p, icon: CHIP_ICONS.priority, text: t, label: `Приоритет: ${t}` })
+  })
   filters.assignees.forEach((a) => {
     let name
     if (typeof a === 'string' && a.startsWith('gl:')) {
       const u = a.slice(3)
-      const g = gitlabMembersList.value.find((x) => x.gl_username === u)
-      name = (g && (g.gl_name || g.gl_username)) || u
+      const g2 = gitlabMembersList.value.find((x) => x.gl_username === u)
+      name = (g2 && (g2.gl_name || g2.gl_username)) || u
     } else {
       name = membersMap[a]?.name || '—'
     }
-    out.push({ kind: 'assignee', value: a, label: `Исполнитель: ${name}` })
+    out.push({ kind: 'assignee', value: a, icon: CHIP_ICONS.assignee, text: name, label: `Исполнитель: ${name}` })
   })
-  filters.tags.forEach((t) =>
-    out.push({ kind: 'tag', value: t, label: `Тег: ${tagsMap[t]?.name || '—'}` }),
-  )
-  filters.statuses.forEach((s) =>
-    out.push({ kind: 'status', value: s, label: `Статус: ${columns.value.find((c) => c.id === s)?.name || '—'}` }),
-  )
-  filters.milestones.forEach((m) =>
-    out.push({
-      kind: 'milestone',
-      value: m,
-      label: `Этап: ${m === '__none__' ? 'без этапа' : milestonesMap[m]?.title || '—'}`,
-    }),
-  )
+  filters.tags.forEach((t) => {
+    const nm = tagsMap[t]?.name || '—'
+    out.push({ kind: 'tag', value: t, icon: CHIP_ICONS.tag, text: nm, label: `Тег: ${nm}` })
+  })
+  filters.statuses.forEach((s) => {
+    const nm = columns.value.find((c) => c.id === s)?.name || '—'
+    out.push({ kind: 'status', value: s, icon: CHIP_ICONS.status, text: nm, label: `Статус: ${nm}` })
+  })
+  filters.milestones.forEach((m) => {
+    const nm = m === '__none__' ? 'без этапа' : milestonesMap[m]?.title || '—'
+    out.push({ kind: 'milestone', value: m, icon: CHIP_ICONS.milestone, text: nm, label: `Этап: ${nm}` })
+  })
   if (filters.due) {
-    out.push({ kind: 'due', label: `Срок: ${dueOptions.find((o) => o.value === filters.due)?.label || filters.due}` })
+    const nm = dueOptions.find((o) => o.value === filters.due)?.label || filters.due
+    out.push({ kind: 'due', icon: CHIP_ICONS.due, text: nm, label: `Срок: ${nm}` })
   }
   return out
 })
+// Composer renders group + sort separately (sort chips are drag-reorderable), so
+// the flat chip loop covers only the filter facets.
+const filterChips = computed(() =>
+  facetChips.value.filter((c) => c.kind !== 'group' && c.kind !== 'sort'),
+)
+const groupChip = computed(() => facetChips.value.find((c) => c.kind === 'group'))
 // Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
 const groupModeLabel = computed(() => {
   if (groupMode.value === 'assignee') return 'исполнитель'
@@ -642,6 +694,17 @@ function onChipClick(c) {
     const l = sortLevels.value[c.i]
     l.dir = l.dir === 'desc' ? 'asc' : 'desc'
   }
+}
+// Sort chips are drag-reorderable, so operate on the level object (not a stale
+// facetChips index): toggling direction / removing find it in the live array.
+function toggleSortDir(l) {
+  l.dir = l.dir === 'desc' ? 'asc' : 'desc'
+}
+function removeSort(l) {
+  sortLevels.value = sortLevels.value.filter((x) => x !== l)
+}
+function toggleSubtasksExpanded() {
+  subtasksExpanded.value = !subtasksExpanded.value
 }
 const hasClearableFacets = computed(
   () => sortLevels.value.length > 0 || activeFilterCount.value > 0,
@@ -1705,6 +1768,7 @@ onBeforeUnmount(() => {
   // Drop any pending debounced reload so it can't fire against a board we've just
   // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
   clearTimeout(reloadTimer)
+  if (collapseTimer) clearTimeout(collapseTimer)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
   onDragEnd()
   boardViewStore.reset()
@@ -1761,45 +1825,78 @@ async function restoreFromArchive(taskId) {
            a task-name search on the right. (Layout + Теги/Архив live in the
            global header now.) -->
       <div ref="subbarEl" class="subbar">
-        <!-- Archive banner: read-only view of archived tasks with all board filters. -->
-        <span v-if="archivedMode" class="ms-scope-chip archive-chip" title="Архив — только чтение">
-          <n-icon :component="ArchiveOutline" />
-          <span class="ms-scope-label">Архив (только чтение)</span>
-          <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="exitArchive" />
-        </span>
-        <!-- Sprint scope chip (navigation overlay from the sidebar). Removing it
-             returns the full board and de-highlights the sprint node. -->
-        <span v-if="milestoneScope" class="ms-scope-chip" title="Показан один этап">
-          <n-icon :component="RibbonOutline" />
-          <span class="ms-scope-label">{{ milestoneScopeLabel }}</span>
-          <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="clearMilestoneScope" />
-        </span>
-        <!-- Composer bar: grouping / sort / filters as removable chips + an add
-             menu + the name search, all in one wide bar (a reference tracker/GitLab-style).
-             Collapsed to one row so the tools stay visible; tap to expand. -->
+        <!-- Composer bar: scope (archive/sprint) + grouping / sort / filters as
+             chips + an add menu + the name search, all in one wide bar
+             (a reference tracker/GitLab-style). Expands on hover (or tap) so the right-side
+             tools stay visible when idle; sort chips are drag-reorderable. -->
         <div
           class="composer"
           :class="{ collapsed: !composerExpanded, 'has-clear': hasClearableFacets }"
           @click="expandComposer"
+          @mouseenter="expandComposer"
+          @mouseleave="scheduleCollapse"
         >
-          <span
-            v-for="(c, ci) in facetChips"
-            :key="ci"
-            class="facet"
-            :class="{ group: c.kind === 'group', sortable: c.kind === 'sort' }"
-            :title="c.kind === 'group' ? 'Переключить статусы/теги' : c.kind === 'sort' ? 'Сменить направление' : ''"
-            @click="onChipClick(c)"
-          >
-            {{ c.label }}
-            <button
-              v-if="c.kind !== 'group'"
-              class="facet-x"
-              title="Убрать"
-              @click.stop="removeChip(c)"
-            >
-              ×
-            </button>
+          <!-- Archive banner: read-only view of archived tasks with all board filters. -->
+          <span v-if="archivedMode" class="ms-scope-chip archive-chip" title="Архив — только чтение">
+            <n-icon :component="ArchiveOutline" />
+            <span class="ms-scope-label">Архив (только чтение)</span>
+            <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="exitArchive" />
           </span>
+          <!-- Sprint scope chip (navigation overlay from the sidebar). Removing it
+               returns the full board and de-highlights the sprint node. -->
+          <span v-if="milestoneScope" class="ms-scope-chip" title="Показан один этап">
+            <n-icon :component="RibbonOutline" />
+            <span class="ms-scope-label">{{ milestoneScopeLabel }}</span>
+            <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="clearMilestoneScope" />
+          </span>
+
+          <!-- Grouping chip (toggles status/tag grouping). -->
+          <span
+            v-if="groupChip"
+            class="facet group"
+            title="Переключить статусы/теги"
+            @click="onChipClick(groupChip)"
+          >
+            <n-icon class="facet-ic" :component="groupChip.icon" :size="13" />
+            {{ groupChip.text }}
+          </span>
+
+          <!-- Sort chips: click toggles direction, drag reorders primary/secondary. -->
+          <draggable
+            v-if="sortLevels.length"
+            :list="sortLevels"
+            item-key="field"
+            handle=".facet"
+            :animation="150"
+            class="sort-chips"
+            ghost-class="facet-ghost"
+          >
+            <template #item="{ element: l }">
+              <span class="facet sortable" title="Клик — направление · перетащите для порядка" @click="toggleSortDir(l)">
+                <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
+                {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
+                <button class="facet-x" title="Убрать" @click.stop="removeSort(l)">×</button>
+              </span>
+            </template>
+          </draggable>
+
+          <!-- Filter chips (priority / assignee / tag / status / milestone / due). -->
+          <span v-for="(c, ci) in filterChips" :key="ci" class="facet">
+            <n-icon class="facet-ic" :component="c.icon" :size="13" />
+            {{ c.text }}
+            <button class="facet-x" title="Убрать" @click.stop="removeChip(c)">×</button>
+          </span>
+
+          <!-- Subtask-expansion toggle: accent when on, plain grey when off. -->
+          <button
+            class="facet subtasks-chip"
+            :class="{ active: subtasksExpanded }"
+            :title="subtasksExpanded ? 'Подзадачи раскрыты' : 'Раскрыть подзадачи'"
+            @click.stop="toggleSubtasksExpanded"
+          >
+            <n-icon class="facet-ic" :component="GitBranchOutline" :size="13" />
+            Подзадачи
+          </button>
 
           <n-dropdown
             :show="addShow"
@@ -1820,6 +1917,7 @@ async function restoreFromArchive(taskId) {
             v-model="filters.q"
             class="composer-search"
             placeholder="Поиск по названию…"
+            @focus="expandComposer"
           />
           <button v-if="hasClearableFacets" class="facet-clear" title="Сбросить всё" @click="clearAll">
             ×
@@ -2226,7 +2324,7 @@ async function restoreFromArchive(taskId) {
   align-items: center;
   gap: 5px;
   flex: none;
-  height: 40px; /* match the composer bar's height */
+  height: 24px; /* sits inside the composer bar as the leading chip(s) */
   box-sizing: border-box;
   padding: 0 8px;
   border-radius: 6px;
@@ -2302,10 +2400,8 @@ async function restoreFromArchive(taskId) {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  /* Inter-chip and inter-row gaps + vertical padding match the 8px horizontal
-     padding, so a multi-row (expanded / overflowing) bar isn't cramped. */
   gap: 8px;
   box-sizing: border-box;
   min-height: 40px;
@@ -2313,21 +2409,16 @@ async function restoreFromArchive(taskId) {
   border: 1px solid var(--t-border);
   border-radius: 8px;
   background: var(--t-surface);
-  transition: max-height 0.28s ease;
-  /* Tame the inherited (Naive) line-height: without this the chips compute to
-     ~23px tall — past the 22px add button — so the bar's natural height is ~41px.
-     Collapsed clamps it to 40px and focus/expand (which drops the clamp) then made
-     the bar jump down 1px. A tight line-height keeps the natural height at 40px. */
+  /* Single row; when the chips exceed the bar width (rare — the tools slide away
+     to yield space) the bar scrolls horizontally rather than wrapping. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  /* Tame the inherited (Naive) line-height so a chip stays 22px tall. */
   line-height: 1.25;
 }
-/* Reserve room on the right for the absolutely-positioned clear-×. */
-.composer.has-clear {
-  padding-right: 26px;
-}
-/* Collapsed: capped to one row; chips wrap as whole pills (overflow rows are
-   clipped) rather than being cut mid-chip (tap to expand). */
+/* Collapsed (idle): one clipped row, dimmed, hover/tap to activate. */
 .composer.collapsed {
-  max-height: 40px;
   overflow: hidden;
   cursor: pointer;
 }
@@ -2411,10 +2502,7 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text3);
 }
 .facet-clear {
-  position: absolute;
-  right: 5px;
-  top: 50%;
-  transform: translateY(-50%);
+  flex: none;
   border: none;
   background: none;
   cursor: pointer;
@@ -2425,6 +2513,43 @@ async function restoreFromArchive(taskId) {
 }
 .facet-clear:hover {
   color: var(--t-text1);
+}
+/* Per-kind icon that replaces the text prefix on a chip. */
+.facet-ic {
+  flex: none;
+  opacity: 0.8;
+}
+.facet.group .facet-ic {
+  color: var(--t-primary);
+  opacity: 1;
+}
+/* Sort chips share the composer gap so a run of them reads as one group. */
+.sort-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+/* Drag placeholder while reordering sort chips. */
+.facet-ghost {
+  opacity: 0.4;
+}
+/* Subtask-expansion toggle chip: plain grey when off, accent tint when on. */
+.subtasks-chip {
+  flex: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 9px;
+}
+.subtasks-chip.active {
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
+  color: var(--t-text1);
+}
+.subtasks-chip.active .facet-ic {
+  color: var(--t-primary);
+  opacity: 1;
 }
 .sb-prefix {
   width: 170px;
