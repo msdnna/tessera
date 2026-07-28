@@ -6,11 +6,14 @@ import { uploads as uploadsApi } from '@/api'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { isTauri } from '@/utils/serverBase'
 import RichContent from './RichContent.vue'
+import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
   placeholder: { type: String, default: 'Напишите что-нибудь…' },
-  // Workspace members for @-mentions: [{ id, label }]. Empty → mentions off.
+  // Members for @-mentions: [{ id, label, display?, avatarUserId?, avatarSrc?, gitlab? }].
+  // `label` is the inserted text (Tessera name or GitLab @username), `display` the row
+  // label (falls back to label). Empty → mentions off.
   mentionItems: { type: Array, default: () => [] },
   minRows: { type: Number, default: 3 },
   // 'write' | 'preview' — sets the initial tab (re-applied when it changes,
@@ -301,7 +304,9 @@ const mqIndex = ref(0)
 const mentionMatches = computed(() => {
   if (!mq.value) return []
   const q = mq.value.query.toLowerCase()
-  return props.mentionItems.filter((m) => m.label.toLowerCase().includes(q)).slice(0, 8)
+  return props.mentionItems
+    .filter((m) => m.label.toLowerCase().includes(q) || (m.display || '').toLowerCase().includes(q))
+    .slice(0, 8)
 })
 function detectMention() {
   const el = ta.value
@@ -373,7 +378,9 @@ function onKeydown(e) {
 
 function getMentions() {
   const text = props.modelValue
-  return picked.value.filter((p) => text.includes(`@${p.label}`)).map((p) => p.id)
+  // GitLab-only mentions have no Tessera id — they live in the text as `@username`
+  // (GitLab resolves them on writeback) and don't produce a Tessera notification.
+  return picked.value.filter((p) => p.id && text.includes(`@${p.label}`)).map((p) => p.id)
 }
 function clear() {
   setValue('')
@@ -455,14 +462,24 @@ defineExpose({ getMentions, clear, focus })
       </Transition>
 
       <ul v-if="mq && mentionMatches.length" class="md2-mentions">
-        <li
-          v-for="(m, i) in mentionMatches"
-          :key="m.id"
-          :class="{ active: i === mqIndex }"
-          @mousedown.prevent="pickMention(m)"
-        >
-          {{ m.label }}
-        </li>
+        <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
+          <li v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)" class="md2-mention-sep">
+            GitLab
+          </li>
+          <li
+            class="md2-mention-item"
+            :class="{ active: i === mqIndex }"
+            @mousedown.prevent="pickMention(m)"
+          >
+            <UserAvatar
+              class="md2-mention-av"
+              :user-id="m.avatarUserId"
+              :src="m.avatarSrc"
+              :name="m.display || m.label"
+            />
+            <span class="md2-mention-name">{{ m.display || m.label }}</span>
+          </li>
+        </template>
       </ul>
     </div>
 
@@ -638,17 +655,44 @@ defineExpose({ getMentions, clear, focus })
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
-.md2-mentions li {
-  padding: 6px 10px;
-  border-radius: 5px;
+.md2-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
   font-size: 13px;
   color: var(--t-text1);
   cursor: pointer;
 }
-.md2-mentions li:hover,
-.md2-mentions li.active {
+.md2-mention-item:hover,
+.md2-mention-item.active {
+  /* Neutral grey highlight (matches the on-card assignee picker), not the accent. */
+  background: var(--t-hover);
+}
+.md2-mention-av {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   background: var(--t-accent-grad);
   color: var(--t-on-primary);
+  font-size: 9px;
+  font-weight: 600;
+}
+.md2-mention-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.md2-mention-sep {
+  padding: 6px 8px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-text3);
+  cursor: default;
 }
 .md2-preview {
   padding: 2px 0;

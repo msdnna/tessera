@@ -110,10 +110,27 @@ const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 // Open an existing description on the Preview tab; an empty one on Write.
 const descInitialMode = ref('write')
 
-// Workspace members offered for @-mentions in comments.
-const mentionItems = computed(() =>
-  (props.members || []).map((m) => ({ id: m.user_id, label: m.name })),
-)
+// Members offered for @-mentions in comments. Tessera members insert their display
+// name; GitLab-only users (no Tessera account) insert their `@username` so GitLab
+// resolves the mention on writeback. `label` is the inserted text, `display` the row.
+const mentionItems = computed(() => {
+  const tessera = (props.members || []).map((m) => ({
+    id: m.user_id,
+    label: m.name,
+    display: m.name,
+    avatarUserId: m.user_id,
+  }))
+  const gl = (props.gitlabMembers || [])
+    .filter((g) => !(g.tessera_user_id && membersById.value[g.tessera_user_id]))
+    .map((g) => ({
+      id: null,
+      label: g.gl_username,
+      display: g.gl_name || g.gl_username,
+      avatarSrc: g.gl_avatar_url,
+      gitlab: true,
+    }))
+  return [...tessera, ...gl]
+})
 
 // Lookup maps for subtask hover cards (built from the tags/members props).
 const tagsById = computed(() => Object.fromEntries((props.tags || []).map((t) => [t.id, t])))

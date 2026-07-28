@@ -513,6 +513,28 @@ body {
   }
 }
 
+/* Assignee-filter dropdown rows: avatar + name (teleported to <body>, so global). */
+.flt-asgn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.flt-asgn .flt-asgn-av {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  font-size: 9px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
 /* Tint the "Нет данных" (Naive n-empty) glyph in the accent colour, matching the
    branded EmptyState placeholder, wherever an empty state appears (selects, etc.). */
 .n-empty .n-empty__icon {

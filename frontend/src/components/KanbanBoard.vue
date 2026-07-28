@@ -56,6 +56,7 @@ import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
 import BoardTimelineView from './BoardTimelineView.vue'
 import BoardGanttView from './BoardGanttView.vue'
+import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -344,15 +345,24 @@ const dueOptions = [
   { label: 'Без срока', value: 'none' },
 ]
 const priorityFilterOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
-const memberFilterOptions = computed(() => [
-  ...membersList.value.map((m) => ({ label: m.name, value: m.user_id })),
-  // GitLab-only assignees (no Tessera account) — value prefixed `gl:` so the filter
-  // matches against gitlab_assignee_logins.
-  ...gitlabMembersList.value.map((g) => ({
-    label: `${g.gl_name || g.gl_username} (GitLab)`,
-    value: `gl:${g.gl_username}`,
-  })),
-])
+// Assignee filter menu — carries avatar hints so `renderAddLabel` can draw the
+// user's face (Tessera by `avatarUserId`, GitLab by `avatarSrc`), like the on-card
+// assignee picker. GitLab-only assignees sit under an inline «GitLab» group; their
+// filter value is prefixed `gl:` so it matches against gitlab_assignee_logins.
+const memberFilterMenu = computed(() => {
+  const tessera = membersList.value.map((m) => ({
+    label: m.name,
+    key: `fa.${m.user_id}`,
+    avatarUserId: m.user_id,
+  }))
+  const gl = gitlabMembersList.value.map((g) => ({
+    label: g.gl_name || g.gl_username,
+    key: `fa.gl:${g.gl_username}`,
+    avatarSrc: g.gl_avatar_url,
+  }))
+  if (!gl.length) return tessera
+  return [...tessera, { type: 'group', label: 'GitLab', key: 'fag', children: gl }]
+})
 // Tag filter menu, grouped by prefix (friendly names). Naive `type:'group'`
 // renders inline section headers — works on desktop and the mobile drill alike.
 // A single prefix-less bucket stays flat (no redundant header).
@@ -474,7 +484,7 @@ const addOptions = computed(() => {
     {
       label: 'Фильтр: исполнитель',
       key: 'fa',
-      children: memberFilterOptions.value.map((o) => ({ label: o.label, key: `fa.${o.value}` })),
+      children: memberFilterMenu.value,
     },
     { label: 'Фильтр: тег', key: 'ft', children: tagFilterMenu.value },
     { label: 'Фильтр: этап', key: 'fm', children: milestoneFilterMenu.value },
@@ -517,6 +527,19 @@ const addMenuOptions = computed(() => {
 // header, and a vertical slide that plays whenever the level changes (keys differ
 // between levels → the option nodes remount → the animation replays).
 function renderAddLabel(option) {
+  // Assignee-filter rows carry avatar hints — draw the user's face + name like the
+  // on-card assignee picker (both desktop and mobile).
+  if (option.avatarUserId || option.avatarSrc) {
+    const av = h(UserAvatar, {
+      class: 'flt-asgn-av',
+      userId: option.avatarUserId,
+      src: option.avatarSrc,
+      name: option.label,
+    })
+    const txt = h('span', { class: 't-fdd-txt' }, option.label)
+    if (!isMobile.value) return h('span', { class: 'flt-asgn' }, [av, txt])
+    return h('span', { class: 'flt-asgn t-fdd-row', style: { animation: `t-fdd-${addDir.value} .17s ease` } }, [av, txt])
+  }
   if (!isMobile.value) return option.label
   const anim = `t-fdd-${addDir.value} .17s ease`
   const key = option.key
