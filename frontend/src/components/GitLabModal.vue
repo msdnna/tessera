@@ -1202,11 +1202,12 @@ watch(
             </template>
 
             <!-- JOURNAL: sync run history -->
-            <git-lab-journal-panel v-else-if="rightMode === 'journal'" :ws-id="wsId" />
+            <git-lab-journal-panel v-else-if="rightMode === 'journal'" class="gl-pane-fill" :ws-id="wsId" />
 
             <!-- CONFLICTS: write-back conflict resolver -->
             <conflict-resolver-panel
               v-else-if="rightMode === 'conflicts'"
+              class="gl-pane-fill"
               :ws-id="wsId"
               @resolved="loadConflictCount"
             />
@@ -1427,6 +1428,15 @@ watch(
   border-left: 1px solid var(--t-border);
   padding-left: 16px;
   margin-left: 16px;
+  /* Column layout so an embedded panel (journal/conflicts) can flex-fill the
+     pane's full height instead of sitting short at the top. */
+  display: flex;
+  flex-direction: column;
+}
+/* Journal / conflicts panels fill the remaining pane height below the header. */
+.gl-pane-fill {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .gl-right-head {
   display: flex;

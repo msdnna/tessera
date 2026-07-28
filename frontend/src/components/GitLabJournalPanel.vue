@@ -297,13 +297,19 @@ defineExpose({ reload: loadRuns })
 <style scoped>
 .jp-wrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 340px;
+  /* Fill the pane height when embedded (parent passes .gl-pane-fill); harmless
+     as a standalone block otherwise. */
+  height: 100%;
 }
 .j-body {
   display: grid;
   grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
   gap: 0;
-  height: 58vh;
-  min-height: 340px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .j-left {
   overflow-y: auto;

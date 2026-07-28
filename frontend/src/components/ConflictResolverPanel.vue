@@ -264,10 +264,14 @@ defineExpose({ reload: load })
 <style scoped>
 .cp-wrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 .c-body {
   display: flex;
   gap: 16px;
+  flex: 1 1 auto;
   min-height: 320px;
 }
 .c-left {
