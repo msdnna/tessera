@@ -661,10 +661,38 @@ func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db
 	return "due date → " + date, nil
 }
 
-// performPostComment posts a note to the issue (optionally with the Tessera marker),
-// and tags the originating comment with the note id so the next pull dedups it.
+// performPostComment mirrors a Tessera comment to the issue's notes. The payload's
+// "op" selects the effect: "edit"/"delete" act on the existing note (identified by
+// the stored "gl_note_id" gid); the default posts a new note and tags the originating
+// comment with the returned note id so the next pull dedups it.
 func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, path string, iid int64, act gitlab.BindAction, payload map[string]any) (string, error) {
+	op, _ := payload["op"].(string)
 	body, _ := payload["body"].(string)
+
+	if op == "edit" || op == "delete" {
+		noteID, ok := parseNoteGID(payload["gl_note_id"])
+		if !ok {
+			// No GitLab note yet (e.g. the create push hasn't run) — nothing to touch.
+			return "no gitlab note, skipped", nil
+		}
+		if op == "delete" {
+			if err := client.DeleteIssueNote(ctx, path, iid, noteID); err != nil {
+				return "", err
+			}
+			return "note deleted", nil
+		}
+		if strings.TrimSpace(body) == "" {
+			return "empty comment skipped", nil
+		}
+		if act.AddMarker {
+			body += tesseraCommentMarker
+		}
+		if err := client.UpdateIssueNote(ctx, path, iid, noteID, body); err != nil {
+			return "", err
+		}
+		return "note edited", nil
+	}
+
 	if strings.TrimSpace(body) == "" {
 		return "empty comment skipped", nil
 	}
@@ -683,6 +711,24 @@ func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, pat
 		}
 	}
 	return "note posted", nil
+}
+
+// parseNoteGID extracts the numeric REST note id from a stored GitLab note global id
+// ("gid://gitlab/Note/<id>"). Returns false when the value is absent or malformed.
+func parseNoteGID(v any) (int64, bool) {
+	s, _ := v.(string)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	id, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || id == 0 {
+		return 0, false
+	}
+	return id, true
 }
 
 // performSetMilestone pushes the task's GitLab-linked milestone (0 clears it; a

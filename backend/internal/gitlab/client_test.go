@@ -161,6 +161,37 @@ func TestCreateIssueNote(t *testing.T) {
 	}
 }
 
+func TestUpdateIssueNote(t *testing.T) {
+	var got captured
+	c := stubGitLab(t, http.StatusOK, &got)
+	if err := c.UpdateIssueNote(context.Background(), "grp/project", 7, 42, "edited"); err != nil {
+		t.Fatalf("UpdateIssueNote: %v", err)
+	}
+	if got.method != http.MethodPut {
+		t.Errorf("method = %s, want PUT", got.method)
+	}
+	if !strings.HasSuffix(got.path, "/issues/7/notes/42") {
+		t.Errorf("path = %s", got.path)
+	}
+	if got.form["body"] != "edited" {
+		t.Errorf("body = %q", got.form["body"])
+	}
+}
+
+func TestDeleteIssueNote(t *testing.T) {
+	var got captured
+	c := stubGitLab(t, http.StatusNoContent, &got)
+	if err := c.DeleteIssueNote(context.Background(), "grp/project", 7, 42); err != nil {
+		t.Fatalf("DeleteIssueNote: %v", err)
+	}
+	if got.method != http.MethodDelete {
+		t.Errorf("method = %s, want DELETE", got.method)
+	}
+	if !strings.HasSuffix(got.path, "/issues/7/notes/42") {
+		t.Errorf("path = %s", got.path)
+	}
+}
+
 func TestCreateIssue(t *testing.T) {
 	var got captured
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -799,3 +799,20 @@ func (c *Client) CreateIssueNote(ctx context.Context, projectPath string, iid in
 	}
 	return fmt.Sprintf("gid://gitlab/Note/%d", resp.ID), nil
 }
+
+// UpdateIssueNote edits an existing note's body (PUT .../notes/<noteID>). noteID is
+// the numeric REST id (parse it from the stored "gid://gitlab/Note/<id>" gid).
+func (c *Client) UpdateIssueNote(ctx context.Context, projectPath string, iid, noteID int64, body string) error {
+	_, err := c.restForm(ctx, http.MethodPut,
+		issuePath(projectPath, iid)+"/notes/"+strconv.FormatInt(noteID, 10),
+		url.Values{"body": {body}})
+	return err
+}
+
+// DeleteIssueNote removes a note (DELETE .../notes/<noteID>).
+func (c *Client) DeleteIssueNote(ctx context.Context, projectPath string, iid, noteID int64) error {
+	_, err := c.restForm(ctx, http.MethodDelete,
+		issuePath(projectPath, iid)+"/notes/"+strconv.FormatInt(noteID, 10),
+		url.Values{})
+	return err
+}

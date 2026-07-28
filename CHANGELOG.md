@@ -2451,6 +2451,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.78.2] — 2026-07-28
+- **fix: правка/удаление комментария у GitLab-задачи теперь улетает в GitLab.**
+  Раньше `CreateComment` ставил обратную запись, а `UpdateComment`/`DeleteComment` —
+  нет: правка жила только в Tessera, и на следующем pull её тело затиралось версией
+  из GitLab (изменение терялось). Теперь редактирование/удаление комментария, у
+  которого уже есть `gl_note_id`, ставит writeback с `op:"edit"`/`"delete"` по тому
+  же триггеру `comment` (действие `post_comment`), а воркер шлёт в GitLab
+  `PUT`/`DELETE .../notes/<id>` (новые методы клиента `UpdateIssueNote`/
+  `DeleteIssueNote`). Комментарии, пришедшие из GitLab (без Tessera-автора),
+  остаются read-only — как и прежде.
+
 ### [0.78.1] — 2026-07-27
 - **fix: обратная запись (writeback) в GitLab теперь работает при OAuth-настройке
   без личного PAT владельца.** Воркер writeback (`performWriteback`) резолвил

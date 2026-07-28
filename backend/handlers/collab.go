@@ -252,6 +252,13 @@ func (h *API) UpdateComment(c *gin.Context) {
 		fail(c)
 		return
 	}
+	// Mirror the edit to the linked GitLab note (only when this comment already has
+	// one). Without this the next pull overwrites the local body back to GitLab's,
+	// silently dropping the edit.
+	if cm.GlNoteID != nil && *cm.GlNoteID != "" {
+		h.enqueueWriteback(c, cm.TaskID, middleware.CurrentUser(c), gitlab.TrigComment,
+			map[string]any{"op": "edit", "comment_id": id.String(), "gl_note_id": *cm.GlNoteID, "body": req.Body})
+	}
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -275,6 +282,12 @@ func (h *API) DeleteComment(c *gin.Context) {
 	if cm.AuthorID == nil || *cm.AuthorID != middleware.CurrentUser(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your comment"})
 		return
+	}
+	// Enqueue the GitLab-note deletion BEFORE dropping the local row (we need its
+	// gl_note_id). Only when the comment was actually mirrored to GitLab.
+	if cm.GlNoteID != nil && *cm.GlNoteID != "" {
+		h.enqueueWriteback(c, cm.TaskID, middleware.CurrentUser(c), gitlab.TrigComment,
+			map[string]any{"op": "delete", "comment_id": id.String(), "gl_note_id": *cm.GlNoteID})
 	}
 	if err := h.q.DeleteComment(c, id); err != nil {
 		fail(c)
