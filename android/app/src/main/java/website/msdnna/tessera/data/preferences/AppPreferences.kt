@@ -48,14 +48,33 @@ class AppPreferences(private val context: Context) {
         val RECENT_ASSIGNEES = stringPreferencesKey("recent_assignees")
     }
 
-    /** Stable per-install id for the notification "device" channel; generated and
-     *  persisted on first read so this device is routable. */
+    /** Stable id for the notification "device" channel so this device is routable and
+     *  the backend upserts a single row (not a new duplicate on every re-login).
+     *
+     *  Anchored to the hardware `ANDROID_ID` (survives logout/reinstall until a factory
+     *  reset), which keeps the id identical even if DataStore is cleared. Falls back to a
+     *  persisted random UUID when ANDROID_ID is missing/unreliable. Once resolved the id
+     *  is persisted, so an existing install keeps whatever id it already registered. */
     suspend fun ensureDeviceId(): String {
         val existing = context.dataStore.data.first()[Keys.DEVICE_ID]
         if (!existing.isNullOrBlank()) return existing
-        val id = "android-" + java.util.UUID.randomUUID().toString()
+        val id = "android-" + (stableHardwareId() ?: java.util.UUID.randomUUID().toString())
         context.dataStore.edit { it[Keys.DEVICE_ID] = id }
         return id
+    }
+
+    /** Settings.Secure.ANDROID_ID, unless it's blank or the well-known buggy emulator
+     *  constant (`9774d56d682e549c`) that isn't unique across devices. */
+    private fun stableHardwareId(): String? {
+        val androidId = try {
+            android.provider.Settings.Secure.getString(
+                context.contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID,
+            )
+        } catch (_: Exception) {
+            null
+        }
+        return androidId?.takeIf { it.isNotBlank() && it != "9774d56d682e549c" }
     }
 
     /** User-set server override; falls back to the build's default base URL. */
