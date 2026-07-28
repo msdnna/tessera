@@ -18,7 +18,10 @@ func (h *API) ListWorkspaceTasks(c *gin.Context) {
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
-	rows, err := h.q.ListWorkspaceTasks(c, wsID)
+	rows, err := h.q.ListWorkspaceTasks(c, db.ListWorkspaceTasksParams{
+		WorkspaceID:     wsID,
+		IncludeSubtasks: c.Query("include_subtasks") == "1" || c.Query("include_subtasks") == "true",
+	})
 	if err != nil {
 		fail(c)
 		return
@@ -36,7 +39,7 @@ func (h *API) WorkspaceSummary(c *gin.Context) {
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
-	rows, err := h.q.ListWorkspaceTasks(c, wsID)
+	rows, err := h.q.ListWorkspaceTasks(c, db.ListWorkspaceTasksParams{WorkspaceID: wsID})
 	if err != nil {
 		fail(c)
 		return

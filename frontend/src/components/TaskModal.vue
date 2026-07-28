@@ -159,7 +159,8 @@ const relTasks = ref([]) // workspace tasks, lazily loaded
 async function ensureRelTasks() {
   if (relTasks.value.length || !props.wsId) return
   try {
-    const res = await wsApi.tasks(props.wsId)
+    // include_subtasks so subtasks can be linked (e.g. blocking deps between subtasks).
+    const res = await wsApi.tasks(props.wsId, { include_subtasks: 1 })
     relTasks.value = res.data || []
   } catch {
     /* non-fatal — manual number entry still works */

@@ -308,6 +308,22 @@ const positions = computed(() => {
   for (let i = 0; i < rows.length; i++) if (rows[i].t === 'task') map[rows[i].task.id] = tops[i]
   return { map, height }
 })
+// Vertical bar-centre for every linkable entity — top-level tasks AND scheduled
+// subtasks — so drag-to-link and dependency arrows anchor on sub-bars too. A
+// top-level bar centres at BAR_CY; a subtask's i-th sub-bar centres at its offset.
+const SUB_BAR_H = 14
+const anchorY = computed(() => {
+  const pos = positions.value.map
+  const m = {}
+  for (const id in pos) m[id] = pos[id] + BAR_CY
+  for (const t of props.tasks) {
+    const top = pos[t.id]
+    if (top == null) continue
+    const subs = subBars(t)
+    for (let i = 0; i < subs.length; i++) m[subs[i].id] = top + SUB_TOP0 + i * SUB_STEP + SUB_BAR_H / 2
+  }
+  return m
+})
 // Window the body: render only rows intersecting the viewport (plus a margin), with
 // top/bottom spacers preserving the scroll height. The arrow SVG stays full-height,
 // so dependencies to off-screen tasks still draw correctly.
@@ -401,19 +417,19 @@ function ghostTitle(t) {
 // Arrow paths: blocker's finish → blocked's start (finish-to-start), an S-curve
 // with a horizontal stub on each end so the arrowhead enters the start cleanly.
 const arrows = computed(() => {
-  const pos = positions.value.map
+  const ay = anchorY.value
   const out = []
   for (const e of deps.value) {
-    if (!(e.blocker in pos) || !(e.blocked in pos)) continue
-    const tb = props.tasks.find((t) => t.id === e.blocker)
-    const tk = props.tasks.find((t) => t.id === e.blocked)
+    if (!(e.blocker in ay) || !(e.blocked in ay)) continue
+    const tb = findTask(e.blocker)
+    const tk = findTask(e.blocked)
     if (!tb || !tk) continue
     const gb = geom(tb)
     const gk = geom(tk)
     const x1 = leftW.value + gb.left + gb.width
-    const y1 = pos[e.blocker] + BAR_CY
+    const y1 = ay[e.blocker]
     const x2 = leftW.value + gk.left
-    const y2 = pos[e.blocked] + BAR_CY
+    const y2 = ay[e.blocked]
     const dx = Math.max(22, Math.abs(x2 - x1) * 0.4)
     const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
     out.push({ id: e.id, d, mx: (x1 + x2) / 2, my: (y1 + y2) / 2 })
@@ -514,7 +530,7 @@ function onLinkDown(e, t) {
   link.value = {
     fromId: t.id,
     x1: leftW.value + g.left + g.width,
-    y1: positions.value.map[t.id] + BAR_CY,
+    y1: anchorY.value[t.id] ?? positions.value.map[t.id] + BAR_CY,
     x: c.x,
     y: c.y,
   }
@@ -538,7 +554,7 @@ async function onLinkUp(e) {
   const host = el?.closest('[data-task-id]')
   const targetId = host?.getAttribute('data-task-id')
   if (!targetId || targetId === l.fromId) return
-  const target = props.tasks.find((t) => t.id === targetId)
+  const target = findTask(targetId)
   if (!target || target.number == null) return
   // Skip if this edge already exists (either direction would create a 2-cycle).
   const dup = deps.value.some(
@@ -860,13 +876,14 @@ const cursorLabel = computed(() => {
                   <span class="link-knob" title="Создать зависимость" @pointerdown="onLinkDown($event, r.task)" @click.stop />
                 </div>
                 <!-- subtask sub-bars stacked under the parent bar; draggable to
-                     reschedule (move / resize an edge). No dependency linking on
-                     subtasks (no link-knob). -->
+                     reschedule (move / resize an edge) and to link (right-edge knob)
+                     so subtasks can carry blocking dependencies too. -->
                 <div
                   v-for="(s, i) in subBars(r.task)"
                   :key="s.id"
                   class="tl-subbar"
-                  :class="{ done: s.completed_at, point: !(geom(s).hasStart && geom(s).hasDue) }"
+                  :class="{ done: s.completed_at, point: !(geom(s).hasStart && geom(s).hasDue), linksrc: link && link.fromId === s.id }"
+                  :data-task-id="s.id"
                   :style="{
                     left: `${geom(s).left}px`,
                     width: `${geom(s).width}px`,
@@ -880,6 +897,7 @@ const cursorLabel = computed(() => {
                   <span class="handle l" @pointerdown.stop="onBarDown($event, s, 'start')" />
                   <span class="tl-subbar-title">{{ s.title }}</span>
                   <span class="handle r" @pointerdown.stop="onBarDown($event, s, 'due')" />
+                  <span class="link-knob" title="Создать зависимость" @pointerdown="onLinkDown($event, s)" @click.stop />
                 </div>
               </div>
             </div>
@@ -1508,7 +1526,9 @@ const cursorLabel = computed(() => {
   align-items: center;
   padding: 0 6px;
   cursor: grab;
-  overflow: hidden;
+  /* visible (not hidden) so the right-edge link knob isn't clipped; the title clamps
+     itself via flex:1 + min-width:0 below. */
+  overflow: visible;
   z-index: 2;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
   user-select: none;
@@ -1520,6 +1540,8 @@ const cursorLabel = computed(() => {
   opacity: 0.5;
 }
 .tl-subbar-title {
+  flex: 1;
+  min-width: 0;
   font-size: 10px;
   color: #fff;
   font-weight: 500;
@@ -1549,7 +1571,9 @@ const cursorLabel = computed(() => {
   z-index: 3;
 }
 .bar:hover .link-knob,
-.bar.linksrc .link-knob {
+.bar.linksrc .link-knob,
+.tl-subbar:hover .link-knob,
+.tl-subbar.linksrc .link-knob {
   opacity: 1;
 }
 

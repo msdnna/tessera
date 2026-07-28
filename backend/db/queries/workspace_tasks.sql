@@ -1,6 +1,7 @@
--- ListWorkspaceTasks returns every active top-level task across a workspace's
--- boards, with location names and tag/assignee ids — backs "My tasks" / "All
--- tasks" and the home summary (feature #1).
+-- ListWorkspaceTasks returns active tasks across a workspace's boards, with location
+-- names and tag/assignee ids — backs "My tasks" / "All tasks" and the home summary
+-- (feature #1). By default only top-level tasks; set include_subtasks to also return
+-- subtasks (used by the relation picker so subtasks can be linked to each other).
 -- name: ListWorkspaceTasks :many
 SELECT
     t.*,
@@ -17,6 +18,8 @@ JOIN projects p ON p.id = b.project_id
 JOIN board_columns c ON c.id = t.column_id
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
-WHERE p.workspace_id = $1 AND t.parent_id IS NULL AND t.archived_at IS NULL
+WHERE p.workspace_id = @workspace_id
+    AND (@include_subtasks::bool OR t.parent_id IS NULL)
+    AND t.archived_at IS NULL
 GROUP BY t.id, b.name, p.name, p.color, c.name, c.color
 ORDER BY t.due_date NULLS LAST, t.created_at DESC;
