@@ -39,6 +39,7 @@ import {
   CloseOutline,
   TimerOutline,
   RibbonOutline,
+  ChatbubbleEllipsesOutline,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -73,6 +74,7 @@ import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
+import EmptyState from './EmptyState.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -112,6 +114,48 @@ const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 // ── rich detail (#8): comments, relations, files, journal
 // Open an existing description on the Preview tab; an empty one on Write.
 const descInitialMode = ref('write')
+
+// ── wide-screen split pane: draggable divider between the left (properties +
+// description) and right (tabs) columns, ratio persisted in localStorage. Only
+// active in the two-column layout (≥1100px); a no-op in the stacked layout. ──
+const SPLIT_KEY = 'tessera_task_split'
+const SPLIT_MIN = 0.3
+const SPLIT_MAX = 0.7
+const formEl = ref(null)
+const splitRatio = ref(loadSplitRatio())
+function loadSplitRatio() {
+  const v = parseFloat(localStorage.getItem(SPLIT_KEY))
+  return v >= SPLIT_MIN && v <= SPLIT_MAX ? v : 0.46
+}
+// grid-template-columns for .form (ignored in the stacked flex layout). The 8px
+// middle track is the divider handle.
+const splitCols = computed(
+  () => `minmax(0, ${splitRatio.value}fr) 8px minmax(0, ${1 - splitRatio.value}fr)`,
+)
+let splitDragging = false
+function startSplitDrag(e) {
+  if (!formEl.value) return
+  splitDragging = true
+  e.preventDefault()
+  window.addEventListener('pointermove', onSplitDrag)
+  window.addEventListener('pointerup', endSplitDrag)
+}
+function onSplitDrag(e) {
+  if (!splitDragging || !formEl.value) return
+  const r = formEl.value.getBoundingClientRect()
+  const ratio = (e.clientX - r.left) / r.width
+  splitRatio.value = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, ratio))
+}
+function endSplitDrag() {
+  splitDragging = false
+  window.removeEventListener('pointermove', onSplitDrag)
+  window.removeEventListener('pointerup', endSplitDrag)
+  try {
+    localStorage.setItem(SPLIT_KEY, String(splitRatio.value))
+  } catch {
+    /* storage disabled — non-fatal */
+  }
+}
 
 // Members offered for @-mentions in comments. Tessera members insert their display
 // name; GitLab-only users (no Tessera account) insert their `@username` so GitLab
@@ -942,7 +986,7 @@ function eventText(e) {
     <n-card class="tm-card" role="dialog" :bordered="false">
       <n-spin :show="loading" :rotate="false">
         <template #icon><TesseraSpinner /></template>
-        <div class="form">
+        <div ref="formEl" class="form" :style="{ '--tm-cols': splitCols }">
           <div class="modal-head">
             <n-popover trigger="click" placement="bottom-start">
               <template #trigger>
@@ -974,19 +1018,22 @@ function eventText(e) {
                 </div>
               </div>
             </n-popover>
-            <span v-if="task?.number" class="tnum">#{{ task.number }}</span>
+            <span class="head-right">
+              <span v-if="task?.number" class="tnum">#{{ task.number }}</span>
+              <!-- GitLab provenance moved next to the Tessera number to free up
+                   vertical space (icon + issue iid in parens, links to GitLab). -->
+              <a
+                v-if="task?.gitlab"
+                class="gl-num"
+                :href="task.gitlab.web_url"
+                target="_blank"
+                rel="noopener"
+                :title="`Открыть issue !${task.gitlab.iid} в GitLab`"
+              >
+                (<n-icon :component="LogoGitlab" :size="12" /> !{{ task.gitlab.iid }})
+              </a>
+            </span>
           </div>
-          <a
-            v-if="task?.gitlab"
-            class="gl-line"
-            :href="task.gitlab.web_url"
-            target="_blank"
-            rel="noopener"
-            :title="`Открыть issue !${task.gitlab.iid} в GitLab`"
-          >
-            <n-icon :component="LogoGitlab" :size="13" />
-            <span>GitLab !{{ task.gitlab.iid }}</span>
-          </a>
           <n-input
             v-model:value="title"
             placeholder="Название задачи"
@@ -1386,6 +1433,11 @@ function eventText(e) {
           </div>
           </div>
 
+          <!-- Draggable divider (wide layout only); resizes the two columns. -->
+          <div class="tm-divider" title="Потяните, чтобы изменить ширину" @pointerdown="startSplitDrag">
+            <span class="tm-divider-grip"></span>
+          </div>
+
           <div class="tm-col-right">
           <!-- Subtasks / comments / relations / files / history (#8) -->
           <!-- Keyed by task so the line indicator doesn't slide when switching
@@ -1402,6 +1454,7 @@ function eventText(e) {
                 />
               </template>
               <div class="comments">
+                <div class="c-list">
                 <div v-for="c in comments" :key="c.id" class="comment">
                   <UserAvatar
                     class="c-ava"
@@ -1457,7 +1510,14 @@ function eventText(e) {
                     />
                   </div>
                 </div>
-                <div v-if="!comments.length" class="empty-hint">Комментариев пока нет</div>
+                <EmptyState
+                  v-if="!comments.length"
+                  class="c-empty"
+                  size="small"
+                  :icon="ChatbubbleEllipsesOutline"
+                  text="Комментариев пока нет"
+                />
+                </div>
                 <div v-if="!readonly" class="comment-add">
                   <MarkdownEditor
                     ref="commentEditor"
@@ -1739,19 +1799,33 @@ function eventText(e) {
 .tm-col-right {
   display: contents;
 }
+/* The resize divider only exists in the two-column layout. */
+.tm-divider {
+  display: none;
+}
+.tm-divider-grip {
+  width: 2px;
+  height: 44px;
+  border-radius: 2px;
+  background: var(--t-border);
+  transition: background 0.15s ease;
+}
+.tm-divider:hover .tm-divider-grip {
+  background: var(--t-primary);
+}
 @media (min-width: 1100px) {
   .tm-card {
-    width: min(1100px, 96vw);
+    width: min(1240px, 96vw);
   }
   .form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-    column-gap: 20px;
+    /* left | 8px divider track | right — overridable via the --tm-cols var that
+       the draggable divider writes (persisted in localStorage). */
+    grid-template-columns: var(--tm-cols, minmax(0, 1fr) 8px minmax(0, 1.05fr));
     align-items: start;
   }
-  /* Head, GitLab line and title span both columns. */
+  /* Head + title span all three tracks. */
   .modal-head,
-  .gl-line,
   .title-input {
     grid-column: 1 / -1;
   }
@@ -1762,8 +1836,17 @@ function eventText(e) {
     gap: 16px;
     min-width: 0;
   }
-  .tm-col-right {
+  .tm-divider {
     grid-column: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .tm-col-right {
+    grid-column: 3;
     display: block;
     min-width: 0;
   }
@@ -1772,8 +1855,26 @@ function eventText(e) {
      depending on the n-card/n-spin height cascade. */
   .tm-col-left,
   .tm-col-right {
-    max-height: calc(90vh - 220px);
+    max-height: calc(90vh - 210px);
     overflow-y: auto;
+    /* Scrollbars show only on hover / focus so an idle modal reads clean. */
+    scrollbar-width: none;
+  }
+  .tm-col-left:hover,
+  .tm-col-left:focus-within,
+  .tm-col-right:hover,
+  .tm-col-right:focus-within {
+    scrollbar-width: thin;
+  }
+  .tm-col-left::-webkit-scrollbar,
+  .tm-col-right::-webkit-scrollbar {
+    width: 0;
+  }
+  .tm-col-left:hover::-webkit-scrollbar,
+  .tm-col-left:focus-within::-webkit-scrollbar,
+  .tm-col-right:hover::-webkit-scrollbar,
+  .tm-col-right:focus-within::-webkit-scrollbar {
+    width: 8px;
   }
   /* Align the right column's tabs with the left column's first property row. */
   .tm-col-right .detail-tabs {
@@ -1790,23 +1891,27 @@ function eventText(e) {
   justify-content: space-between;
   gap: 8px;
 }
+.head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
 .tnum {
   font-size: 12px;
   color: var(--t-text3);
   flex: none;
 }
-/* GitLab provenance line for synced tasks. */
-.gl-line {
+/* GitLab provenance, compact, next to the Tessera number. */
+.gl-num {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  margin: 4px 0 2px;
+  gap: 3px;
   font-size: 12px;
-  color: var(--t-text2);
+  color: var(--t-text3);
   text-decoration: none;
-  width: fit-content;
 }
-.gl-line:hover {
+.gl-num:hover {
   color: var(--t-primary);
 }
 .desc-head {
@@ -2315,6 +2420,18 @@ function eventText(e) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 100%;
+}
+/* Comments list grows so the empty state can sit centred and the composer
+   (below) sinks to the bottom of the pane. */
+.c-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+}
+.c-empty {
+  margin: auto 0;
 }
 .comment {
   display: flex;
@@ -2378,12 +2495,18 @@ function eventText(e) {
 .c-text {
   font-size: 13px;
 }
+/* Composer pinned to the bottom of the comments pane (sticks while scrolling). */
 .comment-add {
   display: flex;
   flex-direction: column;
   gap: 8px;
   align-items: flex-start;
+  position: sticky;
+  bottom: 0;
+  background: var(--t-surface);
+  padding-top: 10px;
   margin-top: 4px;
+  border-top: 1px solid var(--t-border);
 }
 .comment-add > :first-child {
   width: 100%;
