@@ -317,9 +317,16 @@ const stackShadow = computed(() => {
     )
     .join(', ')
 })
-const cardStyle = computed(() =>
-  props.task.priority ? { '--card-bar': hueGradVert(PRIORITY_COLORS[props.task.priority]) } : {},
-)
+const cardStyle = computed(() => {
+  if (!props.task.priority) return {}
+  const c = PRIORITY_COLORS[props.task.priority]
+  return {
+    '--card-bar': hueGradVert(c),
+    // Whole-card border tinted a very muted priority hue (roughly as subtle as a
+    // column's background wash) — enough to read as "coloured", not to shout.
+    '--card-border': `color-mix(in srgb, ${c} 12%, var(--t-border))`,
+  }
+})
 // Shared flag gradient defs live in App.vue (one per priority level), so a board
 // with 100s of cards references 4 defs instead of inlining an <svg> per card.
 const flagGradId = computed(() => (props.task.priority ? `t-prio-grad-${props.task.priority}` : ''))
@@ -1191,6 +1198,9 @@ async function submitAddSub() {
    the padding-box layer keeps the interior flat. The other three borders stay
    the opaque neutral colour, hiding the gradient there. */
 .card.has-prio {
+  /* All four borders take a muted priority tint; the left one is then made
+     transparent again to reveal the 3px gradient accent bar below. */
+  border-color: var(--card-border, var(--t-border));
   border-left-width: 3px;
   border-left-color: transparent;
   background:

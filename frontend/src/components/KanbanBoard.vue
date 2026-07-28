@@ -2030,6 +2030,9 @@ async function restoreFromArchive(taskId) {
                 '--col-tint': dcol.color
                   ? `color-mix(in srgb, ${dcol.color} 6%, var(--t-surface-alt))`
                   : 'var(--t-surface-alt)',
+                '--col-border': dcol.color
+                  ? `color-mix(in srgb, ${dcol.color} 12%, var(--t-border))`
+                  : 'var(--t-border)',
               }"
             >
               <!-- Collapsed strip: rotated title + count, click to expand. The real
@@ -2636,8 +2639,11 @@ async function restoreFromArchive(taskId) {
      TOP accent: the top border is transparent and reveals the gradient painted
      on the border-box (wrapping the rounded top corners); the other borders stay
      the opaque neutral colour, and padding-box carries a soft same-hue wash of the
-     column colour (a reference tracker-style, ~6%; neutral columns fall back to flat surface). */
-  border: 1px solid var(--t-border);
+     column colour (a reference tracker-style, ~6%; neutral columns fall back to flat surface).
+     The side/bottom border carries a muted tint of the column colour (~12%, a touch
+     stronger than the wash so it doesn't melt into the fill); neutral columns keep
+     the flat neutral border. */
+  border: 1px solid var(--col-border, var(--t-border));
   border-top: 3px solid transparent;
   background:
     linear-gradient(var(--col-tint, var(--t-surface-alt)), var(--col-tint, var(--t-surface-alt))) padding-box,
