@@ -124,7 +124,9 @@ fun TaskCard(
                 .leftAccentFrame(
                     accent = if (task.priority > 0) accent else c.border,
                     surface = if (nested) subtaskSurface else c.cardSurface,
-                    border = c.border,
+                    // Whole-card border tinted a very muted priority hue (12%, mirrors
+                    // web); the left edge keeps the 3px priority accent bar above.
+                    border = if (task.priority > 0) lerp(c.border, accent, 0.12f) else c.border,
                     barWidth = if (task.priority > 0) 3.dp else 1.dp,
                     topRadius = RadiusLg,
                     bottomRadius = RadiusLg,

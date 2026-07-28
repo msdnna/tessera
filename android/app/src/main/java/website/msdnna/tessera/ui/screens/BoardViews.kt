@@ -183,7 +183,7 @@ private fun ColumnStrip(
             .topAccentFrame(
                 accent = laneColor,
                 surface = surface,
-                border = Tessera.colors.border,
+                border = if (laneHasColor) lerp(Tessera.colors.border, laneColor, 0.12f) else Tessera.colors.border,
                 barHeight = 3.dp,
                 radius = RadiusLg,
                 gradient = laneHasColor,
@@ -371,6 +371,14 @@ fun KanbanView(
                     } else {
                         Tessera.colors.surfaceAlt
                     }
+                    // Column border tinted a muted column hue (12%, mirrors web
+                    // --col-border) — a touch stronger than the wash so it doesn't
+                    // melt into the fill; neutral columns keep the flat border.
+                    val colBorder = if (laneHasColor) {
+                        lerp(Tessera.colors.border, laneColor, 0.12f)
+                    } else {
+                        Tessera.colors.border
+                    }
                     if (collapsed) {
                         // A narrow strip (rotated title + count); a drop still lands on
                         // it (dropColumn bounds), tap re-expands. Web collapsed-column parity.
@@ -395,7 +403,7 @@ fun KanbanView(
                                     .topAccentFrame(
                                         accent = laneColor,
                                         surface = colTint,
-                                        border = Tessera.colors.border,
+                                        border = colBorder,
                                         barHeight = 3.dp,
                                         radius = RadiusLg,
                                         gradient = laneHasColor,
