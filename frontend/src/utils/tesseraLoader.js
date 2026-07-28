@@ -23,10 +23,12 @@ const S = {
 }
 const GLYPH = { d: 'M1101 9L1101 9Q1050 9 1013.500-2Q977-13 953-36Q929-59 917.500-94.500Q906-130 906-179L906-179L906-339L871-339Q842-340 830.500-356.500Q819-373 819-412L819-412Q819-448 833-465.500Q847-483 875-483L875-483L906-483L906-585Q906-605 909.500-621Q913-637 929-647.500Q945-658 981-658Q1017-658 1033-647Q1049-636 1052.500-619Q1056-602 1056-582L1056-582L1056-485L1123-487Q1142-487 1159-483.500Q1176-480 1187-464Q1198-448 1198-411L1198-411Q1198-377 1187.500-361Q1177-345 1160-340.500Q1143-336 1123-336L1123-336L1056-338L1056-185Q1056-169 1058.500-158.500Q1061-148 1066-143Q1071-138 1080-136Q1089-134 1102-134L1102-134Q1124-134 1141-130Q1158-126 1167.500-112Q1177-98 1177-65L1177-65Q1177-29 1166-13Q1155 3 1137.500 6Q1120 9 1101 9Z', s: 0.34, tx: -86.89, ty: 382 }
 const T = { unfold: 540, hold: 620, collapse: 480, turn: 780 }
-const VIEWS = ['corner', 'kanban', 'list', 'timeline', 'gantt', 'matrix']
+// Views the tessera unfolds into. NB: the `corner` state (the "t" logo with the
+// tile) is deliberately NOT here and there is no intro — the loader is purely the
+// tile unfolding into app layouts, so the brand logo no longer "plays" before it.
+const VIEWS = ['kanban', 'list', 'timeline', 'gantt', 'matrix']
 
 const seg = (a, b, ra, rb, dur) => ({ a, b, ra, rb, dur })
-const INTRO = [seg(S.corner, S.corner, 0, 0, 800), seg(S.corner, S.cover, 0, 0, 600), seg(S.cover, S.cover, 0, 0, 250)]
 const LOOP = []
 VIEWS.forEach((v) => {
   LOOP.push(seg(S.cover, S[v], 0, 0, T.unfold))
@@ -124,15 +126,14 @@ export function mountTesseraLoader(el, o = {}) {
     }
   }
 
-  draw(at(INTRO, 0)) // первый кадр сразу, без ожидания rAF
-  const iTot = sum(INTRO)
+  draw(at(LOOP, 0)) // первый кадр сразу, без ожидания rAF (стартуем с плитки-cover)
   const lTot = sum(LOOP)
   let raf
   let start = null
   function frame(ts) {
     if (start === null) start = ts
     const e = ts - start
-    draw(e < iTot ? at(INTRO, e) : doLoop ? at(LOOP, (e - iTot) % lTot) : at(LOOP, Math.min(e - iTot, lTot)))
+    draw(doLoop ? at(LOOP, e % lTot) : at(LOOP, Math.min(e, lTot)))
     raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)

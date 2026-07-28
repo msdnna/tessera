@@ -186,9 +186,9 @@ fun Sidebar(
                 Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 12.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                MtLogo(size = 22.dp)
-                // Brand wordmark intentionally omitted — the spacer reserves room
-                // for future header controls while keeping the icons right-aligned.
+                // Full brand lockup (mark + "tessera" wordmark), height matched to
+                // the header icons; icons stay right-aligned via the spacer.
+                BrandLockup(height = 22.dp)
                 Spacer(Modifier.weight(1f))
                 Box {
                     IonIconButton(Ion.GIT_BRANCH, onClick = onOpenGitlab)

@@ -11,7 +11,7 @@ const props = defineProps({
   show: { type: Boolean, default: false },
   // Captions to cross-fade through; stays on the last once reached.
   messages: { type: Array, default: () => ['Загружаем…'] },
-  size: { type: Number, default: 44 },
+  size: { type: Number, default: 66 },
   interval: { type: Number, default: 3000 },
   // contained: absolute-fill the nearest positioned ancestor (e.g. dim only a
   // modal body) instead of covering the whole viewport.

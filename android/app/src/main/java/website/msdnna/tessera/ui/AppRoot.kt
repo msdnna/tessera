@@ -263,7 +263,7 @@ private fun BootLoading() {
     LaunchedEffect(Unit) { awaitFrame() }
     PurpleBackdrop {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            TesseraLoader(size = 72.dp, color = Color.White, gradient = false)
+            TesseraLoader(size = 108.dp, color = Color.White, gradient = false)
             Spacer(Modifier.height(24.dp))
             // Reassuring captions fade in only if the connect/verify drags past 5s.
             LoadingCaptions(color = Color.White.copy(alpha = 0.82f))

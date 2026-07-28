@@ -13,6 +13,7 @@ import { SunnyOutline, MoonOutline, ServerOutline } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 import DownloadAppButton from '@/components/DownloadAppButton.vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 
 defineProps({
   title: { type: String, default: '' },
@@ -131,7 +132,7 @@ onBeforeUnmount(() => {
 
     <div class="auth-stage">
       <div class="auth-header">
-        <span class="auth-logo" aria-hidden="true" />
+        <BrandLogo class="auth-logo" :height="30" />
         <span v-if="title" class="auth-title">{{ title }}</span>
       </div>
 
@@ -231,9 +232,9 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Header above the card: brand mark (no badge) on the left, screen title beside
-   it — mirrors the reference. The mark is the white "t" glyph used as a CSS mask,
-   tinted brand-purple in light mode and white in dark mode. */
+/* Header above the card: the full brand lockup (mark + wordmark) on the left, the
+   screen title beside it — mirrors the reference. The lockup carries the accent
+   gradient on both themes (see BrandLogo). */
 .auth-header {
   display: flex;
   align-items: center;
@@ -242,15 +243,7 @@ onBeforeUnmount(() => {
   margin: 0 4px 18px;
 }
 .auth-logo {
-  width: 28px;
-  height: 40px;
   flex: none;
-  background-color: #6d5fe0;
-  -webkit-mask: url(/mark-white.svg) center / contain no-repeat;
-  mask: url(/mark-white.svg) center / contain no-repeat;
-}
-[data-theme='dark'] .auth-logo {
-  background-color: #ffffff;
 }
 .auth-title {
   font-size: 22px;

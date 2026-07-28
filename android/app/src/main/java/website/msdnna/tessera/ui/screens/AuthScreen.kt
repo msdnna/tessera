@@ -128,8 +128,10 @@ fun AuthScreen(
             .onFailure { vm.setError("Не удалось открыть браузер для входа") }
     }
 
-    // Logo sized so its WIDTH is half the screen (MtLogo's width = height * 120/100).
-    val logoSize = (LocalConfiguration.current.screenWidthDp.dp * 0.5f) / (120f / 100f)
+    // Logo height ~28% of screen width (~1.5× smaller than before). MtLogo is the
+    // tall "t" mark now (width = height * 69.224/99.008), so this stays comfortably
+    // narrow on the login screen.
+    val logoSize = LocalConfiguration.current.screenWidthDp.dp * 0.28f
 
     var register by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }

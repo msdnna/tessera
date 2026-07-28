@@ -121,13 +121,10 @@ private class Seg(val a: St, val b: St, val ra: Float, val rb: Float, val dur: F
 
 private fun seg(a: St, b: St, ra: Float, rb: Float, dur: Float) = Seg(a, b, ra, rb, dur)
 
-private val INTRO: List<Seg> = listOf(
-    seg(STATES.getValue("corner"), STATES.getValue("corner"), 0f, 0f, 800f),
-    seg(STATES.getValue("corner"), STATES.getValue("cover"), 0f, 0f, 600f),
-    seg(STATES.getValue("cover"), STATES.getValue("cover"), 0f, 0f, 250f),
-)
-
-private val VIEWS = listOf("corner", "kanban", "list", "timeline", "gantt", "matrix")
+// NB: the `corner` state (the "t" logo with the tile) is deliberately NOT a view
+// and there is no intro — the loader is purely the tile unfolding into app layouts,
+// so the brand logo no longer "plays" before it (parity with the web engine).
+private val VIEWS = listOf("kanban", "list", "timeline", "gantt", "matrix")
 
 private val LOOP: List<Seg> = buildList {
     val cover = STATES.getValue("cover")
@@ -140,7 +137,6 @@ private val LOOP: List<Seg> = buildList {
     }
 }
 
-private val ITOT: Float = INTRO.sumOf { it.dur.toDouble() }.toFloat()
 private val LTOT: Float = LOOP.sumOf { it.dur.toDouble() }.toFloat()
 
 private class Frame(val t: Float, val rot: Float, val p: List<Tile>)
@@ -204,7 +200,7 @@ private fun boxBrush(color: Color, gradient: Boolean, l: Float, t: Float, r: Flo
 @Composable
 fun TesseraLoader(
     modifier: Modifier = Modifier,
-    size: Dp = 44.dp,
+    size: Dp = 66.dp,
     color: Color = Tessera.colors.primary,
     gradient: Boolean = true,
 ) {
@@ -243,8 +239,7 @@ fun TesseraLoader(
 
     val frame = when {
         reduced -> Frame(0f, 0f, STATES.getValue("kanban").p)
-        elapsed < ITOT -> frameAt(INTRO, elapsed)
-        else -> frameAt(LOOP, (elapsed - ITOT) % LTOT)
+        else -> frameAt(LOOP, elapsed % LTOT)
     }
 
     Canvas(modifier.size(size)) {

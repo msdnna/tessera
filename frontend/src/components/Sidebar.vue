@@ -45,6 +45,7 @@ import EmptyState from './EmptyState.vue'
 import SidebarFooter from './SidebarFooter.vue'
 import WorkspaceTools from './WorkspaceTools.vue'
 import SidebarRailNode from './SidebarRailNode.vue'
+import BrandLogo from './BrandLogo.vue'
 
 defineProps({
   mobile: { type: Boolean, default: false },
@@ -166,7 +167,7 @@ async function deleteWorkspace() {
 <template>
   <div class="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
     <div class="brand">
-      <span class="brand-mark" role="img" aria-label="Tessera" />
+      <BrandLogo class="brand-logo" :height="22" :wordmark="!collapsed" />
       <!-- Tools live here (right of the logo) when expanded; when the rail is
            collapsed (desktop) they move to the header instead. -->
       <WorkspaceTools
@@ -398,17 +399,9 @@ async function deleteWorkspace() {
   gap: 4px;
   padding: 2px 0;
 }
-/* The tessera "t" mark (single glyph + corner tile, no wordmark), filled with the
-   accent gradient via a mask — mirrors the Android brand mark. The glyph is taller
-   than wide (~69×99), so height leads and width follows the aspect. */
-.brand-mark {
-  display: block;
-  width: 21px;
-  height: 30px;
+/* Brand lockup (mark + wordmark) in the header; collapses to the mark on the rail. */
+.brand-logo {
   flex: none;
-  background: var(--t-accent-grad);
-  -webkit-mask: url(/mark-white.svg) no-repeat center / contain;
-  mask: url(/mark-white.svg) no-repeat center / contain;
 }
 .ws-switch {
   display: flex;
