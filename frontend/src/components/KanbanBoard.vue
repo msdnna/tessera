@@ -24,7 +24,6 @@ import {
   ChevronBackOutline,
   SettingsOutline,
   RibbonOutline,
-  CloseOutline,
   ArchiveOutline,
   AlbumsOutline,
   SwapVerticalOutline,
@@ -504,12 +503,12 @@ const filterChips = computed(() =>
 const groupChip = computed(() => facetChips.value.find((c) => c.kind === 'group'))
 // Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
 const groupModeLabel = computed(() => {
-  if (groupMode.value === 'assignee') return 'исполнитель'
-  if (groupMode.value === 'none') return 'без группировки'
-  if (groupMode.value === 'milestone') return 'этапы'
+  if (groupMode.value === 'assignee') return 'Исполнитель'
+  if (groupMode.value === 'none') return 'Без группировки'
+  if (groupMode.value === 'milestone') return 'Этап'
   if (groupMode.value === 'tag')
-    return `теги${tagPrefix.value ? ` · ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
-  return 'статусы'
+    return `Тег${tagPrefix.value ? ` ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
+  return 'Статус'
 })
 const addOptions = computed(() => {
   const grouping = [
@@ -1836,19 +1835,27 @@ async function restoreFromArchive(taskId) {
           @mouseenter="expandComposer"
           @mouseleave="scheduleCollapse"
         >
-          <!-- Archive banner: read-only view of archived tasks with all board filters. -->
-          <span v-if="archivedMode" class="ms-scope-chip archive-chip" title="Архив — только чтение">
-            <n-icon :component="ArchiveOutline" />
-            <span class="ms-scope-label">Архив (только чтение)</span>
-            <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="exitArchive" />
+          <!-- Scope chips (archive / sprint) — same chip style as the rest. -->
+          <span v-if="archivedMode" class="facet" title="Архив — только чтение">
+            <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
+            Архив (только чтение)
+            <button class="facet-x" title="Выйти из архива" @click.stop="exitArchive">×</button>
           </span>
-          <!-- Sprint scope chip (navigation overlay from the sidebar). Removing it
-               returns the full board and de-highlights the sprint node. -->
-          <span v-if="milestoneScope" class="ms-scope-chip" title="Показан один этап">
-            <n-icon :component="RibbonOutline" />
-            <span class="ms-scope-label">{{ milestoneScopeLabel }}</span>
-            <n-icon class="ms-scope-x" :component="CloseOutline" @click.stop="clearMilestoneScope" />
+          <span v-if="milestoneScope" class="facet" title="Показан один этап">
+            <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
+            {{ milestoneScopeLabel }}
+            <button class="facet-x" title="Сбросить этап" @click.stop="clearMilestoneScope">×</button>
           </span>
+
+          <!-- Subtask-expansion toggle (icon-only): accent when on, grey when off. -->
+          <button
+            class="facet subtasks-chip"
+            :class="{ active: subtasksExpanded }"
+            :title="subtasksExpanded ? 'Подзадачи раскрыты' : 'Раскрыть подзадачи'"
+            @click.stop="toggleSubtasksExpanded"
+          >
+            <n-icon class="facet-ic" :component="GitBranchOutline" :size="14" />
+          </button>
 
           <!-- Grouping chip (toggles status/tag grouping). -->
           <span
@@ -1887,16 +1894,6 @@ async function restoreFromArchive(taskId) {
             <button class="facet-x" title="Убрать" @click.stop="removeChip(c)">×</button>
           </span>
 
-          <!-- Subtask-expansion toggle: accent when on, plain grey when off. -->
-          <button
-            class="facet subtasks-chip"
-            :class="{ active: subtasksExpanded }"
-            :title="subtasksExpanded ? 'Подзадачи раскрыты' : 'Раскрыть подзадачи'"
-            @click.stop="toggleSubtasksExpanded"
-          >
-            <n-icon class="facet-ic" :component="GitBranchOutline" :size="13" />
-            Подзадачи
-          </button>
 
           <n-dropdown
             :show="addShow"
@@ -2319,40 +2316,6 @@ async function restoreFromArchive(taskId) {
   flex: 1;
 }
 /* Sprint scope chip: a persistent, accent-tinted badge showing the active sprint. */
-.ms-scope-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
-  height: 24px; /* sits inside the composer bar as the leading chip(s) */
-  box-sizing: border-box;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--t-primary);
-  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--t-primary) 34%, transparent);
-}
-.ms-scope-label {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ms-scope-x {
-  cursor: pointer;
-  opacity: 0.75;
-}
-.ms-scope-x:hover {
-  opacity: 1;
-}
-/* Archive banner: neutral amber tone to signal a read-only mode. */
-.archive-chip {
-  color: #b5792a;
-  background: color-mix(in srgb, #e0922f 15%, transparent);
-  border-color: color-mix(in srgb, #e0922f 38%, transparent);
-}
 /* Keep the loader vertically centred during the initial board load (the spin
    content would otherwise be empty → spinner pinned to the top before content). */
 .board-spin :deep(.n-spin-content) {
@@ -2535,13 +2498,13 @@ async function restoreFromArchive(taskId) {
   opacity: 0.4;
 }
 /* Subtask-expansion toggle chip: plain grey when off, accent tint when on. */
+/* Subtask-expansion toggle: icon-only, square-ish; grey off / accent on. */
 .subtasks-chip {
   flex: none;
   border: none;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
-  padding: 0 9px;
+  padding: 0 6px;
 }
 .subtasks-chip.active {
   background: color-mix(in srgb, var(--t-primary) 16%, transparent);
