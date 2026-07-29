@@ -40,6 +40,8 @@ import {
   TimerOutline,
   RibbonOutline,
   ChatbubbleEllipsesOutline,
+  GitBranchOutline,
+  TimeOutline,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -130,7 +132,7 @@ function loadSplitRatio() {
 // grid-template-columns for .form (ignored in the stacked flex layout). The 8px
 // middle track is the divider handle.
 const splitCols = computed(
-  () => `minmax(0, ${splitRatio.value}fr) 8px minmax(0, ${1 - splitRatio.value}fr)`,
+  () => `minmax(0, ${splitRatio.value}fr) 14px minmax(0, ${1 - splitRatio.value}fr)`,
 )
 let splitDragging = false
 function startSplitDrag(e) {
@@ -1573,9 +1575,12 @@ function eventText(e) {
                   </template>
                   <TaskMiniCard :task="sub" :tags-map="tagsById" :members-map="membersById" />
                 </n-popover>
-                <div v-if="!(task?.subtasks || []).length" class="empty-hint">
-                  Подзадач пока нет
-                </div>
+                <EmptyState
+                  v-if="!(task?.subtasks || []).length"
+                  size="small"
+                  :icon="GitBranchOutline"
+                  text="Подзадач пока нет"
+                />
                 <n-input
                   v-model:value="newSubtask"
                   size="small"
@@ -1620,7 +1625,12 @@ function eventText(e) {
                     Убрать связь?
                   </n-popconfirm>
                 </div>
-                <div v-if="!relations.length" class="empty-hint">Связей пока нет</div>
+                <EmptyState
+                  v-if="!relations.length"
+                  size="small"
+                  :icon="GitMergeOutline"
+                  text="Связей пока нет"
+                />
                 <div class="rel-add">
                   <n-select
                     v-model:value="relKind"
@@ -1700,7 +1710,12 @@ function eventText(e) {
                     Удалить файл «{{ a.filename }}»?
                   </n-popconfirm>
                 </div>
-                <div v-if="!attachments.length" class="empty-hint">Файлов пока нет</div>
+                <EmptyState
+                  v-if="!attachments.length"
+                  size="small"
+                  :icon="AttachOutline"
+                  text="Файлов пока нет"
+                />
                 <input ref="fileInput" type="file" hidden @change="onFileChosen" />
                 <n-button size="small" :loading="uploading" @click="pickFile">
                   <template #icon><n-icon :component="AttachOutline" /></template>
@@ -1718,7 +1733,12 @@ function eventText(e) {
                   </span>
                   <span class="h-when">{{ fmtWhen(e.created_at) }}</span>
                 </div>
-                <div v-if="!events.length" class="empty-hint">История пуста</div>
+                <EmptyState
+                  v-if="!events.length"
+                  size="small"
+                  :icon="TimeOutline"
+                  text="История пуста"
+                />
               </div>
             </n-tab-pane>
           </n-tabs>
@@ -1804,9 +1824,9 @@ function eventText(e) {
   display: none;
 }
 .tm-divider-grip {
-  width: 2px;
-  height: 44px;
-  border-radius: 2px;
+  width: 4px;
+  height: 48px;
+  border-radius: 3px;
   background: var(--t-border);
   transition: background 0.15s ease;
 }
@@ -1819,9 +1839,9 @@ function eventText(e) {
   }
   .form {
     display: grid;
-    /* left | 8px divider track | right — overridable via the --tm-cols var that
-       the draggable divider writes (persisted in localStorage). */
-    grid-template-columns: var(--tm-cols, minmax(0, 1fr) 8px minmax(0, 1.05fr));
+    /* left | divider track | right — overridable via the --tm-cols var that the
+       draggable divider writes (persisted in localStorage). */
+    grid-template-columns: var(--tm-cols, minmax(0, 1fr) 14px minmax(0, 1.05fr));
     align-items: start;
   }
   /* Head + title span all three tracks. */
@@ -1857,24 +1877,37 @@ function eventText(e) {
   .tm-col-right {
     max-height: calc(90vh - 210px);
     overflow-y: auto;
-    /* Scrollbars show only on hover / focus so an idle modal reads clean. */
-    scrollbar-width: none;
+    /* Reserve the scrollbar gutter always, so revealing the bar on hover doesn't
+       reflow the content (was causing a visible jitter). The thumb stays
+       transparent until hover / focus — idle modal still reads clean. */
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.15s ease;
   }
   .tm-col-left:hover,
   .tm-col-left:focus-within,
   .tm-col-right:hover,
   .tm-col-right:focus-within {
-    scrollbar-width: thin;
+    scrollbar-color: var(--t-border) transparent;
   }
   .tm-col-left::-webkit-scrollbar,
   .tm-col-right::-webkit-scrollbar {
-    width: 0;
+    width: 10px;
   }
-  .tm-col-left:hover::-webkit-scrollbar,
-  .tm-col-left:focus-within::-webkit-scrollbar,
-  .tm-col-right:hover::-webkit-scrollbar,
-  .tm-col-right:focus-within::-webkit-scrollbar {
-    width: 8px;
+  .tm-col-left::-webkit-scrollbar-thumb,
+  .tm-col-right::-webkit-scrollbar-thumb {
+    border-radius: 5px;
+    border: 3px solid transparent;
+    background: transparent;
+    background-clip: padding-box;
+  }
+  .tm-col-left:hover::-webkit-scrollbar-thumb,
+  .tm-col-left:focus-within::-webkit-scrollbar-thumb,
+  .tm-col-right:hover::-webkit-scrollbar-thumb,
+  .tm-col-right:focus-within::-webkit-scrollbar-thumb {
+    background: var(--t-border);
+    background-clip: padding-box;
   }
   /* Align the right column's tabs with the left column's first property row. */
   .tm-col-right .detail-tabs {
