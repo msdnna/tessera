@@ -108,10 +108,16 @@ func main() {
 
 		// Protected — require a valid access token.
 		protected := api.Group("/")
-		protected.Use(middleware.Auth(cfg.JWTSecret))
+		protected.Use(middleware.Auth(cfg.JWTSecret, queries))
 		{
 			protected.GET("/auth/me", authHandler.Me)
 			protected.POST("/auth/resend-verification", authHandler.ResendVerification)
+
+			// Personal access tokens: long-lived, revocable bearer credentials
+			// for headless clients (MCP server, CI). Managed from a live session.
+			protected.POST("/auth/tokens", rh.CreatePAT)
+			protected.GET("/auth/tokens", rh.ListPATs)
+			protected.DELETE("/auth/tokens/:id", rh.RevokePAT)
 
 			// Self-service profile / password / preferences / avatar.
 			protected.PATCH("/users/me", rh.UpdateMyProfile)

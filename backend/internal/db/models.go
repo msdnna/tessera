@@ -301,6 +301,18 @@ type OauthProvider struct {
 	ServiceTokenEnc string    `json:"service_token_enc"`
 }
 
+type PersonalAccessToken struct {
+	ID         uuid.UUID  `json:"id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	Name       string     `json:"name"`
+	TokenHash  string     `json:"token_hash"`
+	LastFour   string     `json:"last_four"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	RevokedAt  *time.Time `json:"revoked_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
 type Project struct {
 	ID          uuid.UUID        `json:"id"`
 	WorkspaceID uuid.UUID        `json:"workspace_id"`

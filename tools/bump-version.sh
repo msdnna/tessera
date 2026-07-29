@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bump a service's semantic version.
-# Usage: tools/bump-version.sh <backend|frontend|android|desktop> [patch|minor|major]
+# Usage: tools/bump-version.sh <backend|frontend|android|desktop|mcp> [patch|minor|major]
 set -euo pipefail
 
 service="${1:?usage: bump-version.sh <service> [patch|minor|major]}"
@@ -11,7 +11,8 @@ case "$service" in
   frontend) file="frontend/VERSION" ;;
   android)  file="android/VERSION" ;;
   desktop)  file="desktop/VERSION" ;;
-  *) echo "unknown service: $service (want backend|frontend|android|desktop)" >&2; exit 1 ;;
+  mcp)      file="mcp/VERSION" ;;
+  *) echo "unknown service: $service (want backend|frontend|android|desktop|mcp)" >&2; exit 1 ;;
 esac
 
 [ -f "$file" ] || { echo "missing $file" >&2; exit 1; }

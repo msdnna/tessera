@@ -71,3 +71,24 @@ func HashRefreshToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }
+
+// PATPrefix marks personal access tokens so the auth middleware can tell them
+// apart from JWTs (which contain dots) and opaque refresh tokens.
+const PATPrefix = "tsra_"
+
+// NewPAT returns a random personal access token (prefixed, revocable, long-lived)
+// and its storage hash. Only the hash is persisted; the plaintext is shown once.
+func NewPAT() (token, hash string, err error) {
+	b := make([]byte, 24)
+	if _, err = rand.Read(b); err != nil {
+		return "", "", err
+	}
+	token = PATPrefix + hex.EncodeToString(b)
+	return token, HashToken(token), nil
+}
+
+// HashToken returns the SHA-256 hex digest stored for a personal access token.
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}

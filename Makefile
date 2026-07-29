@@ -66,11 +66,27 @@ lint-frontend: ## Lint + format-check frontend
 test-frontend: ## Run frontend tests
 	cd frontend && corepack yarn test
 
+.PHONY: build-mcp
+build-mcp: ## Build the Tessera MCP server binary (mcp/tessera-mcp)
+	cd mcp && $(GO) build -ldflags "-X main.version=$$(cat VERSION)" -o tessera-mcp .
+
+.PHONY: run-mcp
+run-mcp: ## Run the MCP server (needs TESSERA_TOKEN; TESSERA_BASE_URL optional)
+	cd mcp && $(GO) run .
+
+.PHONY: lint-mcp
+lint-mcp: ## Run golangci-lint on the MCP server
+	cd mcp && golangci-lint run ./...
+
+.PHONY: test-mcp
+test-mcp: ## Run MCP server tests
+	cd mcp && $(GO) test ./...
+
 .PHONY: lint
-lint: lint-backend lint-frontend ## Lint everything
+lint: lint-backend lint-frontend lint-mcp ## Lint everything
 
 .PHONY: test
-test: test-backend test-frontend ## Test everything
+test: test-backend test-frontend test-mcp ## Test everything
 
 # ── Versioning ─────────────────────────────────────────────
 .PHONY: version
@@ -79,6 +95,7 @@ version: ## Show service versions
 	@echo "frontend: $$(cat frontend/VERSION)"
 	@echo "android:  $$(cat android/VERSION)"
 	@echo "desktop:  $$(cat desktop/VERSION)"
+	@echo "mcp:      $$(cat mcp/VERSION)"
 
 .PHONY: bump-api
 bump-api: ## Bump backend version (BUMP=patch|minor|major)
@@ -95,6 +112,10 @@ bump-android: ## Bump Android version (BUMP=patch|minor|major)
 .PHONY: bump-desktop
 bump-desktop: ## Bump desktop version (BUMP=patch|minor|major)
 	@./tools/bump-version.sh desktop $(or $(BUMP),patch)
+
+.PHONY: bump-mcp
+bump-mcp: ## Bump MCP server version (BUMP=patch|minor|major)
+	@./tools/bump-version.sh mcp $(or $(BUMP),patch)
 
 # ── Android ────────────────────────────────────────────────
 ANDROID_DIR := android

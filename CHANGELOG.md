@@ -2681,7 +2681,40 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 - Board view: columns + tasks read-only skeleton with minimal create modals
   (full drag & drop kanban lands in Phase 4).
 
+## mcp
+
+### [0.1.0] — 2026-07-29
+- **Первый релиз MCP-сервера Tessera** (`mcp/`, отдельный Go-модуль `tessera-mcp`,
+  MCP Go SDK v1.7.0, stdio). Даёт AI-агенту (Claude Code) доступ к задачам как к
+  ранжированной очереди работы для автоматизированной агентской разработки.
+- Тонкий **read-only REST-клиент** API Tessera (в БД не лезет; loose coupling),
+  аутентификация через PAT (`TESSERA_TOKEN`, `tsra_…`).
+- Тулы: `tessera_list_workspaces`, `tessera_list_projects`, `tessera_list_boards`,
+  `tessera_resolve_board`, `tessera_list_tasks` (ранжированный список доски),
+  `tessera_my_tasks` (кросс-проектная очередь исполнителя), `tessera_next_task`
+  (одна верхняя actionable-задача, пропускает заблокированные открытыми блокерами),
+  `tessera_get_task` (полная деталь: описание, теги, исполнители, подзадачи,
+  комментарии, GitLab-линк).
+- **Ранжирование** (`internal/rank`): незакрытые → просроченные → приоритет ↓
+  (4=срочный…0=нет) → срок ↑ → позиция. Юнит-тесты на порядок.
+- Обогащение сводок: имена колонок/тегов, флаг просрочки, оценка, человекочитаемый
+  deep-link `/project/<slug>/board/<slug>?task=<number>`.
+
 ## backend
+
+### [0.79.0] — 2026-07-29
+- **feat: Personal Access Tokens (PAT) — долгоживущие отзываемые bearer-токены для
+  headless-клиентов** (MCP-сервер, CI, скрипты). Замена паре access(15м)+refresh(30д)
+  там, где браузерной сессии нет. Хранится только SHA-256-хэш (как у `refresh_tokens`),
+  плейнтекст показывается один раз при создании; префикс `tsra_`.
+  - `POST /api/auth/tokens` (создать, `{name, expires_at?}` → токен один раз),
+    `GET /api/auth/tokens` (список без плейнтекста), `DELETE /api/auth/tokens/:id` (отзыв).
+  - Middleware `Auth` принимает PAT прозрачно на ВСЕХ protected-роутах: по префиксу
+    `tsra_` резолвит владельца, проверяет revoked/expired, best-effort `last_used_at`.
+    Authz не расширяется — PAT видит ровно workspace'ы владельца (`requireMember`).
+  - Bootstrap-CLI `cmd/token` (`go run ./cmd/token -email … -name mcp [-days N]`) —
+    выпуск токена локально без фронтенда.
+  - Миграция `0045_personal_access_tokens` (аддитивна).
 
 ### [0.78.4] — 2026-07-29
 - **fix: комментарий, отправленный из Tessera в задачу GitLab, больше не дублируется
