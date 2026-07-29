@@ -227,40 +227,24 @@ watch(autoCollapseEmpty, (on) => {
     if (colCount(dcol) === 0 && dcol.key in colCollapse) delete colCollapse[dcol.key]
   }
 })
-// Composer bar: collapsed to a single row (clipping overflow chips) so the
-// right-side tool buttons stay in view; tapping expands it to full height and
-// slides the tools off-screen. Collapses again on an outside click.
+// Composer bar: always a single row. The right-side tools slide away (yielding
+// their width to the chips) only once the chips + a reserved slice for search
+// text fill ≥75% of the bar's full width — measured, not hover-driven. Each chip
+// is pale on its own and turns vivid only under the cursor (search: on focus).
 const composerExpanded = ref(false)
 const subbarEl = ref(null)
-let collapseTimer = null
-function expandComposer() {
-  if (collapseTimer) {
-    clearTimeout(collapseTimer)
-    collapseTimer = null
-  }
-  composerExpanded.value = true
-}
-// Hover-driven collapse: leaving the bar collapses it after a short grace period,
-// unless a teleported menu (chip dropdown / picker) is open — closing that would
-// otherwise snap the bar shut mid-interaction. Re-entering cancels the timer.
-function scheduleCollapse() {
-  if (collapseTimer) clearTimeout(collapseTimer)
-  collapseTimer = setTimeout(() => {
-    collapseTimer = null
-    // Keep open while a teleported menu is up or focus is still inside the bar
-    // (e.g. the search input is being typed in).
-    if (document.querySelector('.n-dropdown-menu, .n-popover, .n-popselect, .n-base-select-menu')) return
-    if (subbarEl.value?.contains(document.activeElement)) return
-    composerExpanded.value = false
-  }, 260)
-}
-function onDocPointerDown(e) {
-  if (!composerExpanded.value) return
-  const t = e.target
-  if (subbarEl.value?.contains(t)) return
-  // Ignore clicks inside teleported menus (chip dropdowns / view popovers).
-  if (t.closest?.('.n-dropdown-menu, .n-popover, .n-popselect, .n-base-select-menu')) return
-  composerExpanded.value = false
+const composerEl = ref(null)
+const searchEl = ref(null)
+let composerRO = null
+function recomputeComposerFit() {
+  const bar = subbarEl.value
+  const search = searchEl.value
+  if (!bar || !search) return
+  // Chips are nowrap and precede the search input, so the input's offset within
+  // the composer equals the chips' total width. Reserve room for typed search.
+  const chipsW = search.offsetLeft
+  const RESERVED_SEARCH = 170
+  composerExpanded.value = chipsW + RESERVED_SEARCH >= bar.clientWidth * 0.75
 }
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
@@ -501,6 +485,11 @@ const filterChips = computed(() =>
   facetChips.value.filter((c) => c.kind !== 'group' && c.kind !== 'sort'),
 )
 const groupChip = computed(() => facetChips.value.find((c) => c.kind === 'group'))
+// Re-measure the composer fit whenever the chip set changes (add/remove a filter,
+// sort, group, scope or the subtasks toggle); resize is handled by the observer.
+watch([facetChips, archivedMode, milestoneScope, subtasksExpanded], () =>
+  nextTick(recomputeComposerFit),
+)
 // Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
 const groupModeLabel = computed(() => {
   if (groupMode.value === 'assignee') return 'Исполнитель'
@@ -1753,7 +1742,10 @@ onMounted(async () => {
       if (h > 0 && cardH[id] !== h) cardH[id] = h
     }
   })
-  document.addEventListener('pointerdown', onDocPointerDown, true)
+  // Re-measure the composer fit on bar resize (window / sidebar toggle).
+  composerRO = new ResizeObserver(recomputeComposerFit)
+  if (subbarEl.value) composerRO.observe(subbarEl.value)
+  nextTick(recomputeComposerFit)
   restoreView()
   await load(props.boardId)
   loadViews()
@@ -1767,8 +1759,7 @@ onBeforeUnmount(() => {
   // Drop any pending debounced reload so it can't fire against a board we've just
   // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
   clearTimeout(reloadTimer)
-  if (collapseTimer) clearTimeout(collapseTimer)
-  document.removeEventListener('pointerdown', onDocPointerDown, true)
+  composerRO?.disconnect()
   onDragEnd()
   boardViewStore.reset()
 })
@@ -1825,23 +1816,21 @@ async function restoreFromArchive(taskId) {
            global header now.) -->
       <div ref="subbarEl" class="subbar">
         <!-- Composer bar: scope (archive/sprint) + grouping / sort / filters as
-             chips + an add menu + the name search, all in one wide bar
-             (a reference tracker/GitLab-style). Expands on hover (or tap) so the right-side
-             tools stay visible when idle; sort chips are drag-reorderable. -->
+             chips + an add menu + the name search, all in one single-row bar.
+             Each chip is pale until hovered; the right-side tools slide away only
+             once the chips fill ≥75% of the bar. Sort chips are drag-reorderable. -->
         <div
+          ref="composerEl"
           class="composer"
-          :class="{ collapsed: !composerExpanded, 'has-clear': hasClearableFacets }"
-          @click="expandComposer"
-          @mouseenter="expandComposer"
-          @mouseleave="scheduleCollapse"
+          :class="{ 'has-clear': hasClearableFacets }"
         >
-          <!-- Scope chips (archive / sprint) — same chip style as the rest. -->
-          <span v-if="archivedMode" class="facet" title="Архив — только чтение">
+          <!-- Scope chips: archive = amber tint, sprint = accent tint (no border). -->
+          <span v-if="archivedMode" class="facet facet-archive" title="Архив — только чтение">
             <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
             Архив (только чтение)
             <button class="facet-x" title="Выйти из архива" @click.stop="exitArchive">×</button>
           </span>
-          <span v-if="milestoneScope" class="facet" title="Показан один этап">
+          <span v-if="milestoneScope" class="facet facet-accent" title="Показан один этап">
             <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
             {{ milestoneScopeLabel }}
             <button class="facet-x" title="Сбросить этап" @click.stop="clearMilestoneScope">×</button>
@@ -1911,10 +1900,10 @@ async function restoreFromArchive(taskId) {
           </n-dropdown>
 
           <input
+            ref="searchEl"
             v-model="filters.q"
             class="composer-search"
             placeholder="Поиск по названию…"
-            @focus="expandComposer"
           />
           <button v-if="hasClearableFacets" class="facet-clear" title="Сбросить всё" @click="clearAll">
             ×
@@ -2380,25 +2369,6 @@ async function restoreFromArchive(taskId) {
   /* Tame the inherited (Naive) line-height so a chip stays 22px tall. */
   line-height: 1.25;
 }
-/* Collapsed (idle): one clipped row, dimmed, hover/tap to activate. */
-.composer.collapsed {
-  overflow: hidden;
-  cursor: pointer;
-}
-/* Collapsed: any tap (even on a chip / add / clear / search) only expands the
-   bar — fishing for a blank spot to expand a chip-filled bar was fiddly. Killing
-   pointer events on the children lets the click fall through to .composer's
-   expand handler; the children act normally once expanded. */
-/* Smoothly fade the dim in/out as the bar collapses/expands (focus). */
-.composer > * {
-  transition: opacity 0.25s ease;
-}
-.composer.collapsed > * {
-  pointer-events: none;
-  /* Dimmed while collapsed so it reads as one tap-to-expand surface (the chips
-     aren't individually actionable until expanded). */
-  opacity: 0.62;
-}
 .facet {
   display: inline-flex;
   align-items: center;
@@ -2411,12 +2381,38 @@ async function restoreFromArchive(taskId) {
   background: var(--t-hover);
   color: var(--t-text2);
   white-space: nowrap;
+  /* Each chip is pale until hovered, so an idle bar reads calmly (no whole-bar
+     dim/expand). */
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+.facet:hover {
+  opacity: 1;
 }
 .facet.group {
   background: color-mix(in srgb, var(--t-primary) 14%, transparent);
-  color: var(--t-text1);
+  /* Accent chip text matches its icon (accent, not near-black). */
+  color: var(--t-primary);
   cursor: pointer;
   padding-right: 9px;
+}
+/* Sprint scope chip: accent tint, no border. */
+.facet-accent {
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
+  color: var(--t-primary);
+}
+.facet-accent .facet-ic {
+  color: var(--t-primary);
+  opacity: 1;
+}
+/* Archive scope chip: amber tint, no border. */
+.facet-archive {
+  background: color-mix(in srgb, #e0922f 15%, transparent);
+  color: #b5792a;
+}
+.facet-archive .facet-ic {
+  color: #b5792a;
+  opacity: 1;
 }
 .facet.sortable {
   cursor: pointer;
@@ -2460,6 +2456,12 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text1);
   font-size: 13px;
   padding: 2px 4px;
+  /* Pale until the caret is in it (matches the chips' hover behaviour). */
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+.composer-search:focus {
+  opacity: 1;
 }
 .composer-search::placeholder {
   color: var(--t-text3);
@@ -2623,15 +2625,9 @@ async function restoreFromArchive(taskId) {
     max-width: none;
     margin-left: 4px;
   }
-  /* On mobile the search is shrinkable (min-width:0) so it never forces a wrap
-     onto a second row: the collapsed bar stays one line (chips only — search
-     hidden), and expanding just reclaims the width freed by the hiding tools,
-     growing the bar rightward rather than down. */
+  /* On mobile the search is shrinkable so it never forces horizontal overflow. */
   .composer-search {
     min-width: 0;
-  }
-  .composer.collapsed .composer-search {
-    display: none;
   }
 }
 .vp {
