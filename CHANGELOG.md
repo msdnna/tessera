@@ -2683,6 +2683,19 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## mcp
 
+### [0.1.1] — 2026-07-29
+- **fix: тулы-списки заворачивают результат в объект.** `list_workspaces`,
+  `list_projects`, `list_boards` возвращали массив верхнего уровня → их
+  `outputSchema` был `type: "array"`. Go SDK это допускает (SEP-2106), но
+  строгие клиенты (Claude Code v2.1.x) отвергают не-object output schema с
+  «tools fetch failed / expected object». Теперь результат — объект
+  (`{workspaces|projects|boards: [...]}`); все 8 тулов дают `outputSchema.type=object`.
+- Обогащение `my_tasks`/`next_task` (workspace-scope): в сводку добавлено поле
+  `project` (название проекта) — для кросс-проектной очереди агент видит,
+  к какому проекту относится задача.
+- Проверено на живой Tessera (:8090): полный сценарий (workspaces → projects →
+  доска → ранжированная очередь → next_task → get_task by number → my_tasks).
+
 ### [0.1.0] — 2026-07-29
 - **Первый релиз MCP-сервера Tessera** (`mcp/`, отдельный Go-модуль `tessera-mcp`,
   MCP Go SDK v1.7.0, stdio). Даёт AI-агенту (Claude Code) доступ к задачам как к

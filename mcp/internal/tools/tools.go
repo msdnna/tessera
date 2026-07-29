@@ -107,6 +107,19 @@ type boardOut struct {
 	Slug      string `json:"slug"`
 }
 
+// The MCP spec requires a tool's output schema to be a JSON object, so list
+// results are wrapped rather than returned as a bare array (some clients, e.g.
+// Claude Code, reject a top-level "array" output schema).
+type workspaceListOut struct {
+	Workspaces []workspaceOut `json:"workspaces"`
+}
+type projectListOut struct {
+	Projects []projectOut `json:"projects"`
+}
+type boardListOut struct {
+	Boards []boardOut `json:"boards"`
+}
+
 // taskSummary is the compact, agent-friendly view of a task in a list.
 type taskSummary struct {
 	ID            string   `json:"id"`
@@ -114,6 +127,7 @@ type taskSummary struct {
 	Title         string   `json:"title"`
 	Priority      int      `json:"priority"`
 	PriorityLabel string   `json:"priority_label"`
+	Project       string   `json:"project,omitempty"`
 	Column        string   `json:"column,omitempty"`
 	Due           string   `json:"due,omitempty"`
 	Overdue       bool     `json:"overdue,omitempty"`
@@ -170,51 +184,51 @@ type taskDetailOut struct {
 
 // ── handlers ────────────────────────────────────────────────────────────────
 
-func listWorkspaces(c *client.Client) mcp.ToolHandlerFor[struct{}, []workspaceOut] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, []workspaceOut, error) {
+func listWorkspaces(c *client.Client) mcp.ToolHandlerFor[struct{}, workspaceListOut] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, workspaceListOut, error) {
 		ws, err := c.ListWorkspaces(ctx)
 		if err != nil {
-			return nil, nil, err
+			return nil, workspaceListOut{}, err
 		}
 		out := make([]workspaceOut, 0, len(ws))
 		for _, w := range ws {
 			out = append(out, workspaceOut{ID: w.ID, Name: w.Name})
 		}
-		return nil, out, nil
+		return nil, workspaceListOut{Workspaces: out}, nil
 	}
 }
 
-func listProjects(c *client.Client) mcp.ToolHandlerFor[workspaceInput, []projectOut] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, []projectOut, error) {
+func listProjects(c *client.Client) mcp.ToolHandlerFor[workspaceInput, projectListOut] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in workspaceInput) (*mcp.CallToolResult, projectListOut, error) {
 		if in.WorkspaceID == "" {
-			return nil, nil, fmt.Errorf("workspace_id is required")
+			return nil, projectListOut{}, fmt.Errorf("workspace_id is required")
 		}
 		ps, err := c.ListProjects(ctx, in.WorkspaceID)
 		if err != nil {
-			return nil, nil, err
+			return nil, projectListOut{}, err
 		}
 		out := make([]projectOut, 0, len(ps))
 		for _, p := range ps {
 			out = append(out, projectOut{ID: p.ID, Name: p.Name, Slug: p.Slug})
 		}
-		return nil, out, nil
+		return nil, projectListOut{Projects: out}, nil
 	}
 }
 
-func listBoards(c *client.Client) mcp.ToolHandlerFor[projectInput, []boardOut] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in projectInput) (*mcp.CallToolResult, []boardOut, error) {
+func listBoards(c *client.Client) mcp.ToolHandlerFor[projectInput, boardListOut] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in projectInput) (*mcp.CallToolResult, boardListOut, error) {
 		if in.ProjectID == "" {
-			return nil, nil, fmt.Errorf("project_id is required")
+			return nil, boardListOut{}, fmt.Errorf("project_id is required")
 		}
 		bs, err := c.ListBoards(ctx, in.ProjectID)
 		if err != nil {
-			return nil, nil, err
+			return nil, boardListOut{}, err
 		}
 		out := make([]boardOut, 0, len(bs))
 		for _, b := range bs {
 			out = append(out, boardOut{ID: b.ID, ProjectID: b.ProjectID, Name: b.Name, Slug: b.Slug})
 		}
-		return nil, out, nil
+		return nil, boardListOut{Boards: out}, nil
 	}
 }
 
