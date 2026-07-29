@@ -485,11 +485,6 @@ const filterChips = computed(() =>
   facetChips.value.filter((c) => c.kind !== 'group' && c.kind !== 'sort'),
 )
 const groupChip = computed(() => facetChips.value.find((c) => c.kind === 'group'))
-// Re-measure the composer fit whenever the chip set changes (add/remove a filter,
-// sort, group, scope or the subtasks toggle); resize is handled by the observer.
-watch([facetChips, archivedMode, milestoneScope, subtasksExpanded], () =>
-  nextTick(recomputeComposerFit),
-)
 // Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
 const groupModeLabel = computed(() => {
   if (groupMode.value === 'assignee') return 'Исполнитель'
@@ -896,6 +891,13 @@ watch(
   ],
   persistView,
   { deep: true },
+)
+// Re-measure the composer fit when the chip set changes (add/remove a filter,
+// sort, group, scope, or the subtasks toggle); resize is handled by the observer.
+// Declared here (not next to facetChips) so its eager source read doesn't hit the
+// still-uninitialised groupModeLabel that facetChips depends on.
+watch([facetChips, archivedMode, milestoneScope, subtasksExpanded], () =>
+  nextTick(recomputeComposerFit),
 )
 
 // ── saved views (per-user, server-side; cross-device) ──

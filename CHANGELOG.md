@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.144.3] — 2026-07-29
+- **Хотфикс: доска перестала грузиться** (`ReferenceError: Cannot access 'It'
+  before initialization`). Введённый в 0.144.1 `watch` для замера composer bar
+  стоял до объявления `groupModeLabel`, от которого зависит `facetChips`; жадное
+  чтение источника watch на этапе setup упиралось в TDZ. Перенёс watch ниже всех
+  зависимостей `facetChips`.
+
 ### [0.144.2] — 2026-07-29
 - **Модалка задачи, доводка по ревью.** Разделитель split-pane шире и заметнее
   (как в сайдбаре). Скроллбар колонок больше не дёргает контент при наведении —
