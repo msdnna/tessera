@@ -1,13 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  NConfigProvider,
-  NGlobalStyle,
-  NMessageProvider,
-  ruRU,
-  dateRuRU,
-} from 'naive-ui'
+import { NConfigProvider, NGlobalStyle, NMessageProvider, ruRU, dateRuRU } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'

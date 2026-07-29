@@ -7,7 +7,10 @@ export function initials(name) {
   if (!s) return '?'
   // dot-separated handle (a.fokin, v.sokolov)
   if (s.includes('.')) {
-    const parts = s.split('.').map((p) => p.trim()).filter(Boolean)
+    const parts = s
+      .split('.')
+      .map((p) => p.trim())
+      .filter(Boolean)
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
   }
   const words = s.split(/\s+/).filter(Boolean)

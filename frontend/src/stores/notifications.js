@@ -56,9 +56,8 @@ export const useNotificationsStore = defineStore('notifications', () => {
       if (!Array.isArray(targets) || !targets.includes(getDeviceId())) return
       const title = KIND_TITLE[n.kind] || 'Tessera'
       if (isTauri()) {
-        const { isPermissionGranted, requestPermission, sendNotification } = await import(
-          '@tauri-apps/plugin-notification'
-        )
+        const { isPermissionGranted, requestPermission, sendNotification } =
+          await import('@tauri-apps/plugin-notification')
         let granted = await isPermissionGranted()
         if (!granted) granted = (await requestPermission()) === 'granted'
         if (granted)

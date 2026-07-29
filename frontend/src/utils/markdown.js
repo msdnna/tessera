@@ -49,7 +49,9 @@ marked.use(
     langPrefix: 'hljs language-',
     highlight(code, lang) {
       if (lang === 'mermaid') return escapeHtml(code)
-      return hljs.getLanguage(lang) ? hljs.highlight(code, { language: lang }).value : escapeHtml(code)
+      return hljs.getLanguage(lang)
+        ? hljs.highlight(code, { language: lang }).value
+        : escapeHtml(code)
     },
   }),
 )

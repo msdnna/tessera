@@ -105,16 +105,12 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   // Patch a project's stored estimation in place (after a settings save / WS
   // event) so open boards re-resolve without a full refresh.
   function setProjectEstimation(projectId, estimation) {
-    projects.value = projects.value.map((p) =>
-      p.id === projectId ? { ...p, estimation } : p,
-    )
+    projects.value = projects.value.map((p) => (p.id === projectId ? { ...p, estimation } : p))
   }
 
   // Patch the current workspace's default estimation in place.
   function setWorkspaceEstimation(workspaceId, estimation) {
-    list.value = list.value.map((w) =>
-      w.id === workspaceId ? { ...w, estimation } : w,
-    )
+    list.value = list.value.map((w) => (w.id === workspaceId ? { ...w, estimation } : w))
   }
 
   return {

@@ -58,7 +58,12 @@ const ctxOptions = computed(() => [
     icon: menuIcon(CheckmarkDoneOutline),
   },
   { type: 'divider', key: 'd1' },
-  { label: 'Удалить колонку', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
+  {
+    label: 'Удалить колонку',
+    key: 'delete',
+    icon: dangerIcon(TrashOutline),
+    props: { style: 'color:#e0533d' },
+  },
 ])
 function onCtx(e) {
   if (!props.editable) return
@@ -152,7 +157,9 @@ async function removeCol() {
     />
     <span v-else class="col-title col-drag" @dblclick="startRename">{{ dcol.name }}</span>
     <span class="count">{{ count }}</span>
-    <span v-if="estimate" class="col-est" title="Суммарная оценка задач этапа">Σ {{ estimate }}</span>
+    <span v-if="estimate" class="col-est" title="Суммарная оценка задач этапа"
+      >Σ {{ estimate }}</span
+    >
     <n-button
       text
       size="tiny"
@@ -190,7 +197,11 @@ async function removeCol() {
           <template #icon><n-icon :component="CheckmarkDoneOutline" /></template>
           {{ isDone ? 'Снять завершение' : 'Сделать завершающей' }}
         </n-button>
-        <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="removeCol">
+        <n-popconfirm
+          :positive-button-props="{ type: 'error' }"
+          positive-text="Удалить"
+          @positive-click="removeCol"
+        >
           <template #trigger>
             <n-button type="error" ghost size="small" block>
               <template #icon><n-icon :component="TrashOutline" /></template>

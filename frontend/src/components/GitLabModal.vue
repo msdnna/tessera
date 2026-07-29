@@ -299,7 +299,8 @@ async function loadPrefixNames() {
     }
   }
   for (const rule of rules.value) {
-    if (rule.match_type === 'prefix') rule.label = loadedPrefixNames.value[canonPrefix(rule.match)] || ''
+    if (rule.match_type === 'prefix')
+      rule.label = loadedPrefixNames.value[canonPrefix(rule.match)] || ''
   }
 }
 
@@ -514,7 +515,11 @@ function bindingActionText(b) {
     case 'set_label':
       return `метка «${a.label || '?'}»`
     case 'set_state':
-      return a.state === 'closed' ? 'закрыть issue' : a.state === 'opened' ? 'открыть issue' : 'закрыть/открыть issue'
+      return a.state === 'closed'
+        ? 'закрыть issue'
+        : a.state === 'opened'
+          ? 'открыть issue'
+          : 'закрыть/открыть issue'
     case 'post_comment':
       return a.add_marker ? 'комментарий (+маркер)' : 'комментарий'
     default:
@@ -527,7 +532,11 @@ function bindingActionText(b) {
 // resets the now-irrelevant qualifiers so the card stays coherent.
 function addBinding() {
   bindings.value.push(
-    normalizeBinding({ enabled: true, trigger: { type: 'column' }, action: { type: 'set_label', clear_prefix: true } }),
+    normalizeBinding({
+      enabled: true,
+      trigger: { type: 'column' },
+      action: { type: 'set_label', clear_prefix: true },
+    }),
   )
 }
 function removeBinding(i) {
@@ -570,7 +579,14 @@ function serializeBinding(b) {
 }
 
 function addRule() {
-  rules.value.push({ match: '', match_type: 'prefix', action: 'tag', keep_prefix: true, label: '', map: [] })
+  rules.value.push({
+    match: '',
+    match_type: 'prefix',
+    action: 'tag',
+    keep_prefix: true,
+    label: '',
+    map: [],
+  })
 }
 function addMapRow(rule) {
   rule.map.push({ k: '', v: '' })
@@ -717,7 +733,9 @@ async function syncNow() {
         const created = run.created_count || 0
         const updated = run.updated_count || 0
         lastSynced.value = run.finished_at
-        message.success(`Синхронизировано: ${created + updated} задач (+${created} новых, ${updated} обновлено)`)
+        message.success(
+          `Синхронизировано: ${created + updated} задач (+${created} новых, ${updated} обновлено)`,
+        )
         emit('synced')
       }
       break
@@ -797,240 +815,253 @@ watch(
 
         <div class="gl-panes">
           <div class="gl-left gl-scroll t-hoverscroll">
-      <!-- ACCOUNT -->
-      <section class="gl-sec">
-        <h4 class="gl-h">Аккаунт</h4>
-        <p v-if="serviceConfigured" class="gl-wb-hint">
-          <n-text depth="3">
-            Синхронизация идёт под <b>системным сервисным токеном</b> (задаётся админом
-            в панели администрирования). Личный токен ниже подключать не обязательно —
-            он нужен лишь как запасной вариант для операций от вашего имени.
-          </n-text>
-        </p>
-        <template v-if="gl.connected">
-          <div class="gl-conn">
-            <div>
-              <span class="gl-user accent-grad-text">@{{ gl.username }}</span>
-              <span class="gl-url">{{ gl.baseUrl }}</span>
-            </div>
-            <n-popconfirm
-              :positive-button-props="{ type: 'error' }"
-              positive-text="Отключить"
-              @positive-click="disconnect"
-            >
-              <template #trigger>
-                <n-button text size="small" type="error">Отключить</n-button>
+            <!-- ACCOUNT -->
+            <section class="gl-sec">
+              <h4 class="gl-h">Аккаунт</h4>
+              <p v-if="serviceConfigured" class="gl-wb-hint">
+                <n-text depth="3">
+                  Синхронизация идёт под <b>системным сервисным токеном</b> (задаётся админом в
+                  панели администрирования). Личный токен ниже подключать не обязательно — он нужен
+                  лишь как запасной вариант для операций от вашего имени.
+                </n-text>
+              </p>
+              <template v-if="gl.connected">
+                <div class="gl-conn">
+                  <div>
+                    <span class="gl-user accent-grad-text">@{{ gl.username }}</span>
+                    <span class="gl-url">{{ gl.baseUrl }}</span>
+                  </div>
+                  <n-popconfirm
+                    :positive-button-props="{ type: 'error' }"
+                    positive-text="Отключить"
+                    @positive-click="disconnect"
+                  >
+                    <template #trigger>
+                      <n-button text size="small" type="error">Отключить</n-button>
+                    </template>
+                    Отключить аккаунт GitLab? Интеграции перестанут синхронизироваться.
+                  </n-popconfirm>
+                </div>
               </template>
-              Отключить аккаунт GitLab? Интеграции перестанут синхронизироваться.
-            </n-popconfirm>
-          </div>
-        </template>
-        <template v-else>
-          <div class="gl-grid">
-            <n-text depth="3" class="lbl">URL GitLab</n-text>
-            <n-input
-              v-model:value="baseInput"
-              size="small"
-              placeholder="https://gitlab.example.com"
-              :input-props="{ autocomplete: 'off', name: 'gl-base-url' }"
-            />
-            <n-text depth="3" class="lbl">Токен (PAT, scope read_api)</n-text>
-            <n-input
-              v-model:value="tokenInput"
-              type="password"
-              show-password-on="click"
-              size="small"
-              placeholder="glpat-…"
-              :input-props="{ autocomplete: 'new-password', name: 'gl-token' }"
-              @keyup.enter="connect"
-            />
-          </div>
-          <div class="gl-actions">
-            <n-button type="primary" size="small" :loading="connecting" @click="connect">
-              Подключить
-            </n-button>
-          </div>
-        </template>
-      </section>
-
-      <!-- INTEGRATION — available when a personal PAT is connected OR an instance
-           service token is configured (admin). -->
-      <section v-if="gl.connected || serviceConfigured" class="gl-sec">
-        <h4 class="gl-h">Привязки GitLab → доска</h4>
-        <p v-if="!isAdmin" class="gl-wb-hint">
-          <n-text depth="3">
-            Изменять привязки может только администратор. Вам доступен просмотр и запуск
-            синхронизации.
-          </n-text>
-        </p>
-        <!-- Multi-binding selector: pick a binding to edit, add a new one, or
-             delete the current one. -->
-        <div class="gl-bindbar">
-          <n-select
-            :value="currentId"
-            :options="bindingOptions"
-            size="small"
-            placeholder="Новая привязка"
-            :consistent-menu-width="false"
-            style="flex: 1 1 auto"
-            @update:value="selectBinding"
-          />
-          <n-button size="small" tertiary title="Новая привязка" :disabled="!isAdmin" @click="newBinding">
-            <template #icon><n-icon :component="AddOutline" /></template>
-          </n-button>
-          <n-popconfirm
-            v-if="currentId && isAdmin"
-            :positive-button-props="{ type: 'error' }"
-            positive-text="Удалить"
-            @positive-click="deleteBinding"
-          >
-            <template #trigger>
-              <n-button size="small" tertiary type="error" title="Удалить привязку">
-                <template #icon><n-icon :component="TrashOutline" /></template>
-              </n-button>
-            </template>
-            Удалить привязку? Синхронизированные задачи останутся, связь с GitLab пропадёт.
-          </n-popconfirm>
-        </div>
-        <div class="gl-grid">
-          <n-text depth="3" class="lbl">Название (необязательно)</n-text>
-          <n-input v-model:value="name" size="small" placeholder="напр. Скрам-борд" />
-
-          <n-text depth="3" class="lbl">Проект GitLab (полный путь)</n-text>
-          <n-input v-model:value="projectPath" size="small" placeholder="group/project" />
-
-          <n-text depth="3" class="lbl">Доска назначения</n-text>
-          <n-select
-            :value="boardId"
-            :options="boardOptions"
-            size="small"
-            placeholder="Выберите доску"
-            @update:value="onBoardChange"
-          />
-
-          <n-text depth="3" class="lbl">Автосинхронизация</n-text>
-          <n-select v-model:value="intervalSec" :options="intervalOptions" size="small" />
-
-          <n-text depth="3" class="lbl">Источник срока</n-text>
-          <n-select v-model:value="dueSource" :options="dueSourceOptions" size="small" />
-
-          <n-text depth="3" class="lbl">Источник начала</n-text>
-          <n-select v-model:value="startSource" :options="startSourceOptions" size="small" />
-
-          <n-text depth="3" class="lbl">Что переносить</n-text>
-          <n-select v-model:value="scope" :options="scopeOptions" size="small" />
-
-          <n-text depth="3" class="lbl">Закрытые задачи</n-text>
-          <n-select v-model:value="closedPolicy" :options="closedPolicyOptions" size="small" />
-
-          <template v-if="closedPolicy === 'period'">
-            <n-text depth="3" class="lbl">Закрытые не старше</n-text>
-            <n-date-picker v-model:value="closedAfter" type="date" size="small" clearable />
-          </template>
-
-          <n-text depth="3" class="lbl">Включена</n-text>
-          <div><n-switch v-model:value="enabled" /></div>
-        </div>
-
-        <!-- Write-back (Tessera → GitLab), opt-in; all off by default -->
-        <h4 class="gl-h gl-h-sub">Обратная запись в GitLab</h4>
-        <div class="gl-grid">
-          <n-text depth="3" class="lbl">Включить запись</n-text>
-          <div><n-switch v-model:value="wbEnabled" /></div>
-
-          <n-text depth="3" class="lbl">Создание issue из задачи</n-text>
-          <div><n-switch v-model:value="wbCreate" /></div>
-
-          <template v-if="wbCreate">
-            <n-text depth="3" class="lbl">Получение issue-templates из проекта</n-text>
-            <div><n-switch v-model:value="wbFetchTemplates" size="small" /></div>
-          </template>
-        </div>
-        <p class="gl-wb-hint">
-          <n-text depth="3">
-            «Создание issue из задачи» добавляет в модалку задачи (под свойством
-            «Родитель») кнопку «Создать issue в GitLab» — issue открывается из свойств и
-            описания задачи под токеном владельца интеграции, после чего задача
-            становится синхронизированной. Работает независимо от обратной записи
-            изменений ниже. «Получение issue-templates» подтягивает шаблоны
-            <code>.gitlab/issue_templates/*.md</code> — их можно выбрать над редактором
-            описания перед созданием.
-          </n-text>
-        </p>
-        <!-- Uniform "configure" buttons: each opens the right pane in its mode. The
-             lists/editors themselves live in the right pane. -->
-        <div class="gl-cfg-row">
-          <div class="gl-cfg-text">
-            <n-text depth="3" class="gl-cfg-title">Действия обратной записи</n-text>
-            <n-text depth="3" class="gl-cfg-hint">
-              Что делать на issue GitLab при изменениях задачи. Перенос в колонку ставит
-              метку статуса и не закрывает issue.
-            </n-text>
-          </div>
-          <n-button
-            size="small"
-            :tertiary="rightMode !== 'actions'"
-            :type="rightMode === 'actions' ? 'primary' : 'default'"
-            :disabled="!wbEnabled"
-            @click="openRight('actions')"
-          >
-            <template #icon><n-icon :component="CreateOutline" /></template>
-            Настроить действия<template v-if="wbEnabled && bindings.length"> ({{ bindings.length }})</template>
-          </n-button>
-        </div>
-        <div class="gl-cfg-row">
-          <div class="gl-cfg-text">
-            <n-text depth="3" class="gl-cfg-title">Правила разбора меток GitLab</n-text>
-            <n-text depth="3" class="gl-cfg-hint">
-              Как входящие метки GitLab превращаются в статус, приоритет и теги при синхронизации.
-            </n-text>
-          </div>
-          <n-button
-            size="small"
-            :tertiary="rightMode !== 'rules'"
-            :type="rightMode === 'rules' ? 'primary' : 'default'"
-            @click="openRight('rules')"
-          >
-            <template #icon><n-icon :component="CreateOutline" /></template>
-            Настроить правила
-          </n-button>
-        </div>
-
-        <div class="gl-footer">
-          <span class="gl-synced">Последняя синхронизация: {{ lastSyncedText }}</span>
-          <div class="gl-footer-btns">
-            <n-badge
-              :value="conflictCount"
-              :max="9"
-              :show="conflictCount > 0"
-              color="#e0922f"
-              title="Есть неразрешённые конфликты — откройте «Конфликты» в меню рядом"
-            >
-              <n-button-group size="medium">
-                <n-button :loading="syncing" @click="syncNow">
-                  <template #icon><n-icon :component="SyncOutline" /></template>
-                  Синхронизировать
-                </n-button>
-                <n-dropdown trigger="click" :options="syncMenu" @select="onSyncMenu">
-                  <n-button :disabled="syncing" class="gl-sync-caret">
-                    <template #icon><n-icon :component="ChevronDownOutline" /></template>
+              <template v-else>
+                <div class="gl-grid">
+                  <n-text depth="3" class="lbl">URL GitLab</n-text>
+                  <n-input
+                    v-model:value="baseInput"
+                    size="small"
+                    placeholder="https://gitlab.example.com"
+                    :input-props="{ autocomplete: 'off', name: 'gl-base-url' }"
+                  />
+                  <n-text depth="3" class="lbl">Токен (PAT, scope read_api)</n-text>
+                  <n-input
+                    v-model:value="tokenInput"
+                    type="password"
+                    show-password-on="click"
+                    size="small"
+                    placeholder="glpat-…"
+                    :input-props="{ autocomplete: 'new-password', name: 'gl-token' }"
+                    @keyup.enter="connect"
+                  />
+                </div>
+                <div class="gl-actions">
+                  <n-button type="primary" size="small" :loading="connecting" @click="connect">
+                    Подключить
                   </n-button>
-                </n-dropdown>
-              </n-button-group>
-            </n-badge>
-            <n-button
-              type="primary"
-              size="medium"
-              :loading="saving"
-              :disabled="!isAdmin"
-              :title="isAdmin ? '' : 'Изменять привязки может только администратор'"
-              @click="save"
-            >
-              Сохранить
-            </n-button>
-          </div>
-        </div>
-      </section>
+                </div>
+              </template>
+            </section>
+
+            <!-- INTEGRATION — available when a personal PAT is connected OR an instance
+           service token is configured (admin). -->
+            <section v-if="gl.connected || serviceConfigured" class="gl-sec">
+              <h4 class="gl-h">Привязки GitLab → доска</h4>
+              <p v-if="!isAdmin" class="gl-wb-hint">
+                <n-text depth="3">
+                  Изменять привязки может только администратор. Вам доступен просмотр и запуск
+                  синхронизации.
+                </n-text>
+              </p>
+              <!-- Multi-binding selector: pick a binding to edit, add a new one, or
+             delete the current one. -->
+              <div class="gl-bindbar">
+                <n-select
+                  :value="currentId"
+                  :options="bindingOptions"
+                  size="small"
+                  placeholder="Новая привязка"
+                  :consistent-menu-width="false"
+                  style="flex: 1 1 auto"
+                  @update:value="selectBinding"
+                />
+                <n-button
+                  size="small"
+                  tertiary
+                  title="Новая привязка"
+                  :disabled="!isAdmin"
+                  @click="newBinding"
+                >
+                  <template #icon><n-icon :component="AddOutline" /></template>
+                </n-button>
+                <n-popconfirm
+                  v-if="currentId && isAdmin"
+                  :positive-button-props="{ type: 'error' }"
+                  positive-text="Удалить"
+                  @positive-click="deleteBinding"
+                >
+                  <template #trigger>
+                    <n-button size="small" tertiary type="error" title="Удалить привязку">
+                      <template #icon><n-icon :component="TrashOutline" /></template>
+                    </n-button>
+                  </template>
+                  Удалить привязку? Синхронизированные задачи останутся, связь с GitLab пропадёт.
+                </n-popconfirm>
+              </div>
+              <div class="gl-grid">
+                <n-text depth="3" class="lbl">Название (необязательно)</n-text>
+                <n-input v-model:value="name" size="small" placeholder="напр. Скрам-борд" />
+
+                <n-text depth="3" class="lbl">Проект GitLab (полный путь)</n-text>
+                <n-input v-model:value="projectPath" size="small" placeholder="group/project" />
+
+                <n-text depth="3" class="lbl">Доска назначения</n-text>
+                <n-select
+                  :value="boardId"
+                  :options="boardOptions"
+                  size="small"
+                  placeholder="Выберите доску"
+                  @update:value="onBoardChange"
+                />
+
+                <n-text depth="3" class="lbl">Автосинхронизация</n-text>
+                <n-select v-model:value="intervalSec" :options="intervalOptions" size="small" />
+
+                <n-text depth="3" class="lbl">Источник срока</n-text>
+                <n-select v-model:value="dueSource" :options="dueSourceOptions" size="small" />
+
+                <n-text depth="3" class="lbl">Источник начала</n-text>
+                <n-select v-model:value="startSource" :options="startSourceOptions" size="small" />
+
+                <n-text depth="3" class="lbl">Что переносить</n-text>
+                <n-select v-model:value="scope" :options="scopeOptions" size="small" />
+
+                <n-text depth="3" class="lbl">Закрытые задачи</n-text>
+                <n-select
+                  v-model:value="closedPolicy"
+                  :options="closedPolicyOptions"
+                  size="small"
+                />
+
+                <template v-if="closedPolicy === 'period'">
+                  <n-text depth="3" class="lbl">Закрытые не старше</n-text>
+                  <n-date-picker v-model:value="closedAfter" type="date" size="small" clearable />
+                </template>
+
+                <n-text depth="3" class="lbl">Включена</n-text>
+                <div><n-switch v-model:value="enabled" /></div>
+              </div>
+
+              <!-- Write-back (Tessera → GitLab), opt-in; all off by default -->
+              <h4 class="gl-h gl-h-sub">Обратная запись в GitLab</h4>
+              <div class="gl-grid">
+                <n-text depth="3" class="lbl">Включить запись</n-text>
+                <div><n-switch v-model:value="wbEnabled" /></div>
+
+                <n-text depth="3" class="lbl">Создание issue из задачи</n-text>
+                <div><n-switch v-model:value="wbCreate" /></div>
+
+                <template v-if="wbCreate">
+                  <n-text depth="3" class="lbl">Получение issue-templates из проекта</n-text>
+                  <div><n-switch v-model:value="wbFetchTemplates" size="small" /></div>
+                </template>
+              </div>
+              <p class="gl-wb-hint">
+                <n-text depth="3">
+                  «Создание issue из задачи» добавляет в модалку задачи (под свойством «Родитель»)
+                  кнопку «Создать issue в GitLab» — issue открывается из свойств и описания задачи
+                  под токеном владельца интеграции, после чего задача становится синхронизированной.
+                  Работает независимо от обратной записи изменений ниже. «Получение issue-templates»
+                  подтягивает шаблоны
+                  <code>.gitlab/issue_templates/*.md</code> — их можно выбрать над редактором
+                  описания перед созданием.
+                </n-text>
+              </p>
+              <!-- Uniform "configure" buttons: each opens the right pane in its mode. The
+             lists/editors themselves live in the right pane. -->
+              <div class="gl-cfg-row">
+                <div class="gl-cfg-text">
+                  <n-text depth="3" class="gl-cfg-title">Действия обратной записи</n-text>
+                  <n-text depth="3" class="gl-cfg-hint">
+                    Что делать на issue GitLab при изменениях задачи. Перенос в колонку ставит метку
+                    статуса и не закрывает issue.
+                  </n-text>
+                </div>
+                <n-button
+                  size="small"
+                  :tertiary="rightMode !== 'actions'"
+                  :type="rightMode === 'actions' ? 'primary' : 'default'"
+                  :disabled="!wbEnabled"
+                  @click="openRight('actions')"
+                >
+                  <template #icon><n-icon :component="CreateOutline" /></template>
+                  Настроить действия<template v-if="wbEnabled && bindings.length">
+                    ({{ bindings.length }})</template
+                  >
+                </n-button>
+              </div>
+              <div class="gl-cfg-row">
+                <div class="gl-cfg-text">
+                  <n-text depth="3" class="gl-cfg-title">Правила разбора меток GitLab</n-text>
+                  <n-text depth="3" class="gl-cfg-hint">
+                    Как входящие метки GitLab превращаются в статус, приоритет и теги при
+                    синхронизации.
+                  </n-text>
+                </div>
+                <n-button
+                  size="small"
+                  :tertiary="rightMode !== 'rules'"
+                  :type="rightMode === 'rules' ? 'primary' : 'default'"
+                  @click="openRight('rules')"
+                >
+                  <template #icon><n-icon :component="CreateOutline" /></template>
+                  Настроить правила
+                </n-button>
+              </div>
+
+              <div class="gl-footer">
+                <span class="gl-synced">Последняя синхронизация: {{ lastSyncedText }}</span>
+                <div class="gl-footer-btns">
+                  <n-badge
+                    :value="conflictCount"
+                    :max="9"
+                    :show="conflictCount > 0"
+                    color="#e0922f"
+                    title="Есть неразрешённые конфликты — откройте «Конфликты» в меню рядом"
+                  >
+                    <n-button-group size="medium">
+                      <n-button :loading="syncing" @click="syncNow">
+                        <template #icon><n-icon :component="SyncOutline" /></template>
+                        Синхронизировать
+                      </n-button>
+                      <n-dropdown trigger="click" :options="syncMenu" @select="onSyncMenu">
+                        <n-button :disabled="syncing" class="gl-sync-caret">
+                          <template #icon><n-icon :component="ChevronDownOutline" /></template>
+                        </n-button>
+                      </n-dropdown>
+                    </n-button-group>
+                  </n-badge>
+                  <n-button
+                    type="primary"
+                    size="medium"
+                    :loading="saving"
+                    :disabled="!isAdmin"
+                    :title="isAdmin ? '' : 'Изменять привязки может только администратор'"
+                    @click="save"
+                  >
+                    Сохранить
+                  </n-button>
+                </div>
+              </div>
+            </section>
           </div>
           <!-- RIGHT PANE — expands the modal to edit the write-back actions or the
                GL→Tessera label-parsing rules. -->
@@ -1048,9 +1079,9 @@ watch(
             <template v-if="rightMode === 'actions'">
               <p class="gl-wb-hint">
                 <n-text depth="3">
-                  Каждое действие связывает событие в задаче Tessera с действием на issue
-                  GitLab (под токеном владельца интеграции, scope «api»). По умолчанию набор
-                  повторяет прежнее поведение записи.
+                  Каждое действие связывает событие в задаче Tessera с действием на issue GitLab
+                  (под токеном владельца интеграции, scope «api»). По умолчанию набор повторяет
+                  прежнее поведение записи.
                 </n-text>
               </p>
               <div v-if="!bindings.length" class="gl-binds-empty">
@@ -1101,15 +1132,30 @@ watch(
                   </template>
                   <template v-else-if="b.trigger.type === 'priority'">
                     <n-text depth="3" class="lbl">Приоритет</n-text>
-                    <n-select v-model:value="b.trigger.priority" :options="priorityQualOptions" size="small" :disabled="!isAdmin" />
+                    <n-select
+                      v-model:value="b.trigger.priority"
+                      :options="priorityQualOptions"
+                      size="small"
+                      :disabled="!isAdmin"
+                    />
                   </template>
                   <template v-else-if="b.trigger.type === 'completion'">
                     <n-text depth="3" class="lbl">Условие</n-text>
-                    <n-select v-model:value="b.trigger.completed" :options="completionOptions" size="small" :disabled="!isAdmin" />
+                    <n-select
+                      v-model:value="b.trigger.completed"
+                      :options="completionOptions"
+                      size="small"
+                      :disabled="!isAdmin"
+                    />
                   </template>
                   <template v-else-if="b.trigger.type === 'due'">
                     <n-text depth="3" class="lbl">Тип срока</n-text>
-                    <n-select v-model:value="b.trigger.date_kind" :options="dateKindOptions" size="small" :disabled="!isAdmin" />
+                    <n-select
+                      v-model:value="b.trigger.date_kind"
+                      :options="dateKindOptions"
+                      size="small"
+                      :disabled="!isAdmin"
+                    />
                   </template>
 
                   <n-text depth="3" class="lbl">Действие в GitLab</n-text>
@@ -1123,25 +1169,59 @@ watch(
 
                   <template v-if="b.action.type === 'set_label'">
                     <n-text depth="3" class="lbl">Метка</n-text>
-                    <n-input v-model:value="b.action.label" size="small" placeholder="напр. S: In Progress" :disabled="!isAdmin" />
+                    <n-input
+                      v-model:value="b.action.label"
+                      size="small"
+                      placeholder="напр. S: In Progress"
+                      :disabled="!isAdmin"
+                    />
                     <n-text depth="3" class="lbl">Снимать метки того же префикса</n-text>
-                    <div><n-switch v-model:value="b.action.clear_prefix" size="small" :disabled="!isAdmin" /></div>
+                    <div>
+                      <n-switch
+                        v-model:value="b.action.clear_prefix"
+                        size="small"
+                        :disabled="!isAdmin"
+                      />
+                    </div>
                   </template>
                   <template v-else-if="b.action.type === 'set_state'">
                     <n-text depth="3" class="lbl">Состояние issue</n-text>
-                    <n-select v-model:value="b.action.state" :options="stateOptions" size="small" :disabled="!isAdmin" />
+                    <n-select
+                      v-model:value="b.action.state"
+                      :options="stateOptions"
+                      size="small"
+                      :disabled="!isAdmin"
+                    />
                   </template>
                   <template v-else-if="b.action.type === 'set_due'">
                     <n-text depth="3" class="lbl">Тип срока</n-text>
-                    <n-select v-model:value="b.action.date_kind" :options="dateKindOptions" size="small" :disabled="!isAdmin" />
+                    <n-select
+                      v-model:value="b.action.date_kind"
+                      :options="dateKindOptions"
+                      size="small"
+                      :disabled="!isAdmin"
+                    />
                   </template>
                   <template v-else-if="b.action.type === 'post_comment'">
                     <n-text depth="3" class="lbl">Добавлять маркер Tessera</n-text>
-                    <div><n-switch v-model:value="b.action.add_marker" size="small" :disabled="!isAdmin" /></div>
+                    <div>
+                      <n-switch
+                        v-model:value="b.action.add_marker"
+                        size="small"
+                        :disabled="!isAdmin"
+                      />
+                    </div>
                   </template>
                 </div>
               </div>
-              <n-button dashed size="small" type="primary" class="gl-add" :disabled="!isAdmin" @click="addBinding">
+              <n-button
+                dashed
+                size="small"
+                type="primary"
+                class="gl-add"
+                :disabled="!isAdmin"
+                @click="addBinding"
+              >
                 <template #icon><n-icon :component="AddOutline" /></template>
                 Действие
               </n-button>
@@ -1151,25 +1231,54 @@ watch(
             <template v-else-if="rightMode === 'rules'">
               <div class="gl-grid gl-grid-rules">
                 <n-text depth="3" class="lbl">Колонка по умолчанию</n-text>
-                <n-select v-model:value="defaultColumn" :options="columnOptions" size="small" placeholder="напр. К работе" />
+                <n-select
+                  v-model:value="defaultColumn"
+                  :options="columnOptions"
+                  size="small"
+                  placeholder="напр. К работе"
+                />
                 <n-text depth="3" class="lbl">Прочие метки</n-text>
-                <n-select v-model:value="defaultAction" :options="defaultActionOptions" size="small" />
+                <n-select
+                  v-model:value="defaultAction"
+                  :options="defaultActionOptions"
+                  size="small"
+                />
                 <n-text depth="3" class="lbl">Сохранять префикс тега</n-text>
                 <div><n-switch v-model:value="tagKeepPrefix" /></div>
               </div>
 
               <div v-for="(rule, ri) in rules" :key="ri" class="gl-rcard">
                 <div class="gl-rrow">
-                  <n-input v-model:value="rule.match" size="small" placeholder="S: либо ^(T|C): " class="gl-rmatch" />
-                  <n-select v-model:value="rule.match_type" :options="matchTypeOptions" size="small" class="gl-rtype" />
-                  <n-select v-model:value="rule.action" :options="actionOptions" size="small" class="gl-raction" />
+                  <n-input
+                    v-model:value="rule.match"
+                    size="small"
+                    placeholder="S: либо ^(T|C): "
+                    class="gl-rmatch"
+                  />
+                  <n-select
+                    v-model:value="rule.match_type"
+                    :options="matchTypeOptions"
+                    size="small"
+                    class="gl-rtype"
+                  />
+                  <n-select
+                    v-model:value="rule.action"
+                    :options="actionOptions"
+                    size="small"
+                    class="gl-raction"
+                  />
                   <n-button text size="tiny" type="error" @click="rules.splice(ri, 1)">
                     <n-icon :component="TrashOutline" />
                   </n-button>
                 </div>
                 <div v-if="rule.match_type === 'prefix'" class="gl-ropt">
                   <n-text depth="3" class="lbl">Понятное имя</n-text>
-                  <n-input v-model:value="rule.label" size="small" placeholder="напр. Статус" class="gl-rname" />
+                  <n-input
+                    v-model:value="rule.label"
+                    size="small"
+                    placeholder="напр. Статус"
+                    class="gl-rname"
+                  />
                 </div>
                 <div v-if="rule.action === 'tag'" class="gl-ropt">
                   <n-text depth="3" class="lbl">Сохранять префикс</n-text>
@@ -1181,15 +1290,30 @@ watch(
                       v-model:value="m.k"
                       size="small"
                       :placeholder="
-                        rule.action === 'board' ? 'Future' : rule.action === 'priority' ? 'Critical' : 'In review'
+                        rule.action === 'board'
+                          ? 'Future'
+                          : rule.action === 'priority'
+                            ? 'Critical'
+                            : 'In review'
                       "
                     />
-                    <n-select v-model:value="m.v" :options="mapTargetOptions(rule.action)" size="small" placeholder="→ значение" />
+                    <n-select
+                      v-model:value="m.v"
+                      :options="mapTargetOptions(rule.action)"
+                      size="small"
+                      placeholder="→ значение"
+                    />
                     <n-button text size="tiny" type="error" @click="rule.map.splice(mi, 1)">
                       <n-icon :component="TrashOutline" />
                     </n-button>
                   </div>
-                  <n-button dashed size="tiny" type="primary" class="gl-add" @click="addMapRow(rule)">
+                  <n-button
+                    dashed
+                    size="tiny"
+                    type="primary"
+                    class="gl-add"
+                    @click="addMapRow(rule)"
+                  >
                     <template #icon><n-icon :component="AddOutline" /></template>
                     Значение
                   </n-button>
@@ -1202,7 +1326,11 @@ watch(
             </template>
 
             <!-- JOURNAL: sync run history -->
-            <git-lab-journal-panel v-else-if="rightMode === 'journal'" class="gl-pane-fill" :ws-id="wsId" />
+            <git-lab-journal-panel
+              v-else-if="rightMode === 'journal'"
+              class="gl-pane-fill"
+              :ws-id="wsId"
+            />
 
             <!-- CONFLICTS: write-back conflict resolver -->
             <conflict-resolver-panel

@@ -59,7 +59,11 @@ const boardHasIcon = (b) => !!(b.icon || (b.color && b.color !== 'transparent'))
 const boardInitials = (b) => (b.name || '?').trim().slice(0, 2).toUpperCase()
 const boardBare = (b) => b.icon_mode === 'icon' || b.color === 'transparent'
 const boardGlyph = (b) =>
-  b.icon_mode === 'icon' ? (b.color && b.color !== 'transparent' ? b.color : 'var(--t-primary)') : ''
+  b.icon_mode === 'icon'
+    ? b.color && b.color !== 'transparent'
+      ? b.color
+      : 'var(--t-primary)'
+    : ''
 const boardBox = (b) =>
   boardBare(b) ? { background: 'transparent' } : { background: b.color || 'var(--t-primary)' }
 </script>
@@ -78,7 +82,9 @@ const boardBox = (b) =>
         v-for="b in boards"
         :key="b.id"
         class="fly-board"
-        :class="{ active: route.params.projectSlug === node.slug && route.params.boardSlug === b.slug }"
+        :class="{
+          active: route.params.projectSlug === node.slug && route.params.boardSlug === b.slug,
+        }"
         @click="openBoard(b)"
       >
         <span
@@ -87,7 +93,13 @@ const boardBox = (b) =>
           :class="{ 'picon-bare': boardBare(b) }"
           :style="boardBox(b)"
         >
-          <ProjectIcon v-if="b.icon" :icon="b.icon" :initials="boardInitials(b)" :size="11" :color="boardGlyph(b)" />
+          <ProjectIcon
+            v-if="b.icon"
+            :icon="b.icon"
+            :initials="boardInitials(b)"
+            :size="11"
+            :color="boardGlyph(b)"
+          />
           <TesseraIcon
             v-else
             name="layout-kanban"

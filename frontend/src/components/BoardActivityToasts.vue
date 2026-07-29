@@ -102,7 +102,9 @@ defineExpose({ push })
               <n-icon :component="OpenOutline" :size="13" />Открыть
             </button>
             <button class="t-btn" @click="copyLink(t)">
-              <n-icon :component="LinkOutline" :size="13" />{{ t.copied ? 'Скопировано' : 'Ссылка' }}
+              <n-icon :component="LinkOutline" :size="13" />{{
+                t.copied ? 'Скопировано' : 'Ссылка'
+              }}
             </button>
           </div>
         </div>

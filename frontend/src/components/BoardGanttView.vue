@@ -1,7 +1,12 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
 import { NDropdown, NPopconfirm, NIcon, NTooltip } from 'naive-ui'
-import { TimerOutline, ChevronBackOutline, ChevronForwardOutline, RibbonOutline } from '@vicons/ionicons5'
+import {
+  TimerOutline,
+  ChevronBackOutline,
+  ChevronForwardOutline,
+  RibbonOutline,
+} from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
@@ -9,7 +14,13 @@ import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { topoByDeps } from '@/utils/dependencyOrder'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { formatEstimate, formatEstimateFull, estimateTooltip, sumEstimates, estimateToDays } from '@/utils/estimation'
+import {
+  formatEstimate,
+  formatEstimateFull,
+  estimateTooltip,
+  sumEstimates,
+  estimateToDays,
+} from '@/utils/estimation'
 import {
   DAY_MS,
   HOUR_MS,
@@ -266,7 +277,10 @@ const lanes = computed(() => {
 })
 
 const overdueCount = computed(
-  () => scheduled.value.filter((t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs).length,
+  () =>
+    scheduled.value.filter(
+      (t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs,
+    ).length,
 )
 
 // The lane-header row is content-driven (matches the timeline), so measure its
@@ -320,7 +334,8 @@ const anchorY = computed(() => {
     const top = pos[t.id]
     if (top == null) continue
     const subs = subBars(t)
-    for (let i = 0; i < subs.length; i++) m[subs[i].id] = top + SUB_TOP0 + i * SUB_STEP + SUB_BAR_H / 2
+    for (let i = 0; i < subs.length; i++)
+      m[subs[i].id] = top + SUB_TOP0 + i * SUB_STEP + SUB_BAR_H / 2
   }
   return m
 })
@@ -342,7 +357,11 @@ const vwindow = computed(() => {
   while (end < n && tops[end] < hi) end++
   if (end <= start) end = Math.min(n, start + 1)
   const last = end - 1
-  return { rows: rows.slice(start, end), top: tops[start], bottom: height - (tops[last] + rowH(rows[last])) }
+  return {
+    rows: rows.slice(start, end),
+    top: tops[start],
+    bottom: height - (tops[last] + rowH(rows[last])),
+  }
 })
 
 // ── dependencies (blocking edges) ──
@@ -389,7 +408,13 @@ function geom(t) {
     s = preview.value.start
     d = preview.value.due
   }
-  return barSpan({ start: s, due: d, tier: tier.value, rangeStart: range.value.start, dayW: dayW.value })
+  return barSpan({
+    start: s,
+    due: d,
+    tier: tier.value,
+    rangeStart: range.value.start,
+    dayW: dayW.value,
+  })
 }
 
 // Ghost "estimate" envelope: dashed bar from the span start, length = the estimate
@@ -406,7 +431,10 @@ function ghostGeom(t) {
   if (s == null && d == null) return null
   const anchor = anchorMs(s ?? d, tier.value)
   // Frame the envelope with a 3px margin on the start/end too (matching the top/bottom inset).
-  return { left: xAt(anchor, range.value.start, dayW.value) - 3, width: Math.max(dayW.value, days * dayW.value) + 6 }
+  return {
+    left: xAt(anchor, range.value.start, dayW.value) - 3,
+    width: Math.max(dayW.value, days * dayW.value) + 6,
+  }
 }
 // Tooltip on the ghost bar: full expansion + projected window (the clock label
 // it hangs off already marks it as an estimate, so no "Оценка:" prefix).
@@ -447,7 +475,15 @@ function onBarDown(e, t, mode) {
   e.stopPropagation()
   const s = parse(t.start_date)
   const d = parse(t.due_date)
-  drag.value = { id: t.id, mode, startX: e.clientX, baseStart: s, baseDue: d, hasStart: s != null, hasDue: d != null }
+  drag.value = {
+    id: t.id,
+    mode,
+    startX: e.clientX,
+    baseStart: s,
+    baseDue: d,
+    hasStart: s != null,
+    hasDue: d != null,
+  }
   preview.value = { id: t.id, start: s, due: d }
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
@@ -457,7 +493,7 @@ function onMove(e) {
   if (!g) return
   // Hour-snap when zoomed into the hours tier and the edited endpoint is timed; an
   // all-day (UTC-midnight) endpoint keeps day snapping so it stays all-day.
-  const base = g.mode === 'due' ? g.baseDue ?? g.baseStart : g.baseStart ?? g.baseDue
+  const base = g.mode === 'due' ? (g.baseDue ?? g.baseStart) : (g.baseStart ?? g.baseDue)
   const hourSnap = tier.value === 'hours' && base != null && !isAllDayMs(base)
   const unit = hourSnap ? HOUR_MS : DAY_MS
   const unitPx = hourSnap ? dayW.value / 24 : dayW.value
@@ -558,7 +594,9 @@ async function onLinkUp(e) {
   if (!target || target.number == null) return
   // Skip if this edge already exists (either direction would create a 2-cycle).
   const dup = deps.value.some(
-    (d) => (d.blocker === l.fromId && d.blocked === targetId) || (d.blocker === targetId && d.blocked === l.fromId),
+    (d) =>
+      (d.blocker === l.fromId && d.blocked === targetId) ||
+      (d.blocker === targetId && d.blocked === l.fromId),
   )
   if (dup) return
   try {
@@ -603,7 +641,9 @@ onBeforeUnmount(() => {
 
 // Today-line x: the real current time in the hours tier, else today's cell centre.
 const todayLeft = computed(() =>
-  tier.value === 'hours' ? xAt(Date.now(), range.value.start, dayW.value) : dayIndex(todayMs) * dayW.value + dayW.value / 2,
+  tier.value === 'hours'
+    ? xAt(Date.now(), range.value.start, dayW.value)
+    : dayIndex(todayMs) * dayW.value + dayW.value / 2,
 )
 
 // Milestone due-markers within the current axis range (dashed vertical lines).
@@ -647,7 +687,15 @@ function centerToday(smooth = true) {
   if (smooth === false) el.scrollLeft = left
   else animateScrollLeft(left)
 }
-watch(scrollEl, (el) => el && nextTick(() => { centerToday(false); syncScroll() }))
+watch(
+  scrollEl,
+  (el) =>
+    el &&
+    nextTick(() => {
+      centerToday(false)
+      syncScroll()
+    }),
+)
 
 // rAF-throttled scroll/resize sync for the windowed hour ticks.
 function syncScroll() {
@@ -671,7 +719,11 @@ function onScroll() {
 const pan = ref(null)
 function onPanDown(e) {
   const middle = e.button === 1
-  const emptyLeft = e.button === 0 && e.target.closest('.tl-track') && !e.target.closest('.bar') && !e.target.closest('.link-knob')
+  const emptyLeft =
+    e.button === 0 &&
+    e.target.closest('.tl-track') &&
+    !e.target.closest('.bar') &&
+    !e.target.closest('.link-knob')
   if (!middle && !emptyLeft) return
   const el = scrollEl.value
   if (!el) return
@@ -731,7 +783,8 @@ const cursorLabel = computed(() => {
   const o = { day: '2-digit', month: 'short' }
   if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric'
   let s = dt.toLocaleDateString('ru-RU', o)
-  if (tier.value === 'hours') s += ` ${dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+  if (tier.value === 'hours')
+    s += ` ${dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
   return s
 })
 </script>
@@ -741,15 +794,34 @@ const cursorLabel = computed(() => {
     <div class="tl-toolbar">
       <button class="tl-today-btn" type="button" @click="centerToday">Сегодня</button>
       <div class="tl-zoom">
-        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === 0" title="Уменьшить масштаб" @click="zoomOut()">−</button>
-        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === ZOOM.length - 1" title="Увеличить масштаб" @click="zoomIn()">+</button>
+        <button
+          class="tl-zoom-btn"
+          type="button"
+          :disabled="zoomIdx === 0"
+          title="Уменьшить масштаб"
+          @click="zoomOut()"
+        >
+          −
+        </button>
+        <button
+          class="tl-zoom-btn"
+          type="button"
+          :disabled="zoomIdx === ZOOM.length - 1"
+          title="Увеличить масштаб"
+          @click="zoomIn()"
+        >
+          +
+        </button>
         <button
           class="tl-zoom-btn"
           type="button"
           :title="leftCollapsed ? 'Показать колонку задач' : 'Свернуть колонку задач'"
           @click="toggleLeft"
         >
-          <n-icon :component="leftCollapsed ? ChevronForwardOutline : ChevronBackOutline" :size="15" />
+          <n-icon
+            :component="leftCollapsed ? ChevronForwardOutline : ChevronBackOutline"
+            :size="15"
+          />
         </button>
       </div>
       <span class="tl-hint">Тяните от правого края задачи к другой, чтобы создать зависимость</span>
@@ -772,18 +844,40 @@ const cursorLabel = computed(() => {
     >
       <div
         class="tl-inner"
-        :class="[tier, { animate: !drag && !link && !zooming && !collapsing, collapsed: leftCollapsed }]"
-        :style="{ width: `${leftW + axisW}px`, '--tl-day-w': `${dayW}px`, '--tl-week-w': `${dayW * 7}px`, '--tl-sub-w': `${subW}px` }"
+        :class="[
+          tier,
+          { animate: !drag && !link && !zooming && !collapsing, collapsed: leftCollapsed },
+        ]"
+        :style="{
+          width: `${leftW + axisW}px`,
+          '--tl-day-w': `${dayW}px`,
+          '--tl-week-w': `${dayW * 7}px`,
+          '--tl-sub-w': `${subW}px`,
+        }"
       >
         <!-- header: months + day/week band (+ hour ticks in the hours tier) -->
         <div class="tl-head">
           <div class="tl-corner" :style="{ width: `${leftW}px` }">Задача</div>
           <div class="tl-axis">
             <div class="tl-months">
-              <div v-for="(m, i) in monthBands" :key="i" class="tl-month" :style="{ width: `${m.span * dayW}px` }">{{ m.label }}</div>
+              <div
+                v-for="(m, i) in monthBands"
+                :key="i"
+                class="tl-month"
+                :style="{ width: `${m.span * dayW}px` }"
+              >
+                {{ m.label }}
+              </div>
             </div>
             <div v-if="tier === 'weeks'" class="tl-weeksrow">
-              <div v-for="w in weekBands" :key="w.key" class="tl-weekh" :style="{ width: `${w.span * dayW}px` }">{{ w.label }}</div>
+              <div
+                v-for="w in weekBands"
+                :key="w.key"
+                class="tl-weekh"
+                :style="{ width: `${w.span * dayW}px` }"
+              >
+                {{ w.label }}
+              </div>
             </div>
             <template v-else>
               <div class="tl-daysrow">
@@ -799,7 +893,13 @@ const cursorLabel = computed(() => {
                 </div>
               </div>
               <div v-if="tier === 'hours'" class="tl-hoursrow">
-                <span v-for="h in hourTicks" :key="h.key" class="tl-hourtick" :style="{ left: `${h.left}px` }">{{ h.label }}</span>
+                <span
+                  v-for="h in hourTicks"
+                  :key="h.key"
+                  class="tl-hourtick"
+                  :style="{ left: `${h.left}px` }"
+                  >{{ h.label }}</span
+                >
               </div>
             </template>
           </div>
@@ -815,20 +915,28 @@ const cursorLabel = computed(() => {
             class="tl-ms"
             :style="{ left: `${leftW + m.left}px` }"
           >
-            <span class="tl-ms-label"><n-icon :component="RibbonOutline" :size="11" /> {{ m.title }}</span>
+            <span class="tl-ms-label"
+              ><n-icon :component="RibbonOutline" :size="11" /> {{ m.title }}</span
+            >
           </div>
           <div v-if="cursor" class="tl-cursor" :style="{ left: `${leftW + cursor.axisX}px` }" />
           <div class="tl-vspacer" :style="{ height: `${vwindow.top}px` }" />
           <template v-for="r in vwindow.rows" :key="r.key">
             <div v-if="r.t === 'lane'" class="tl-lanehead">
               <div class="tl-left lane" :style="{ width: `${leftW}px` }">
-                <span class="lane-dot" :style="{ background: r.lane.color ? hueGrad(r.lane.color) : 'var(--t-accent-grad)' }" />
+                <span
+                  class="lane-dot"
+                  :style="{
+                    background: r.lane.color ? hueGrad(r.lane.color) : 'var(--t-accent-grad)',
+                  }"
+                />
                 <span class="lane-name">{{ r.lane.label }}</span>
                 <span class="lane-count">{{ r.lane.tasks.length }}</span>
                 <n-tooltip v-if="laneEffort(r.lane)">
                   <template #trigger>
                     <span class="lane-effort"
-                      ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(r.lane) }}</span
+                      ><n-icon :component="TimerOutline" :size="12" />
+                      {{ laneEffort(r.lane) }}</span
                     >
                   </template>
                   Суммарная оценка: {{ laneEffortFull(r.lane) }}
@@ -844,19 +952,32 @@ const cursorLabel = computed(() => {
                 :title="r.task.title"
                 @click="$emit('open', r.task.id)"
               >
-                <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }" />
-                <span class="row-title" :class="{ done: r.task.completed_at }">{{ r.task.title }}</span>
+                <span
+                  class="row-bar"
+                  :style="{ background: hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }"
+                />
+                <span class="row-title" :class="{ done: r.task.completed_at }">{{
+                  r.task.title
+                }}</span>
               </div>
-              <div class="tl-track" :style="{ width: `${axisW}px`, height: `${rowHeight(r.task)}px` }">
+              <div
+                class="tl-track"
+                :style="{ width: `${axisW}px`, height: `${rowHeight(r.task)}px` }"
+              >
                 <div
                   v-if="ghostGeom(r.task)"
                   class="ghost"
-                  :style="{ left: `${ghostGeom(r.task).left}px`, width: `${ghostGeom(r.task).width}px`, '--ghost-c': PRIORITY_COLORS[r.task.priority || 0] }"
+                  :style="{
+                    left: `${ghostGeom(r.task).left}px`,
+                    width: `${ghostGeom(r.task).width}px`,
+                    '--ghost-c': PRIORITY_COLORS[r.task.priority || 0],
+                  }"
                 >
                   <n-tooltip>
                     <template #trigger>
                       <span class="ghost-est"
-                        ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(r.task.estimate, estCfg) }}</span
+                        ><n-icon :component="TimerOutline" :size="11" />
+                        {{ formatEstimate(r.task.estimate, estCfg) }}</span
                       >
                     </template>
                     {{ ghostTitle(r.task) }}
@@ -864,8 +985,16 @@ const cursorLabel = computed(() => {
                 </div>
                 <div
                   class="bar"
-                  :class="{ done: r.task.completed_at, point: !(geom(r.task).hasStart && geom(r.task).hasDue), linksrc: link && link.fromId === r.task.id }"
-                  :style="{ left: `${geom(r.task).left}px`, width: `${geom(r.task).width}px`, '--bar-grad': hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }"
+                  :class="{
+                    done: r.task.completed_at,
+                    point: !(geom(r.task).hasStart && geom(r.task).hasDue),
+                    linksrc: link && link.fromId === r.task.id,
+                  }"
+                  :style="{
+                    left: `${geom(r.task).left}px`,
+                    width: `${geom(r.task).width}px`,
+                    '--bar-grad': hueGrad(PRIORITY_COLORS[r.task.priority || 0]),
+                  }"
                   @pointerdown="onBarDown($event, r.task, 'move')"
                   @click="$emit('open', r.task.id)"
                   @contextmenu.prevent.stop="menu.open($event, r.task)"
@@ -873,7 +1002,12 @@ const cursorLabel = computed(() => {
                   <span class="handle l" @pointerdown.stop="onBarDown($event, r.task, 'start')" />
                   <span class="bar-title">{{ r.task.title }}</span>
                   <span class="handle r" @pointerdown.stop="onBarDown($event, r.task, 'due')" />
-                  <span class="link-knob" title="Создать зависимость" @pointerdown="onLinkDown($event, r.task)" @click.stop />
+                  <span
+                    class="link-knob"
+                    title="Создать зависимость"
+                    @pointerdown="onLinkDown($event, r.task)"
+                    @click.stop
+                  />
                 </div>
                 <!-- subtask sub-bars stacked under the parent bar; draggable to
                      reschedule (move / resize an edge) and to link (right-edge knob)
@@ -882,7 +1016,11 @@ const cursorLabel = computed(() => {
                   v-for="(s, i) in subBars(r.task)"
                   :key="s.id"
                   class="tl-subbar"
-                  :class="{ done: s.completed_at, point: !(geom(s).hasStart && geom(s).hasDue), linksrc: link && link.fromId === s.id }"
+                  :class="{
+                    done: s.completed_at,
+                    point: !(geom(s).hasStart && geom(s).hasDue),
+                    linksrc: link && link.fromId === s.id,
+                  }"
                   :data-task-id="s.id"
                   :style="{
                     left: `${geom(s).left}px`,
@@ -897,7 +1035,12 @@ const cursorLabel = computed(() => {
                   <span class="handle l" @pointerdown.stop="onBarDown($event, s, 'start')" />
                   <span class="tl-subbar-title">{{ s.title }}</span>
                   <span class="handle r" @pointerdown.stop="onBarDown($event, s, 'due')" />
-                  <span class="link-knob" title="Создать зависимость" @pointerdown="onLinkDown($event, s)" @click.stop />
+                  <span
+                    class="link-knob"
+                    title="Создать зависимость"
+                    @pointerdown="onLinkDown($event, s)"
+                    @click.stop
+                  />
                 </div>
               </div>
             </div>
@@ -905,9 +1048,22 @@ const cursorLabel = computed(() => {
           <div class="tl-vspacer" :style="{ height: `${vwindow.bottom}px` }" />
 
           <!-- dependency arrows + live link preview -->
-          <svg class="g-arrows" :width="leftW + axisW" :height="positions.height" :style="{ height: `${positions.height}px` }">
+          <svg
+            class="g-arrows"
+            :width="leftW + axisW"
+            :height="positions.height"
+            :style="{ height: `${positions.height}px` }"
+          >
             <defs>
-              <marker id="g-arrowhead" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <marker
+                id="g-arrowhead"
+                viewBox="0 0 8 8"
+                refX="6.5"
+                refY="4"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
                 <path d="M0 0 L8 4 L0 8 z" :fill="'var(--t-primary)'" />
               </marker>
             </defs>
@@ -919,11 +1075,18 @@ const cursorLabel = computed(() => {
                 <path d="M-3 -3 L3 3 M3 -3 L-3 3" />
               </g>
             </g>
-            <path v-if="linkPath" class="g-linkpreview" :d="linkPath" marker-end="url(#g-arrowhead)" />
+            <path
+              v-if="linkPath"
+              class="g-linkpreview"
+              :d="linkPath"
+              marker-end="url(#g-arrowhead)"
+            />
           </svg>
         </div>
 
-        <div v-if="!lanes.length" class="tl-empty">Нет задач со сроками. Задайте срок или начало в карточке.</div>
+        <div v-if="!lanes.length" class="tl-empty">
+          Нет задач со сроками. Задайте срок или начало в карточке.
+        </div>
       </div>
     </div>
 
@@ -1398,7 +1561,9 @@ const cursorLabel = computed(() => {
 }
 .tl-inner.animate .bar,
 .tl-inner.animate .ghost {
-  transition: left 0.18s ease, width 0.18s ease;
+  transition:
+    left 0.18s ease,
+    width 0.18s ease;
 }
 .tl-inner.animate .tl-today {
   transition: left 0.18s ease;

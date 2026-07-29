@@ -172,12 +172,21 @@ defineExpose({ reload: loadRuns })
           size="small"
           text="Журнал пуст — синхронизация ещё не запускалась"
         />
-        <div v-for="run in runs" :key="run.id" class="j-run" :class="{ open: expandedRunId === run.id }">
+        <div
+          v-for="run in runs"
+          :key="run.id"
+          class="j-run"
+          :class="{ open: expandedRunId === run.id }"
+        >
           <button class="j-run-head" @click="toggleRun(run)">
-            <span class="j-kind" :class="run.kind">{{ run.kind === 'pull' ? 'Pull' : 'Push' }}</span>
+            <span class="j-kind" :class="run.kind">{{
+              run.kind === 'pull' ? 'Pull' : 'Push'
+            }}</span>
             <span class="j-run-main">
               <span class="j-run-time">{{ fmtTime(run.started_at) }}</span>
-              <span class="j-run-meta">{{ TRIGGER_LABEL[run.trigger] }} · {{ runCounts(run) }}</span>
+              <span class="j-run-meta"
+                >{{ TRIGGER_LABEL[run.trigger] }} · {{ runCounts(run) }}</span
+              >
             </span>
             <span class="j-dot" :class="run.status" :title="STATUS_LABEL[run.status]" />
           </button>
@@ -192,7 +201,10 @@ defineExpose({ reload: loadRuns })
               v-for="a in actionsByRun[run.id] || []"
               :key="a.id"
               class="j-action"
-              :class="{ sel: selectedAction && selectedAction.id === a.id, fail: a.status === 'fail' }"
+              :class="{
+                sel: selectedAction && selectedAction.id === a.id,
+                fail: a.status === 'fail',
+              }"
               @click="selectAction(run, a)"
             >
               <span class="j-op" :class="a.op">{{ a.op }}</span>
@@ -242,7 +254,9 @@ defineExpose({ reload: loadRuns })
             <div class="j-fl">Теги</div>
             <div class="j-chips">
               <span v-for="t in tags.added || []" :key="'a' + t" class="j-chip add">+ {{ t }}</span>
-              <span v-for="t in tags.removed || []" :key="'r' + t" class="j-chip rem">− {{ t }}</span>
+              <span v-for="t in tags.removed || []" :key="'r' + t" class="j-chip rem"
+                >− {{ t }}</span
+              >
             </div>
           </div>
 

@@ -2,7 +2,11 @@
 
 function fmtDate(iso) {
   if (!iso) return ''
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 }
 
 // Human-readable start–due window for a milestone (either side may be missing).

@@ -101,7 +101,10 @@ const kindOptions = Object.entries(KIND_META).map(([value, label]) => ({ value, 
 
 const wsOptions = computed(() => (wsStore.list || []).map((w) => ({ value: w.id, label: w.name })))
 const channelOptions = computed(() =>
-  channels.value.map((c) => ({ value: c.id, label: c.label || TYPE_META[c.type]?.label || c.type })),
+  channels.value.map((c) => ({
+    value: c.id,
+    label: c.label || TYPE_META[c.type]?.label || c.type,
+  })),
 )
 
 // per-user scheduling defaults (due dates + reminders)
@@ -165,7 +168,14 @@ function isThisDevice(c) {
 // ── channel editor ───────────────────────────────────────────
 const chModal = ref(false)
 const chEditing = ref(null) // null = create
-const chForm = reactive({ type: 'email', label: '', config: {}, secret: {}, template: '', enabled: true })
+const chForm = reactive({
+  type: 'email',
+  label: '',
+  config: {},
+  secret: {},
+  template: '',
+  enabled: true,
+})
 const chSaving = ref(false)
 const chErr = ref('')
 
@@ -257,7 +267,8 @@ const hlRef = ref(null)
 // Avoid literal {{ }} in the Vue template (it would be parsed as interpolation):
 // these strings are data, rendered verbatim.
 const templateDefaultHint = 'по умолчанию: {{.Text}} + ссылка'
-const syntaxHint = 'Синтаксис Go-шаблонов: {{.Field}}, {{if .X}}…{{end}}. Пусто = шаблон по умолчанию.'
+const syntaxHint =
+  'Синтаксис Go-шаблонов: {{.Field}}, {{if .X}}…{{end}}. Пусто = шаблон по умолчанию.'
 const TEMPLATE_FIELDS = [
   { token: '{{.Text}}', desc: 'Готовый текст уведомления' },
   { token: '{{.Title}}', desc: 'Заголовок по типу события' },
@@ -274,7 +285,10 @@ function escapeHtml(s) {
 }
 // Highlight {{ ... }} template actions over the (escaped) source for the backdrop.
 const highlighted = computed(() => {
-  const h = escapeHtml(tplDraft.value || '').replace(/\{\{[^}]*\}\}/g, (m) => `<span class="tok">${m}</span>`)
+  const h = escapeHtml(tplDraft.value || '').replace(
+    /\{\{[^}]*\}\}/g,
+    (m) => `<span class="tok">${m}</span>`,
+  )
   return h.endsWith('\n') ? h + ' ' : h // keep the last empty line visible
 })
 
@@ -337,13 +351,25 @@ watch(tplDraft, schedulePreview)
 // ── route editor ─────────────────────────────────────────────
 const rtModal = ref(false)
 const rtEditing = ref(null)
-const rtForm = reactive({ kinds: [], workspace_id: null, channel_ids: [], mute: false, enabled: true })
+const rtForm = reactive({
+  kinds: [],
+  workspace_id: null,
+  channel_ids: [],
+  mute: false,
+  enabled: true,
+})
 const rtSaving = ref(false)
 const rtErr = ref('')
 
 function openRouteNew() {
   rtEditing.value = null
-  Object.assign(rtForm, { kinds: [], workspace_id: null, channel_ids: [], mute: false, enabled: true })
+  Object.assign(rtForm, {
+    kinds: [],
+    workspace_id: null,
+    channel_ids: [],
+    mute: false,
+    enabled: true,
+  })
   rtErr.value = ''
   rtModal.value = true
 }
@@ -372,7 +398,8 @@ async function saveRoute() {
       options: { mute: rtForm.mute },
       enabled: rtForm.enabled,
     }
-    if (rtEditing.value) await rtApi.update(rtEditing.value.id, { ...payload, position: rtEditing.value.position })
+    if (rtEditing.value)
+      await rtApi.update(rtEditing.value.id, { ...payload, position: rtEditing.value.position })
     else await rtApi.create(payload)
     rtModal.value = false
     await load()
@@ -451,16 +478,17 @@ function wsSummary(r) {
               </n-tag>
             </div>
             <div class="item-sub">{{ TYPE_META[c.type]?.label || c.type }}</div>
-            <div
-              v-if="isThisDevice(c) && notifPermission !== 'granted'"
-              class="item-test bad"
-            >
+            <div v-if="isThisDevice(c) && notifPermission !== 'granted'" class="item-test bad">
               <template v-if="notifPermission === 'denied'">
                 Уведомления запрещены в браузере — включите их в настройках сайта.
               </template>
               <template v-else>Нужно разрешение браузера на уведомления.</template>
             </div>
-            <div v-if="testState[c.id]" class="item-test" :class="testState[c.id].ok ? 'ok' : 'bad'">
+            <div
+              v-if="testState[c.id]"
+              class="item-test"
+              :class="testState[c.id].ok ? 'ok' : 'bad'"
+            >
               <template v-if="testState[c.id].pending">отправка…</template>
               <template v-else>{{ testState[c.id].msg }}</template>
             </div>
@@ -540,8 +568,8 @@ function wsSummary(r) {
           <span class="block-title">Дедлайны и напоминания</span>
         </div>
         <p class="hint sub">
-          Когда уведомлять о сроках задач. Можно переопределить для конкретной задачи —
-          кликом по дате на карточке. Дробить частоту без спама помогают тихие часы (silence).
+          Когда уведомлять о сроках задач. Можно переопределить для конкретной задачи — кликом по
+          дате на карточке. Дробить частоту без спама помогают тихие часы (silence).
         </p>
         <label class="sched-row">
           <n-switch v-model:value="prefs.due_enabled" size="small" />
@@ -550,11 +578,19 @@ function wsSummary(r) {
         <div class="grid2">
           <label class="field">
             <span>Напоминать</span>
-            <n-select v-model:value="prefs.due_lead_minutes" :options="LEAD_OPTIONS" :disabled="!prefs.due_enabled" />
+            <n-select
+              v-model:value="prefs.due_lead_minutes"
+              :options="LEAD_OPTIONS"
+              :disabled="!prefs.due_enabled"
+            />
           </label>
           <label class="field">
             <span>Повтор</span>
-            <n-select v-model:value="prefs.due_repeat_minutes" :options="REPEAT_OPTIONS" :disabled="!prefs.due_enabled" />
+            <n-select
+              v-model:value="prefs.due_repeat_minutes"
+              :options="REPEAT_OPTIONS"
+              :disabled="!prefs.due_enabled"
+            />
           </label>
         </div>
         <label class="sched-row">
@@ -584,8 +620,8 @@ function wsSummary(r) {
             </label>
           </div>
           <p class="hint">
-            В это окно внешние уведомления придерживаются и приходят после его окончания.
-            Внутренние (колокольчик) — всегда. Время — по вашему часовому поясу{{
+            В это окно внешние уведомления придерживаются и приходят после его окончания. Внутренние
+            (колокольчик) — всегда. Время — по вашему часовому поясу{{
               theme.timezone ? ` (${theme.timezone})` : ''
             }}.
           </p>
@@ -603,7 +639,12 @@ function wsSummary(r) {
 
     <!-- Channel editor modal -->
     <n-modal v-model:show="chModal">
-      <n-card class="modal" :title="chEditing ? 'Изменить канал' : 'Новый канал'" closable @close="chModal = false">
+      <n-card
+        class="modal"
+        :title="chEditing ? 'Изменить канал' : 'Новый канал'"
+        closable
+        @close="chModal = false"
+      >
         <div class="form">
           <label class="field">
             <span>Тип</span>
@@ -662,7 +703,11 @@ function wsSummary(r) {
                 v-model:value="chForm.secret.url"
                 type="password"
                 show-password-on="click"
-                :placeholder="chEditing ? 'оставьте пустым, чтобы не менять' : 'slack://… · discord://… · ntfy://…'"
+                :placeholder="
+                  chEditing
+                    ? 'оставьте пустым, чтобы не менять'
+                    : 'slack://… · discord://… · ntfy://…'
+                "
               />
             </label>
             <p class="hint">
@@ -762,7 +807,12 @@ function wsSummary(r) {
 
     <!-- Route editor modal -->
     <n-modal v-model:show="rtModal">
-      <n-card class="modal" :title="rtEditing ? 'Изменить правило' : 'Новое правило'" closable @close="rtModal = false">
+      <n-card
+        class="modal"
+        :title="rtEditing ? 'Изменить правило' : 'Новое правило'"
+        closable
+        @close="rtModal = false"
+      >
         <div class="form">
           <label class="field">
             <span>События (пусто = любые)</span>

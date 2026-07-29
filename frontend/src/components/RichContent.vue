@@ -91,7 +91,10 @@ async function renderMermaid() {
     const pre = codeEl.closest('pre') || codeEl
     const code = codeEl.textContent || ''
     try {
-      const { svg } = await mermaidMod.render(`mmd-${mine}-${i++}-${Math.random().toString(36).slice(2)}`, code)
+      const { svg } = await mermaidMod.render(
+        `mmd-${mine}-${i++}-${Math.random().toString(36).slice(2)}`,
+        code,
+      )
       if (mine !== seq) return
       const wrap = document.createElement('div')
       wrap.className = 'mermaid-diagram'
@@ -103,15 +106,18 @@ async function renderMermaid() {
   }
 }
 
-watch(() => [props.source, theme.isDark], () => {
-  // Skip the rebuild from a self-toggle (the DOM already reflects + animated it);
-  // genuine source/theme changes still rebuild.
-  if (skipBuild) {
-    skipBuild = false
-    return
-  }
-  build()
-})
+watch(
+  () => [props.source, theme.isDark],
+  () => {
+    // Skip the rebuild from a self-toggle (the DOM already reflects + animated it);
+    // genuine source/theme changes still rebuild.
+    if (skipBuild) {
+      skipBuild = false
+      return
+    }
+    build()
+  },
+)
 onMounted(build)
 </script>
 

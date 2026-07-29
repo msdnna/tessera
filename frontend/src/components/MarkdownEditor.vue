@@ -87,7 +87,10 @@ function autoGrow() {
   el.style.height = `${el.scrollHeight}px`
   if (sp != null && top != null) sp.scrollTop = top
 }
-watch(() => props.modelValue, () => nextTick(autoGrow))
+watch(
+  () => props.modelValue,
+  () => nextTick(autoGrow),
+)
 watch(mode, (m) => {
   if (m === 'write') nextTick(autoGrow)
 })
@@ -201,7 +204,9 @@ async function rgbaToPngFile(rgba, width, height) {
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
-  canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0)
+  canvas
+    .getContext('2d')
+    .putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0)
   const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
   return blob ? new File([blob], `clipboard-${Date.now()}.png`, { type: 'image/png' }) : null
 }
@@ -457,31 +462,88 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
     <input ref="imgInput" type="file" accept="image/*" hidden @change="onImgFile" />
 
     <div class="md2-body">
-    <Transition name="md2-fade" mode="out-in" @after-enter="autoGrow">
-    <div v-if="mode === 'write'" key="write" class="md2-write">
-      <textarea
-        ref="ta"
-        :value="modelValue"
-        :placeholder="placeholder"
-        :rows="minRows"
-        spellcheck="false"
-        @input="onInput"
-        @keydown="onKeydown"
-        @select="onSelect"
-        @mouseup="onSelect"
-        @scroll="hideBubble"
-        @blur="onBlur"
-        @paste="onPaste"
-        @dragover.prevent
-        @drop="onDrop"
-      />
+      <Transition name="md2-fade" mode="out-in" @after-enter="autoGrow">
+        <div v-if="mode === 'write'" key="write" class="md2-write">
+          <textarea
+            ref="ta"
+            :value="modelValue"
+            :placeholder="placeholder"
+            :rows="minRows"
+            spellcheck="false"
+            @input="onInput"
+            @keydown="onKeydown"
+            @select="onSelect"
+            @mouseup="onSelect"
+            @scroll="hideBubble"
+            @blur="onBlur"
+            @paste="onPaste"
+            @dragover.prevent
+            @drop="onDrop"
+          />
 
-      <Transition name="bubble">
-        <div v-if="bubble" class="md2-bubble" :style="bubble">
+          <Transition name="bubble">
+            <div v-if="bubble" class="md2-bubble" :style="bubble">
+              <button
+                v-for="b in tools"
+                :key="b.title"
+                type="button"
+                :class="b.cls"
+                :title="b.title"
+                @mousedown.prevent="b.fn"
+              >
+                <n-icon v-if="b.icon" :component="b.icon" :size="15" />
+                <template v-else>{{ b.t }}</template>
+              </button>
+            </div>
+          </Transition>
+
+          <ul v-if="mq && mentionMatches.length" class="md2-mentions">
+            <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
+              <li
+                v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)"
+                class="md2-mention-sep"
+              >
+                GitLab
+              </li>
+              <li
+                class="md2-mention-item"
+                :class="{ active: i === mqIndex }"
+                @mousedown.prevent="pickMention(m)"
+              >
+                <UserAvatar
+                  class="md2-mention-av"
+                  :user-id="m.avatarUserId"
+                  :src="m.avatarSrc"
+                  :name="m.display || m.label"
+                />
+                <span class="md2-mention-name">{{ m.display || m.label }}</span>
+              </li>
+            </template>
+          </ul>
+        </div>
+
+        <RichContent
+          v-else
+          key="preview"
+          class="md2-preview"
+          :source="modelValue"
+          :members="mentionItems"
+          interactive
+          empty="Нечего показать"
+          @toggle="onToggleCheck"
+        />
+      </Transition>
+
+      <!-- Boxed variant: persistent toolbar under the text (formatting is still also
+         available via the selection bubble). mousedown.prevent keeps the caret /
+         selection in the textarea so the format buttons act on it. -->
+      <div v-if="boxed" class="md2-toolbar">
+        <template v-if="mode === 'write'">
           <button
             v-for="b in tools"
             :key="b.title"
             type="button"
+            class="md2-tbtn"
             :class="b.cls"
             :title="b.title"
             @mousedown.prevent="b.fn"
@@ -489,98 +551,44 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
             <n-icon v-if="b.icon" :component="b.icon" :size="15" />
             <template v-else>{{ b.t }}</template>
           </button>
-        </div>
-      </Transition>
-
-      <ul v-if="mq && mentionMatches.length" class="md2-mentions">
-        <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
-          <li v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)" class="md2-mention-sep">
-            GitLab
-          </li>
-          <li
-            class="md2-mention-item"
-            :class="{ active: i === mqIndex }"
-            @mousedown.prevent="pickMention(m)"
+          <span class="md2-tsep" />
+          <button
+            type="button"
+            class="md2-tbtn"
+            :class="{ busy: uploading }"
+            title="Вставить изображение"
+            @mousedown.prevent="pickImage"
           >
-            <UserAvatar
-              class="md2-mention-av"
-              :user-id="m.avatarUserId"
-              :src="m.avatarSrc"
-              :name="m.display || m.label"
-            />
-            <span class="md2-mention-name">{{ m.display || m.label }}</span>
-          </li>
+            <n-icon :component="ImageOutline" :size="16" />
+          </button>
+          <button
+            type="button"
+            class="md2-tbtn"
+            title="Вставить Mermaid-диаграмму"
+            @mousedown.prevent="insertMermaid"
+          >
+            <n-icon :component="GitNetworkOutline" :size="16" />
+          </button>
         </template>
-      </ul>
-    </div>
-
-    <RichContent
-      v-else
-      key="preview"
-      class="md2-preview"
-      :source="modelValue"
-      :members="mentionItems"
-      interactive
-      empty="Нечего показать"
-      @toggle="onToggleCheck"
-    />
-    </Transition>
-
-    <!-- Boxed variant: persistent toolbar under the text (formatting is still also
-         available via the selection bubble). mousedown.prevent keeps the caret /
-         selection in the textarea so the format buttons act on it. -->
-    <div v-if="boxed" class="md2-toolbar">
-      <template v-if="mode === 'write'">
-        <button
-          v-for="b in tools"
-          :key="b.title"
-          type="button"
-          class="md2-tbtn"
-          :class="b.cls"
-          :title="b.title"
-          @mousedown.prevent="b.fn"
-        >
-          <n-icon v-if="b.icon" :component="b.icon" :size="15" />
-          <template v-else>{{ b.t }}</template>
-        </button>
-        <span class="md2-tsep" />
+        <span class="md2-spacer" />
         <button
           type="button"
           class="md2-tbtn"
-          :class="{ busy: uploading }"
-          title="Вставить изображение"
-          @mousedown.prevent="pickImage"
+          :title="mode === 'write' ? 'Предпросмотр' : 'Редактировать'"
+          @mousedown.prevent="toggleMode"
         >
-          <n-icon :component="ImageOutline" :size="16" />
+          <n-icon :component="mode === 'write' ? EyeOutline : CreateOutline" :size="16" />
         </button>
         <button
+          v-if="send"
           type="button"
-          class="md2-tbtn"
-          title="Вставить Mermaid-диаграмму"
-          @mousedown.prevent="insertMermaid"
+          class="md2-send"
+          title="Отправить (Ctrl+Enter)"
+          @mousedown.prevent="onSend"
         >
-          <n-icon :component="GitNetworkOutline" :size="16" />
+          <n-icon :component="SendOutline" :size="16" />
         </button>
-      </template>
-      <span class="md2-spacer" />
-      <button
-        type="button"
-        class="md2-tbtn"
-        :title="mode === 'write' ? 'Предпросмотр' : 'Редактировать'"
-        @mousedown.prevent="toggleMode"
-      >
-        <n-icon :component="mode === 'write' ? EyeOutline : CreateOutline" :size="16" />
-      </button>
-      <button
-        v-if="send"
-        type="button"
-        class="md2-send"
-        title="Отправить (Ctrl+Enter)"
-        @mousedown.prevent="onSend"
-      >
-        <n-icon :component="SendOutline" :size="16" />
-      </button>
-    </div>
+      </div>
     </div>
   </div>
 </template>
@@ -609,7 +617,9 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 .md2-act:hover {
   background: var(--t-hover);
@@ -804,7 +814,9 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 .md2-tbtn:hover {
   background: var(--t-hover);

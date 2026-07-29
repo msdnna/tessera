@@ -1,6 +1,16 @@
 <script setup>
 import { ref, watch } from 'vue'
-import { NModal, NCard, NIcon, NButton, NInput, NDatePicker, NPopconfirm, NTooltip, useMessage } from 'naive-ui'
+import {
+  NModal,
+  NCard,
+  NIcon,
+  NButton,
+  NInput,
+  NDatePicker,
+  NPopconfirm,
+  NTooltip,
+  useMessage,
+} from 'naive-ui'
 import {
   RibbonOutline,
   AddOutline,
@@ -187,7 +197,12 @@ watch(
             :icon="RibbonOutline"
             text="Этапов пока нет — создайте первый ниже"
           />
-          <div v-for="m in list" :key="m.id" class="m-row" :class="{ closed: m.state === 'closed' }">
+          <div
+            v-for="m in list"
+            :key="m.id"
+            class="m-row"
+            :class="{ closed: m.state === 'closed' }"
+          >
             <template v-if="editingId === m.id">
               <n-input v-model:value="editBuf.title" size="small" class="m-edit-title" />
               <n-date-picker
@@ -252,7 +267,9 @@ watch(
                 :title="m.state === 'closed' ? 'Открыть' : 'Закрыть'"
                 @click="toggleState(m)"
               >
-                <template #icon><n-icon :component="m.state === 'closed' ? RefreshOutline : CheckmarkOutline" /></template>
+                <template #icon
+                  ><n-icon :component="m.state === 'closed' ? RefreshOutline : CheckmarkOutline"
+                /></template>
               </n-button>
               <n-popconfirm @positive-click="remove(m)">
                 <template #trigger>
@@ -277,9 +294,27 @@ watch(
             placeholder="Название этапа"
             @keydown.enter.prevent="create"
           />
-          <n-date-picker v-model:value="newStart" type="date" size="small" clearable placeholder="Начало" />
-          <n-date-picker v-model:value="newDue" type="date" size="small" clearable placeholder="Конец" />
-          <n-button size="small" type="primary" :loading="saving" :disabled="!newTitle.trim()" @click="create">
+          <n-date-picker
+            v-model:value="newStart"
+            type="date"
+            size="small"
+            clearable
+            placeholder="Начало"
+          />
+          <n-date-picker
+            v-model:value="newDue"
+            type="date"
+            size="small"
+            clearable
+            placeholder="Конец"
+          />
+          <n-button
+            size="small"
+            type="primary"
+            :loading="saving"
+            :disabled="!newTitle.trim()"
+            @click="create"
+          >
             <template #icon><n-icon :component="AddOutline" /></template>
             Создать
           </n-button>

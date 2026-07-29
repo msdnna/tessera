@@ -1,12 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { NButton, NTag, NPopconfirm, NIcon, NSpin, NInput, NSwitch, useMessage } from 'naive-ui'
-import {
-  ShieldCheckmarkOutline,
-  KeyOutline,
-  SearchOutline,
-  LogoGitlab,
-} from '@vicons/ionicons5'
+import { ShieldCheckmarkOutline, KeyOutline, SearchOutline, LogoGitlab } from '@vicons/ionicons5'
 import { admin } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -170,14 +165,13 @@ onMounted(() => {
           <n-icon :component="LogoGitlab" class="oauth-ic" /> Вход через GitLab (OAuth)
         </h3>
         <p class="oauth-hint">
-          <b>Вход через GitLab:</b> создайте OAuth-приложение (Admin → Applications или
-          в группе), scope <code>read_api</code>, Redirect URI:
-          <code>{{ callbackUrl }}</code>. <b>«Включён вход»</b> показывает кнопку на
-          экране входа.<br />
-          <b>Синхронизация задач:</b> задайте <b>сервисный токен</b> (PAT сервис-аккаунта,
-          scope <code>api</code>) — под ним идёт весь синк, без личных токенов
-          пользователей. Задачи мапятся на учётки по OAuth-идентичности (кто вошёл через
-          GitLab), а не по владельцу токена интеграции.
+          <b>Вход через GitLab:</b> создайте OAuth-приложение (Admin → Applications или в группе),
+          scope <code>read_api</code>, Redirect URI: <code>{{ callbackUrl }}</code
+          >. <b>«Включён вход»</b> показывает кнопку на экране входа.<br />
+          <b>Синхронизация задач:</b> задайте <b>сервисный токен</b> (PAT сервис-аккаунта, scope
+          <code>api</code>) — под ним идёт весь синк, без личных токенов пользователей. Задачи
+          мапятся на учётки по OAuth-идентичности (кто вошёл через GitLab), а не по владельцу токена
+          интеграции.
         </p>
         <div class="oauth-grid">
           <label>URL GitLab</label>
@@ -200,7 +194,9 @@ onMounted(() => {
             type="password"
             show-password-on="click"
             size="small"
-            :placeholder="oauth.has_secret ? '•••••• (сохранён; введите, чтобы заменить)' : 'client secret'"
+            :placeholder="
+              oauth.has_secret ? '•••••• (сохранён; введите, чтобы заменить)' : 'client secret'
+            "
             :input-props="{ autocomplete: 'new-password', name: 'oauth-secret' }"
           />
           <label>
@@ -212,7 +208,11 @@ onMounted(() => {
             type="password"
             show-password-on="click"
             size="small"
-            :placeholder="oauth.has_service_token ? '•••••• (сохранён; введите, чтобы заменить)' : 'glpat-… (scope api)'"
+            :placeholder="
+              oauth.has_service_token
+                ? '•••••• (сохранён; введите, чтобы заменить)'
+                : 'glpat-… (scope api)'
+            "
             :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
           />
           <label>Включён вход</label>
@@ -237,7 +237,12 @@ onMounted(() => {
         </div>
       </div>
 
-      <n-input v-model:value="query" placeholder="Поиск по имени или почте" clearable class="search">
+      <n-input
+        v-model:value="query"
+        placeholder="Поиск по имени или почте"
+        clearable
+        class="search"
+      >
         <template #prefix><n-icon :component="SearchOutline" /></template>
       </n-input>
 
@@ -250,7 +255,9 @@ onMounted(() => {
               <n-tag v-if="u.is_admin" size="small" type="warning" round>admin</n-tag>
               <n-tag v-if="u.id === meId" size="small" round>вы</n-tag>
               <n-tag v-if="!u.active" size="small" type="error" round>деактивирован</n-tag>
-              <n-tag v-if="!u.email_verified" size="small" round :bordered="false">не подтверждён</n-tag>
+              <n-tag v-if="!u.email_verified" size="small" round :bordered="false"
+                >не подтверждён</n-tag
+              >
             </div>
             <div class="umail">{{ u.email }}</div>
           </div>

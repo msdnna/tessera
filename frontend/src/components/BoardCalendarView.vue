@@ -38,7 +38,9 @@ today.setHours(0, 0, 0, 0)
 // Cursor points at the first day of the displayed month.
 const cursor = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 
-const monthLabel = computed(() => `${MONTHS[cursor.value.getMonth()]} ${cursor.value.getFullYear()}`)
+const monthLabel = computed(
+  () => `${MONTHS[cursor.value.getMonth()]} ${cursor.value.getFullYear()}`,
+)
 
 function dayKey(d) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`

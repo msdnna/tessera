@@ -121,43 +121,47 @@ async function add() {
         <n-text v-if="showHeaders" depth="3" class="grp-head">{{ g.label }}</n-text>
         <div v-for="t in g.tags" :key="t.id" class="tag-block">
           <div class="tag-row">
-          <n-input
-            v-if="editingId === t.id"
-            :ref="(el) => el && (nameInput = el)"
-            v-model:value="nameEdit"
-            size="tiny"
-            placeholder="Имя тега"
-            @keyup.enter="saveName(t)"
-            @blur="saveName(t)"
-          />
-          <span
-            v-else
-            class="chip"
-            title="Двойной клик — переименовать"
-            :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
-            @dblclick="startEdit(t)"
-          >
-            {{ t.name }}
-          </span>
-          <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove(t)">
-            <template #trigger>
-              <n-button text size="tiny" type="error">
-                <n-icon :component="TrashOutline" />
-              </n-button>
-            </template>
-            Удалить тег? Он снимется со всех задач.
-          </n-popconfirm>
-        </div>
-        <div v-if="editingId === t.id" class="swatches">
-          <button
-            v-for="s in swatches"
-            :key="s"
-            class="sw"
-            :class="{ active: s === t.color }"
-            :style="{ backgroundImage: hueGrad(s) }"
-            @mousedown.prevent
-            @click="setColor(t, s)"
-          />
+            <n-input
+              v-if="editingId === t.id"
+              :ref="(el) => el && (nameInput = el)"
+              v-model:value="nameEdit"
+              size="tiny"
+              placeholder="Имя тега"
+              @keyup.enter="saveName(t)"
+              @blur="saveName(t)"
+            />
+            <span
+              v-else
+              class="chip"
+              title="Двойной клик — переименовать"
+              :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
+              @dblclick="startEdit(t)"
+            >
+              {{ t.name }}
+            </span>
+            <n-popconfirm
+              :positive-button-props="{ type: 'error' }"
+              positive-text="Удалить"
+              @positive-click="remove(t)"
+            >
+              <template #trigger>
+                <n-button text size="tiny" type="error">
+                  <n-icon :component="TrashOutline" />
+                </n-button>
+              </template>
+              Удалить тег? Он снимется со всех задач.
+            </n-popconfirm>
+          </div>
+          <div v-if="editingId === t.id" class="swatches">
+            <button
+              v-for="s in swatches"
+              :key="s"
+              class="sw"
+              :class="{ active: s === t.color }"
+              :style="{ backgroundImage: hueGrad(s) }"
+              @mousedown.prevent
+              @click="setColor(t, s)"
+            />
           </div>
         </div>
       </template>

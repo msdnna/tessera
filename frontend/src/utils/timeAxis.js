@@ -12,7 +12,20 @@
 export const DAY_MS = 86400000
 export const HOUR_MS = 3600000
 
-export const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+export const MONTHS = [
+  'янв',
+  'фев',
+  'мар',
+  'апр',
+  'май',
+  'июн',
+  'июл',
+  'авг',
+  'сен',
+  'окт',
+  'ноя',
+  'дек',
+]
 export const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
 
 export const startOfDay = (ms) => {
@@ -56,7 +69,13 @@ export function barSpan({ start, due, tier, rangeStart, dayW, minW = 6 }) {
   const leftMs = honor && !isAllDayMs(sMs) ? sMs : startOfDay(sMs)
   const rightMs = honor && !isAllDayMs(dMs) ? dMs : startOfDay(dMs) + DAY_MS
   const left = xAt(leftMs, rangeStart, dayW)
-  return { left, leftMs, width: Math.max(minW, xAt(rightMs, rangeStart, dayW) - left), hasStart, hasDue }
+  return {
+    left,
+    leftMs,
+    width: Math.max(minW, xAt(rightMs, rangeStart, dayW) - left),
+    hasStart,
+    hasDue,
+  }
 }
 
 // Left edge (epoch ms) a bar/ghost anchors to — honours the start's clock time in the
@@ -72,7 +91,13 @@ export function buildDays(rangeStart, count, todayMs) {
     const ms = rangeStart + i * DAY_MS
     const d = new Date(ms)
     const dow = d.getDay()
-    out.push({ ms, day: d.getDate(), dow: WD[dow], weekend: dow === 0 || dow === 6, isToday: startOfDay(ms) === todayMs })
+    out.push({
+      ms,
+      day: d.getDate(),
+      dow: WD[dow],
+      weekend: dow === 0 || dow === 6,
+      isToday: startOfDay(ms) === todayMs,
+    })
   }
   return out
 }
@@ -105,7 +130,8 @@ export function buildWeekBands(days) {
       out.push({ key: d.ms, startDay: dt.getDate(), endDay: dt.getDate(), span: 1 })
     }
   }
-  for (const b of out) b.label = b.startDay === b.endDay ? `${b.startDay}` : `${b.startDay}–${b.endDay}`
+  for (const b of out)
+    b.label = b.startDay === b.endDay ? `${b.startDay}` : `${b.startDay}–${b.endDay}`
   return out
 }
 
@@ -128,7 +154,11 @@ export function hourTicksInWindow(dayCount, dayW, loPx, hiPx) {
   const d1 = Math.min(dayCount - 1, Math.ceil(hiPx / dayW))
   for (let day = d0; day <= d1; day++) {
     for (let h = step; h < 24; h += step) {
-      out.push({ key: day * 24 + h, left: (day + h / 24) * dayW, label: String(h).padStart(2, '0') })
+      out.push({
+        key: day * 24 + h,
+        left: (day + h / 24) * dayW,
+        label: String(h).padStart(2, '0'),
+      })
     }
   }
   return out

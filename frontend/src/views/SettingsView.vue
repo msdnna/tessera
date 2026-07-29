@@ -254,11 +254,15 @@ async function resendVerify() {
       <div class="grid3">
         <label class="field"
           ><span>Фамилия</span
-          ><n-input v-model:value="profile.last_name" :input-props="{ autocomplete: 'family-name' }"
+          ><n-input
+            v-model:value="profile.last_name"
+            :input-props="{ autocomplete: 'family-name' }"
         /></label>
         <label class="field"
           ><span>Имя</span
-          ><n-input v-model:value="profile.first_name" :input-props="{ autocomplete: 'given-name' }"
+          ><n-input
+            v-model:value="profile.first_name"
+            :input-props="{ autocomplete: 'given-name' }"
         /></label>
         <label class="field"
           ><span>Отчество</span
@@ -446,11 +450,7 @@ async function resendVerify() {
       <div class="field" style="margin-top: 14px">
         <span>Автозапуск</span>
         <label class="autostart-row">
-          <n-switch
-            :value="autostart"
-            :loading="autostartBusy"
-            @update:value="toggleAutostart"
-          />
+          <n-switch :value="autostart" :loading="autostartBusy" @update:value="toggleAutostart" />
           <span>Запускать Tessera при входе в систему (свёрнутой в трей)</span>
         </label>
       </div>
@@ -465,9 +465,7 @@ async function resendVerify() {
       </div>
       <p class="hint">
         <template v-if="updStatus === 'none'">Установлена последняя версия.</template>
-        <template v-else-if="updStatus === 'available'"
-          >Доступна версия {{ updVersion }}.</template
-        >
+        <template v-else-if="updStatus === 'available'">Доступна версия {{ updVersion }}.</template>
         <template v-else-if="updStatus === 'downloading'">Загрузка обновления…</template>
         <template v-else-if="updStatus === 'error'">Ошибка обновления: {{ updError }}</template>
       </p>

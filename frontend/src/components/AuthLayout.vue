@@ -91,12 +91,7 @@ onBeforeUnmount(() => {
       <DownloadAppButton v-if="!desktop" />
 
       <!-- Desktop only: server-address popover, sitting left of the theme toggle. -->
-      <n-popover
-        v-if="desktop"
-        v-model:show="showServer"
-        trigger="click"
-        placement="bottom-end"
-      >
+      <n-popover v-if="desktop" v-model:show="showServer" trigger="click" placement="bottom-end">
         <template #trigger>
           <button
             class="auth-tool-btn"

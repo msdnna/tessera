@@ -250,7 +250,8 @@ export const tasks = {
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),
   removeAssignee: (id, userId) => api.delete(`/tasks/${id}/assignees/${userId}`),
   // Milestone («Этап»): assign (milestone id) or clear (null / clear endpoint).
-  setMilestone: (id, milestoneId) => api.post(`/tasks/${id}/milestone`, { milestone_id: milestoneId }),
+  setMilestone: (id, milestoneId) =>
+    api.post(`/tasks/${id}/milestone`, { milestone_id: milestoneId }),
   clearMilestone: (id) => api.delete(`/tasks/${id}/milestone`),
   pinGitlabAssignee: (id, data) => api.post(`/tasks/${id}/gitlab-assignees`, data),
   removeGitlabAssignee: (id, username) =>
@@ -335,7 +336,8 @@ export const gitlab = {
   sync: (wsId, integId) =>
     api.post(`/workspaces/${wsId}/gitlab/integrations/${integId}/sync`, null, { skipLoader: true }),
   // Sync journal: run/action history + retry of a failed push.
-  syncRuns: (wsId, limit = 50) => api.get(`/workspaces/${wsId}/gitlab/sync-runs`, { params: { limit } }),
+  syncRuns: (wsId, limit = 50) =>
+    api.get(`/workspaces/${wsId}/gitlab/sync-runs`, { params: { limit } }),
   syncRunActions: (wsId, runId) => api.get(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions`),
   retryWriteback: (wsId, runId, actionId) =>
     api.post(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions/${actionId}/retry`),
@@ -343,7 +345,10 @@ export const gitlab = {
   // issue templates for prefilling the description.
   createIssue: (taskId, data) => api.post(`/tasks/${taskId}/gitlab-issue`, data),
   issueTemplates: (wsId, integId) =>
-    api.get(`/workspaces/${wsId}/gitlab/issue-templates`, integId ? { params: { integration_id: integId } } : undefined),
+    api.get(
+      `/workspaces/${wsId}/gitlab/issue-templates`,
+      integId ? { params: { integration_id: integId } } : undefined,
+    ),
   // Write-back conflicts: open-conflict inbox + interactive resolution.
   conflicts: (wsId) => api.get(`/workspaces/${wsId}/gitlab/conflicts`),
   resolveConflict: (taskId, conflictId, data) =>

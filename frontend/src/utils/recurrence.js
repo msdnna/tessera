@@ -75,7 +75,10 @@ function nextWeekly(from, rule) {
   for (let i = 1; i < 7; i++) {
     const c = new Date(from)
     c.setDate(from.getDate() + i)
-    if (c < new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7) && set.has(c.getDay())) {
+    if (
+      c < new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7) &&
+      set.has(c.getDay())
+    ) {
       return c
     }
   }

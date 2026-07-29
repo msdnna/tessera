@@ -43,7 +43,11 @@ function renderLabel(option) {
     { style: 'display:flex;align-items:center;justify-content:space-between;gap:24px' },
     [
       h('span', option.label),
-      h(NIcon, { size: 15, style: 'color:var(--t-primary)' }, { default: () => h(CheckmarkOutline) }),
+      h(
+        NIcon,
+        { size: 15, style: 'color:var(--t-primary)' },
+        { default: () => h(CheckmarkOutline) },
+      ),
     ],
   )
 }

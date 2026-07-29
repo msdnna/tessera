@@ -165,13 +165,7 @@ onMounted(load)
               <span class="ms-name">{{ m.title }}</span>
               <n-tooltip v-if="isLinked(m)">
                 <template #trigger>
-                  <a
-                    class="ms-gl"
-                    :href="m.gl_url"
-                    target="_blank"
-                    rel="noopener"
-                    @click.stop
-                  >
+                  <a class="ms-gl" :href="m.gl_url" target="_blank" rel="noopener" @click.stop>
                     <n-icon :component="LogoGitlab" />
                   </a>
                 </template>
@@ -277,7 +271,9 @@ onMounted(load)
   border: 1px solid var(--t-border);
   border-radius: 8px;
   margin-bottom: 8px;
-  transition: border-color 0.15s, transform 0.1s;
+  transition:
+    border-color 0.15s,
+    transform 0.1s;
 }
 .ms-row.clickable {
   cursor: pointer;

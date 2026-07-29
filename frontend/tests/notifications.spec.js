@@ -25,8 +25,14 @@ describe('notifications store', () => {
 
   it('only adds notification events addressed to me', () => {
     const s = useNotificationsStore()
-    s.onEvent({ type: 'notification', data: { user_id: 'me', notification: notif({ id: '1' }) } }, 'me')
-    s.onEvent({ type: 'notification', data: { user_id: 'other', notification: notif({ id: '2' }) } }, 'me')
+    s.onEvent(
+      { type: 'notification', data: { user_id: 'me', notification: notif({ id: '1' }) } },
+      'me',
+    )
+    s.onEvent(
+      { type: 'notification', data: { user_id: 'other', notification: notif({ id: '2' }) } },
+      'me',
+    )
     s.onEvent({ type: 'task.created', data: {} }, 'me')
     expect(s.items.length).toBe(1)
     expect(s.unread).toBe(1)

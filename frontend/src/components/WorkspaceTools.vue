@@ -1,15 +1,6 @@
 <script setup>
 import { ref, computed, h } from 'vue'
-import {
-  NButton,
-  NIcon,
-  NBadge,
-  NPopover,
-  NTooltip,
-  NSwitch,
-  NText,
-  NDropdown,
-} from 'naive-ui'
+import { NButton, NIcon, NBadge, NPopover, NTooltip, NSwitch, NText, NDropdown } from 'naive-ui'
 import {
   SunnyOutline,
   MoonOutline,

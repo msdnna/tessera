@@ -83,7 +83,8 @@ async function load() {
     conflicts.value = data || []
     // Pre-select the focused task's conflict (when opened from a card), else keep
     // the current selection if still present, else the first.
-    const focused = props.focusTaskId && conflicts.value.find((c) => c.task_id === props.focusTaskId)
+    const focused =
+      props.focusTaskId && conflicts.value.find((c) => c.task_id === props.focusTaskId)
     if (focused) {
       selectedId.value = focused.id
       manualField.value = null
@@ -173,8 +174,8 @@ defineExpose({ reload: load })
         <template v-else>
           <p class="c-hint">
             <n-text depth="3">
-              И вы, и GitLab изменили это с момента последней синхронизации. Выберите,
-              чьё значение оставить{{ manualAllowed ? ', или объедините вручную' : '' }}.
+              И вы, и GitLab изменили это с момента последней синхронизации. Выберите, чьё значение
+              оставить{{ manualAllowed ? ', или объедините вручную' : '' }}.
             </n-text>
           </p>
 
@@ -191,11 +192,14 @@ defineExpose({ reload: load })
                 <div class="c-col-lbl gl">GitLab</div>
                 <div class="c-val theirs" :class="{ empty: emptyVal(f.theirs) }">
                   <template v-if="emptyVal(f.theirs)">— пусто —</template>
-                  <template v-else-if="isTextField(f.field)"><span
+                  <template v-else-if="isTextField(f.field)"
+                    ><span
                       v-for="(seg, si) in theirsDiff(f)"
                       :key="si"
                       :class="{ 'ch-theirs': seg.changed }"
-                    >{{ seg.text }}</span></template>
+                      >{{ seg.text }}</span
+                    ></template
+                  >
                   <template v-else>{{ displayVal(f.field, f.theirs) }}</template>
                 </div>
               </div>
@@ -203,11 +207,14 @@ defineExpose({ reload: load })
                 <div class="c-col-lbl mine">Моё (Tessera)</div>
                 <div class="c-val ours" :class="{ empty: emptyVal(f.ours) }">
                   <template v-if="emptyVal(f.ours)">— пусто —</template>
-                  <template v-else-if="isTextField(f.field)"><span
+                  <template v-else-if="isTextField(f.field)"
+                    ><span
                       v-for="(seg, si) in oursDiff(f)"
                       :key="si"
                       :class="{ 'ch-ours': seg.changed }"
-                    >{{ seg.text }}</span></template>
+                      >{{ seg.text }}</span
+                    ></template
+                  >
                   <template v-else>{{ displayVal(f.field, f.ours) }}</template>
                 </div>
               </div>
@@ -230,12 +237,8 @@ defineExpose({ reload: load })
           </div>
 
           <div class="c-actions">
-            <n-button :disabled="resolving" @click="resolve('ours')">
-              Принять моё
-            </n-button>
-            <n-button :disabled="resolving" @click="resolve('theirs')">
-              Принять GitLab
-            </n-button>
+            <n-button :disabled="resolving" @click="resolve('ours')"> Принять моё </n-button>
+            <n-button :disabled="resolving" @click="resolve('theirs')"> Принять GitLab </n-button>
             <n-button
               v-if="manualAllowed && !manualField"
               :disabled="resolving"

@@ -104,9 +104,8 @@ onMounted(async () => {
   // without waiting for the first event (best-effort).
   if (isTauri()) {
     try {
-      const { isPermissionGranted, requestPermission } = await import(
-        '@tauri-apps/plugin-notification'
-      )
+      const { isPermissionGranted, requestPermission } =
+        await import('@tauri-apps/plugin-notification')
       if (!(await isPermissionGranted())) await requestPermission()
     } catch {
       /* plugin unavailable — non-fatal */
@@ -142,70 +141,76 @@ watch(
        turns this into a fragment, and the leave callback never fires when AppLayout
        unmounts on logout — leaving a blank screen until a hard refresh. -->
   <div class="app-shell">
-  <!-- Desktop: fixed sider + content -->
-  <n-layout v-if="!isMobile" has-sider class="app-layout" :class="{ resizing: dragging }" style="height: 100vh">
-    <n-layout-sider
-      bordered
-      :width="layoutWidth"
-      :show-trigger="false"
-      content-style="padding: 0; height: 100%"
+    <!-- Desktop: fixed sider + content -->
+    <n-layout
+      v-if="!isMobile"
+      has-sider
+      class="app-layout"
+      :class="{ resizing: dragging }"
+      style="height: 100vh"
     >
-      <Sidebar :mobile="false" :collapsed="collapsed" :narrow="narrow" />
-    </n-layout-sider>
+      <n-layout-sider
+        bordered
+        :width="layoutWidth"
+        :show-trigger="false"
+        content-style="padding: 0; height: 100%"
+      >
+        <Sidebar :mobile="false" :collapsed="collapsed" :narrow="narrow" />
+      </n-layout-sider>
 
-    <!-- Drag to resize; double-click to toggle the icon rail. -->
-    <div
-      class="sider-resizer"
-      :class="{ active: dragging }"
-      :style="{ left: layoutWidth + 'px' }"
-      title="Потяните, чтобы изменить ширину (двойной клик — свернуть)"
-      @pointerdown.prevent="startDrag"
-      @dblclick="toggle"
-    >
-      <span class="rz-bar" />
-    </div>
+      <!-- Drag to resize; double-click to toggle the icon rail. -->
+      <div
+        class="sider-resizer"
+        :class="{ active: dragging }"
+        :style="{ left: layoutWidth + 'px' }"
+        title="Потяните, чтобы изменить ширину (двойной клик — свернуть)"
+        @pointerdown.prevent="startDrag"
+        @dblclick="toggle"
+      >
+        <span class="rz-bar" />
+      </div>
 
-    <n-layout>
+      <n-layout>
+        <n-layout-header bordered>
+          <Topbar :show-tools="collapsed || narrow" />
+        </n-layout-header>
+        <n-layout-content content-style="padding: 16px" style="height: calc(100vh - 53px)">
+          <router-view v-slot="{ Component }">
+            <transition name="page" mode="out-in">
+              <component :is="Component" />
+            </transition>
+          </router-view>
+        </n-layout-content>
+      </n-layout>
+    </n-layout>
+
+    <!-- Mobile: hamburger opens the sidebar in a drawer -->
+    <n-layout v-else style="height: 100vh">
       <n-layout-header bordered>
-        <Topbar :show-tools="collapsed || narrow" />
+        <Topbar :mobile="true" @menu="drawerOpen = true" />
       </n-layout-header>
-      <n-layout-content content-style="padding: 16px" style="height: calc(100vh - 53px)">
+      <n-layout-content content-style="padding: 12px" style="height: calc(100vh - 53px)">
         <router-view v-slot="{ Component }">
           <transition name="page" mode="out-in">
             <component :is="Component" />
           </transition>
         </router-view>
       </n-layout-content>
+      <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
+        <n-drawer-content body-content-style="padding: 0">
+          <Sidebar :mobile="true" />
+        </n-drawer-content>
+      </n-drawer>
     </n-layout>
-  </n-layout>
 
-  <!-- Mobile: hamburger opens the sidebar in a drawer -->
-  <n-layout v-else style="height: 100vh">
-    <n-layout-header bordered>
-      <Topbar :mobile="true" @menu="drawerOpen = true" />
-    </n-layout-header>
-    <n-layout-content content-style="padding: 12px" style="height: calc(100vh - 53px)">
-      <router-view v-slot="{ Component }">
-        <transition name="page" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-    </n-layout-content>
-    <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
-      <n-drawer-content body-content-style="padding: 0">
-        <Sidebar :mobile="true" />
-      </n-drawer-content>
-    </n-drawer>
-  </n-layout>
-
-  <!-- App-level conflict resolver: opened from any surface via the conflicts store
+    <!-- App-level conflict resolver: opened from any surface via the conflicts store
        (e.g. the «Конфликт» pill on a task card). -->
-  <ConflictResolverModal
-    v-model:show="conflicts.resolverOpen"
-    :ws-id="ws.currentId"
-    :focus-task-id="conflicts.focusTaskId"
-    @resolved="conflicts.load()"
-  />
+    <ConflictResolverModal
+      v-model:show="conflicts.resolverOpen"
+      :ws-id="ws.currentId"
+      :focus-task-id="conflicts.focusTaskId"
+      @resolved="conflicts.load()"
+    />
   </div>
 </template>
 

@@ -34,7 +34,12 @@ import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
-import { formatEstimate, formatEstimateFull, estimateTooltip, sumEstimates } from '@/utils/estimation'
+import {
+  formatEstimate,
+  formatEstimateFull,
+  estimateTooltip,
+  sumEstimates,
+} from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
 import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
@@ -407,7 +412,12 @@ const ctxOptions = computed(() => {
       ? [{ label: 'Создать подзадачу', key: 'subtask', icon: menuIcon(GitBranchOutline) }]
       : []),
     { label: 'В архив', key: 'archive', icon: menuIcon(ArchiveOutline) },
-    { label: 'Удалить', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
+    {
+      label: 'Удалить',
+      key: 'delete',
+      icon: dangerIcon(TrashOutline),
+      props: { style: 'color:#e0533d' },
+    },
   ]
 })
 function baseOf(t) {
@@ -624,14 +634,24 @@ async function submitAddSub() {
   <div class="tw">
     <div
       class="card"
-      :class="{ done, nested, 'has-subs': !nested && subtasks.length, 'has-prio': task.priority, 'tc-readonly': readonly }"
+      :class="{
+        done,
+        nested,
+        'has-subs': !nested && subtasks.length,
+        'has-prio': task.priority,
+        'tc-readonly': readonly,
+      }"
       :style="cardStyle"
       @click="emit('open', task.id)"
       @contextmenu.prevent.stop="onCtx"
     >
       <!-- Archive view: a single Restore affordance replaces the edit action bar. -->
       <div v-if="readonly && !nested" class="card-actions" @click.stop>
-        <button class="ca-btn ca-restore" title="Вернуть из архива" @click.stop="emit('restore', task.id)">
+        <button
+          class="ca-btn ca-restore"
+          title="Вернуть из архива"
+          @click.stop="emit('restore', task.id)"
+        >
           <n-icon :component="ArrowUndoOutline" :size="15" />
         </button>
       </div>
@@ -667,7 +687,12 @@ async function submitAddSub() {
           @keyup.enter="commitTitle"
           @blur="commitTitle"
         />
-        <n-tooltip v-else :disabled="!titleTruncated" placement="top-start" :style="{ maxWidth: '320px' }">
+        <n-tooltip
+          v-else
+          :disabled="!titleTruncated"
+          placement="top-start"
+          :style="{ maxWidth: '320px' }"
+        >
           <template #trigger>
             <span
               ref="titleEl"
@@ -684,7 +709,10 @@ async function submitAddSub() {
 
       <!-- meta line: task number + GitLab issue link, on their own row so long
            titles never wrap around them (kept aligned under the title text). -->
-      <div v-if="(show('number') && task.number) || (show('gitlab') && task.gitlab_iid)" class="card-sub">
+      <div
+        v-if="(show('number') && task.number) || (show('gitlab') && task.gitlab_iid)"
+        class="card-sub"
+      >
         <span v-if="show('number') && task.number" class="tnum">#{{ task.number }}</span>
         <a
           v-if="show('gitlab') && task.gitlab_iid"
@@ -718,9 +746,18 @@ async function submitAddSub() {
              "icon + value" rows — same triggers/pickers, so every field stays
              clickable; hover highlights the row (see .pills.stacked CSS). -->
         <!-- priority -->
-        <n-popover v-if="show('priority') && (showEmpty || task.priority || stackFields)" trigger="click" placement="bottom-start">
+        <n-popover
+          v-if="show('priority') && (showEmpty || task.priority || stackFields)"
+          trigger="click"
+          placement="bottom-start"
+        >
           <template #trigger>
-            <button class="pill" :class="{ set: task.priority }" :title="stackFields ? 'Приоритет' : ''" @click.stop>
+            <button
+              class="pill"
+              :class="{ set: task.priority }"
+              :title="stackFields ? 'Приоритет' : ''"
+              @click.stop
+            >
               <n-icon
                 :component="FlagOutline"
                 :size="13"
@@ -752,9 +789,18 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- due date: opens the calendar directly -->
-        <n-popover v-if="show('due') && (showEmpty || due || stackFields)" trigger="click" placement="bottom-start">
+        <n-popover
+          v-if="show('due') && (showEmpty || due || stackFields)"
+          trigger="click"
+          placement="bottom-start"
+        >
           <template #trigger>
-            <button class="pill" :class="{ set: due, overdue }" :title="stackFields ? 'Срок' : ''" @click.stop>
+            <button
+              class="pill"
+              :class="{ set: due, overdue }"
+              :title="stackFields ? 'Срок' : ''"
+              @click.stop
+            >
               <n-icon :component="CalendarClearOutline" :size="13" />
               <span v-if="due" class="pill-text">{{ stackFields ? dueLong : due }}</span>
               <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
@@ -781,9 +827,15 @@ async function submitAddSub() {
         <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
         <n-tooltip v-if="show('estimate') && (estText || stackFields)">
           <template #trigger>
-            <div class="pill" :class="{ set: estText, 'est-pill': estText }" :title="stackFields ? 'Оценка' : ''">
+            <div
+              class="pill"
+              :class="{ set: estText, 'est-pill': estText }"
+              :title="stackFields ? 'Оценка' : ''"
+            >
               <n-icon :component="TimerOutline" :size="13" />
-              <span v-if="estText" class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
+              <span v-if="estText" class="pill-text"
+                >{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span
+              >
               <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
             </div>
           </template>
@@ -795,7 +847,11 @@ async function submitAddSub() {
           <template #trigger>
             <div
               class="pill"
-              :class="{ set: taskMilestone, 'ms-pill': taskMilestone, closed: taskMilestone && taskMilestone.state === 'closed' }"
+              :class="{
+                set: taskMilestone,
+                'ms-pill': taskMilestone,
+                closed: taskMilestone && taskMilestone.state === 'closed',
+              }"
               :title="stackFields ? 'Этап' : ''"
             >
               <n-icon :component="RibbonOutline" :size="13" />
@@ -805,7 +861,9 @@ async function submitAddSub() {
           </template>
           <template v-if="taskMilestone">
             Этап: {{ taskMilestone.title }}{{ taskMilestone.state === 'closed' ? ' (закрыт)' : '' }}
-            <template v-if="milestoneRange(taskMilestone)"> · {{ milestoneRange(taskMilestone) }}</template>
+            <template v-if="milestoneRange(taskMilestone)">
+              · {{ milestoneRange(taskMilestone) }}</template
+            >
           </template>
           <template v-else>Этап</template>
         </n-tooltip>
@@ -833,7 +891,11 @@ async function submitAddSub() {
         </n-popover>
 
         <!-- tags: stacked when >1; hover previews full list, click opens picker -->
-        <n-popover v-if="show('tags') && (showEmpty || taskTags.length || stackFields)" trigger="click" placement="bottom-start">
+        <n-popover
+          v-if="show('tags') && (showEmpty || taskTags.length || stackFields)"
+          trigger="click"
+          placement="bottom-start"
+        >
           <template #trigger>
             <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
               <template #trigger>
@@ -874,15 +936,19 @@ async function submitAddSub() {
                       class="mchip"
                       :style="{ background: tagPillBg(t.color, true) }"
                     >
-                      <span class="accent-grad-text" :style="{ '--grad': hueGrad(tagText(t.color)) }">{{
-                        t.name
-                      }}</span>
+                      <span
+                        class="accent-grad-text"
+                        :style="{ '--grad': hueGrad(tagText(t.color)) }"
+                        >{{ t.name }}</span
+                      >
                     </span>
                     <span v-if="visibleTagCount < taskTags.length" class="mchip chip-more"
                       >+{{ taskTags.length - visibleTagCount }}</span
                     >
                     <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
-                      <span v-for="t in taskTags" :key="`m${t.id}`" class="mchip">{{ t.name }}</span>
+                      <span v-for="t in taskTags" :key="`m${t.id}`" class="mchip">{{
+                        t.name
+                      }}</span>
                     </span>
                   </span>
                   <span v-else class="pill-text sf-empty">—</span>
@@ -911,7 +977,11 @@ async function submitAddSub() {
                     :class="{ on: hasTag(t.id) }"
                     :style="
                       hasTag(t.id)
-                        ? { background: hueGrad(t.color), color: onColor(t.color), borderColor: 'transparent' }
+                        ? {
+                            background: hueGrad(t.color),
+                            color: onColor(t.color),
+                            borderColor: 'transparent',
+                          }
                         : {
                             background: softFill(t.color),
                             color: tagText(t.color),
@@ -941,7 +1011,10 @@ async function submitAddSub() {
            group right-aligns (margin-left:auto) and stays right-aligned even
            when it wraps to its own line. -->
         <div
-          v-if="show('assignee') && (showEmpty || author || assignees.length || glAssignees.length || stackFields)"
+          v-if="
+            show('assignee') &&
+            (showEmpty || author || assignees.length || glAssignees.length || stackFields)
+          "
           class="people"
         >
           <n-popover
@@ -952,7 +1025,11 @@ async function submitAddSub() {
             <template #trigger>
               <n-tooltip placement="top">
                 <template #trigger>
-                  <button class="pill assignee-pill" :title="stackFields ? 'Исполнитель' : ''" @click.stop>
+                  <button
+                    class="pill assignee-pill"
+                    :title="stackFields ? 'Исполнитель' : ''"
+                    @click.stop
+                  >
                     <n-icon
                       v-if="stackFields"
                       :component="PersonAddOutline"
@@ -1028,9 +1105,17 @@ async function submitAddSub() {
                     class="menu-item assignee-item"
                     @click="toggleGlAssignee(m)"
                   >
-                    <UserAvatar class="avatar sm" :src="m.gl_avatar_url" :name="m.gl_name || m.gl_username" />
+                    <UserAvatar
+                      class="avatar sm"
+                      :src="m.gl_avatar_url"
+                      :name="m.gl_name || m.gl_username"
+                    />
                     <span class="aname">{{ m.gl_name || m.gl_username }}</span>
-                    <n-icon v-if="isGlAssigned(m.gl_username)" :component="CheckmarkOutline" class="chk" />
+                    <n-icon
+                      v-if="isGlAssigned(m.gl_username)"
+                      :component="CheckmarkOutline"
+                      class="chk"
+                    />
                   </div>
                 </template>
                 <div v-if="!pickerMembers.length && !gitlabMembers.length" class="assignee-empty">
@@ -1049,77 +1134,80 @@ async function submitAddSub() {
          stack (expanded) or an emerging list card (collapsed); empty → a dashed
          drop hint while a board drag is in progress. -->
     <transition name="sub-morph" mode="out-in">
-    <draggable
-      v-if="!nested"
-      :key="subsExpanded ? 'stack' : 'list'"
-      :list="subModel"
-      group="tasks"
-      item-key="id"
-      class="subs"
-      :class="{
-        stack: subsExpanded,
-        list: !subsExpanded,
-        compact: isCompact,
-        collapsed: !subModel.length && !dragging,
-        pending: !subModel.length && dragging,
-      }"
-      :animation="150"
-      :delay="300"
-      :touch-start-threshold="6"
-      @click.stop
-      @change="onSubChange"
-    >
-      <template #item="{ element: s, index }">
-        <div v-if="subsExpanded" class="sub-layer" :style="{ zIndex: 40 - index }">
-          <TaskCard
-            :task="s"
-            :subtasks="[]"
-            :nested="true"
-            :columns="columns"
-            :tags-map="tagsMap"
-            :members-map="membersMap"
-            :tags="tags"
-            :members="members"
-            :gitlab-members="gitlabMembers"
-            :ws-id="wsId"
-            :project-id="projectId"
-            :field-vis="fieldVis"
-            :show-empty="showEmpty"
-            :stack-fields="stackFields"
-            :card-size="cardSize"
-            @open="emit('open', $event)"
-            @changed="emit('changed')"
-          />
-        </div>
-        <!-- Plain wrapper is the draggable item root: vuedraggable needs a single
+      <draggable
+        v-if="!nested"
+        :key="subsExpanded ? 'stack' : 'list'"
+        :list="subModel"
+        group="tasks"
+        item-key="id"
+        class="subs"
+        :class="{
+          stack: subsExpanded,
+          list: !subsExpanded,
+          compact: isCompact,
+          collapsed: !subModel.length && !dragging,
+          pending: !subModel.length && dragging,
+        }"
+        :animation="150"
+        :delay="300"
+        :touch-start-threshold="6"
+        @click.stop
+        @change="onSubChange"
+      >
+        <template #item="{ element: s, index }">
+          <div v-if="subsExpanded" class="sub-layer" :style="{ zIndex: 40 - index }">
+            <TaskCard
+              :task="s"
+              :subtasks="[]"
+              :nested="true"
+              :columns="columns"
+              :tags-map="tagsMap"
+              :members-map="membersMap"
+              :tags="tags"
+              :members="members"
+              :gitlab-members="gitlabMembers"
+              :ws-id="wsId"
+              :project-id="projectId"
+              :field-vis="fieldVis"
+              :show-empty="showEmpty"
+              :stack-fields="stackFields"
+              :card-size="cardSize"
+              @open="emit('open', $event)"
+              @changed="emit('changed')"
+            />
+          </div>
+          <!-- Plain wrapper is the draggable item root: vuedraggable needs a single
              real element per item, so the hover n-popover lives INSIDE it (making
              the popover the item root breaks Sortable → the whole parent card drags). -->
-        <div v-else class="subrow-slot">
-          <n-popover trigger="hover" placement="right" :delay="250">
-            <template #trigger>
-              <div
-                class="subrow"
-                :class="{ done: s.completed_at }"
-                @click="emit('open', s.id)"
-                @contextmenu.prevent.stop="onCtx($event, s)"
-              >
-                <span v-if="!isCompact" class="check sm" @click.stop="toggleSubDone(s)">
-                  <n-icon :component="s.completed_at ? CheckmarkCircle : EllipseOutline" :size="15" />
-                </span>
-                <span
-                  v-if="!isCompact && s.priority"
-                  class="pr-dot"
-                  :style="{ background: hueGradVert(PRIORITY_COLORS[s.priority]) }"
-                />
-                <span class="sub-title">{{ s.title }}</span>
-                <span v-if="!isCompact && subDue(s)" class="sub-due">{{ subDue(s) }}</span>
-              </div>
-            </template>
-            <TaskMiniCard :task="s" :tags-map="tagsMap" :members-map="membersMap" />
-          </n-popover>
-        </div>
-      </template>
-    </draggable>
+          <div v-else class="subrow-slot">
+            <n-popover trigger="hover" placement="right" :delay="250">
+              <template #trigger>
+                <div
+                  class="subrow"
+                  :class="{ done: s.completed_at }"
+                  @click="emit('open', s.id)"
+                  @contextmenu.prevent.stop="onCtx($event, s)"
+                >
+                  <span v-if="!isCompact" class="check sm" @click.stop="toggleSubDone(s)">
+                    <n-icon
+                      :component="s.completed_at ? CheckmarkCircle : EllipseOutline"
+                      :size="15"
+                    />
+                  </span>
+                  <span
+                    v-if="!isCompact && s.priority"
+                    class="pr-dot"
+                    :style="{ background: hueGradVert(PRIORITY_COLORS[s.priority]) }"
+                  />
+                  <span class="sub-title">{{ s.title }}</span>
+                  <span v-if="!isCompact && subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+                </div>
+              </template>
+              <TaskMiniCard :task="s" :tags-map="tagsMap" :members-map="membersMap" />
+            </n-popover>
+          </div>
+        </template>
+      </draggable>
     </transition>
 
     <!-- Adding a subtask is triggered from the hover action bar / context menu;

@@ -1,6 +1,15 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { NModal, NCard, NSelect, NInputNumber, NInput, NSwitch, NButton, useMessage } from 'naive-ui'
+import {
+  NModal,
+  NCard,
+  NSelect,
+  NInputNumber,
+  NInput,
+  NSwitch,
+  NButton,
+  useMessage,
+} from 'naive-ui'
 import { workspaces as wsApi, projects as projApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { DEFAULT_ESTIMATION, unitName, formatEstimate } from '@/utils/estimation'
@@ -62,7 +71,8 @@ watch(
 const inheritLabel = computed(() => {
   const cfg = props.inherited || DEFAULT_ESTIMATION
   const u = unitName(cfg)
-  if (cfg.unit === 'time') return `${u} · ${cfg.hours_per_day || 8}ч/день · ${cfg.days_per_week || 5}дн/неделя`
+  if (cfg.unit === 'time')
+    return `${u} · ${cfg.hours_per_day || 8}ч/день · ${cfg.days_per_week || 5}дн/неделя`
   return u
 })
 
@@ -88,7 +98,11 @@ function buildConfig() {
   if (inherit.value) return null
   if (unit.value === 'points') return { unit: 'points', points_scale: pointsScale.value }
   if (unit.value === 'custom') return { unit: 'custom', custom_label: customLabel.value.trim() }
-  return { unit: 'time', hours_per_day: hoursPerDay.value || 8, days_per_week: daysPerWeek.value || 5 }
+  return {
+    unit: 'time',
+    hours_per_day: hoursPerDay.value || 8,
+    days_per_week: daysPerWeek.value || 5,
+  }
 }
 
 async function save() {
@@ -147,7 +161,9 @@ async function save() {
             <n-input v-model:value="customLabel" placeholder="напр. у.е." :maxlength="24" />
           </div>
 
-          <div class="est-preview">Пример: <b>{{ preview }}</b></div>
+          <div class="est-preview">
+            Пример: <b>{{ preview }}</b>
+          </div>
         </template>
       </div>
 

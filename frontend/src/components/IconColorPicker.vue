@@ -18,7 +18,16 @@ const props = defineProps({
 const emit = defineEmits(['update:icon', 'update:color', 'update:mode'])
 const message = useMessage()
 
-const COLORS = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96', '#9aa0aa']
+const COLORS = [
+  '#7c5cff',
+  '#2f80ed',
+  '#0eb0a9',
+  '#18a058',
+  '#f0a020',
+  '#e0533d',
+  '#eb2f96',
+  '#9aa0aa',
+]
 const swatches = computed(() => {
   // In "icon" mode the badge box is transparent regardless, so the explicit
   // "transparent" swatch is meaningless — drop it.
@@ -115,7 +124,13 @@ function onIconFile(e) {
       <button
         class="ic"
         :class="{ active: !icon }"
-        :title="fallbackFolder ? 'Папка (по умолчанию)' : fallbackKanban ? 'Канбан (по умолчанию)' : 'Инициалы'"
+        :title="
+          fallbackFolder
+            ? 'Папка (по умолчанию)'
+            : fallbackKanban
+              ? 'Канбан (по умолчанию)'
+              : 'Инициалы'
+        "
         @click="emit('update:icon', '')"
       >
         <n-icon v-if="fallbackFolder" :component="FolderOutline" :size="16" />
@@ -261,8 +276,20 @@ function onIconFile(e) {
 .sw-bare {
   background-color: var(--t-surface);
   background-image:
-    linear-gradient(45deg, var(--t-border) 25%, transparent 25%, transparent 75%, var(--t-border) 75%),
-    linear-gradient(45deg, var(--t-border) 25%, transparent 25%, transparent 75%, var(--t-border) 75%);
+    linear-gradient(
+      45deg,
+      var(--t-border) 25%,
+      transparent 25%,
+      transparent 75%,
+      var(--t-border) 75%
+    ),
+    linear-gradient(
+      45deg,
+      var(--t-border) 25%,
+      transparent 25%,
+      transparent 75%,
+      var(--t-border) 75%
+    );
   background-size: 10px 10px;
   background-position:
     0 0,

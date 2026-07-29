@@ -1,7 +1,12 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
 import { NDropdown, NPopconfirm, NIcon, NTooltip } from 'naive-ui'
-import { TimerOutline, ChevronBackOutline, ChevronForwardOutline, RibbonOutline } from '@vicons/ionicons5'
+import {
+  TimerOutline,
+  ChevronBackOutline,
+  ChevronForwardOutline,
+  RibbonOutline,
+} from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { useThemeStore } from '@/stores/theme'
@@ -9,7 +14,14 @@ import { tasks as tasksApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, readableHue } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { formatEstimate, formatEstimateFull, estimateRangeShort, estimateTooltip, sumEstimates, estimateToDays } from '@/utils/estimation'
+import {
+  formatEstimate,
+  formatEstimateFull,
+  estimateRangeShort,
+  estimateTooltip,
+  sumEstimates,
+  estimateToDays,
+} from '@/utils/estimation'
 import {
   DAY_MS,
   HOUR_MS,
@@ -247,7 +259,10 @@ const lanes = computed(() => {
 })
 
 const overdueCount = computed(
-  () => scheduled.value.filter((t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs).length,
+  () =>
+    scheduled.value.filter(
+      (t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs,
+    ).length,
 )
 
 // ── row virtualization ──
@@ -324,7 +339,11 @@ const vwindow = computed(() => {
   while (end < n && tops[end] < hi) end++
   if (end <= start) end = Math.min(n, start + 1)
   const last = end - 1
-  return { rows: rows.slice(start, end), top: tops[start], bottom: height - (tops[last] + rowH(rows[last])) }
+  return {
+    rows: rows.slice(start, end),
+    top: tops[start],
+    bottom: height - (tops[last] + rowH(rows[last])),
+  }
 })
 onMounted(() => nextTick(measureLaneH))
 watch(lanes, () => nextTick(measureLaneH))
@@ -359,7 +378,7 @@ function onMove(e) {
   // Snap to the hour when zoomed into the hours tier AND the edited endpoint is a
   // timed value; an all-day (UTC-midnight) endpoint keeps day snapping so it stays
   // all-day. Day snapping everywhere else (current behaviour).
-  const base = g.mode === 'due' ? g.baseDue ?? g.baseStart : g.baseStart ?? g.baseDue
+  const base = g.mode === 'due' ? (g.baseDue ?? g.baseStart) : (g.baseStart ?? g.baseDue)
   const hourSnap = tier.value === 'hours' && base != null && !isAllDayMs(base)
   const unit = hourSnap ? HOUR_MS : DAY_MS
   const unitPx = hourSnap ? dayW.value / 24 : dayW.value
@@ -428,7 +447,13 @@ function geom(t) {
     s = preview.value.start
     d = preview.value.due
   }
-  return barSpan({ start: s, due: d, tier: tier.value, rangeStart: range.value.start, dayW: dayW.value })
+  return barSpan({
+    start: s,
+    due: d,
+    tier: tier.value,
+    rangeStart: range.value.start,
+    dayW: dayW.value,
+  })
 }
 
 // Ghost "estimate" envelope: a dashed bar starting at the task's span start and
@@ -447,12 +472,17 @@ function ghostGeom(t) {
   if (s == null && d == null) return null
   const anchor = anchorMs(s ?? d, tier.value)
   // Frame the envelope with a 3px margin on the start/end too (matching the top/bottom inset).
-  return { left: xAt(anchor, range.value.start, dayW.value) - 3, width: Math.max(dayW.value, days * dayW.value) + 6 }
+  return {
+    left: xAt(anchor, range.value.start, dayW.value) - 3,
+    width: Math.max(dayW.value, days * dayW.value) + 6,
+  }
 }
 // Today-line x: the real current time in the hours tier (sub-day precision), else
 // the centre of today's day cell.
 const todayLeft = computed(() =>
-  tier.value === 'hours' ? xAt(Date.now(), range.value.start, dayW.value) : dayIndex(todayMs) * dayW.value + dayW.value / 2,
+  tier.value === 'hours'
+    ? xAt(Date.now(), range.value.start, dayW.value)
+    : dayIndex(todayMs) * dayW.value + dayW.value / 2,
 )
 
 // Milestone due-markers: dashed vertical lines at each milestone's due date that
@@ -499,7 +529,15 @@ function centerToday(smooth = true) {
   if (smooth === false) el.scrollLeft = left
   else animateScrollLeft(left)
 }
-watch(scrollEl, (el) => el && nextTick(() => { centerToday(false); syncScroll() }))
+watch(
+  scrollEl,
+  (el) =>
+    el &&
+    nextTick(() => {
+      centerToday(false)
+      syncScroll()
+    }),
+)
 
 // rAF-throttled scroll/resize sync for the windowed hour ticks.
 let scrollRaf2 = 0
@@ -584,18 +622,28 @@ function onBarLeave() {
   hoverTimer = setTimeout(() => (hover.value = null), 80)
 }
 const hoverTags = computed(() =>
-  hover.value ? (hover.value.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean) : [],
+  hover.value
+    ? (hover.value.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean)
+    : [],
 )
 const hoverAssignees = computed(() =>
-  hover.value ? (hover.value.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean) : [],
+  hover.value
+    ? (hover.value.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean)
+    : [],
 )
 // External GitLab assignees (no Tessera account) — shown by avatar URL.
-const hoverGlAssignees = computed(() => (hover.value ? hover.value.task.gitlab_assignees || [] : []))
+const hoverGlAssignees = computed(() =>
+  hover.value ? hover.value.task.gitlab_assignees || [] : [],
+)
 const hoverEstimate = computed(() =>
-  hover.value && hover.value.task.estimate != null ? formatEstimateFull(hover.value.task.estimate, estCfg.value) : '',
+  hover.value && hover.value.task.estimate != null
+    ? formatEstimateFull(hover.value.task.estimate, estCfg.value)
+    : '',
 )
 const hoverEstimateRange = computed(() =>
-  hover.value ? estimateRangeShort(hover.value.task.start_date, hover.value.task.estimate, estCfg.value) : '',
+  hover.value
+    ? estimateRangeShort(hover.value.task.start_date, hover.value.task.estimate, estCfg.value)
+    : '',
 )
 // Tooltip on the ghost bar: full expansion + projected window (the clock label
 // it hangs off already marks it as an estimate, so no "Оценка:" prefix).
@@ -638,7 +686,8 @@ const cursorLabel = computed(() => {
   const o = { day: '2-digit', month: 'short' }
   if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric'
   let s = dt.toLocaleDateString('ru-RU', o)
-  if (tier.value === 'hours') s += ` ${dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+  if (tier.value === 'hours')
+    s += ` ${dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
   return s
 })
 </script>
@@ -648,15 +697,34 @@ const cursorLabel = computed(() => {
     <div class="tl-toolbar">
       <button class="tl-today-btn" type="button" @click="centerToday">Сегодня</button>
       <div class="tl-zoom">
-        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === 0" title="Уменьшить масштаб" @click="zoomOut()">−</button>
-        <button class="tl-zoom-btn" type="button" :disabled="zoomIdx === ZOOM.length - 1" title="Увеличить масштаб" @click="zoomIn()">+</button>
+        <button
+          class="tl-zoom-btn"
+          type="button"
+          :disabled="zoomIdx === 0"
+          title="Уменьшить масштаб"
+          @click="zoomOut()"
+        >
+          −
+        </button>
+        <button
+          class="tl-zoom-btn"
+          type="button"
+          :disabled="zoomIdx === ZOOM.length - 1"
+          title="Увеличить масштаб"
+          @click="zoomIn()"
+        >
+          +
+        </button>
         <button
           class="tl-zoom-btn"
           type="button"
           :title="leftCollapsed ? 'Показать колонку задач' : 'Свернуть колонку задач'"
           @click="toggleLeft"
         >
-          <n-icon :component="leftCollapsed ? ChevronForwardOutline : ChevronBackOutline" :size="15" />
+          <n-icon
+            :component="leftCollapsed ? ChevronForwardOutline : ChevronBackOutline"
+            :size="15"
+          />
         </button>
       </div>
       <div class="tl-counters">
@@ -678,7 +746,12 @@ const cursorLabel = computed(() => {
       <div
         class="tl-inner"
         :class="[tier, { animate: !drag && !zooming && !collapsing, collapsed: leftCollapsed }]"
-        :style="{ width: `${leftW + axisW}px`, '--tl-day-w': `${dayW}px`, '--tl-week-w': `${dayW * 7}px`, '--tl-sub-w': `${subW}px` }"
+        :style="{
+          width: `${leftW + axisW}px`,
+          '--tl-day-w': `${dayW}px`,
+          '--tl-week-w': `${dayW * 7}px`,
+          '--tl-sub-w': `${subW}px`,
+        }"
       >
         <!-- header: month band + day/week band (+ hour ticks in the hours tier) -->
         <div class="tl-head">
@@ -695,7 +768,12 @@ const cursorLabel = computed(() => {
               </div>
             </div>
             <div v-if="tier === 'weeks'" class="tl-weeksrow">
-              <div v-for="w in weekBands" :key="w.key" class="tl-weekh" :style="{ width: `${w.span * dayW}px` }">
+              <div
+                v-for="w in weekBands"
+                :key="w.key"
+                class="tl-weekh"
+                :style="{ width: `${w.span * dayW}px` }"
+              >
                 {{ w.label }}
               </div>
             </div>
@@ -713,7 +791,13 @@ const cursorLabel = computed(() => {
                 </div>
               </div>
               <div v-if="tier === 'hours'" class="tl-hoursrow">
-                <span v-for="h in hourTicks" :key="h.key" class="tl-hourtick" :style="{ left: `${h.left}px` }">{{ h.label }}</span>
+                <span
+                  v-for="h in hourTicks"
+                  :key="h.key"
+                  class="tl-hourtick"
+                  :style="{ left: `${h.left}px` }"
+                  >{{ h.label }}</span
+                >
               </div>
             </template>
           </div>
@@ -729,7 +813,9 @@ const cursorLabel = computed(() => {
             class="tl-ms"
             :style="{ left: `${leftW + m.left}px` }"
           >
-            <span class="tl-ms-label"><n-icon :component="RibbonOutline" :size="11" /> {{ m.title }}</span>
+            <span class="tl-ms-label"
+              ><n-icon :component="RibbonOutline" :size="11" /> {{ m.title }}</span
+            >
           </div>
           <div v-if="cursor" class="tl-cursor" :style="{ left: `${leftW + cursor.axisX}px` }" />
           <div class="tl-vspacer" :style="{ height: `${vwindow.top}px` }" />
@@ -738,14 +824,17 @@ const cursorLabel = computed(() => {
               <div class="tl-left lane" :style="{ width: `${leftW}px` }">
                 <span
                   class="lane-dot"
-                  :style="{ background: r.lane.color ? hueGrad(r.lane.color) : 'var(--t-accent-grad)' }"
+                  :style="{
+                    background: r.lane.color ? hueGrad(r.lane.color) : 'var(--t-accent-grad)',
+                  }"
                 />
                 <span class="lane-name">{{ r.lane.label }}</span>
                 <span class="lane-count">{{ r.lane.tasks.length }}</span>
                 <n-tooltip v-if="laneEffort(r.lane)">
                   <template #trigger>
                     <span class="lane-effort"
-                      ><n-icon :component="TimerOutline" :size="12" /> {{ laneEffort(r.lane) }}</span
+                      ><n-icon :component="TimerOutline" :size="12" />
+                      {{ laneEffort(r.lane) }}</span
                     >
                   </template>
                   Суммарная оценка: {{ laneEffortFull(r.lane) }}
@@ -761,19 +850,32 @@ const cursorLabel = computed(() => {
                 :title="r.task.title"
                 @click="$emit('open', r.task.id)"
               >
-                <span class="row-bar" :style="{ background: hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }" />
-                <span class="row-title" :class="{ done: r.task.completed_at }">{{ r.task.title }}</span>
+                <span
+                  class="row-bar"
+                  :style="{ background: hueGrad(PRIORITY_COLORS[r.task.priority || 0]) }"
+                />
+                <span class="row-title" :class="{ done: r.task.completed_at }">{{
+                  r.task.title
+                }}</span>
               </div>
-              <div class="tl-track" :style="{ width: `${axisW}px`, height: `${rowHeight(r.task)}px` }">
+              <div
+                class="tl-track"
+                :style="{ width: `${axisW}px`, height: `${rowHeight(r.task)}px` }"
+              >
                 <div
                   v-if="ghostGeom(r.task)"
                   class="ghost"
-                  :style="{ left: `${ghostGeom(r.task).left}px`, width: `${ghostGeom(r.task).width}px`, '--ghost-c': PRIORITY_COLORS[r.task.priority || 0] }"
+                  :style="{
+                    left: `${ghostGeom(r.task).left}px`,
+                    width: `${ghostGeom(r.task).width}px`,
+                    '--ghost-c': PRIORITY_COLORS[r.task.priority || 0],
+                  }"
                 >
                   <n-tooltip>
                     <template #trigger>
                       <span class="ghost-est"
-                        ><n-icon :component="TimerOutline" :size="11" /> {{ formatEstimate(r.task.estimate, estCfg) }}</span
+                        ><n-icon :component="TimerOutline" :size="11" />
+                        {{ formatEstimate(r.task.estimate, estCfg) }}</span
                       >
                     </template>
                     {{ ghostTitle(r.task) }}
@@ -781,7 +883,10 @@ const cursorLabel = computed(() => {
                 </div>
                 <div
                   class="bar"
-                  :class="{ done: r.task.completed_at, point: !(geom(r.task).hasStart && geom(r.task).hasDue) }"
+                  :class="{
+                    done: r.task.completed_at,
+                    point: !(geom(r.task).hasStart && geom(r.task).hasDue),
+                  }"
                   :style="{
                     left: `${geom(r.task).left}px`,
                     width: `${geom(r.task).width}px`,
@@ -828,7 +933,9 @@ const cursorLabel = computed(() => {
           <div class="tl-vspacer" :style="{ height: `${vwindow.bottom}px` }" />
         </div>
 
-        <div v-if="!lanes.length" class="tl-empty">Нет задач со сроками. Задайте срок или начало в карточке.</div>
+        <div v-if="!lanes.length" class="tl-empty">
+          Нет задач со сроками. Задайте срок или начало в карточке.
+        </div>
       </div>
     </div>
 
@@ -889,14 +996,20 @@ const cursorLabel = computed(() => {
       <div
         v-if="hover"
         class="tl-preview"
-        :style="hover.above ? { left: `${hover.x}px`, bottom: `${hover.y}px` } : { left: `${hover.x}px`, top: `${hover.y}px` }"
+        :style="
+          hover.above
+            ? { left: `${hover.x}px`, bottom: `${hover.y}px` }
+            : { left: `${hover.x}px`, top: `${hover.y}px` }
+        "
       >
         <div class="pv-head">
           <span
             class="pv-flag"
             :style="{ background: hueGrad(PRIORITY_COLORS[hover.task.priority || 0]) }"
           />
-          <span class="pv-title" :class="{ done: hover.task.completed_at }">{{ hover.task.title }}</span>
+          <span class="pv-title" :class="{ done: hover.task.completed_at }">{{
+            hover.task.title
+          }}</span>
           <span v-if="hover.task.number != null" class="pv-num">#{{ hover.task.number }}</span>
         </div>
         <div v-if="hover.task.start_date || hover.task.due_date" class="pv-dates">
@@ -906,7 +1019,10 @@ const cursorLabel = computed(() => {
         </div>
         <div v-if="hoverEstimate" class="pv-est">
           <n-icon :component="TimerOutline" :size="13" class="pv-est-ic" />
-          <span>{{ hoverEstimate }}<template v-if="hoverEstimateRange"> ({{ hoverEstimateRange }})</template></span>
+          <span
+            >{{ hoverEstimate
+            }}<template v-if="hoverEstimateRange"> ({{ hoverEstimateRange }})</template></span
+          >
         </div>
         <div v-if="hoverTags.length" class="pv-tags">
           <span
@@ -914,7 +1030,8 @@ const cursorLabel = computed(() => {
             :key="tg.id"
             class="pv-tag"
             :style="{ color: readableTag(tg.color), borderColor: readableTag(tg.color) }"
-          >{{ tg.name }}</span>
+            >{{ tg.name }}</span
+          >
         </div>
         <div v-if="hoverAssignees.length || hoverGlAssignees.length" class="pv-assignees">
           <UserAvatar
@@ -1353,7 +1470,9 @@ const cursorLabel = computed(() => {
 /* glide bars + today-line on zoom; never while dragging/zooming (would lag) */
 .tl-inner.animate .bar,
 .tl-inner.animate .ghost {
-  transition: left 0.18s ease, width 0.18s ease;
+  transition:
+    left 0.18s ease,
+    width 0.18s ease;
 }
 .tl-inner.animate .tl-today {
   transition: left 0.18s ease;

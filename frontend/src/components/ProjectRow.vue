@@ -227,7 +227,9 @@ const boardColored = (b) => b.color && b.color !== 'transparent'
 const boardHasIcon = (b) => !!(b.icon || boardColored(b))
 const boardBare = (b) => b.icon_mode === 'icon' || b.color === 'transparent'
 const boardBox = (b) =>
-  boardBare(b) ? { background: 'transparent' } : { background: hueGrad(b.color || 'var(--t-primary)') }
+  boardBare(b)
+    ? { background: 'transparent' }
+    : { background: hueGrad(b.color || 'var(--t-primary)') }
 const boardGlyph = (b) =>
   b.icon_mode === 'icon' ? (boardColored(b) ? b.color : 'var(--t-primary)') : ''
 const boardInitials = (b) => (b.name || '?').trim().slice(0, 2).toUpperCase()
@@ -262,9 +264,21 @@ const pcOptions = computed(() => {
       key: 'tree-mode',
       icon: menuIcon(GitBranchOutline),
       children: [
-        { label: 'Доски', key: 'tm-boards', icon: treeMode.value === 'boards' ? primIcon(CheckmarkOutline) : undefined },
-        { label: 'Этапы', key: 'tm-milestones', icon: treeMode.value === 'milestones' ? primIcon(CheckmarkOutline) : undefined },
-        { label: 'Доски и этапы', key: 'tm-both', icon: treeMode.value === 'both' ? primIcon(CheckmarkOutline) : undefined },
+        {
+          label: 'Доски',
+          key: 'tm-boards',
+          icon: treeMode.value === 'boards' ? primIcon(CheckmarkOutline) : undefined,
+        },
+        {
+          label: 'Этапы',
+          key: 'tm-milestones',
+          icon: treeMode.value === 'milestones' ? primIcon(CheckmarkOutline) : undefined,
+        },
+        {
+          label: 'Доски и этапы',
+          key: 'tm-both',
+          icon: treeMode.value === 'both' ? primIcon(CheckmarkOutline) : undefined,
+        },
       ],
     },
   ]
@@ -276,8 +290,18 @@ const pcOptions = computed(() => {
     })
   }
   opts.push({ type: 'divider', key: 'd2' })
-  opts.push({ label: 'Перенести в другое пространство', key: 'transfer', icon: warnIcon(SwapHorizontalOutline), props: { style: 'color:#f0a020' } })
-  opts.push({ label: 'Удалить проект', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } })
+  opts.push({
+    label: 'Перенести в другое пространство',
+    key: 'transfer',
+    icon: warnIcon(SwapHorizontalOutline),
+    props: { style: 'color:#f0a020' },
+  })
+  opts.push({
+    label: 'Удалить проект',
+    key: 'delete',
+    icon: dangerIcon(TrashOutline),
+    props: { style: 'color:#e0533d' },
+  })
   return opts
 })
 function onProjectCtx(e) {
@@ -351,7 +375,12 @@ const bcTarget = ref(null)
 const bcOptions = [
   { label: 'Открыть', key: 'open', icon: menuIcon(OpenOutline) },
   { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
-  { label: 'Удалить доску', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
+  {
+    label: 'Удалить доску',
+    key: 'delete',
+    icon: dangerIcon(TrashOutline),
+    props: { style: 'color:#e0533d' },
+  },
 ]
 function onBoardCtx(e, b) {
   bcTarget.value = b
@@ -524,90 +553,97 @@ async function addBoard() {
       </template>
 
       <template v-if="showBoards">
-      <div
-        v-for="b in boards"
-        :key="b.id"
-        class="row board-row"
-        :class="{ active: route.params.projectSlug === project.slug && route.params.boardSlug === b.slug && !route.query.milestone }"
-        @click="editingBoardId !== b.id && router.push(`/project/${project.slug}/board/${b.slug}`)"
-        @contextmenu.prevent.stop="onBoardCtx($event, b)"
-        @touchstart.passive="bStart($event, b)"
-        @touchend="bCancel"
-        @touchcancel="bCancel"
-      >
-        <span class="chev-spacer" />
-        <span class="bicon">
-          <span
-            v-if="boardHasIcon(b)"
-            class="picon bicon-box"
-            :class="{ 'picon-bare': boardBare(b) }"
-            :style="boardBox(b)"
-          >
-            <ProjectIcon
-              v-if="b.icon"
-              :icon="b.icon"
-              :initials="boardInitials(b)"
-              :size="12"
-              :color="boardGlyph(b)"
-            />
-            <TesseraIcon
-              v-else
-              name="layout-kanban"
-              :variant="boardBare(b) ? 'outline' : 'filled'"
-              :size="12"
-              :style="boardBare(b) && boardGlyph(b) ? { color: boardGlyph(b) } : {}"
-            />
-          </span>
-          <TesseraIcon v-else name="layout-kanban" :size="15" />
-        </span>
-        <n-input
-          v-if="editingBoardId === b.id"
-          :ref="(el) => el && (boardEditInput = el)"
-          v-model:value="boardNameEdit"
-          size="tiny"
-          @click.stop
-          @keyup.enter="commitBoardRename(b)"
-          @blur="commitBoardRename(b)"
-        />
-        <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
-        <n-popover trigger="click" placement="right-start">
-          <template #trigger>
-            <n-button class="hover-btn" text size="tiny" @click.stop>
-              <n-icon :component="EllipsisHorizontalOutline" />
-            </n-button>
-          </template>
-          <div class="action-col" @click.stop>
-            <n-button size="small" block @click="startBoardRename(b)">
-              <template #icon><n-icon :component="CreateOutline" /></template>
-              Переименовать
-            </n-button>
-            <n-popconfirm
-              :positive-button-props="{ type: 'error' }"
-              positive-text="Удалить"
-              @positive-click="removeBoard(b)"
+        <div
+          v-for="b in boards"
+          :key="b.id"
+          class="row board-row"
+          :class="{
+            active:
+              route.params.projectSlug === project.slug &&
+              route.params.boardSlug === b.slug &&
+              !route.query.milestone,
+          }"
+          @click="
+            editingBoardId !== b.id && router.push(`/project/${project.slug}/board/${b.slug}`)
+          "
+          @contextmenu.prevent.stop="onBoardCtx($event, b)"
+          @touchstart.passive="bStart($event, b)"
+          @touchend="bCancel"
+          @touchcancel="bCancel"
+        >
+          <span class="chev-spacer" />
+          <span class="bicon">
+            <span
+              v-if="boardHasIcon(b)"
+              class="picon bicon-box"
+              :class="{ 'picon-bare': boardBare(b) }"
+              :style="boardBox(b)"
             >
-              <template #trigger>
-                <n-button type="error" ghost size="small" block>
-                  <template #icon><n-icon :component="TrashOutline" /></template>
-                  Удалить доску
-                </n-button>
-              </template>
-              Удалить доску «{{ b.name }}» со всеми задачами?
-            </n-popconfirm>
-          </div>
-        </n-popover>
-      </div>
-      <div v-if="addingBoard" class="row">
-        <n-input
-          ref="boardInput"
-          v-model:value="newBoardName"
-          size="tiny"
-          placeholder="Название доски"
-          @keyup.enter="addBoard"
-          @blur="addBoard"
-        />
-      </div>
-      <n-text v-if="!boards.length && !addingBoard" depth="3" class="empty">нет досок</n-text>
+              <ProjectIcon
+                v-if="b.icon"
+                :icon="b.icon"
+                :initials="boardInitials(b)"
+                :size="12"
+                :color="boardGlyph(b)"
+              />
+              <TesseraIcon
+                v-else
+                name="layout-kanban"
+                :variant="boardBare(b) ? 'outline' : 'filled'"
+                :size="12"
+                :style="boardBare(b) && boardGlyph(b) ? { color: boardGlyph(b) } : {}"
+              />
+            </span>
+            <TesseraIcon v-else name="layout-kanban" :size="15" />
+          </span>
+          <n-input
+            v-if="editingBoardId === b.id"
+            :ref="(el) => el && (boardEditInput = el)"
+            v-model:value="boardNameEdit"
+            size="tiny"
+            @click.stop
+            @keyup.enter="commitBoardRename(b)"
+            @blur="commitBoardRename(b)"
+          />
+          <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
+          <n-popover trigger="click" placement="right-start">
+            <template #trigger>
+              <n-button class="hover-btn" text size="tiny" @click.stop>
+                <n-icon :component="EllipsisHorizontalOutline" />
+              </n-button>
+            </template>
+            <div class="action-col" @click.stop>
+              <n-button size="small" block @click="startBoardRename(b)">
+                <template #icon><n-icon :component="CreateOutline" /></template>
+                Переименовать
+              </n-button>
+              <n-popconfirm
+                :positive-button-props="{ type: 'error' }"
+                positive-text="Удалить"
+                @positive-click="removeBoard(b)"
+              >
+                <template #trigger>
+                  <n-button type="error" ghost size="small" block>
+                    <template #icon><n-icon :component="TrashOutline" /></template>
+                    Удалить доску
+                  </n-button>
+                </template>
+                Удалить доску «{{ b.name }}» со всеми задачами?
+              </n-popconfirm>
+            </div>
+          </n-popover>
+        </div>
+        <div v-if="addingBoard" class="row">
+          <n-input
+            ref="boardInput"
+            v-model:value="newBoardName"
+            size="tiny"
+            placeholder="Название доски"
+            @keyup.enter="addBoard"
+            @blur="addBoard"
+          />
+        </div>
+        <n-text v-if="!boards.length && !addingBoard" depth="3" class="empty">нет досок</n-text>
       </template>
     </div>
 
@@ -650,9 +686,9 @@ async function addBoard() {
         <div class="transfer-body">
           <p class="transfer-warn">
             Проект «{{ project.name }}» будет перенесён в выбранное пространство
-            <strong>со всеми досками, задачами, тегами и заметками</strong>. В новом
-            пространстве проект окажется без группы. Исполнители, не состоящие в
-            целевом пространстве, будут сняты с задач.
+            <strong>со всеми досками, задачами, тегами и заметками</strong>. В новом пространстве
+            проект окажется без группы. Исполнители, не состоящие в целевом пространстве, будут
+            сняты с задач.
           </p>
           <n-select
             v-model:value="transferTarget"

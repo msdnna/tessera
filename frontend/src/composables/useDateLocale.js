@@ -28,14 +28,19 @@ export function useDateLocale() {
   // lowercase abbreviated form would clash with capitalised siblings like priority).
   function relativeDay(y, mo, day, now, locale, long = false) {
     const dueEpoch = Math.round(Date.UTC(y, mo, day) / 86400000)
-    const todayEpoch = Math.round(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000)
+    const todayEpoch = Math.round(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000,
+    )
     const diff = dueEpoch - todayEpoch
     const en = locale.startsWith('en')
     if (diff === 0) return en ? 'Today' : long ? 'Сегодня' : 'сегодня'
     if (diff === 1) return en ? 'Tomorrow' : long ? 'Завтра' : 'завтра'
     if (diff === -1) return en ? 'Yesterday' : long ? 'Вчера' : 'вчера'
     const firstDay = theme.weekStart === 0 ? 0 : 1
-    if (Math.abs(diff) <= 6 && weekStartDay(dueEpoch, firstDay) === weekStartDay(todayEpoch, firstDay)) {
+    if (
+      Math.abs(diff) <= 6 &&
+      weekStartDay(dueEpoch, firstDay) === weekStartDay(todayEpoch, firstDay)
+    ) {
       // Short lowercase weekday in pills ("пн"); full capitalised weekday elsewhere
       // ("Понедельник") so it doesn't read as an abbreviation next to other fields.
       const wd = new Date(dueEpoch * 86400000).toLocaleDateString(locale, {
@@ -61,8 +66,7 @@ export function useDateLocale() {
     // date — no time of day). Read its calendar day in UTC so the local-tz offset
     // doesn't push it to "03:00". Manual dues anchor to local midnight (a non-zero
     // UTC time), so their calendar day and time come from the local components.
-    const dateOnly =
-      d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0
+    const dateOnly = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0
     const y = dateOnly ? d.getUTCFullYear() : d.getFullYear()
     const mo = dateOnly ? d.getUTCMonth() : d.getMonth()
     const day = dateOnly ? d.getUTCDate() : d.getDate()

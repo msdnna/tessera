@@ -72,7 +72,13 @@ function logout() {
       <span class="uname" @click="openSettings">{{ authStore.user?.name || 'Профиль' }}</span>
       <n-tooltip v-if="isAdmin">
         <template #trigger>
-          <n-button quaternary circle size="small" aria-label="Администрирование" @click="openAdmin">
+          <n-button
+            quaternary
+            circle
+            size="small"
+            aria-label="Администрирование"
+            @click="openAdmin"
+          >
             <n-icon :component="ShieldCheckmarkOutline" />
           </n-button>
         </template>

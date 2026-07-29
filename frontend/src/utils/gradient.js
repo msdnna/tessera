@@ -40,8 +40,14 @@ export function tagPillBg(c, filled = true) {
 // keeping its hue/saturation, so `hueGrad(readableHue(c, dark))` stays on-brand
 // but readable on either background.
 function hexToRgb(hex) {
-  let h = String(hex || '').replace('#', '').trim()
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+  let h = String(hex || '')
+    .replace('#', '')
+    .trim()
+  if (h.length === 3)
+    h = h
+      .split('')
+      .map((c) => c + c)
+      .join('')
   if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null
   const n = parseInt(h, 16)
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
@@ -87,7 +93,10 @@ function hslToHex({ h, s, l }) {
     g = hue(p, q, h)
     b = hue(p, q, h - 1 / 3)
   }
-  const to = (x) => Math.round(x * 255).toString(16).padStart(2, '0')
+  const to = (x) =>
+    Math.round(x * 255)
+      .toString(16)
+      .padStart(2, '0')
   return `#${to(r)}${to(g)}${to(b)}`
 }
 export function readableHue(hex, isDark) {

@@ -34,7 +34,10 @@ function isOverdue(t) {
   <div class="list-view">
     <section v-for="col in columns" :key="col.key" class="lv-group">
       <header class="lv-ghead">
-        <span class="lv-dot" :style="{ background: col.color ? hueGrad(col.color) : 'var(--t-border)' }" />
+        <span
+          class="lv-dot"
+          :style="{ background: col.color ? hueGrad(col.color) : 'var(--t-border)' }"
+        />
         <span class="lv-gname">{{ col.name }}</span>
         <span class="lv-gcount">{{ (lists[col.key] || []).length }}</span>
       </header>

@@ -73,19 +73,19 @@
    • FILLED primary (solid bg) → layer the gradient as a background-image.
      Add the `ngrad` class to opt a transparent (quaternary/text) primary OUT,
      since one would otherwise get a solid gradient block. */
-.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(
-    .n-button--secondary
-  ):not(.ngrad) {
+.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(
+    .ngrad
+  ) {
   background-image: var(--t-accent-grad);
 }
-.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(
-    .n-button--secondary
-  ):not(.ngrad):hover {
+.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(
+    .ngrad
+  ):hover {
   filter: brightness(1.05);
 }
-.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(
-    .n-button--secondary
-  ):not(.ngrad):active {
+.n-button--primary-type:not(.n-button--ghost):not(.n-button--dashed):not(.n-button--secondary):not(
+    .ngrad
+  ):active {
   filter: brightness(0.96);
 }
 
@@ -165,9 +165,7 @@
 }
 /* Destructive popovers (error button) get the red gradient on the icon.
    The root gets class 'n-popconfirm' via internalExtraClass. */
-.n-popconfirm:has(.n-popconfirm__action .n-button--error-type)
-  .n-popconfirm__icon
-  .n-base-icon,
+.n-popconfirm:has(.n-popconfirm__action .n-button--error-type) .n-popconfirm__icon .n-base-icon,
 .n-popconfirm:has(.n-popconfirm__action .n-button--error-type)
   .n-popconfirm__icon
   .n-base-icon

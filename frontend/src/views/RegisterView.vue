@@ -73,11 +73,7 @@ async function submit() {
         :validation-status="errors.email ? 'error' : undefined"
         :feedback="errors.email"
       >
-        <n-input
-          v-model:value="email"
-          placeholder="you@example.com"
-          @input="errors.email = ''"
-        />
+        <n-input v-model:value="email" placeholder="you@example.com" @input="errors.email = ''" />
       </n-form-item>
       <n-form-item
         label="Пароль"

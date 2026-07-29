@@ -131,19 +131,16 @@ function submitAdd(qi) {
     <div class="m-rowhead m-row-important"><span>Важно</span></div>
     <div class="m-rowhead m-row-unimportant"><span>Неважно</span></div>
 
-    <div
-      v-for="q in QUADRANTS"
-      :key="q.i"
-      class="m-quad"
-      :class="[q.cls, `m-cell-${q.i}`]"
-    >
+    <div v-for="q in QUADRANTS" :key="q.i" class="m-quad" :class="[q.cls, `m-cell-${q.i}`]">
       <div class="m-quad-head">
         <div class="m-quad-titles">
           <span class="m-quad-title">{{ q.title }}</span>
           <span class="m-quad-hint">{{ q.hint }}</span>
         </div>
         <span class="m-count">{{ buckets[q.i].length }}</span>
-        <button type="button" class="m-add" title="Добавить задачу" @click="startAdd(q.i)">＋</button>
+        <button type="button" class="m-add" title="Добавить задачу" @click="startAdd(q.i)">
+          ＋
+        </button>
       </div>
 
       <draggable

@@ -48,5 +48,16 @@ export const useConflictsStore = defineStore('conflicts', () => {
     wsId.value = null
   }
 
-  return { list, count, taskIds, has, load, onEvent, clear, resolverOpen, focusTaskId, openResolver }
+  return {
+    list,
+    count,
+    taskIds,
+    has,
+    load,
+    onEvent,
+    clear,
+    resolverOpen,
+    focusTaskId,
+    openResolver,
+  }
 })

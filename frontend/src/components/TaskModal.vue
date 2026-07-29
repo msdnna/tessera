@@ -310,7 +310,9 @@ const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
 // Full spelled-out estimate ("8 недель"), shown as the row's value.
 const estFull = computed(() => formatEstimateFull(estimate.value, estCfg.value))
 // Projected window from start_date, free-form ("18 мая → 13 июл."), shown inline.
-const estRange = computed(() => estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value))
+const estRange = computed(() =>
+  estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value),
+)
 const estOptions = computed(() => scaleOptions(estCfg.value)) // non-empty only for points
 const estPlaceholder = computed(() => estimatePlaceholder(estCfg.value))
 // Rollup hint: sum of direct subtask estimates, shown when the task has children.
@@ -437,7 +439,10 @@ async function loadDetail() {
     try {
       const b = await boardsApi.get(t.board_id)
       boardInfo.value = { name: b.data.name, projectId: b.data.project_id }
-      const [bt, cols] = await Promise.all([boardsApi.tasks(t.board_id), boardsApi.columns(t.board_id)])
+      const [bt, cols] = await Promise.all([
+        boardsApi.tasks(t.board_id),
+        boardsApi.columns(t.board_id),
+      ])
       parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
       columns.value = (cols.data || []).map((c) => ({ id: c.id, name: c.name }))
     } catch {
@@ -757,7 +762,8 @@ function isGlAssigned(username) {
 // integration boards with push_assignees on, the backend mirrors this to the issue.
 async function toggleGlAssignee(m) {
   try {
-    if (isGlAssigned(m.gl_username)) await tasksApi.removeGitlabAssignee(props.taskId, m.gl_username)
+    if (isGlAssigned(m.gl_username))
+      await tasksApi.removeGitlabAssignee(props.taskId, m.gl_username)
     else
       await tasksApi.pinGitlabAssignee(props.taskId, {
         gl_username: m.gl_username,
@@ -1073,751 +1079,807 @@ function eventText(e) {
           />
 
           <div class="tm-col-left">
-          <div class="props" :class="{ 'tm-ro': readonly }">
-            <!-- priority -->
-            <div class="prow">
-              <span class="plabel"><n-icon :component="FlagOutline" :size="15" /> Приоритет</span>
-              <n-popover trigger="click" placement="bottom-start">
-                <template #trigger>
-                  <button class="val">
-                    <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[priority]) }" />
-                    {{ PRIORITY_LABELS[priority] }}
-                  </button>
-                </template>
-                <div class="menu">
-                  <div
-                    v-for="o in priorityOptions"
-                    :key="o.value"
-                    class="menu-item"
-                    @click="setPriority(o.value)"
-                  >
-                    <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
-                    {{ o.label }}
-                  </div>
-                </div>
-              </n-popover>
-            </div>
-
-            <!-- due -->
-            <div class="prow">
-              <span class="plabel"
-                ><n-icon :component="CalendarClearOutline" :size="15" /> Срок</span
-              >
-              <n-popover trigger="click" placement="bottom-start">
-                <template #trigger>
-                  <button class="val">
-                    <span>{{ dueLabel || 'Не задан' }}</span>
-                    <n-icon
-                      v-if="recurrence"
-                      :component="RepeatOutline"
-                      :size="14"
-                      class="recur-mark"
-                      title="Повторяемая задача"
-                    />
-                  </button>
-                </template>
-                <DueEditor
-                  :due="dueTs"
-                  :start="startTs"
-                  :recurrence="recurrence"
-                  :notify="dueNotify"
-                  :columns="columns"
-                  @apply="onDueApply"
-                  @notify="onDueNotify"
-                />
-              </n-popover>
-            </div>
-
-            <!-- estimate -->
-            <div class="prow">
-              <span class="plabel"><n-icon :component="TimerOutline" :size="15" /> Оценка</span>
-              <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
-                <template #trigger>
-                  <button class="val">
-                    <span :class="{ muted: !estFull }">{{ estFull || 'Не задана' }}</span>
-                    <span v-if="estRange" class="est-range">· {{ estRange }}</span>
-                    <span
-                      v-if="subtaskEstimateLabel"
-                      class="est-rollup"
-                      title="Сумма оценок подзадач"
-                      >Σ {{ subtaskEstimateLabel }}</span
-                    >
-                  </button>
-                </template>
-                <div class="est-pop">
-                  <div v-if="estOptions.length" class="menu est-menu">
-                    <div class="menu-item" @click="clearEstimate">
-                      <span class="grow muted">Не задана</span>
-                      <n-icon v-if="estimate == null" :component="CheckmarkOutline" class="chk" />
-                    </div>
+            <div class="props" :class="{ 'tm-ro': readonly }">
+              <!-- priority -->
+              <div class="prow">
+                <span class="plabel"><n-icon :component="FlagOutline" :size="15" /> Приоритет</span>
+                <n-popover trigger="click" placement="bottom-start">
+                  <template #trigger>
+                    <button class="val">
+                      <span
+                        class="dot"
+                        :style="{ background: hueGrad(PRIORITY_COLORS[priority]) }"
+                      />
+                      {{ PRIORITY_LABELS[priority] }}
+                    </button>
+                  </template>
+                  <div class="menu">
                     <div
-                      v-for="o in estOptions"
+                      v-for="o in priorityOptions"
                       :key="o.value"
                       class="menu-item"
-                      @click="setEstimate(o.value)"
+                      @click="setPriority(o.value)"
                     >
-                      <span class="grow">{{ o.label }}</span>
-                      <n-icon
-                        v-if="estimate === o.value"
-                        :component="CheckmarkOutline"
-                        class="chk"
-                      />
-                    </div>
-                  </div>
-                  <div v-else class="est-edit">
-                    <n-input
-                      v-model:value="estInput"
-                      size="small"
-                      :placeholder="estPlaceholder"
-                      @keydown.enter.prevent="applyEstInput"
-                    />
-                    <div class="est-actions">
-                      <n-button size="tiny" tertiary @click="clearEstimate">Очистить</n-button>
-                      <n-button size="tiny" type="primary" @click="applyEstInput">ОК</n-button>
-                    </div>
-                  </div>
-                </div>
-              </n-popover>
-            </div>
-
-            <!-- milestone («Этап») -->
-            <div class="prow">
-              <span class="plabel"><n-icon :component="RibbonOutline" :size="15" /> Этап</span>
-              <n-popover trigger="click" placement="bottom-start">
-                <template #trigger>
-                  <button class="val">
-                    <span :class="{ muted: !taskMilestone }">
-                      {{ taskMilestone ? taskMilestone.title : 'Не задан' }}
-                    </span>
-                    <span v-if="taskMilestone && milestoneRange(taskMilestone)" class="est-range">
-                      · {{ milestoneRange(taskMilestone) }}
-                    </span>
-                    <span v-if="taskMilestone?.state === 'closed'" class="est-range">· закрыт</span>
-                  </button>
-                </template>
-                <div class="ms-pop">
-                  <div class="menu ms-menu">
-                    <div class="menu-item" @click="setMilestone(null)">
-                      <span class="grow muted">Не задан</span>
-                      <n-icon v-if="!task?.milestone_id" :component="CheckmarkOutline" class="chk" />
-                    </div>
-                    <div
-                      v-for="m in milestoneOptions"
-                      :key="m.id"
-                      class="menu-item"
-                      @click="setMilestone(m.id)"
-                    >
-                      <span class="grow ms-opt" :class="{ 'ms-closed': m.state === 'closed' }">
-                        <span class="ms-opt-title">{{ m.title }}</span>
-                        <span v-if="milestoneRange(m)" class="ms-opt-range">{{ milestoneRange(m) }}</span>
-                      </span>
-                      <n-icon
-                        v-if="task?.milestone_id === m.id"
-                        :component="CheckmarkOutline"
-                        class="chk"
-                      />
-                    </div>
-                  </div>
-                  <div class="ms-new">
-                    <n-input
-                      v-model:value="newMilestoneTitle"
-                      size="small"
-                      placeholder="Новый этап…"
-                      @keydown.enter.prevent="createMilestone"
-                    />
-                    <n-button size="small" type="primary" :disabled="!newMilestoneTitle.trim()" @click="createMilestone">
-                      Создать
-                    </n-button>
-                  </div>
-                </div>
-              </n-popover>
-            </div>
-
-            <!-- author (read-only) -->
-            <div v-if="author" class="prow">
-              <span class="plabel"><n-icon :component="PersonOutline" :size="15" /> Автор</span>
-              <div
-                class="val static"
-                :title="author.gl ? `@${author.login} · GitLab` : author.name"
-              >
-                <UserAvatar
-                  class="avatar"
-                  :user-id="author.id"
-                  :src="author.avatar"
-                  :name="author.name"
-                />
-                <span class="author-name">{{ author.name }}</span>
-                <span v-if="author.gl" class="author-gl">@{{ author.login }} · GitLab</span>
-              </div>
-            </div>
-
-            <!-- assignees -->
-            <div class="prow">
-              <span class="plabel"
-                ><n-icon :component="PeopleOutline" :size="15" /> Исполнители</span
-              >
-              <n-popover trigger="click" placement="bottom-start">
-                <template #trigger>
-                  <button class="val">
-                    <UserAvatar
-                      v-for="u in assigneeObjs"
-                      :key="u.user_id"
-                      class="avatar"
-                      :user-id="u.user_id"
-                      :name="u.name"
-                      :title="u.name"
-                    />
-                    <UserAvatar
-                      v-for="(g, i) in glAssignees"
-                      :key="`g${i}`"
-                      class="avatar ext-ava"
-                      :src="g.gl_avatar_url"
-                      :name="g.gl_name || g.gl_username"
-                      :title="`${g.gl_name || g.gl_username} (GitLab)`"
-                    />
-                    <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted"
-                      >Никто</span
-                    >
-                  </button>
-                </template>
-                <div class="menu">
-                  <div
-                    v-for="m in members"
-                    :key="m.user_id"
-                    class="menu-item"
-                    @click="toggleAssignee(m.user_id)"
-                  >
-                    <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
-                    <span class="grow">{{ m.name }}</span>
-                    <n-icon
-                      v-if="selectedAssignees.includes(m.user_id)"
-                      :component="CheckmarkOutline"
-                      class="chk"
-                    />
-                  </div>
-                  <template v-if="gitlabMembers.length">
-                    <div class="menu-sep">GitLab</div>
-                    <div
-                      v-for="m in gitlabMembers"
-                      :key="m.gl_user_id"
-                      class="menu-item"
-                      @click="toggleGlAssignee(m)"
-                    >
-                      <UserAvatar class="avatar sm" :src="m.gl_avatar_url" :name="m.gl_name || m.gl_username" />
-                      <span class="grow">{{ m.gl_name || m.gl_username }}</span>
-                      <n-icon v-if="isGlAssigned(m.gl_username)" :component="CheckmarkOutline" class="chk" />
-                    </div>
-                  </template>
-                </div>
-              </n-popover>
-            </div>
-
-            <!-- tags -->
-            <div class="prow">
-              <span class="plabel"><n-icon :component="PricetagOutline" :size="15" /> Теги</span>
-              <n-popover trigger="click" placement="bottom-start">
-                <template #trigger>
-                  <button ref="tagsValEl" class="val tags-val">
-                    <template v-if="tagObjs.length">
                       <span
-                        v-for="t in tagObjs.slice(0, visibleTagCount)"
-                        :key="t.id"
-                        class="chip"
-                        :style="{
-                          border: '1px solid transparent',
-                          background: tagPillBg(t.color, true),
-                        }"
+                        class="dot"
+                        :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }"
+                      />
+                      {{ o.label }}
+                    </div>
+                  </div>
+                </n-popover>
+              </div>
+
+              <!-- due -->
+              <div class="prow">
+                <span class="plabel"
+                  ><n-icon :component="CalendarClearOutline" :size="15" /> Срок</span
+                >
+                <n-popover trigger="click" placement="bottom-start">
+                  <template #trigger>
+                    <button class="val">
+                      <span>{{ dueLabel || 'Не задан' }}</span>
+                      <n-icon
+                        v-if="recurrence"
+                        :component="RepeatOutline"
+                        :size="14"
+                        class="recur-mark"
+                        title="Повторяемая задача"
+                      />
+                    </button>
+                  </template>
+                  <DueEditor
+                    :due="dueTs"
+                    :start="startTs"
+                    :recurrence="recurrence"
+                    :notify="dueNotify"
+                    :columns="columns"
+                    @apply="onDueApply"
+                    @notify="onDueNotify"
+                  />
+                </n-popover>
+              </div>
+
+              <!-- estimate -->
+              <div class="prow">
+                <span class="plabel"><n-icon :component="TimerOutline" :size="15" /> Оценка</span>
+                <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
+                  <template #trigger>
+                    <button class="val">
+                      <span :class="{ muted: !estFull }">{{ estFull || 'Не задана' }}</span>
+                      <span v-if="estRange" class="est-range">· {{ estRange }}</span>
+                      <span
+                        v-if="subtaskEstimateLabel"
+                        class="est-rollup"
+                        title="Сумма оценок подзадач"
+                        >Σ {{ subtaskEstimateLabel }}</span
                       >
-                        <span
-                          class="accent-grad-text"
-                          :style="{ '--grad': hueGrad(tagText(t.color)) }"
-                          >{{ t.name }}</span
-                        >
-                      </span>
-                      <span v-if="visibleTagCount < tagObjs.length" class="chip chip-more"
-                        >+{{ tagObjs.length - visibleTagCount }}</span
+                    </button>
+                  </template>
+                  <div class="est-pop">
+                    <div v-if="estOptions.length" class="menu est-menu">
+                      <div class="menu-item" @click="clearEstimate">
+                        <span class="grow muted">Не задана</span>
+                        <n-icon v-if="estimate == null" :component="CheckmarkOutline" class="chk" />
+                      </div>
+                      <div
+                        v-for="o in estOptions"
+                        :key="o.value"
+                        class="menu-item"
+                        @click="setEstimate(o.value)"
                       >
-                      <!-- invisible measurement row: natural chip widths, never sliced -->
-                      <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
-                        <span v-for="t in tagObjs" :key="`m${t.id}`" class="chip">{{
-                          t.name
-                        }}</span>
-                      </span>
-                    </template>
-                    <span v-else class="muted">Нет</span>
-                  </button>
-                </template>
-                <div class="menu">
-                  <div class="chip-groups">
-                    <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
-                      <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
-                      <div class="chip-grid">
-                        <button
-                          v-for="t in g.tags"
-                          :key="t.id"
-                          class="tagchip"
-                          :class="{ on: selectedTags.includes(t.id) }"
-                          :style="
-                            selectedTags.includes(t.id)
-                              ? {
-                                  background: hueGrad(t.color),
-                                  color: onColor(t.color),
-                                  borderColor: 'transparent',
-                                }
-                              : {
-                                  background: softFill(t.color),
-                                  color: tagText(t.color),
-                                  borderColor: (t.color || '#888') + '66',
-                                }
-                          "
-                          @click="toggleTag(t.id)"
-                        >
-                          {{ t.name }}
-                        </button>
+                        <span class="grow">{{ o.label }}</span>
+                        <n-icon
+                          v-if="estimate === o.value"
+                          :component="CheckmarkOutline"
+                          class="chk"
+                        />
+                      </div>
+                    </div>
+                    <div v-else class="est-edit">
+                      <n-input
+                        v-model:value="estInput"
+                        size="small"
+                        :placeholder="estPlaceholder"
+                        @keydown.enter.prevent="applyEstInput"
+                      />
+                      <div class="est-actions">
+                        <n-button size="tiny" tertiary @click="clearEstimate">Очистить</n-button>
+                        <n-button size="tiny" type="primary" @click="applyEstInput">ОК</n-button>
                       </div>
                     </div>
                   </div>
-                  <n-input
-                    v-model:value="newTagName"
-                    size="tiny"
-                    placeholder="Новый тег, Enter"
-                    @keyup.enter="createTag"
-                  />
-                </div>
-              </n-popover>
-            </div>
+                </n-popover>
+              </div>
 
-            <!-- completed -->
-            <div class="prow">
-              <span class="plabel"
-                ><n-icon :component="CheckmarkDoneOutline" :size="15" /> Выполнено</span
-              >
-              <n-switch :value="completed" @update:value="setCompleted" />
-            </div>
-
-            <!-- parent -->
-            <div class="prow">
-              <span class="plabel"
-                ><n-icon :component="GitMergeOutline" :size="15" /> Родитель</span
-              >
-              <button v-if="task?.parent_id" class="val" @click="detachFromParent">
-                Открепить
-              </button>
-              <n-popover v-else trigger="click" placement="bottom-start">
-                <template #trigger>
-                  <button class="val"><span class="muted">Сделать подзадачей…</span></button>
-                </template>
-                <div class="menu pmenu">
-                  <div
-                    v-for="cand in parentCandidates"
-                    :key="cand.id"
-                    class="menu-item"
-                    @click="attachTo(cand.id)"
-                  >
-                    {{ cand.title }}
-                  </div>
-                  <span v-if="!parentCandidates.length" class="muted small">Нет других задач</span>
-                </div>
-              </n-popover>
-            </div>
-
-            <!-- create GitLab issue from this task -->
-            <div v-if="task && !task.gitlab && props.gitlabCanCreate" class="prow">
-              <span class="plabel"
-                ><n-icon :component="LogoGitlab" :size="15" /> GitLab</span
-              >
-              <button class="val" :disabled="glCreating" @click="createGlIssue">
-                <span class="muted">{{ glCreating ? 'Создание…' : 'Создать issue' }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="desc-head">
-              <span class="slabel">Описание</span>
-              <div class="desc-head-r">
-                <n-select
-                  v-if="task && !task.gitlab && props.gitlabFetchTemplates && glTemplates.length"
-                  v-model:value="glTemplate"
-                  :options="glTemplateOptions"
-                  size="small"
-                  clearable
-                  placeholder="Шаблон issue…"
-                  class="tpl-select"
-                  @update:value="applyGlTemplate"
-                />
-                <div v-if="!readonly" class="desc-acts">
-                  <template v-if="descMode === 'write'">
-                    <button class="desc-act" title="Вставить изображение" @click="descEditor?.pickImage()">
-                      <n-icon :component="ImageOutline" :size="16" />
-                    </button>
-                    <button class="desc-act" title="Вставить Mermaid-диаграмму" @click="descEditor?.insertMermaid()">
-                      <n-icon :component="GitNetworkOutline" :size="16" />
+              <!-- milestone («Этап») -->
+              <div class="prow">
+                <span class="plabel"><n-icon :component="RibbonOutline" :size="15" /> Этап</span>
+                <n-popover trigger="click" placement="bottom-start">
+                  <template #trigger>
+                    <button class="val">
+                      <span :class="{ muted: !taskMilestone }">
+                        {{ taskMilestone ? taskMilestone.title : 'Не задан' }}
+                      </span>
+                      <span v-if="taskMilestone && milestoneRange(taskMilestone)" class="est-range">
+                        · {{ milestoneRange(taskMilestone) }}
+                      </span>
+                      <span v-if="taskMilestone?.state === 'closed'" class="est-range"
+                        >· закрыт</span
+                      >
                     </button>
                   </template>
-                  <button
-                    class="desc-act"
-                    :title="descMode === 'write' ? 'Предпросмотр' : 'Редактировать'"
-                    @click="descEditor?.toggleMode()"
-                  >
-                    <n-icon :component="descMode === 'write' ? EyeOutline : CreateOutline" :size="16" />
-                  </button>
+                  <div class="ms-pop">
+                    <div class="menu ms-menu">
+                      <div class="menu-item" @click="setMilestone(null)">
+                        <span class="grow muted">Не задан</span>
+                        <n-icon
+                          v-if="!task?.milestone_id"
+                          :component="CheckmarkOutline"
+                          class="chk"
+                        />
+                      </div>
+                      <div
+                        v-for="m in milestoneOptions"
+                        :key="m.id"
+                        class="menu-item"
+                        @click="setMilestone(m.id)"
+                      >
+                        <span class="grow ms-opt" :class="{ 'ms-closed': m.state === 'closed' }">
+                          <span class="ms-opt-title">{{ m.title }}</span>
+                          <span v-if="milestoneRange(m)" class="ms-opt-range">{{
+                            milestoneRange(m)
+                          }}</span>
+                        </span>
+                        <n-icon
+                          v-if="task?.milestone_id === m.id"
+                          :component="CheckmarkOutline"
+                          class="chk"
+                        />
+                      </div>
+                    </div>
+                    <div class="ms-new">
+                      <n-input
+                        v-model:value="newMilestoneTitle"
+                        size="small"
+                        placeholder="Новый этап…"
+                        @keydown.enter.prevent="createMilestone"
+                      />
+                      <n-button
+                        size="small"
+                        type="primary"
+                        :disabled="!newMilestoneTitle.trim()"
+                        @click="createMilestone"
+                      >
+                        Создать
+                      </n-button>
+                    </div>
+                  </div>
+                </n-popover>
+              </div>
+
+              <!-- author (read-only) -->
+              <div v-if="author" class="prow">
+                <span class="plabel"><n-icon :component="PersonOutline" :size="15" /> Автор</span>
+                <div
+                  class="val static"
+                  :title="author.gl ? `@${author.login} · GitLab` : author.name"
+                >
+                  <UserAvatar
+                    class="avatar"
+                    :user-id="author.id"
+                    :src="author.avatar"
+                    :name="author.name"
+                  />
+                  <span class="author-name">{{ author.name }}</span>
+                  <span v-if="author.gl" class="author-gl">@{{ author.login }} · GitLab</span>
                 </div>
               </div>
+
+              <!-- assignees -->
+              <div class="prow">
+                <span class="plabel"
+                  ><n-icon :component="PeopleOutline" :size="15" /> Исполнители</span
+                >
+                <n-popover trigger="click" placement="bottom-start">
+                  <template #trigger>
+                    <button class="val">
+                      <UserAvatar
+                        v-for="u in assigneeObjs"
+                        :key="u.user_id"
+                        class="avatar"
+                        :user-id="u.user_id"
+                        :name="u.name"
+                        :title="u.name"
+                      />
+                      <UserAvatar
+                        v-for="(g, i) in glAssignees"
+                        :key="`g${i}`"
+                        class="avatar ext-ava"
+                        :src="g.gl_avatar_url"
+                        :name="g.gl_name || g.gl_username"
+                        :title="`${g.gl_name || g.gl_username} (GitLab)`"
+                      />
+                      <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted"
+                        >Никто</span
+                      >
+                    </button>
+                  </template>
+                  <div class="menu">
+                    <div
+                      v-for="m in members"
+                      :key="m.user_id"
+                      class="menu-item"
+                      @click="toggleAssignee(m.user_id)"
+                    >
+                      <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
+                      <span class="grow">{{ m.name }}</span>
+                      <n-icon
+                        v-if="selectedAssignees.includes(m.user_id)"
+                        :component="CheckmarkOutline"
+                        class="chk"
+                      />
+                    </div>
+                    <template v-if="gitlabMembers.length">
+                      <div class="menu-sep">GitLab</div>
+                      <div
+                        v-for="m in gitlabMembers"
+                        :key="m.gl_user_id"
+                        class="menu-item"
+                        @click="toggleGlAssignee(m)"
+                      >
+                        <UserAvatar
+                          class="avatar sm"
+                          :src="m.gl_avatar_url"
+                          :name="m.gl_name || m.gl_username"
+                        />
+                        <span class="grow">{{ m.gl_name || m.gl_username }}</span>
+                        <n-icon
+                          v-if="isGlAssigned(m.gl_username)"
+                          :component="CheckmarkOutline"
+                          class="chk"
+                        />
+                      </div>
+                    </template>
+                  </div>
+                </n-popover>
+              </div>
+
+              <!-- tags -->
+              <div class="prow">
+                <span class="plabel"><n-icon :component="PricetagOutline" :size="15" /> Теги</span>
+                <n-popover trigger="click" placement="bottom-start">
+                  <template #trigger>
+                    <button ref="tagsValEl" class="val tags-val">
+                      <template v-if="tagObjs.length">
+                        <span
+                          v-for="t in tagObjs.slice(0, visibleTagCount)"
+                          :key="t.id"
+                          class="chip"
+                          :style="{
+                            border: '1px solid transparent',
+                            background: tagPillBg(t.color, true),
+                          }"
+                        >
+                          <span
+                            class="accent-grad-text"
+                            :style="{ '--grad': hueGrad(tagText(t.color)) }"
+                            >{{ t.name }}</span
+                          >
+                        </span>
+                        <span v-if="visibleTagCount < tagObjs.length" class="chip chip-more"
+                          >+{{ tagObjs.length - visibleTagCount }}</span
+                        >
+                        <!-- invisible measurement row: natural chip widths, never sliced -->
+                        <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
+                          <span v-for="t in tagObjs" :key="`m${t.id}`" class="chip">{{
+                            t.name
+                          }}</span>
+                        </span>
+                      </template>
+                      <span v-else class="muted">Нет</span>
+                    </button>
+                  </template>
+                  <div class="menu">
+                    <div class="chip-groups">
+                      <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
+                        <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
+                        <div class="chip-grid">
+                          <button
+                            v-for="t in g.tags"
+                            :key="t.id"
+                            class="tagchip"
+                            :class="{ on: selectedTags.includes(t.id) }"
+                            :style="
+                              selectedTags.includes(t.id)
+                                ? {
+                                    background: hueGrad(t.color),
+                                    color: onColor(t.color),
+                                    borderColor: 'transparent',
+                                  }
+                                : {
+                                    background: softFill(t.color),
+                                    color: tagText(t.color),
+                                    borderColor: (t.color || '#888') + '66',
+                                  }
+                            "
+                            @click="toggleTag(t.id)"
+                          >
+                            {{ t.name }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <n-input
+                      v-model:value="newTagName"
+                      size="tiny"
+                      placeholder="Новый тег, Enter"
+                      @keyup.enter="createTag"
+                    />
+                  </div>
+                </n-popover>
+              </div>
+
+              <!-- completed -->
+              <div class="prow">
+                <span class="plabel"
+                  ><n-icon :component="CheckmarkDoneOutline" :size="15" /> Выполнено</span
+                >
+                <n-switch :value="completed" @update:value="setCompleted" />
+              </div>
+
+              <!-- parent -->
+              <div class="prow">
+                <span class="plabel"
+                  ><n-icon :component="GitMergeOutline" :size="15" /> Родитель</span
+                >
+                <button v-if="task?.parent_id" class="val" @click="detachFromParent">
+                  Открепить
+                </button>
+                <n-popover v-else trigger="click" placement="bottom-start">
+                  <template #trigger>
+                    <button class="val"><span class="muted">Сделать подзадачей…</span></button>
+                  </template>
+                  <div class="menu pmenu">
+                    <div
+                      v-for="cand in parentCandidates"
+                      :key="cand.id"
+                      class="menu-item"
+                      @click="attachTo(cand.id)"
+                    >
+                      {{ cand.title }}
+                    </div>
+                    <span v-if="!parentCandidates.length" class="muted small"
+                      >Нет других задач</span
+                    >
+                  </div>
+                </n-popover>
+              </div>
+
+              <!-- create GitLab issue from this task -->
+              <div v-if="task && !task.gitlab && props.gitlabCanCreate" class="prow">
+                <span class="plabel"><n-icon :component="LogoGitlab" :size="15" /> GitLab</span>
+                <button class="val" :disabled="glCreating" @click="createGlIssue">
+                  <span class="muted">{{ glCreating ? 'Создание…' : 'Создать issue' }}</span>
+                </button>
+              </div>
             </div>
-            <RichContent
-              v-if="readonly"
-              :source="description || '_Нет описания_'"
-              :members="members"
-            />
-            <MarkdownEditor
-              v-else
-              ref="descEditor"
-              :key="taskId"
-              v-model="description"
-              :toolbar="false"
-              placeholder="Добавьте описание…"
-              :min-rows="3"
-              :initial-mode="descInitialMode"
-              @update:mode="descMode = $event"
-              @blur="saveDesc"
-              @persist="saveDesc"
-            />
-          </div>
+
+            <div class="section">
+              <div class="desc-head">
+                <span class="slabel">Описание</span>
+                <div class="desc-head-r">
+                  <n-select
+                    v-if="task && !task.gitlab && props.gitlabFetchTemplates && glTemplates.length"
+                    v-model:value="glTemplate"
+                    :options="glTemplateOptions"
+                    size="small"
+                    clearable
+                    placeholder="Шаблон issue…"
+                    class="tpl-select"
+                    @update:value="applyGlTemplate"
+                  />
+                  <div v-if="!readonly" class="desc-acts">
+                    <template v-if="descMode === 'write'">
+                      <button
+                        class="desc-act"
+                        title="Вставить изображение"
+                        @click="descEditor?.pickImage()"
+                      >
+                        <n-icon :component="ImageOutline" :size="16" />
+                      </button>
+                      <button
+                        class="desc-act"
+                        title="Вставить Mermaid-диаграмму"
+                        @click="descEditor?.insertMermaid()"
+                      >
+                        <n-icon :component="GitNetworkOutline" :size="16" />
+                      </button>
+                    </template>
+                    <button
+                      class="desc-act"
+                      :title="descMode === 'write' ? 'Предпросмотр' : 'Редактировать'"
+                      @click="descEditor?.toggleMode()"
+                    >
+                      <n-icon
+                        :component="descMode === 'write' ? EyeOutline : CreateOutline"
+                        :size="16"
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <RichContent
+                v-if="readonly"
+                :source="description || '_Нет описания_'"
+                :members="members"
+              />
+              <MarkdownEditor
+                v-else
+                ref="descEditor"
+                :key="taskId"
+                v-model="description"
+                :toolbar="false"
+                placeholder="Добавьте описание…"
+                :min-rows="3"
+                :initial-mode="descInitialMode"
+                @update:mode="descMode = $event"
+                @blur="saveDesc"
+                @persist="saveDesc"
+              />
+            </div>
           </div>
 
           <!-- Draggable divider (wide layout only); resizes the two columns. -->
-          <div class="tm-divider" title="Потяните, чтобы изменить ширину" @pointerdown="startSplitDrag">
+          <div
+            class="tm-divider"
+            title="Потяните, чтобы изменить ширину"
+            @pointerdown="startSplitDrag"
+          >
             <span class="tm-divider-grip"></span>
           </div>
 
           <div class="tm-col-right">
-          <!-- Subtasks / comments / relations / files / history (#8) -->
-          <!-- Keyed by task so the line indicator doesn't slide when switching
+            <!-- Subtasks / comments / relations / files / history (#8) -->
+            <!-- Keyed by task so the line indicator doesn't slide when switching
                between a task and its subtask / related task. -->
-          <n-tabs ref="detailTabs" :key="taskId" type="line" size="small" class="detail-tabs">
-            <n-tab-pane name="comments">
-              <template #tab>
-                <span class="tab-lbl">
-                  <n-icon :component="ChatbubbleEllipsesOutline" :size="15" class="tab-ico tab-ico--out" />
-                  <n-icon :component="ChatbubbleEllipses" :size="15" class="tab-ico tab-ico--fill" />
-                  Комментарии
-                  <n-badge
-                    v-if="comments.length"
-                    :value="comments.length"
-                    :max="99"
-                    class="tab-badge"
-                  />
-                </span>
-              </template>
-              <div class="comments">
-                <div class="c-list">
-                <div v-for="c in comments" :key="c.id" class="comment">
-                  <UserAvatar
-                    class="c-ava"
-                    :user-id="c.author_id || ''"
-                    :src="c.gl_author_avatar_url"
-                    :name="c.author_name || c.gl_author_name || '?'"
-                  />
-                  <div class="c-body">
-                    <div class="c-head">
-                      <span class="c-author">{{
-                        c.author_name || c.gl_author_name || 'Кто-то'
-                      }}</span>
-                      <span v-if="!c.author_name && c.gl_author_name" class="c-gl">· GitLab</span>
-                      <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
-                      <span v-if="c.author_id === meId" class="c-acts">
-                        <button class="c-act" title="Изменить" @click="startEditComment(c)">
-                          ✎
-                        </button>
-                        <n-popconfirm
-                          :positive-button-props="{ type: 'error' }"
-                          positive-text="Удалить"
-                          @positive-click="deleteComment(c.id)"
-                        >
-                          <template #trigger>
-                            <button class="c-act" title="Удалить">✕</button>
-                          </template>
-                          Удалить комментарий?
-                        </n-popconfirm>
-                      </span>
-                    </div>
-                    <template v-if="editingCommentId === c.id">
-                      <MarkdownEditor
-                        v-model="editingCommentBody"
-                        variant="boxed"
-                        :mention-items="mentionItems"
-                        :min-rows="2"
-                        placeholder="Комментарий…"
-                        @submit="saveComment"
+            <n-tabs ref="detailTabs" :key="taskId" type="line" size="small" class="detail-tabs">
+              <n-tab-pane name="comments">
+                <template #tab>
+                  <span class="tab-lbl">
+                    <n-icon
+                      :component="ChatbubbleEllipsesOutline"
+                      :size="15"
+                      class="tab-ico tab-ico--out"
+                    />
+                    <n-icon
+                      :component="ChatbubbleEllipses"
+                      :size="15"
+                      class="tab-ico tab-ico--fill"
+                    />
+                    Комментарии
+                    <n-badge
+                      v-if="comments.length"
+                      :value="comments.length"
+                      :max="99"
+                      class="tab-badge"
+                    />
+                  </span>
+                </template>
+                <div class="comments">
+                  <div class="c-list">
+                    <div v-for="c in comments" :key="c.id" class="comment">
+                      <UserAvatar
+                        class="c-ava"
+                        :user-id="c.author_id || ''"
+                        :src="c.gl_author_avatar_url"
+                        :name="c.author_name || c.gl_author_name || '?'"
                       />
-                      <n-space :size="6" style="margin-top: 6px">
-                        <n-button size="tiny" type="primary" @click="saveComment"
-                          >Сохранить</n-button
-                        >
-                        <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
-                      </n-space>
-                    </template>
-                    <RichContent
-                      v-else
-                      class="c-text"
-                      :source="c.body"
-                      :members="mentionItems"
-                      :interactive="c.author_id === meId"
-                      @toggle="onCommentCheck(c, $event)"
+                      <div class="c-body">
+                        <div class="c-head">
+                          <span class="c-author">{{
+                            c.author_name || c.gl_author_name || 'Кто-то'
+                          }}</span>
+                          <span v-if="!c.author_name && c.gl_author_name" class="c-gl"
+                            >· GitLab</span
+                          >
+                          <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
+                          <span v-if="c.author_id === meId" class="c-acts">
+                            <button class="c-act" title="Изменить" @click="startEditComment(c)">
+                              ✎
+                            </button>
+                            <n-popconfirm
+                              :positive-button-props="{ type: 'error' }"
+                              positive-text="Удалить"
+                              @positive-click="deleteComment(c.id)"
+                            >
+                              <template #trigger>
+                                <button class="c-act" title="Удалить">✕</button>
+                              </template>
+                              Удалить комментарий?
+                            </n-popconfirm>
+                          </span>
+                        </div>
+                        <template v-if="editingCommentId === c.id">
+                          <MarkdownEditor
+                            v-model="editingCommentBody"
+                            variant="boxed"
+                            :mention-items="mentionItems"
+                            :min-rows="2"
+                            placeholder="Комментарий…"
+                            @submit="saveComment"
+                          />
+                          <n-space :size="6" style="margin-top: 6px">
+                            <n-button size="tiny" type="primary" @click="saveComment"
+                              >Сохранить</n-button
+                            >
+                            <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
+                          </n-space>
+                        </template>
+                        <RichContent
+                          v-else
+                          class="c-text"
+                          :source="c.body"
+                          :members="mentionItems"
+                          :interactive="c.author_id === meId"
+                          @toggle="onCommentCheck(c, $event)"
+                        />
+                      </div>
+                    </div>
+                    <EmptyState
+                      v-if="!comments.length"
+                      class="c-empty"
+                      size="small"
+                      :icon="ChatbubbleEllipsesOutline"
+                      text="Комментариев пока нет"
+                    />
+                  </div>
+                  <div v-if="!readonly" class="comment-add">
+                    <MarkdownEditor
+                      ref="commentEditor"
+                      v-model="newComment"
+                      variant="boxed"
+                      send
+                      :mention-items="mentionItems"
+                      :min-rows="3"
+                      placeholder="Написать комментарий… (@ — упоминание, Ctrl+Enter — отправить)"
+                      @submit="postComment"
                     />
                   </div>
                 </div>
-                <EmptyState
-                  v-if="!comments.length"
-                  class="c-empty"
-                  size="small"
-                  :icon="ChatbubbleEllipsesOutline"
-                  text="Комментариев пока нет"
-                />
-                </div>
-                <div v-if="!readonly" class="comment-add">
-                  <MarkdownEditor
-                    ref="commentEditor"
-                    v-model="newComment"
-                    variant="boxed"
-                    send
-                    :mention-items="mentionItems"
-                    :min-rows="3"
-                    placeholder="Написать комментарий… (@ — упоминание, Ctrl+Enter — отправить)"
-                    @submit="postComment"
-                  />
-                </div>
-              </div>
-            </n-tab-pane>
+              </n-tab-pane>
 
-            <n-tab-pane name="subtasks">
-              <template #tab>
-                <span class="tab-lbl">
-                  <n-icon :component="GitBranchOutline" :size="15" class="tab-ico tab-ico--out" />
-                  <n-icon :component="GitBranch" :size="15" class="tab-ico tab-ico--fill" />
-                  Подзадачи
-                  <n-badge
-                    v-if="task?.subtasks?.length"
-                    :value="task.subtasks.length"
-                    :max="99"
-                    class="tab-badge"
-                  />
-                </span>
-              </template>
-              <div class="subtasks">
-                <n-popover
-                  v-for="sub in task?.subtasks || []"
-                  :key="sub.id"
-                  trigger="hover"
-                  placement="right"
-                  :delay="250"
-                >
-                  <template #trigger>
-                    <div
-                      class="subrow"
-                      :class="{ done: sub.completed_at }"
-                      @click="emit('open', sub.id)"
-                    >
-                      <span class="check" @click.stop="toggleSubtask(sub)">
-                        <n-icon
-                          :component="sub.completed_at ? CheckmarkCircle : EllipseOutline"
-                          :size="17"
-                        />
-                      </span>
-                      <span
-                        v-if="sub.priority"
-                        class="pr-dot"
-                        :style="{ background: PRIORITY_COLORS[sub.priority] }"
-                      />
-                      <span class="sub-title">{{ sub.title }}</span>
-                      <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
-                    </div>
-                  </template>
-                  <TaskMiniCard :task="sub" :tags-map="tagsById" :members-map="membersById" />
-                </n-popover>
-                <EmptyState
-                  v-if="!(task?.subtasks || []).length"
-                  size="small"
-                  :icon="GitBranchOutline"
-                  text="Подзадач пока нет"
-                />
-                <n-input
-                  v-model:value="newSubtask"
-                  size="small"
-                  class="plain"
-                  placeholder="+ подзадача (Enter)"
-                  @keyup.enter="addSubtask"
-                />
-              </div>
-            </n-tab-pane>
-
-            <n-tab-pane name="relations">
-              <template #tab>
-                <span class="tab-lbl">
-                  <n-icon :component="GitMergeOutline" :size="15" class="tab-ico tab-ico--out" />
-                  <n-icon :component="GitMerge" :size="15" class="tab-ico tab-ico--fill" />
-                  Связи
-                  <n-badge
-                    v-if="relations.length"
-                    :value="relations.length"
-                    :max="99"
-                    class="tab-badge"
-                  />
-                </span>
-              </template>
-              <div class="relations">
-                <div v-for="r in relations" :key="r.id" class="relrow">
-                  <span class="rel-kind">{{ relKindLabel(r.kind) }}</span>
-                  <button
-                    class="rel-link"
-                    :class="{ done: r.related_completed_at }"
-                    @click="openRelated(r)"
-                  >
-                    <span class="rel-num">#{{ r.related_number }}</span>
-                    <span class="rel-title">{{ r.related_title }}</span>
-                  </button>
-                  <n-popconfirm
-                    :positive-button-props="{ type: 'error' }"
-                    positive-text="Удалить"
-                    @positive-click="removeRelation(r.id)"
-                  >
-                    <template #trigger>
-                      <button class="c-act" title="Убрать связь">
-                        <n-icon :component="CloseOutline" />
-                      </button>
-                    </template>
-                    Убрать связь?
-                  </n-popconfirm>
-                </div>
-                <EmptyState
-                  v-if="!relations.length"
-                  size="small"
-                  :icon="GitMergeOutline"
-                  text="Связей пока нет"
-                />
-                <div class="rel-add">
-                  <n-select
-                    v-model:value="relKind"
-                    :options="relKindOptions"
-                    size="small"
-                    style="width: 150px"
-                  />
-                  <n-popover
-                    trigger="manual"
-                    :show="relPickerOpen"
-                    placement="bottom-start"
-                    :width="320"
-                    @clickoutside="relPickerOpen = false"
-                  >
-                    <template #trigger>
-                      <n-input
-                        v-model:value="relNumber"
-                        size="small"
-                        placeholder="№ или название"
-                        style="width: 240px"
-                        @focus="openRelPicker"
-                        @keyup.enter="addRelation"
-                      >
-                        <template #prefix>#</template>
-                      </n-input>
-                    </template>
-                    <div class="rel-picker">
-                      <div v-if="!relGroups.length" class="empty-hint">Ничего не найдено</div>
-                      <div v-for="g in relGroups" :key="g.project + '/' + g.board" class="rp-group">
-                        <div class="rp-head">{{ g.project }} · {{ g.board }}</div>
-                        <button
-                          v-for="t in g.tasks"
-                          :key="t.id"
-                          type="button"
-                          class="rp-item"
-                          @click="chooseRelTask(t)"
-                        >
-                          <span class="rp-num">#{{ t.number }}</span>
-                          <span class="rp-title">{{ t.title }}</span>
-                        </button>
-                      </div>
-                    </div>
-                  </n-popover>
-                  <n-button size="small" class="rel-go" @click="addRelation">Связать</n-button>
-                </div>
-              </div>
-            </n-tab-pane>
-
-            <n-tab-pane name="files">
-              <template #tab>
-                <span class="tab-lbl">
-                  <n-icon :component="AttachOutline" :size="15" class="tab-ico tab-ico--out" />
-                  <n-icon :component="Attach" :size="15" class="tab-ico tab-ico--fill" />
-                  Файлы
-                  <n-badge
-                    v-if="attachments.length"
-                    :value="attachments.length"
-                    :max="99"
-                    class="tab-badge"
-                  />
-                </span>
-              </template>
-              <div class="files">
-                <div v-for="a in attachments" :key="a.id" class="filerow">
-                  <n-icon :component="AttachOutline" class="f-ico" />
-                  <button class="f-name" @click="downloadAttachment(a)">{{ a.filename }}</button>
-                  <span class="f-size">{{ fmtSize(a.size) }}</span>
-                  <button class="c-act" title="Скачать" @click="downloadAttachment(a)">
-                    <n-icon :component="DownloadOutline" />
-                  </button>
-                  <n-popconfirm
-                    :positive-button-props="{ type: 'error' }"
-                    positive-text="Удалить"
-                    @positive-click="deleteAttachment(a.id)"
-                  >
-                    <template #trigger>
-                      <button class="c-act" title="Удалить">
-                        <n-icon :component="TrashOutline" />
-                      </button>
-                    </template>
-                    Удалить файл «{{ a.filename }}»?
-                  </n-popconfirm>
-                </div>
-                <EmptyState
-                  v-if="!attachments.length"
-                  size="small"
-                  :icon="AttachOutline"
-                  text="Файлов пока нет"
-                />
-                <input ref="fileInput" type="file" hidden @change="onFileChosen" />
-                <n-button size="small" :loading="uploading" @click="pickFile">
-                  <template #icon><n-icon :component="AttachOutline" /></template>
-                  Прикрепить файл
-                </n-button>
-              </div>
-            </n-tab-pane>
-
-            <n-tab-pane name="history">
-              <template #tab>
-                <span class="tab-lbl">
-                  <n-icon :component="TimeOutline" :size="15" class="tab-ico tab-ico--out" />
-                  <n-icon :component="Time" :size="15" class="tab-ico tab-ico--fill" />
-                  История
-                </span>
-              </template>
-              <div class="history">
-                <div v-for="e in events" :key="e.id" class="histrow">
-                  <UserAvatar class="h-ava" :user-id="e.actor_id" :name="e.actor_name" />
-                  <span class="h-text">
-                    <b>{{ e.actor_name || 'Кто-то' }}</b> {{ eventText(e) }}
+              <n-tab-pane name="subtasks">
+                <template #tab>
+                  <span class="tab-lbl">
+                    <n-icon :component="GitBranchOutline" :size="15" class="tab-ico tab-ico--out" />
+                    <n-icon :component="GitBranch" :size="15" class="tab-ico tab-ico--fill" />
+                    Подзадачи
+                    <n-badge
+                      v-if="task?.subtasks?.length"
+                      :value="task.subtasks.length"
+                      :max="99"
+                      class="tab-badge"
+                    />
                   </span>
-                  <span class="h-when">{{ fmtWhen(e.created_at) }}</span>
+                </template>
+                <div class="subtasks">
+                  <n-popover
+                    v-for="sub in task?.subtasks || []"
+                    :key="sub.id"
+                    trigger="hover"
+                    placement="right"
+                    :delay="250"
+                  >
+                    <template #trigger>
+                      <div
+                        class="subrow"
+                        :class="{ done: sub.completed_at }"
+                        @click="emit('open', sub.id)"
+                      >
+                        <span class="check" @click.stop="toggleSubtask(sub)">
+                          <n-icon
+                            :component="sub.completed_at ? CheckmarkCircle : EllipseOutline"
+                            :size="17"
+                          />
+                        </span>
+                        <span
+                          v-if="sub.priority"
+                          class="pr-dot"
+                          :style="{ background: PRIORITY_COLORS[sub.priority] }"
+                        />
+                        <span class="sub-title">{{ sub.title }}</span>
+                        <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
+                      </div>
+                    </template>
+                    <TaskMiniCard :task="sub" :tags-map="tagsById" :members-map="membersById" />
+                  </n-popover>
+                  <EmptyState
+                    v-if="!(task?.subtasks || []).length"
+                    size="small"
+                    :icon="GitBranchOutline"
+                    text="Подзадач пока нет"
+                  />
+                  <n-input
+                    v-model:value="newSubtask"
+                    size="small"
+                    class="plain"
+                    placeholder="+ подзадача (Enter)"
+                    @keyup.enter="addSubtask"
+                  />
                 </div>
-                <EmptyState
-                  v-if="!events.length"
-                  size="small"
-                  :icon="TimeOutline"
-                  text="История пуста"
-                />
-              </div>
-            </n-tab-pane>
-          </n-tabs>
+              </n-tab-pane>
+
+              <n-tab-pane name="relations">
+                <template #tab>
+                  <span class="tab-lbl">
+                    <n-icon :component="GitMergeOutline" :size="15" class="tab-ico tab-ico--out" />
+                    <n-icon :component="GitMerge" :size="15" class="tab-ico tab-ico--fill" />
+                    Связи
+                    <n-badge
+                      v-if="relations.length"
+                      :value="relations.length"
+                      :max="99"
+                      class="tab-badge"
+                    />
+                  </span>
+                </template>
+                <div class="relations">
+                  <div v-for="r in relations" :key="r.id" class="relrow">
+                    <span class="rel-kind">{{ relKindLabel(r.kind) }}</span>
+                    <button
+                      class="rel-link"
+                      :class="{ done: r.related_completed_at }"
+                      @click="openRelated(r)"
+                    >
+                      <span class="rel-num">#{{ r.related_number }}</span>
+                      <span class="rel-title">{{ r.related_title }}</span>
+                    </button>
+                    <n-popconfirm
+                      :positive-button-props="{ type: 'error' }"
+                      positive-text="Удалить"
+                      @positive-click="removeRelation(r.id)"
+                    >
+                      <template #trigger>
+                        <button class="c-act" title="Убрать связь">
+                          <n-icon :component="CloseOutline" />
+                        </button>
+                      </template>
+                      Убрать связь?
+                    </n-popconfirm>
+                  </div>
+                  <EmptyState
+                    v-if="!relations.length"
+                    size="small"
+                    :icon="GitMergeOutline"
+                    text="Связей пока нет"
+                  />
+                  <div class="rel-add">
+                    <n-select
+                      v-model:value="relKind"
+                      :options="relKindOptions"
+                      size="small"
+                      style="width: 150px"
+                    />
+                    <n-popover
+                      trigger="manual"
+                      :show="relPickerOpen"
+                      placement="bottom-start"
+                      :width="320"
+                      @clickoutside="relPickerOpen = false"
+                    >
+                      <template #trigger>
+                        <n-input
+                          v-model:value="relNumber"
+                          size="small"
+                          placeholder="№ или название"
+                          style="width: 240px"
+                          @focus="openRelPicker"
+                          @keyup.enter="addRelation"
+                        >
+                          <template #prefix>#</template>
+                        </n-input>
+                      </template>
+                      <div class="rel-picker">
+                        <div v-if="!relGroups.length" class="empty-hint">Ничего не найдено</div>
+                        <div
+                          v-for="g in relGroups"
+                          :key="g.project + '/' + g.board"
+                          class="rp-group"
+                        >
+                          <div class="rp-head">{{ g.project }} · {{ g.board }}</div>
+                          <button
+                            v-for="t in g.tasks"
+                            :key="t.id"
+                            type="button"
+                            class="rp-item"
+                            @click="chooseRelTask(t)"
+                          >
+                            <span class="rp-num">#{{ t.number }}</span>
+                            <span class="rp-title">{{ t.title }}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </n-popover>
+                    <n-button size="small" class="rel-go" @click="addRelation">Связать</n-button>
+                  </div>
+                </div>
+              </n-tab-pane>
+
+              <n-tab-pane name="files">
+                <template #tab>
+                  <span class="tab-lbl">
+                    <n-icon :component="AttachOutline" :size="15" class="tab-ico tab-ico--out" />
+                    <n-icon :component="Attach" :size="15" class="tab-ico tab-ico--fill" />
+                    Файлы
+                    <n-badge
+                      v-if="attachments.length"
+                      :value="attachments.length"
+                      :max="99"
+                      class="tab-badge"
+                    />
+                  </span>
+                </template>
+                <div class="files">
+                  <div v-for="a in attachments" :key="a.id" class="filerow">
+                    <n-icon :component="AttachOutline" class="f-ico" />
+                    <button class="f-name" @click="downloadAttachment(a)">{{ a.filename }}</button>
+                    <span class="f-size">{{ fmtSize(a.size) }}</span>
+                    <button class="c-act" title="Скачать" @click="downloadAttachment(a)">
+                      <n-icon :component="DownloadOutline" />
+                    </button>
+                    <n-popconfirm
+                      :positive-button-props="{ type: 'error' }"
+                      positive-text="Удалить"
+                      @positive-click="deleteAttachment(a.id)"
+                    >
+                      <template #trigger>
+                        <button class="c-act" title="Удалить">
+                          <n-icon :component="TrashOutline" />
+                        </button>
+                      </template>
+                      Удалить файл «{{ a.filename }}»?
+                    </n-popconfirm>
+                  </div>
+                  <EmptyState
+                    v-if="!attachments.length"
+                    size="small"
+                    :icon="AttachOutline"
+                    text="Файлов пока нет"
+                  />
+                  <input ref="fileInput" type="file" hidden @change="onFileChosen" />
+                  <n-button size="small" :loading="uploading" @click="pickFile">
+                    <template #icon><n-icon :component="AttachOutline" /></template>
+                    Прикрепить файл
+                  </n-button>
+                </div>
+              </n-tab-pane>
+
+              <n-tab-pane name="history">
+                <template #tab>
+                  <span class="tab-lbl">
+                    <n-icon :component="TimeOutline" :size="15" class="tab-ico tab-ico--out" />
+                    <n-icon :component="Time" :size="15" class="tab-ico tab-ico--fill" />
+                    История
+                  </span>
+                </template>
+                <div class="history">
+                  <div v-for="e in events" :key="e.id" class="histrow">
+                    <UserAvatar class="h-ava" :user-id="e.actor_id" :name="e.actor_name" />
+                    <span class="h-text">
+                      <b>{{ e.actor_name || 'Кто-то' }}</b> {{ eventText(e) }}
+                    </span>
+                    <span class="h-when">{{ fmtWhen(e.created_at) }}</span>
+                  </div>
+                  <EmptyState
+                    v-if="!events.length"
+                    size="small"
+                    :icon="TimeOutline"
+                    text="История пуста"
+                  />
+                </div>
+              </n-tab-pane>
+            </n-tabs>
           </div>
         </div>
       </n-spin>
@@ -2052,7 +2114,9 @@ function eventText(e) {
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 6px;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 .desc-act:hover {
   background: var(--t-hover);

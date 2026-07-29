@@ -40,7 +40,10 @@ const routes = [
     component: () => import('@/components/AppLayout.vue'),
     children: [
       { path: '', component: () => import('@/views/HomeView.vue') },
-      { path: 'project/:projectSlug/board/:boardSlug', component: () => import('@/views/BoardView.vue') },
+      {
+        path: 'project/:projectSlug/board/:boardSlug',
+        component: () => import('@/views/BoardView.vue'),
+      },
       // Legacy / deep links by id (UUID or bare slug) — BoardView resolves them
       // and canonicalizes the URL to /project/<slug>/board/<slug>.
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },

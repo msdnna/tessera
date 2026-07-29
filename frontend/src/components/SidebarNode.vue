@@ -1,7 +1,17 @@
 <script setup>
 import { ref, computed, watch, nextTick, h } from 'vue'
 import draggable from 'vuedraggable'
-import { NIcon, NButton, NInput, NDropdown, NPopover, NPopconfirm, NModal, NCard, useMessage } from 'naive-ui'
+import {
+  NIcon,
+  NButton,
+  NInput,
+  NDropdown,
+  NPopover,
+  NPopconfirm,
+  NModal,
+  NCard,
+  useMessage,
+} from 'naive-ui'
 import {
   FolderOutline,
   ChevronForwardOutline,
@@ -58,7 +68,12 @@ const ctxOptions = [
   { label: 'Новая группа', key: 'add-group', icon: menuIcon(FolderOutline) },
   { type: 'divider', key: 'd1' },
   { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
-  { label: 'Удалить группу', key: 'delete', icon: dangerIcon(TrashOutline), props: { style: 'color:#e0533d' } },
+  {
+    label: 'Удалить группу',
+    key: 'delete',
+    icon: dangerIcon(TrashOutline),
+    props: { style: 'color:#e0533d' },
+  },
 ]
 function onCtx(e) {
   if (pressMoved()) return
@@ -150,6 +165,7 @@ function startRename() {
   nextTick(() => renameInput.value?.focus())
 }
 async function remove() {
+  confirmDelete.value = false
   try {
     await groupsApi.remove(props.group.id)
     await store.refresh()
@@ -235,7 +251,11 @@ async function commitRename() {
             <template #icon><n-icon :component="CreateOutline" /></template>
             Переименовать
           </n-button>
-          <n-popconfirm :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove">
+          <n-popconfirm
+            :positive-button-props="{ type: 'error' }"
+            positive-text="Удалить"
+            @positive-click="remove"
+          >
             <template #trigger>
               <n-button type="error" ghost size="small" block>
                 <template #icon><n-icon :component="TrashOutline" /></template>
@@ -299,12 +319,19 @@ async function commitRename() {
     />
 
     <n-modal v-model:show="confirmDelete">
-      <n-card :title="`Удалить группу «${group.name}»?`" style="max-width: 400px" role="dialog" :bordered="false">
-        <p class="confirm-msg">Подгруппы удалятся, проекты станут без группы. Действие необратимо.</p>
+      <n-card
+        :title="`Удалить группу «${group.name}»?`"
+        style="max-width: 400px"
+        role="dialog"
+        :bordered="false"
+      >
+        <p class="confirm-msg">
+          Подгруппы удалятся, проекты станут без группы. Действие необратимо.
+        </p>
         <template #footer>
           <div class="confirm-actions">
             <n-button size="small" @click="confirmDelete = false">Отмена</n-button>
-            <n-button type="error" size="small" @click="confirmDelete = false; remove()">
+            <n-button type="error" size="small" @click="remove()">
               <template #icon><n-icon :component="TrashOutline" /></template>
               Удалить
             </n-button>

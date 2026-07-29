@@ -9,12 +9,7 @@ import {
   RepeatOutline,
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
-import {
-  FREQ_OPTIONS,
-  TRIGGER_OPTIONS,
-  unitLabel,
-  occurrenceKeys,
-} from '@/utils/recurrence'
+import { FREQ_OPTIONS, TRIGGER_OPTIONS, unitLabel, occurrenceKeys } from '@/utils/recurrence'
 
 const props = defineProps({
   due: { type: Number, default: null }, // ms
@@ -121,7 +116,9 @@ const weekdayHeaders = computed(() => {
 const dayKey = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const todayKey = dayKey(today)
-const startKey = computed(() => (localStart.value != null ? dayKey(new Date(localStart.value)) : ''))
+const startKey = computed(() =>
+  localStart.value != null ? dayKey(new Date(localStart.value)) : '',
+)
 const dueKey = computed(() => (localDue.value != null ? dayKey(new Date(localDue.value)) : ''))
 // The actively-edited endpoint is the "selected" (filled) day; the other endpoint
 // is an outlined marker, with the days strictly between shaded as the bar's span.
@@ -185,7 +182,15 @@ function onDayClick(d) {
     if (dates.value.length) {
       const [yy, mm, dd] = dates.value[0].split('-').map(Number)
       const base = localDue.value != null ? new Date(localDue.value) : null
-      localDue.value = new Date(yy, mm - 1, dd, base ? base.getHours() : 0, base ? base.getMinutes() : 0, 0, 0).getTime()
+      localDue.value = new Date(
+        yy,
+        mm - 1,
+        dd,
+        base ? base.getHours() : 0,
+        base ? base.getMinutes() : 0,
+        0,
+        0,
+      ).getTime()
     }
     commit()
     return
@@ -231,14 +236,16 @@ const rule = computed(() => buildRule())
 function buildRule() {
   if (!freq.value) return null
   const r = { freq: freq.value, interval: Math.max(1, Math.round(interval.value || 1)) }
-  if (freq.value === 'weekly' && weekdays.value.length) r.weekdays = [...weekdays.value].sort((a, b) => a - b)
+  if (freq.value === 'weekly' && weekdays.value.length)
+    r.weekdays = [...weekdays.value].sort((a, b) => a - b)
   if (freq.value === 'custom') r.dates = [...dates.value].sort()
   if (trigger.value && trigger.value !== 'complete') r.trigger = trigger.value
   if (trigger.value === 'column' && triggerColumn.value) r.trigger_column = triggerColumn.value
   if (targetColumn.value) r.target_column = targetColumn.value
   if (createNew.value) r.create_new = true
   if (!recurForever.value) r.once = true
-  if (skipWeekends.value && (freq.value === 'daily' || freq.value === 'weekly')) r.skip_weekends = true
+  if (skipWeekends.value && (freq.value === 'daily' || freq.value === 'weekly'))
+    r.skip_weekends = true
   return r
 }
 function setFreq(v) {
@@ -260,7 +267,10 @@ function toggleWeekday(d) {
 
 const columnOptions = computed(() => props.columns.map((c) => ({ label: c.name, value: c.id })))
 // '' = the board's first column (backend default); a real value routes elsewhere.
-const targetOptions = computed(() => [{ label: 'Первая колонка (по умолчанию)', value: '' }, ...columnOptions.value])
+const targetOptions = computed(() => [
+  { label: 'Первая колонка (по умолчанию)', value: '' },
+  ...columnOptions.value,
+])
 
 // weekday chips, ordered by week-start; 0=Sun..6=Sat
 const weekdayChips = computed(() => {
@@ -311,7 +321,12 @@ const DUE_REPEAT_OPTS = [
               :value="interval"
               :min="1"
               :max="99"
-              @update:value="(v) => { interval = v || 1; commit() }"
+              @update:value="
+                (v) => {
+                  interval = v || 1
+                  commit()
+                }
+              "
             />
             <span class="muted">{{ unitLabel(freq, interval) }}</span>
           </div>
@@ -339,7 +354,12 @@ const DUE_REPEAT_OPTS = [
               size="small"
               :value="trigger"
               :options="TRIGGER_OPTIONS"
-              @update:value="(v) => { trigger = v; commit() }"
+              @update:value="
+                (v) => {
+                  trigger = v
+                  commit()
+                }
+              "
             />
           </label>
 
@@ -350,7 +370,12 @@ const DUE_REPEAT_OPTS = [
               :value="triggerColumn"
               :options="columnOptions"
               placeholder="Выберите колонку"
-              @update:value="(v) => { triggerColumn = v; commit() }"
+              @update:value="
+                (v) => {
+                  triggerColumn = v
+                  commit()
+                }
+              "
             />
           </label>
 
@@ -360,21 +385,36 @@ const DUE_REPEAT_OPTS = [
               size="small"
               :value="targetColumn"
               :options="targetOptions"
-              @update:value="(v) => { targetColumn = v; commit() }"
+              @update:value="
+                (v) => {
+                  targetColumn = v
+                  commit()
+                }
+              "
             />
           </label>
 
           <n-checkbox
             size="small"
             :checked="createNew"
-            @update:checked="(v) => { createNew = v; commit() }"
+            @update:checked="
+              (v) => {
+                createNew = v
+                commit()
+              }
+            "
           >
             Создавать дубликат
           </n-checkbox>
           <n-checkbox
             size="small"
             :checked="recurForever"
-            @update:checked="(v) => { recurForever = v; commit() }"
+            @update:checked="
+              (v) => {
+                recurForever = v
+                commit()
+              }
+            "
           >
             Повторять всегда
           </n-checkbox>
@@ -382,7 +422,12 @@ const DUE_REPEAT_OPTS = [
             v-if="freq === 'daily' || freq === 'weekly'"
             size="small"
             :checked="skipWeekends"
-            @update:checked="(v) => { skipWeekends = v; commit() }"
+            @update:checked="
+              (v) => {
+                skipWeekends = v
+                commit()
+              }
+            "
           >
             Пропускать выходные
           </n-checkbox>
@@ -414,11 +459,19 @@ const DUE_REPEAT_OPTS = [
           </button>
         </div>
         <div class="de-cal-head">
-          <button class="nav" type="button" @click="viewY--"><n-icon :component="PlayBackOutline" :size="13" /></button>
-          <button class="nav" type="button" @click="stepMonth(-1)"><n-icon :component="ChevronBackOutline" :size="15" /></button>
+          <button class="nav" type="button" @click="viewY--">
+            <n-icon :component="PlayBackOutline" :size="13" />
+          </button>
+          <button class="nav" type="button" @click="stepMonth(-1)">
+            <n-icon :component="ChevronBackOutline" :size="15" />
+          </button>
           <span class="de-month">{{ monthLabel }}</span>
-          <button class="nav" type="button" @click="stepMonth(1)"><n-icon :component="ChevronForwardOutline" :size="15" /></button>
-          <button class="nav" type="button" @click="viewY++"><n-icon :component="PlayForwardOutline" :size="13" /></button>
+          <button class="nav" type="button" @click="stepMonth(1)">
+            <n-icon :component="ChevronForwardOutline" :size="15" />
+          </button>
+          <button class="nav" type="button" @click="viewY++">
+            <n-icon :component="PlayForwardOutline" :size="13" />
+          </button>
         </div>
         <div class="de-grid de-wd">
           <span v-for="(w, i) in weekdayHeaders" :key="i" class="de-wd-h">{{ w }}</span>

@@ -127,7 +127,13 @@ watch(
     </div>
 
     <div v-show="!isMobile || selected" class="editor">
-      <n-button v-if="isMobile && selected" quaternary size="small" class="back" @click="backToList">
+      <n-button
+        v-if="isMobile && selected"
+        quaternary
+        size="small"
+        class="back"
+        @click="backToList"
+      >
         <template #icon><n-icon :component="ArrowBackOutline" /></template>
         К списку
       </n-button>
@@ -140,7 +146,12 @@ watch(
           :autosize="{ minRows: 12 }"
         />
         <div class="actions">
-          <n-popconfirm v-if="selected.id" :positive-button-props="{ type: 'error' }" positive-text="Удалить" @positive-click="remove">
+          <n-popconfirm
+            v-if="selected.id"
+            :positive-button-props="{ type: 'error' }"
+            positive-text="Удалить"
+            @positive-click="remove"
+          >
             <template #trigger>
               <n-button type="error" ghost>Удалить</n-button>
             </template>

@@ -129,7 +129,9 @@ const milestonesList = computed(() => Object.values(milestonesMap))
 // GitLab roster minus members that already map to a Tessera user in this workspace
 // (they appear in the Tessera member list instead — avoids showing one person twice).
 const gitlabMembersList = computed(() =>
-  Object.values(gitlabMembersMap).filter((g) => !(g.tessera_user_id && membersMap[g.tessera_user_id])),
+  Object.values(gitlabMembersMap).filter(
+    (g) => !(g.tessera_user_id && membersMap[g.tessera_user_id]),
+  ),
 )
 
 // view controls (layout comes from the store, above)
@@ -275,7 +277,15 @@ const groupTags = computed(() =>
 )
 // Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
 const sortLevels = ref([])
-const filters = reactive({ priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' })
+const filters = reactive({
+  priorities: [],
+  assignees: [],
+  tags: [],
+  statuses: [],
+  milestones: [],
+  due: '',
+  q: '',
+})
 
 // Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
 // create, no inline edits) with a Restore action. Reuses all board filters/grouping.
@@ -329,7 +339,8 @@ const colPos = computed(() => {
 // One sort level's comparison (direction applied; due-less tasks always last).
 function cmpLevel(a, b, { field, dir }) {
   const d = dir === 'desc' ? -1 : 1
-  if (field === 'status') return d * ((colPos.value[a.column_id] ?? 0) - (colPos.value[b.column_id] ?? 0))
+  if (field === 'status')
+    return d * ((colPos.value[a.column_id] ?? 0) - (colPos.value[b.column_id] ?? 0))
   if (field === 'due') {
     const av = a.due_date ? Date.parse(a.due_date) : null
     const bv = b.due_date ? Date.parse(b.due_date) : null
@@ -392,7 +403,9 @@ const tagFilterMenu = computed(() => {
   }))
 })
 // Status filter = which board columns to show (timeline-only facet).
-const statusFilterOptions = computed(() => columns.value.map((c) => ({ label: c.name, value: c.id })))
+const statusFilterOptions = computed(() =>
+  columns.value.map((c) => ({ label: c.name, value: c.id })),
+)
 // Milestone filter menu (+ an explicit "Без этапа" bucket).
 const milestoneFilterMenu = computed(() => [
   ...milestonesList.value.map((m) => ({ label: m.title, key: `fm.${m.id}` })),
@@ -444,11 +457,23 @@ const facetChips = computed(() => {
   sortLevels.value.forEach((l, i) => {
     const f = sortFieldLabel(l.field)
     const arrow = l.dir === 'desc' ? '↓' : '↑'
-    out.push({ kind: 'sort', i, icon: CHIP_ICONS.sort, text: `${f} ${arrow}`, label: `Сорт: ${f} ${arrow}` })
+    out.push({
+      kind: 'sort',
+      i,
+      icon: CHIP_ICONS.sort,
+      text: `${f} ${arrow}`,
+      label: `Сорт: ${f} ${arrow}`,
+    })
   })
   filters.priorities.forEach((p) => {
     const t = PRIORITY_LABELS[p]
-    out.push({ kind: 'priority', value: p, icon: CHIP_ICONS.priority, text: t, label: `Приоритет: ${t}` })
+    out.push({
+      kind: 'priority',
+      value: p,
+      icon: CHIP_ICONS.priority,
+      text: t,
+      label: `Приоритет: ${t}`,
+    })
   })
   filters.assignees.forEach((a) => {
     let name
@@ -459,7 +484,13 @@ const facetChips = computed(() => {
     } else {
       name = membersMap[a]?.name || '—'
     }
-    out.push({ kind: 'assignee', value: a, icon: CHIP_ICONS.assignee, text: name, label: `Исполнитель: ${name}` })
+    out.push({
+      kind: 'assignee',
+      value: a,
+      icon: CHIP_ICONS.assignee,
+      text: name,
+      label: `Исполнитель: ${name}`,
+    })
   })
   filters.tags.forEach((t) => {
     const nm = tagsMap[t]?.name || '—'
@@ -467,11 +498,23 @@ const facetChips = computed(() => {
   })
   filters.statuses.forEach((s) => {
     const nm = columns.value.find((c) => c.id === s)?.name || '—'
-    out.push({ kind: 'status', value: s, icon: CHIP_ICONS.status, text: nm, label: `Статус: ${nm}` })
+    out.push({
+      kind: 'status',
+      value: s,
+      icon: CHIP_ICONS.status,
+      text: nm,
+      label: `Статус: ${nm}`,
+    })
   })
   filters.milestones.forEach((m) => {
     const nm = m === '__none__' ? 'без этапа' : milestonesMap[m]?.title || '—'
-    out.push({ kind: 'milestone', value: m, icon: CHIP_ICONS.milestone, text: nm, label: `Этап: ${nm}` })
+    out.push({
+      kind: 'milestone',
+      value: m,
+      icon: CHIP_ICONS.milestone,
+      text: nm,
+      label: `Этап: ${nm}`,
+    })
   })
   if (filters.due) {
     const nm = dueOptions.find((o) => o.value === filters.due)?.label || filters.due
@@ -500,12 +543,18 @@ const addOptions = computed(() => {
     { label: 'По тегам (все)', key: 'g.tag' },
     ...tagPrefixOptions.value
       .filter((o) => o.value)
-      .map((o) => ({ label: `По тегам · ${o.label}`, key: `g.tagp.${encodeURIComponent(o.value)}` })),
+      .map((o) => ({
+        label: `По тегам · ${o.label}`,
+        key: `g.tagp.${encodeURIComponent(o.value)}`,
+      })),
     { label: 'По этапам', key: 'g.milestone' },
   ]
   // Timeline swimlanes can also be per-assignee or ungrouped.
   if (timelineLike.value) {
-    grouping.push({ label: 'По исполнителю', key: 'g.assignee' }, { label: 'Без группировки', key: 'g.none' })
+    grouping.push(
+      { label: 'По исполнителю', key: 'g.assignee' },
+      { label: 'Без группировки', key: 'g.none' },
+    )
   }
   const opts = [
     { label: 'Группировка', key: 'group', children: grouping },
@@ -529,7 +578,9 @@ const addOptions = computed(() => {
     {
       label: 'Фильтр: срок',
       key: 'fd',
-      children: dueOptions.filter((o) => o.value).map((o) => ({ label: o.label, key: `fd.${o.value}` })),
+      children: dueOptions
+        .filter((o) => o.value)
+        .map((o) => ({ label: o.label, key: `fd.${o.value}` })),
     },
   ]
   // Status (column) filter — timeline only, so the user can hide e.g. the «done»
@@ -576,7 +627,11 @@ function renderAddLabel(option) {
     })
     const txt = h('span', { class: 't-fdd-txt' }, option.label)
     if (!isMobile.value) return h('span', { class: 'flt-asgn' }, [av, txt])
-    return h('span', { class: 'flt-asgn t-fdd-row', style: { animation: `t-fdd-${addDir.value} .17s ease` } }, [av, txt])
+    return h(
+      'span',
+      { class: 'flt-asgn t-fdd-row', style: { animation: `t-fdd-${addDir.value} .17s ease` } },
+      [av, txt],
+    )
   }
   if (!isMobile.value) return option.label
   const anim = `t-fdd-${addDir.value} .17s ease`
@@ -638,7 +693,8 @@ function onAddFacet(key) {
     tagPrefix.value = ''
   } else if (key.startsWith('s.')) {
     const f = key.slice(2)
-    if (!sortLevels.value.some((l) => l.field === f)) sortLevels.value.push({ field: f, dir: 'asc' })
+    if (!sortLevels.value.some((l) => l.field === f))
+      sortLevels.value.push({ field: f, dir: 'asc' })
   } else if (key.startsWith('fp.')) {
     const v = Number(key.slice(3))
     if (!filters.priorities.includes(v)) filters.priorities.push(v)
@@ -663,11 +719,13 @@ function onAddFacet(key) {
 }
 function removeChip(c) {
   if (c.kind === 'sort') sortLevels.value.splice(c.i, 1)
-  else if (c.kind === 'priority') filters.priorities = filters.priorities.filter((x) => x !== c.value)
+  else if (c.kind === 'priority')
+    filters.priorities = filters.priorities.filter((x) => x !== c.value)
   else if (c.kind === 'assignee') filters.assignees = filters.assignees.filter((x) => x !== c.value)
   else if (c.kind === 'tag') filters.tags = filters.tags.filter((x) => x !== c.value)
   else if (c.kind === 'status') filters.statuses = filters.statuses.filter((x) => x !== c.value)
-  else if (c.kind === 'milestone') filters.milestones = filters.milestones.filter((x) => x !== c.value)
+  else if (c.kind === 'milestone')
+    filters.milestones = filters.milestones.filter((x) => x !== c.value)
   else if (c.kind === 'due') filters.due = ''
 }
 function onChipClick(c) {
@@ -738,7 +796,15 @@ function defaultToolbar(forLayout) {
     sortLevels: [],
     subtasksExpanded: false,
     autoSort: false,
-    filters: { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
+    filters: {
+      priorities: [],
+      assignees: [],
+      tags: [],
+      statuses: [],
+      milestones: [],
+      due: '',
+      q: '',
+    },
     colCollapse: {},
     autoCollapseEmpty: false,
     cardSize: 'medium',
@@ -804,7 +870,10 @@ function writeView() {
   if (restoring) return
   try {
     toolbarByLayout[layout.value] = snapshotToolbar()
-    localStorage.setItem(viewKey.value, JSON.stringify({ layout: layout.value, toolbars: toolbarByLayout }))
+    localStorage.setItem(
+      viewKey.value,
+      JSON.stringify({ layout: layout.value, toolbars: toolbarByLayout }),
+    )
   } catch {
     /* storage full / disabled — non-fatal */
   }
@@ -849,7 +918,15 @@ function restoreView() {
               ? [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
               : [],
           subtasksExpanded: !!v.subtasksExpanded,
-          filters: { priorities: [], assignees: [], tags: [], statuses: [], due: '', q: '', ...(v.filters || {}) },
+          filters: {
+            priorities: [],
+            assignees: [],
+            tags: [],
+            statuses: [],
+            due: '',
+            q: '',
+            ...(v.filters || {}),
+          },
         }
       }
       loadToolbar(toolbarByLayout[layout.value] || defaultToolbar(layout.value))
@@ -1062,10 +1139,7 @@ const colWidth = computed(() => {
   // Reserve the "+ колонка" tile (status mode) + the gaps + the collapsed strips,
   // plus a few px slack so sub-pixel rounding can't trip the horizontal scrollbar.
   const reserved =
-    (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) +
-    (n - 1) * GAP +
-    4 +
-    nCollapsed * STRIP_W
+    (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 4 + nCollapsed * STRIP_W
   const w = Math.floor((cw - reserved) / nExpanded)
   // Fill the viewport while comfortable; the width band comes from the chosen card
   // size (compact narrower, large wider), so columns never get too narrow to hold
@@ -1283,8 +1357,7 @@ async function loadWorkspaceMeta() {
   // Issue-creation is offered only on the binding that targets THIS board.
   const gi = (glInt.data?.integrations || []).find((b) => b.board_id === props.boardId) || {}
   gitlabIntegrationId.value = gi.id || null
-  gitlabCanCreate.value =
-    gi.enabled === true && gi.writeback?.push_create === true
+  gitlabCanCreate.value = gi.enabled === true && gi.writeback?.push_create === true
   gitlabFetchTemplates.value = gitlabCanCreate.value && gi.writeback?.fetch_templates === true
   // Prefixes whose tags are governed by a status/priority/meta GitLab rule — hidden
   // from tag pickers so they can't be toggled out of sync with the mapped field.
@@ -1328,7 +1401,9 @@ const filteredTasks = computed(() => {
       const ids = t.assignee_ids || []
       const logins = t.gitlab_assignee_logins || []
       return filters.assignees.some((a) =>
-        typeof a === 'string' && a.startsWith('gl:') ? logins.includes(a.slice(3)) : ids.includes(a),
+        typeof a === 'string' && a.startsWith('gl:')
+          ? logins.includes(a.slice(3))
+          : ids.includes(a),
       )
     })
   if (filters.tags.length)
@@ -1822,7 +1897,12 @@ async function restoreFromArchive(taskId) {
 <template>
   <n-spin :show="loading" :rotate="false" class="board-spin">
     <template #icon><TesseraSpinner /></template>
-    <div v-if="board" class="board-wrap" :class="{ 'has-bg': !!themeStore.boardBackground }" :style="boardBgStyle">
+    <div
+      v-if="board"
+      class="board-wrap"
+      :class="{ 'has-bg': !!themeStore.boardBackground }"
+      :style="boardBgStyle"
+    >
       <!-- Sub-toolbar under the header: grouping / sort / filters / subtasks +
            a task-name search on the right. (Layout + Теги/Архив live in the
            global header now.) -->
@@ -1831,11 +1911,7 @@ async function restoreFromArchive(taskId) {
              chips + an add menu + the name search, all in one single-row bar.
              Each chip is pale until hovered; the right-side tools slide away only
              once the chips fill ≥75% of the bar. Sort chips are drag-reorderable. -->
-        <div
-          ref="composerEl"
-          class="composer"
-          :class="{ 'has-clear': hasClearableFacets }"
-        >
+        <div ref="composerEl" class="composer" :class="{ 'has-clear': hasClearableFacets }">
           <!-- Scope chips: archive = amber tint, sprint = accent tint (no border). -->
           <span v-if="archivedMode" class="facet facet-archive" title="Архив — только чтение">
             <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
@@ -1845,7 +1921,9 @@ async function restoreFromArchive(taskId) {
           <span v-if="milestoneScope" class="facet facet-accent" title="Показан один этап">
             <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
             {{ milestoneScopeLabel }}
-            <button class="facet-x" title="Сбросить этап" @click.stop="clearMilestoneScope">×</button>
+            <button class="facet-x" title="Сбросить этап" @click.stop="clearMilestoneScope">
+              ×
+            </button>
           </span>
 
           <!-- Subtask-expansion toggle (icon-only): accent when on, grey when off. -->
@@ -1880,7 +1958,11 @@ async function restoreFromArchive(taskId) {
             ghost-class="facet-ghost"
           >
             <template #item="{ element: l }">
-              <span class="facet sortable" title="Клик — направление · перетащите для порядка" @click="toggleSortDir(l)">
+              <span
+                class="facet sortable"
+                title="Клик — направление · перетащите для порядка"
+                @click="toggleSortDir(l)"
+              >
                 <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
                 {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
                 <button class="facet-x" title="Убрать" @click.stop="removeSort(l)">×</button>
@@ -1894,7 +1976,6 @@ async function restoreFromArchive(taskId) {
             {{ c.text }}
             <button class="facet-x" title="Убрать" @click.stop="removeChip(c)">×</button>
           </span>
-
 
           <n-dropdown
             :show="addShow"
@@ -1917,7 +1998,12 @@ async function restoreFromArchive(taskId) {
             class="composer-search"
             placeholder="Поиск по названию…"
           />
-          <button v-if="hasClearableFacets" class="facet-clear" title="Сбросить всё" @click="clearAll">
+          <button
+            v-if="hasClearableFacets"
+            class="facet-clear"
+            title="Сбросить всё"
+            @click="clearAll"
+          >
             ×
           </button>
         </div>
@@ -1925,109 +2011,121 @@ async function restoreFromArchive(taskId) {
         <!-- Right-side tools — slide off to the right while the composer is
              expanded so the full chip set has room. -->
         <div class="bar-tools" :class="{ hidden: composerExpanded }">
-        <!-- "Авто": dependency-graph ordering (Gantt only). Resets the composer to
+          <!-- "Авто": dependency-graph ordering (Gantt only). Resets the composer to
              no-group/no-sort and orders rows by the blocking graph. -->
-        <n-tooltip v-if="layout === 'gantt'">
-          <template #trigger>
-            <n-button
-              size="small"
-              quaternary
-              class="ngrad bar-btn"
-              :type="autoActive ? 'primary' : 'default'"
-              @click="toggleAuto"
-            >
-              <template #icon><n-icon :component="GitNetworkOutline" /></template>
-            </n-button>
-          </template>
-          {{ autoActive ? 'Авто-сортировка по зависимостям (вкл.)' : 'Авто: сортировать по зависимостям' }}
-        </n-tooltip>
-
-        <n-tooltip v-if="!timelineLike">
-          <template #trigger>
-            <n-button
-              size="small"
-              quaternary
-              class="ngrad bar-btn"
-              :type="customizeOpen ? 'primary' : 'default'"
-              @click="customizeOpen = true"
-            >
-              <template #icon><n-icon :component="SettingsOutline" /></template>
-            </n-button>
-          </template>
-          Настроить вид
-        </n-tooltip>
-
-        <!-- saved views: load (folder) + save (disk) -->
-        <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
+          <n-tooltip v-if="layout === 'gantt'">
             <template #trigger>
-            <n-tooltip>
+              <n-button
+                size="small"
+                quaternary
+                class="ngrad bar-btn"
+                :type="autoActive ? 'primary' : 'default'"
+                @click="toggleAuto"
+              >
+                <template #icon><n-icon :component="GitNetworkOutline" /></template>
+              </n-button>
+            </template>
+            {{
+              autoActive
+                ? 'Авто-сортировка по зависимостям (вкл.)'
+                : 'Авто: сортировать по зависимостям'
+            }}
+          </n-tooltip>
+
+          <n-tooltip v-if="!timelineLike">
+            <template #trigger>
+              <n-button
+                size="small"
+                quaternary
+                class="ngrad bar-btn"
+                :type="customizeOpen ? 'primary' : 'default'"
+                @click="customizeOpen = true"
+              >
+                <template #icon><n-icon :component="SettingsOutline" /></template>
+              </n-button>
+            </template>
+            Настроить вид
+          </n-tooltip>
+
+          <!-- saved views: load (folder) + save (disk) -->
+          <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
+            <template #trigger>
+              <n-tooltip>
                 <template #trigger>
-                <n-button
+                  <n-button
                     size="small"
                     quaternary
                     class="ngrad bar-btn"
                     :type="currentViewName ? 'primary' : 'default'"
-                >
+                  >
                     <template #icon><n-icon :component="FolderOpenOutline" /></template>
-                </n-button>
+                  </n-button>
                 </template>
-                {{ currentViewName ? `Представление: ${currentViewName}` : 'Загрузить представление' }}
-            </n-tooltip>
+                {{
+                  currentViewName ? `Представление: ${currentViewName}` : 'Загрузить представление'
+                }}
+              </n-tooltip>
             </template>
             <div class="views-pop">
-            <div v-for="v in viewsForLayout" :key="v.id" class="view-row">
-                <button class="view-name" :class="{ active: v.name === currentViewName }" @click="applyView(v)">
-                {{ v.name }}
+              <div v-for="v in viewsForLayout" :key="v.id" class="view-row">
+                <button
+                  class="view-name"
+                  :class="{ active: v.name === currentViewName }"
+                  @click="applyView(v)"
+                >
+                  {{ v.name }}
                 </button>
                 <n-popconfirm
-                :positive-button-props="{ type: 'error' }"
-                positive-text="Удалить"
-                @positive-click="deleteView(v)"
+                  :positive-button-props="{ type: 'error' }"
+                  positive-text="Удалить"
+                  @positive-click="deleteView(v)"
                 >
-                <template #trigger>
-                    <n-button text size="tiny" type="error"><n-icon :component="TrashOutline" /></n-button>
-                </template>
-                Удалить представление «{{ v.name }}»?
+                  <template #trigger>
+                    <n-button text size="tiny" type="error"
+                      ><n-icon :component="TrashOutline"
+                    /></n-button>
+                  </template>
+                  Удалить представление «{{ v.name }}»?
                 </n-popconfirm>
-            </div>
-            <n-text v-if="!viewsForLayout.length" depth="3" class="views-empty">
+              </div>
+              <n-text v-if="!viewsForLayout.length" depth="3" class="views-empty">
                 Нет сохранённых представлений
-            </n-text>
+              </n-text>
             </div>
-        </n-popover>
+          </n-popover>
 
-        <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
+          <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
             <template #trigger>
-            <n-tooltip>
+              <n-tooltip>
                 <template #trigger>
-                <n-button size="small" quaternary class="ngrad bar-btn">
+                  <n-button size="small" quaternary class="ngrad bar-btn">
                     <template #icon><n-icon :component="SaveOutline" /></template>
-                </n-button>
+                  </n-button>
                 </template>
                 Сохранить представление
-            </n-tooltip>
+              </n-tooltip>
             </template>
             <div class="views-pop">
-            <n-input
+              <n-input
                 v-model:value="newViewName"
                 size="small"
                 placeholder="Название представления"
                 @keyup.enter="saveView"
-            />
-            <div v-if="viewsForLayout.length" class="views-over">
+              />
+              <div v-if="viewsForLayout.length" class="views-over">
                 <n-text depth="3" class="views-lbl">Перезаписать:</n-text>
                 <button
-                v-for="v in viewsForLayout"
-                :key="v.id"
-                class="view-chip"
-                @click="newViewName = v.name"
+                  v-for="v in viewsForLayout"
+                  :key="v.id"
+                  class="view-chip"
+                  @click="newViewName = v.name"
                 >
-                {{ v.name }}
+                  {{ v.name }}
                 </button>
+              </div>
+              <n-button type="primary" size="small" block @click="saveView">Сохранить</n-button>
             </div>
-            <n-button type="primary" size="small" block @click="saveView">Сохранить</n-button>
-            </div>
-        </n-popover>
+          </n-popover>
         </div>
       </div>
 
@@ -2134,7 +2232,12 @@ async function restoreFromArchive(taskId) {
               <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
                    drop target survives. -->
-              <div v-if="colCollapsedNow(dcol)" class="col-strip" title="Развернуть колонку" @click="toggleCollapse(dcol)">
+              <div
+                v-if="colCollapsedNow(dcol)"
+                class="col-strip"
+                title="Развернуть колонку"
+                @click="toggleCollapse(dcol)"
+              >
                 <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
                 <span class="strip-title">{{ dcol.name }}</span>
                 <span class="strip-count">{{ (lists[dcol.key] || []).length }}</span>
@@ -2750,7 +2853,8 @@ async function restoreFromArchive(taskId) {
   border: 1px solid var(--col-border, var(--t-border));
   border-top: 3px solid transparent;
   background:
-    linear-gradient(var(--col-tint, var(--t-surface-alt)), var(--col-tint, var(--t-surface-alt))) padding-box,
+    linear-gradient(var(--col-tint, var(--t-surface-alt)), var(--col-tint, var(--t-surface-alt)))
+      padding-box,
     var(--col-grad) border-box;
 }
 /* Collapsed column → a narrow strip. The header, card list and add-task button
