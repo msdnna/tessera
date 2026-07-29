@@ -42,6 +42,11 @@ import {
   ChatbubbleEllipsesOutline,
   GitBranchOutline,
   TimeOutline,
+  ChatbubbleEllipses,
+  GitBranch,
+  GitMerge,
+  Attach,
+  Time,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -1464,7 +1469,8 @@ function eventText(e) {
             <n-tab-pane name="comments">
               <template #tab>
                 <span class="tab-lbl">
-                  <n-icon :component="ChatbubbleEllipsesOutline" :size="15" class="tab-ico" />
+                  <n-icon :component="ChatbubbleEllipsesOutline" :size="15" class="tab-ico tab-ico--out" />
+                  <n-icon :component="ChatbubbleEllipses" :size="15" class="tab-ico tab-ico--fill" />
                   Комментарии
                   <n-badge
                     v-if="comments.length"
@@ -1558,7 +1564,8 @@ function eventText(e) {
             <n-tab-pane name="subtasks">
               <template #tab>
                 <span class="tab-lbl">
-                  <n-icon :component="GitBranchOutline" :size="15" class="tab-ico" />
+                  <n-icon :component="GitBranchOutline" :size="15" class="tab-ico tab-ico--out" />
+                  <n-icon :component="GitBranch" :size="15" class="tab-ico tab-ico--fill" />
                   Подзадачи
                   <n-badge
                     v-if="task?.subtasks?.length"
@@ -1618,7 +1625,8 @@ function eventText(e) {
             <n-tab-pane name="relations">
               <template #tab>
                 <span class="tab-lbl">
-                  <n-icon :component="GitMergeOutline" :size="15" class="tab-ico" />
+                  <n-icon :component="GitMergeOutline" :size="15" class="tab-ico tab-ico--out" />
+                  <n-icon :component="GitMerge" :size="15" class="tab-ico tab-ico--fill" />
                   Связи
                   <n-badge
                     v-if="relations.length"
@@ -1709,7 +1717,8 @@ function eventText(e) {
             <n-tab-pane name="files">
               <template #tab>
                 <span class="tab-lbl">
-                  <n-icon :component="AttachOutline" :size="15" class="tab-ico" />
+                  <n-icon :component="AttachOutline" :size="15" class="tab-ico tab-ico--out" />
+                  <n-icon :component="Attach" :size="15" class="tab-ico tab-ico--fill" />
                   Файлы
                   <n-badge
                     v-if="attachments.length"
@@ -1757,7 +1766,8 @@ function eventText(e) {
             <n-tab-pane name="history">
               <template #tab>
                 <span class="tab-lbl">
-                  <n-icon :component="TimeOutline" :size="15" class="tab-ico" />
+                  <n-icon :component="TimeOutline" :size="15" class="tab-ico tab-ico--out" />
+                  <n-icon :component="Time" :size="15" class="tab-ico tab-ico--fill" />
                   История
                 </span>
               </template>
@@ -2465,6 +2475,17 @@ function eventText(e) {
 .tab-lbl .tab-ico {
   /* inherit currentColor (tab text) — accent when active, dim otherwise */
   opacity: 0.9;
+}
+/* Inactive tabs show the outline glyph; the active tab swaps to the filled one
+   (accent, matching the visualisation icons). */
+.tab-ico--fill {
+  display: none;
+}
+.detail-tabs :deep(.n-tabs-tab--active .tab-ico--out) {
+  display: none;
+}
+.detail-tabs :deep(.n-tabs-tab--active .tab-ico--fill) {
+  display: inline-flex;
 }
 .tab-badge {
   margin-left: 0;

@@ -465,11 +465,23 @@ body {
      work area and nudges it a few px — a visible jitter. */
   overscroll-behavior: contain;
 }
+.n-dropdown-menu--scrollable .n-scrollbar-container {
+  overscroll-behavior: contain;
+}
+/* Nested submenus (e.g. the «Фильтр: этап» list) render as their own, NON-scrollable
+   .n-dropdown-menu popovers — `scrollable` only wraps the root menu. A long submenu
+   then overruns the viewport and the page itself scrolls, dragging the board. Cap
+   the submenu so it scrolls in place and contains its own scroll. */
+.n-dropdown-menu:not(.n-dropdown-menu--scrollable) {
+  max-height: 72vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 
 /* Reusable auto-hide scrollbar: gutter is always reserved (no reflow when the bar
-   reveals), thumb stays transparent until hover / focus-within. Mirrors the task
-   modal's .tm-col-* columns; applied to kanban columns (.drop) and the GitLab
-   modal panes (.gl-scroll). */
+   reveals), thumb stays transparent until hover / focus-within, then shows the same
+   grey the app's default scrollbars use. Thinner than the app default so it doesn't
+   eat column width. Applied to kanban columns (.drop) and the GitLab modal panes. */
 .t-hoverscroll {
   scrollbar-gutter: stable;
   scrollbar-width: thin;
@@ -478,20 +490,25 @@ body {
 }
 .t-hoverscroll:hover,
 .t-hoverscroll:focus-within {
-  scrollbar-color: var(--t-border) transparent;
+  scrollbar-color: color-mix(in srgb, var(--t-text3) 55%, transparent) transparent;
 }
 .t-hoverscroll::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 .t-hoverscroll::-webkit-scrollbar-thumb {
-  border-radius: 5px;
-  border: 3px solid transparent;
+  border-radius: 4px;
+  border: 2px solid transparent;
   background: transparent;
   background-clip: padding-box;
 }
 .t-hoverscroll:hover::-webkit-scrollbar-thumb,
 .t-hoverscroll:focus-within::-webkit-scrollbar-thumb {
-  background: var(--t-border);
+  background: color-mix(in srgb, var(--t-text3) 55%, transparent);
+  background-clip: padding-box;
+}
+/* Pointing straight at the bar darkens it further (matches the app default). */
+.t-hoverscroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--t-text3) 80%, transparent);
   background-clip: padding-box;
 }
 

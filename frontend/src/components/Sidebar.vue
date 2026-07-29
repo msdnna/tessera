@@ -368,9 +368,13 @@ async function deleteWorkspace() {
 /* Pin the expanded header height to the tool row's height. Otherwise the row
    collapses to the (shorter) logo height whenever the tools hide at the `narrow`
    breakpoint or the notification badge changes — and align-items:center then
-   nudges the wordmark vertically (visible jitter while dragging the sidebar). */
+   nudges the wordmark vertically (visible jitter while dragging the sidebar).
+   flex-shrink:0 is essential: the sidebar is a flex column that can overflow, and
+   without it the flex layout squeezes .brand down to its (tool-less) min-content,
+   defeating the fixed height. */
 .sidebar:not(.collapsed) .brand {
   height: 46px;
+  flex-shrink: 0;
 }
 .ws-switch > :first-child {
   flex: 1;

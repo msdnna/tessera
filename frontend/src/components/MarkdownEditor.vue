@@ -415,15 +415,10 @@ defineExpose({ getMentions, clear, focus })
 
 <template>
   <div class="md2" :class="{ 'md2-boxed': boxed }">
-    <!-- Default variant: top Написать / Просмотр tabs. The boxed composer moves
-         every control into the bottom toolbar instead (below the text). -->
+    <!-- Default variant: a slim top toolbar — insert actions plus a single
+         preview/edit toggle (replaces the old Написать / Просмотр tabs). The boxed
+         composer moves every control into the bottom toolbar instead. -->
     <div v-if="!boxed" class="md2-tabs">
-      <button type="button" :class="{ active: mode === 'write' }" @click="mode = 'write'">
-        Написать
-      </button>
-      <button type="button" :class="{ active: mode === 'preview' }" @click="mode = 'preview'">
-        Просмотр
-      </button>
       <span class="md2-spacer" />
       <template v-if="mode === 'write'">
         <button
@@ -444,6 +439,14 @@ defineExpose({ getMentions, clear, focus })
           <n-icon :component="GitNetworkOutline" :size="16" />
         </button>
       </template>
+      <button
+        type="button"
+        class="md2-act"
+        :title="mode === 'write' ? 'Предпросмотр' : 'Редактировать'"
+        @click="toggleMode"
+      >
+        <n-icon :component="mode === 'write' ? EyeOutline : CreateOutline" :size="16" />
+      </button>
     </div>
 
     <input ref="imgInput" type="file" accept="image/*" hidden @change="onImgFile" />
@@ -582,11 +585,11 @@ defineExpose({ getMentions, clear, focus })
 .md2 {
   width: 100%;
 }
-/* Mirror the modal's bottom n-tabs (line, small) for a unified look. */
+/* Slim top toolbar (insert actions + preview/edit toggle). */
 .md2-tabs {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 2px;
   margin-bottom: 6px;
 }
 .md2-spacer {
@@ -597,10 +600,11 @@ defineExpose({ getMentions, clear, focus })
   background: transparent;
   color: var(--t-text2);
   cursor: pointer;
-  padding: 2px 5px;
-  border-radius: 5px;
+  padding: 4px 6px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 .md2-act:hover {
   background: var(--t-hover);
@@ -610,24 +614,7 @@ defineExpose({ getMentions, clear, focus })
   opacity: 0.5;
   pointer-events: none;
 }
-.md2-tabs button {
-  border: none;
-  background: transparent;
-  color: var(--t-text2);
-  font-size: 14px;
-  padding: 0 0 6px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s ease;
-}
-.md2-tabs button:hover {
-  color: var(--t-text1);
-}
-.md2-tabs button.active {
-  color: var(--t-primary);
-  border-bottom-color: var(--t-primary);
-}
-/* Fade between Написать / Просмотр panes. */
+/* Fade between write / preview panes. */
 .md2-fade-enter-active,
 .md2-fade-leave-active {
   transition: opacity 0.15s ease;
