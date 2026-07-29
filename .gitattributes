@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# Windows-скрипты — CRLF
+*.ps1 text eol=crlf
+
+# Бинарные ассеты
+*.png binary
+*.ico binary
+*.icns binary
+*.jar binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
