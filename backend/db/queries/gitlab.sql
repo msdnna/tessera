@@ -226,6 +226,27 @@ ORDER BY m.gl_user_id, m.gl_name;
 SELECT gl_user_id FROM gitlab_project_members WHERE integration_id = $1 AND gl_username = $2;
 
 -- ── synced comments (idempotent by GitLab note id) ─────────
+-- ClaimPushedUserComment links a GitLab note back to the user's own comment that
+-- produced it, instead of importing it as a duplicate. When a comment is posted
+-- from Tessera the note gid is tagged asynchronously (SetCommentGlNoteID); if a
+-- pull races that worker, the note would otherwise be inserted as a new
+-- gitlab-sourced comment. This claims the most recent still-unlinked local user
+-- comment (author_id set, gl_note_id NULL) with the same body on the task, so the
+-- next pull dedups by gid. Returns the claimed comment id (no rows → not ours).
+-- name: ClaimPushedUserComment :one
+UPDATE task_comments
+SET gl_note_id = $2, updated_at = now()
+WHERE id = (
+    SELECT tc.id FROM task_comments tc
+    WHERE tc.task_id = $1
+      AND tc.gl_note_id IS NULL
+      AND tc.author_id IS NOT NULL
+      AND tc.body = $3
+    ORDER BY tc.created_at DESC
+    LIMIT 1
+)
+RETURNING id;
+
 -- UpsertGitlabComment returns whether the row was freshly inserted (xmax = 0) so
 -- the sync journal can count new comments rather than re-synced ones.
 -- name: UpsertGitlabComment :one

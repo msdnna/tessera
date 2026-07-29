@@ -49,6 +49,42 @@ func (q *Queries) AddTaskTagSourced(ctx context.Context, arg AddTaskTagSourcedPa
 	return result.RowsAffected(), nil
 }
 
+const claimPushedUserComment = `-- name: ClaimPushedUserComment :one
+UPDATE task_comments
+SET gl_note_id = $2, updated_at = now()
+WHERE id = (
+    SELECT tc.id FROM task_comments tc
+    WHERE tc.task_id = $1
+      AND tc.gl_note_id IS NULL
+      AND tc.author_id IS NOT NULL
+      AND tc.body = $3
+    ORDER BY tc.created_at DESC
+    LIMIT 1
+)
+RETURNING id
+`
+
+type ClaimPushedUserCommentParams struct {
+	TaskID   uuid.UUID `json:"task_id"`
+	GlNoteID *string   `json:"gl_note_id"`
+	Body     string    `json:"body"`
+}
+
+// ── synced comments (idempotent by GitLab note id) ─────────
+// ClaimPushedUserComment links a GitLab note back to the user's own comment that
+// produced it, instead of importing it as a duplicate. When a comment is posted
+// from Tessera the note gid is tagged asynchronously (SetCommentGlNoteID); if a
+// pull races that worker, the note would otherwise be inserted as a new
+// gitlab-sourced comment. This claims the most recent still-unlinked local user
+// comment (author_id set, gl_note_id NULL) with the same body on the task, so the
+// next pull dedups by gid. Returns the claimed comment id (no rows → not ours).
+func (q *Queries) ClaimPushedUserComment(ctx context.Context, arg ClaimPushedUserCommentParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, claimPushedUserComment, arg.TaskID, arg.GlNoteID, arg.Body)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createGitlabIntegration = `-- name: CreateGitlabIntegration :one
 
 INSERT INTO gitlab_integrations (
@@ -1079,7 +1115,6 @@ type UpsertGitlabCommentParams struct {
 	CreatedAt         time.Time `json:"created_at"`
 }
 
-// ── synced comments (idempotent by GitLab note id) ─────────
 // UpsertGitlabComment returns whether the row was freshly inserted (xmax = 0) so
 // the sync journal can count new comments rather than re-synced ones.
 func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabCommentParams) (bool, error) {

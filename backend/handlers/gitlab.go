@@ -1214,6 +1214,17 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []gitlab.Note) (added int, bodies []string) {
 	for _, n := range notes {
 		noteID := n.GlobalID
+		// First, try to link this note back to the user's own comment that produced
+		// it (posted from Tessera, gid not yet tagged by the async writeback worker).
+		// This avoids re-importing it as a duplicate gitlab-sourced comment when a
+		// pull races the push. Strip an optional Tessera marker footer so the stored
+		// (unmarked) body still matches.
+		claimBody := strings.TrimSuffix(n.Body, tesseraCommentMarker)
+		if _, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
+			TaskID: taskID, GlNoteID: &noteID, Body: claimBody,
+		}); cerr == nil {
+			continue // claimed our own pushed comment — nothing to insert
+		}
 		body := h.rewriteAssets(n.Body, wsID)
 		inserted, err := h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
 			TaskID: taskID, Body: body, GlNoteID: &noteID,
