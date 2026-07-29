@@ -363,6 +363,14 @@ async function deleteWorkspace() {
   gap: 10px;
   padding: 14px 12px 4px;
   min-width: 0;
+  box-sizing: border-box;
+}
+/* Pin the expanded header height to the tool row's height. Otherwise the row
+   collapses to the (shorter) logo height whenever the tools hide at the `narrow`
+   breakpoint or the notification badge changes — and align-items:center then
+   nudges the wordmark vertically (visible jitter while dragging the sidebar). */
+.sidebar:not(.collapsed) .brand {
+  height: 46px;
 }
 .ws-switch > :first-child {
   flex: 1;

@@ -796,7 +796,7 @@ watch(
         </template>
 
         <div class="gl-panes">
-          <div class="gl-left gl-scroll">
+          <div class="gl-left gl-scroll t-hoverscroll">
       <!-- ACCOUNT -->
       <section class="gl-sec">
         <h4 class="gl-h">Аккаунт</h4>
@@ -1034,7 +1034,7 @@ watch(
           </div>
           <!-- RIGHT PANE — expands the modal to edit the write-back actions or the
                GL→Tessera label-parsing rules. -->
-          <div v-if="rightMode" class="gl-right gl-scroll">
+          <div v-if="rightMode" class="gl-right gl-scroll t-hoverscroll">
             <div class="gl-right-head">
               <span class="gl-right-title">
                 {{ RIGHT_TITLES[rightMode] }}

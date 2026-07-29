@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NModal,
@@ -188,6 +188,7 @@ const membersById = computed(() =>
 )
 
 const comments = ref([])
+const detailTabs = ref(null)
 const newComment = ref('')
 const commentEditor = ref(null)
 const editingCommentId = ref(null)
@@ -253,6 +254,21 @@ const uploading = ref(false)
 
 const events = ref([])
 const meId = computed(() => auth.user?.id)
+
+// The tab counters load async (comments/relations/files fetched after the modal
+// opens). Naive measures the active-tab underline before the badge exists, so it
+// stops short of the counter until you switch tabs. Re-sync the bar whenever a
+// counter that can affect the active tab's width changes. Declared after all the
+// count refs so the watch's initial getter run doesn't hit a TDZ.
+watch(
+  () => [
+    comments.value.length,
+    relations.value.length,
+    attachments.value.length,
+    task.value?.subtasks?.length,
+  ],
+  () => nextTick(() => detailTabs.value?.syncBarPosition?.()),
+)
 
 const title = ref('')
 const description = ref('')
@@ -1444,16 +1460,19 @@ function eventText(e) {
           <!-- Subtasks / comments / relations / files / history (#8) -->
           <!-- Keyed by task so the line indicator doesn't slide when switching
                between a task and its subtask / related task. -->
-          <n-tabs :key="taskId" type="line" size="small" class="detail-tabs">
+          <n-tabs ref="detailTabs" :key="taskId" type="line" size="small" class="detail-tabs">
             <n-tab-pane name="comments">
               <template #tab>
-                Комментарии
-                <n-badge
-                  v-if="comments.length"
-                  :value="comments.length"
-                  :max="99"
-                  class="tab-badge"
-                />
+                <span class="tab-lbl">
+                  <n-icon :component="ChatbubbleEllipsesOutline" :size="15" class="tab-ico" />
+                  Комментарии
+                  <n-badge
+                    v-if="comments.length"
+                    :value="comments.length"
+                    :max="99"
+                    class="tab-badge"
+                  />
+                </span>
               </template>
               <div class="comments">
                 <div class="c-list">
@@ -1490,6 +1509,7 @@ function eventText(e) {
                     <template v-if="editingCommentId === c.id">
                       <MarkdownEditor
                         v-model="editingCommentBody"
+                        variant="boxed"
                         :mention-items="mentionItems"
                         :min-rows="2"
                         placeholder="Комментарий…"
@@ -1524,25 +1544,29 @@ function eventText(e) {
                   <MarkdownEditor
                     ref="commentEditor"
                     v-model="newComment"
+                    variant="boxed"
+                    send
                     :mention-items="mentionItems"
-                    :min-rows="1"
+                    :min-rows="3"
                     placeholder="Написать комментарий… (@ — упоминание, Ctrl+Enter — отправить)"
                     @submit="postComment"
                   />
-                  <n-button size="small" type="primary" @click="postComment">Отправить</n-button>
                 </div>
               </div>
             </n-tab-pane>
 
             <n-tab-pane name="subtasks">
               <template #tab>
-                Подзадачи
-                <n-badge
-                  v-if="task?.subtasks?.length"
-                  :value="task.subtasks.length"
-                  :max="99"
-                  class="tab-badge"
-                />
+                <span class="tab-lbl">
+                  <n-icon :component="GitBranchOutline" :size="15" class="tab-ico" />
+                  Подзадачи
+                  <n-badge
+                    v-if="task?.subtasks?.length"
+                    :value="task.subtasks.length"
+                    :max="99"
+                    class="tab-badge"
+                  />
+                </span>
               </template>
               <div class="subtasks">
                 <n-popover
@@ -1593,13 +1617,16 @@ function eventText(e) {
 
             <n-tab-pane name="relations">
               <template #tab>
-                Связи
-                <n-badge
-                  v-if="relations.length"
-                  :value="relations.length"
-                  :max="99"
-                  class="tab-badge"
-                />
+                <span class="tab-lbl">
+                  <n-icon :component="GitMergeOutline" :size="15" class="tab-ico" />
+                  Связи
+                  <n-badge
+                    v-if="relations.length"
+                    :value="relations.length"
+                    :max="99"
+                    class="tab-badge"
+                  />
+                </span>
               </template>
               <div class="relations">
                 <div v-for="r in relations" :key="r.id" class="relrow">
@@ -1681,13 +1708,16 @@ function eventText(e) {
 
             <n-tab-pane name="files">
               <template #tab>
-                Файлы
-                <n-badge
-                  v-if="attachments.length"
-                  :value="attachments.length"
-                  :max="99"
-                  class="tab-badge"
-                />
+                <span class="tab-lbl">
+                  <n-icon :component="AttachOutline" :size="15" class="tab-ico" />
+                  Файлы
+                  <n-badge
+                    v-if="attachments.length"
+                    :value="attachments.length"
+                    :max="99"
+                    class="tab-badge"
+                  />
+                </span>
               </template>
               <div class="files">
                 <div v-for="a in attachments" :key="a.id" class="filerow">
@@ -1724,7 +1754,13 @@ function eventText(e) {
               </div>
             </n-tab-pane>
 
-            <n-tab-pane name="history" tab="История">
+            <n-tab-pane name="history">
+              <template #tab>
+                <span class="tab-lbl">
+                  <n-icon :component="TimeOutline" :size="15" class="tab-ico" />
+                  История
+                </span>
+              </template>
               <div class="history">
                 <div v-for="e in events" :key="e.id" class="histrow">
                   <UserAvatar class="h-ava" :user-id="e.actor_id" :name="e.actor_name" />
@@ -2418,8 +2454,20 @@ function eventText(e) {
 .detail-tabs :deep(.n-tabs-bar) {
   background: var(--t-accent-grad);
 }
+/* Tab label = icon + text + counter on one baseline. The icon inherits the tab's
+   text color (currentColor), so the active tab's icon turns accent automatically,
+   matching the text and counter. */
+.tab-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-lbl .tab-ico {
+  /* inherit currentColor (tab text) — accent when active, dim otherwise */
+  opacity: 0.9;
+}
 .tab-badge {
-  margin-left: 6px;
+  margin-left: 0;
 }
 /* Accent (not naive's default red) tab counters, matching the Android client —
    a small fixed circle (not naive's oversized pill). */

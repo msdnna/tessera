@@ -1,7 +1,14 @@
 <script setup>
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { NIcon, useMessage } from 'naive-ui'
-import { LinkOutline, ImageOutline, GitNetworkOutline } from '@vicons/ionicons5'
+import {
+  LinkOutline,
+  ImageOutline,
+  GitNetworkOutline,
+  EyeOutline,
+  CreateOutline,
+  SendOutline,
+} from '@vicons/ionicons5'
 import { uploads as uploadsApi } from '@/api'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { isTauri } from '@/utils/serverBase'
@@ -19,11 +26,24 @@ const props = defineProps({
   // 'write' | 'preview' — sets the initial tab (re-applied when it changes,
   // e.g. when a different task loads). User tab clicks override locally.
   initialMode: { type: String, default: 'write' },
+  // 'default' — bare editor with top Написать/Просмотр tabs (task description).
+  // 'boxed' — framed composer with a persistent bottom toolbar and an in-place
+  // preview toggle (a reference tracker-style comment box).
+  variant: { type: String, default: 'default' },
+  // Boxed only: show a send button in the toolbar that emits `submit`.
+  send: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'submit', 'blur', 'persist'])
 
 const message = useMessage()
+const boxed = computed(() => props.variant === 'boxed')
 const mode = ref(props.initialMode) // 'write' | 'preview'
+function toggleMode() {
+  mode.value = mode.value === 'write' ? 'preview' : 'write'
+}
+function onSend() {
+  emit('submit')
+}
 watch(
   () => props.initialMode,
   (m) => {
@@ -394,8 +414,10 @@ defineExpose({ getMentions, clear, focus })
 </script>
 
 <template>
-  <div class="md2">
-    <div class="md2-tabs">
+  <div class="md2" :class="{ 'md2-boxed': boxed }">
+    <!-- Default variant: top Написать / Просмотр tabs. The boxed composer moves
+         every control into the bottom toolbar instead (below the text). -->
+    <div v-if="!boxed" class="md2-tabs">
       <button type="button" :class="{ active: mode === 'write' }" @click="mode = 'write'">
         Написать
       </button>
@@ -426,6 +448,7 @@ defineExpose({ getMentions, clear, focus })
 
     <input ref="imgInput" type="file" accept="image/*" hidden @change="onImgFile" />
 
+    <div class="md2-body">
     <Transition name="md2-fade" mode="out-in" @after-enter="autoGrow">
     <div v-if="mode === 'write'" key="write" class="md2-write">
       <textarea
@@ -494,6 +517,63 @@ defineExpose({ getMentions, clear, focus })
       @toggle="onToggleCheck"
     />
     </Transition>
+
+    <!-- Boxed variant: persistent toolbar under the text (formatting is still also
+         available via the selection bubble). mousedown.prevent keeps the caret /
+         selection in the textarea so the format buttons act on it. -->
+    <div v-if="boxed" class="md2-toolbar">
+      <template v-if="mode === 'write'">
+        <button
+          v-for="b in tools"
+          :key="b.title"
+          type="button"
+          class="md2-tbtn"
+          :class="b.cls"
+          :title="b.title"
+          @mousedown.prevent="b.fn"
+        >
+          <n-icon v-if="b.icon" :component="b.icon" :size="15" />
+          <template v-else>{{ b.t }}</template>
+        </button>
+        <span class="md2-tsep" />
+        <button
+          type="button"
+          class="md2-tbtn"
+          :class="{ busy: uploading }"
+          title="Вставить изображение"
+          @mousedown.prevent="pickImage"
+        >
+          <n-icon :component="ImageOutline" :size="16" />
+        </button>
+        <button
+          type="button"
+          class="md2-tbtn"
+          title="Вставить Mermaid-диаграмму"
+          @mousedown.prevent="insertMermaid"
+        >
+          <n-icon :component="GitNetworkOutline" :size="16" />
+        </button>
+      </template>
+      <span class="md2-spacer" />
+      <button
+        type="button"
+        class="md2-tbtn"
+        :title="mode === 'write' ? 'Предпросмотр' : 'Редактировать'"
+        @mousedown.prevent="toggleMode"
+      >
+        <n-icon :component="mode === 'write' ? EyeOutline : CreateOutline" :size="16" />
+      </button>
+      <button
+        v-if="send"
+        type="button"
+        class="md2-send"
+        title="Отправить (Ctrl+Enter)"
+        @mousedown.prevent="onSend"
+      >
+        <n-icon :component="SendOutline" :size="16" />
+      </button>
+    </div>
+    </div>
   </div>
 </template>
 
@@ -697,5 +777,82 @@ defineExpose({ getMentions, clear, focus })
 .md2-preview {
   padding: 2px 0;
   min-height: calc(v-bind(minRows) * 1.55em);
+}
+
+/* ── boxed composer (comments) ── */
+.md2-boxed .md2-body {
+  border: 1px solid var(--t-border);
+  border-radius: 10px;
+  background: var(--t-surface);
+  padding: 8px 10px;
+  transition: border-color 0.15s ease;
+}
+.md2-boxed .md2-body:focus-within {
+  border-color: var(--t-primary);
+}
+.md2-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--t-border);
+}
+.md2-tbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t-text2);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.md2-tbtn:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.md2-tbtn.busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.md2-tbtn.b {
+  font-weight: 700;
+}
+.md2-tbtn.i {
+  font-style: italic;
+}
+.md2-tbtn.s {
+  text-decoration: line-through;
+}
+.md2-tsep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--t-border);
+}
+.md2-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+  margin-left: 4px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.md2-send:hover {
+  filter: brightness(1.06);
 }
 </style>

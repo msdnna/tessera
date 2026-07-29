@@ -460,6 +460,39 @@ body {
    inherits max-height from the menu element, so the long list scrolls in place. */
 .n-dropdown-menu--scrollable {
   max-height: 72vh;
+  /* Keep the scroll momentum inside the menu: without this, reaching the end of a
+     long facet list (e.g. the milestone filter) chains the scroll into the board
+     work area and nudges it a few px — a visible jitter. */
+  overscroll-behavior: contain;
+}
+
+/* Reusable auto-hide scrollbar: gutter is always reserved (no reflow when the bar
+   reveals), thumb stays transparent until hover / focus-within. Mirrors the task
+   modal's .tm-col-* columns; applied to kanban columns (.drop) and the GitLab
+   modal panes (.gl-scroll). */
+.t-hoverscroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.15s ease;
+}
+.t-hoverscroll:hover,
+.t-hoverscroll:focus-within {
+  scrollbar-color: var(--t-border) transparent;
+}
+.t-hoverscroll::-webkit-scrollbar {
+  width: 10px;
+}
+.t-hoverscroll::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  border: 3px solid transparent;
+  background: transparent;
+  background-clip: padding-box;
+}
+.t-hoverscroll:hover::-webkit-scrollbar-thumb,
+.t-hoverscroll:focus-within::-webkit-scrollbar-thumb {
+  background: var(--t-border);
+  background-clip: padding-box;
 }
 
 /* Mobile composer "+" drill-in menu: full-width rows so the right-side drill

@@ -491,7 +491,7 @@ const groupModeLabel = computed(() => {
   if (groupMode.value === 'none') return 'Без группировки'
   if (groupMode.value === 'milestone') return 'Этап'
   if (groupMode.value === 'tag')
-    return `Тег${tagPrefix.value ? ` ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
+    return `Тег${tagPrefix.value ? ` · ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
   return 'Статус'
 })
 const addOptions = computed(() => {
@@ -1119,7 +1119,10 @@ function closeTask() {
   }
 }
 
-const dragging = ref(false) // reactive: also shown to cards for the nest dropzone
+const dragging = ref(false) // any drag (column OR card): autoscroll, reload guard, reveal
+// Card-only drag: gates the per-card subtask nest dropzone hint. A column drag must
+// NOT flip this, otherwise every childless card flashes a dashed drop hint.
+const draggingCard = ref(false)
 let suppressReloadUntil = 0
 function suppress() {
   suppressReloadUntil = Date.now() + 1500
@@ -1183,6 +1186,12 @@ function autoScrollTick() {
   }
   edgeRAF = requestAnimationFrame(autoScrollTick)
 }
+// Card drag adds the nest-hint flag on top of the shared drag setup; column drag
+// calls onDragStart directly and leaves draggingCard false.
+function onCardDragStart() {
+  draggingCard.value = true
+  onDragStart()
+}
 function onDragStart() {
   dragging.value = true
   pointerX = null
@@ -1200,6 +1209,7 @@ function onDragStart() {
 }
 function onDragEnd() {
   dragging.value = false
+  draggingCard.value = false
   pointerX = null
   const el = boardScroll.value
   if (el) {
@@ -2145,7 +2155,7 @@ async function restoreFromArchive(taskId) {
                 :list="lists[dcol.key]"
                 group="tasks"
                 item-key="id"
-                class="drop"
+                class="drop t-hoverscroll"
                 ghost-class="ghost"
                 filter=".add-sub, .sub-add-input"
                 :prevent-on-filter="false"
@@ -2154,7 +2164,7 @@ async function restoreFromArchive(taskId) {
                 :delay="160"
                 :delay-on-touch-only="true"
                 :touch-start-threshold="6"
-                @start="onDragStart"
+                @start="onCardDragStart"
                 @end="onDragEnd"
                 @change="onColChange($event, dcol)"
               >
@@ -2170,7 +2180,7 @@ async function restoreFromArchive(taskId) {
                       :task="element"
                       :subtasks="sortedSubtasksByParent[element.id] || []"
                       :subtasks-expanded="subtasksExpanded"
-                      :dragging="dragging"
+                      :dragging="draggingCard"
                       :columns="columns"
                       :tags-map="tagsMap"
                       :members-map="membersMap"
