@@ -47,6 +47,10 @@ import {
   GitMerge,
   Attach,
   Time,
+  ImageOutline,
+  GitNetworkOutline,
+  EyeOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -121,6 +125,10 @@ const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 // ── rich detail (#8): comments, relations, files, journal
 // Open an existing description on the Preview tab; an empty one on Write.
 const descInitialMode = ref('write')
+// The description editor's toolbar lives in the section header (.desc-head); we drive
+// it through the editor ref and mirror its write/preview mode here for the toggle icon.
+const descEditor = ref(null)
+const descMode = ref('write')
 
 // ── wide-screen split pane: draggable divider between the left (properties +
 // description) and right (tabs) columns, ratio persisted in localStorage. Only
@@ -1427,16 +1435,35 @@ function eventText(e) {
           <div class="section">
             <div class="desc-head">
               <span class="slabel">Описание</span>
-              <n-select
-                v-if="task && !task.gitlab && props.gitlabFetchTemplates && glTemplates.length"
-                v-model:value="glTemplate"
-                :options="glTemplateOptions"
-                size="small"
-                clearable
-                placeholder="Шаблон issue…"
-                class="tpl-select"
-                @update:value="applyGlTemplate"
-              />
+              <div class="desc-head-r">
+                <n-select
+                  v-if="task && !task.gitlab && props.gitlabFetchTemplates && glTemplates.length"
+                  v-model:value="glTemplate"
+                  :options="glTemplateOptions"
+                  size="small"
+                  clearable
+                  placeholder="Шаблон issue…"
+                  class="tpl-select"
+                  @update:value="applyGlTemplate"
+                />
+                <div v-if="!readonly" class="desc-acts">
+                  <template v-if="descMode === 'write'">
+                    <button class="desc-act" title="Вставить изображение" @click="descEditor?.pickImage()">
+                      <n-icon :component="ImageOutline" :size="16" />
+                    </button>
+                    <button class="desc-act" title="Вставить Mermaid-диаграмму" @click="descEditor?.insertMermaid()">
+                      <n-icon :component="GitNetworkOutline" :size="16" />
+                    </button>
+                  </template>
+                  <button
+                    class="desc-act"
+                    :title="descMode === 'write' ? 'Предпросмотр' : 'Редактировать'"
+                    @click="descEditor?.toggleMode()"
+                  >
+                    <n-icon :component="descMode === 'write' ? EyeOutline : CreateOutline" :size="16" />
+                  </button>
+                </div>
+              </div>
             </div>
             <RichContent
               v-if="readonly"
@@ -1445,11 +1472,14 @@ function eventText(e) {
             />
             <MarkdownEditor
               v-else
+              ref="descEditor"
               :key="taskId"
               v-model="description"
+              :toolbar="false"
               placeholder="Добавьте описание…"
               :min-rows="3"
               :initial-mode="descInitialMode"
+              @update:mode="descMode = $event"
               @blur="saveDesc"
               @persist="saveDesc"
             />
@@ -1999,8 +2029,34 @@ function eventText(e) {
   justify-content: space-between;
   gap: 8px;
 }
+.desc-head-r {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .desc-head .tpl-select {
   width: 200px;
+}
+.desc-acts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.desc-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.desc-act:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
 }
 .gl-author {
   color: var(--t-text3);

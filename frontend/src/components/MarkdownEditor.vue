@@ -32,12 +32,17 @@ const props = defineProps({
   variant: { type: String, default: 'default' },
   // Boxed only: show a send button in the toolbar that emits `submit`.
   send: { type: Boolean, default: false },
+  // Default variant only: render the built-in top toolbar. Set false to host the
+  // actions elsewhere (e.g. the description's header) via the exposed methods +
+  // `update:mode` — see TaskModal's .desc-head.
+  toolbar: { type: Boolean, default: true },
 })
-const emit = defineEmits(['update:modelValue', 'submit', 'blur', 'persist'])
+const emit = defineEmits(['update:modelValue', 'submit', 'blur', 'persist', 'update:mode'])
 
 const message = useMessage()
 const boxed = computed(() => props.variant === 'boxed')
 const mode = ref(props.initialMode) // 'write' | 'preview'
+watch(mode, (m) => emit('update:mode', m), { immediate: true })
 function toggleMode() {
   mode.value = mode.value === 'write' ? 'preview' : 'write'
 }
@@ -410,7 +415,7 @@ function clear() {
 function focus() {
   ta.value?.focus()
 }
-defineExpose({ getMentions, clear, focus })
+defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode })
 </script>
 
 <template>
@@ -418,7 +423,7 @@ defineExpose({ getMentions, clear, focus })
     <!-- Default variant: a slim top toolbar — insert actions plus a single
          preview/edit toggle (replaces the old Написать / Просмотр tabs). The boxed
          composer moves every control into the bottom toolbar instead. -->
-    <div v-if="!boxed" class="md2-tabs">
+    <div v-if="!boxed && toolbar" class="md2-tabs">
       <span class="md2-spacer" />
       <template v-if="mode === 'write'">
         <button
