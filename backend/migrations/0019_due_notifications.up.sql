@@ -13,7 +13,7 @@ CREATE TABLE notification_prefs (
 );
 
 -- Per-task overrides (NULL = inherit the user default). Set from the card's due
--- popover (a reference tracker-style).
+-- popover.
 ALTER TABLE tasks ADD COLUMN due_lead_minutes   integer;
 ALTER TABLE tasks ADD COLUMN due_repeat_minutes integer;
 ALTER TABLE tasks ADD COLUMN due_notify_enabled boolean;

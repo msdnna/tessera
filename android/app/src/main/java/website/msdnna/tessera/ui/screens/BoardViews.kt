@@ -1417,7 +1417,7 @@ private fun ColumnGhost(lane: Lane, state: BoardUiState, vm: BoardViewModel) {
 }
 
 // ── Timeline view ─────────────────────────────────────────────────────────
-// A horizontal time-axis (a reference tracker Timeline): swimlanes of start→due bars on a
+// A horizontal time-axis (timeline view): swimlanes of start→due bars on a
 // scrollable day grid with a «today» line. Read + tap-to-open — rescheduling is
 // done in the task's due popover (which edits both start and due). In-bar drag is
 // deliberately skipped (same call as the matrix: the board drag system is 1D-lane

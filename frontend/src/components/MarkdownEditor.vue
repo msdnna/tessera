@@ -28,7 +28,7 @@ const props = defineProps({
   initialMode: { type: String, default: 'write' },
   // 'default' — bare editor with top Написать/Просмотр tabs (task description).
   // 'boxed' — framed composer with a persistent bottom toolbar and an in-place
-  // preview toggle (a reference tracker-style comment box).
+  // preview toggle (boxed comment composer).
   variant: { type: String, default: 'default' },
   // Boxed only: show a send button in the toolbar that emits `submit`.
   send: { type: Boolean, default: false },

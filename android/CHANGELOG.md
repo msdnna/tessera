@@ -289,7 +289,7 @@ All notable changes to the Android app. Versioned independently via
   «в работе» (contrast). Новый bundled-ассет `assets/ionicons/status_review.svg`.
 
 ## 0.42.0 — 2026-07-09
-- **UX карточки в стиле a reference tracker** — паритет web 0.117.0–0.117.2:
+- **Новый UX карточки** — паритет web 0.117.0–0.117.2:
   - Заголовок в 2 строки + отдельная мета-строка с `#номером` задачи.
   - Пилюля-индикатор описания (`DescriptionPill`): показывается только при наличии
     описания, тап открывает поповер с отрендеренным markdown (веб-ховер → тап, т.к.
@@ -1000,7 +1000,7 @@ cards). Card interactions stay smooth where they used to freeze.
 
 ## 0.6.0 — 2026-06-12
 Board-toolbar parity, part 3 — the full web composer scope. The board toolbar is
-now a **composer bar** matching the web (a reference tracker/GitLab-style): grouping, sort and
+now a **composer bar** matching the web: grouping, sort and
 filters render as removable chips, with an add menu and an inline title search;
 a subtasks toggle and a saved-views popover sit to its right.
 - **Multi-level sort**: an ordered list of sort levels (Приоритет / Срок /

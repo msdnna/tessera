@@ -15,14 +15,14 @@ frontend `0.114.0` · android `0.41.0`. Следующая миграция — 
 | 0 | Фундамент (монорепо, docker-compose, gin-скелет, pgx-pool, WS-hub, migrate, Makefile, CHANGELOG) | ✅ |
 | 1 | Backend модель + API (домен, sqlc, auth JWT+refresh, scope-авторизация, M:N, midpoint-позиции) | ✅ |
 | 2 | Frontend каркас (Vue3+Vite+Naive+Pinia+Router, api refresh-on-401, sidebar, auth, read-only board) | ✅ |
-| 3 | Оформление (7 акцентных схем + свет/тьма, `--t-*` токены, адаптив, a reference tracker-полировка) | ✅ |
+| 3 | Оформление (7 акцентных схем + свет/тьма, `--t-*` токены, адаптив, полировка UI) | ✅ |
 | 4 | Канбан (DnD задач, realtime reload, модалка задачи, **killer-фича: статусы/теги-режим**) | ✅ |
 | 5 | Богатый функционал (кастомизация колонок, заметки, напоминания — хранилище+UI) | ✅ |
 | 6 | Коллаборация/realtime (участники+роли, инвайты, activity-лента, WS-уведомления) | ✅ |
 | 7 | Тесты/CI (backend unit, vitest, GitHub Actions ci.yml) | ✅ |
 | 8 | **Android** (Kotlin Compose, online-first, повторяет web-моб; self-update) | ✅ паритет с web (итеративно, 0.21.x) |
 | 9 | Деплой (multi-stage Dockerfile, nginx-прокси, distroless backend, prod-compose) | ✅ **LIVE в проде** (tessera.msdnna.website, 2026-06-18) |
-| 10 | a reference tracker UX-overhaul (вложенные группы, sidebar-дерево, inline-доска, теги на лету, редизайн карточек) | ✅ (итеративно) |
+| 10 | UX-overhaul (вложенные группы, sidebar-дерево, inline-доска, теги на лету, редизайн карточек) | ✅ (итеративно) |
 
 Подробные подпункты и гочи каждой фазы — в auto-memory `project-phase-plan`.
 
@@ -235,7 +235,7 @@ no-op mailer заменён рабочим SMTP. Долгая сага прот�
   тегов на web и Android. Редактируется (пока) из GitLab-модалки. См. [[project-tag-prefix-names]].
   **Бэклог:** редактирование префиксов пользовательских тегов в TagManager (не только через GitLab).
 
-### 12. Повторяющиеся задачи — полный паритет с a reference tracker — ✅ СДЕЛАНО (backend 0.46–0.47, web 0.77–0.78.2, android 0.19–0.20.1, 2026-06-19)
+### 12. Повторяющиеся задачи — полный функционал — ✅ СДЕЛАНО (backend 0.46–0.47, web 0.77–0.78.2, android 0.19–0.20.1, 2026-06-19)
 mig **0027** (jsonb `tasks.recurrence`, `internal/recur` + тесты).
 - **Полный набор правил:** freq `daily|weekly|monthly|yearly|custom` (custom = выбранные на календаре
   даты) + `interval` + weekly `weekdays` + day/month-якорь (30-е переживает февраль).
@@ -266,7 +266,7 @@ mig **0027** (jsonb `tasks.recurrence`, `internal/recur` + тесты).
 
 ## 14. Новые представления доски — Гант / Таймлайн / Матрица Эйзенхауэра — ✅ СДЕЛАНО (все три, оба клиента)
 Расширяем набор представлений (сейчас `board`/`list`/`calendar`) тремя новыми. **Делаем по одному
-в полном функционале (по референсу a reference tracker 4 / a reference tracker), не «по минимуму»; на каждом клиенте (web +
+в полном функционале, не «по минимуму»; на каждом клиенте (web +
 Android).** Решение — 2026-06-19.
 
 **Точки расширения (готовы, без переделок):**
@@ -289,7 +289,7 @@ Android).** Решение — 2026-06-19.
 1. **Матрица Эйзенхауэра** — ✅ СДЕЛАНО (backend 0.48.0 / web 0.79.1 / android 0.22.1, 2026-06-19).
    2×2 (Важно×Срочно). Квадрант *выводится* из полей — ось **Важно** = priority≥high, ось
    **Срочно** = `due_date` в пределах окна (дефолт 7 дней / просрочено). **derive + ручной override**
-   (полный a reference tracker-вариант): nullable `eisenhower_quadrant` (миграция **0028**), `PATCH
+   (полный вариант): nullable `eisenhower_quadrant` (миграция **0028**), `PATCH
    /tasks/:id/eisenhower {quadrant:0-3|null}` (null = «вернуть на авто»). Показывает только **открытые**
    задачи. **Web** — полноразмерный `TaskCard`, drag между квадрантами (vuedraggable) + hover-пин
    «вручную» + per-quadrant «＋» (авто-фокус, бордер). **Android** — **компактная** карточка (полный

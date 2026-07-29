@@ -1518,7 +1518,7 @@ async function onColChange(evt, dcol) {
   }
 }
 
-// ── inline task creation (a reference tracker-style "+ New task" at column bottom) ──
+// ── inline task creation ("+ New task" at column bottom) ──
 const addingInColumn = ref(null) // dcol.key currently adding into
 const newTaskTitle = ref('')
 const taskInput = ref(null)
@@ -2743,7 +2743,7 @@ async function restoreFromArchive(taskId) {
      TOP accent: the top border is transparent and reveals the gradient painted
      on the border-box (wrapping the rounded top corners); the other borders stay
      the opaque neutral colour, and padding-box carries a soft same-hue wash of the
-     column colour (a reference tracker-style, ~6%; neutral columns fall back to flat surface).
+     column colour (~6%; neutral columns fall back to flat surface).
      The side/bottom border carries a muted tint of the column colour (~12%, a touch
      stronger than the wash so it doesn't melt into the fill); neutral columns keep
      the flat neutral border. */

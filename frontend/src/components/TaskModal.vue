@@ -1946,7 +1946,7 @@ function eventText(e) {
     display: block;
     min-width: 0;
   }
-  /* Independent scroll per column (a reference tracker-style); footer lives in the card's
+  /* Independent scroll per column; footer lives in the card's
      #footer slot so it stays pinned full-width. Viewport-based cap avoids
      depending on the n-card/n-spin height cascade. */
   .tm-col-left,

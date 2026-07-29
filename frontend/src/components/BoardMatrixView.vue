@@ -97,7 +97,7 @@ async function resetAuto(t) {
   }
 }
 
-// ── per-quadrant quick add (a reference tracker-style «＋») ──────────────────
+// ── per-quadrant quick add («＋») ──────────────────
 const addingIn = ref(-1)
 const newTitle = ref('')
 const addInput = ref(null)

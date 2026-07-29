@@ -58,7 +58,7 @@ val DarkPalette = TesseraColors(
 )
 
 /**
- * Accent scheme (a reference tracker-style). Ported from `frontend/src/stores/theme.js`
+ * Accent scheme. Ported from `frontend/src/stores/theme.js`
  * `COLOR_THEMES`. Default = purple.
  */
 data class AccentTheme(

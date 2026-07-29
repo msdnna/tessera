@@ -12,7 +12,7 @@ import {
 } from '@vicons/ionicons5'
 import UserAvatar from './UserAvatar.vue'
 
-// A transient, bottom-left stack of board-activity toasts (a reference tracker-style): who
+// A transient, bottom-left stack of board-activity toasts: who
 // did what on the board you're looking at, with quick Open / Copy-link actions.
 // Deliberately NOT the bell notification centre — this only mirrors live board
 // activity and never persists. KanbanBoard feeds it via the exposed push().

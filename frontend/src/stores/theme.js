@@ -4,7 +4,7 @@ import { darkTheme } from 'naive-ui'
 import { DARK, LIGHT } from '@/styles/tokens'
 import { users } from '@/api'
 
-// Multi-color accent schemes (a reference tracker-style). Default = purple.
+// Multi-color accent schemes. Default = purple.
 export const COLOR_THEMES = [
   {
     name: 'Фиолетовый',

@@ -1,5 +1,5 @@
 -- Phase 1 — core domain model.
--- Ordering: float8 `position` (classic kanban-style midpoint between neighbours).
+-- Ordering: float8 `position` (midpoint between neighbours).
 -- Simpler/safer than string LexoRank; rebalance on precision exhaustion is a
 -- deferred concern (columns rarely exceed dozens of cards in this app).
 

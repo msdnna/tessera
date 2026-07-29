@@ -10,12 +10,12 @@
 ## Что это
 
 **Tessera** — таск-трекер экосистемы **msdnna** (живёт рядом с `budget-go`, зеркалит
-его структуру и конвенции): задачи, заметки, напоминания. Замена a reference tracker v3.
+его структуру и конвенции): задачи, заметки, напоминания.
 
 **Killer-фича:** канбан-доска с **группировкой по тегам** (колонки = теги). Этого
 нет у аналогов — не ломать.
 
-**UX-референс:** a reference tracker v3 — слева дерево проектов (sidebar), по центру канбан,
+**UX:** слева дерево проектов (sidebar), по центру канбан,
 управление единицами в **модальных окнах**. Адаптив десктоп/мобильный веб,
 светлая/тёмная темы, 7 акцентных схем (default — purple `#7c5cff`).
 
@@ -51,7 +51,7 @@ deploy/     прод-деплой (по мере необходимости)
   Схема для sqlc берётся из `migrations/*.up.sql`. **Не редактировать `internal/db/` руками.**
 - `migrations/NNNN_name.{up,down}.sql` — golang-migrate, embed через `migrations/embed.go`.
 - `cmd/migrate` — раннер миграций. `config/` fail-closed в проде.
-- Порядок карточек/колонок — **float8 midpoint** (classic kanban-style `positionBetween`), НЕ integer order.
+- Порядок карточек/колонок — **float8 midpoint** (`positionBetween`), НЕ integer order.
 
 ### Frontend-раскладка
 - `src/components/` (Kanban, TaskCard, TaskModal, Sidebar*, MarkdownEditor, …),

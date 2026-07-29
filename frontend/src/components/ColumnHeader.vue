@@ -25,7 +25,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['changed', 'set-done', 'toggle-collapse'])
 
-// a reference tracker-style status glyph from the Tessera icon pack: done = check circle,
+// Status glyph from the Tessera icon pack: done = check circle,
 // first = empty circle, review = ⅔-pie, other middle = in-progress (half). Filled
 // for done so it stands out; the glyph is tinted flat with the column colour (matches
 // the pack preview). Review columns are detected by name (no explicit column type).

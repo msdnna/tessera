@@ -44,7 +44,7 @@ description: Add or change a Tessera backend endpoint/feature — the full loop 
 - Метод на `*API` в `handlers/<resource>.go`. Используй общие хелперы из `api.go`:
   - `h.requireMember(c, workspaceID)` — авторизация по членству в workspace (пишет 403, возвращает bool).
     Для вложенных ресурсов резолвь workspace через scope-запросы (`db/queries/scope.sql`).
-  - `h.positionBetween(prev, next)` — float8-midpoint позиция (classic kanban-style) для порядка
+  - `h.positionBetween(prev, next)` — float8-midpoint позиция для порядка
     карточек/колонок; ручки move принимают `before_id`/`after_id`.
   - `h.broadcast(...)` — отправить domain-событие в WS-hub (scope = workspace id) для realtime.
   - `parseID` / `notFound` / `fail` — парсинг UUID и единообразные ошибки.

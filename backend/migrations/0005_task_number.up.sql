@@ -1,4 +1,4 @@
--- Per-workspace sequential task numbers (a reference tracker-style #N).
+-- Per-workspace sequential task numbers (#N).
 ALTER TABLE workspaces ADD COLUMN task_counter bigint NOT NULL DEFAULT 0;
 ALTER TABLE tasks ADD COLUMN number bigint;
 

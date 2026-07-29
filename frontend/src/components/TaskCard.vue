@@ -635,7 +635,7 @@ async function submitAddSub() {
           <n-icon :component="ArrowUndoOutline" :size="15" />
         </button>
       </div>
-      <!-- hover quick-actions (a reference tracker-style): complete · add subtask · more.
+      <!-- hover quick-actions: complete · add subtask · more.
            Hidden while renaming (they'd overlap the inline editor). On touch
            (no hover) complete + more persist — see @media(hover:none). -->
       <div v-if="!nested && !editingTitle && !readonly" class="card-actions" @click.stop>
@@ -1235,7 +1235,7 @@ async function submitAddSub() {
   color: #b5792a;
 }
 /* Hover action bar — floats over the card's top-right corner; revealed on hover
-   (or keyboard focus within the card). Sits above the title, a reference tracker-style. */
+   (or keyboard focus within the card). Sits above the title. */
 .card-actions {
   position: absolute;
   top: 6px;

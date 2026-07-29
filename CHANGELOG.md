@@ -51,7 +51,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   вставки изображения/диаграммы. Предпросмотр заполненного описания сохранён.
 
 ### [0.145.0] — 2026-07-29
-- **Композер комментария переработан в дружелюбный вид (a reference tracker-подобный).** Textarea
+- **Композер комментария переработан в дружелюбный вид.** Textarea
   теперь оформлен видимым боксом (бордер + accent-фокус), под ним постоянный тулбар
   форматирования (B/I/S/код/заголовок/список/цитата/ссылка + картинка + Mermaid),
   предпросмотр — кнопкой-глазом прямо в тулбаре (вместо табов «Написать/Просмотр»),
@@ -158,7 +158,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ### [0.141.0] — 2026-07-29
 - **Двухсекционная модалка задачи на широком экране.** На вьюпортах ≥1100px
-  модалка задачи раскладывается в две колонки (a reference tracker-style): слева — свойства и
+  модалка задачи раскладывается в две колонки: слева — свойства и
   описание, справа — комментарии и остальные табы (подзадачи/связи/файлы/история),
   каждая колонка скроллится независимо. Кнопки внизу (в архив/удалить/отмена/сохранить)
   остаются во всю ширину. На узких экранах — прежняя одноколоночная раскладка без
@@ -465,7 +465,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ### [0.123.0] — 2026-07-09
 - **Канбан — доводка визуала колонок:**
-  - **Тонирование фона колонок** цветом колонки (a reference tracker-style): тело колонки несёт
+  - **Тонирование фона колонок** цветом колонки: тело колонки несёт
     очень лёгкий вош своего цвета (`color-mix ... 6%`, как на матрице); бесцветные
     колонки остаются нейтральными. Верхняя градиентная полоса без изменений.
   - **Свёрнутые колонки отдают ширину развёрнутым:** `colWidth` теперь делит доступную
@@ -539,7 +539,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   кастомизации.
 
 ### [0.118.0] — 2026-07-08
-- **Сворачивание колонок канбана (a reference tracker-style):** у каждой колонки появилась кнопка
+- **Сворачивание колонок канбана:** у каждой колонки появилась кнопка
   свёртки (шеврон в заголовке) — свёрнутая колонка превращается в узкую вертикальную
   полосу с повёрнутым названием и счётчиком; клик по полосе разворачивает обратно.
   Состояние свёртки привязано к сохранённому представлению (и per-device localStorage).
@@ -582,7 +582,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
     слот «бросить сюда, чтобы вложить».
 
 ### [0.117.0] — 2026-07-08
-- **Канбан-карточка: правки вёрстки + фичи из a reference tracker.**
+- **Канбан-карточка: правки вёрстки + новые фичи.**
   - **Длинные названия** больше не наезжают на номер/GitLab-бейдж и не переносятся по одному слову:
     заголовок занимает всю строку и обрезается в **2 строки с «…»** (тултип с полным текстом — только
     когда реально обрезано), а `#номер` и GitLab-чип уехали на отдельную мета-строку под заголовком.
@@ -1267,8 +1267,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ### [0.81.0] — 2026-06-19
 - **Таймлайн — новое представление доски** (5-й layout рядом с Доска/Список/
-  Календарь/Матрица). Горизонтальная шкала времени с барами задач start→due
-  (a reference tracker Timeline). `BoardTimelineView.vue`: свимлейны с группировкой (по
+  Календарь/Матрица). Горизонтальная шкала времени с барами задач start→due. `BoardTimelineView.vue`: свимлейны с группировкой (по
   исполнителю / тегу / статусу / без), фиксированная левая колонка задач +
   липкий заголовок (месяцы + дни с выходными), вертикальная линия «сегодня»,
   бар = отрезок от начала до срока с приоритетным градиентом (задача с одним
@@ -1318,8 +1317,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   «Не срочно, не важно».
 - **Перетаскивание** карточки в другой квадрант фиксирует ручное размещение
   (override, сохраняется на бэкенде); такие карточки несут метку «вручную» с кнопкой
-  возврата на авто-вычисление. Карточка везде сохраняет свой priority-бейдж (как в
-  a reference tracker). Реализовано на общем `TaskCard` + vuedraggable; новый `BoardMatrixView.vue`,
+  возврата на авто-вычисление. Карточка везде сохраняет свой priority-бейдж. Реализовано на общем `TaskCard` + vuedraggable; новый `BoardMatrixView.vue`,
   пункт «Матрица» в десктоп-свитчере и мобильном меню, `tasks.eisenhower` в API.
 
 ### [0.78.2] — 2026-06-19
@@ -1568,7 +1566,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
   defaults — notify on/off, how long before the deadline (lead), repeat interval,
   and whether reminders are delivered to channels. The routing-rule editor gains a
   **«Напоминания»** event kind.
-- **Per-task override** in the card's due popover (a reference tracker-style): under the
+- **Per-task override** in the card's due popover: under the
   calendar, set this task's notifications (on/off), lead and repeat — each
   defaulting to «По умолчанию» (inherit the user setting).
 
@@ -1746,7 +1744,7 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   view load/save) now match the composer bar's height.
 
 ### [0.54.0] — 2026-06-11
-- **Composer bar** (a reference tracker/GitLab-style): grouping, sort levels and filters now
+- **Composer bar**: grouping, sort levels and filters now
   render as removable chips in one wide bar with an «＋» menu to add any
   facet (group by status/tags/namespace, a sort field, or a priority/assignee/
   tag/due filter) and an inline name search — replacing the separate
@@ -1762,7 +1760,7 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   saved views (old single-sort views migrate automatically).
 
 ### [0.52.0] — 2026-06-11
-- **Saved board views** (a reference tracker-style, per-user, server-side): two toolbar
+- **Saved board views** (per-user, server-side): two toolbar
   buttons next to the subtasks toggle — a folder to load a saved view and a disk
   to save the current one (grouping, tag namespace, sort + direction, filters,
   expanded subtasks, layout). Views are stored in the DB (not just localStorage),
@@ -2235,7 +2233,7 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 - Sub-toolbar grouping button is labelled «Группировка» (not the current choice).
 
 ### [0.31.0] — 2026-06-03
-- a reference tracker-style board chrome overhaul (new `stores/boardView.js` bridges the
+- Board chrome overhaul (new `stores/boardView.js` bridges the
   board and the global header):
   - Layout switcher (Доска/Список/Календарь) moved into the header as icon
     buttons, left of the search; the search now centres in the remaining space.
@@ -2246,7 +2244,7 @@ User-management phase U1b (web) — consumes backend 0.30.0.
     pinned to the right.
 - Subtasks on cards can be expanded to full property cards (priority, tags,
   due, assignees) or kept as compact rows, via the sub-toolbar toggle.
-- Columns show a a reference tracker-style status glyph (open / half / check, tinted with
+- Columns show a status glyph (open / half / check, tinted with
   the column colour) instead of the drag grip; drag a column by its header.
 - Right-click context menus: task cards (open, complete, priority, add subtask,
   archive, delete) and columns (rename, mark done, delete).
@@ -2424,8 +2422,8 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   background, so the overlap reads cleanly on the elevated surface.
 
 ### [0.18.1] — 2026-06-03
-- Assignee avatars now cascade (overlap with a ring in the surface colour) like
-  a reference tracker, instead of sitting side by side.
+- Assignee avatars now cascade (overlap with a ring in the surface colour)
+  instead of sitting side by side.
 
 ### [0.18.0] — 2026-06-03
 - Show the task number (#N) on cards and in the task modal header.
@@ -2529,7 +2527,7 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   dragging on touch (point 8).
 
 ### [0.13.0] — 2026-06-02
-- Task modal redesigned a reference tracker-style (point 4): title on top, then a compact
+- Task modal redesigned (point 4): title on top, then a compact
   property grid (Приоритет / Срок / Исполнители / Теги / Выполнено) with inline
   pill controls (popovers, immediate apply) instead of stacked inputs, then
   Описание and Подзадачи; footer Delete (red) / Отмена / Сохранить.
@@ -2668,14 +2666,14 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 - Appearance popover in the topbar (color swatches + dark switch).
 - Adaptive layout: desktop fixed sider; ≤768px collapses to a drawer opened by
   a hamburger (`useResponsive` matchMedia composable).
-- a reference tracker-style polish: sidebar brand ("mt" monogram), active-board highlight,
+- Visual polish: sidebar brand ("mt" monogram), active-board highlight,
   column accent stripe (column color), priority dots on task cards.
 
 ### [0.1.0] — 2026-06-02
 - Vue 3 + Vite 8 + Naive UI + Pinia + Vue Router skeleton (Yarn 4).
 - Auth flow: login/register views, JWT stored in localStorage, axios refresh-on-401
   (coalesced), route guard, `auth:expired` → /login.
-- App shell (a reference tracker-style): sidebar with workspace switcher + groups/projects tree
+- App shell: sidebar with workspace switcher + groups/projects tree
   (lazy-loaded boards), topbar with theme toggle + logout, NConfigProvider (ruRU,
   light/dark baseline).
 - Board view: columns + tasks read-only skeleton with minimal create modals

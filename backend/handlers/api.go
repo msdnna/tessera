@@ -54,7 +54,7 @@ func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, enc
 const positionGap = 65536.0
 
 // positionBetween computes a float position for an item dropped between two
-// neighbours (classic kanban-style midpoint). nil prev = top of list, nil next = end.
+// neighbours (float midpoint). nil prev = top of list, nil next = end.
 func positionBetween(prev, next *float64) float64 {
 	switch {
 	case prev != nil && next != nil:

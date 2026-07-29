@@ -31,7 +31,7 @@ ViewModels never touch Retrofit directly.
 ## Design system (`ui/theme`)
 - `TesseraColors` — neutral palette tokens ported 1:1 from
   `frontend/src/styles/tokens.js` (light + dark).
-- `AccentTheme` — the 7 a reference tracker-style accents from `stores/theme.js` (purple default).
+- `AccentTheme` — the 7 accent schemes from `stores/theme.js` (purple default).
 - `LocalTessera` CompositionLocal + `Tessera.colors` accessor. Components read
   this, **never** `MaterialTheme.colorScheme`. Material 3 is wrapped only as a
   thin host (ripple, text selection, base typography).
