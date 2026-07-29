@@ -58,8 +58,11 @@ func Register(s *mcp.Server, c *client.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "tessera_get_task",
 		Description: "Fetch a task's full detail (description markdown, tags, assignees, subtasks, " +
-			"comments, GitLab link). Identify it by task_id, or by workspace_id + number (#252).",
+			"comments, image refs, GitLab link). Identify it by task_id, or by workspace_id + number (#252). " +
+			"Comments carry the author and an is_agent flag so you can tell your own posts from the user's replies.",
 	}, getTask(c))
+
+	registerWrite(s, c)
 }
 
 // ── inputs ──────────────────────────────────────────────────────────────────
@@ -160,7 +163,9 @@ type subtaskOut struct {
 }
 type commentOut struct {
 	Body      string `json:"body"`
-	AuthorID  string `json:"author_id"`
+	Author    string `json:"author,omitempty"`
+	AuthorID  string `json:"author_id,omitempty"`
+	IsAgent   bool   `json:"is_agent,omitempty"`
 	CreatedAt string `json:"created_at"`
 }
 type taskDetailOut struct {
@@ -179,6 +184,7 @@ type taskDetailOut struct {
 	Assignees     []assigneeOut `json:"assignees,omitempty"`
 	Subtasks      []subtaskOut  `json:"subtasks,omitempty"`
 	Comments      []commentOut  `json:"comments,omitempty"`
+	Images        []imageRefOut `json:"images,omitempty"`
 	GitlabURL     string        `json:"gitlab_url,omitempty"`
 }
 
@@ -377,13 +383,18 @@ func getTask(c *client.Client) mcp.ToolHandlerFor[getTaskInput, taskDetailOut] {
 		if d.GitLab != nil {
 			out.GitlabURL = d.GitLab.WebURL
 		}
-		if comments, err := c.ListComments(ctx, d.ID); err == nil {
-			for _, cm := range comments {
-				out.Comments = append(out.Comments, commentOut{
-					Body: cm.Body, AuthorID: cm.AuthorID, CreatedAt: cm.CreatedAt.Format(time.RFC3339),
-				})
-			}
+
+		self := c.SelfID(ctx) // "" when unknown; never falsely matches
+		comments, _ := c.ListComments(ctx, d.ID)
+		for _, cm := range comments {
+			out.Comments = append(out.Comments, commentOut{
+				Body: cm.Body, Author: commentAuthor(cm), AuthorID: cm.AuthorID,
+				IsAgent:   self != "" && cm.AuthorID == self,
+				CreatedAt: cm.CreatedAt.Format(time.RFC3339),
+			})
 		}
+		attachments, _ := c.ListAttachments(ctx, d.ID)
+		out.Images = collectImages(d.Description, comments, attachments)
 		return nil, out, nil
 	}
 }

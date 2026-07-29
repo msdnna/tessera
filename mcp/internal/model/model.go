@@ -5,7 +5,10 @@
 // Android clients don't share Go structs either.
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Workspace is a top-level container the user is a member of.
 type Workspace struct {
@@ -52,25 +55,26 @@ type Tag struct {
 // listing (GET /boards/:id/tasks) and the workspace listing
 // (GET /workspaces/:id/tasks). Absent fields decode to their zero value.
 type Task struct {
-	ID          string     `json:"id"`
-	BoardID     string     `json:"board_id"`
-	ColumnID    string     `json:"column_id"`
-	ParentID    *string    `json:"parent_id"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Priority    int        `json:"priority"`
-	DueDate     *time.Time `json:"due_date"`
-	StartDate   *time.Time `json:"start_date"`
-	Position    float64    `json:"position"`
-	CompletedAt *time.Time `json:"completed_at"`
-	ArchivedAt  *time.Time `json:"archived_at"`
-	Number      *int64     `json:"number"`
-	Estimate    *float64   `json:"estimate"`
-	MilestoneID *string    `json:"milestone_id"`
-	TagIDs      []string   `json:"tag_ids"`
-	AssigneeIDs []string   `json:"assignee_ids"`
-	GitlabIID   *int64     `json:"gitlab_iid"`
-	GitlabURL   *string    `json:"gitlab_url"`
+	ID          string          `json:"id"`
+	BoardID     string          `json:"board_id"`
+	ColumnID    string          `json:"column_id"`
+	ParentID    *string         `json:"parent_id"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Priority    int             `json:"priority"`
+	DueDate     *time.Time      `json:"due_date"`
+	StartDate   *time.Time      `json:"start_date"`
+	Position    float64         `json:"position"`
+	CompletedAt *time.Time      `json:"completed_at"`
+	ArchivedAt  *time.Time      `json:"archived_at"`
+	Number      *int64          `json:"number"`
+	Estimate    *float64        `json:"estimate"`
+	Recurrence  json.RawMessage `json:"recurrence"` // carried through on a full-replace update so it isn't wiped
+	MilestoneID *string         `json:"milestone_id"`
+	TagIDs      []string        `json:"tag_ids"`
+	AssigneeIDs []string        `json:"assignee_ids"`
+	GitlabIID   *int64          `json:"gitlab_iid"`
+	GitlabURL   *string         `json:"gitlab_url"`
 
 	// Present only on the workspace listing (joined names).
 	BoardName   string `json:"board_name"`
@@ -96,9 +100,9 @@ type GitlabLink struct {
 // and GitLab link.
 type TaskDetail struct {
 	Task
-	Tags      []Tag      `json:"tags"`
-	Assignees []Assignee `json:"assignees"`
-	Subtasks  []Task     `json:"subtasks"`
+	Tags      []Tag       `json:"tags"`
+	Assignees []Assignee  `json:"assignees"`
+	Subtasks  []Task      `json:"subtasks"`
 	GitLab    *GitlabLink `json:"gitlab"`
 }
 
@@ -110,10 +114,22 @@ type Dependency struct {
 	Kind          string `json:"kind"`
 }
 
-// Comment is a task comment.
+// Comment is a task comment. Author display fields are best-effort: a native
+// comment carries author_name; a mirrored GitLab note carries gl_author_*.
 type Comment struct {
-	ID        string    `json:"id"`
-	Body      string    `json:"body"`
-	AuthorID  string    `json:"author_id"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	Body          string    `json:"body"`
+	AuthorID      string    `json:"author_id"`
+	AuthorName    *string   `json:"author_name"`
+	GlAuthorLogin string    `json:"gl_author_login"`
+	GlAuthorName  string    `json:"gl_author_name"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// Attachment is a file attached to a task (GET /tasks/:id/attachments).
+type Attachment struct {
+	ID          string `json:"id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
 }
