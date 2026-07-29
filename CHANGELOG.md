@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.144.4] — 2026-07-29
+- **Крестик удаления на акцентных чипах composer bar теперь акцентного цвета**
+  (в цвет текста/иконки): этап — акцент, архив — янтарь. Обычные чипы без изменений.
+
 ### [0.144.3] — 2026-07-29
 - **Хотфикс: доска перестала грузиться** (`ReferenceError: Cannot access 'It'
   before initialization`). Введённый в 0.144.1 `watch` для замера composer bar

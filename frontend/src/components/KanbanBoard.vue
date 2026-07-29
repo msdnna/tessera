@@ -2433,6 +2433,14 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text1);
   background: var(--t-border);
 }
+/* On accent chips the remove-× carries the chip's accent too (matches text/icon). */
+.facet.group .facet-x,
+.facet-accent .facet-x {
+  color: var(--t-primary);
+}
+.facet-archive .facet-x {
+  color: #b5792a;
+}
 .facet-add {
   display: inline-flex;
   align-items: center;
