@@ -62,6 +62,28 @@ func TestCleanRecurrence(t *testing.T) {
 	}
 }
 
+func TestMatchMember(t *testing.T) {
+	members := []model.Member{
+		{UserID: "u-alice", Email: "alice@example.com", Name: "Alice"},
+		{UserID: "u-bob", Email: "bob@example.com", Name: "Bob Jones"},
+	}
+	ok := []struct{ ref, want string }{
+		{"alice@example.com", "u-alice"},
+		{"ALICE@EXAMPLE.COM", "u-alice"},
+		{"Bob Jones", "u-bob"},
+		{"  bob jones ", "u-bob"},
+	}
+	for _, tc := range ok {
+		got, err := matchMember(tc.ref, members)
+		if err != nil || got != tc.want {
+			t.Errorf("matchMember(%q) = %q,%v; want %q,nil", tc.ref, got, err, tc.want)
+		}
+	}
+	if _, err := matchMember("nobody", members); err == nil {
+		t.Error("matchMember(nobody) expected error")
+	}
+}
+
 func TestCommentAuthor(t *testing.T) {
 	name := "Alice"
 	blank := "   "

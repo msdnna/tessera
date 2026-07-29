@@ -253,6 +253,12 @@ func (c *Client) ListAttachments(ctx context.Context, taskID string) ([]model.At
 	return out, c.get(ctx, "/tasks/"+taskID+"/attachments", nil, &out)
 }
 
+// ListMembers returns a workspace's members (for resolving assignees by name/email).
+func (c *Client) ListMembers(ctx context.Context, workspaceID string) ([]model.Member, error) {
+	var out []model.Member
+	return out, c.get(ctx, "/workspaces/"+workspaceID+"/members", nil, &out)
+}
+
 // ── writes ────────────────────────────────────────────────────────────────────
 
 // CreateComment posts a Markdown comment on a task (or subtask) and returns it.
@@ -267,6 +273,17 @@ func (c *Client) CreateComment(ctx context.Context, taskID, body string) (model.
 func (c *Client) MoveTask(ctx context.Context, taskID, columnID string) error {
 	return c.send(ctx, http.MethodPatch, "/tasks/"+taskID+"/move",
 		map[string]any{"column_id": columnID}, nil)
+}
+
+// AddAssignee assigns a user to a task (idempotent on the backend).
+func (c *Client) AddAssignee(ctx context.Context, taskID, userID string) error {
+	return c.send(ctx, http.MethodPost, "/tasks/"+taskID+"/assignees",
+		map[string]any{"user_id": userID}, nil)
+}
+
+// RemoveAssignee unassigns a user from a task.
+func (c *Client) RemoveAssignee(ctx context.Context, taskID, userID string) error {
+	return c.send(ctx, http.MethodDelete, "/tasks/"+taskID+"/assignees/"+userID, nil, nil)
 }
 
 // TaskUpdate is the full-replace body of PATCH /tasks/:id. Every field is sent

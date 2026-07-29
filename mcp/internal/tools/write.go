@@ -40,6 +40,14 @@ func registerWrite(s *mcp.Server, c *client.Client) {
 	}, moveTask(c))
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name: "tessera_assign_task",
+		Description: "Set a task's assignees. Each entry is a user email, name, UUID, 'author' (the task's " +
+			"creator) or 'me' (the token owner). Use replace=true to hand a task back — e.g. assignees=['author'] " +
+			"reassigns it to whoever created it and drops the agent. Pair with tessera_move_task to 'На рассмотрении' " +
+			"when a task needs the user's testing or review.",
+	}, assignTask(c))
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "tessera_list_columns",
 		Description: "List a board's columns (id, name, position, whether it's the done column). Handy to see valid targets for tessera_move_task.",
 	}, listColumns(c))
@@ -303,6 +311,147 @@ func moveTask(c *client.Client) mcp.ToolHandlerFor[moveTaskInput, moveTaskOut] {
 		}
 		return nil, moveTaskOut{TaskID: d.ID, Column: target.Name, ColumnID: target.ID}, nil
 	}
+}
+
+// ── assign_task ───────────────────────────────────────────────────────────────
+
+// uuidRe recognises a bare UUID so an assignee ref can be used as a user id directly.
+var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+type assignTaskInput struct {
+	TaskID      string   `json:"task_id,omitempty" jsonschema:"the task (or subtask) UUID"`
+	WorkspaceID string   `json:"workspace_id,omitempty" jsonschema:"workspace UUID — to resolve the task by number and/or assignee names/emails (otherwise derived from the task)"`
+	Number      int64    `json:"number,omitempty" jsonschema:"the per-workspace task number, e.g. 252"`
+	Assignees   []string `json:"assignees" jsonschema:"who to assign: user emails, names, UUIDs, 'author' (task creator) or 'me' (token owner)"`
+	Replace     bool     `json:"replace,omitempty" jsonschema:"replace current assignees with this set (removes the rest — e.g. to hand a task back); default false = add"`
+}
+
+type assignTaskOut struct {
+	TaskID    string        `json:"task_id"`
+	Assignees []assigneeOut `json:"assignees"`
+}
+
+func assignTask(c *client.Client) mcp.ToolHandlerFor[assignTaskInput, assignTaskOut] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in assignTaskInput) (*mcp.CallToolResult, assignTaskOut, error) {
+		if len(in.Assignees) == 0 {
+			return nil, assignTaskOut{}, fmt.Errorf("assignees is required")
+		}
+		d, err := resolveTaskDetail(ctx, c, in.TaskID, in.WorkspaceID, in.Number)
+		if err != nil {
+			return nil, assignTaskOut{}, err
+		}
+
+		var members []model.Member // loaded lazily, only when a name/email must be resolved
+		membersLoaded := false
+		loadMembers := func() error {
+			if membersLoaded {
+				return nil
+			}
+			wsID := in.WorkspaceID
+			if wsID == "" {
+				if wsID, err = workspaceIDForTask(ctx, c, d); err != nil {
+					return err
+				}
+			}
+			if members, err = c.ListMembers(ctx, wsID); err != nil {
+				return err
+			}
+			membersLoaded = true
+			return nil
+		}
+
+		targets := map[string]bool{}
+		for _, raw := range in.Assignees {
+			ref := strings.TrimSpace(raw)
+			if ref == "" {
+				continue
+			}
+			switch {
+			case strings.EqualFold(ref, "me"):
+				self := c.SelfID(ctx)
+				if self == "" {
+					return nil, assignTaskOut{}, fmt.Errorf("cannot resolve 'me': /auth/me lookup failed")
+				}
+				targets[self] = true
+			case strings.EqualFold(ref, "author"):
+				if d.CreatedBy == nil || *d.CreatedBy == "" {
+					return nil, assignTaskOut{}, fmt.Errorf("task has no recorded author to assign")
+				}
+				targets[*d.CreatedBy] = true
+			case uuidRe.MatchString(ref):
+				targets[ref] = true
+			default:
+				if err := loadMembers(); err != nil {
+					return nil, assignTaskOut{}, err
+				}
+				id, mErr := matchMember(ref, members)
+				if mErr != nil {
+					return nil, assignTaskOut{}, mErr
+				}
+				targets[id] = true
+			}
+		}
+
+		current := map[string]bool{}
+		for _, a := range d.Assignees {
+			current[a.ID] = true
+		}
+		for id := range targets {
+			if !current[id] {
+				if err := c.AddAssignee(ctx, d.ID, id); err != nil {
+					return nil, assignTaskOut{}, err
+				}
+			}
+		}
+		if in.Replace {
+			for id := range current {
+				if !targets[id] {
+					if err := c.RemoveAssignee(ctx, d.ID, id); err != nil {
+						return nil, assignTaskOut{}, err
+					}
+				}
+			}
+		}
+
+		updated, err := c.GetTask(ctx, d.ID)
+		if err != nil {
+			return nil, assignTaskOut{}, err
+		}
+		out := assignTaskOut{TaskID: d.ID}
+		for _, a := range updated.Assignees {
+			out.Assignees = append(out.Assignees, assigneeOut{Name: a.Name, Email: a.Email})
+		}
+		return nil, out, nil
+	}
+}
+
+// workspaceIDForTask derives a task's workspace via its board → project.
+func workspaceIDForTask(ctx context.Context, c *client.Client, d model.TaskDetail) (string, error) {
+	b, err := c.GetBoard(ctx, d.BoardID)
+	if err != nil {
+		return "", err
+	}
+	p, err := c.GetProject(ctx, b.ProjectID)
+	if err != nil {
+		return "", err
+	}
+	if p.WorkspaceID == "" {
+		return "", fmt.Errorf("could not determine workspace for task; pass workspace_id")
+	}
+	return p.WorkspaceID, nil
+}
+
+// matchMember resolves an email or name (case-insensitive) to a member's user id.
+func matchMember(ref string, members []model.Member) (string, error) {
+	want := strings.ToLower(strings.TrimSpace(ref))
+	var names []string
+	for _, m := range members {
+		names = append(names, m.Name)
+		if strings.ToLower(m.Email) == want || strings.ToLower(strings.TrimSpace(m.Name)) == want {
+			return m.UserID, nil
+		}
+	}
+	return "", fmt.Errorf("no workspace member matching %q; members: %s", ref, strings.Join(names, ", "))
 }
 
 // ── list_columns ──────────────────────────────────────────────────────────────

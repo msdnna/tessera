@@ -153,6 +153,7 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
 - **tessera-backend-feature** — цикл бэкенд-фичи: sqlc-query → generate → handler → route → миграция → тест.
 - **tessera-e2e** — безопасный backend e2e против `tessera_test` (гочи bash/python/порты).
 - **tessera-android-release** — сборка и публикация подписанного релиза + self-update (`latest.json`).
+- **tessera-task-workflow** — работа с задачами через MCP (`tessera-mcp`): взять в работу, уточняющие вопросы, приложить результаты/скриншоты, вернуть на проверку. Юзер назначает задачи на бота; агент возвращает автору в «На рассмотрении».
 
 ## Где что искать / как поддерживать
 

@@ -18,11 +18,12 @@ type Workspace struct {
 
 // Project lives in a workspace (optionally inside a project group).
 type Project struct {
-	ID      string  `json:"id"`
-	GroupID *string `json:"group_id"`
-	Name    string  `json:"name"`
-	Color   string  `json:"color"`
-	Slug    string  `json:"slug"`
+	ID          string  `json:"id"`
+	WorkspaceID string  `json:"workspace_id"`
+	GroupID     *string `json:"group_id"`
+	Name        string  `json:"name"`
+	Color       string  `json:"color"`
+	Slug        string  `json:"slug"`
 }
 
 // Board belongs to a project and holds columns of tasks.
@@ -67,6 +68,7 @@ type Task struct {
 	Position    float64         `json:"position"`
 	CompletedAt *time.Time      `json:"completed_at"`
 	ArchivedAt  *time.Time      `json:"archived_at"`
+	CreatedBy   *string         `json:"created_by"` // task author — resolves the "author" assignee target
 	Number      *int64          `json:"number"`
 	Estimate    *float64        `json:"estimate"`
 	Recurrence  json.RawMessage `json:"recurrence"` // carried through on a full-replace update so it isn't wiped
@@ -87,6 +89,15 @@ type Assignee struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
+}
+
+// Member is a workspace membership row (GET /workspaces/:id/members), used to
+// resolve an assignee given by name or email to a user id.
+type Member struct {
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
+	Email  string `json:"email"`
+	Name   string `json:"name"`
 }
 
 // GitlabLink is the linked GitLab issue on a task detail.

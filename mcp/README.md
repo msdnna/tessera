@@ -31,6 +31,7 @@ and speaks MCP over **stdio**, so the MCP client launches it as a subprocess.
 | `tessera_add_comment` | Post a Markdown comment on a task/subtask; optional `image_paths` upload & embed local screenshots inline |
 | `tessera_update_description` | Attach Markdown to the description — `append` (default, under an optional heading) or `replace`; other fields preserved |
 | `tessera_move_task` | Move a task to a column by **name** (`В процессе`, `На рассмотрении`, …) or UUID; the board's done column auto-completes |
+| `tessera_assign_task` | Set assignees by email / name / UUID / `author` / `me`; `replace=true` hands a task back (e.g. `['author']` returns it to its creator and drops the agent) |
 
 Tasks are addressed by `task_id` (a subtask id works too) or by `workspace_id` +
 `number` (e.g. `#252`). Write tools author as the token's owner — mint the token
