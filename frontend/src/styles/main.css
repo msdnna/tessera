@@ -191,14 +191,6 @@ body,
   height: 100%;
   margin: 0;
 }
-/* Reserve the page scrollbar gutter permanently. A tall teleported overlay (e.g. the
-   board filter's «этап» submenu) can momentarily grow the document past the viewport;
-   on classic (width-taking) scrollbars that would pop a page scrollbar and shrink the
-   viewport, reflowing the board columns (visible jitter). A stable gutter keeps the
-   viewport width constant so the columns never shift. */
-html {
-  scrollbar-gutter: stable;
-}
 
 body {
   font-family:
@@ -486,24 +478,25 @@ body {
   overscroll-behavior: contain;
 }
 
-/* Reusable auto-hide scrollbar — same look as the task modal's .tm-col-* sections:
-   thin, gutter always reserved (no reflow on reveal), transparent until hover, then a
-   single steady grey. Deliberately ONE colour for both column-hover and pointing at
-   the bar (no darker :hover state) so the thumb doesn't flicker between shades. The
-   thin webkit thumb (10px track − 3px transparent border = 4px) matches the modal.
-   Applied to kanban columns (.drop) and the GitLab modal panes (.gl-scroll). */
+/* Reusable auto-hide scrollbar for kanban columns (.drop) and the GitLab modal panes.
+   Driven ENTIRELY by -webkit- pseudo-elements: the app-wide `scrollbar-color` (set on
+   `*`) makes Chrome render a NATIVE scrollbar that adds its own hover highlight we
+   can't override — that highlight was the "colour jitter". Resetting scrollbar-width
+   / scrollbar-color to auto here hands control back to the pseudo-elements, so the
+   thumb is one steady 45% grey whether you hover the column or point at the bar. The
+   gutter is reserved so revealing the thumb doesn't reflow the content. */
 .t-hoverscroll {
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  transition: scrollbar-color 0.15s ease;
-}
-.t-hoverscroll:hover,
-.t-hoverscroll:focus-within {
-  scrollbar-color: color-mix(in srgb, var(--t-text3) 45%, transparent) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
 }
 .t-hoverscroll::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
+}
+.t-hoverscroll::-webkit-scrollbar-track,
+.t-hoverscroll::-webkit-scrollbar-corner {
+  background: transparent;
 }
 .t-hoverscroll::-webkit-scrollbar-thumb {
   border-radius: 5px;
@@ -511,13 +504,9 @@ body {
   background: transparent;
   background-clip: padding-box;
 }
+/* One shade for both column-hover and pointing straight at the bar — no flicker. */
 .t-hoverscroll:hover::-webkit-scrollbar-thumb,
-.t-hoverscroll:focus-within::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--t-text3) 45%, transparent);
-  background-clip: padding-box;
-}
-/* Override the app-wide `*::-webkit-scrollbar-thumb:hover` (75%) with the same 45%,
-   so pointing straight at the bar doesn't jump to a darker shade. */
+.t-hoverscroll:focus-within::-webkit-scrollbar-thumb,
 .t-hoverscroll::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--t-text3) 45%, transparent);
   background-clip: padding-box;
