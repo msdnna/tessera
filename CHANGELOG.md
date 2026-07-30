@@ -2760,6 +2760,27 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.79.1] — 2026-07-30
+- **fix(gitlab): write-back смены приоритета с level-квалифицированным биндингом
+  снова энкьюится.** Гейт на этапе постановки в outbox (`triggerFromKind`) читал
+  `priority` из payload только как `float64`, а хендлеры кладут `int32` — уровень
+  терялся, и биндинги с конкретным приоритетом (включая синтезированные из
+  легаси-флага `push_priority`) молча не срабатывали. Теперь принимаются
+  int32/int/float64.
+- **Фоновые воркеры (GitLab sync/write-back, notifications, scanner, recurrence)
+  делают немедленный первый проход при старте**, не дожидаясь первого тика —
+  бэклог аутбоксов обрабатывается сразу после рестарта сервера.
+- **test: интеграционный харнесс + ~60 флоу-тестов**: httptest поверх реальной
+  `tessera_test` (миграции embed, data-scoped изоляция, параллельный прогон),
+  authz-матрица по всем protected-роутам, флоу auth/PAT/workspaces/members/
+  invitations/projects/transfer/boards/columns/tasks/subtasks/comments/relations/
+  attachments/notifications/reminders/recurrence + GitLab sync/write-back/retry/
+  OAuth-конфиг через fake GitLab (GraphQL+REST). Покрытие backend ≈62%
+  (без генерённого sqlc/cmd; `make test-backend-cover`).
+- **refactor: сборка роутера вынесена из `main.go` в `router.go`** (`newRouter`) —
+  тесты поднимают полный HTTP-стек без фоновых воркеров.
+
+
 ### [0.79.0] — 2026-07-29
 - **feat: Personal Access Tokens (PAT) — долгоживущие отзываемые bearer-токены для
   headless-клиентов** (MCP-сервер, CI, скрипты). Замена паре access(15м)+refresh(30д)

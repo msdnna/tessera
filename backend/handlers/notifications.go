@@ -658,6 +658,7 @@ const (
 func (h *API) RunNotificationWorker(ctx context.Context) {
 	ticker := time.NewTicker(notifyWorkerTick)
 	defer ticker.Stop()
+	h.drainDeliveries(ctx) // drain the backlog at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():
@@ -862,6 +863,8 @@ const notifyScanTick = 60 * time.Second
 func (h *API) RunNotificationScanner(ctx context.Context) {
 	ticker := time.NewTicker(notifyScanTick)
 	defer ticker.Stop()
+	h.scanDueTasks(ctx)
+	h.scanReminders(ctx)
 	for {
 		select {
 		case <-ctx.Done():

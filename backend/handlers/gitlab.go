@@ -714,6 +714,7 @@ func (h *API) RunSyncWorker(ctx context.Context) {
 	const tick = 30 * time.Second
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
+	h.autoSyncDue(ctx) // catch up at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():

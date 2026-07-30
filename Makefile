@@ -58,6 +58,17 @@ lint-backend: ## Run golangci-lint
 test-backend: ## Run backend tests
 	cd backend && $(GO) test ./...
 
+.PHONY: test-backend-cover
+test-backend-cover: ## Backend tests with coverage (backend/coverage.out + cover.html); needs tessera_test DB
+	cd backend && $(GO) test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out.raw ./...
+	@# Denominator excludes generated sqlc code, CLI wiring and the embed stub —
+	@# see task #2579: those are e2e/codegen territory, not unit-testable logic.
+	@cd backend && grep -v -E '^tessera/(internal/db/|cmd/|main\.go|migrations/)' coverage.out.raw > coverage.out
+	@rm -f backend/coverage.out.raw
+	cd backend && $(GO) tool cover -func=coverage.out | tail -1
+	cd backend && $(GO) tool cover -html=coverage.out -o cover.html
+	@echo "Coverage report: backend/cover.html"
+
 .PHONY: lint-frontend
 lint-frontend: ## Lint + format-check frontend
 	cd frontend && corepack yarn lint && corepack yarn format:check

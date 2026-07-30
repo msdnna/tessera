@@ -129,8 +129,17 @@ func triggerFromKind(kind string, payload map[string]any) gitlab.BindTrigger {
 		t.ColumnID, _ = payload["column_id"].(string)
 		t.ColumnName, _ = payload["column_name"].(string)
 	case gitlab.TrigPriority:
-		if f, ok := payload["priority"].(float64); ok {
-			p := int32(f)
+		// The payload is an in-memory map, not decoded JSON, so priority may
+		// arrive as any integer type (handlers enqueue int32).
+		switch v := payload["priority"].(type) {
+		case float64:
+			p := int32(v)
+			t.Priority = &p
+		case int32:
+			p := v
+			t.Priority = &p
+		case int:
+			p := int32(v)
 			t.Priority = &p
 		}
 	case gitlab.TrigCompletion:
@@ -157,6 +166,7 @@ func triggerFromKind(kind string, payload map[string]any) gitlab.BindTrigger {
 func (h *API) RunGitlabWriteBackWorker(ctx context.Context) {
 	ticker := time.NewTicker(writebackWorkerTick)
 	defer ticker.Stop()
+	h.drainWritebacks(ctx) // drain the backlog at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():
