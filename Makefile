@@ -77,6 +77,11 @@ lint-frontend: ## Lint + format-check frontend
 test-frontend: ## Run frontend tests
 	cd frontend && corepack yarn test
 
+.PHONY: test-frontend-cover
+test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.html,lcov.info})
+	cd frontend && corepack yarn test:coverage
+	@echo "Coverage report: frontend/coverage/index.html"
+
 .PHONY: build-mcp
 build-mcp: ## Build the Tessera MCP server binary (mcp/tessera-mcp)
 	cd mcp && $(GO) build -ldflags "-X main.version=$$(cat VERSION)" -o tessera-mcp .
@@ -92,6 +97,21 @@ lint-mcp: ## Run golangci-lint on the MCP server
 .PHONY: test-mcp
 test-mcp: ## Run MCP server tests
 	cd mcp && $(GO) test ./...
+
+.PHONY: test-mcp-cover
+test-mcp-cover: ## MCP tests with coverage (mcp/coverage.out + cover.html)
+	cd mcp && $(GO) test -covermode=atomic -coverpkg=./... -coverprofile=coverage.out.raw ./...
+	@# Exclude the stdio-transport glue in main.go — only exercised end-to-end.
+	@cd mcp && grep -v -E '/main\.go:' coverage.out.raw > coverage.out
+	@rm -f mcp/coverage.out.raw
+	cd mcp && $(GO) tool cover -func=coverage.out | tail -1
+	cd mcp && $(GO) tool cover -html=coverage.out -o cover.html
+	@echo "Coverage report: mcp/cover.html"
+
+.PHONY: coverage-report
+coverage-report: ## Aggregate every component's coverage into reports/coverage/index.html
+	@echo "Run the per-component cover targets first (test-backend-cover / test-frontend-cover / test-android-cover / test-mcp-cover)."
+	@GO=$(GO) python3 tools/coverage-report.py .
 
 .PHONY: lint
 lint: lint-backend lint-frontend lint-mcp ## Lint everything

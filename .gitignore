@@ -19,10 +19,14 @@ uploads/
 # Node / frontend
 node_modules/
 frontend/dist/
-# Coverage reports (vitest / go tool cover)
+# Coverage reports (vitest / go tool cover / jacoco / aggregated)
 frontend/coverage/
 backend/coverage.out
 backend/cover.html
+mcp/coverage.out
+mcp/cover.html
+reports/
+_badges/
 .yarn/*
 !.yarn/patches
 .pnp.*
