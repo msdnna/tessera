@@ -83,6 +83,22 @@ make dev-desktop        # cargo tauri dev — starts Vite :5174 + the app,
                         # talking to the local backend via the proxy
 ```
 
+## Testing
+
+The Rust side (`src-tauri/src/lib.rs`, ~90 lines) is **pure Tauri glue** — it
+wires the OS-integration plugins (single-instance, tray, autostart, notifications,
+updater, dialog/fs/clipboard) and the close-to-tray window behaviour. It holds no
+business logic: both functions (`show_main`, `run`) need a live Tauri runtime and
+`AppHandle` to do anything, so they are only meaningfully exercised end-to-end,
+not by unit tests. Adding unit tests here would test the Tauri framework, not our
+code.
+
+All application logic lives in the shared Vue frontend and is covered by the
+frontend test suite (`frontend/tests/`). The Rust shell is kept under quality
+control by `make lint-desktop` (`cargo fmt --check` + `cargo clippy -D warnings`),
+run in CI. Interactive behaviour (tray, close-to-tray, self-update, deep links)
+is verified manually / by e2e.
+
 ## Release + self-update
 
 `tools/build-desktop-release.sh` builds the Linux bundles, signs the updater
