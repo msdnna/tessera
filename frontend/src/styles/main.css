@@ -469,10 +469,21 @@ body {
 /* Nested submenus (e.g. the «Фильтр: этап» list) render as their own, NON-scrollable
    .n-dropdown-menu popovers — `scrollable` only wraps the root menu. A long submenu
    then overruns the viewport and the page itself scrolls, dragging the board. Cap
-   the submenu so it scrolls in place and contains its own scroll. */
-.n-dropdown-menu:not(.n-dropdown-menu--scrollable) {
+   the submenu so it scrolls in place and contains its own scroll.
+
+   Scope this to a menu nested inside another menu (any depth), NOT to every
+   non-scrollable menu: a ROOT menu that gets `overflow: auto` becomes its own scroll
+   container, and Naive then measures the submenu popover against it — the short
+   project context menu grew a horizontal scrollbar and clipped its own submenus.
+   Root menus already size themselves fine; only the nested list needs the cap.
+
+   `overflow-x: hidden` because the submenu rows are nowrap: the moment the vertical
+   cap turns the submenu into a scroll container, a sub-pixel wider row hands it a
+   horizontal bar too. Vertical scrolling is the only axis we want here. */
+.n-dropdown-menu .n-dropdown-menu {
   max-height: 72vh;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
 }
 
