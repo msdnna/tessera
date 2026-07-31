@@ -60,7 +60,9 @@ test-backend: ## Run backend tests
 
 .PHONY: test-backend-cover
 test-backend-cover: ## Backend tests with coverage (backend/coverage.out + cover.html); needs tessera_test DB
-	cd backend && $(GO) test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out.raw ./...
+	@# -count=1: without it, cached package results contribute nothing to the
+	@# merged -coverpkg profile, undercounting total coverage.
+	cd backend && $(GO) test -count=1 -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out.raw ./...
 	@# Denominator excludes generated sqlc code, CLI wiring and the embed stub —
 	@# see task #2579: those are e2e/codegen territory, not unit-testable logic.
 	@cd backend && grep -v -E '^tessera/(internal/db/|cmd/|main\.go|migrations/)' coverage.out.raw > coverage.out
@@ -100,7 +102,7 @@ test-mcp: ## Run MCP server tests
 
 .PHONY: test-mcp-cover
 test-mcp-cover: ## MCP tests with coverage (mcp/coverage.out + cover.html)
-	cd mcp && $(GO) test -covermode=atomic -coverpkg=./... -coverprofile=coverage.out.raw ./...
+	cd mcp && $(GO) test -count=1 -covermode=atomic -coverpkg=./... -coverprofile=coverage.out.raw ./...
 	@# Exclude the stdio-transport glue in main.go — only exercised end-to-end.
 	@cd mcp && grep -v -E '/main\.go:' coverage.out.raw > coverage.out
 	@rm -f mcp/coverage.out.raw

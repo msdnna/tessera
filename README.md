@@ -88,3 +88,8 @@ tools/      вспомогательные скрипты (bump-version.sh)
 - Go `1.25.9` (бинарь `go1.25.9`; Makefile зовёт его через `GO ?= go1.25.9`)
 - Docker + Docker Compose
 - Node + Yarn 4 (с Фазы 2)
+
+## Вклад и лицензия
+
+- Как поднять окружение и какие конвенции — [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Проект распространяется под [Apache License 2.0](LICENSE) (см. также [`NOTICE`](NOTICE)).
