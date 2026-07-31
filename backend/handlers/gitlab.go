@@ -452,21 +452,88 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	}
 
 	// A large batch can take minutes — run it detached from the request so no proxy
-	// read-timeout (or browser) drops the long connection mid-sync. The client polls
-	// the sync journal for the result. Guarded so a manual + auto run don't overlap.
+	// read-timeout (or browser) drops the long connection mid-sync. The caller does
+	// NOT wait: the run appears in the journal as "running" straight away and its
+	// outcome arrives as a notification. Guarded so a manual + auto run don't overlap.
 	if _, busy := runningSyncs.LoadOrStore(integ.ID, struct{}{}); busy {
 		c.JSON(http.StatusAccepted, gin.H{"started": false, "already_running": true})
 		return
 	}
+	// Open the journal row synchronously so the response can name the run and the
+	// journal shows it as in-flight from the moment the button was pressed.
+	aid := uid
+	j := h.newJournal(integ.ID, "pull", "manual", &aid)
+	h.beginJournal(c, j)
 	go func() {
 		defer runningSyncs.Delete(integ.ID)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
-		if _, _, serr := h.runSync(ctx, integ, cred, uid, "manual"); serr != nil {
+		created, updated, serr := h.runSyncJournal(ctx, integ, cred, uid, j)
+		if serr != nil {
 			log.Printf("gitlab manual-sync ws=%s: %v", integ.WorkspaceID, serr)
 		}
+		h.notifySyncFinished(ctx, integ, j, created, updated, serr)
 	}()
-	c.JSON(http.StatusAccepted, gin.H{"started": true})
+	resp := gin.H{"started": true}
+	if j.runID != nil {
+		resp["run_id"] = *j.runID
+	}
+	c.JSON(http.StatusAccepted, resp)
+}
+
+// notifySyncFinished reports a finished background sync to whoever started it.
+// A manual sync is fire-and-forget, so this notification (plus the
+// provider-neutral integration.sync event that refreshes the journal and board)
+// is the only feedback the user gets. Auto runs stay silent — a 5-minute interval
+// would otherwise spam the bell.
+func (h *API) notifySyncFinished(ctx context.Context, integ db.GitlabIntegration, j *syncJournal, created, updated int, err error) {
+	if j == nil || j.trigger != "manual" || j.actorID == nil || *j.actorID == uuid.Nil {
+		return
+	}
+	// The originating request is long gone; keep the context alive for the write.
+	ctx = context.WithoutCancel(ctx)
+	label := "GitLab · " + integ.ProjectPath
+	took := fmtSyncDuration(time.Since(j.startedAt))
+	var text string
+	switch {
+	case err != nil || j.status == "error":
+		reason := j.errText
+		if err != nil {
+			reason = err.Error()
+		}
+		if reason == "" {
+			reason = "неизвестная ошибка"
+		}
+		text = fmt.Sprintf("%s: синхронизация не удалась — %s (за %s)", label, reason, took)
+	case j.status == "partial":
+		text = fmt.Sprintf("%s: +%d новых, ~%d обновлено, за %s (часть действий с ошибками)", label, created, updated, took)
+	default:
+		text = fmt.Sprintf("%s: +%d новых, ~%d обновлено, за %s", label, created, updated, took)
+	}
+	h.deliverNotification(ctx, *j.actorID, integ.WorkspaceID, nil, nil, "integration_sync", text)
+	payload := gin.H{
+		"provider": "gitlab", "integration_id": integ.ID, "status": j.status,
+		"created": created, "updated": updated,
+	}
+	if j.runID != nil {
+		payload["run_id"] = *j.runID
+	}
+	h.broadcast(integ.WorkspaceID, "integration.sync", payload)
+}
+
+// fmtSyncDuration renders how long a run took, in short Russian units.
+func fmtSyncDuration(d time.Duration) string {
+	total := int(d.Round(time.Second).Seconds())
+	switch {
+	case total <= 0:
+		return "меньше секунды"
+	case total >= 3600:
+		return fmt.Sprintf("%d ч %d м", total/3600, (total%3600)/60)
+	case total >= 60:
+		return fmt.Sprintf("%d м %d с", total/60, total%60)
+	default:
+		return fmt.Sprintf("%d с", total)
+	}
 }
 
 // runningSyncs guards against two runSync calls for the same integration running
@@ -488,7 +555,13 @@ type syncBoard struct {
 // errors are logged and skipped; only a fetch/board-level failure aborts.
 func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.GitlabCredential, actorID uuid.UUID, trigger string) (created, updated int, err error) {
 	aid := actorID
-	j := h.newJournal(integ.ID, "pull", trigger, &aid)
+	return h.runSyncJournal(ctx, integ, cred, actorID, h.newJournal(integ.ID, "pull", trigger, &aid))
+}
+
+// runSyncJournal is runSync against a caller-supplied journal, so a manual sync
+// can open its run row (beginJournal) before detaching into the background and
+// still have every action land on that same row.
+func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cred db.GitlabCredential, actorID uuid.UUID, j *syncJournal) (created, updated int, err error) {
 	defer func() {
 		if err != nil {
 			j.abort(err)

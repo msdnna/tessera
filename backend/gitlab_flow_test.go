@@ -73,7 +73,10 @@ type fakeGitlab struct {
 	projectPath string
 	pageSize    int
 
-	mu        sync.Mutex
+	mu sync.Mutex
+	// Artificial per-request latency, so a test can catch a sync mid-flight (the
+	// manual sync is detached — its "running" state is what the UI shows).
+	delay     time.Duration
 	issues    []*glIssue
 	members   []glMember
 	templates map[string]string // name → content
@@ -131,7 +134,21 @@ func (f *fakeGitlab) findIssue(iid int64) *glIssue {
 	return nil
 }
 
+// setDelay makes every fake response take d, stretching a sync into a window a
+// test can observe.
+func (f *fakeGitlab) setDelay(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.delay = d
+}
+
 func (f *fakeGitlab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	d := f.delay
+	f.mu.Unlock()
+	if d > 0 {
+		time.Sleep(d)
+	}
 	switch {
 	case r.URL.Path == "/api/graphql":
 		f.graphql(w, r)
@@ -417,13 +434,27 @@ func waitSyncRuns(t *testing.T, c *client, wsID string, want int) []map[string]a
 	return nil
 }
 
-// triggerSync starts a manual sync and asserts the 202 accepted contract.
-func triggerSync(t *testing.T, c *client, wsID, integID string) {
+// triggerSync starts a manual sync and asserts the 202 accepted contract: the
+// request returns immediately (the pull runs detached) naming the journal run it
+// opened, which the client watches instead of blocking.
+func triggerSync(t *testing.T, c *client, wsID, integID string) string {
 	t.Helper()
 	r := c.post("/workspaces/"+wsID+"/gitlab/integrations/"+integID+"/sync", nil)
 	if r.Status != http.StatusAccepted {
 		t.Fatalf("sync: status %d\n%s", r.Status, r.Body)
 	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(r.Body), &body); err != nil {
+		t.Fatalf("sync: bad body %q: %v", r.Body, err)
+	}
+	if body["started"] != true {
+		t.Fatalf("sync: not started: %v", body)
+	}
+	runID, _ := body["run_id"].(string)
+	if runID == "" {
+		t.Fatalf("sync: no run_id in %v", body)
+	}
+	return runID
 }
 
 // taskByIid finds the board task mirroring a GitLab issue iid.
@@ -560,11 +591,16 @@ func TestGitlabSyncFlow(t *testing.T) {
 	integ := createIntegration(t, c, s.WS, s.Board, f, nil)
 	integID := integ["id"].(string)
 
-	triggerSync(t, c, s.WS, integID)
+	runID := triggerSync(t, c, s.WS, integID)
 	runs := waitSyncRuns(t, c, s.WS, 1)
 	run := runs[0]
 	if run["kind"] != "pull" || run["trigger"] != "manual" || run["status"] != "ok" {
 		t.Fatalf("run: %v", run)
+	}
+	// The row named in the 202 is the one the sync filled in — the client watches
+	// that id rather than guessing which run is "its" one.
+	if run["id"] != runID {
+		t.Fatalf("journal run id = %v, want the id returned by the sync call %q", run["id"], runID)
 	}
 	if run["created_count"] != float64(3) {
 		t.Fatalf("created_count = %v, want 3", run["created_count"])

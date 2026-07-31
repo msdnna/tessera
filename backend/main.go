@@ -41,6 +41,10 @@ func main() {
 	// Give boards/notes that predate the slug column a human-readable slug.
 	rh.BackfillSlugs(context.Background())
 
+	// Close sync runs left "running" by a process that died mid-sync — nothing of
+	// ours is in flight yet, so they can only be stale.
+	rh.FailStaleSyncRuns(context.Background())
+
 	// Background GitLab auto-sync worker (idle until an integration sets a
 	// positive sync interval).
 	go rh.RunSyncWorker(context.Background())

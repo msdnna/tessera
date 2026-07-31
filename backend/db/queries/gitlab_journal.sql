@@ -1,9 +1,12 @@
 -- GitLab sync journal: run + action history written by the pull engine and the
 -- write-back worker, read back by the journal modal. See migration 0033.
 
+-- CreateGitlabSyncRun opens a run row. started_at is supplied by the caller (the
+-- real moment the sync began, not the moment it was recorded), and status is
+-- normally 'running' — FinishGitlabSyncRun stamps the outcome afterwards.
 -- name: CreateGitlabSyncRun :one
-INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, started_at)
-VALUES ($1, $2, $3, $4, now())
+INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, status, started_at)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- FinishGitlabSyncRun stamps the final status, counts and finish time once a run
@@ -13,6 +16,14 @@ UPDATE gitlab_sync_runs
 SET status = $2, created_count = $3, updated_count = $4, deleted_count = $5,
     action_count = $6, error = $7, finished_at = now()
 WHERE id = $1;
+
+-- FailStaleGitlabSyncRuns closes runs left in 'running' by a process that died
+-- mid-sync (restart/crash). Called once at startup — nothing can legitimately be
+-- running at that point, so no in-flight run is clobbered.
+-- name: FailStaleGitlabSyncRuns :exec
+UPDATE gitlab_sync_runs
+SET status = 'error', error = 'прервано перезапуском сервиса', finished_at = now()
+WHERE status = 'running' AND finished_at IS NULL;
 
 -- name: CreateGitlabSyncAction :exec
 INSERT INTO gitlab_sync_actions (

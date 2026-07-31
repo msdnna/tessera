@@ -847,6 +847,9 @@ func notifyTitle(kind string) string {
 		return "Скоро дедлайн"
 	case "reminder":
 		return "Напоминание"
+	case "integration_sync":
+		// Provider-neutral: the core knows "an integration synced", not GitLab.
+		return "Синхронизация завершена"
 	default:
 		return "Уведомление"
 	}

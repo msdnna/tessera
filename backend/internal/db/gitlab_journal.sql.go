@@ -51,8 +51,8 @@ func (q *Queries) CreateGitlabSyncAction(ctx context.Context, arg CreateGitlabSy
 
 const createGitlabSyncRun = `-- name: CreateGitlabSyncRun :one
 
-INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, started_at)
-VALUES ($1, $2, $3, $4, now())
+INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, status, started_at)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, integration_id, kind, trigger, actor_id, status, created_count, updated_count, deleted_count, action_count, error, started_at, finished_at
 `
 
@@ -61,16 +61,23 @@ type CreateGitlabSyncRunParams struct {
 	Kind          string     `json:"kind"`
 	Trigger       string     `json:"trigger"`
 	ActorID       *uuid.UUID `json:"actor_id"`
+	Status        string     `json:"status"`
+	StartedAt     time.Time  `json:"started_at"`
 }
 
 // GitLab sync journal: run + action history written by the pull engine and the
 // write-back worker, read back by the journal modal. See migration 0033.
+// CreateGitlabSyncRun opens a run row. started_at is supplied by the caller (the
+// real moment the sync began, not the moment it was recorded), and status is
+// normally 'running' — FinishGitlabSyncRun stamps the outcome afterwards.
 func (q *Queries) CreateGitlabSyncRun(ctx context.Context, arg CreateGitlabSyncRunParams) (GitlabSyncRun, error) {
 	row := q.db.QueryRow(ctx, createGitlabSyncRun,
 		arg.IntegrationID,
 		arg.Kind,
 		arg.Trigger,
 		arg.ActorID,
+		arg.Status,
+		arg.StartedAt,
 	)
 	var i GitlabSyncRun
 	err := row.Scan(
@@ -89,6 +96,20 @@ func (q *Queries) CreateGitlabSyncRun(ctx context.Context, arg CreateGitlabSyncR
 		&i.FinishedAt,
 	)
 	return i, err
+}
+
+const failStaleGitlabSyncRuns = `-- name: FailStaleGitlabSyncRuns :exec
+UPDATE gitlab_sync_runs
+SET status = 'error', error = 'прервано перезапуском сервиса', finished_at = now()
+WHERE status = 'running' AND finished_at IS NULL
+`
+
+// FailStaleGitlabSyncRuns closes runs left in 'running' by a process that died
+// mid-sync (restart/crash). Called once at startup — nothing can legitimately be
+// running at that point, so no in-flight run is clobbered.
+func (q *Queries) FailStaleGitlabSyncRuns(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, failStaleGitlabSyncRuns)
+	return err
 }
 
 const finishGitlabSyncRun = `-- name: FinishGitlabSyncRun :exec

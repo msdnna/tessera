@@ -14,6 +14,8 @@ const KIND_TITLE = {
   archived: 'Задача архивирована',
   due_soon: 'Скоро дедлайн',
   reminder: 'Напоминание',
+  // Provider-neutral: emitted by any integration's background sync, not just GitLab.
+  integration_sync: 'Синхронизация завершена',
 }
 
 // notifications store — persistent, server-backed feed for the bell (feature

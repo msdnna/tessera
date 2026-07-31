@@ -1,10 +1,12 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { NIcon, NButton, useMessage } from 'naive-ui'
 import { OpenOutline, RefreshOutline } from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
 import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
+import { useRealtime } from '@/composables/useRealtime'
+import { runDuration, elapsedSince } from '@/utils/duration'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
@@ -27,18 +29,23 @@ const loadingActions = ref(false)
 const selectedAction = ref(null) // { ...action, runId }
 const retrying = ref(false)
 
-async function loadRuns() {
+// reset=false is the live-refresh form (a background run finished): the list is
+// re-fetched in place, keeping whatever the user has expanded/selected and
+// skipping the overlay so the panel doesn't flash under them.
+async function loadRuns(reset = true) {
   if (!props.wsId) return
-  runs.value = []
-  actionsByRun.value = {}
-  expandedRunId.value = null
-  selectedAction.value = null
-  loading.value = true
+  if (reset) {
+    runs.value = []
+    actionsByRun.value = {}
+    expandedRunId.value = null
+    selectedAction.value = null
+    loading.value = true
+  }
   try {
     const { data } = await glApi.syncRuns(props.wsId)
     runs.value = data || []
   } catch (e) {
-    message.error(e.message)
+    if (reset) message.error(e.message)
   } finally {
     loading.value = false
   }
@@ -137,8 +144,55 @@ function runCounts(run) {
   return parts.join(' ') || 'без изменений'
 }
 
-const STATUS_LABEL = { ok: 'успех', partial: 'частично', error: 'ошибка', fail: 'ошибка' }
+const STATUS_LABEL = {
+  running: 'выполняется',
+  ok: 'успех',
+  partial: 'частично',
+  error: 'ошибка',
+  fail: 'ошибка',
+}
 const TRIGGER_LABEL = { manual: 'вручную', auto: 'авто' }
+
+// A run opened by the backend but not yet finished. Manual syncs are detached, so
+// this is the live state the user watches instead of a blocking overlay.
+function isRunning(run) {
+  return run.status === 'running' || !run.finished_at
+}
+
+// Ticks once a second so the "идёт N с" caption on an in-flight run advances.
+// Only armed while something is actually running, so an idle journal costs nothing.
+const now = ref(Date.now())
+let ticker = null
+function syncTicker() {
+  const live = runs.value.some(isRunning)
+  if (live && !ticker) {
+    ticker = setInterval(() => (now.value = Date.now()), 1000)
+  } else if (!live && ticker) {
+    clearInterval(ticker)
+    ticker = null
+  }
+}
+onBeforeUnmount(() => clearInterval(ticker))
+
+// Duration cell: the finished span, or a live ticker while the run is in flight.
+function runDurationText(run) {
+  if (isRunning(run)) return `идёт ${elapsedSince(run.started_at, now.value)}`
+  return runDuration(run.started_at, run.finished_at)
+}
+
+// A background run reports itself over the workspace socket — refresh so the
+// running row flips to its final status without the user reopening the panel.
+useRealtime((ev) => {
+  if (ev.type !== 'integration.sync' || ev.scope !== props.wsId) return
+  // Its actions were only written at the end, so drop the (empty) cached list.
+  const id = ev.data?.run_id
+  if (id && actionsByRun.value[id]) {
+    const next = { ...actionsByRun.value }
+    delete next[id]
+    actionsByRun.value = next
+  }
+  loadRuns(false)
+})
 
 // Push payload, rendered compactly per change kind.
 function pushPayloadText() {
@@ -157,9 +211,10 @@ function pushPayloadText() {
 }
 
 onMounted(loadRuns)
-watch(() => props.wsId, loadRuns)
+watch(() => props.wsId, () => loadRuns())
+watch(runs, syncTicker, { immediate: true })
 
-defineExpose({ reload: loadRuns })
+defineExpose({ reload: () => loadRuns() })
 </script>
 
 <template>
@@ -184,11 +239,17 @@ defineExpose({ reload: loadRuns })
             }}</span>
             <span class="j-run-main">
               <span class="j-run-time">{{ fmtTime(run.started_at) }}</span>
-              <span class="j-run-meta"
-                >{{ TRIGGER_LABEL[run.trigger] }} · {{ runCounts(run) }}</span
-              >
+              <span class="j-run-meta">
+                {{ TRIGGER_LABEL[run.trigger] }} ·
+                <template v-if="!isRunning(run)">{{ runCounts(run) }} · </template>
+                {{ runDurationText(run) }}
+              </span>
             </span>
-            <span class="j-dot" :class="run.status" :title="STATUS_LABEL[run.status]" />
+            <span
+              class="j-dot"
+              :class="isRunning(run) ? 'running' : run.status"
+              :title="STATUS_LABEL[isRunning(run) ? 'running' : run.status]"
+            />
           </button>
           <div v-if="expandedRunId === run.id" class="j-actions">
             <div v-if="loadingActions" class="j-muted">Загрузка…</div>
@@ -397,6 +458,29 @@ defineExpose({ reload: loadRuns })
 }
 .j-dot.error {
   background: #d03050;
+}
+/* In-flight run: the accent gradient (design language — non-neutral elements
+   carry the soft diagonal), softly pulsing. This is the only progress affordance
+   a detached sync gets, so it has to read as alive. */
+.j-dot.running {
+  background-image: var(--t-accent-grad);
+  animation: j-dot-pulse 1.4s ease-in-out infinite;
+}
+@keyframes j-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .j-dot.running {
+    animation: none;
+  }
 }
 .j-actions {
   padding: 2px 0 6px 8px;

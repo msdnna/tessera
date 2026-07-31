@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.146.0] — 2026-07-31
+- **feat(gitlab,web): фоновый ручной синк GitLab с уведомлением инициатору.** Ручной
+  синк больше не блокирует UI polling-циклом (LoaderOverlay до 30 минут): кнопка
+  «Синхронизировать» мгновенно запускает фоновый прогон и открывает журнал со строкой
+  «выполняется», а по завершении приходит уведомление в колокольчик автору запуска
+  (`kind=integration_sync`). Убраны `LoaderOverlay`/`SYNC_MESSAGES`/polling в
+  `GitLabModal.vue`.
+- **Журнал синков: реальное время и живой статус.** Строка прогона создаётся в момент
+  старта со `status=running` (пульсирующая точка акцентным градиентом), `started_at`
+  фиксирует реальное начало, длительность (`fmtDuration`) считается честно; для идущего
+  прогона тикает «идёт N с». `GitLabJournalPanel.vue` подписан на WS-событие
+  `integration.sync` для авто-перерисовки без ручного refresh.
+- **Колокольчик: тип уведомления `integration_sync`** («Синхронизация завершена») в
+  `stores/notifications.js` и `NotificationSettings.vue`.
+
 ### [0.145.4] — 2026-07-30
 - **Контекстное меню проекта без горизонтального скролла.** Кап высоты
   (`max-height: 72vh` + `overflow-y: auto`) применялся ко ВСЕМ не-`scrollable`
@@ -2768,6 +2783,23 @@ User-management phase U1b (web) — consumes backend 0.30.0.
   deep-link `/project/<slug>/board/<slug>?task=<number>`.
 
 ## backend
+
+### [0.80.0] — 2026-07-31
+- **feat(gitlab,web): фоновый ручной синк с уведомлением инициатору и временем в
+  журнале.** Ручной синк GitLab (`POST .../sync`) теперь запускается полностью в фоне:
+  ответ `202 {"started":true,"run_id":...}` возвращается мгновенно, а строка журнала
+  `gitlab_sync_runs` создаётся в момент старта со `status='running'` и реальным
+  `started_at` (раньше строка создавалась по завершении с `started_at=finished_at=now()`,
+  т.е. длительность всегда читалась как ≈0). По завершении ручного прогона инициатору
+  доставляется уведомление `kind=integration_sync` (провайдеро-нейтральное; через
+  `deliverNotification` + WS `notification`, контекст — `context.WithoutCancel`).
+  Авто-прогоны уведомлений не шлют (иначе спам).
+- **Зависшие синки помечаются ошибкой при старте сервиса** (`FailStaleGitlabSyncRuns`) —
+  после рестарта бэкенда `running`-строки больше не зависают навсегда.
+- **WS-событие `integration.sync`** (workspace-scoped) для живого обновления журнала/
+  доски без polling.
+- `notifyTitle`: `case "integration_sync"`. Миграций не требуется (`status`/`finished_at`
+  уже позволяют `running`+NULL, `notifications.kind` — свободный `text`).
 
 ### [0.79.1] — 2026-07-30
 - **fix(gitlab): write-back смены приоритета с level-квалифицированным биндингом
