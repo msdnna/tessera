@@ -249,8 +249,8 @@ mig **0027** (jsonb `tasks.recurrence`, `internal/recur` + тесты).
   [[project-recurring-tasks]].
 
 ### 13. Прод-деплой LIVE + GL-медиа прокси + Android-полировка — ✅ СДЕЛАНО (2026-06-16…19)
-- **Production LIVE (2026-06-18, backend 0.45.1 / web 0.74.1):** single-box Docker на Timeweb VDS
-  `203.0.113.10`, `tessera.msdnna.website`. Caddy (auto-TLS) → frontend nginx → distroless backend →
+- **Production LIVE (2026-06-18, backend 0.45.1 / web 0.74.1):** single-box Docker на VDS
+  (`tessera.msdnna.website`). Caddy (auto-TLS) → frontend nginx → distroless backend →
   postgres; image-tarball workflow в `deploy/` (`build-and-save.sh` → `scp` → `docker load` →
   `compose up` → `exec backend /migrate`). Гочи (Hub rate-limit → ship base images по tar;
   DATABASE_URL escaping → передавать `POSTGRES_*`, не готовый URL; outbound-SMTP блок на IPv4 → Docker IPv6).

@@ -8,7 +8,7 @@ description: Build and publish a signed Tessera Android release APK with self-up
 Сборка и публикация подписанного релиза Android-клиента Tessera. **RELEASE — дефолт**
 (R8 + shrinkResources → APK ~2 МБ и плавный; debug ~15 МБ и лагал на анимациях).
 
-> Этот dev-хост И ЕСТЬ боевой сервер (10.0.0.10): сборка/подпись здесь через
+> Этот dev-хост И ЕСТЬ боевой сервер: сборка/подпись здесь через
 > `android/local.env` + общий keystore, apks раздаются фронтом на `:8083/apks/`.
 > Значит, отсюда можно и собрать, и опубликовать релиз.
 

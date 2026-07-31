@@ -39,12 +39,13 @@ services:
       # Uploaded media + task attachments live here; a volume keeps them across
       # rebuilds (the default ./uploads is inside the container = wiped on build).
       - UPLOAD_DIR=/data/uploads
-      - GITLAB_INSECURE_TLS=true
+      - GITLAB_INSECURE_TLS=${GITLAB_INSECURE_TLS:-false}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
-    extra_hosts:
-      - "internal-gitlab.example:10.0.0.10"  
+    # To reach a GitLab on a private network by hostname, add the mapping in an
+    # untracked docker-compose.override.yml, e.g.:
+    #   extra_hosts: ["gitlab.internal:10.0.0.5"]
     ports:
       - "8090:8080" # host 8080 is taken by the budget app on this box
     depends_on:
@@ -75,6 +76,7 @@ services:
       # Android self-update store: the release build drops the signed APK +
       # latest.json here (tools/build-android-release.sh); nginx serves /apks/.
       - ./apks:/usr/share/nginx/html/apks:ro
+      - ./desktop-dist:/usr/share/nginx/html/desktop:ro
 
 volumes:
   postgres_data:

@@ -52,10 +52,20 @@ android/local.properties
 android/local.env
 *.apk
 
+# Local DB/uploads backups (never commit — may hold real user data)
+backup/
+*.tar.zst
+
+# Local compose overrides (private hosts, extra ports, etc.)
+docker-compose.override.yml
+
 # Editor / OS
 .DS_Store
 .idea/
 *.swp
+# Windows "mark of the web" alternate-data-stream sidecars (WSL)
+*:Zone.Identifier
+*Zone.Identifier
 
 # Desktop (Tauri) release output (built + published, not tracked)
 desktop-dist/
