@@ -1,0 +1,79 @@
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - 'desktop/v*'
+
+permissions:
+  contents: write   # create GitHub Release + upload bundles
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 22.04 → older glibc = wider AppImage compatibility; deb/rpm/appimage.
+          - { os: ubuntu-22.04, label: Linux }
+          - { os: windows-latest, label: Windows }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag matches desktop/VERSION
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/desktop/v}"
+          FILE="$(tr -d '[:space:]' < desktop/VERSION)"
+          if [ "$TAG" != "$FILE" ]; then
+            echo "::error::Git tag desktop/v$TAG does not match desktop/VERSION ($FILE). Bump desktop/VERSION or retag."
+            exit 1
+          fi
+          echo "DESKTOP_VERSION=$TAG" >> "$GITHUB_ENV"
+
+      - name: Install Tauri system deps (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf rpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install frontend deps (tauri beforeBuildCommand builds ../frontend)
+        working-directory: frontend
+        run: corepack yarn install --immutable
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Build + publish bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater signing — the minisign private key + password live in secrets
+          # (same key baked as pubkey into tauri.conf.json). Without them the
+          # updater artifacts are unsigned and self-update won't verify.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: desktop/src-tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: Desktop v${{ env.DESKTOP_VERSION }}
+          releaseDraft: false
+          prerelease: false
+          # Emit latest.json so the existing self-update mechanism can consume it.
+          includeUpdaterJson: true

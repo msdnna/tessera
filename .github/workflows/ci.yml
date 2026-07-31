@@ -1,38 +1,317 @@
 name: CI
 
 on:
+  pull_request:
+    branches: [main, develop]
   push:
     branches: [main, develop]
-  pull_request:
+  # Manual override: firing from the Actions tab runs every component job
+  # regardless of which paths changed (path-filter short-circuits to true).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  backend:
+  changes:
+    name: Detect changed components
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
+    outputs:
+      backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' }}
+      web:     ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
+      android: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true' }}
+      mcp:     ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.mcp == 'true' }}
+      desktop: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.desktop == 'true' }}
     steps:
       - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'frontend/**'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            android:
+              - 'android/**'
+              - 'tools/build-android-release.sh'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            mcp:
+              - 'mcp/**'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            desktop:
+              - 'desktop/**'
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+
+  backend:
+    name: Backend
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tessera
+          POSTGRES_PASSWORD: tessera
+          POSTGRES_DB: tessera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tessera -d tessera_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      # The integration harness reads TEST_DATABASE_URL and runs migrations itself.
+      TEST_DATABASE_URL: postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-go's go-version-file reads only the `go` directive and ignores
+      # `toolchain`, so it would install go1.25.0 while go.mod pins toolchain
+      # go1.25.9 → "compile: version mismatch". Resolve the toolchain explicitly.
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
-      - run: go build ./...
-      - run: go vet ./...
-      - run: go test ./...
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
 
-  frontend:
+      - name: Install golangci-lint v2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
+      - name: Lint (golangci-lint)
+        run: make lint-backend GO=go
+
+      - name: Unit + integration tests (with coverage)
+        run: make test-backend-cover GO=go
+
+      - name: Generate coverage badge JSON
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        run: GO=go ./tools/coverage-badge.sh backend backend/coverage.out
+
+      - name: Upload coverage badge artifact
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-backend
+          path: _badges/backend.json
+          retention-days: 1
+
+  web:
+    name: Web
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: corepack enable
-      - run: corepack yarn install --immutable
-      - run: corepack yarn lint
-      - run: corepack yarn format:check
-      - run: corepack yarn test
-      - run: corepack yarn build
+          # No `cache: 'yarn'`: setup-node calls `yarn cache dir` via the runner's
+          # global yarn 1.x, which refuses a project pinning `packageManager:
+          # yarn@4`. Enable Corepack manually instead.
+
+      - name: Enable Corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install
+        working-directory: frontend
+        run: corepack yarn install --immutable
+
+      - name: Lint (ESLint)
+        working-directory: frontend
+        run: corepack yarn lint
+
+      - name: Format check (Prettier)
+        working-directory: frontend
+        run: corepack yarn format:check
+
+      - name: Test (Vitest with coverage)
+        run: make test-frontend-cover
+
+      - name: Build
+        working-directory: frontend
+        run: corepack yarn build
+
+      - name: Generate coverage badge JSON
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        run: ./tools/coverage-badge.sh web frontend/coverage/lcov.info
+
+      - name: Upload coverage badge artifact
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-web
+          path: _badges/web.json
+          retention-days: 1
+
+  android:
+    name: Android
+    needs: changes
+    if: ${{ needs.changes.outputs.android == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 37 (preview channel)
+        run: |
+          set -euo pipefail
+          # compileSdk 37 is still a preview platform (published as `android-37.0`);
+          # install `cmdline-tools;latest` for a fresh index, then the platform.
+          sdkmanager --install 'cmdline-tools;latest' >/dev/null
+          SDKMGR="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMGR" --licenses --channel=3 >/dev/null 2>&1 || true
+          "$SDKMGR" --channel=3 'platforms;android-37.0'
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Stub android/local.env (Makefile sources it; SOCKS proxy unused in CI)
+        run: touch android/local.env
+
+      - name: Lint (ktlint + detekt)
+        run: make lint-android
+
+      - name: Unit tests + JaCoCo coverage
+        run: make test-android-cover
+
+      - name: Generate coverage badge JSON
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        run: ./tools/coverage-badge.sh android android/app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
+
+      - name: Upload coverage badge artifact
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-android
+          path: _badges/android.json
+          retention-days: 1
+
+  mcp:
+    name: MCP
+    needs: changes
+    if: ${{ needs.changes.outputs.mcp == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' mcp/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' mcp/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: mcp/go.sum
+      - name: Install golangci-lint v2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+      - name: Lint + test
+        run: |
+          make lint-mcp GO=go
+          make test-mcp GO=go
+
+  desktop-lint:
+    name: Desktop (Rust lint)
+    needs: changes
+    if: ${{ needs.changes.outputs.desktop == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: fmt + clippy
+        run: make lint-desktop
+
+  # ─── Build verification (push only) ───────────────────────────────────────
+  build-verify:
+    name: Build images (no push)
+    needs: [changes, backend, web]
+    if: ${{ always() && github.event_name == 'push' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.web == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend image (no push)
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile.prod
+          push: false
+          tags: tessera-backend:ci-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Build frontend image (no push)
+        if: ${{ needs.changes.outputs.web == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: false
+          tags: tessera-frontend:ci-${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  # ─── Publish coverage badges to the `badges` orphan branch ────────────────
+  # One consolidated job so the component jobs don't race on `git push`.
+  # README renders them via shields.io endpoints from raw.githubusercontent.com.
+  publish-coverage-badges:
+    name: Publish coverage badges
+    needs: [backend, web, android]
+    if: ${{ always() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect badge artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: _badges
+          pattern: badge-*
+          merge-multiple: true
+      - name: Publish to `badges` orphan branch
+        if: hashFiles('_badges/*.json') != ''
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_badges
+          publish_branch: badges
+          keep_files: true
+          commit_message: 'ci(badges): coverage update (${{ github.sha }})'
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'

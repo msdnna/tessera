@@ -1,5 +1,13 @@
 # Tessera
 
+<!-- Замените OWNER на GitHub-владельца репозитория после публикации. Бейджи
+     покрытия обслуживаются orphan-веткой `badges`, которую наполняет CI. -->
+[![CI](https://github.com/OWNER/tessera/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/tessera/actions/workflows/ci.yml)
+![backend coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/tessera/badges/backend.json)
+![web coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/tessera/badges/web.json)
+![android coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/tessera/badges/android.json)
+![mcp coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/tessera/badges/mcp.json)
+
 Таск-трекер экосистемы **msdnna** — задачи, заметки и напоминания
 с killer-фичей, которой нет у аналогов: **канбан-доска с группировкой по тегам**.
 

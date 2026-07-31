@@ -1,0 +1,109 @@
+name: Release API
+
+on:
+  push:
+    tags:
+      - 'api/v*'
+
+permissions:
+  contents: write   # create GitHub Release
+  packages: write   # push image to GHCR
+
+concurrency:
+  group: release-api-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, test, publish backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tessera
+          POSTGRES_PASSWORD: tessera
+          POSTGRES_DB: tessera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tessera -d tessera_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag matches backend/VERSION
+        run: |
+          TAG="${GITHUB_REF#refs/tags/api/v}"
+          FILE="$(tr -d '[:space:]' < backend/VERSION)"
+          if [ "$TAG" != "$FILE" ]; then
+            echo "::error::Git tag api/v$TAG does not match backend/VERSION ($FILE). Bump backend/VERSION or retag."
+            exit 1
+          fi
+          echo "API_VERSION=$TAG" >> "$GITHUB_ENV"
+
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      - name: Install golangci-lint v2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
+      - name: Lint + test
+        run: |
+          make lint-backend GO=go
+          make test-backend GO=go
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/tessera-backend
+          # X.Y.Z and X.Y from a tag like `api/v0.79.1`, plus `latest`.
+          tags: |
+            type=match,pattern=api/v(.*),group=1
+            type=match,pattern=api/v(\d+\.\d+)\.\d+,group=1
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.version=${{ env.API_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Build & push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile.prod
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: API v${{ env.API_VERSION }}
+          generate_release_notes: true
+          make_latest: 'false'
