@@ -145,7 +145,7 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
   все клиенты (web/Android/desktop) в рамках ребренда 2026-07-28. Анимированный лоадер
   живёт в `design/tessera-brand-v2/loader/` (`loader-states.json` — общий источник
   чисел для web `src/utils/tesseraLoader.js` и Android `TesseraLoader.kt`, держать в
-  синхроне). v1 `design/tessera-brand/` оставлен в репо как история.
+  синхроне).
 
 ## Скиллы проекта (`.claude/skills/`)
 

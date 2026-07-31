@@ -3711,7 +3711,7 @@ User-management phase U1a (backend). All additive (migration 0014).
 
 ### [0.29.2] — 2026-06-11
 - GitLab asset proxy: the uploads-by-secret API only exists in GitLab ≥ 17.4, so
-  on older instances (older versions) the proxy now **redirects** to the web
+  on older instances the proxy now **redirects** to the web
   `/uploads/…` URL — the browser's own GitLab session serves the file. 17.4+ is
   still served via the PAT-authenticated API; the redirect is the fallback.
 

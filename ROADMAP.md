@@ -63,7 +63,7 @@ frontend `0.114.0` · android `0.41.0`. Следующая миграция — 
 
 ### 3. Бизнес-фичи — GitLab self-hosted Issues integration — ✅ фаза A реализована (B+ в бэклоге)
 - **Цель:** тянуть issues/work-items, назначенные на пользователя, из self-hosted
-  GitLab (self-hosted) в Tessera вместо дублей.
+  GitLab в Tessera вместо дублей.
 - **Решено по дизайну (2026-06-11):** транспорт — **pull-first polling** (Tessera→GL,
   работает во всех топологиях с egress; webhooks — потом). GraphQL (issues+work-items
   единообразно, иерархия для `M:`-подзадач). Привязка: **per-user PAT** (credential) +
@@ -71,14 +71,14 @@ frontend `0.114.0` · android `0.41.0`. Следующая миграция — 
   PAT → OAuth2 → SSO (последнее за скобки). Двухсторонность (write-back), webhooks,
   OAuth — **в бэклог**.
 - **Ядро кастомизации — движок правил по namespace-префиксам лейблов** (таксономия
-  пользователя `S:`/`P:`/`T:`/`C:`/`Scope:`/`effort::`/`M:`/`B:`): эффект, а не «куда
+  лейблов `S:`/`P:`/`T:`/`C:`/`Scope:`/`effort::`/`M:`/`B:`): эффект, а не «куда
   положить». `S:`→колонка, `P:`→priority, прочее→теги (с префиксом, additive — ручные
   scope-теги не затираются). `B: Future`→доска Backlog и `M:`→подзадачи — спроектировано,
   отложено.
 - **Фаза A реализована целиком** (manual+авто pull, без write-back):
   - backend `0.19.0`: migration 0009, `internal/secrets` (AES-GCM, `ENCRYPTION_KEY`),
     `internal/gitlab` (GraphQL `project.issues(assigneeUsername:)` + rule engine, юнит-тесты),
-    эндпоинты connection/integration/sync. **Живой sync против GL (self-hosted) подтверждён пользователем.**
+    эндпоинты connection/integration/sync. **Живой sync против self-hosted GitLab подтверждён.**
   - backend `0.20.0`: автор issue на `gitlab_links` (отдаётся в `gitlab` на GET /tasks/:id;
     синканные задачи без `created_by`), **фоновый воркер автосинка** (owner_user_id +
     sync_interval_sec + last_synced_at; `runSync` вынесен из gin-хендлера), migration 0010.
@@ -499,147 +499,14 @@ hover-превью бара, hover-аватарки, колонка-1px-борд
   `rpmbuild` в окружение сборки (Fedora/openSUSE-охват). UI уже готов показать `.rpm` автоматически,
   как только он появится в `downloads`-каталоге манифеста.
 
-## Что дальше (бэклог; приоритет не зафиксирован — выбирает пользователь)
+## Что дальше (бэклог)
 
-Большие фазы (уведомления, email, теги per-project, URL, повторы, прод-деплой) закрыты. Активная
-работа — **десктоп-приложение (раздел 19, Tauri)**; новые представления (раздел 14) закрыты. Прочие
-кандидаты (осознанность, не обязательства):
+Крупные фазы закрыты; активная разработка теперь ведётся **внутри самой Tessera** —
+задачи ставятся на доске проекта и раздаются AI-агенту через MCP-сервер (см. раздел
+про MCP в `README.md`). Накопленный в этом файле бэклог перенесён в трекер, в колонку
+**«К работе»** проекта Tessera; там же появляются новые задачи. Этот раздел больше не
+ведём как список — источник истины по «что дальше» — сама доска.
 
-- **Оценка задач (estimation)** — ✅ **СДЕЛАНО** (backend 0.51 / web 0.84 / android 0.28, миграция
-  **0030**). Канон `tasks.estimate` (nullable double) — число, единица которого резолвится из
-  двухуровневого конфига (`projects.estimation` → `workspaces.estimation` jsonb → встроенный дефолт
-  `время/8ч/5д`), как у префиксов тегов. Конфиг правится своими ручками `PUT /workspaces|projects/:id/estimation`
-  (имя-edit не затирает). Клиенты делают весь парс/формат (`utils/estimation.js` / `util/Estimation.kt`):
-  - **Время:** канон-минуты + рабочий день/неделя; ввод «3д 4ч»/«1н»/«90м» (EN+RU, голое число = часы)
-    → минуты, вывод сжимается по рабочему дню (30h при 8-час. дне → «3д 6ч»).
-  - **Стори-поинты** (Фибоначчи / футболки / линейная) и **кастом** (метка) — число без конверсии.
-  - Роллап = сумма оценок подзадач (показывается «Σ …», когда у задачи есть дети). Поверхности: строка
-    «Оценка» в TaskModal, чип на карточке, «⏱ N» в лейн-хедерах таймлайна/Ганта, редактор единиц из
-    контекст-меню проекта и меню воркспейса. **Оценка ≠ трекинг времени** (учёт затраченного — отдельный
-    поздний кандидат). Смешанные единицы на одной доске не делаем: доска = один проект = одна единица.
-
-- **GitLab фаза B — write-back — ✅ MVP СДЕЛАНО** (backend 0.53.0 / web 0.92.0, миграция **0032**,
-  2026-06-23). Opt-in per-integration (`gitlab_integrations.writeback` jsonb, всё выкл по умолчанию);
-  пушим три вида: **state** (вход/выход из колонки «Готово» → close/reopen issue), **priority**
-  (смена приоритета → swap метки `P:` через `add_labels`/`remove_labels`, только если маппинг 1:1),
-  **comment** (комментарий Tessera → note в issue; note-id пишется на комментарий → следующий pull
-  дедупит). Транспорт — REST (pull остаётся GraphQL). Async-outbox `gitlab_writebacks` + воркер
-  `RunGitlabWriteBackWorker` (зеркало notification-outbox: claim SKIP LOCKED, квадратичный backoff,
-  5 попыток) — пуш не блокирует мутацию, переживает падение GL. Loop-guard: enqueue только на
-  user-мутациях (pull идёт отдельным путём), не пушим значение, которое в GL уже есть (`gl_last_state`
-  + контент-хэши), после пуша ре-фетч issue переписывает снапшот. Пуш — PAT владельца интеграции
-  (нужен scope `api`). Статус — **только open/close** (инверс колонка→`S:` лоссится; редактор явных
-  привязок `column_label_bindings` отложен, шов пустой). См. [[project-gitlab-writeback]].
-- **GitLab журнал синхронизации — ✅ СДЕЛАНО** (2026-06-23, backend 0.54.0 / web 0.93.0, миграция 0033).
-  Видимая пользователю история прогонов pull+push воркера с диффом до/после на каждое действие.
-  Сплит-кнопка «Синхронизировать» в GitLab-модалке (дропдаун → «Журнал синхронизации») открывает
-  `GitLabJournalModal` (мастер-деталь): слева прогоны, справа дифф действия; у упавшей push-доставки —
-  «Повторить». Свои таблицы `gitlab_sync_runs`/`gitlab_sync_actions` (слабая связанность, ядро не
-  трогается); recorder = аккумулятор `syncJournal`; reconcile-запросы отдают дельты. Эндпоинты
-  `sync-runs` / `.../actions` / `.../retry`. Подробности — [[project-gitlab-sync-journal-next]].
-  Открытый хвост: визуальный прогон в живом UI (headless для NModal ненадёжен).
-  **Android-паритет — ✅ СДЕЛАНО** (android 0.35.0, см. раздел 15).
-- **GitLab фаза B+ — шаги 1/2/3 ✅ СДЕЛАНО** (2026-06-27, порядок `1→3→2`; детали и гочи —
-  [[project-gitlab-phase-b-plus-plan]]). На готовом outbox/worker/журнале, каждый шаг зеркалит
-  priority-путь. **Шаг 4 — на паузе (пользователь тестирует 1/2/3 против живого GL перед стартом).**
-  1. **Теги + due → GL** — ✅ (backend 0.56 / web 0.99 / android 0.37): флаги `push_labels`/`push_due`
-     (jsonb, без миграции); реконсайл меток только в тег-неймспейсах; только `due_date` issue
-     (start у GL-issue нет).
-  2. **timeEstimate ↔ задача (двусторонне)** — ✅ (backend 0.58 / web 0.101 / android 0.39, миг 0036):
-     pull+push, только при единице оценки «время» (`estimation_unit` в ответе интеграции → тогл
-     disabled иначе); `estimate_overridden`.
-  3. **Members-sync → ассайни** — ✅ (backend 0.57 / web 0.100 / android 0.38, миг 0035): таблица
-     `gitlab_project_members`, объединённый пикер Tessera+GL, `task_gitlab_assignees` writable
-     (`source`), write-back `assignees` через `gl_user_id`. **OAuth-блокер ассайни снят.**
-  4. **Создание issue из таски** — ✅ СДЕЛАНО (api 0.60.0 / web 0.103.0, commit 9c4f810, БЕЗ миграции —
-     `push_create` это jsonb-флаг writeback). **Синхронный** `POST /tasks/:id/gitlab-issue` (не async-
-     outbox: очередь завязана на уже-слинкованную задачу, а тут создание И есть линковка, и нужен
-     iid/url сразу). Гейты: интеграция настроена+включена → `push_create` → задача на борде интеграции →
-     не слинкована → есть владелец → есть GL-креденшел (вызывающего, иначе владельца). Issue строится из
-     задачи: заголовок, описание (переопределяемо из тела — заполненный шаблон), метки (теги если
-     инвертируются, `P:` приоритет, `S:` из `column_label_bindings`), `due_date`, исполнители (резолв в
-     `gl_user_id`), best-effort timeEstimate. После линковки `refreshLinkSnapshot`. Шаблоны:
-     `GET /workspaces/:id/gitlab/issue-templates` (REST `templates/issues`, soft-fail в `[]`). e2e на
-     tessera_test проверил гейты; живой GL-путь покрыт httptest-юнит-тестами.
-     **UX (после фидбэка, web 0.103.1 / api 0.60.1):** кнопка «Создать issue» — в свойствах **под
-     «Родитель»** (не верхняя пилюля — та сливалась с градиентом); issue строится из текущих свойств +
-     описания задачи (сначала `applyMeta`, затем create с пустым телом → бэкенд читает БД), после —
-     рефетч, задача становится синхронизированной. Пикер шаблона — **над редактором описания**
-     (заполняет редактор = тело issue). Новый флаг `fetch_templates` (jsonb writeback) + тумблер
-     «Получение issue-templates из проекта» в GL-модалке под `push_create`. **Не live-verified; Android
-     паритет шага 4 — TODO.**
-  - **OAuth/SSO** — не сейчас, но **ближний бэклог** (универсальный маппинг + атрибуция), не в долгий
-    ящик. Ассайни от него больше не зависят (шаг 3).
-  - Остаток прежнего бэклога: редактор `column_label_bindings` (колонка→метка `S:`),
-    webhooks (вместо/в дополнение к polling).
-- **Write-back: title/description + механизм разрешения конфликтов — ✅ СДЕЛАНО** (backend 0.61.0–0.62.0 /
-  web 0.104.0, мигр. **0037**, 2026-06-29). Трёхсторонняя детекция (base/theirs/ours) против нового
-  базлайна `gitlab_links.gl_snapshot`: при пуше `conflict`-проверяемого поля воркер сверяет текущее в GL,
-  последнее синканное и желаемое → push / no-op / **конфликт** (паркует строку `status='conflict'`,
-  не перетирая встречную правку). Интерактивный резолвер на web (`ConflictResolverModal`, инбокс
-  «Конфликты (N)» в GitLab-модалке): трёхколоночный diff + **ours / theirs / manual**. Pull замораживает
-  конфликтное поле. `title_desc` оживлён (новый REST `UpdateIssueTitleDescription`, сравнение описания по
-  переписанным attachment-ссылкам). **Этот проход покрывает `due`/`estimate`/`title_desc`;**
-  `state`/`priority`/`labels`/`assignees` пока по-старому (last-writer-wins, без регрессии) — расширить
-  на них детекцию следующим заходом. Опц. per-integration `conflict_policy` — шов заложен, дефолт
-  «всегда держать вручную». См. [[project-gitlab-writeback-conflict-and-milestones-next]].
-- **Этапы (milestones, «Этап») — ✅ M0–M2 СДЕЛАНО** (backend 0.63.0–0.65.0 / web 0.105.0–0.106.0,
-  мигр. **0038**/**0039**, 2026-06-29). **M0** нативная project-scoped сущность: `milestones` +
-  `tasks.milestone_id` (`SET NULL`), CRUD, свойство «Этап» в таск-модалке (пикер + инлайн-создание),
-  чип на карточке, project-менеджер `MilestoneManager` из контекст-меню проекта. **M1** pull-маппинг:
-  GraphQL `milestone{ id iid title state startDate dueDate webPath }` → апсерт нативного этапа +
-  `gitlab_milestone_links` (loose-coupled, `gl_numeric_id` из gid), `task.milestone_id` (+
-  `milestone_overridden` оверрайд). **M2** write-back: флаг `push_milestone` → `PUT ?milestone_id=`
-  (`SetIssueMilestone`). **M3 — ✅ СДЕЛАНО** (backend 0.63.0–0.68.0 / web 0.105.0–0.113.0): M3a создание
-  этапа на GL (`POST /milestones/:id/gitlab`), группировка/сорт/фильтр доски «По этапам», M3c Σ-оценка в
-  заголовке колонки-этапа, M3d диапазон дат в чипе/пикере, M3e пунктирные маркеры этапов на Timeline/Gantt,
-  **M3f отдельный экран «Этапы»** (`/milestones`, `MilestonesView`) — кросс-проектный roadmap воркспейса с
-  rollup'ами (агрегирующий `GET /workspaces/:id/milestones`) + deep-link на доску с фильтром по этапу.
-  Pull/push milestone и создание на GL требуют live-verify против реального GitLab.
-- **Android background push (FCM)** — device-канал поднимает уведомления только **пока приложение
-  открыто** (C2); напоминания — локальный `AlarmManager`. Фоновый push при закрытом приложении (FCM)
-  ещё не сделан — следующий кандидат для надёжной доставки (аналог Telegram-доставки в budget-go).
-- **`chore(backend)` lint-cleanup — ✅ СДЕЛАНО** (2026-06-23). Было ~44 issue (golangci-lint обрезал
-  повторы — revive exported/package-comments, `max` shadow builtin ×6, errcheck ×3, gocritic
-  exitAfterDefer): добавлены doc-комментарии к экспортам (collab/attachments/auth/boards/version/ws/
-  realtime/embed/token) и package-комментарии (main/config/middleware/database), `max`→`maxPos`,
-  `cmd/migrate` вынесён в `run() error` (deferred Close теперь срабатывает и проверяется). Без
-  изменения поведения, без бампа. `make lint-backend` = 0 issues.
-- **Редактирование префиксов пользовательских тегов в TagManager** — ✅ **СДЕЛАНО** (web 0.98.0,
-  2026-06-26). Секция «Имена префиксов» в поповере «Теги» (`TagManager.vue`): строка на каждый
-  префикс, встречающийся среди тегов проекта (через `buildTagGroups`), поле имени, merge-save на
-  blur/Enter в `projects/:id/tag-prefixes` (mig 0026) — зеркалит логику GitLab-модалки, но доступно
-  и не-GitLab проектам. Проверено через CDP (рендер/правка/persist). См. [[project-tag-prefix-names]].
-- **Виртуализация колонок на web** (kanban perf >100 карточек) — ✅ **СДЕЛАНО** (web 0.97.0,
-  2026-06-26). IntersectionObserver-оконность: карточки дальше ~800px от вьюпорта сворачиваются в
-  плейсхолдер их измеренной высоты, тяжёлый `TaskCard` монтируется только около вьюпорта (~4–22 из
-  150 в DOM). DnD не тронут (обёртка `<div>` сохраняется → индексы vuedraggable/before-after
-  идентичны, меняется лишь содержимое обёртки). Видимость — по реальному положению во вьюпорте,
-  высота плейсхолдера — `ResizeObserver`-замером → нет рывков, низ всегда достижим; свопы заморожены
-  на drag. Проверено через CDP (рендер/скролл до #150/реордер). См. [[project-kanban-perf-next]].
-- **Деплой: GHCR + `docker pull`** — сейчас релиз = build-on-dev → tar → scp → `docker load`. Перейти на
-  registry-pull, когда понадобится.
-- **GitLab attachment на старых GL для приватных проектов** — текущий стрим-фолбэк (0.33.1) тянет
-  публичные uploads; приватные на GL <17.4 без сессии (только PAT) сервер забрать не может —
-  ограничение API GitLab, отметить если всплывёт.
-
-## Сверка с budget-go (общие проектные аспекты)
-
-Tessera зеркалит budget-go по структуре и конвенциям. Что есть у budget и стоит держать
-в виду как возможные общие аспекты (НЕ обязательства — отметить осознанность):
-
-- **Доставка напоминаний через Telegram.** В budget push идёт через отдельный `telegram_bot/`.
-  В Tessera это закрыто иначе и шире (раздел 9): уведомления (включая due/reminder) роутятся через
-  `internal/notify` в внешние каналы, Telegram — через **shoutrrr** (плюс slack/discord/ntfy/…),
-  без отдельного бота. Остаётся только **Android background push (FCM)** при закрытом приложении.
-- **`docs/`** (budget: `api/`, `E2E_PLAN.md`, `RPI_DEPLOY.md`, `TELEGRAM_BOT.md`) и
-  **`CONTRIBUTING.md`** — у Tessera версионные конвенции живут в `CLAUDE.md`; отдельный
-  CONTRIBUTING/docs-сайт пока не делали (Фаза 7 сознательно прагматична).
-- **RPi / multi-arch деплой + systemd** (budget `deploy/systemd`, `docker-compose.rpi.yml`) —
-  у Tessera не делали; добавить, если появится RPi-таргет.
-- **Общий keystore:** Android-релизы Tessera подписываются ТЕМ ЖЕ ключом, что budget
-  (`/home/msdnna/budget.jks`, alias `budget`) — см. скилл **tessera-android-release**.
-- **Per-component VERSION + единый CHANGELOG + bump-скрипт** — уже на месте, идентично budget.
-- **Десктоп-клиент — новая ниша, которой у budget нет.** Tessera добавляет 4-й компонент `desktop/`
-  (Tauri v2, раздел 19). Общие конвенции (свой VERSION + CHANGELOG + bump-кейс + lint/test-гейт)
-  распространяются на него; self-update зеркалит паттерн Android `latest.json`.
+Ключевые открытые направления (на момент переноса): OAuth2/SSO для GitLab, приём
+webhooks (в дополнение к polling), Android-паритет создания issue из задачи, live-verify
+GitLab-флоу против реального инстанса, фоновый push на Android (FCM), multi-arch/RPi-деплой.

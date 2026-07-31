@@ -1,95 +1,84 @@
-# Tessera
+<p align="center">
+  <img src="design/tessera-brand-v2/svg/logo-horizontal-on-purple.svg" alt="Tessera" width="360" />
+</p>
 
-<!-- Замените OWNER на GitHub-владельца репозитория после публикации. Бейджи
-     покрытия обслуживаются orphan-веткой `badges`, которую наполняет CI. -->
-[![CI](https://github.com/OWNER/tessera/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/tessera/actions/workflows/ci.yml)
-![backend coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/tessera/badges/backend.json)
-![web coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/tessera/badges/web.json)
-![android coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/tessera/badges/android.json)
-![mcp coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/tessera/badges/mcp.json)
+<p align="center">
+  <b>Самостоятельно размещаемый (self-hosted) таск-трекер</b> — разверни у себя и владей своими данными.
+</p>
 
-Таск-трекер экосистемы **msdnna** — задачи, заметки и напоминания
-с killer-фичей, которой нет у аналогов: **канбан-доска с группировкой по тегам**.
+<p align="center">
+  <a href="https://github.com/msdnna/tessera/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/msdnna/tessera/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
+  <img alt="backend coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmsdnna%2Ftessera%2Fbadges%2Fbackend.json&label=backend" />
+  <img alt="web coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmsdnna%2Ftessera%2Fbadges%2Fweb.json&label=web" />
+  <img alt="android coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmsdnna%2Ftessera%2Fbadges%2Fandroid.json&label=android" />
+  <img alt="mcp coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmsdnna%2Ftessera%2Fbadges%2Fmcp.json&label=mcp" />
+  <img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-blue" />
+</p>
 
-Интерфейс: слева дерево проектов, по центру канбан-доска,
-управление единицами в модальных окнах. Адаптив десктоп/мобильный веб,
-светлая/тёмная темы.
+**Tessera** — таск-трекер, который вы разворачиваете на своём сервере: задачи,
+заметки и напоминания под полным контролем, без облачных подписок и без передачи
+данных третьим сторонам. Один `docker compose up` поднимает бэкенд, БД и веб-интерфейс;
+для мобильных и десктопа есть нативные клиенты.
+
+## Возможности
+
+- **Канбан-доски** с колонками, drag-and-drop, приоритетами, сроками, оценками и
+  Done-колонкой; уникальная **группировка карточек по тегам** (колонки = теги).
+- **Иерархия проектов**: Workspace → группы проектов (вложенные) → проекты → доски →
+  задачи с деревом подзадач, тегами и исполнителями (M:N).
+- **Дополнительные представления доски**: список, календарь, таймлайн, диаграмма
+  Ганта (с зависимостями) и матрица Эйзенхауэра.
+- **Богатые задачи**: Markdown-описания и комментарии, вложения, журнал изменений,
+  зависимости, повторяющиеся задачи, этапы (milestones), оценки времени.
+- **Совместная работа**: рабочие пространства с ролями, приглашения по email,
+  realtime-обновления досок через WebSocket, тосты активности.
+- **Уведомления**: настраиваемые каналы и правила роутинга (email / webhook /
+  Telegram), расписание и тихие часы; push — на Android.
+- **Интеграция с GitLab Issues** (self-hosted): двусторонняя синхронизация задач,
+  меток, исполнителей и комментариев, разрешение конфликтов, журнал синка.
+- **Заметки и личные напоминания**.
+- **MCP-сервер** — Tessera выдаёт задачи AI-агентам ранжированной очередью и
+  принимает результаты работы, так что проектом можно управлять из агентных
+  инструментов (этот репозиторий разрабатывается именно так).
+- **Оформление**: светлая/тёмная темы, 7 акцентных схем, адаптив десктоп/мобильный.
+
+## Клиенты
+
+| Клиент  | Технологии                              |
+|---------|-----------------------------------------|
+| Web     | Vue 3 + Vite + Naive UI + Pinia         |
+| Android | Kotlin + Jetpack Compose (online-first) |
+| Desktop | Tauri v2 (Windows / Linux)              |
 
 ## Стек
 
-| Слой      | Технологии                                              |
-|-----------|---------------------------------------------------------|
-| Backend   | Go + gin, PostgreSQL + JSONB (`pgx/v5`, `sqlc`, `golang-migrate`) |
-| Realtime  | WebSocket (fan-out hub) — заложен с самого начала       |
-| Frontend  | Vue 3 + Vite + Naive UI + Pinia (Фаза 2)                |
-| Mobile    | Android — Kotlin + Compose (Фаза 8)                      |
+- **Backend** — Go + gin, PostgreSQL 17 (JSONB), `pgx/v5` + `sqlc` +
+  `golang-migrate`; realtime — WebSocket fan-out hub; JWT-аутентификация.
+- **Frontend** — Vue 3 SPA (Vite, Naive UI, Pinia).
+- **Mobile / Desktop** — Android (Compose) и Tauri-обёртка того же веб-клиента.
+- **MCP** — отдельный Go-сервер (Model Context Protocol) для агентной разработки.
 
-Иерархия: **Workspace → Project Group → Project → Board → Column → Task**
-(подзадачи деревом, теги и исполнители M:N).
+## Развёртывание (self-hosted)
 
-## Быстрый старт (dev)
+Нужен только Docker и доменное имя.
 
 ```bash
-cp .env.example .env          # при необходимости поправь креды/проксю
-make dev                      # поднимает Postgres в Docker + backend на :8090 (host)
-make migrate                  # применить миграции
-cd frontend && corepack yarn dev   # фронт на :5174, проксирует /api → :8090
+git clone https://github.com/msdnna/tessera.git && cd tessera
+cp deploy/.env.example deploy/.env      # задать DOMAIN, JWT_SECRET, ENCRYPTION_KEY, POSTGRES_PASSWORD
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-Проверка:
+Caddy автоматически выпускает TLS-сертификат (Let's Encrypt) и проксирует на
+фронтенд-nginx; PostgreSQL наружу не публикуется; бэкенд — distroless-образ с
+fail-closed-проверкой секретов. Подробности и обновление — в
+[`deploy/README.md`](deploy/README.md). Первый зарегистрированный пользователь
+становится администратором.
 
-```bash
-curl localhost:8090/api/health    # {"ok":true,"app":"tessera"}
-curl localhost:8090/api/version
-```
+## Разработка и вклад
 
-Всё в Docker (dev):
+Как поднять dev-окружение, тулчейн, конвенции и процесс PR — в
+[**CONTRIBUTING.md**](CONTRIBUTING.md).
 
-```bash
-make up        # postgres + backend (:8090) + frontend (:8083)
-make migrate   # миграции (с хоста на localhost:5432)
-make logs
-make down
-```
+## Лицензия
 
-Открыть приложение: <http://localhost:8083>.
-
-## Production
-
-```bash
-# Обязательно задать в .env: POSTGRES_PASSWORD, JWT_SECRET (openssl rand -hex 32)
-docker compose -f docker-compose.prod.yml up -d --build
-# применить миграции внутри прод-образа (distroless backend несёт бинарь /migrate):
-docker compose -f docker-compose.prod.yml exec backend /migrate
-```
-
-Фронт (nginx) слушает `${WEB_PORT:-8082}` и проксирует `/api` (+ WebSocket) на
-backend; Postgres наружу не публикуется. Backend — distroless, `APP_ENV=production`
-(fail-closed на пустые `JWT_SECRET`/`DATABASE_URL`).
-
-## Команды
-
-`make help` — список целей. Основное: `dev`, `up`/`down`/`logs`, `migrate`,
-`migrate-down`, `migrate-version`, `tidy`, `lint-backend`, `test-backend`,
-`version`, `bump-api BUMP=minor`.
-
-## Структура
-
-```
-backend/    Go API (handlers, repository, models, middleware, internal, migrations, cmd)
-frontend/   Vue SPA               (Фаза 2)
-android/    Android-приложение    (Фаза 8)
-deploy/     прод-деплой           (Фаза 9)
-tools/      вспомогательные скрипты (bump-version.sh)
-```
-
-## Тулчейн
-
-- Go `1.25.9` (бинарь `go1.25.9`; Makefile зовёт его через `GO ?= go1.25.9`)
-- Docker + Docker Compose
-- Node + Yarn 4 (с Фазы 2)
-
-## Вклад и лицензия
-
-- Как поднять окружение и какие конвенции — [`CONTRIBUTING.md`](CONTRIBUTING.md).
-- Проект распространяется под [Apache License 2.0](LICENSE) (см. также [`NOTICE`](NOTICE)).
+[Apache License 2.0](LICENSE) — см. также [`NOTICE`](NOTICE).
