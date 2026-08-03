@@ -201,17 +201,18 @@ func (r *Registry) Get(key string) (Entry, bool) {
 	return Entry{}, false
 }
 
-// LogRunningSummary prints one logfmt line summarizing in-flight sync jobs, or
-// nothing when none are running (idle ticks stay silent — no heartbeat spam). It
-// returns the number of running/pending sync jobs so the caller can decide whether
-// to broadcast an update.
+// LogRunningSummary prints one logfmt line summarizing background work: the running
+// sync jobs (with the current one and how long it's been going) or, when nothing is
+// running, an idle heartbeat so the log always shows the supervisor is alive and the
+// system is quiet. Returns the number of running/pending sync jobs.
 func (r *Registry) LogRunningSummary() int {
 	r.mu.RLock()
-	var queue int
+	var queue, workers int
 	var current string
 	var since time.Time
 	for _, s := range r.m {
-		if s.e.Kind != KindSync {
+		if s.e.Kind == KindWorker {
+			workers++
 			continue
 		}
 		if s.e.Status == StatusRunning || s.e.Status == StatusPending {
@@ -223,6 +224,9 @@ func (r *Registry) LogRunningSummary() int {
 	}
 	r.mu.RUnlock()
 	if queue == 0 {
+		// Idle: no discrete job in flight; the tick-loop workers are alive (heartbeat).
+		r.log.Info("background tasks are idle",
+			slog.Int("queue", 0), slog.String("status", string(StatusPending)), slog.Int("workers", workers))
 		return 0
 	}
 	attrs := []any{slog.Int("queue", queue), slog.String("status", string(StatusRunning))}

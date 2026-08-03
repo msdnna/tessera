@@ -1,14 +1,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { NModal, NButton, NIcon, NTooltip, useMessage } from 'naive-ui'
-import {
-  PlayOutline,
-  StopOutline,
-  RefreshOutline,
-  ServerOutline,
-  SyncOutline,
-  CloseOutline,
-} from '@vicons/ionicons5'
+import { PlayOutline, StopOutline, ServerOutline, SyncOutline } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { admin as adminApi } from '@/api'
 import { runDuration, elapsedSince } from '@/utils/duration'
@@ -101,10 +94,6 @@ function fmtTime(iso) {
   return iso ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
 }
 const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
-
-function close() {
-  emit('update:show', false)
-}
 </script>
 
 <template>
@@ -123,18 +112,20 @@ function close() {
         <span>Фоновые задания</span>
         <n-tooltip>
           <template #trigger>
-            <n-button quaternary circle size="tiny" :loading="loading" @click="load">
-              <template #icon><n-icon :component="RefreshOutline" /></template>
+            <n-button
+              quaternary
+              circle
+              size="small"
+              class="bj-refresh"
+              :class="{ spinning: loading }"
+              @click="load"
+            >
+              <template #icon><n-icon :component="SyncOutline" /></template>
             </n-button>
           </template>
           Обновить
         </n-tooltip>
       </div>
-    </template>
-    <template #header-extra>
-      <n-button quaternary circle size="small" @click="close">
-        <template #icon><n-icon :component="CloseOutline" /></template>
-      </n-button>
     </template>
 
     <div class="bj-panes">
@@ -301,9 +292,22 @@ function close() {
   flex: 0 0 auto;
 }
 .bj-elapsed {
+  flex: 0 0 auto;
   font-size: 12px;
   color: var(--t-text3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bj-refresh {
+  color: var(--t-text3);
+}
+.bj-refresh.spinning :deep(.n-icon) {
+  animation: bj-spin 0.8s linear infinite;
+}
+@keyframes bj-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .bj-detail {
   flex: 1 1 auto;
