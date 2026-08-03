@@ -724,6 +724,31 @@ func TestGitlabSyncFlow(t *testing.T) {
 		t.Fatalf("third sync should be a no-op: created=%v updated=%v",
 			newest["created_count"], newest["updated_count"])
 	}
+
+	// Delete issue 1 in GitLab, then a FULL sync (?mode=full) detects the orphaned
+	// link and archives the task — an incremental delta can't tell "deleted" from
+	// "unchanged, so not re-sent", so this is full-sweep only.
+	f.mu.Lock()
+	kept := f.issues[:0]
+	for _, is := range f.issues {
+		if is.IID != 1 {
+			kept = append(kept, is)
+		}
+	}
+	f.issues = kept
+	f.mu.Unlock()
+
+	if r := c.post("/workspaces/"+s.WS+"/gitlab/integrations/"+integID+"/sync?mode=full", nil); r.Status != http.StatusAccepted {
+		t.Fatalf("full sync: status %d\n%s", r.Status, r.Body)
+	}
+	waitSyncRuns(t, c, s.WS, 4)
+
+	tasks = c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	for _, tk := range tasks {
+		if tk["gitlab_iid"] == float64(1) {
+			t.Fatalf("issue 1 deleted in GitLab but its task is still active on the board")
+		}
+	}
 }
 
 // Issue templates: empty without a binding, served from the repo through the fake.

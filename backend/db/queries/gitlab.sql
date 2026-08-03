@@ -156,6 +156,12 @@ RETURNING *;
 -- name: LinkedIidsForIntegration :many
 SELECT gl_iid FROM gitlab_links WHERE integration_id = $1;
 
+-- LinkedTasksForIntegration maps every linked task to its GitLab global id, so a
+-- full sweep can detect issues deleted in GitLab (a link with no matching issue in
+-- the fetch) and archive the orphaned task.
+-- name: LinkedTasksForIntegration :many
+SELECT task_id, gl_global_id FROM gitlab_links WHERE integration_id = $1;
+
 -- LinkedSyncKeysForIntegration returns the change-detection keys of every linked
 -- issue, so an incremental sync can cheaply skip issues whose GitLab updatedAt is
 -- unchanged (the 5-minute overlap window re-delivers already-synced issues).

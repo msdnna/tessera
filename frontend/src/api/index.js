@@ -332,9 +332,13 @@ export const gitlab = {
   deleteIntegration: (wsId, integId) =>
     api.delete(`/workspaces/${wsId}/gitlab/integrations/${integId}`),
   // skipLoader: sync is intentionally long and shows its own in-modal loader, so
-  // it must not trigger the global slow/offline overlay.
-  sync: (wsId, integId) =>
-    api.post(`/workspaces/${wsId}/gitlab/integrations/${integId}/sync`, null, { skipLoader: true }),
+  // it must not trigger the global slow/offline overlay. mode 'full' forces a full
+  // sweep ("Полная синхронизация"); omitted → the default incremental pull.
+  sync: (wsId, integId, mode) =>
+    api.post(`/workspaces/${wsId}/gitlab/integrations/${integId}/sync`, null, {
+      params: mode ? { mode } : undefined,
+      skipLoader: true,
+    }),
   // Sync journal: run/action history + retry of a failed push.
   syncRuns: (wsId, limit = 50) =>
     api.get(`/workspaces/${wsId}/gitlab/sync-runs`, { params: { limit } }),

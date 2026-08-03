@@ -615,6 +615,38 @@ func (q *Queries) LinkedSyncKeysForIntegration(ctx context.Context, integrationI
 	return items, nil
 }
 
+const linkedTasksForIntegration = `-- name: LinkedTasksForIntegration :many
+SELECT task_id, gl_global_id FROM gitlab_links WHERE integration_id = $1
+`
+
+type LinkedTasksForIntegrationRow struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	GlGlobalID string    `json:"gl_global_id"`
+}
+
+// LinkedTasksForIntegration maps every linked task to its GitLab global id, so a
+// full sweep can detect issues deleted in GitLab (a link with no matching issue in
+// the fetch) and archive the orphaned task.
+func (q *Queries) LinkedTasksForIntegration(ctx context.Context, integrationID uuid.UUID) ([]LinkedTasksForIntegrationRow, error) {
+	rows, err := q.db.Query(ctx, linkedTasksForIntegration, integrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LinkedTasksForIntegrationRow
+	for rows.Next() {
+		var i LinkedTasksForIntegrationRow
+		if err := rows.Scan(&i.TaskID, &i.GlGlobalID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAutoSyncIntegrations = `-- name: ListAutoSyncIntegrations :many
 SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec FROM gitlab_integrations
 WHERE enabled

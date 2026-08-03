@@ -560,6 +560,35 @@ type syncBoard struct {
 // re-delivers unchanged is dropped cheaply by dropUnchangedIssues.
 const syncOverlap = 5 * time.Minute
 
+// memberRosterTTL is how long an incremental sync trusts the cached project-member
+// roster before refreshing it (a full sweep always refreshes).
+const memberRosterTTL = time.Hour
+
+// archiveDeletedLinks archives linked tasks whose GitLab issue was absent from a
+// full sweep (deleted or made inaccessible in GitLab). `seen` is the set of every
+// issue global id the sweep fetched. Full-sync only — an incremental delta can't
+// tell "deleted" from "unchanged, so not re-sent".
+func (h *API) archiveDeletedLinks(ctx context.Context, integ db.GitlabIntegration, seen map[string]bool, actorID uuid.UUID, j *syncJournal) {
+	links, err := h.q.LinkedTasksForIntegration(ctx, integ.ID)
+	if err != nil {
+		return
+	}
+	for _, l := range links {
+		if seen[l.GlGlobalID] {
+			continue
+		}
+		if aerr := h.q.ArchiveTaskIfActive(ctx, l.TaskID); aerr != nil {
+			continue
+		}
+		tid := l.TaskID
+		h.logEventActor(ctx, tid, actorID, "archived", map[string]any{"source": "gitlab", "reason": "issue_deleted"})
+		j.add(journalAction{
+			Direction: "pull", EntityType: "task", Op: "delete", TaskID: &tid,
+			Summary: "issue удалён в GitLab — задача перенесена в архив",
+		})
+	}
+}
+
 // dropUnchangedIssues removes issues whose GitLab updatedAt AND content hashes match
 // what we already stored on their link — the overlap window re-delivers already-synced
 // issues, and reconciling them again is wasted work. New issues (no link yet) and
@@ -692,9 +721,13 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		issues = kept
 	}
 
-	// Refresh the assignable project-member roster (best-effort: a failure here
-	// must not abort the issue sync).
-	h.syncProjectMembers(ctx, client, integ)
+	// Refresh the assignable project-member roster (best-effort: a failure here must
+	// not abort the issue sync). It rarely changes and its REST paging is costly, so
+	// an incremental sync only refreshes it once an hour; a full sweep always does.
+	if !incremental || integ.MembersSyncedAt == nil || time.Since(*integ.MembersSyncedAt) >= memberRosterTTL {
+		h.syncProjectMembers(ctx, client, integ)
+		_ = h.q.MarkGitlabMembersSynced(ctx, integ.ID)
+	}
 
 	rules := parseRules(integ.LabelRules)
 	wsID := integ.WorkspaceID
@@ -838,6 +871,23 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 	if incremental {
 		_ = h.q.MarkGitlabSynced(ctx, integ.ID)
 	} else {
+		// A full sweep sees every still-existing issue, so a linked task whose issue is
+		// absent was deleted in GitLab → archive it. Guarded on a non-empty fetch so a
+		// transient empty response can't mass-archive the board.
+		if len(issues) > 0 {
+			seen := make(map[string]bool, len(issues))
+			for _, is := range issues {
+				seen[is.GlobalID] = true
+			}
+			for _, kids := range childrenOf {
+				for _, k := range kids {
+					seen[k.GlobalID] = true
+				}
+			}
+			h.archiveDeletedLinks(ctx, integ, seen, actorID, j)
+		} else {
+			log.Printf("gitlab full-sync ws=%s: fetch returned no issues, skipping delete-detection", integ.WorkspaceID)
+		}
 		// A full sweep also advances last_full_synced_at so the auto worker knows when
 		// the next forced full sweep is due.
 		_ = h.q.MarkGitlabFullSynced(ctx, integ.ID)
