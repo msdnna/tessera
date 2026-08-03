@@ -3,12 +3,9 @@ import { ref, reactive, computed, watchEffect, nextTick } from 'vue'
 import { NInput, NButton, NText, NIcon, NPopconfirm, useMessage } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
 import { projects as projectsApi } from '@/api'
-import { hueGrad, readableHue } from '@/utils/gradient'
+import { hueGrad } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
-import { useThemeStore } from '@/stores/theme'
-
-const theme = useThemeStore()
-const tagText = (c) => readableHue(c, theme.isDark)
+import TagPill from './TagPill.vue'
 
 const props = defineProps({
   projectId: { type: String, default: null },
@@ -130,15 +127,16 @@ async function add() {
               @keyup.enter="saveName(t)"
               @blur="saveName(t)"
             />
-            <span
+            <TagPill
               v-else
               class="chip"
-              title="Двойной клик — переименовать"
-              :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
+              :title="`${t.name} · двойной клик — переименовать`"
+              :tag="t"
+              :prefix-names="prefixNames"
+              variant="ghost"
+              :scope-mode="showHeaders ? 'hide' : 'auto'"
               @dblclick="startEdit(t)"
-            >
-              {{ t.name }}
-            </span>
+            />
             <n-popconfirm
               :positive-button-props="{ type: 'error' }"
               positive-text="Удалить"

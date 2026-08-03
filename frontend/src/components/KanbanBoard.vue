@@ -49,7 +49,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { PRIORITY_LABELS } from '@/styles/tokens'
-import { tagNamespace, prefixLabel, buildTagGroups, metaPrefixesFromRules } from '@/utils/tagGroups'
+import {
+  tagNamespace,
+  prefixLabel,
+  tagParts,
+  buildTagGroups,
+  metaPrefixesFromRules,
+} from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
@@ -392,14 +398,23 @@ const memberFilterMenu = computed(() => {
 // A single prefix-less bucket stays flat (no redundant header).
 const tagFilterMenu = computed(() => {
   const groups = buildTagGroups(tagsList.value, tagPrefixNames)
+  // Inside a group the header already names the scope, so entries show the bare
+  // value; a flat (single-bucket) menu spells the scope out instead.
+  const flatLabel = (t) => {
+    const p = tagParts(t.name, tagPrefixNames)
+    return p.hasScope ? `${p.scope}: ${p.label}` : p.label
+  }
   if (groups.length <= 1) {
-    return (groups[0]?.tags || []).map((t) => ({ label: t.name, key: `ft.${t.id}` }))
+    return (groups[0]?.tags || []).map((t) => ({ label: flatLabel(t), key: `ft.${t.id}` }))
   }
   return groups.map((g) => ({
     type: 'group',
     label: g.label,
     key: `ftg.${g.key}`,
-    children: g.tags.map((t) => ({ label: t.name, key: `ft.${t.id}` })),
+    children: g.tags.map((t) => ({
+      label: tagParts(t.name, tagPrefixNames).label,
+      key: `ft.${t.id}`,
+    })),
   }))
 })
 // Status filter = which board columns to show (timeline-only facet).
@@ -1473,10 +1488,20 @@ const displayColumns = computed(() => {
     ]
   }
   return [
-    ...groupTags.value.map((t) => ({ key: t.id, name: t.name, color: t.color, tag: t })),
+    ...groupTags.value.map((t) => ({ key: t.id, name: tagColumnName(t), color: t.color, tag: t })),
     { key: '__none__', name: 'Без тегов', color: '', tag: null },
   ]
 })
+
+// Column title for a tag group: the raw "scope::value" is never shown. When the
+// board is already filtered to one prefix the scope sits in the group label
+// ("Тег · Сложность"), so only the value is left; otherwise the friendly scope
+// is spelled out ahead of it.
+function tagColumnName(t) {
+  const parts = tagParts(t.name, tagPrefixNames)
+  if (!parts.hasScope) return parts.label
+  return tagPrefix.value ? parts.label : `${parts.scope}: ${parts.label}`
+}
 
 // Estimation rollup per milestone column: Σ of the column's tasks' own estimates,
 // formatted in the project's unit. Shown only when grouped by milestone.
@@ -2136,6 +2161,7 @@ async function restoreFromArchive(taskId) {
         :lists="lists"
         :tags-map="tagsMap"
         :members-map="membersMap"
+        :tag-prefix-names="tagPrefixNames"
         @open="openTask"
         @changed="onChanged"
       />

@@ -1,5 +1,55 @@
 import { describe, it, expect } from 'vitest'
-import { metaPrefixesFromRules, buildTagGroups } from '@/utils/tagGroups'
+import { metaPrefixesFromRules, buildTagGroups, splitTag, tagParts } from '@/utils/tagGroups'
+
+describe('splitTag', () => {
+  it('splits "::" and ": " scoped names', () => {
+    expect(splitTag('effort::small')).toEqual({ ns: 'effort::', scope: 'effort', label: 'small' })
+    expect(splitTag('T: bug')).toEqual({ ns: 'T: ', scope: 'T', label: 'bug' })
+  })
+
+  it('leaves unscoped names whole', () => {
+    expect(splitTag('urgent')).toEqual({ ns: '', scope: '', label: 'urgent' })
+    expect(splitTag('')).toEqual({ ns: '', scope: '', label: '' })
+    expect(splitTag(null)).toEqual({ ns: '', scope: '', label: '' })
+  })
+
+  it('trims whitespace around the value', () => {
+    expect(splitTag('effort::  small ').label).toBe('small')
+  })
+})
+
+describe('tagParts', () => {
+  const names = { 'effort::': 'Сложность', 't:': 'Тип' }
+
+  it('prefers the configured friendly scope name', () => {
+    expect(tagParts('effort::small', names)).toEqual({
+      scope: 'Сложность',
+      label: 'small',
+      hasScope: true,
+    })
+  })
+
+  it('matches the prefix case-insensitively (canonPrefix parity)', () => {
+    expect(tagParts('T: bug', names).scope).toBe('Тип')
+  })
+
+  it('falls back to the raw prefix without its separator', () => {
+    expect(tagParts('area::backend', names)).toEqual({
+      scope: 'area',
+      label: 'backend',
+      hasScope: true,
+    })
+  })
+
+  it('keeps unscoped tags single-segment', () => {
+    expect(tagParts('urgent', names)).toEqual({ scope: '', label: 'urgent', hasScope: false })
+  })
+
+  it('falls back to the whole name when either side is empty', () => {
+    expect(tagParts('effort::', names)).toEqual({ scope: '', label: 'effort::', hasScope: false })
+    expect(tagParts('::small', names)).toEqual({ scope: '', label: '::small', hasScope: false })
+  })
+})
 
 describe('metaPrefixesFromRules', () => {
   it('collects canonical prefixes of non-tag prefix rules only', () => {

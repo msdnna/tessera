@@ -45,6 +45,7 @@ import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
+import TagPill from './TagPill.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
@@ -908,17 +909,17 @@ async function submitAddSub() {
                   :style="{
                     border: '1px solid transparent',
                     background: tagPillBg(taskTags[0].color),
-                    color: tagText(taskTags[0].color),
                     boxShadow: stackShadow,
                     marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
                   }"
                   @click.stop
                 >
-                  <span
-                    class="tname accent-grad-text"
-                    :style="{ '--grad': hueGrad(tagText(taskTags[0].color)) }"
-                    >{{ taskTags[0].name }}</span
-                  >
+                  <TagPill
+                    class="tname"
+                    :tag="taskTags[0]"
+                    :prefix-names="tagPrefixNames"
+                    variant="grad-text"
+                  />
                   <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
                 </button>
                 <!-- stacked: leading tag icon + outlined-oval chips that fit on the
@@ -930,38 +931,42 @@ async function submitAddSub() {
                     :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
                   />
                   <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
-                    <span
+                    <TagPill
                       v-for="t in taskTags.slice(0, visibleTagCount)"
                       :key="t.id"
                       class="mchip"
-                      :style="{ background: tagPillBg(t.color, true) }"
-                    >
-                      <span
-                        class="accent-grad-text"
-                        :style="{ '--grad': hueGrad(tagText(t.color)) }"
-                        >{{ t.name }}</span
-                      >
-                    </span>
+                      :tag="t"
+                      :prefix-names="tagPrefixNames"
+                      variant="outline"
+                    />
                     <span v-if="visibleTagCount < taskTags.length" class="mchip chip-more"
                       >+{{ taskTags.length - visibleTagCount }}</span
                     >
+                    <!-- measurement copies must be the same component with the same
+                         props, or the scope segment wouldn't be measured (useTagFit). -->
                     <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
-                      <span v-for="t in taskTags" :key="`m${t.id}`" class="mchip">{{
-                        t.name
-                      }}</span>
+                      <TagPill
+                        v-for="t in taskTags"
+                        :key="`m${t.id}`"
+                        class="mchip"
+                        :tag="t"
+                        :prefix-names="tagPrefixNames"
+                        variant="outline"
+                      />
                     </span>
                   </span>
                   <span v-else class="pill-text sf-empty">—</span>
                 </button>
               </template>
               <div class="preview">
-                <span
+                <TagPill
                   v-for="t in taskTags"
                   :key="t.id"
                   class="chip"
-                  :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
-                  >{{ t.name }}</span
-                >
+                  :tag="t"
+                  :prefix-names="tagPrefixNames"
+                  variant="ghost"
+                />
               </div>
             </n-popover>
           </template>
@@ -990,7 +995,12 @@ async function submitAddSub() {
                     "
                     @click="toggleTag(t.id)"
                   >
-                    {{ t.name }}
+                    <TagPill
+                      :tag="t"
+                      :prefix-names="tagPrefixNames"
+                      variant="inherit"
+                      :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
+                    />
                   </button>
                 </div>
               </div>
@@ -1203,7 +1213,12 @@ async function submitAddSub() {
                   <span v-if="!isCompact && subDue(s)" class="sub-due">{{ subDue(s) }}</span>
                 </div>
               </template>
-              <TaskMiniCard :task="s" :tags-map="tagsMap" :members-map="membersMap" />
+              <TaskMiniCard
+                :task="s"
+                :tags-map="tagsMap"
+                :members-map="membersMap"
+                :tag-prefix-names="tagPrefixNames"
+              />
             </n-popover>
           </div>
         </template>

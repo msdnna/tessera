@@ -5,6 +5,7 @@ import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
 import UserAvatar from './UserAvatar.vue'
+import TagPill from './TagPill.vue'
 
 const props = defineProps({
   // Grouped, filtered, sorted columns from KanbanBoard: [{ key, name, color }]
@@ -15,6 +16,7 @@ const props = defineProps({
   lists: { type: Object, default: () => ({}) },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
+  tagPrefixNames: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -59,17 +61,15 @@ function isOverdue(t) {
         <span class="lv-title">{{ t.title }}</span>
 
         <span class="lv-tags">
-          <span
-            v-for="tid in t.tag_ids || []"
+          <TagPill
+            v-for="tid in (t.tag_ids || []).filter((id) => tagsMap[id])"
             :key="tid"
             class="lv-tag"
-            :style="{
-              borderColor: tagsMap[tid]?.color || 'var(--t-border)',
-              color: tagsMap[tid]?.color || 'var(--t-text2)',
-            }"
-          >
-            {{ tagsMap[tid]?.name }}
-          </span>
+            :style="{ borderColor: tagsMap[tid].color || 'var(--t-border)' }"
+            :tag="tagsMap[tid]"
+            :prefix-names="tagPrefixNames"
+            variant="plain"
+          />
         </span>
 
         <span v-if="t.due_date" class="lv-due" :class="{ overdue: isOverdue(t) }">
