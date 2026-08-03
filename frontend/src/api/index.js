@@ -122,6 +122,10 @@ export const admin = {
   // GitLab OAuth app config.
   getOAuth: () => api.get('/admin/oauth/gitlab'),
   setOAuth: (data) => api.put('/admin/oauth/gitlab', data),
+  // Background jobs panel (instance-level).
+  jobs: () => api.get('/admin/jobs', { skipLoader: true }),
+  runJob: (key) => api.post(`/admin/jobs/${encodeURIComponent(key)}/run`, null, { skipLoader: true }),
+  cancelJob: (key) => api.post(`/admin/jobs/${encodeURIComponent(key)}/cancel`, null, { skipLoader: true }),
 }
 
 export const workspaces = {
