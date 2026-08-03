@@ -166,12 +166,14 @@ func triggerFromKind(kind string, payload map[string]any) gitlab.BindTrigger {
 func (h *API) RunGitlabWriteBackWorker(ctx context.Context) {
 	ticker := time.NewTicker(writebackWorkerTick)
 	defer ticker.Stop()
+	h.tick(jobGitlabWriteback, "draining write-back outbox")
 	h.drainWritebacks(ctx) // drain the backlog at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			h.tick(jobGitlabWriteback, "draining write-back outbox")
 			h.drainWritebacks(ctx)
 		}
 	}

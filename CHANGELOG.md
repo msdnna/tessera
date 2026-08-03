@@ -2793,6 +2793,22 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.83.0] — 2026-08-03
+- **feat(jobs): подсистема наблюдения и управления фоновыми заданиями.** Новый пакет
+  `internal/jobs` — лёгкий in-memory реестр: 5 тик-воркеров регистрируются как
+  heartbeat-записи (имя + last_tick + текущая операция), а GitLab-синки — как
+  cancelable-задачи со статусом/счётчиками. Реестр заменил `runningSyncs sync.Map`
+  (busy-guard теперь по ключу `gitlab_sync:<integration>`), а синк стал по-настоящему
+  отменяемым (context cancel).
+- **Логи фоновых заданий (logfmt).** `RunJobSupervisor` раз в минуту печатает
+  сводку идущих синков через `slog` TextHandler:
+  `msg="background tasks are still running" queue=1 current=... status=running processing=5m1s`.
+  Простой в тик молчит (без heartbeat-спама).
+- **Admin API управления заданиями** (глобальный админ): `GET /admin/jobs` (снимок),
+  `GET /admin/jobs/:key`, `POST /admin/jobs/:key/run` (немедленный прогон тик-воркера),
+  `POST /admin/jobs/:key/cancel` (отмена идущего синка). История синков остаётся
+  durable в `gitlab_sync_runs` — отдельной таблицы задач не вводим. Миграций нет.
+
 ### [0.82.0] — 2026-08-03
 - **feat(gitlab): доводка инкрементала — троттлинг ростера и детект удалённых.**
   Ростер участников проекта (дорогой REST-пейджинг, меняется редко) при инкрементальном

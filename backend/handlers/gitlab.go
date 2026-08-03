@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +20,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
+	"tessera/internal/jobs"
 	"tessera/middleware"
 )
 
@@ -454,8 +454,13 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	// A large batch can take minutes — run it detached from the request so no proxy
 	// read-timeout (or browser) drops the long connection mid-sync. The caller does
 	// NOT wait: the run appears in the journal as "running" straight away and its
-	// outcome arrives as a notification. Guarded so a manual + auto run don't overlap.
-	if _, busy := runningSyncs.LoadOrStore(integ.ID, struct{}{}); busy {
+	// outcome arrives as a notification. Registering in the jobs registry both guards
+	// against an overlapping run (manual + auto) and makes the run cancelable from the
+	// admin jobs panel.
+	syncCtx, cancel := context.WithCancel(context.Background())
+	handle, started := h.jobs.Begin(gitlabSyncKey(integ.ID), gitlabSyncName(integ), jobs.KindSync, integ.WorkspaceID.String(), cancel)
+	if !started {
+		cancel()
 		c.JSON(http.StatusAccepted, gin.H{"started": false, "already_running": true})
 		return
 	}
@@ -469,12 +474,15 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	if c.Query("mode") == "full" || integ.LastFullSyncedAt == nil {
 		j.mode = "full"
 	}
+	handle.SetOp(j.mode + " pull")
 	h.beginJournal(c, j)
 	go func() {
-		defer runningSyncs.Delete(integ.ID)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
+		ctx, tcancel := context.WithTimeout(syncCtx, 30*time.Minute)
+		defer tcancel()
 		created, updated, serr := h.runSyncJournal(ctx, integ, cred, uid, j)
+		handle.SetCounts(created, updated)
+		handle.Finish(serr)
 		if serr != nil {
 			log.Printf("gitlab manual-sync ws=%s: %v", integ.WorkspaceID, serr)
 		}
@@ -542,9 +550,16 @@ func fmtSyncDuration(d time.Duration) string {
 	}
 }
 
-// runningSyncs guards against two runSync calls for the same integration running
-// at once (manual button + auto worker, or a double-click). Key = integration id.
-var runningSyncs sync.Map
+// gitlabSyncKey / gitlabSyncName name a GitLab pull in the jobs registry. The key is
+// stable per integration so a manual and an auto run can't overlap (busy-guard).
+func gitlabSyncKey(integrationID uuid.UUID) string { return "gitlab_sync:" + integrationID.String() }
+func gitlabSyncName(integ db.GitlabIntegration) string {
+	name := integ.ProjectPath
+	if integ.Name != "" {
+		name = integ.Name
+	}
+	return "Синк GitLab · " + name
+}
 
 // syncBoard caches a board's columns + done column during a sync run.
 type syncBoard struct {
@@ -908,12 +923,14 @@ func (h *API) RunSyncWorker(ctx context.Context) {
 	const tick = 30 * time.Second
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
+	h.tick(jobGitlabSyncCron, "scanning due integrations")
 	h.autoSyncDue(ctx) // catch up at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			h.tick(jobGitlabSyncCron, "scanning due integrations")
 			h.autoSyncDue(ctx)
 		}
 	}
@@ -947,8 +964,12 @@ func (h *API) autoSyncDue(ctx context.Context) {
 			cred = c
 			actor = *integ.OwnerUserID
 		}
-		// Skip if a manual (or previous auto) run for this integration is in flight.
-		if _, busy := runningSyncs.LoadOrStore(integ.ID, struct{}{}); busy {
+		// Register a cancelable run; Begin returns false if a manual (or previous auto)
+		// run for this integration is already in flight — skip it this tick.
+		syncCtx, cancel := context.WithCancel(ctx)
+		handle, started := h.jobs.Begin(gitlabSyncKey(integ.ID), gitlabSyncName(integ), jobs.KindSync, integ.WorkspaceID.String(), cancel)
+		if !started {
+			cancel()
 			continue
 		}
 		// Incremental by default; force a full sweep when one has never run or the
@@ -959,8 +980,11 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		if fullSyncDue(integ) {
 			mode = "full"
 		}
-		created, updated, serr := h.runSync(ctx, integ, cred, actor, "auto", mode)
-		runningSyncs.Delete(integ.ID)
+		handle.SetOp(mode + " pull")
+		created, updated, serr := h.runSync(syncCtx, integ, cred, actor, "auto", mode)
+		handle.SetCounts(created, updated)
+		handle.Finish(serr)
+		cancel()
 		if serr != nil {
 			log.Printf("gitlab auto-sync ws=%s: %v", integ.WorkspaceID, serr)
 			continue
