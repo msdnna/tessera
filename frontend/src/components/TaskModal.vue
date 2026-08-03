@@ -64,6 +64,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
+import { sourceMeta, isExternalSource } from '@/utils/sources'
 import { milestoneRange } from '@/utils/milestones'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { isTauri } from '@/utils/serverBase'
@@ -884,6 +885,17 @@ async function onCommentCheck(c, i) {
 // ── relations (by #N) ──
 function relKindLabel(k) {
   return relKindOptions.find((o) => o.value === k)?.label || k
+}
+// Badge meta for a relation owned by an integration; null for hand-made ones (no
+// badge at all — "Tessera" on every row would be noise).
+function relSource(r) {
+  return isExternalSource(r.source) ? sourceMeta(r.source) : null
+}
+// Deleting an integration-owned relation only holds until the next sync re-projects
+// it, so the confirm says so instead of promising a permanent removal.
+function relDeleteHint(r) {
+  const src = relSource(r)
+  return src ? `Эта связь вернётся при следующем синке ${src.label}. Удалить?` : 'Убрать связь?'
 }
 async function addRelation() {
   const n = Number(relNumber.value)
@@ -1727,6 +1739,10 @@ function eventText(e) {
                 <div class="relations">
                   <div v-for="r in relations" :key="r.id" class="relrow">
                     <span class="rel-kind">{{ relKindLabel(r.kind) }}</span>
+                    <span v-if="relSource(r)" class="rel-src" :title="relSource(r).label">
+                      <n-icon v-if="relSource(r).icon" :component="relSource(r).icon" :size="12" />
+                      {{ relSource(r).label }}
+                    </span>
                     <button
                       class="rel-link"
                       :class="{ done: r.related_completed_at }"
@@ -1745,7 +1761,7 @@ function eventText(e) {
                           <n-icon :component="CloseOutline" />
                         </button>
                       </template>
-                      Убрать связь?
+                      {{ relDeleteHint(r) }}
                     </n-popconfirm>
                   </div>
                   <EmptyState
@@ -2755,6 +2771,22 @@ function eventText(e) {
   color: var(--t-text3);
   width: 96px;
   flex: none;
+}
+/* Source badge: deliberately flat neutral grey — it marks provenance, not an accent,
+   so it must not compete with the accent-gradient chips elsewhere in the modal. */
+.rel-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 0 6px;
+  height: 18px;
+  border: 1px solid var(--t-border);
+  border-radius: 9px;
+  background: var(--t-surface-alt);
+  color: var(--t-text3);
+  font-size: 11px;
+  line-height: 1;
 }
 .rel-link {
   display: flex;

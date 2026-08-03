@@ -105,6 +105,9 @@ const enabled = ref(true)
 const intervalSec = ref(0)
 const dueSource = ref('issue_milestone')
 const startSource = ref('created')
+// relations_sync is 'off' | 'pull' on the wire ('two_way' is reserved for pushing
+// Tessera relations back), so the switch serialises to those two values.
+const relationsSync = ref(true)
 const lastSynced = ref(null)
 // ── write-back (Tessera → GitLab), opt-in; all off by default ──
 const wbEnabled = ref(false) // master toggle for the whole binding table
@@ -379,6 +382,7 @@ async function applyBinding(data) {
     intervalSec.value = data.sync_interval_sec || 0
     dueSource.value = data.due_source || 'issue_milestone'
     startSource.value = data.start_source || 'created'
+    relationsSync.value = data.relations_sync !== 'off'
     lastSynced.value = data.last_synced_at || null
     const wb = data.writeback || {}
     wbEnabled.value = wb.enabled === true
@@ -621,6 +625,7 @@ async function save() {
       sync_interval_sec: Number(intervalSec.value),
       due_source: dueSource.value,
       start_source: startSource.value,
+      relations_sync: relationsSync.value ? 'pull' : 'off',
       scope: scope.value,
       closed_policy: closedPolicy.value,
       closed_after:
@@ -921,6 +926,14 @@ watch(
                   <n-text depth="3" class="lbl">Закрытые не старше</n-text>
                   <n-date-picker v-model:value="closedAfter" type="date" size="small" clearable />
                 </template>
+
+                <n-text depth="3" class="lbl">
+                  Синхронизировать связи
+                  <span class="lbl-hint">
+                    Импорт связанных задач из GitLab во вкладку «Связи»
+                  </span>
+                </n-text>
+                <div><n-switch v-model:value="relationsSync" /></div>
 
                 <n-text depth="3" class="lbl">Включена</n-text>
                 <div><n-switch v-model:value="enabled" /></div>
@@ -1406,6 +1419,14 @@ watch(
 }
 .lbl {
   font-size: 12px;
+}
+/* Second line under a settings label, for options whose name isn't self-explanatory. */
+.lbl-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0.7;
 }
 .est-wb {
   display: flex;
