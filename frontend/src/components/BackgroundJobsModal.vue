@@ -13,8 +13,9 @@ const message = useMessage()
 const jobs = ref([])
 const selectedKey = ref(null)
 const loading = ref(false)
-// A 1s ticker drives the live "processing" clock for running jobs; polling reloads
-// the list every 3s while the modal is open.
+const refreshing = ref(false)
+// A 1s ticker drives the live "processing"/next-run clocks; polling reloads the
+// list every 3s while the modal is open.
 const now = ref(Date.now())
 let pollTimer = null
 let tickTimer = null
@@ -34,6 +35,16 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+// Manual refresh: spin the icon for at least one full turn so the feedback is
+// visible even when the request returns almost instantly.
+async function refresh() {
+  refreshing.value = true
+  const started = Date.now()
+  await load()
+  const rest = 600 - (Date.now() - started)
+  setTimeout(() => (refreshing.value = false), rest > 0 ? rest : 0)
 }
 
 function start() {
@@ -79,6 +90,13 @@ const STATUS = {
 }
 const statusMeta = (s) => STATUS[s] || { label: s, color: 'var(--t-text3)' }
 const isWorker = (j) => j.kind === 'worker'
+// "worker" stays in English (no good Russian equivalent); a discrete run is a
+// «синхронизация».
+const kindLabel = (j) => (isWorker(j) ? 'worker' : 'синхронизация')
+const MODE = { incremental: 'инкрементальная', full: 'полная' }
+const modeLabel = (j) => MODE[j.mode] || j.mode || ''
+const TRIGGER = { manual: 'вручную', auto: 'по расписанию' }
+const triggerLabel = (j) => TRIGGER[j.trigger] || j.trigger || ''
 // "run now" is only for the tick-loop workers; a per-integration sync is started
 // from the GitLab modal, so on-demand run here targets workers only.
 const canRun = (j) => isWorker(j)
@@ -90,8 +108,19 @@ function processingText(j) {
   if (j.status === 'running' && j.started_at) return elapsedSince(j.started_at, now.value)
   return runDuration(j.started_at, j.finished_at)
 }
+// When a worker (ticker) next fires: last_tick + interval. A ticker spawns the
+// actual work, so knowing when it next runs is useful even while it's idle.
+function nextRunText(j) {
+  if (!isWorker(j) || !j.last_tick_at || !j.interval_sec) return ''
+  const next = new Date(j.last_tick_at).getTime() + j.interval_sec * 1000
+  const delta = Math.round((next - now.value) / 1000)
+  if (delta <= 0) return 'вот-вот'
+  return delta >= 60 ? `через ${Math.floor(delta / 60)} мин ${delta % 60} с` : `через ${delta} с`
+}
 function fmtTime(iso) {
-  return iso ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
+  return iso
+    ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '—'
 }
 const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
 </script>
@@ -117,8 +146,8 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
               circle
               size="small"
               class="bj-refresh"
-              :class="{ spinning: loading }"
-              @click="load"
+              :class="{ spinning: refreshing }"
+              @click="refresh"
             >
               <template #icon><n-icon :component="SyncOutline" /></template>
             </n-button>
@@ -145,10 +174,12 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
             <div class="bj-row-sub">
               <span class="bj-dot" :style="{ background: statusMeta(j.status).color }" />
               {{ statusMeta(j.status).label }}
-              <span v-if="j.current_op" class="bj-op">· {{ j.current_op }}</span>
+              <span v-if="isWorker(j) && nextRunText(j)" class="bj-op">· след. запуск {{ nextRunText(j) }}</span>
+              <span v-else-if="j.current_op" class="bj-op">· {{ j.current_op }}</span>
             </div>
           </div>
           <span v-if="j.status === 'running'" class="bj-elapsed">{{ processingText(j) }}</span>
+          <span v-else-if="j.finished_at" class="bj-elapsed">{{ fmtTime(j.finished_at) }}</span>
         </button>
       </div>
 
@@ -159,21 +190,34 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
           <div class="bj-detail-head">
             <span class="bj-dot" :style="{ background: statusMeta(selected.status).color }" />
             <span class="bj-detail-name">{{ selected.name }}</span>
-            <span class="bj-kind">{{ isWorker(selected) ? 'воркер' : 'задача' }}</span>
+            <span class="bj-kind">{{ kindLabel(selected) }}</span>
+            <span v-if="selected.persisted" class="bj-kind bj-journal">журнал</span>
           </div>
 
           <dl class="bj-facts">
             <dt>Статус</dt>
             <dd>{{ statusMeta(selected.status).label }}</dd>
-            <template v-if="selected.current_op">
-              <dt>Операция</dt>
-              <dd>{{ selected.current_op }}</dd>
-            </template>
             <template v-if="isWorker(selected)">
-              <dt>Последний тик</dt>
+              <template v-if="selected.current_op">
+                <dt>Назначение</dt>
+                <dd>{{ selected.current_op }}</dd>
+              </template>
+              <dt>Последняя активность</dt>
               <dd>{{ fmtTime(selected.last_tick_at) }}</dd>
+              <template v-if="nextRunText(selected)">
+                <dt>Следующий запуск</dt>
+                <dd>{{ nextRunText(selected) }}</dd>
+              </template>
             </template>
             <template v-else>
+              <template v-if="modeLabel(selected)">
+                <dt>Режим</dt>
+                <dd>{{ modeLabel(selected) }}</dd>
+              </template>
+              <template v-if="triggerLabel(selected)">
+                <dt>Запуск</dt>
+                <dd>{{ triggerLabel(selected) }}</dd>
+              </template>
               <dt>Начато</dt>
               <dd>{{ fmtTime(selected.started_at) }}</dd>
               <dt>Завершено</dt>
@@ -331,6 +375,10 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
   border-radius: 8px;
   background: var(--t-fill1);
   color: var(--t-text3);
+}
+.bj-journal {
+  background: color-mix(in srgb, var(--t-primary) 12%, transparent);
+  color: var(--t-primary);
 }
 .bj-facts {
   display: grid;

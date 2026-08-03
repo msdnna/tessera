@@ -104,14 +104,16 @@ type gitlabIntegrationView struct {
 	ProjectPath     string           `json:"project_path"`
 	BoardID         *uuid.UUID       `json:"board_id"`
 	ProjectID       *uuid.UUID       `json:"project_id"` // the integration board's project (for milestone gating)
-	Enabled         bool             `json:"enabled"`
-	SyncIntervalSec int32            `json:"sync_interval_sec"`
-	DueSource       string           `json:"due_source"`
-	StartSource     string           `json:"start_source"`
-	Scope           string           `json:"scope"`
-	ClosedPolicy    string           `json:"closed_policy"`
-	ClosedAfter     *time.Time       `json:"closed_after"`
-	LastSyncedAt    *time.Time       `json:"last_synced_at"`
+	Enabled             bool             `json:"enabled"`
+	SyncIntervalSec     int32            `json:"sync_interval_sec"`
+	FullSyncIntervalSec int32            `json:"full_sync_interval_sec"`
+	DueSource           string           `json:"due_source"`
+	StartSource         string           `json:"start_source"`
+	Scope               string           `json:"scope"`
+	ClosedPolicy        string           `json:"closed_policy"`
+	ClosedAfter         *time.Time       `json:"closed_after"`
+	LastSyncedAt        *time.Time       `json:"last_synced_at"`
+	LastFullSyncedAt    *time.Time       `json:"last_full_synced_at"`
 	LabelRules      gitlab.Rules     `json:"label_rules"`
 	Writeback       gitlab.Writeback `json:"writeback"`
 	// Resolved estimation unit for the integration board (project→workspace→time),
@@ -126,6 +128,7 @@ func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
 	return gitlabIntegrationView{
 		Configured: true, ID: &iid, Name: integ.Name, ProjectPath: integ.ProjectPath, BoardID: &bid,
 		Enabled: integ.Enabled, SyncIntervalSec: integ.SyncIntervalSec,
+		FullSyncIntervalSec: integ.FullSyncIntervalSec, LastFullSyncedAt: integ.LastFullSyncedAt,
 		DueSource: integ.DueSource, StartSource: integ.StartSource, LastSyncedAt: integ.LastSyncedAt,
 		Scope: integ.Scope, ClosedPolicy: integ.ClosedPolicy, ClosedAfter: integ.ClosedAfter,
 		LabelRules: parseRules(integ.LabelRules),
@@ -226,21 +229,30 @@ type integrationRequest struct {
 	Name            string          `json:"name"`
 	ProjectPath     string          `json:"project_path" binding:"required"`
 	BoardID         uuid.UUID       `json:"board_id" binding:"required"`
-	Enabled         bool            `json:"enabled"`
-	SyncIntervalSec int32           `json:"sync_interval_sec"`
-	DueSource       string          `json:"due_source"`
-	StartSource     string          `json:"start_source"`
-	Scope           string          `json:"scope"`
-	ClosedPolicy    string          `json:"closed_policy"`
-	ClosedAfter     *time.Time      `json:"closed_after"`
-	LabelRules      json.RawMessage `json:"label_rules"`
-	Writeback       json.RawMessage `json:"writeback"`
+	Enabled             bool            `json:"enabled"`
+	SyncIntervalSec     int32           `json:"sync_interval_sec"`
+	FullSyncIntervalSec *int32          `json:"full_sync_interval_sec"` // nil = absent (default 24h); 0 = disabled
+	DueSource           string          `json:"due_source"`
+	StartSource         string          `json:"start_source"`
+	Scope               string          `json:"scope"`
+	ClosedPolicy        string          `json:"closed_policy"`
+	ClosedAfter         *time.Time      `json:"closed_after"`
+	LabelRules          json.RawMessage `json:"label_rules"`
+	Writeback           json.RawMessage `json:"writeback"`
 }
 
 // normalize validates and defaults the request fields in place.
 func (req *integrationRequest) normalize() {
 	if req.SyncIntervalSec < 0 {
 		req.SyncIntervalSec = 0
+	}
+	// full_sync_interval_sec: absent (old client) → default 24h so forced full sweeps
+	// aren't silently off; explicit 0 disables them; negatives clamp to 0.
+	if req.FullSyncIntervalSec == nil {
+		def := int32(86400)
+		req.FullSyncIntervalSec = &def
+	} else if *req.FullSyncIntervalSec < 0 {
+		*req.FullSyncIntervalSec = 0
 	}
 	switch req.DueSource {
 	case "issue", "milestone", "off", "issue_milestone":
@@ -313,13 +325,14 @@ func (h *API) CreateGitlabIntegration(c *gin.Context) {
 		LabelRules:      rulesOrDefault(req.LabelRules),
 		Enabled:         req.Enabled,
 		OwnerUserID:     &owner,
-		SyncIntervalSec: req.SyncIntervalSec,
-		DueSource:       req.DueSource,
-		StartSource:     req.StartSource,
-		Writeback:       wbRaw,
-		Scope:           req.Scope,
-		ClosedPolicy:    req.ClosedPolicy,
-		ClosedAfter:     req.ClosedAfter,
+		SyncIntervalSec:     req.SyncIntervalSec,
+		FullSyncIntervalSec: *req.FullSyncIntervalSec,
+		DueSource:           req.DueSource,
+		StartSource:         req.StartSource,
+		Writeback:           wbRaw,
+		Scope:               req.Scope,
+		ClosedPolicy:        req.ClosedPolicy,
+		ClosedAfter:         req.ClosedAfter,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
@@ -363,13 +376,14 @@ func (h *API) UpdateGitlabIntegration(c *gin.Context) {
 		LabelRules:      rulesOrDefault(req.LabelRules),
 		Enabled:         req.Enabled,
 		OwnerUserID:     owner,
-		SyncIntervalSec: req.SyncIntervalSec,
-		DueSource:       req.DueSource,
-		StartSource:     req.StartSource,
-		Writeback:       wbRaw,
-		Scope:           req.Scope,
-		ClosedPolicy:    req.ClosedPolicy,
-		ClosedAfter:     req.ClosedAfter,
+		SyncIntervalSec:     req.SyncIntervalSec,
+		FullSyncIntervalSec: *req.FullSyncIntervalSec,
+		DueSource:           req.DueSource,
+		StartSource:         req.StartSource,
+		Writeback:           wbRaw,
+		Scope:               req.Scope,
+		ClosedPolicy:        req.ClosedPolicy,
+		ClosedAfter:         req.ClosedAfter,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
@@ -923,14 +937,14 @@ func (h *API) RunSyncWorker(ctx context.Context) {
 	const tick = 30 * time.Second
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
-	h.tick(jobGitlabSyncCron, "scanning due integrations")
+	h.tick(jobGitlabSyncCron, "проверка интеграций к синхронизации")
 	h.autoSyncDue(ctx) // catch up at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			h.tick(jobGitlabSyncCron, "scanning due integrations")
+			h.tick(jobGitlabSyncCron, "проверка интеграций к синхронизации")
 			h.autoSyncDue(ctx)
 		}
 	}

@@ -54,7 +54,7 @@ func TestCancel(t *testing.T) {
 		t.Fatal("Cancel should invoke the cancel func")
 	}
 	// A worker (nil cancel) is not cancelable.
-	r.RegisterWorker("w", "worker")
+	r.RegisterWorker("w", "worker", 60)
 	if r.Cancel("w") {
 		t.Fatal("worker without cancel must not be cancelable")
 	}
@@ -66,7 +66,7 @@ func TestCancel(t *testing.T) {
 func TestSnapshotOrdersWorkersFirst(t *testing.T) {
 	r := testRegistry()
 	r.Begin("s", "sync", KindSync, "", nil)
-	r.RegisterWorker("w", "worker")
+	r.RegisterWorker("w", "worker", 60)
 	snap := r.Snapshot()
 	if len(snap) != 2 || snap[0].Kind != KindWorker {
 		t.Fatalf("workers should sort first: %+v", snap)
@@ -75,7 +75,7 @@ func TestSnapshotOrdersWorkersFirst(t *testing.T) {
 
 func TestLogRunningSummaryCountsOnlySyncs(t *testing.T) {
 	r := testRegistry()
-	r.RegisterWorker("w", "worker") // workers don't count as running work
+	r.RegisterWorker("w", "worker", 60) // workers don't count as running work
 	if n := r.LogRunningSummary(); n != 0 {
 		t.Fatalf("idle summary should be 0, got %d", n)
 	}
@@ -93,7 +93,7 @@ func TestTickUpdatesHeartbeat(t *testing.T) {
 	r := testRegistry()
 	base := time.Unix(1_000_000, 0)
 	r.now = func() time.Time { return base }
-	r.RegisterWorker("w", "worker")
+	r.RegisterWorker("w", "worker", 60)
 	r.now = func() time.Time { return base.Add(time.Minute) }
 	r.Tick("w", "working")
 	e, _ := r.Get("w")

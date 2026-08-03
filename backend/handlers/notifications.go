@@ -658,14 +658,14 @@ const (
 func (h *API) RunNotificationWorker(ctx context.Context) {
 	ticker := time.NewTicker(notifyWorkerTick)
 	defer ticker.Stop()
-	h.tick(jobNotifyDelivery, "draining delivery outbox")
+	h.tick(jobNotifyDelivery, "рассылка уведомлений")
 	h.drainDeliveries(ctx) // drain the backlog at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			h.tick(jobNotifyDelivery, "draining delivery outbox")
+			h.tick(jobNotifyDelivery, "рассылка уведомлений")
 			h.drainDeliveries(ctx)
 		}
 	}
@@ -868,7 +868,7 @@ const notifyScanTick = 60 * time.Second
 func (h *API) RunNotificationScanner(ctx context.Context) {
 	ticker := time.NewTicker(notifyScanTick)
 	defer ticker.Stop()
-	h.tick(jobNotifyScanner, "scanning due tasks & reminders")
+	h.tick(jobNotifyScanner, "проверка сроков и напоминаний")
 	h.scanDueTasks(ctx)
 	h.scanReminders(ctx)
 	for {
@@ -876,7 +876,7 @@ func (h *API) RunNotificationScanner(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			h.tick(jobNotifyScanner, "scanning due tasks & reminders")
+			h.tick(jobNotifyScanner, "проверка сроков и напоминаний")
 			h.scanDueTasks(ctx)
 			h.scanReminders(ctx)
 		}

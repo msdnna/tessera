@@ -725,6 +725,17 @@ func TestGitlabSyncFlow(t *testing.T) {
 			newest["created_count"], newest["updated_count"])
 	}
 
+	// A brand-new issue created after the last sync IS pulled by an incremental sync
+	// (its updatedAt lands in the delta) — incremental adds new tasks, not only
+	// updates existing ones.
+	f.addIssue(glIssue{IID: 42, Title: "Fresh incremental issue"})
+	triggerSync(t, c, s.WS, integID)
+	waitSyncRuns(t, c, s.WS, 4)
+	tasks = c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	if fresh := taskByIid(t, tasks, 42); fresh["title"] != "Fresh incremental issue" {
+		t.Fatalf("incremental sync did not create the new issue: %v", fresh)
+	}
+
 	// Delete issue 1 in GitLab, then a FULL sync (?mode=full) detects the orphaned
 	// link and archives the task — an incremental delta can't tell "deleted" from
 	// "unchanged, so not re-sent", so this is full-sweep only.
@@ -741,7 +752,7 @@ func TestGitlabSyncFlow(t *testing.T) {
 	if r := c.post("/workspaces/"+s.WS+"/gitlab/integrations/"+integID+"/sync?mode=full", nil); r.Status != http.StatusAccepted {
 		t.Fatalf("full sync: status %d\n%s", r.Status, r.Body)
 	}
-	waitSyncRuns(t, c, s.WS, 4)
+	waitSyncRuns(t, c, s.WS, 5)
 
 	tasks = c.get("/boards/" + s.Board + "/tasks").listBody(t)
 	for _, tk := range tasks {

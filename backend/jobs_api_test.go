@@ -35,6 +35,9 @@ func TestAdminJobsAPI(t *testing.T) {
 		if w["kind"] != "worker" || w["status"] != "running" {
 			t.Fatalf("worker %q wrong: %v", key, w)
 		}
+		if iv, _ := w["interval_sec"].(float64); iv <= 0 {
+			t.Fatalf("worker %q missing interval_sec (for next-run estimate): %v", key, w)
+		}
 	}
 
 	// A known worker can be run on demand (detached) → 202.

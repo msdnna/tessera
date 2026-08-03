@@ -104,6 +104,7 @@ const projectPath = ref('')
 const boardId = ref(null)
 const enabled = ref(true)
 const intervalSec = ref(0)
+const fullIntervalSec = ref(86400)
 const dueSource = ref('issue_milestone')
 const startSource = ref('created')
 const lastSynced = ref(null)
@@ -211,6 +212,16 @@ const intervalOptions = [
   { label: 'Каждые 5 минут', value: 300 },
   { label: 'Каждые 15 минут', value: 900 },
   { label: 'Каждый час', value: 3600 },
+]
+// Periodic FULL sweep (catches deletes/drift an incremental pull can't see). 0 = off
+// — a full sync then runs only on the very first sync or via «Полная синхронизация».
+const fullIntervalOptions = [
+  { label: 'Не форсировать (только вручную)', value: 0 },
+  { label: 'Раз в 6 часов', value: 21600 },
+  { label: 'Раз в 12 часов', value: 43200 },
+  { label: 'Раз в сутки', value: 86400 },
+  { label: 'Раз в 2 суток', value: 172800 },
+  { label: 'Раз в неделю', value: 604800 },
 ]
 const actionOptions = [
   { label: 'Статус → колонка', value: 'status' },
@@ -378,6 +389,7 @@ async function applyBinding(data) {
     boardId.value = data.board_id || null
     enabled.value = data.enabled !== false
     intervalSec.value = data.sync_interval_sec || 0
+    fullIntervalSec.value = data.full_sync_interval_sec ?? 86400
     dueSource.value = data.due_source || 'issue_milestone'
     startSource.value = data.start_source || 'created'
     lastSynced.value = data.last_synced_at || null
@@ -620,6 +632,7 @@ async function save() {
       board_id: boardId.value,
       enabled: enabled.value,
       sync_interval_sec: Number(intervalSec.value),
+      full_sync_interval_sec: Number(fullIntervalSec.value),
       due_source: dueSource.value,
       start_source: startSource.value,
       scope: scope.value,
@@ -915,6 +928,13 @@ watch(
 
                 <n-text depth="3" class="lbl">Автосинхронизация</n-text>
                 <n-select v-model:value="intervalSec" :options="intervalOptions" size="small" />
+
+                <n-text depth="3" class="lbl">Полная синхронизация</n-text>
+                <n-select
+                  v-model:value="fullIntervalSec"
+                  :options="fullIntervalOptions"
+                  size="small"
+                />
 
                 <n-text depth="3" class="lbl">Источник срока</n-text>
                 <n-select v-model:value="dueSource" :options="dueSourceOptions" size="small" />

@@ -16,12 +16,17 @@ const (
 )
 
 // backgroundWorkers is the fixed roster of tick-loop workers, in display order.
-var backgroundWorkers = []struct{ key, name string }{
-	{jobGitlabSyncCron, "GitLab автосинк"},
-	{jobGitlabWriteback, "GitLab write-back"},
-	{jobNotifyDelivery, "Доставка уведомлений"},
-	{jobNotifyScanner, "Сканер сроков/напоминаний"},
-	{jobRecurrence, "Повторяющиеся задачи"},
+// intervalSec must match each worker's actual ticker so the UI's next-run estimate
+// is correct.
+var backgroundWorkers = []struct {
+	key, name   string
+	intervalSec int
+}{
+	{jobGitlabSyncCron, "Автосинхронизация GitLab", 30},
+	{jobGitlabWriteback, "Выгрузка изменений в GitLab", 10},
+	{jobNotifyDelivery, "Доставка уведомлений", 10},
+	{jobNotifyScanner, "Сканирование сроков и напоминаний", 60},
+	{jobRecurrence, "Повторяющиеся задачи", 60},
 }
 
 // RegisterBackgroundWorkers records the tick-loop workers as heartbeat entries so
@@ -29,7 +34,7 @@ var backgroundWorkers = []struct{ key, name string }{
 // last-tick via jobs.Tick as it loops). Call once before starting the workers.
 func (h *API) RegisterBackgroundWorkers() {
 	for _, w := range backgroundWorkers {
-		h.jobs.RegisterWorker(w.key, w.name)
+		h.jobs.RegisterWorker(w.key, w.name, w.intervalSec)
 	}
 }
 

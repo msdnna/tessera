@@ -37,6 +37,18 @@ WHERE integration_id = $1
 ORDER BY started_at DESC
 LIMIT $2;
 
+-- ListRecentGitlabSyncRuns returns finished sync runs across every integration
+-- started within the retention window, with the integration name — the durable
+-- backing for the background-jobs panel's journal (survives a restart, unlike the
+-- in-memory registry). Instance-wide (admin panel), newest first.
+-- name: ListRecentGitlabSyncRuns :many
+SELECT r.*, COALESCE(NULLIF(i.name, ''), i.project_path) AS integration_label
+FROM gitlab_sync_runs r
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE r.finished_at IS NOT NULL AND r.started_at >= $1
+ORDER BY r.started_at DESC
+LIMIT $2;
+
 -- ListGitlabSyncRunsByWorkspace aggregates recent runs across every binding in a
 -- workspace (multi-binding journal), newest first.
 -- name: ListGitlabSyncRunsByWorkspace :many

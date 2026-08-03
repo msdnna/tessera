@@ -38,6 +38,7 @@ type Entry struct {
 	WorkspaceID string     `json:"workspace_id,omitempty"`
 	Status      Status     `json:"status"`
 	CurrentOp   string     `json:"current_op,omitempty"`
+	IntervalSec int        `json:"interval_sec,omitempty"` // worker tick interval (for next-run estimate)
 	QueuedAt    *time.Time `json:"queued_at,omitempty"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
 	FinishedAt  *time.Time `json:"finished_at,omitempty"`
@@ -68,12 +69,13 @@ func New(logger *slog.Logger) *Registry {
 }
 
 // RegisterWorker records a persistent tick-loop worker as a running heartbeat entry.
-// Idempotent — re-registering the same key refreshes its start time.
-func (r *Registry) RegisterWorker(key, name string) {
+// intervalSec is its tick period, so the UI can show when it next fires. Idempotent —
+// re-registering the same key refreshes its start time.
+func (r *Registry) RegisterWorker(key, name string, intervalSec int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := r.now()
-	r.m[key] = &slot{e: Entry{Key: key, Name: name, Kind: KindWorker, Status: StatusRunning, StartedAt: &now, LastTickAt: &now}}
+	r.m[key] = &slot{e: Entry{Key: key, Name: name, Kind: KindWorker, Status: StatusRunning, IntervalSec: intervalSec, StartedAt: &now, LastTickAt: &now}}
 }
 
 // Tick updates a worker's heartbeat (last-tick time and current operation). No-op

@@ -89,26 +89,28 @@ const createGitlabIntegration = `-- name: CreateGitlabIntegration :one
 
 INSERT INTO gitlab_integrations (
     workspace_id, name, project_path, board_id, label_rules, enabled, owner_user_id,
-    sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now())
+    sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after,
+    full_sync_interval_sec, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
 RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec
 `
 
 type CreateGitlabIntegrationParams struct {
-	WorkspaceID     uuid.UUID  `json:"workspace_id"`
-	Name            string     `json:"name"`
-	ProjectPath     string     `json:"project_path"`
-	BoardID         uuid.UUID  `json:"board_id"`
-	LabelRules      []byte     `json:"label_rules"`
-	Enabled         bool       `json:"enabled"`
-	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
-	SyncIntervalSec int32      `json:"sync_interval_sec"`
-	DueSource       string     `json:"due_source"`
-	StartSource     string     `json:"start_source"`
-	Writeback       []byte     `json:"writeback"`
-	Scope           string     `json:"scope"`
-	ClosedPolicy    string     `json:"closed_policy"`
-	ClosedAfter     *time.Time `json:"closed_after"`
+	WorkspaceID         uuid.UUID  `json:"workspace_id"`
+	Name                string     `json:"name"`
+	ProjectPath         string     `json:"project_path"`
+	BoardID             uuid.UUID  `json:"board_id"`
+	LabelRules          []byte     `json:"label_rules"`
+	Enabled             bool       `json:"enabled"`
+	OwnerUserID         *uuid.UUID `json:"owner_user_id"`
+	SyncIntervalSec     int32      `json:"sync_interval_sec"`
+	DueSource           string     `json:"due_source"`
+	StartSource         string     `json:"start_source"`
+	Writeback           []byte     `json:"writeback"`
+	Scope               string     `json:"scope"`
+	ClosedPolicy        string     `json:"closed_policy"`
+	ClosedAfter         *time.Time `json:"closed_after"`
+	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
 }
 
 // ── Per-workspace integration ──────────────────────────────
@@ -128,6 +130,7 @@ func (q *Queries) CreateGitlabIntegration(ctx context.Context, arg CreateGitlabI
 		arg.Scope,
 		arg.ClosedPolicy,
 		arg.ClosedAfter,
+		arg.FullSyncIntervalSec,
 	)
 	var i GitlabIntegration
 	err := row.Scan(
@@ -1085,26 +1088,28 @@ const updateGitlabIntegration = `-- name: UpdateGitlabIntegration :one
 UPDATE gitlab_integrations
 SET name = $2, project_path = $3, board_id = $4, label_rules = $5, enabled = $6,
     owner_user_id = $7, sync_interval_sec = $8, due_source = $9, start_source = $10,
-    writeback = $11, scope = $12, closed_policy = $13, closed_after = $14, updated_at = now()
+    writeback = $11, scope = $12, closed_policy = $13, closed_after = $14,
+    full_sync_interval_sec = $15, updated_at = now()
 WHERE id = $1
 RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec
 `
 
 type UpdateGitlabIntegrationParams struct {
-	ID              uuid.UUID  `json:"id"`
-	Name            string     `json:"name"`
-	ProjectPath     string     `json:"project_path"`
-	BoardID         uuid.UUID  `json:"board_id"`
-	LabelRules      []byte     `json:"label_rules"`
-	Enabled         bool       `json:"enabled"`
-	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
-	SyncIntervalSec int32      `json:"sync_interval_sec"`
-	DueSource       string     `json:"due_source"`
-	StartSource     string     `json:"start_source"`
-	Writeback       []byte     `json:"writeback"`
-	Scope           string     `json:"scope"`
-	ClosedPolicy    string     `json:"closed_policy"`
-	ClosedAfter     *time.Time `json:"closed_after"`
+	ID                  uuid.UUID  `json:"id"`
+	Name                string     `json:"name"`
+	ProjectPath         string     `json:"project_path"`
+	BoardID             uuid.UUID  `json:"board_id"`
+	LabelRules          []byte     `json:"label_rules"`
+	Enabled             bool       `json:"enabled"`
+	OwnerUserID         *uuid.UUID `json:"owner_user_id"`
+	SyncIntervalSec     int32      `json:"sync_interval_sec"`
+	DueSource           string     `json:"due_source"`
+	StartSource         string     `json:"start_source"`
+	Writeback           []byte     `json:"writeback"`
+	Scope               string     `json:"scope"`
+	ClosedPolicy        string     `json:"closed_policy"`
+	ClosedAfter         *time.Time `json:"closed_after"`
+	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
 }
 
 func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabIntegrationParams) (GitlabIntegration, error) {
@@ -1123,6 +1128,7 @@ func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabI
 		arg.Scope,
 		arg.ClosedPolicy,
 		arg.ClosedAfter,
+		arg.FullSyncIntervalSec,
 	)
 	var i GitlabIntegration
 	err := row.Scan(

@@ -3,24 +3,109 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"tessera/internal/db"
+	"tessera/internal/jobs"
 )
 
 // ── Admin: background jobs panel ───────────────────────────
-// Instance-level, so every handler is gated on global admin. The registry is
-// in-memory (a restart clears it); durable sync history stays in gitlab_sync_runs.
+// Instance-level, so every handler is gated on global admin. Live state (running
+// jobs + worker heartbeats) comes from the in-memory registry; finished sync runs
+// are read from the durable gitlab_sync_runs so they survive a restart.
 
-// ListJobs returns a snapshot of the jobs registry (tick-loop workers + recent
-// sync runs) for the admin management modal.
+// jobDTO is the unified panel row: either a live registry entry (worker or running
+// job) or a finished sync run pulled from the journal.
+type jobDTO struct {
+	Key         string     `json:"key"`
+	Name        string     `json:"name"`
+	Kind        string     `json:"kind"`
+	Status      string     `json:"status"`
+	CurrentOp   string     `json:"current_op,omitempty"`
+	Mode        string     `json:"mode,omitempty"`
+	Trigger     string     `json:"trigger,omitempty"`
+	IntervalSec int        `json:"interval_sec,omitempty"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+	LastTickAt  *time.Time `json:"last_tick_at,omitempty"`
+	Created     int        `json:"created"`
+	Updated     int        `json:"updated"`
+	Error       string     `json:"error,omitempty"`
+	Cancelable  bool       `json:"cancelable"`
+	Persisted   bool       `json:"persisted"` // came from durable storage (survives restart)
+}
+
+// jobsJournalWindow is how far back finished sync runs are shown in the panel,
+// configurable via JOBS_JOURNAL_TTL (Go duration, e.g. "1h", "30m"). Default 1h.
+func jobsJournalWindow() time.Duration {
+	if v := os.Getenv("JOBS_JOURNAL_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return time.Hour
+}
+
+func entryToDTO(e jobs.Entry) jobDTO {
+	return jobDTO{
+		Key: e.Key, Name: e.Name, Kind: e.Kind, Status: string(e.Status), CurrentOp: e.CurrentOp,
+		IntervalSec: e.IntervalSec, StartedAt: e.StartedAt, FinishedAt: e.FinishedAt,
+		LastTickAt: e.LastTickAt, Created: int(e.Created), Updated: int(e.Updated),
+		Error: e.Error, Cancelable: e.Cancelable,
+	}
+}
+
+// runStatus maps a journal run status to a panel job status.
+func runStatus(s string) string {
+	switch s {
+	case "error":
+		return string(jobs.StatusFailed)
+	case "running":
+		return string(jobs.StatusRunning)
+	default: // ok | partial
+		return string(jobs.StatusDone)
+	}
+}
+
+func syncRunToDTO(r db.ListRecentGitlabSyncRunsRow) jobDTO {
+	name := "Синхронизация GitLab · " + r.IntegrationLabel
+	return jobDTO{
+		Key: "syncrun:" + r.ID.String(), Name: name, Kind: jobs.KindSync, Status: runStatus(r.Status),
+		Mode: r.Mode, Trigger: r.Trigger, StartedAt: &r.StartedAt, FinishedAt: r.FinishedAt,
+		Created: int(r.CreatedCount), Updated: int(r.UpdatedCount), Error: r.Error, Persisted: true,
+	}
+}
+
+// ListJobs returns the background-jobs panel: live worker heartbeats and running
+// jobs from the registry, plus finished sync runs from the durable journal (within
+// the retention window) so recent outcomes and errors survive a restart.
 func (h *API) ListJobs(c *gin.Context) {
 	if _, ok := h.requireGlobalAdmin(c); !ok {
 		return
 	}
-	c.JSON(http.StatusOK, h.jobs.Snapshot())
+	out := make([]jobDTO, 0, 16)
+	// Live: workers + in-flight jobs. Finished jobs come from the durable journal
+	// below, so drop finished syncs here to avoid showing the last run twice.
+	for _, e := range h.jobs.Snapshot() {
+		if e.Kind == jobs.KindSync && (e.Status == jobs.StatusDone || e.Status == jobs.StatusFailed) {
+			continue
+		}
+		out = append(out, entryToDTO(e))
+	}
+	// Durable finished sync runs within the retention window.
+	since := time.Now().Add(-jobsJournalWindow())
+	if runs, err := h.q.ListRecentGitlabSyncRuns(c, db.ListRecentGitlabSyncRunsParams{StartedAt: since, Limit: 200}); err == nil {
+		for _, r := range runs {
+			out = append(out, syncRunToDTO(r))
+		}
+	}
+	c.JSON(http.StatusOK, out)
 }
 
-// GetJob returns one registry entry by key (status, current op, timings, counts).
+// GetJob returns one live registry entry by key (status, current op, timings).
 func (h *API) GetJob(c *gin.Context) {
 	if _, ok := h.requireGlobalAdmin(c); !ok {
 		return
@@ -30,7 +115,7 @@ func (h *API) GetJob(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 		return
 	}
-	c.JSON(http.StatusOK, e)
+	c.JSON(http.StatusOK, entryToDTO(e))
 }
 
 // RunJob triggers an immediate execution of a tick-loop worker (the "run now"

@@ -438,6 +438,78 @@ func (q *Queries) ListGitlabSyncRunsByWorkspace(ctx context.Context, arg ListGit
 	return items, nil
 }
 
+const listRecentGitlabSyncRuns = `-- name: ListRecentGitlabSyncRuns :many
+SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at, r.mode, COALESCE(NULLIF(i.name, ''), i.project_path) AS integration_label
+FROM gitlab_sync_runs r
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE r.finished_at IS NOT NULL AND r.started_at >= $1
+ORDER BY r.started_at DESC
+LIMIT $2
+`
+
+type ListRecentGitlabSyncRunsParams struct {
+	StartedAt time.Time `json:"started_at"`
+	Limit     int32     `json:"limit"`
+}
+
+type ListRecentGitlabSyncRunsRow struct {
+	ID               uuid.UUID  `json:"id"`
+	IntegrationID    uuid.UUID  `json:"integration_id"`
+	Kind             string     `json:"kind"`
+	Trigger          string     `json:"trigger"`
+	ActorID          *uuid.UUID `json:"actor_id"`
+	Status           string     `json:"status"`
+	CreatedCount     int32      `json:"created_count"`
+	UpdatedCount     int32      `json:"updated_count"`
+	DeletedCount     int32      `json:"deleted_count"`
+	ActionCount      int32      `json:"action_count"`
+	Error            string     `json:"error"`
+	StartedAt        time.Time  `json:"started_at"`
+	FinishedAt       *time.Time `json:"finished_at"`
+	Mode             string     `json:"mode"`
+	IntegrationLabel string     `json:"integration_label"`
+}
+
+// ListRecentGitlabSyncRuns returns finished sync runs across every integration
+// started within the retention window, with the integration name — the durable
+// backing for the background-jobs panel's journal (survives a restart, unlike the
+// in-memory registry). Instance-wide (admin panel), newest first.
+func (q *Queries) ListRecentGitlabSyncRuns(ctx context.Context, arg ListRecentGitlabSyncRunsParams) ([]ListRecentGitlabSyncRunsRow, error) {
+	rows, err := q.db.Query(ctx, listRecentGitlabSyncRuns, arg.StartedAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRecentGitlabSyncRunsRow
+	for rows.Next() {
+		var i ListRecentGitlabSyncRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IntegrationID,
+			&i.Kind,
+			&i.Trigger,
+			&i.ActorID,
+			&i.Status,
+			&i.CreatedCount,
+			&i.UpdatedCount,
+			&i.DeletedCount,
+			&i.ActionCount,
+			&i.Error,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Mode,
+			&i.IntegrationLabel,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pruneGitlabSyncRuns = `-- name: PruneGitlabSyncRuns :exec
 DELETE FROM gitlab_sync_runs r
 WHERE r.integration_id = $1
