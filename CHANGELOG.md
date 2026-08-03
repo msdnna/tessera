@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.147.0] — 2026-08-04
+- **feat(web): фильтр по автору задачи в composer bar.** Рядом с «Фильтр: исполнитель»
+  появился «Фильтр: автор» — тот же список людей с аватарками (Tessera + GitLab), чипы
+  `Автор: …`, персист в localStorage и в сохранённых видах доски. У GitLab-задач
+  `created_by` пуст, автор приходит в `gitlab_author`, поэтому Tessera-пользователь
+  матчится ещё и через привязанный к нему GitLab-логин; в меню добавлены авторы
+  issue, которых нет в ростере участников проекта.
+- Предикаты фильтров по людям вынесены в `utils/boardFilters.js` (`matchesAssignee` /
+  `matchesAuthor` / `boardGitlabAuthors`) и покрыты юнит-тестами.
+
 ### [0.146.0] — 2026-07-31
 - **feat(gitlab,web): фоновый ручной синк GitLab с уведомлением инициатору.** Ручной
   синк больше не блокирует UI polling-циклом (LoaderOverlay до 30 минут): кнопка
