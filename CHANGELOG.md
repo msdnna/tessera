@@ -2784,6 +2784,26 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.81.0] — 2026-08-03
+- **feat(gitlab): инкрементальный синк — тянем только изменившиеся issue.** Полный pull
+  всего проекта (~3000 issue + milestones/comments/tags) на каждый прогон занимал >10 мин,
+  даже когда в GitLab ничего не менялось. Теперь дефолтный синк — **инкрементальный**:
+  GraphQL-запрос `project.issues` получил серверный фильтр `updatedAfter` (тип `Time`),
+  и в incremental-режиме передаётся `updatedAfter = last_synced_at − 5m` (окно перекрытия
+  против clock-skew). При пустой дельте это один запрос с 0 узлов вместо ~30 страниц.
+  Дополнительно `dropUnchangedIssues` отбрасывает issue, которые окно перекрытия
+  вернуло без изменений (совпали `updatedAt` + `title_hash` + `labels_hash`), а
+  refetch всех linked-issue (`IssuesByIIDs`) в incremental пропускается — изменённые
+  linked и так приходят в дельте.
+- **Полный синк остаётся как опция.** `POST .../sync?mode=full` (пункт «Полная
+  синхронизация» на фронте — отдельно) делает прежний полный проход. Авто-воркер по
+  умолчанию инкрементальный, но принудительно форсит полный прогон по интервалу
+  `full_sync_interval_sec` (по умолчанию 24ч; `0` отключает) или когда полного прогона
+  ещё не было. Первый синк новой привязки всегда полный (`last_full_synced_at IS NULL`).
+- **Журнал различает режимы:** `gitlab_sync_runs.mode` = `full` | `incremental`.
+- **Миграция 0046:** `gitlab_integrations.{last_full_synced_at, members_synced_at,
+  full_sync_interval_sec}` + `gitlab_sync_runs.mode`. Аддитивна.
+
 ### [0.80.0] — 2026-07-31
 - **feat(gitlab,web): фоновый ручной синк с уведомлением инициатору и временем в
   журнале.** Ручной синк GitLab (`POST .../sync`) теперь запускается полностью в фоне:

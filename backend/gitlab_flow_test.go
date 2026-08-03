@@ -709,6 +709,21 @@ func TestGitlabSyncFlow(t *testing.T) {
 	if bug["column_id"] != s.col(t, 3) || bug["completed_at"] == nil {
 		t.Fatalf("second sync close: col=%v completed=%v", bug["column_id"], bug["completed_at"])
 	}
+
+	// Third sync with nothing changed → an incremental no-op: the overlap window
+	// re-delivers the issues, but dropUnchangedIssues skips every one (updatedAt +
+	// title/labels hash unchanged), so no create/update lands. This is the headline
+	// perf behaviour — a pull with an empty delta does no work.
+	triggerSync(t, c, s.WS, integID)
+	runs3 := waitSyncRuns(t, c, s.WS, 3)
+	newest := runs3[0]
+	if newest["mode"] != "incremental" {
+		t.Fatalf("third sync mode = %v, want incremental", newest["mode"])
+	}
+	if newest["created_count"] != float64(0) || newest["updated_count"] != float64(0) {
+		t.Fatalf("third sync should be a no-op: created=%v updated=%v",
+			newest["created_count"], newest["updated_count"])
+	}
 }
 
 // Issue templates: empty without a binding, served from the repo through the fake.

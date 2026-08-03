@@ -84,6 +84,16 @@ UPDATE gitlab_links SET start_overridden = true WHERE task_id = $1;
 -- name: MarkGitlabSynced :exec
 UPDATE gitlab_integrations SET last_synced_at = now() WHERE id = $1;
 
+-- MarkGitlabFullSynced stamps both the last sync time and the last FULL sweep time,
+-- so the auto worker can tell when the next forced full sweep is due.
+-- name: MarkGitlabFullSynced :exec
+UPDATE gitlab_integrations SET last_synced_at = now(), last_full_synced_at = now() WHERE id = $1;
+
+-- MarkGitlabMembersSynced stamps when the assignable-member roster was last pulled,
+-- so an incremental sync can throttle the (expensive) roster refresh.
+-- name: MarkGitlabMembersSynced :exec
+UPDATE gitlab_integrations SET members_synced_at = now() WHERE id = $1;
+
 -- ListAutoSyncIntegrations returns integrations due for unattended sync: enabled,
 -- with a positive interval, an owner credential set, and either never synced or
 -- past their interval. Used by the background worker.
@@ -145,6 +155,15 @@ RETURNING *;
 
 -- name: LinkedIidsForIntegration :many
 SELECT gl_iid FROM gitlab_links WHERE integration_id = $1;
+
+-- LinkedSyncKeysForIntegration returns the change-detection keys of every linked
+-- issue, so an incremental sync can cheaply skip issues whose GitLab updatedAt is
+-- unchanged (the 5-minute overlap window re-delivers already-synced issues).
+-- title_hash/labels_hash guard the second-precision timestamp: two edits in the same
+-- second share an updatedAt, so content hashes break the tie (desc_hash is omitted —
+-- the stored one is of the asset-rewritten body, not comparable to the raw issue).
+-- name: LinkedSyncKeysForIntegration :many
+SELECT gl_global_id, gl_updated_at, title_hash, labels_hash FROM gitlab_links WHERE integration_id = $1;
 
 -- ── sync reconciliation: mixed tags / assignees ────────────
 -- Resolve a GitLab username to a Tessera user (via their linked credential).

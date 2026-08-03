@@ -63,24 +63,27 @@ type GitlabCredential struct {
 }
 
 type GitlabIntegration struct {
-	ID              uuid.UUID  `json:"id"`
-	WorkspaceID     uuid.UUID  `json:"workspace_id"`
-	ProjectPath     string     `json:"project_path"`
-	BoardID         uuid.UUID  `json:"board_id"`
-	LabelRules      []byte     `json:"label_rules"`
-	Enabled         bool       `json:"enabled"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
-	SyncIntervalSec int32      `json:"sync_interval_sec"`
-	LastSyncedAt    *time.Time `json:"last_synced_at"`
-	DueSource       string     `json:"due_source"`
-	StartSource     string     `json:"start_source"`
-	Writeback       []byte     `json:"writeback"`
-	Name            string     `json:"name"`
-	Scope           string     `json:"scope"`
-	ClosedPolicy    string     `json:"closed_policy"`
-	ClosedAfter     *time.Time `json:"closed_after"`
+	ID                  uuid.UUID  `json:"id"`
+	WorkspaceID         uuid.UUID  `json:"workspace_id"`
+	ProjectPath         string     `json:"project_path"`
+	BoardID             uuid.UUID  `json:"board_id"`
+	LabelRules          []byte     `json:"label_rules"`
+	Enabled             bool       `json:"enabled"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	OwnerUserID         *uuid.UUID `json:"owner_user_id"`
+	SyncIntervalSec     int32      `json:"sync_interval_sec"`
+	LastSyncedAt        *time.Time `json:"last_synced_at"`
+	DueSource           string     `json:"due_source"`
+	StartSource         string     `json:"start_source"`
+	Writeback           []byte     `json:"writeback"`
+	Name                string     `json:"name"`
+	Scope               string     `json:"scope"`
+	ClosedPolicy        string     `json:"closed_policy"`
+	ClosedAfter         *time.Time `json:"closed_after"`
+	LastFullSyncedAt    *time.Time `json:"last_full_synced_at"`
+	MembersSyncedAt     *time.Time `json:"members_synced_at"`
+	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
 }
 
 type GitlabLink struct {
@@ -159,6 +162,7 @@ type GitlabSyncRun struct {
 	Error         string     `json:"error"`
 	StartedAt     time.Time  `json:"started_at"`
 	FinishedAt    *time.Time `json:"finished_at"`
+	Mode          string     `json:"mode"`
 }
 
 type GitlabWriteback struct {

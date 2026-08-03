@@ -460,9 +460,15 @@ func (h *API) SyncGitlab(c *gin.Context) {
 		return
 	}
 	// Open the journal row synchronously so the response can name the run and the
-	// journal shows it as in-flight from the moment the button was pressed.
+	// journal shows it as in-flight from the moment the button was pressed. The
+	// button's main action is an incremental pull; "Полная синхронизация" (dropdown)
+	// sends ?mode=full. A never-fully-synced binding is forced to full regardless.
 	aid := uid
 	j := h.newJournal(integ.ID, "pull", "manual", &aid)
+	j.mode = "incremental"
+	if c.Query("mode") == "full" || integ.LastFullSyncedAt == nil {
+		j.mode = "full"
+	}
 	h.beginJournal(c, j)
 	go func() {
 		defer runningSyncs.Delete(integ.ID)
@@ -548,14 +554,55 @@ type syncBoard struct {
 	doneID *uuid.UUID
 }
 
+// syncOverlap is how far before last_synced_at an incremental pull sets its
+// updatedAfter cutoff — a safety window covering clock skew between Tessera and
+// GitLab and issues changed during the previous run's own page fetch. Anything it
+// re-delivers unchanged is dropped cheaply by dropUnchangedIssues.
+const syncOverlap = 5 * time.Minute
+
+// dropUnchangedIssues removes issues whose GitLab updatedAt AND content hashes match
+// what we already stored on their link — the overlap window re-delivers already-synced
+// issues, and reconciling them again is wasted work. New issues (no link yet) and
+// issues with a changed/unknown updatedAt or a differing title/labels hash are kept.
+// The hash check guards the second-precision updatedAt: two edits in the same second
+// share a timestamp, so a same-second retitle is still caught.
+func (h *API) dropUnchangedIssues(ctx context.Context, integrationID uuid.UUID, issues []gitlab.Issue) []gitlab.Issue {
+	keys, err := h.q.LinkedSyncKeysForIntegration(ctx, integrationID)
+	if err != nil || len(keys) == 0 {
+		return issues
+	}
+	type syncKey struct {
+		updated              *time.Time
+		titleHash, labelHash string
+	}
+	seen := make(map[string]syncKey, len(keys))
+	for _, k := range keys {
+		seen[k.GlGlobalID] = syncKey{updated: k.GlUpdatedAt, titleHash: k.TitleHash, labelHash: k.LabelsHash}
+	}
+	kept := issues[:0]
+	for _, is := range issues {
+		k, linked := seen[is.GlobalID]
+		unchanged := linked && k.updated != nil && is.UpdatedAt != nil && is.UpdatedAt.Equal(*k.updated) &&
+			k.titleHash == hashStr(is.Title) && k.labelHash == hashStr(labelsKey(is.Labels))
+		if unchanged {
+			continue // linked and unchanged since last sync
+		}
+		kept = append(kept, is)
+	}
+	return kept
+}
+
 // runSync is the credential-driven pull engine, decoupled from the HTTP request
 // so the background worker can call it too. It mirrors the issues assigned to
 // cred's GitLab user onto the integration's board (status→column, priority→
 // priority, others→tags), attributing events to actorID. Pull-only. Per-issue
-// errors are logged and skipped; only a fetch/board-level failure aborts.
-func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.GitlabCredential, actorID uuid.UUID, trigger string) (created, updated int, err error) {
+// errors are logged and skipped; only a fetch/board-level failure aborts. mode is
+// "full" | "incremental" (how issues are fetched).
+func (h *API) runSync(ctx context.Context, integ db.GitlabIntegration, cred db.GitlabCredential, actorID uuid.UUID, trigger, mode string) (created, updated int, err error) {
 	aid := actorID
-	return h.runSyncJournal(ctx, integ, cred, actorID, h.newJournal(integ.ID, "pull", trigger, &aid))
+	j := h.newJournal(integ.ID, "pull", trigger, &aid)
+	j.mode = mode
+	return h.runSyncJournal(ctx, integ, cred, actorID, j)
 }
 
 // runSyncJournal is runSync against a caller-supplied journal, so a manual sync
@@ -586,29 +633,47 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 	}
 	client := gitlab.New(baseURL, token)
 	// Discover issues per the integration scope: "all" pulls the whole project
-	// (full import), "assigned" only the credential owner's issues. Either way we
-	// also fetch every already-linked issue to keep it fresh (and reflect a
-	// reassignment away from the owner). Merge, deduped by global id. Under a service
+	// (full import), "assigned" only the credential owner's issues. Under a service
 	// token there's no "assigned to me", so we always do a full pull.
+	//
+	// An incremental pull asks GitLab (server-side) only for issues updated after the
+	// last sync minus a 5-minute overlap window — the pull is usually near-empty, so
+	// it costs one GraphQL page instead of a few thousand. A full pull leaves the
+	// filter off and additionally refetches every already-linked issue (to catch a
+	// reassignment away from the owner and to detect deletes — Phase 2).
+	incremental := j.mode == "incremental"
+	var since *time.Time
+	if incremental && integ.LastSyncedAt != nil {
+		s := integ.LastSyncedAt.Add(-syncOverlap)
+		since = &s
+	}
 	var assigned []gitlab.Issue
 	if integ.Scope == "all" || assignUser == "" {
-		assigned, err = client.AllIssues(ctx, integ.ProjectPath)
+		assigned, err = client.AllIssuesSince(ctx, integ.ProjectPath, since)
 	} else {
-		assigned, err = client.AssignedIssues(ctx, integ.ProjectPath, assignUser)
+		assigned, err = client.AssignedIssuesSince(ctx, integ.ProjectPath, assignUser, since)
 	}
 	if err != nil {
 		return 0, 0, err
 	}
 	linkedIids, _ := h.q.LinkedIidsForIntegration(ctx, integ.ID)
-	iidStrs := make([]string, 0, len(linkedIids))
-	for _, id := range linkedIids {
-		iidStrs = append(iidStrs, strconv.FormatInt(id, 10))
+	var issues []gitlab.Issue
+	if incremental {
+		// Changed linked issues already surface in the delta (updatedAt > since), so
+		// skip the full linked-issue refetch. Then drop issues the overlap window
+		// re-delivered but whose GitLab updatedAt is unchanged (nothing to do).
+		issues = h.dropUnchangedIssues(ctx, integ.ID, assigned)
+	} else {
+		iidStrs := make([]string, 0, len(linkedIids))
+		for _, id := range linkedIids {
+			iidStrs = append(iidStrs, strconv.FormatInt(id, 10))
+		}
+		linked, lerr := client.IssuesByIIDs(ctx, integ.ProjectPath, iidStrs)
+		if lerr != nil {
+			return 0, 0, lerr
+		}
+		issues = mergeIssues(assigned, linked)
 	}
-	linked, err := client.IssuesByIIDs(ctx, integ.ProjectPath, iidStrs)
-	if err != nil {
-		return 0, 0, err
-	}
-	issues := mergeIssues(assigned, linked)
 
 	// closed_policy=period: don't import NEW closed issues older than the cutoff
 	// (keeps the initial import bounded); already-linked ones keep syncing.
@@ -770,7 +835,13 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		}
 	}
 
-	_ = h.q.MarkGitlabSynced(ctx, integ.ID)
+	if incremental {
+		_ = h.q.MarkGitlabSynced(ctx, integ.ID)
+	} else {
+		// A full sweep also advances last_full_synced_at so the auto worker knows when
+		// the next forced full sweep is due.
+		_ = h.q.MarkGitlabFullSynced(ctx, integ.ID)
+	}
 	// One board-level reload signal (no per-task toasts) so open boards refresh once.
 	if created+updated > 0 {
 		h.broadcast(wsID, "task.synced", gin.H{"board_id": integ.BoardID, "created": created, "updated": updated})
@@ -830,7 +901,15 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		if _, busy := runningSyncs.LoadOrStore(integ.ID, struct{}{}); busy {
 			continue
 		}
-		created, updated, serr := h.runSync(ctx, integ, cred, actor, "auto")
+		// Incremental by default; force a full sweep when one has never run or the
+		// configured full-sync interval has elapsed (catches deletes/drift that an
+		// incremental pull can't see). full_sync_interval_sec = 0 disables the forced
+		// sweep (full then only runs on the very first sync).
+		mode := "incremental"
+		if fullSyncDue(integ) {
+			mode = "full"
+		}
+		created, updated, serr := h.runSync(ctx, integ, cred, actor, "auto", mode)
 		runningSyncs.Delete(integ.ID)
 		if serr != nil {
 			log.Printf("gitlab auto-sync ws=%s: %v", integ.WorkspaceID, serr)
@@ -840,6 +919,20 @@ func (h *API) autoSyncDue(ctx context.Context) {
 			log.Printf("gitlab auto-sync ws=%s: +%d new, ~%d updated", integ.WorkspaceID, created, updated)
 		}
 	}
+}
+
+// fullSyncDue reports whether the auto worker should force a full sweep for this
+// integration instead of an incremental pull: when it has never had one, or its
+// configured full-sync interval has elapsed. A zero interval disables the periodic
+// sweep (a full pull then runs only on the first-ever sync, via LastFullSyncedAt).
+func fullSyncDue(integ db.GitlabIntegration) bool {
+	if integ.LastFullSyncedAt == nil {
+		return true
+	}
+	if integ.FullSyncIntervalSec <= 0 {
+		return false
+	}
+	return time.Since(*integ.LastFullSyncedAt) >= time.Duration(integ.FullSyncIntervalSec)*time.Second
 }
 
 // ── helpers ────────────────────────────────────────────────

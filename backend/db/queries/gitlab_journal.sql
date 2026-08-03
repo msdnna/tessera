@@ -3,10 +3,11 @@
 
 -- CreateGitlabSyncRun opens a run row. started_at is supplied by the caller (the
 -- real moment the sync began, not the moment it was recorded), and status is
--- normally 'running' — FinishGitlabSyncRun stamps the outcome afterwards.
+-- normally 'running' — FinishGitlabSyncRun stamps the outcome afterwards. mode is
+-- 'full' | 'incremental' (how issues were fetched).
 -- name: CreateGitlabSyncRun :one
-INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, status, started_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, status, started_at, mode)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- FinishGitlabSyncRun stamps the final status, counts and finish time once a run
