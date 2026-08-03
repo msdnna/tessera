@@ -63,6 +63,16 @@ type glMember struct {
 	Name     string
 }
 
+// glLink is one issue-link edge as GitLab reports it from the source issue's side.
+// ProjectPath empty means "same project as the fake".
+type glLink struct {
+	SrcIID      int64
+	DstIID      int64
+	LinkType    string // relates_to | blocks | is_blocked_by
+	ProjectPath string
+	LinkID      int64
+}
+
 // fakeGitlab is an in-memory GitLab instance serving the exact API subset the
 // backend's client uses. pageSize < len(issues) exercises GraphQL pagination.
 type fakeGitlab struct {
@@ -82,6 +92,15 @@ type fakeGitlab struct {
 	templates map[string]string // name → content
 	nextIID   int64
 	nextMsID  int64
+
+	// Issue links, plus the switch that decides which of the two client paths serves
+	// them: with linkedItemsWidget the GraphQL widget answers, without it the widget
+	// is absent from the response (an older self-hosted GitLab) and the client must
+	// fall back to REST. linkCalls counts either kind of request, so a test can prove
+	// relations_sync=off costs no round-trips at all.
+	links             []glLink
+	linkedItemsWidget bool
+	linkCalls         int
 }
 
 func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
@@ -90,6 +109,7 @@ func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
 		t: t, username: username, token: "glpat-test-" + username,
 		projectPath: projectPath, pageSize: 2,
 		templates: map[string]string{}, nextIID: 100, nextMsID: 9000,
+		linkedItemsWidget: true,
 	}
 	f.srv = httptest.NewServer(f)
 	t.Cleanup(f.srv.Close)
@@ -184,6 +204,8 @@ func (f *fakeGitlab) graphql(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
 			"currentUser": map[string]any{"id": "gid://gitlab/User/99", "username": f.username},
 		}})
+	case strings.Contains(req.Query, "linkedItems"):
+		f.linkedItemsQuery(w, req.Variables)
 	case strings.Contains(req.Query, "workItems"):
 		// Child-item hierarchy: none of the fixture issues group subtasks.
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
@@ -192,6 +214,68 @@ func (f *fakeGitlab) graphql(w http.ResponseWriter, r *http.Request) {
 	default:
 		f.issuesQuery(w, req.Variables)
 	}
+}
+
+// linkedItemsQuery serves the WorkItemWidgetLinkedItems batch. When the fake is
+// configured without the widget, the work items come back carrying only an unrelated
+// widget — exactly what an older GitLab returns, and the client's cue to use REST.
+func (f *fakeGitlab) linkedItemsQuery(w http.ResponseWriter, vars map[string]any) {
+	f.mu.Lock()
+	f.linkCalls++
+	widget := f.linkedItemsWidget
+	f.mu.Unlock()
+
+	raw, _ := vars["iids"].([]any)
+	nodes := make([]any, 0, len(raw))
+	for _, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		iid, _ := strconv.ParseInt(s, 10, 64)
+		if !widget {
+			nodes = append(nodes, map[string]any{"iid": s, "widgets": []any{map[string]any{}}})
+			continue
+		}
+		items := make([]any, 0)
+		for _, l := range f.linksFor(iid) {
+			path := l.ProjectPath
+			if path == "" {
+				path = f.projectPath
+			}
+			items = append(items, map[string]any{
+				"linkType": l.LinkType,
+				"linkId":   fmt.Sprintf("gid://gitlab/IssueLink/%d", l.LinkID),
+				"workItem": map[string]any{
+					"iid":       strconv.FormatInt(l.DstIID, 10),
+					"webUrl":    f.srv.URL + "/" + path + "/-/issues/" + strconv.FormatInt(l.DstIID, 10),
+					"namespace": map[string]any{"fullPath": path},
+				},
+			})
+		}
+		nodes = append(nodes, map[string]any{
+			"iid": s,
+			"widgets": []any{
+				map[string]any{},
+				map[string]any{"linkedItems": map[string]any{"nodes": items}},
+			},
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
+		"project": map[string]any{"workItems": map[string]any{"nodes": nodes}},
+	}})
+}
+
+func (f *fakeGitlab) linksFor(srcIID int64) []glLink {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []glLink
+	for _, l := range f.links {
+		if l.SrcIID == srcIID {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // issuesQuery serves the paginated issues query with optional iids / assignee
@@ -308,6 +392,24 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 	}
 	rest := strings.TrimPrefix(r.URL.Path, prefix)
 	switch {
+	case strings.HasPrefix(rest, "issues/") && strings.HasSuffix(rest, "/links"):
+		f.mu.Lock()
+		f.linkCalls++
+		f.mu.Unlock()
+		iid, _ := strconv.ParseInt(strings.TrimSuffix(strings.TrimPrefix(rest, "issues/"), "/links"), 10, 64)
+		out := make([]any, 0)
+		for _, l := range f.linksFor(iid) {
+			path := l.ProjectPath
+			if path == "" {
+				path = f.projectPath
+			}
+			out = append(out, map[string]any{
+				"iid": l.DstIID, "issue_link_id": l.LinkID, "link_type": l.LinkType,
+				"web_url":    f.srv.URL + "/" + path + "/-/issues/" + strconv.FormatInt(l.DstIID, 10),
+				"references": map[string]any{"full": fmt.Sprintf("%s#%d", path, l.DstIID)},
+			})
+		}
+		writeJSON(w, http.StatusOK, out)
 	case rest == "members/all":
 		if r.URL.Query().Get("page") != "1" {
 			writeJSON(w, http.StatusOK, []any{})

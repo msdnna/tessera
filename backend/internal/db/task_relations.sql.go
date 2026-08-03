@@ -13,10 +13,10 @@ import (
 )
 
 const addTaskRelation = `-- name: AddTaskRelation :one
-INSERT INTO task_relations (task_id, related_task_id, kind)
-VALUES ($1, $2, $3)
+INSERT INTO task_relations (task_id, related_task_id, kind, source)
+VALUES ($1, $2, $3, 'user')
 ON CONFLICT (task_id, related_task_id, kind) DO NOTHING
-RETURNING id, task_id, related_task_id, kind, created_at
+RETURNING id, task_id, related_task_id, kind, created_at, source
 `
 
 type AddTaskRelationParams struct {
@@ -34,6 +34,7 @@ func (q *Queries) AddTaskRelation(ctx context.Context, arg AddTaskRelationParams
 		&i.RelatedTaskID,
 		&i.Kind,
 		&i.CreatedAt,
+		&i.Source,
 	)
 	return i, err
 }
@@ -92,7 +93,7 @@ func (q *Queries) GetTaskByNumber(ctx context.Context, arg GetTaskByNumberParams
 }
 
 const getTaskRelation = `-- name: GetTaskRelation :one
-SELECT id, task_id, related_task_id, kind, created_at FROM task_relations WHERE id = $1
+SELECT id, task_id, related_task_id, kind, created_at, source FROM task_relations WHERE id = $1
 `
 
 func (q *Queries) GetTaskRelation(ctx context.Context, id uuid.UUID) (TaskRelation, error) {
@@ -104,6 +105,7 @@ func (q *Queries) GetTaskRelation(ctx context.Context, id uuid.UUID) (TaskRelati
 		&i.RelatedTaskID,
 		&i.Kind,
 		&i.CreatedAt,
+		&i.Source,
 	)
 	return i, err
 }
@@ -156,7 +158,7 @@ func (q *Queries) ListBoardDependencies(ctx context.Context, boardID uuid.UUID) 
 
 const listTaskRelations = `-- name: ListTaskRelations :many
 SELECT
-    r.id, r.task_id, r.related_task_id, r.kind, r.created_at,
+    r.id, r.task_id, r.related_task_id, r.kind, r.source, r.created_at,
     t.number AS related_number,
     t.title  AS related_title,
     t.board_id AS related_board_id,
@@ -173,6 +175,7 @@ type ListTaskRelationsRow struct {
 	TaskID             uuid.UUID  `json:"task_id"`
 	RelatedTaskID      uuid.UUID  `json:"related_task_id"`
 	Kind               string     `json:"kind"`
+	Source             string     `json:"source"`
 	CreatedAt          time.Time  `json:"created_at"`
 	RelatedNumber      *int64     `json:"related_number"`
 	RelatedTitle       string     `json:"related_title"`
@@ -181,6 +184,8 @@ type ListTaskRelationsRow struct {
 	RelatedArchivedAt  *time.Time `json:"related_archived_at"`
 }
 
+// `source` is provider-neutral (user|gitlab): the client shows where a relation came
+// from without this query knowing anything about integrations.
 func (q *Queries) ListTaskRelations(ctx context.Context, taskID uuid.UUID) ([]ListTaskRelationsRow, error) {
 	rows, err := q.db.Query(ctx, listTaskRelations, taskID)
 	if err != nil {
@@ -195,6 +200,7 @@ func (q *Queries) ListTaskRelations(ctx context.Context, taskID uuid.UUID) ([]Li
 			&i.TaskID,
 			&i.RelatedTaskID,
 			&i.Kind,
+			&i.Source,
 			&i.CreatedAt,
 			&i.RelatedNumber,
 			&i.RelatedTitle,

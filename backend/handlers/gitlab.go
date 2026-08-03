@@ -233,6 +233,7 @@ type integrationRequest struct {
 	Scope           string          `json:"scope"`
 	ClosedPolicy    string          `json:"closed_policy"`
 	ClosedAfter     *time.Time      `json:"closed_after"`
+	RelationsSync   string          `json:"relations_sync"`
 	LabelRules      json.RawMessage `json:"label_rules"`
 	Writeback       json.RawMessage `json:"writeback"`
 }
@@ -264,6 +265,13 @@ func (req *integrationRequest) normalize() {
 	}
 	if req.ClosedPolicy != "period" {
 		req.ClosedAfter = nil
+	}
+	// "two_way" is reserved for pushing Tessera relations back to GitLab; until then
+	// anything unknown falls back to the pull-only default.
+	switch req.RelationsSync {
+	case "off", "pull":
+	default:
+		req.RelationsSync = "pull"
 	}
 	req.ProjectPath = strings.TrimSpace(req.ProjectPath)
 	req.Name = strings.TrimSpace(req.Name)
@@ -320,6 +328,7 @@ func (h *API) CreateGitlabIntegration(c *gin.Context) {
 		Scope:           req.Scope,
 		ClosedPolicy:    req.ClosedPolicy,
 		ClosedAfter:     req.ClosedAfter,
+		RelationsSync:   req.RelationsSync,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
@@ -370,6 +379,7 @@ func (h *API) UpdateGitlabIntegration(c *gin.Context) {
 		Scope:           req.Scope,
 		ClosedPolicy:    req.ClosedPolicy,
 		ClosedAfter:     req.ClosedAfter,
+		RelationsSync:   req.RelationsSync,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
@@ -725,6 +735,8 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		}
 	}
 
+	// The iids actually mirrored this run — the scope of the linked-items pass below.
+	var syncedIIDs []int64
 	for _, issue := range issues {
 		if claimed[issue.GlobalID] {
 			continue // synced as a subtask under its parent
@@ -739,6 +751,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 			continue
 		}
 		h.applyClosedPolicy(ctx, integ, issue, taskID)
+		syncedIIDs = append(syncedIIDs, issue.IID)
 		if wasCreated {
 			created++
 		} else {
@@ -760,6 +773,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 				parentID := taskID
 				if ktid, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, kest, actorID, col.Name, j); kok {
 					h.applyClosedPolicy(ctx, integ, kid, ktid)
+					syncedIIDs = append(syncedIIDs, kid.IID)
 					if kc {
 						created++
 					} else {
@@ -769,6 +783,10 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 			}
 		}
 	}
+
+	// Linked items last: every task the links can point at has been mirrored by now,
+	// so a link between two issues of this run resolves on the first pass.
+	h.syncRelations(ctx, integ, client, syncedIIDs, j)
 
 	_ = h.q.MarkGitlabSynced(ctx, integ.ID)
 	// One board-level reload signal (no per-task toasts) so open boards refresh once.

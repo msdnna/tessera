@@ -81,6 +81,22 @@ type GitlabIntegration struct {
 	Scope           string     `json:"scope"`
 	ClosedPolicy    string     `json:"closed_policy"`
 	ClosedAfter     *time.Time `json:"closed_after"`
+	RelationsSync   string     `json:"relations_sync"`
+}
+
+type GitlabIssueLink struct {
+	ID                 uuid.UUID  `json:"id"`
+	IntegrationID      uuid.UUID  `json:"integration_id"`
+	SrcProjectPath     string     `json:"src_project_path"`
+	SrcIid             int64      `json:"src_iid"`
+	DstProjectPath     string     `json:"dst_project_path"`
+	DstIid             int64      `json:"dst_iid"`
+	LinkType           string     `json:"link_type"`
+	GlLinkID           string     `json:"gl_link_id"`
+	GlWebUrl           string     `json:"gl_web_url"`
+	ResolvedRelationID *uuid.UUID `json:"resolved_relation_id"`
+	LastSeenAt         time.Time  `json:"last_seen_at"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 type GitlabLink struct {
@@ -459,6 +475,7 @@ type TaskRelation struct {
 	RelatedTaskID uuid.UUID `json:"related_task_id"`
 	Kind          string    `json:"kind"`
 	CreatedAt     time.Time `json:"created_at"`
+	Source        string    `json:"source"`
 }
 
 type TaskTag struct {
