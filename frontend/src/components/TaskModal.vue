@@ -2279,7 +2279,7 @@ function eventText(e) {
   max-width: 100%;
   overflow: hidden;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: 5px;
 }
 .tags-measure {
   position: absolute;

@@ -80,6 +80,11 @@ const rootStyle = computed(() => {
     return {
       border: 'none',
       background: 'none',
+      // Inline so it beats the call site's own `.chip`/`.mchip` padding: those are
+      // scoped rules of equal specificity to `.tpill.tt`, so source order would
+      // otherwise let them win and leave the segments inset (the "big gap" in the
+      // task modal / hover tooltip). The two segments carry their own padding.
+      padding: '0',
       '--tp-scope-bg': hueGrad(c),
       '--tp-scope-fg': onColor(c),
       '--tp-name-bg': softFill(c),

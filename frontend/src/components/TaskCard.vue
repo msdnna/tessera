@@ -1771,7 +1771,7 @@ async function submitAddSub() {
 .preview {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 5px;
   max-width: 220px;
 }
 .avatar {
