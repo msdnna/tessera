@@ -111,6 +111,15 @@ export const useThemeStore = defineStore('theme', () => {
   const weekStart = ref(typeof cached.week_start === 'number' ? cached.week_start : 1)
   const boardBackground = ref(cached.board_background || '')
 
+  // Tag-scope display: 'name' shows the friendly prefix label, 'raw' shows the
+  // bare prefix (short chips). Device-level UX preference (long vs short tags),
+  // so it lives in localStorage only — not synced to the DB prefs. See #2604.
+  const tagPrefixMode = ref(localStorage.getItem('tessera_tag_prefix_mode') || 'name')
+  function setTagPrefixMode(m) {
+    tagPrefixMode.value = m === 'raw' ? 'raw' : 'name'
+    localStorage.setItem('tessera_tag_prefix_mode', tagPrefixMode.value)
+  }
+
   const palette = computed(() => (isDark.value ? DARK : LIGHT))
   const primaryColor = computed(() => activeTheme.value.primary)
   const onPrimaryColor = computed(() => textOnPrimary(activeTheme.value.primary))
@@ -344,11 +353,13 @@ export const useThemeStore = defineStore('theme', () => {
     dateFormat,
     weekStart,
     boardBackground,
+    tagPrefixMode,
     // actions
     selectColor,
     setThemeMode,
     toggle,
     setBoardBackground,
+    setTagPrefixMode,
     setLocale,
     hydrate,
     reset,

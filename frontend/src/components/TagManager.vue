@@ -1,11 +1,14 @@
 <script setup>
 import { ref, reactive, computed, watchEffect, nextTick } from 'vue'
-import { NInput, NButton, NText, NIcon, NPopconfirm, useMessage } from 'naive-ui'
+import { NInput, NButton, NText, NIcon, NPopconfirm, NSwitch, useMessage } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
 import { projects as projectsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
+import { useThemeStore } from '@/stores/theme'
 import TagPill from './TagPill.vue'
+
+const theme = useThemeStore()
 
 const props = defineProps({
   projectId: { type: String, default: null },
@@ -171,6 +174,15 @@ async function add() {
     </div>
 
     <template v-if="prefixGroups.length">
+      <div class="pfx-mode">
+        <n-text depth="3" class="head pfx-head">Короткие префиксы</n-text>
+        <n-switch
+          size="small"
+          :value="theme.tagPrefixMode === 'raw'"
+          title="Показывать сырой префикс (напр. «T») вместо понятного имени"
+          @update:value="(v) => theme.setTagPrefixMode(v ? 'raw' : 'name')"
+        />
+      </div>
       <n-text depth="3" class="head pfx-head">Имена префиксов</n-text>
       <div class="pfx-list">
         <div v-for="g in prefixGroups" :key="g.key" class="pfx-row">
@@ -259,6 +271,15 @@ async function add() {
   font-size: 12px;
 }
 .pfx-head {
+  margin-top: 14px;
+}
+.pfx-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pfx-mode .pfx-head {
   margin-top: 14px;
 }
 .pfx-list {

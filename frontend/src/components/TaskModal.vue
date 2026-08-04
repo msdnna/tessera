@@ -352,7 +352,7 @@ const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 // trigger on remount, fixing the "reopen shows only 1 chip" bug).
 const tagsValEl = ref(null)
 const tagsMeasureEl = ref(null)
-const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs)
+const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs, { gap: 4 })
 const assigneeObjs = computed(() =>
   selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
 )
@@ -2279,6 +2279,7 @@ function eventText(e) {
   max-width: 100%;
   overflow: hidden;
   flex-wrap: nowrap;
+  gap: 4px;
 }
 .tags-measure {
   position: absolute;

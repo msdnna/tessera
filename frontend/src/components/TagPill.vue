@@ -17,7 +17,7 @@
 // won't include the scope segment and the fit calculation will lie.
 import { computed } from 'vue'
 import { useThemeStore } from '@/stores/theme'
-import { tagParts } from '@/utils/tagGroups'
+import { tagParts, splitTag } from '@/utils/tagGroups'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 
 const props = defineProps({
@@ -52,7 +52,15 @@ const hue = computed(
 // the active theme — clamp lightness into a legible band first.
 const textHue = computed(() => readableHue(hue.value, theme.isDark))
 
-const parts = computed(() => tagParts(rawName.value, props.prefixNames))
+const parts = computed(() => {
+  const p = tagParts(rawName.value, props.prefixNames)
+  // 'raw' mode (device pref) shows the bare prefix ("T") instead of the friendly
+  // name, for users who prefer short chips (#2604). Only when there's a scope.
+  if (p.hasScope && theme.tagPrefixMode === 'raw') {
+    return { ...p, scope: splitTag(rawName.value).scope }
+  }
+  return p
+})
 const showScope = computed(() => parts.value.hasScope && props.scopeMode !== 'hide')
 // GitLab-EE two-segment treatment for a scoped tag. The picker (`inherit`)
 // manages its own selected/unselected fill, so it opts out and falls back to the

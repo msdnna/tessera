@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import TagPill from '@/components/TagPill.vue'
+import { useThemeStore } from '@/stores/theme'
 
 const names = { 'effort::': 'Сложность' }
 
@@ -11,7 +12,9 @@ function pill(props) {
 
 describe('TagPill.vue', () => {
   beforeEach(() => {
-    // The pill reads the theme store to clamp the tag colour for the active theme.
+    // The pill reads the theme store to clamp the tag colour for the active theme
+    // and to pick the scope-display mode; start each test from a clean slate.
+    localStorage.clear()
     setActivePinia(createPinia())
   })
 
@@ -20,6 +23,14 @@ describe('TagPill.vue', () => {
     expect(w.find('.tp-scope').text()).toBe('Сложность')
     expect(w.find('.tp-name').text()).toBe('small')
     expect(w.find('.tpill').classes()).toContain('scoped')
+  })
+
+  it('shows the bare prefix instead of the friendly name in raw mode', () => {
+    const theme = useThemeStore()
+    theme.setTagPrefixMode('raw')
+    const w = pill({ tag: { name: 'effort::small', color: '#7c5cff' }, prefixNames: names })
+    expect(w.find('.tp-scope').text()).toBe('effort') // raw prefix, no separator
+    expect(w.find('.tp-name').text()).toBe('small')
   })
 
   it('falls back to the raw prefix when no friendly name is configured', () => {

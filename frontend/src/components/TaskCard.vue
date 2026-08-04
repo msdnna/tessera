@@ -921,13 +921,7 @@ async function submitAddSub() {
                   class="pill tag-pill"
                   :style="
                     firstTagScoped
-                      ? {
-                          border: 'none',
-                          background: 'none',
-                          padding: 0,
-                          boxShadow: stackShadow,
-                          marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
-                        }
+                      ? { border: 'none', background: 'none', padding: 0 }
                       : {
                           border: '1px solid transparent',
                           background: tagPillBg(taskTags[0].color),
@@ -937,16 +931,24 @@ async function submitAddSub() {
                   "
                   @click.stop
                 >
+                  <!-- Scoped pill: the cascade shadow sits on the pill itself and the
+                       +N moves right past it, so the stack peeks BEHIND the tag (not
+                       shoved out past the +N). Unscoped keeps +N inside the soft box. -->
                   <TagPill
                     class="tname"
                     :tag="taskTags[0]"
                     :prefix-names="tagPrefixNames"
                     variant="grad-text"
+                    :style="firstTagScoped ? { boxShadow: stackShadow } : null"
                   />
                   <span
                     v-if="taskTags.length > 1"
                     class="more"
-                    :style="{ color: tagText(taskTags[0].color) }"
+                    :style="{
+                      color: tagText(taskTags[0].color),
+                      marginLeft:
+                        firstTagScoped && stackLayers ? stackLayers * 5 + 'px' : undefined,
+                    }"
                     >+{{ taskTags.length - 1 }}</span
                   >
                 </button>
@@ -1769,7 +1771,7 @@ async function submitAddSub() {
 .preview {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   max-width: 220px;
 }
 .avatar {
