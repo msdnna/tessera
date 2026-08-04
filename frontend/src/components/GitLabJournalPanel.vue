@@ -211,7 +211,10 @@ function pushPayloadText() {
 }
 
 onMounted(loadRuns)
-watch(() => props.wsId, () => loadRuns())
+watch(
+  () => props.wsId,
+  () => loadRuns(),
+)
 watch(runs, syncTicker, { immediate: true })
 
 defineExpose({ reload: () => loadRuns() })
