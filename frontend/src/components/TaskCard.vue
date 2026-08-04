@@ -32,7 +32,7 @@ const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () 
 import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
-import { buildTagGroups } from '@/utils/tagGroups'
+import { buildTagGroups, tagParts } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import {
   formatEstimate,
@@ -189,6 +189,12 @@ async function commitTitle() {
 const taskTags = computed(() =>
   (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
 )
+// The single-tag pill hands its box over to TagPill when the tag is scoped, so
+// the GitLab-EE two-tone pill isn't boxed-in by the button's own soft fill.
+const firstTagScoped = computed(() => {
+  const t = taskTags.value[0]
+  return t ? tagParts(t.name, props.tagPrefixNames).hasScope : false
+})
 // Stacked tags row: fit as many chips as the row width allows, rest → +N.
 const stagValEl = ref(null)
 const stagMeasureEl = ref(null)
@@ -913,12 +919,22 @@ async function submitAddSub() {
                 <button
                   v-else-if="!stackFields"
                   class="pill tag-pill"
-                  :style="{
-                    border: '1px solid transparent',
-                    background: tagPillBg(taskTags[0].color),
-                    boxShadow: stackShadow,
-                    marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
-                  }"
+                  :style="
+                    firstTagScoped
+                      ? {
+                          border: 'none',
+                          background: 'none',
+                          padding: 0,
+                          boxShadow: stackShadow,
+                          marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
+                        }
+                      : {
+                          border: '1px solid transparent',
+                          background: tagPillBg(taskTags[0].color),
+                          boxShadow: stackShadow,
+                          marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
+                        }
+                  "
                   @click.stop
                 >
                   <TagPill
@@ -927,7 +943,12 @@ async function submitAddSub() {
                     :prefix-names="tagPrefixNames"
                     variant="grad-text"
                   />
-                  <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
+                  <span
+                    v-if="taskTags.length > 1"
+                    class="more"
+                    :style="{ color: tagText(taskTags[0].color) }"
+                    >+{{ taskTags.length - 1 }}</span
+                  >
                 </button>
                 <!-- stacked: leading tag icon + outlined-oval chips that fit on the
                      row, rest → +N (same behaviour as the task modal). -->
@@ -946,7 +967,13 @@ async function submitAddSub() {
                       :prefix-names="tagPrefixNames"
                       variant="outline"
                     />
-                    <span v-if="visibleTagCount < taskTags.length" class="mchip chip-more"
+                    <span
+                      v-if="visibleTagCount < taskTags.length"
+                      class="mchip chip-more"
+                      :style="{
+                        color: tagText(taskTags[0].color),
+                        background: softFill(taskTags[0].color),
+                      }"
                       >+{{ taskTags.length - visibleTagCount }}</span
                     >
                     <!-- measurement copies must be the same component with the same

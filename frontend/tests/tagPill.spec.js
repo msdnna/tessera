@@ -58,17 +58,31 @@ describe('TagPill.vue', () => {
     expect(w.find('.tpill').attributes('title')).toBe('effort::small')
   })
 
-  it('paints the outline variant with a gradient border-box and gradient text', () => {
-    const w = pill({ tag: { name: 'effort::small', color: '#7c5cff' }, variant: 'outline' })
+  it('paints an unscoped outline tag with a gradient border-box and gradient text', () => {
+    const w = pill({ tag: { name: 'urgent', color: '#7c5cff' }, variant: 'outline' })
     expect(w.find('.tpill').attributes('style')).toContain('border-box')
     expect(w.find('.tp-name').classes()).toContain('accent-grad-text')
+    expect(w.find('.tpill').classes()).not.toContain('tt')
   })
 
-  it('leaves colour to the call site for the inherit variant', () => {
+  it('paints a scoped tag two-tone: filled accent scope, gradient value, accent border', () => {
+    const w = pill({ tag: { name: 'effort::small', color: '#7c5cff' }, variant: 'outline' })
+    const style = w.find('.tpill').attributes('style')
+    expect(w.find('.tpill').classes()).toContain('tt')
+    expect(style).toContain('border-box') // accent border in the scope hue
+    expect(style).toContain('--tp-scope-bg') // the scope segment carries a filled bg
+    // The value keeps the accent gradient text — nested so the segment can still
+    // carry its own soft fill (background-clip:text would otherwise eat the fill).
+    expect(w.find('.tp-name-txt').classes()).toContain('accent-grad-text')
+    expect(w.find('.tp-name').classes()).not.toContain('accent-grad-text')
+  })
+
+  it('leaves colour to the call site for the inherit variant (no two-tone)', () => {
     const w = pill({ tag: { name: 'effort::small', color: '#7c5cff' }, variant: 'inherit' })
     const style = w.find('.tpill').attributes('style') || ''
     expect(style).not.toContain('background')
     expect(style).toContain('currentColor')
+    expect(w.find('.tpill').classes()).not.toContain('tt')
     expect(w.find('.tp-name').classes()).not.toContain('accent-grad-text')
   })
 })

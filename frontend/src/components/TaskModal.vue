@@ -1361,7 +1361,13 @@ function eventText(e) {
                           :prefix-names="tagPrefixNames"
                           variant="outline"
                         />
-                        <span v-if="visibleTagCount < tagObjs.length" class="chip chip-more"
+                        <span
+                          v-if="visibleTagCount < tagObjs.length"
+                          class="chip chip-more"
+                          :style="{
+                            color: tagText(tagObjs[0].color),
+                            background: softFill(tagObjs[0].color),
+                          }"
                           >+{{ tagObjs.length - visibleTagCount }}</span
                         >
                         <!-- invisible measurement row: natural chip widths, never sliced.
