@@ -206,6 +206,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/tasks/:id/events", rh.ListTaskEvents)
 			protected.GET("/tasks/:id/comments", rh.ListComments)
 			protected.POST("/tasks/:id/comments", rh.CreateComment)
+			// Dry-run of the quick actions in a draft comment, so the editor's
+			// "Будет применено: …" hint comes from the same parser that executes.
+			protected.POST("/tasks/:id/commands/preview", rh.PreviewCommands)
 			protected.PATCH("/comments/:id", rh.UpdateComment)
 			protected.DELETE("/comments/:id", rh.DeleteComment)
 			protected.GET("/tasks/:id/relations", rh.ListRelations)

@@ -8,8 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
-	"tessera/internal/gitlab"
-	"tessera/middleware"
 )
 
 // Milestones («Этап»): a project-scoped planning unit. Native CRUD here; the GitLab
@@ -201,15 +199,9 @@ func (h *API) SetTaskMilestone(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.q.SetTaskMilestone(c, db.SetTaskMilestoneParams{ID: id, MilestoneID: req.MilestoneID}); err != nil {
-		fail(c)
+	if err := h.applyMilestone(c, id, wsID, req.MilestoneID); err != nil {
+		respondOpError(c, err)
 		return
-	}
-	// A manual milestone change on a GitLab-linked task wins over the sync.
-	_ = h.q.MarkGitlabMilestoneOverridden(c, id)
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
-	if t, err := h.q.GetTask(c, id); err == nil {
-		h.broadcast(wsID, "task.updated", t)
 	}
 	c.Status(http.StatusNoContent)
 }
@@ -224,14 +216,9 @@ func (h *API) ClearTaskMilestone(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.q.SetTaskMilestone(c, db.SetTaskMilestoneParams{ID: id, MilestoneID: nil}); err != nil {
-		fail(c)
+	if err := h.applyMilestone(c, id, wsID, nil); err != nil {
+		respondOpError(c, err)
 		return
-	}
-	_ = h.q.MarkGitlabMilestoneOverridden(c, id)
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
-	if t, err := h.q.GetTask(c, id); err == nil {
-		h.broadcast(wsID, "task.updated", t)
 	}
 	c.Status(http.StatusNoContent)
 }

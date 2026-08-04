@@ -16,6 +16,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
+	"tessera/internal/quickact"
 	"tessera/middleware"
 )
 
@@ -177,7 +178,52 @@ func (h *API) CreateComment(c *gin.Context) {
 		return
 	}
 	uid := middleware.CurrentUser(c)
-	cm, err := h.q.CreateComment(c, db.CreateCommentParams{TaskID: id, AuthorID: &uid, Body: req.Body})
+
+	// Quick actions ("/close", "/assign @msdnna") execute here and their lines are
+	// dropped from the body; custom dictionary commands ("/approve") are left in
+	// the text, because those are a note to whoever reads the comment.
+	parsed := quickact.Parse(req.Body, h.customCommandKeys(c, wsID))
+	summary := h.runQuickActions(c, t, wsID, parsed.Cmds)
+	if !summary.empty() {
+		applied := make([]string, 0, len(summary.Applied))
+		for _, o := range summary.Applied {
+			applied = append(applied, o.Key)
+		}
+		failed := make([]string, 0, len(summary.Errors))
+		for _, o := range summary.Errors {
+			failed = append(failed, o.Key)
+		}
+		// One aggregated entry, not one per command: a five-command comment must
+		// not bury the rest of the task's history.
+		h.logEvent(c, id, "commands", map[string]any{"applied": applied, "failed": failed})
+		// The commands may have moved or renamed the task; later notification text
+		// should quote what it looks like now.
+		if fresh, ferr := h.q.GetTask(c, id); ferr == nil {
+			t = fresh
+		}
+	}
+
+	// Nothing left to say: the comment was pure commands, so we do not store an
+	// empty one (GitLab behaves the same). 200 instead of 201 — a client that
+	// sends commands is by definition new enough to expect it.
+	if strings.TrimSpace(parsed.Rest) == "" && len(parsed.Cmds) > 0 {
+		if len(summary.Applied) == 0 {
+			// Every command failed and there is no text to fall back on. Saying so
+			// beats silently dropping what the user wrote.
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "ни одна команда не применилась", "command_summary": summary,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"comment": nil, "command_summary": summary})
+		return
+	}
+
+	body := parsed.Rest
+	if len(parsed.Cmds) == 0 {
+		body = req.Body // no commands ran: keep the body byte-for-byte
+	}
+	cm, err := h.q.CreateComment(c, db.CreateCommentParams{TaskID: id, AuthorID: &uid, Body: body})
 	if err != nil {
 		fail(c)
 		return
@@ -185,16 +231,30 @@ func (h *API) CreateComment(c *gin.Context) {
 	h.logEvent(c, id, "comment", map[string]any{"comment_id": cm.ID})
 	h.broadcast(wsID, "task.commented", gin.H{"task_id": id})
 	// Mirror the comment to a linked GitLab issue as a note (opt-in per integration).
-	h.enqueueWriteback(c, id, uid, gitlab.TrigComment, map[string]any{"comment_id": cm.ID.String(), "body": req.Body})
+	h.enqueueWriteback(c, id, uid, gitlab.TrigComment, map[string]any{"comment_id": cm.ID.String(), "body": body})
 
 	// @-mentions: notify each mentioned workspace member explicitly, then fall
 	// back to the generic "commented" notice for the remaining participants. A
 	// short comment is inlined for context; a long one shows only the #N.
-	ctx := shortCtx(req.Body)
+	ctx := shortCtx(body)
 	mentioned := h.notifyMentions(c, t, wsID, req.Mentions, ctx)
 	h.notifyTaskParticipantsExcept(c, t, wsID, "comment",
 		fmt.Sprintf("%s прокомментировал #%s%s", h.actorName(c), taskRef(t.Number), ctx), mentioned)
-	c.JSON(http.StatusCreated, cm)
+	if summary.empty() {
+		c.JSON(http.StatusCreated, cm)
+		return
+	}
+	// Older clients read the comment fields off the top level, so keep them there
+	// and hang the summary alongside.
+	c.JSON(http.StatusCreated, commentWithCommands{TaskComment: cm, CommandSummary: &summary})
+}
+
+// commentWithCommands is a created comment plus what the quick actions in it
+// did. The comment's own fields stay inlined at the top level so clients that
+// predate quick actions keep working unchanged.
+type commentWithCommands struct {
+	db.TaskComment
+	CommandSummary *commandSummary `json:"command_summary,omitempty"`
 }
 
 // notifyMentions sends a "mention" notification to each id that is a member of
@@ -347,24 +407,10 @@ func (h *API) AddRelation(c *gin.Context) {
 		fail(c)
 		return
 	}
-	if target.ID == t.ID {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "нельзя связать задачу с собой"})
+	if err := h.applyRelation(c, t, wsID, target, kind); err != nil {
+		respondOpError(c, err)
 		return
 	}
-	if _, err := h.q.AddTaskRelation(c, db.AddTaskRelationParams{
-		TaskID: id, RelatedTaskID: target.ID, Kind: kind,
-	}); err != nil && !errIsNoRows(err) {
-		fail(c)
-		return
-	}
-	h.logEvent(c, id, "relation", map[string]any{"related": req.Number, "kind": kind})
-	// Record the link on the referenced task too, so it shows in #target's
-	// history ("добавил связь с #<source>") — relations are otherwise one-way.
-	if t.Number != nil {
-		h.logEvent(c, target.ID, "relation", map[string]any{"related": *t.Number, "kind": inverseRelationKind(kind)})
-		h.broadcast(wsID, "task.updated", gin.H{"id": target.ID})
-	}
-	h.broadcast(wsID, "task.updated", gin.H{"id": id})
 	c.Status(http.StatusCreated)
 }
 
