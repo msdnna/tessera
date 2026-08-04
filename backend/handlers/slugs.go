@@ -26,6 +26,15 @@ func (h *API) uniqueProjectSlug(ctx context.Context, name string) string {
 	}
 }
 
+// normalizeProjectSlug turns a user-supplied project address into its canonical
+// form. Unlike uniqueProjectSlug it never invents a suffix: when the caller asks
+// for a specific address, a collision is an error to report, not to paper over.
+// Returns ok=false when nothing usable remains after normalization.
+func normalizeProjectSlug(raw string) (string, bool) {
+	s := slug.Make(raw)
+	return s, s != ""
+}
+
 // uniqueBoardSlug returns a slug unique within the project for a board name,
 // appending -2, -3, … on collision. Falls back to "board" when empty.
 func (h *API) uniqueBoardSlug(ctx context.Context, projectID uuid.UUID, name string) string {
