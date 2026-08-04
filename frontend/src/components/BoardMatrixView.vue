@@ -10,6 +10,8 @@ const props = defineProps({
   // Filtered top-level board tasks (same array the kanban groups).
   tasks: { type: Array, default: () => [] },
   subtasksByParent: { type: Object, default: () => ({}) },
+  // Unfiltered child lists — only to tell a card how many subtasks the filter hid.
+  subtasksTotalByParent: { type: Object, default: () => ({}) },
   // Real board status columns — passed straight through to TaskCard.
   columns: { type: Array, default: () => [] },
   tagsMap: { type: Object, default: () => ({}) },
@@ -172,6 +174,7 @@ function submitAdd(qi) {
             <TaskCard
               :task="element"
               :subtasks="subtasksByParent[element.id] || []"
+              :subtasks-total="(subtasksTotalByParent[element.id] || []).length"
               :subtasks-expanded="subtasksExpanded"
               :dragging="dragging"
               :columns="columns"

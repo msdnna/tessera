@@ -1,5 +1,6 @@
 import { setActivePinia, createPinia } from 'pinia'
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
+import { nextTick } from 'vue'
 
 // Mock the api so persist()'s users.updatePreferences never touches network.
 // vi.mock is hoisted, so the fn must live in vi.hoisted.
@@ -89,6 +90,23 @@ describe('theme store', () => {
     expect(dark.common.primaryColor).toBe(s.activeTheme.primary)
     expect(dark.Modal).toBeDefined()
     expect(dark.common.textColor1).toBe(DARK.text1)
+  })
+
+  it('applyCssVars exports the input-surface vars the hand-rolled editor uses', async () => {
+    const s = useThemeStore()
+    const css = () => document.documentElement.style
+    // applyCssVars runs from a watcher, so let it flush after each mode change.
+    s.setThemeMode('dark')
+    await nextTick()
+    // The boxed comment composer paints itself with these; they must track the
+    // Naive Input skin (color / placeholderColor), not the modal surface.
+    expect(css().getPropertyValue('--t-input-bg')).toBe(DARK.inputBg)
+    expect(css().getPropertyValue('--t-placeholder')).toBe(DARK.placeholder)
+    expect(DARK.inputBg).toBe(DARK.surfaceAlt)
+    s.setThemeMode('light')
+    await nextTick()
+    expect(css().getPropertyValue('--t-input-bg')).toBe(LIGHT.inputBg)
+    expect(css().getPropertyValue('--t-placeholder')).toBe(LIGHT.placeholder)
   })
 
   it('onPrimaryColor is white on the dark purple accent', () => {

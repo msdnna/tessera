@@ -666,7 +666,7 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   min-height: calc(v-bind(minRows) * 1.55em);
 }
 .md2-write textarea::placeholder {
-  color: var(--t-text3);
+  color: var(--t-placeholder);
 }
 
 /* Floating selection toolbar */
@@ -677,7 +677,7 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   display: flex;
   gap: 1px;
   padding: 3px;
-  background: var(--t-surface);
+  background: var(--t-input-bg);
   border: 1px solid var(--t-border);
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
@@ -732,7 +732,7 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   min-width: 180px;
   max-height: 200px;
   overflow-y: auto;
-  background: var(--t-surface);
+  background: var(--t-input-bg);
   border: 1px solid var(--t-border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
@@ -781,16 +781,24 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   min-height: calc(v-bind(minRows) * 1.55em);
 }
 
-/* ── boxed composer (comments) ── */
+/* ── boxed composer (comments) ──
+   Mirrors the Naive n-input skin (background / hover border / text colours) so
+   the composer reads as one more field of the modal instead of a floating box. */
 .md2-boxed .md2-body {
   border: 1px solid var(--t-border);
   border-radius: 10px;
-  background: var(--t-surface);
+  background: var(--t-input-bg);
   padding: 8px 10px;
   transition: border-color 0.15s ease;
 }
+.md2-boxed .md2-body:hover:not(:focus-within) {
+  border-color: color-mix(in srgb, var(--t-primary) 45%, var(--t-border));
+}
 .md2-boxed .md2-body:focus-within {
   border-color: var(--t-primary);
+}
+.md2-boxed .md2-write textarea {
+  color: var(--t-text2);
 }
 .md2-toolbar {
   display: flex;

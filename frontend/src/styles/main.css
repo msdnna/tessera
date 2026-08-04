@@ -3,11 +3,13 @@
   --t-bg: #f6f7f9;
   --t-surface: #ffffff;
   --t-surface-alt: #f3f4f6;
+  --t-input-bg: #ffffff;
   --t-hover: #eef0f3;
   --t-border: #e6e8ec;
   --t-text1: #1f2329;
   --t-text2: #4a5059;
   --t-text3: #868d96;
+  --t-placeholder: #b8bdc4;
   --t-primary: #7c5cff;
   --t-on-primary: #ffffff;
   /* Accent gradient (ported from the Android client): a soft same-hue diagonal —

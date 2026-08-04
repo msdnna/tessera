@@ -158,6 +158,50 @@ func TestBoardDoneColumnFlow(t *testing.T) {
 	}
 }
 
+// Clearing the done column (#2588): a null column_id leaves the board with NO
+// completing column — it must not silently fall back to the rightmost one,
+// which used to make clearing the (rightmost) "Готово" column a no-op.
+func TestBoardDoneColumnClear(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	done := s.col(t, 3) // seeded "Готово" — also the rightmost column
+
+	b := c.expect(t, c.patch("/boards/"+s.Board+"/done-column",
+		map[string]any{"column_id": nil}), http.StatusOK)
+	if b["done_column_id"] != nil {
+		t.Fatalf("cleared done_column_id = %v, want nil", b["done_column_id"])
+	}
+	// A re-read agrees (the clear was persisted, not just echoed).
+	if b = c.expect(t, c.get("/boards/"+s.Board), http.StatusOK); b["done_column_id"] != nil {
+		t.Fatalf("re-read done_column_id = %v, want nil", b["done_column_id"])
+	}
+
+	// With no done column, moving into the rightmost column completes nothing.
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Задача")
+	id := task["id"].(string)
+	moved := c.expect(t, c.patch("/tasks/"+id+"/move",
+		map[string]any{"column_id": done}), http.StatusOK)
+	if moved["completed_at"] != nil {
+		t.Fatalf("move to rightmost with no done column: completed_at = %v, want nil", moved["completed_at"])
+	}
+	if kinds := eventKinds(t, c, id); hasKind(kinds, "completed") {
+		t.Fatalf("unexpected completed event with no done column: %v", kinds)
+	}
+
+	// Restoring the done column makes that same column complete again.
+	b = c.expect(t, c.patch("/boards/"+s.Board+"/done-column",
+		map[string]any{"column_id": done}), http.StatusOK)
+	if b["done_column_id"] != done {
+		t.Fatalf("restored done_column_id = %v, want %s", b["done_column_id"], done)
+	}
+	c.expect(t, c.patch("/tasks/"+id+"/move", map[string]any{"column_id": s.col(t, 0)}), http.StatusOK)
+	moved = c.expect(t, c.patch("/tasks/"+id+"/move", map[string]any{"column_id": done}), http.StatusOK)
+	if moved["completed_at"] == nil {
+		t.Fatalf("move to restored done column: completed_at not set: %v", moved)
+	}
+}
+
 // Column CRUD: create appends to the end, rename, move (start/middle/end)
 // relative to neighbours, delete cascades to the column's tasks.
 func TestColumnCRUD(t *testing.T) {
