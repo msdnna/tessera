@@ -33,6 +33,7 @@ import {
   ListOutline,
   CalendarOutline,
   GitBranchOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
 import {
   boards,
@@ -52,6 +53,7 @@ import { PRIORITY_LABELS } from '@/styles/tokens'
 import { tagNamespace, prefixLabel, buildTagGroups, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { filterBoardTasks } from '@/utils/taskFilter'
+import { boardGitlabAuthors } from '@/utils/boardFilters'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -134,6 +136,16 @@ const gitlabMembersList = computed(() =>
     (g) => !(g.tessera_user_id && membersMap[g.tessera_user_id]),
   ),
 )
+// Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
+// task has no `created_by`, so matching its author against a Tessera person goes
+// through this map (see utils/boardFilters matchesAuthor).
+const glLoginByUserId = computed(() => {
+  const m = {}
+  for (const g of Object.values(gitlabMembersMap)) {
+    if (g.tessera_user_id && g.gl_username) m[g.tessera_user_id] = g.gl_username
+  }
+  return m
+})
 
 // view controls (layout comes from the store, above)
 const subtasksExpanded = ref(false) // full property cards vs compact rows
@@ -281,6 +293,7 @@ const sortLevels = ref([])
 const filters = reactive({
   priorities: [],
   assignees: [],
+  authors: [],
   tags: [],
   statuses: [],
   milestones: [],
@@ -388,6 +401,31 @@ const memberFilterMenu = computed(() => {
   if (!gl.length) return tessera
   return [...tessera, { type: 'group', label: 'GitLab', key: 'fag', children: gl }]
 })
+// Author filter menu — same shape as the assignee one (avatar hints, `gl:`-prefixed
+// GitLab values, `fc.` = creator keys), plus the GitLab authors actually seen on the
+// board: an issue can be opened by someone outside the project's member roster.
+// Logins already represented by a Tessera row (linked accounts) are skipped so one
+// person never shows up twice.
+const authorFilterMenu = computed(() => {
+  const tessera = membersList.value.map((m) => ({
+    label: m.name,
+    key: `fc.${m.user_id}`,
+    avatarUserId: m.user_id,
+  }))
+  const seen = new Set(Object.values(glLoginByUserId.value))
+  const gl = []
+  const pushGl = (username, name, avatar) => {
+    if (!username || seen.has(username)) return
+    seen.add(username)
+    gl.push({ label: name || username, key: `fc.gl:${username}`, avatarSrc: avatar })
+  }
+  gitlabMembersList.value.forEach((g) => pushGl(g.gl_username, g.gl_name, g.gl_avatar_url))
+  boardGitlabAuthors(allTasks.value).forEach((a) =>
+    pushGl(a.gl_username, a.gl_name, a.gl_avatar_url),
+  )
+  if (!gl.length) return tessera
+  return [...tessera, { type: 'group', label: 'GitLab', key: 'fcg', children: gl }]
+})
 // Tag filter menu, grouped by prefix (friendly names). Naive `type:'group'`
 // renders inline section headers — works on desktop and the mobile drill alike.
 // A single prefix-less bucket stays flat (no redundant header).
@@ -416,6 +454,7 @@ const activeFilterCount = computed(
   () =>
     filters.priorities.length +
     filters.assignees.length +
+    filters.authors.length +
     filters.tags.length +
     filters.statuses.length +
     filters.milestones.length +
@@ -425,6 +464,7 @@ const activeFilterCount = computed(
 function resetFilters() {
   filters.priorities = []
   filters.assignees = []
+  filters.authors = []
   filters.tags = []
   filters.statuses = []
   filters.milestones = []
@@ -443,6 +483,7 @@ const CHIP_ICONS = {
   sort: SwapVerticalOutline,
   priority: FlagOutline,
   assignee: PersonOutline,
+  author: CreateOutline,
   tag: PricetagOutline,
   status: ListOutline,
   milestone: RibbonOutline,
@@ -491,6 +532,26 @@ const facetChips = computed(() => {
       icon: CHIP_ICONS.assignee,
       text: name,
       label: `Исполнитель: ${name}`,
+    })
+  })
+  filters.authors.forEach((a) => {
+    let name
+    if (typeof a === 'string' && a.startsWith('gl:')) {
+      const u = a.slice(3)
+      const g2 = gitlabMembersList.value.find((x) => x.gl_username === u)
+      // Board-only authors aren't in the member roster — fall back to the name the
+      // synced task carries.
+      const b = g2 ? null : boardGitlabAuthors(allTasks.value).find((x) => x.gl_username === u)
+      name = (g2 && (g2.gl_name || g2.gl_username)) || b?.gl_name || u
+    } else {
+      name = membersMap[a]?.name || '—'
+    }
+    out.push({
+      kind: 'author',
+      value: a,
+      icon: CHIP_ICONS.author,
+      text: name,
+      label: `Автор: ${name}`,
     })
   })
   filters.tags.forEach((t) => {
@@ -573,6 +634,11 @@ const addOptions = computed(() => {
       label: 'Фильтр: исполнитель',
       key: 'fa',
       children: memberFilterMenu.value,
+    },
+    {
+      label: 'Фильтр: автор',
+      key: 'fc',
+      children: authorFilterMenu.value,
     },
     { label: 'Фильтр: тег', key: 'ft', children: tagFilterMenu.value },
     { label: 'Фильтр: этап', key: 'fm', children: milestoneFilterMenu.value },
@@ -702,6 +768,9 @@ function onAddFacet(key) {
   } else if (key.startsWith('fa.')) {
     const v = key.slice(3)
     if (!filters.assignees.includes(v)) filters.assignees.push(v)
+  } else if (key.startsWith('fc.')) {
+    const v = key.slice(3)
+    if (!filters.authors.includes(v)) filters.authors.push(v)
   } else if (key.startsWith('ft.')) {
     const v = key.slice(3)
     if (!filters.tags.includes(v)) filters.tags.push(v)
@@ -723,6 +792,7 @@ function removeChip(c) {
   else if (c.kind === 'priority')
     filters.priorities = filters.priorities.filter((x) => x !== c.value)
   else if (c.kind === 'assignee') filters.assignees = filters.assignees.filter((x) => x !== c.value)
+  else if (c.kind === 'author') filters.authors = filters.authors.filter((x) => x !== c.value)
   else if (c.kind === 'tag') filters.tags = filters.tags.filter((x) => x !== c.value)
   else if (c.kind === 'status') filters.statuses = filters.statuses.filter((x) => x !== c.value)
   else if (c.kind === 'milestone')
@@ -800,6 +870,7 @@ function defaultToolbar(forLayout) {
     filters: {
       priorities: [],
       assignees: [],
+      authors: [],
       tags: [],
       statuses: [],
       milestones: [],
@@ -825,6 +896,7 @@ function snapshotToolbar() {
     filters: {
       priorities: [...filters.priorities],
       assignees: [...filters.assignees],
+      authors: [...filters.authors],
       tags: [...filters.tags],
       statuses: [...filters.statuses],
       milestones: [...filters.milestones],
@@ -848,7 +920,16 @@ function loadToolbar(s) {
   autoSort.value = !!s.autoSort
   Object.assign(
     filters,
-    { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
+    {
+      priorities: [],
+      assignees: [],
+      authors: [],
+      tags: [],
+      statuses: [],
+      milestones: [],
+      due: '',
+      q: '',
+    },
     s.filters || {},
   )
   loadCustomize(s)
@@ -922,6 +1003,7 @@ function restoreView() {
           filters: {
             priorities: [],
             assignees: [],
+            authors: [],
             tags: [],
             statuses: [],
             due: '',
@@ -1028,7 +1110,16 @@ function applyViewConfig(c) {
   subtasksExpanded.value = !!c.subtasksExpanded
   Object.assign(
     filters,
-    { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
+    {
+      priorities: [],
+      assignees: [],
+      authors: [],
+      tags: [],
+      statuses: [],
+      milestones: [],
+      due: '',
+      q: '',
+    },
     c.filters || {},
   )
   loadCustomize(c)
@@ -1385,6 +1476,7 @@ const filterResult = computed(() =>
     tasks: allTasks.value,
     subtasksByParent: subtasksByParent.value,
     filters,
+    glLoginByUserId: glLoginByUserId.value,
   }),
 )
 

@@ -8,10 +8,22 @@
 // parent's on-card subtask list is narrowed to the matching children. The task
 // modal is untouched and always lists every subtask.
 
+import { matchesAuthor } from './boardFilters'
+
 // Facets that a subtask may "lift" its parent by. `statuses` (the board column)
 // is deliberately excluded: a subtask can live in a different column, and letting
-// it lift the parent would draw the parent into a column it isn't in.
-export const SUBTASK_FACETS = ['q', 'assignees', 'tags', 'priorities', 'due', 'milestones']
+// it lift the parent would draw the parent into a column it isn't in. `authors`
+// (task #2603) behaves like `assignees` — a subtask by the picked author lifts its
+// parent, keeping the author facet consistent with the assignee facet.
+export const SUBTASK_FACETS = [
+  'q',
+  'assignees',
+  'authors',
+  'tags',
+  'priorities',
+  'due',
+  'milestones',
+]
 
 // Due-date predicate for the "Срок" filter. `now` is injectable so tests are
 // not clock-dependent.
@@ -42,12 +54,24 @@ function matchesQuery(t, q) {
 }
 
 // Does one task pass every active facet? `facets` limits which facets are
-// considered (subtasks use SUBTASK_FACETS), `now` is passed through to matchesDue.
-export function matchesTask(t, filters, { facets = null, now = new Date() } = {}) {
+// considered (subtasks use SUBTASK_FACETS), `now` is passed through to matchesDue,
+// `glLoginByUserId` (tessera user id → gl_username) lets the author facet match
+// GitLab-synced tasks whose Tessera author is null.
+export function matchesTask(
+  t,
+  filters,
+  { facets = null, now = new Date(), glLoginByUserId = {} } = {},
+) {
   const on = (f) => !facets || facets.includes(f)
   if (on('priorities') && filters.priorities?.length && !filters.priorities.includes(t.priority))
     return false
   if (on('assignees') && filters.assignees?.length && !matchesAssignees(t, filters.assignees))
+    return false
+  if (
+    on('authors') &&
+    filters.authors?.length &&
+    !matchesAuthor(t, filters.authors, glLoginByUserId)
+  )
     return false
   if (
     on('tags') &&
@@ -83,7 +107,13 @@ export function hasSubtaskFacets(filters) {
 //                      survived because a child matched
 //   narrowedParents  — Set of parent ids whose child list was narrowed (the card
 //                      shows an "N из M" hint and disables subtask drag-reorder)
-export function filterBoardTasks({ tasks = [], subtasksByParent = {}, filters = {}, now }) {
+export function filterBoardTasks({
+  tasks = [],
+  subtasksByParent = {},
+  filters = {},
+  glLoginByUserId = {},
+  now,
+}) {
   const clock = now || new Date()
   const subFacets = hasSubtaskFacets(filters)
 
@@ -93,7 +123,7 @@ export function filterBoardTasks({ tasks = [], subtasksByParent = {}, filters = 
 
   for (const t of tasks) {
     const subs = subtasksByParent[t.id] || []
-    const selfOk = matchesTask(t, filters, { now: clock })
+    const selfOk = matchesTask(t, filters, { now: clock, glLoginByUserId })
     if (selfOk) {
       outTasks.push(t)
       if (subs.length) outSubs[t.id] = subs
@@ -103,8 +133,10 @@ export function filterBoardTasks({ tasks = [], subtasksByParent = {}, filters = 
     // The parent itself failed. It may still be lifted by a matching subtask —
     // but only if the parent passes the facets a subtask cannot stand in for
     // (its board column), otherwise the card would appear in the wrong place.
-    if (!matchesTask(t, filters, { facets: ['statuses'], now: clock })) continue
-    const hits = subs.filter((s) => matchesTask(s, filters, { facets: SUBTASK_FACETS, now: clock }))
+    if (!matchesTask(t, filters, { facets: ['statuses'], now: clock, glLoginByUserId })) continue
+    const hits = subs.filter((s) =>
+      matchesTask(s, filters, { facets: SUBTASK_FACETS, now: clock, glLoginByUserId }),
+    )
     if (!hits.length) continue
     outTasks.push(t)
     outSubs[t.id] = hits
