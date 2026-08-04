@@ -330,25 +330,6 @@ func (q *Queries) MaxColumnPosition(ctx context.Context, boardID uuid.UUID) (flo
 	return column_1, err
 }
 
-const rightmostColumn = `-- name: RightmostColumn :one
-SELECT id, board_id, name, color, position, created_at, updated_at FROM board_columns WHERE board_id = $1 ORDER BY position DESC LIMIT 1
-`
-
-func (q *Queries) RightmostColumn(ctx context.Context, boardID uuid.UUID) (BoardColumn, error) {
-	row := q.db.QueryRow(ctx, rightmostColumn, boardID)
-	var i BoardColumn
-	err := row.Scan(
-		&i.ID,
-		&i.BoardID,
-		&i.Name,
-		&i.Color,
-		&i.Position,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const setBoardDoneColumn = `-- name: SetBoardDoneColumn :one
 UPDATE boards
 SET done_column_id = $2, updated_at = now()

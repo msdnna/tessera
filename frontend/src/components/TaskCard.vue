@@ -63,6 +63,10 @@ const tagText = (c) => readableHue(c, theme.isDark)
 const props = defineProps({
   task: { type: Object, required: true },
   subtasks: { type: Array, default: () => [] },
+  // How many subtasks the task really has. When the composer filter narrowed the
+  // list (`subtasks` is shorter), the card says "N из M" and locks child DnD —
+  // reordering a partial list would write meaningless float8 positions.
+  subtasksTotal: { type: Number, default: 0 },
   // Render subtasks as full property cards (vs compact name-only rows).
   subtasksExpanded: { type: Boolean, default: false },
   // This card is itself a first-level subtask shown below its parent: darker
@@ -556,6 +560,9 @@ async function toggleGlAssignee(m) {
 }
 
 // ── subtasks ──
+// The composer filter hid some of this card's children (task #2602): the board
+// shows only the matching ones, the modal still lists them all.
+const subsNarrowed = computed(() => props.subtasksTotal > props.subtasks.length)
 const addingSub = ref(false)
 const newSubTitle = ref('')
 const subInput = ref(null)
@@ -1161,6 +1168,7 @@ async function submitAddSub() {
         :animation="150"
         :delay="300"
         :touch-start-threshold="6"
+        :disabled="subsNarrowed"
         @click.stop
         @change="onSubChange"
       >
@@ -1224,6 +1232,12 @@ async function submitAddSub() {
         </template>
       </draggable>
     </transition>
+
+    <!-- The filter hid part of the children: say so, so a short list doesn't read
+         as "this parent only has one subtask". -->
+    <div v-if="!nested && subsNarrowed" class="subs-narrowed" @click.stop>
+      {{ subtasks.length }} из {{ subtasksTotal }} подзадач — остальные скрыты фильтром
+    </div>
 
     <!-- Adding a subtask is triggered from the hover action bar / context menu;
          this is just the inline title input it reveals. -->
@@ -1919,6 +1933,14 @@ async function submitAddSub() {
 }
 .sub-add-input {
   margin-top: 6px;
+}
+/* "N из M подзадач" hint under a filter-narrowed child list. */
+.subs-narrowed {
+  margin: 4px 0 0 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--t-text3);
+  opacity: 0.85;
 }
 /* Subtask collapse/expand: cross-fade + slight slide when the board toggles
    between the compact rows ("list") and full property cards ("stack"). The

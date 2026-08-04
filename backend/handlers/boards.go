@@ -79,7 +79,7 @@ func (h *API) CreateBoard(c *gin.Context) {
 
 // doneColumnName is the default name for the task-completing column (used only
 // when seeding a new board's columns; the live "done" column is tracked
-// per-board via boards.done_column_id, falling back to the rightmost column).
+// per-board via boards.done_column_id).
 const doneColumnName = "Готово"
 
 // defaultColumns are created for every new board.
@@ -90,19 +90,11 @@ var defaultColumns = []struct{ name, color string }{
 	{doneColumnName, "#18a058"},
 }
 
-// doneColumnID resolves the board's task-completing column: the explicitly
-// configured one if set, otherwise the rightmost column by position. Returns
-// nil only for a board with no columns at all.
-func (h *API) doneColumnID(c *gin.Context, board db.Board) *uuid.UUID {
-	if board.DoneColumnID != nil {
-		return board.DoneColumnID
-	}
-	col, err := h.q.RightmostColumn(c, board.ID)
-	if err != nil {
-		return nil
-	}
-	return &col.ID
-}
+// doneColumnID is the board's task-completing column, or nil when the board has
+// none. There is deliberately no rightmost-column fallback: it made clearing the
+// done column a no-op whenever that column was also the rightmost one (#2588).
+// Legacy NULLs were pinned to their rightmost column by migration 0046.
+func doneColumnID(board db.Board) *uuid.UUID { return board.DoneColumnID }
 
 // ListBoards lists a project's boards.
 func (h *API) ListBoards(c *gin.Context) {
