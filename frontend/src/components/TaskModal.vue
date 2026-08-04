@@ -1862,10 +1862,7 @@ function eventText(e) {
                         >
                           <template #trigger>
                             <span class="col-chip mini" @click.stop>
-                              <span
-                                class="col-dot"
-                                :style="{ background: columnOf(sub)?.color }"
-                              />
+                              <span class="col-dot" :style="{ background: columnOf(sub)?.color }" />
                               <span>{{ columnOf(sub)?.name || '—' }}</span>
                             </span>
                           </template>

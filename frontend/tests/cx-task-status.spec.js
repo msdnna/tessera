@@ -37,7 +37,9 @@ vi.mock('@/api', () => ({
     events: vi.fn(() => Promise.resolve({ data: [] })),
   },
   boards: {
-    get: vi.fn(() => Promise.resolve({ data: { name: 'Доска', project_id: 'p1', done_column_id: 'c3' } })),
+    get: vi.fn(() =>
+      Promise.resolve({ data: { name: 'Доска', project_id: 'p1', done_column_id: 'c3' } }),
+    ),
     columns: vi.fn(() => Promise.resolve({ data: COLS })),
     tasks: vi.fn(() => Promise.resolve({ data: [] })),
     createTask: vi.fn(),
@@ -59,32 +61,61 @@ vi.mock('naive-ui', async (importOriginal) => {
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
 
+// Naive stubs. TaskModal is <script setup>, so its `<n-popover>` resolves straight
+// to the imported binding — there is no local registration for VTU to match, and it
+// falls back to the component's own `name` ("Popover", not "NPopover"). Keying only
+// by the import alias silently leaves the real Naive components mounted, and n-modal
+// then teleports the body out of the wrapper while n-popover's follower throws.
+// So key every stub by BOTH names.
+const naive = {
+  Icon: { template: '<i class="n-icon-stub"><slot /></i>' },
+  Button: { template: '<button class="n-button-stub"><slot /></button>' },
+  // inheritAttrs:false — Naive passes size="small"/"tiny", which a bare <input>
+  // rejects and jsdom reports as a Vue warning on every mount.
+  Input: { inheritAttrs: false, template: '<input class="n-input-stub" />' },
+  Modal: { template: '<div class="n-modal-stub"><slot /></div>' },
+  Card: { template: '<div class="n-card-stub"><slot /></div>' },
+  Spin: { template: '<div class="n-spin-stub"><slot /></div>' },
+  Tabs: { template: '<div class="n-tabs-stub"><slot /></div>' },
+  TabPane: { template: '<div class="n-tab-pane-stub"><slot /></div>' },
+  Select: { template: '<div class="n-select-stub" />' },
+  Badge: { template: '<span class="n-badge-stub" />' },
+  Space: { template: '<div class="n-space-stub"><slot /></div>' },
+  Popover: { template: '<div class="n-popover-stub"><slot name="trigger" /><slot /></div>' },
+  Popconfirm: { template: '<div class="n-popconfirm-stub"><slot name="trigger" /><slot /></div>' },
+  Dropdown: { template: '<div class="n-dropdown-stub" />' },
+  Tooltip: { template: '<div class="n-tooltip-stub"><slot name="trigger" /><slot /></div>' },
+}
+
 const stubs = {
-  NIcon: { template: '<i class="n-icon-stub"><slot /></i>' },
-  NButton: { template: '<button class="n-button-stub"><slot /></button>' },
-  NInput: { template: '<input class="n-input-stub" />' },
-  NModal: { template: '<div class="n-modal-stub"><slot /></div>' },
-  NCard: { template: '<div class="n-card-stub"><slot /></div>' },
-  NSpin: { template: '<div class="n-spin-stub"><slot /></div>' },
-  NTabs: { template: '<div class="n-tabs-stub"><slot /></div>' },
-  NTabPane: { template: '<div class="n-tab-pane-stub"><slot /></div>' },
-  NSelect: { template: '<div class="n-select-stub" />' },
-  NBadge: { template: '<span class="n-badge-stub" />' },
-  NSpace: { template: '<div class="n-space-stub"><slot /></div>' },
-  NPopover: { template: '<div class="n-popover-stub"><slot name="trigger" /><slot /></div>' },
-  NPopconfirm: { template: '<div class="n-popconfirm-stub"><slot name="trigger" /><slot /></div>' },
-  NDropdown: { template: '<div class="n-dropdown-stub" />' },
-  NTooltip: { template: '<div class="n-tooltip-stub"><slot name="trigger" /><slot /></div>' },
+  ...naive,
+  ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
   MarkdownEditor: true,
   RichContent: true,
   DueEditor: true,
-  draggable: { template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>', props: ['list'] },
+  draggable: {
+    template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
+    props: ['list'],
+  },
 }
 
 const flush = async (w) => {
   for (let i = 0; i < 8; i++) await w.vm.$nextTick()
   await new Promise((r) => setTimeout(r, 0))
   for (let i = 0; i < 8; i++) await w.vm.$nextTick()
+}
+
+// The detail loader hangs off a non-immediate watcher on `show`, so mounting with
+// show:true loads nothing — KanbanBoard keeps the modal mounted and flips the prop.
+// Mount closed and open it, or the modal renders its empty shell forever.
+const openModal = async (TaskModal) => {
+  const w = mount(TaskModal, {
+    props: { show: false, taskId: 't1', wsId: 'w1', projectId: 'p1' },
+    global: { stubs },
+  })
+  await w.setProps({ show: true })
+  await flush(w)
+  return w
 }
 
 describe('TaskModal status row', () => {
@@ -96,11 +127,7 @@ describe('TaskModal status row', () => {
 
   it('shows the task column and both actions, and moves right on shift', async () => {
     const TaskModal = (await import('@/components/TaskModal.vue')).default
-    const w = mount(TaskModal, {
-      props: { show: true, taskId: 't1', wsId: 'w1', projectId: 'p1' },
-      global: { stubs },
-    })
-    await flush(w)
+    const w = await openModal(TaskModal)
 
     expect(w.text()).toContain('Статус')
     expect(w.find('.col-chip').text()).toContain('К работе')
@@ -115,27 +142,29 @@ describe('TaskModal status row', () => {
     })
 
     // The checkmark closes through the board's done column, not the raw flag.
+    // Wait out the first move: the row disables itself while `moving` is set, and
+    // a click on a disabled button never reaches the handler.
+    await flush(w)
     move.mockClear()
     await close.trigger('click')
+    await flush(w)
     expect(move).toHaveBeenCalledWith('t1', expect.objectContaining({ column_id: 'c3' }))
     expect(update).not.toHaveBeenCalled()
   })
 
   it('moves a subtask from its row, pinned between its siblings', async () => {
     const TaskModal = (await import('@/components/TaskModal.vue')).default
-    const w = mount(TaskModal, {
-      props: { show: true, taskId: 't1', wsId: 'w1', projectId: 'p1' },
-      global: { stubs },
-    })
-    await flush(w)
+    const w = await openModal(TaskModal)
 
     const rows = w.findAll('.subrow')
     expect(rows.length).toBe(2)
     // Each row carries its own column chip; the first subtask sits in «В процессе».
     expect(rows[0].find('.col-chip.mini').text()).toContain('В процессе')
 
-    const items = w.findAll('.subrow .col-item')
+    // Scope to the first row — every subrow renders its own column menu.
+    const items = rows[0].findAll('.col-item')
     await items[items.length - 1].trigger('click') // → «Готово»
+    await flush(w)
     expect(move).toHaveBeenCalledWith('s1', {
       column_id: 'c3',
       before_id: null,
