@@ -6,6 +6,7 @@ import {
   divergedColumn,
   doneTarget,
   siblingNeighbors,
+  columnTail,
 } from '@/utils/status'
 
 const COLS = [
@@ -101,5 +102,35 @@ describe('siblingNeighbors', () => {
     expect(siblingNeighbors(subs, 'nope')).toEqual({ before_id: null, after_id: null })
     expect(siblingNeighbors([], 's1')).toEqual({ before_id: null, after_id: null })
     expect(siblingNeighbors(null, 's1')).toEqual({ before_id: null, after_id: null })
+  })
+})
+
+describe('columnTail', () => {
+  const tasks = [
+    { id: 't1', column_id: 'c1', position: 65536 },
+    { id: 't2', column_id: 'c2', position: 131072 },
+    { id: 't3', column_id: 'c2', position: 196608 },
+    { id: 't4', column_id: 'c2', position: 98304 },
+  ]
+  it('picks the highest position in the target column, not the last in the array', () => {
+    expect(columnTail(tasks, 'c2', 't1')).toBe('t3')
+  })
+  it('ignores the moved task itself', () => {
+    expect(columnTail(tasks, 'c2', 't3')).toBe('t2')
+  })
+  it('returns null for an empty target column (task lands first)', () => {
+    expect(columnTail(tasks, 'c3', 't1')).toBeNull()
+    expect(columnTail([{ id: 't1', column_id: 'c1' }], 'c1', 't1')).toBeNull()
+  })
+  it('tolerates missing input', () => {
+    expect(columnTail(null, 'c1', 't1')).toBeNull()
+    expect(columnTail(tasks, null, 't1')).toBeNull()
+  })
+  it('treats a missing position as the lowest', () => {
+    const partial = [
+      { id: 'a', column_id: 'c1' },
+      { id: 'b', column_id: 'c1', position: 5 },
+    ]
+    expect(columnTail(partial, 'c1', null)).toBe('b')
   })
 })

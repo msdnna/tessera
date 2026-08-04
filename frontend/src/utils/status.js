@@ -52,3 +52,17 @@ export function siblingNeighbors(siblings, id) {
   const after = list[i] || null
   return { before_id: before?.id || null, after_id: after?.id || null }
 }
+
+// The task sitting last (highest position) in `columnId`, self excluded. Sent as
+// before_id when a top-level task changes column, so it lands at the column's
+// end — the same place a drag-and-drop onto empty space would put it. Without
+// it positionBetween(nil, nil) is the constant 65536, which on a populated
+// board means "somewhere near the top", silently reordering the column.
+export function columnTail(tasks, columnId, selfId) {
+  let tail = null
+  for (const t of tasks || []) {
+    if (!t || t.id === selfId || !columnId || t.column_id !== columnId) continue
+    if (!tail || (t.position ?? 0) > (tail.position ?? 0)) tail = t
+  }
+  return tail?.id || null
+}

@@ -71,6 +71,7 @@ import {
   nextColumn,
   doneTarget,
   siblingNeighbors,
+  columnTail,
 } from '@/utils/status'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { isTauri } from '@/utils/serverBase'
@@ -628,15 +629,22 @@ const moving = ref(false)
 // only used to keep the position stable on a move.
 const siblings = ref([])
 
+// Neighbours for PATCH move: a subtask holds its place in the parent's list, a
+// top-level task appends to the end of the target column. Either way we send
+// something — bare nulls mean positionBetween(nil, nil) = 65536, which drops the
+// card near the top of the column and quietly reshuffles it.
+function moveNeighbors(columnId) {
+  if (task.value?.parent_id) return siblingNeighbors(siblings.value, task.value.id)
+  return { before_id: columnTail(parentCandidates.value, columnId, task.value?.id), after_id: null }
+}
+
 async function moveToColumn(columnId) {
   if (props.readonly || !task.value || !columnId || columnId === task.value.column_id) return
   moving.value = true
   try {
-    // Subtasks keep their place in the parent's list: without explicit neighbours
-    // positionBetween(nil, nil) is a constant and the sibling order shuffles.
     await tasksApi.move(task.value.id, {
       column_id: columnId,
-      ...siblingNeighbors(siblings.value, task.value.id),
+      ...moveNeighbors(columnId),
     })
     // A recurring task completed by entering the done column bounces straight
     // back out with an advanced due date — re-read instead of trusting the click.
