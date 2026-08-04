@@ -170,6 +170,11 @@ const gradStyle = computed(() => ({ '--grad': hueGrad(textHue.value) }))
   padding: 0;
   align-self: stretch;
   align-items: stretch;
+  /* Matches the segments' 6px outer corners so a box-shadow set on the pill (the
+     single-tag cascade) is rounded, not a square poking past the corners. The
+     root stays transparent with overflow visible — this only shapes the shadow,
+     it doesn't clip the segments. */
+  border-radius: 6px;
 }
 .tt .tp-scope,
 .tt .tp-name {
