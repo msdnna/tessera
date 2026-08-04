@@ -12,6 +12,9 @@ const props = defineProps({
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tagPrefixNames: { type: Object, default: () => ({}) },
+  // Column of the task, passed only where a divergence chip is shown on the row
+  // it belongs to — the hover card then explains what that chip means.
+  column: { type: Object, default: null },
 })
 
 const tags = computed(() =>
@@ -51,6 +54,11 @@ const due = computed(() => {
         :prefix-names="tagPrefixNames"
         variant="plain"
       />
+    </div>
+
+    <div v-if="column" class="mini-col">
+      <span class="mini-dot" :style="{ background: column.color }" />
+      Колонка: {{ column.name }}
     </div>
 
     <div class="mini-foot">
@@ -121,6 +129,20 @@ const due = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+.mini-col {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.mini-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--t-text3);
 }
 .mini-due {
   display: inline-flex;
