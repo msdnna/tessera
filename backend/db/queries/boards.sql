@@ -58,9 +58,6 @@ SELECT * FROM board_columns WHERE id = $1;
 -- name: MaxColumnPosition :one
 SELECT coalesce(max(position), 0)::double precision FROM board_columns WHERE board_id = $1;
 
--- name: RightmostColumn :one
-SELECT * FROM board_columns WHERE board_id = $1 ORDER BY position DESC LIMIT 1;
-
 -- name: UpdateColumn :one
 UPDATE board_columns
 SET name = $2, color = $3, position = $4, updated_at = now()

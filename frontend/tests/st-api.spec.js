@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 import axios from 'axios'
-import api, { auth, gitlab } from '@/api'
+import api, { auth, gitlab, boards } from '@/api'
 import { connection } from '@/composables/useConnection'
 
 // The api module builds an axios instance with real interceptors (token header,
@@ -77,6 +77,27 @@ describe('api request interceptor', () => {
     // gitlab.sync is flagged skipLoader.
     await gitlab.sync('w1', 'i1')
     expect(connection.pending).toBe(0)
+  })
+})
+
+describe('boards.setDoneColumn', () => {
+  // Clearing the done column (#2588) must send an explicit column_id: null —
+  // an omitted key would leave the board's current done column untouched.
+  it('sends column_id: null when clearing', async () => {
+    instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
+    await boards.setDoneColumn('b1', null)
+    const sent = instanceAdapter.mock.calls[0][0]
+    expect(sent.method).toBe('patch')
+    expect(sent.url).toContain('/boards/b1/done-column')
+    const body = JSON.parse(sent.data)
+    expect('column_id' in body).toBe(true)
+    expect(body.column_id).toBeNull()
+  })
+
+  it('sends the column id when setting', async () => {
+    instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
+    await boards.setDoneColumn('b1', 'c9')
+    expect(JSON.parse(instanceAdapter.mock.calls[0][0].data)).toEqual({ column_id: 'c9' })
   })
 })
 

@@ -496,7 +496,7 @@ func (h *API) MoveTask(c *gin.Context) {
 	// Auto-toggle completion based on the board's configured "done" column:
 	// moving in completes the task, moving out reopens it.
 	if board, berr := h.q.GetBoard(c, t.BoardID); berr == nil {
-		doneID := h.doneColumnID(c, board)
+		doneID := doneColumnID(board)
 		targetIsDone := doneID != nil && *doneID == req.ColumnID
 		sourceIsDone := doneID != nil && *doneID == t.ColumnID
 		switch {

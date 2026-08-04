@@ -436,7 +436,7 @@ func (h *API) applyTaskState(ctx context.Context, taskID uuid.UUID, state string
 	if err != nil {
 		return
 	}
-	done := h.resolveDoneColumn(ctx, board)
+	done := doneColumnID(board)
 	col := task.ColumnID
 	var completed *time.Time
 	if state == "closed" {

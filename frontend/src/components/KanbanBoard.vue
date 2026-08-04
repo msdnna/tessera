@@ -1513,12 +1513,10 @@ const sortedSubtasksByParent = computed(() => {
   return out
 })
 
-// The board's task-completing column: explicit if set, else the rightmost.
-const doneColumnId = computed(() => {
-  if (board.value?.done_column_id) return board.value.done_column_id
-  const cols = columns.value
-  return cols.length ? cols[cols.length - 1].id : null
-})
+// The board's task-completing column, or null when it has none. No fallback to
+// the rightmost column: it made clearing the done column look like a no-op
+// whenever that column was also the rightmost one (#2588).
+const doneColumnId = computed(() => board.value?.done_column_id ?? null)
 async function onSetDone(columnId) {
   try {
     const r = await boards.setDoneColumn(props.boardId, columnId)
