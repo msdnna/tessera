@@ -65,14 +65,17 @@ const rootStyle = computed(() => {
   // The divider is the tag's own hue, faded — a hairline, not a second fill.
   const base = { '--tp-sep': `color-mix(in srgb, ${textHue.value} 42%, transparent)` }
   if (twoTone.value) {
-    // Border in the accent hue (= the scope fill); the two segments supply the
-    // interior, so the padding-box fill stays transparent.
+    // Two bordered segments form the pill (the root carries no box), so each
+    // rounds its own outer corners — robust vs the border-box + overflow clip
+    // that squared the value corner in the hover preview. The shared border is
+    // the accent hue (= the scope fill).
     return {
-      border: '1px solid transparent',
-      background: `linear-gradient(transparent, transparent) padding-box, ${hueGrad(c)} border-box`,
+      border: 'none',
+      background: 'none',
       '--tp-scope-bg': hueGrad(c),
       '--tp-scope-fg': onColor(c),
       '--tp-name-bg': softFill(c),
+      '--tp-bd': textHue.value,
       '--grad': hueGrad(textHue.value),
     }
   }
@@ -150,22 +153,35 @@ const gradStyle = computed(() => ({ '--grad': hueGrad(textHue.value) }))
   margin-left: 0.42em;
   padding-left: 0.42em;
 }
-/* GitLab-EE two-tone scoped pill: the call site's padding yields to the pill's
-   own segments; overflow clips the two fills to the rounded border. */
+/* GitLab-EE two-tone scoped pill: two bordered segments (filled scope + soft
+   value) that each round their own outer corners, so it matches the card's
+   other pills (small 6px radius, full row height) with no overflow clipping.
+   The call site's padding yields to the segments; the pill stretches to the row
+   height — e.g. the 22px single-tag button — via align-self. */
 .tt {
   padding: 0;
-  overflow: hidden;
-  border-radius: 10px;
+  align-self: stretch;
+  align-items: stretch;
+}
+.tt .tp-scope,
+.tt .tp-name {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--tp-bd, var(--t-border));
 }
 .tt .tp-scope {
   background: var(--tp-scope-bg);
   color: var(--tp-scope-fg);
   font-weight: 600;
   padding: 1px 7px;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
 }
 .tt .tp-name {
   background: var(--tp-name-bg);
   padding: 1px 8px;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
 }
 .tt .tp-name-txt {
   display: inline;

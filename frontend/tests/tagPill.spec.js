@@ -69,8 +69,8 @@ describe('TagPill.vue', () => {
     const w = pill({ tag: { name: 'effort::small', color: '#7c5cff' }, variant: 'outline' })
     const style = w.find('.tpill').attributes('style')
     expect(w.find('.tpill').classes()).toContain('tt')
-    expect(style).toContain('border-box') // accent border in the scope hue
     expect(style).toContain('--tp-scope-bg') // the scope segment carries a filled bg
+    expect(style).toContain('--tp-bd') // shared border colour in the accent hue
     // The value keeps the accent gradient text — nested so the segment can still
     // carry its own soft fill (background-clip:text would otherwise eat the fill).
     expect(w.find('.tp-name-txt').classes()).toContain('accent-grad-text')
