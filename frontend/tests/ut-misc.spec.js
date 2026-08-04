@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { humanizeError } from '@/utils/errors'
 import { initials } from '@/utils/initials'
-import { milestoneRange } from '@/utils/milestones'
+import { BACKLOG_SCOPE, matchesScope, milestoneKey, milestoneRange } from '@/utils/milestones'
 import { iconComponent, iconKind, sanitizeIconSvg, PROJECT_ICONS } from '@/utils/projectIcons'
 import {
   isTauri,
@@ -80,6 +80,28 @@ describe('milestoneRange', () => {
   it('empty for no milestone or no dates', () => {
     expect(milestoneRange(null)).toBe('')
     expect(milestoneRange({})).toBe('')
+  })
+})
+
+describe('milestoneKey / matchesScope', () => {
+  const ms = { id: 'a1b2', slug: 'sprint-1' }
+
+  it('milestoneKey prefers the slug, falls back to the id', () => {
+    expect(milestoneKey(ms)).toBe('sprint-1')
+    expect(milestoneKey({ id: 'a1b2', slug: '' })).toBe('a1b2')
+    expect(milestoneKey(null)).toBe(BACKLOG_SCOPE)
+  })
+
+  it('matchesScope accepts both the slug and the legacy uuid', () => {
+    expect(matchesScope(ms, 'sprint-1')).toBe(true)
+    expect(matchesScope(ms, 'a1b2')).toBe(true)
+    expect(matchesScope(ms, 'sprint-2')).toBe(false)
+    expect(matchesScope(ms, '')).toBe(false)
+  })
+
+  it('the backlog scope matches the no-milestone node only', () => {
+    expect(matchesScope(null, BACKLOG_SCOPE)).toBe(true)
+    expect(matchesScope(ms, BACKLOG_SCOPE)).toBe(false)
   })
 })
 

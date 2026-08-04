@@ -13,12 +13,12 @@ import (
 )
 
 const createMilestone = `-- name: CreateMilestone :one
-INSERT INTO milestones (project_id, title, description, start_date, due_date, state, position)
+INSERT INTO milestones (project_id, title, description, start_date, due_date, state, slug, position)
 VALUES (
-    $1, $2, $3, $4, $5, COALESCE($6, 'active'),
+    $1, $2, $3, $4, $5, COALESCE($7, 'active'), $6,
     (SELECT COALESCE(MAX(position), 0) + 1 FROM milestones WHERE project_id = $1)
 )
-RETURNING id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at
+RETURNING id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at, slug
 `
 
 type CreateMilestoneParams struct {
@@ -27,6 +27,7 @@ type CreateMilestoneParams struct {
 	Description string      `json:"description"`
 	StartDate   *time.Time  `json:"start_date"`
 	DueDate     *time.Time  `json:"due_date"`
+	Slug        string      `json:"slug"`
 	State       interface{} `json:"state"`
 }
 
@@ -38,6 +39,7 @@ func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams
 		arg.Description,
 		arg.StartDate,
 		arg.DueDate,
+		arg.Slug,
 		arg.State,
 	)
 	var i Milestone
@@ -52,6 +54,7 @@ func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Slug,
 	)
 	return i, err
 }
@@ -66,7 +69,7 @@ func (q *Queries) DeleteMilestone(ctx context.Context, id uuid.UUID) error {
 }
 
 const getMilestone = `-- name: GetMilestone :one
-SELECT id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at FROM milestones WHERE id = $1
+SELECT id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at, slug FROM milestones WHERE id = $1
 `
 
 func (q *Queries) GetMilestone(ctx context.Context, id uuid.UUID) (Milestone, error) {
@@ -83,13 +86,43 @@ func (q *Queries) GetMilestone(ctx context.Context, id uuid.UUID) (Milestone, er
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Slug,
+	)
+	return i, err
+}
+
+const getMilestoneInProjectBySlug = `-- name: GetMilestoneInProjectBySlug :one
+SELECT id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at, slug FROM milestones WHERE project_id = $1 AND slug = $2
+`
+
+type GetMilestoneInProjectBySlugParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Slug      string    `json:"slug"`
+}
+
+// GetMilestoneInProjectBySlug resolves a ?milestone=<slug> board scope.
+func (q *Queries) GetMilestoneInProjectBySlug(ctx context.Context, arg GetMilestoneInProjectBySlugParams) (Milestone, error) {
+	row := q.db.QueryRow(ctx, getMilestoneInProjectBySlug, arg.ProjectID, arg.Slug)
+	var i Milestone
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Title,
+		&i.Description,
+		&i.StartDate,
+		&i.DueDate,
+		&i.State,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Slug,
 	)
 	return i, err
 }
 
 const listMilestones = `-- name: ListMilestones :many
 
-SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date, m.state, m.position, m.created_at, m.updated_at, l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id
+SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date, m.state, m.position, m.created_at, m.updated_at, m.slug, l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id
 FROM milestones m
 LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
 WHERE m.project_id = $1
@@ -107,6 +140,7 @@ type ListMilestonesRow struct {
 	Position    float64    `json:"position"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	Slug        string     `json:"slug"`
 	GlUrl       *string    `json:"gl_url"`
 	GlGlobalID  *string    `json:"gl_global_id"`
 }
@@ -136,6 +170,7 @@ func (q *Queries) ListMilestones(ctx context.Context, projectID uuid.UUID) ([]Li
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Slug,
 			&i.GlUrl,
 			&i.GlGlobalID,
 		); err != nil {
@@ -151,7 +186,7 @@ func (q *Queries) ListMilestones(ctx context.Context, projectID uuid.UUID) ([]Li
 
 const listWorkspaceMilestones = `-- name: ListWorkspaceMilestones :many
 SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date,
-       m.state, m.position, m.created_at, m.updated_at,
+       m.state, m.position, m.slug, m.created_at, m.updated_at,
        l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id,
        p.name AS project_name, p.slug AS project_slug,
        COALESCE((SELECT b.slug FROM boards b WHERE b.project_id = p.id
@@ -177,6 +212,7 @@ type ListWorkspaceMilestonesRow struct {
 	DueDate     *time.Time  `json:"due_date"`
 	State       string      `json:"state"`
 	Position    float64     `json:"position"`
+	Slug        string      `json:"slug"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
 	GlUrl       *string     `json:"gl_url"`
@@ -211,6 +247,7 @@ func (q *Queries) ListWorkspaceMilestones(ctx context.Context, workspaceID uuid.
 			&i.DueDate,
 			&i.State,
 			&i.Position,
+			&i.Slug,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.GlUrl,
@@ -232,6 +269,66 @@ func (q *Queries) ListWorkspaceMilestones(ctx context.Context, workspaceID uuid.
 	return items, nil
 }
 
+const milestoneSlugExistsInProject = `-- name: MilestoneSlugExistsInProject :one
+SELECT EXISTS(SELECT 1 FROM milestones WHERE project_id = $1 AND slug = $2)
+`
+
+type MilestoneSlugExistsInProjectParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Slug      string    `json:"slug"`
+}
+
+func (q *Queries) MilestoneSlugExistsInProject(ctx context.Context, arg MilestoneSlugExistsInProjectParams) (bool, error) {
+	row := q.db.QueryRow(ctx, milestoneSlugExistsInProject, arg.ProjectID, arg.Slug)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const milestonesMissingSlug = `-- name: MilestonesMissingSlug :many
+SELECT id, project_id, title FROM milestones WHERE slug = ''
+`
+
+type MilestonesMissingSlugRow struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Title     string    `json:"title"`
+}
+
+func (q *Queries) MilestonesMissingSlug(ctx context.Context) ([]MilestonesMissingSlugRow, error) {
+	rows, err := q.db.Query(ctx, milestonesMissingSlug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MilestonesMissingSlugRow
+	for rows.Next() {
+		var i MilestonesMissingSlugRow
+		if err := rows.Scan(&i.ID, &i.ProjectID, &i.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setMilestoneSlug = `-- name: SetMilestoneSlug :exec
+UPDATE milestones SET slug = $2 WHERE id = $1
+`
+
+type SetMilestoneSlugParams struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+}
+
+func (q *Queries) SetMilestoneSlug(ctx context.Context, arg SetMilestoneSlugParams) error {
+	_, err := q.db.Exec(ctx, setMilestoneSlug, arg.ID, arg.Slug)
+	return err
+}
+
 const setTaskMilestone = `-- name: SetTaskMilestone :exec
 UPDATE tasks SET milestone_id = $2, updated_at = now() WHERE id = $1
 `
@@ -250,7 +347,7 @@ const updateMilestone = `-- name: UpdateMilestone :one
 UPDATE milestones
 SET title = $2, description = $3, start_date = $4, due_date = $5, state = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at
+RETURNING id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at, slug
 `
 
 type UpdateMilestoneParams struct {
@@ -283,6 +380,7 @@ func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Slug,
 	)
 	return i, err
 }

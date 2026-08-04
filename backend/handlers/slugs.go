@@ -43,6 +43,27 @@ func (h *API) uniqueBoardSlug(ctx context.Context, projectID uuid.UUID, name str
 	}
 }
 
+// uniqueMilestoneSlug returns a slug unique within the project for a milestone
+// title. "backlog" is treated as taken: ?milestone=backlog is the reserved
+// no-milestone scope, so a milestone actually named «Backlog» becomes backlog-2
+// rather than shadowing it.
+func (h *API) uniqueMilestoneSlug(ctx context.Context, projectID uuid.UUID, title string) string {
+	base := slug.Make(title)
+	if base == "" {
+		base = "milestone"
+	}
+	s := base
+	for i := 2; ; i++ {
+		if s != backlogScope {
+			ex, err := h.q.MilestoneSlugExistsInProject(ctx, db.MilestoneSlugExistsInProjectParams{ProjectID: projectID, Slug: s})
+			if err != nil || !ex {
+				return s
+			}
+		}
+		s = base + "-" + strconv.Itoa(i)
+	}
+}
+
 // uniqueNoteSlug returns a slug unique within the workspace for a note title.
 func (h *API) uniqueNoteSlug(ctx context.Context, wsID uuid.UUID, title string) string {
 	base := slug.Make(title)
@@ -74,5 +95,9 @@ func (h *API) BackfillSlugs(ctx context.Context) {
 	notes, _ := h.q.NotesMissingSlug(ctx)
 	for _, n := range notes {
 		_ = h.q.SetNoteSlug(ctx, db.SetNoteSlugParams{ID: n.ID, Slug: h.uniqueNoteSlug(ctx, n.WorkspaceID, n.Title)})
+	}
+	milestones, _ := h.q.MilestonesMissingSlug(ctx)
+	for _, m := range milestones {
+		_ = h.q.SetMilestoneSlug(ctx, db.SetMilestoneSlugParams{ID: m.ID, Slug: h.uniqueMilestoneSlug(ctx, m.ProjectID, m.Title)})
 	}
 }

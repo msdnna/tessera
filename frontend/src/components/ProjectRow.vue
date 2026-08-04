@@ -48,6 +48,7 @@ import ConfirmByName from './ConfirmByName.vue'
 import EstimationModal from './EstimationModal.vue'
 import MilestoneManager from './MilestoneManager.vue'
 import { DEFAULT_ESTIMATION, resolveEstimation } from '@/utils/estimation'
+import { BACKLOG_SCOPE, matchesScope, milestoneKey } from '@/utils/milestones'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
@@ -158,13 +159,14 @@ function openMilestone(m) {
   }
   router.push({
     path: `/project/${props.project.slug}/board/${b.slug}`,
-    query: { milestone: m ? m.id : 'backlog' },
+    query: { milestone: m ? milestoneKey(m) : BACKLOG_SCOPE },
   })
 }
 function msActive(m) {
+  const scope = String(route.query.milestone || '')
   return (
     route.params.projectSlug === props.project.slug &&
-    String(route.query.milestone || '') === (m ? m.id : 'backlog')
+    (m ? matchesScope(m, scope) : scope === BACKLOG_SCOPE)
   )
 }
 

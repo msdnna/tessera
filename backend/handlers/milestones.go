@@ -102,6 +102,7 @@ func (h *API) CreateMilestone(c *gin.Context) {
 	m, err := h.q.CreateMilestone(c, db.CreateMilestoneParams{
 		ProjectID: projectID, Title: req.Title, Description: req.Description,
 		StartDate: req.StartDate, DueDate: req.DueDate, State: state,
+		Slug: h.uniqueMilestoneSlug(c, projectID, req.Title),
 	})
 	if err != nil {
 		fail(c)
