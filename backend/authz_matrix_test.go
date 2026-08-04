@@ -65,6 +65,7 @@ func protectedRoutes() []struct{ method, path string } {
 		{"GET", "/workspaces/" + u + "/tags"},
 		{"GET", "/projects/" + u + "/tag-prefixes"},
 		{"PUT", "/projects/" + u + "/tag-prefixes"},
+		{"GET", "/workspaces/" + u + "/tag-prefixes"},
 		{"PUT", "/workspaces/" + u + "/estimation"},
 		{"PUT", "/projects/" + u + "/estimation"},
 		{"POST", "/workspaces/" + u + "/notes"},

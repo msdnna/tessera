@@ -118,6 +118,52 @@ func TestTagPrefixes(t *testing.T) {
 	}
 }
 
+// Workspace-wide prefix list: the union across the workspace's projects, deduped
+// by canonical prefix so cross-project views (Home) get one label per scope.
+func TestWorkspaceTagPrefixes(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	p2 := mkProject(t, c, s.WS, s.Group, "Второй проект "+t.Name())
+
+	c.put("/projects/"+s.Project+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{
+			{"prefix": "effort::", "label": "Сложность"},
+			{"prefix": "T:", "label": "Тип"},
+		},
+	})
+	// Second project repeats one prefix (a different label) and adds one of its own.
+	c.put("/projects/"+p2+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{
+			{"prefix": "effort::", "label": "Другая подпись"},
+			{"prefix": "area::", "label": "Область"},
+		},
+	})
+
+	r := c.get("/workspaces/" + s.WS + "/tag-prefixes")
+	if r.Status != http.StatusOK {
+		t.Fatalf("list ws prefixes: status %d\n%s", r.Status, r.Body)
+	}
+	byPrefix := map[string]string{}
+	for _, p := range r.listBody(t) {
+		key := p["prefix"].(string)
+		if _, dup := byPrefix[key]; dup {
+			t.Fatalf("prefix %q listed twice — not deduped", key)
+		}
+		byPrefix[key] = p["label"].(string)
+	}
+	if len(byPrefix) != 3 {
+		t.Fatalf("ws prefixes = %d, want 3\n%v", len(byPrefix), byPrefix)
+	}
+	if byPrefix["t:"] != "Тип" || byPrefix["area::"] != "Область" {
+		t.Fatalf("ws prefixes: %v", byPrefix)
+	}
+	// The repeated prefix keeps exactly one of the two labels (first wins).
+	if l := byPrefix["effort::"]; l != "Сложность" && l != "Другая подпись" {
+		t.Fatalf("effort:: label = %q, want one of the two project labels", l)
+	}
+}
+
 // Notes: workspace-scoped CRUD.
 func TestNoteFlow(t *testing.T) {
 	t.Parallel()

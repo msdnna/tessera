@@ -32,7 +32,7 @@ const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () 
 import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
-import { buildTagGroups } from '@/utils/tagGroups'
+import { buildTagGroups, tagParts } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import {
   formatEstimate,
@@ -45,6 +45,7 @@ import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
+import TagPill from './TagPill.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
@@ -188,6 +189,12 @@ async function commitTitle() {
 const taskTags = computed(() =>
   (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
 )
+// The single-tag pill hands its box over to TagPill when the tag is scoped, so
+// the GitLab-EE two-tone pill isn't boxed-in by the button's own soft fill.
+const firstTagScoped = computed(() => {
+  const t = taskTags.value[0]
+  return t ? tagParts(t.name, props.tagPrefixNames).hasScope : false
+})
 // Stacked tags row: fit as many chips as the row width allows, rest → +N.
 const stagValEl = ref(null)
 const stagMeasureEl = ref(null)
@@ -912,21 +919,38 @@ async function submitAddSub() {
                 <button
                   v-else-if="!stackFields"
                   class="pill tag-pill"
-                  :style="{
-                    border: '1px solid transparent',
-                    background: tagPillBg(taskTags[0].color),
-                    color: tagText(taskTags[0].color),
-                    boxShadow: stackShadow,
-                    marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
-                  }"
+                  :style="
+                    firstTagScoped
+                      ? { border: 'none', background: 'none', padding: 0 }
+                      : {
+                          border: '1px solid transparent',
+                          background: tagPillBg(taskTags[0].color),
+                          boxShadow: stackShadow,
+                          marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
+                        }
+                  "
                   @click.stop
                 >
+                  <!-- Scoped pill: the cascade shadow sits on the pill itself and the
+                       +N moves right past it, so the stack peeks BEHIND the tag (not
+                       shoved out past the +N). Unscoped keeps +N inside the soft box. -->
+                  <TagPill
+                    class="tname"
+                    :tag="taskTags[0]"
+                    :prefix-names="tagPrefixNames"
+                    variant="grad-text"
+                    :style="firstTagScoped ? { boxShadow: stackShadow } : null"
+                  />
                   <span
-                    class="tname accent-grad-text"
-                    :style="{ '--grad': hueGrad(tagText(taskTags[0].color)) }"
-                    >{{ taskTags[0].name }}</span
+                    v-if="taskTags.length > 1"
+                    class="more"
+                    :style="{
+                      color: tagText(taskTags[0].color),
+                      marginLeft:
+                        firstTagScoped && stackLayers ? stackLayers * 5 + 'px' : undefined,
+                    }"
+                    >+{{ taskTags.length - 1 }}</span
                   >
-                  <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
                 </button>
                 <!-- stacked: leading tag icon + outlined-oval chips that fit on the
                      row, rest → +N (same behaviour as the task modal). -->
@@ -937,38 +961,48 @@ async function submitAddSub() {
                     :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
                   />
                   <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
-                    <span
+                    <TagPill
                       v-for="t in taskTags.slice(0, visibleTagCount)"
                       :key="t.id"
                       class="mchip"
-                      :style="{ background: tagPillBg(t.color, true) }"
-                    >
-                      <span
-                        class="accent-grad-text"
-                        :style="{ '--grad': hueGrad(tagText(t.color)) }"
-                        >{{ t.name }}</span
-                      >
-                    </span>
-                    <span v-if="visibleTagCount < taskTags.length" class="mchip chip-more"
+                      :tag="t"
+                      :prefix-names="tagPrefixNames"
+                      variant="outline"
+                    />
+                    <span
+                      v-if="visibleTagCount < taskTags.length"
+                      class="mchip chip-more"
+                      :style="{
+                        color: tagText(taskTags[0].color),
+                        background: softFill(taskTags[0].color),
+                      }"
                       >+{{ taskTags.length - visibleTagCount }}</span
                     >
+                    <!-- measurement copies must be the same component with the same
+                         props, or the scope segment wouldn't be measured (useTagFit). -->
                     <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
-                      <span v-for="t in taskTags" :key="`m${t.id}`" class="mchip">{{
-                        t.name
-                      }}</span>
+                      <TagPill
+                        v-for="t in taskTags"
+                        :key="`m${t.id}`"
+                        class="mchip"
+                        :tag="t"
+                        :prefix-names="tagPrefixNames"
+                        variant="outline"
+                      />
                     </span>
                   </span>
                   <span v-else class="pill-text sf-empty">—</span>
                 </button>
               </template>
               <div class="preview">
-                <span
+                <TagPill
                   v-for="t in taskTags"
                   :key="t.id"
                   class="chip"
-                  :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
-                  >{{ t.name }}</span
-                >
+                  :tag="t"
+                  :prefix-names="tagPrefixNames"
+                  variant="ghost"
+                />
               </div>
             </n-popover>
           </template>
@@ -997,7 +1031,12 @@ async function submitAddSub() {
                     "
                     @click="toggleTag(t.id)"
                   >
-                    {{ t.name }}
+                    <TagPill
+                      :tag="t"
+                      :prefix-names="tagPrefixNames"
+                      variant="inherit"
+                      :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
+                    />
                   </button>
                 </div>
               </div>
@@ -1211,7 +1250,12 @@ async function submitAddSub() {
                   <span v-if="!isCompact && subDue(s)" class="sub-due">{{ subDue(s) }}</span>
                 </div>
               </template>
-              <TaskMiniCard :task="s" :tags-map="tagsMap" :members-map="membersMap" />
+              <TaskMiniCard
+                :task="s"
+                :tags-map="tagsMap"
+                :members-map="membersMap"
+                :tag-prefix-names="tagPrefixNames"
+              />
             </n-popover>
           </div>
         </template>

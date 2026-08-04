@@ -5,11 +5,13 @@ import { CalendarClearOutline } from '@vicons/ionicons5'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import UserAvatar from './UserAvatar.vue'
+import TagPill from './TagPill.vue'
 
 const props = defineProps({
   task: { type: Object, required: true },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
+  tagPrefixNames: { type: Object, default: () => ({}) },
 })
 
 const tags = computed(() =>
@@ -40,14 +42,15 @@ const due = computed(() => {
     </div>
 
     <div v-if="tags.length" class="mini-tags">
-      <span
+      <TagPill
         v-for="t in tags"
         :key="t.id"
         class="mini-tag"
-        :style="{ borderColor: t.color || 'var(--t-border)', color: t.color || 'var(--t-text2)' }"
-      >
-        {{ t.name }}
-      </span>
+        :style="{ borderColor: t.color || 'var(--t-border)' }"
+        :tag="t"
+        :prefix-names="tagPrefixNames"
+        variant="plain"
+      />
     </div>
 
     <div class="mini-foot">

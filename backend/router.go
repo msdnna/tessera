@@ -134,6 +134,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Tag-prefix display names (provider-neutral; GitLab modal is one editor).
 			protected.GET("/projects/:id/tag-prefixes", rh.ListTagPrefixes)
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
+			protected.GET("/workspaces/:id/tag-prefixes", rh.ListWorkspaceTagPrefixes)
 
 			// Two-level task-estimation config (workspace default + project override).
 			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)

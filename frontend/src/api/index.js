@@ -151,6 +151,9 @@ export const workspaces = {
   // Every tag across the workspace's projects — read-only, for cross-project
   // views (Home). Tags are created/listed per-project (see `projects` below).
   tags: (id) => api.get(`/workspaces/${id}/tags`),
+  // Friendly tag-prefix names across the workspace's projects, deduped by prefix —
+  // lets cross-project views render scoped tag pills («scope │ value») too.
+  tagPrefixes: (id) => api.get(`/workspaces/${id}/tag-prefixes`),
   // Workspace-wide default estimation config; `null` clears it to the built-in default.
   setEstimation: (id, config) => api.put(`/workspaces/${id}/estimation`, config),
   // Every milestone across the workspace's projects with task rollups — for the «Этапы» screen.
