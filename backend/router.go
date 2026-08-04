@@ -141,6 +141,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
 			protected.GET("/workspaces/:id/tag-prefixes", rh.ListWorkspaceTagPrefixes)
 
+			// Quick-action registry: built-in commands + the workspace's custom
+			// dictionary, for the markdown editor's "/" autocomplete.
+			protected.GET("/workspaces/:id/commands", rh.ListWorkspaceCommands)
+			protected.PUT("/workspaces/:id/commands", rh.SetWorkspaceCommands)
+
 			// Two-level task-estimation config (workspace default + project override).
 			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)
 			protected.PUT("/projects/:id/estimation", rh.SetProjectEstimation)
