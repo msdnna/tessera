@@ -16,6 +16,7 @@ import "strings"
 // frontend how to hint it in the autocomplete popup.
 type ArgKind string
 
+// Argument kinds understood by the built-in command set.
 const (
 	ArgNone      ArgKind = "none"
 	ArgUser      ArgKind = "user"      // @login, possibly several
