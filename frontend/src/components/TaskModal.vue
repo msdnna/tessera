@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NModal,
@@ -66,6 +66,7 @@ import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { toggleTaskMarker } from '@/utils/markdown'
+import { hasCommandLine } from '@/utils/commands'
 import { isTauri } from '@/utils/serverBase'
 import {
   formatEstimate,
@@ -207,6 +208,44 @@ const newComment = ref('')
 const commentEditor = ref(null)
 const editingCommentId = ref(null)
 const editingCommentBody = ref('')
+
+// ── quick actions ──
+// The command registry is workspace-wide (loaded once by the store); the popup
+// is only offered where commands actually run — the new-comment composer.
+// Editing an existing comment and the description do not execute them.
+const commandItems = computed(() => store.commands || [])
+const cmdPreview = ref([]) // [{ key, summary, error }] from the dry-run
+const cmdCustom = ref([]) // custom keys seen in the draft — kept as plain text
+let cmdTimer = null
+// Dry-run the draft against the backend's parser (debounced) instead of
+// re-implementing it here: the hint can never disagree with what will happen.
+watch(newComment, (body) => {
+  clearTimeout(cmdTimer)
+  if (!hasCommandLine(body)) {
+    cmdPreview.value = []
+    cmdCustom.value = []
+    return
+  }
+  cmdTimer = setTimeout(async () => {
+    try {
+      const res = await tasksApi.previewCommands(props.taskId, body)
+      cmdPreview.value = res.data?.commands || []
+      cmdCustom.value = res.data?.custom || []
+    } catch {
+      cmdPreview.value = []
+      cmdCustom.value = []
+    }
+  }, 400)
+})
+watch(
+  () => props.taskId,
+  () => {
+    clearTimeout(cmdTimer)
+    cmdPreview.value = []
+    cmdCustom.value = []
+  },
+)
+onBeforeUnmount(() => clearTimeout(cmdTimer))
 
 const relations = ref([])
 const relNumber = ref(null)
@@ -832,14 +871,33 @@ async function postComment() {
   if (!body) return
   const mentions = commentEditor.value?.getMentions?.() || []
   try {
-    await tasksApi.addComment(props.taskId, body, mentions)
+    const res = await tasksApi.addComment(props.taskId, body, mentions)
     newComment.value = ''
     commentEditor.value?.clear?.()
+    cmdPreview.value = []
     const c = await tasksApi.comments(props.taskId)
     comments.value = c.data || []
+    // Quick actions changed the task itself (assignees, column, dates…), and a
+    // command-only comment produces no comment row at all — reload the detail so
+    // the modal shows the result rather than the pre-command state.
+    const summary = res.data?.command_summary
+    if (summary?.applied?.length || summary?.errors?.length) {
+      await loadDetail()
+      reportCommands(summary)
+    }
     emit('changed')
   } catch (e) {
     message.error(e.message)
+  }
+}
+
+// Report what the backend actually did — intent and result can differ (a
+// recurring task bounces straight out of the done column), so we echo its text.
+function reportCommands(summary) {
+  const applied = (summary.applied || []).map((o) => o.summary || `/${o.key}`)
+  if (applied.length) message.success(`Применено: ${applied.join('; ')}`)
+  for (const err of summary.errors || []) {
+    message.warning(`/${err.key}: ${err.error}`)
   }
 }
 function startEditComment(c) {
@@ -1653,10 +1711,22 @@ function eventText(e) {
                       variant="boxed"
                       send
                       :mention-items="mentionItems"
+                      :command-items="commandItems"
                       :min-rows="3"
-                      placeholder="Написать комментарий… (@ — упоминание, Ctrl+Enter — отправить)"
+                      placeholder="Написать комментарий… (@ — упоминание, / — команда, Ctrl+Enter — отправить)"
                       @submit="postComment"
                     />
+                    <!-- Dry-run hint: what the built-in commands in the draft will
+                         do. Custom keys are listed apart — they stay in the text. -->
+                    <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
+                      <span v-for="(c, i) in cmdPreview" :key="`${c.key}-${i}`" class="cmd-chip">
+                        <code>/{{ c.key }}</code>
+                        <span :class="{ err: c.error }">{{ c.error || c.summary }}</span>
+                      </span>
+                      <span v-if="cmdCustom.length" class="cmd-note">
+                        {{ cmdCustom.map((k) => `/${k}`).join(', ') }} — останется текстом
+                      </span>
+                    </div>
                   </div>
                 </div>
               </n-tab-pane>
@@ -2758,6 +2828,31 @@ function eventText(e) {
   font-size: 13px;
   color: var(--t-text3);
   padding: 4px 0 8px;
+}
+/* Command dry-run hint under the composer — flat and neutral: it states a fact,
+   it is not an action. */
+.cmd-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.cmd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cmd-chip code {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+  color: var(--t-text2);
+}
+.cmd-chip .err {
+  color: var(--t-error, #e5484d);
+}
+.cmd-note {
+  font-style: italic;
 }
 
 /* relations */

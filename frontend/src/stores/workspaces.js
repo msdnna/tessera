@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { workspaces as wsApi, projects as projApi } from '@/api'
 import { useTreeExpand } from '@/composables/useTreeExpand'
 import { resolveEstimation } from '@/utils/estimation'
+import { commandItems } from '@/utils/commands'
 
 // workspaces store — holds the list, the current selection, and the
 // groups/projects tree for the sidebar. Boards are loaded lazily per project.
@@ -12,6 +13,13 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   const groups = ref([])
   const projects = ref([])
   const boardsByProject = ref({}) // projectId -> board[]
+  // Quick-action registry for the editor popup — loaded once per workspace, not
+  // per opened task. `customCommands` keeps the raw dictionary for the settings
+  // editor; `commands` is the flattened popup list (built-in + custom).
+  const builtinCommands = ref([])
+  const customCommands = ref([])
+  const commandsCanManage = ref(false)
+  const commands = computed(() => commandItems(builtinCommands.value, customCommands.value))
 
   const current = computed(() => list.value.find((w) => w.id === currentId.value) || null)
 
@@ -39,7 +47,30 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     const [g, p] = await Promise.all([wsApi.groups(id), wsApi.projects(id)])
     groups.value = g.data || []
     projects.value = p.data || []
+    await loadCommands(id)
     await prefetchExpandedBoards()
+  }
+
+  // Load the command registry. Best-effort: a failure must not break the board,
+  // it only means the `/`-popup stays silent (same as an empty dictionary).
+  async function loadCommands(id) {
+    try {
+      const res = await wsApi.commands(id)
+      builtinCommands.value = res.data?.builtin || []
+      customCommands.value = res.data?.custom || []
+      commandsCanManage.value = !!res.data?.can_manage
+    } catch {
+      builtinCommands.value = []
+      customCommands.value = []
+      commandsCanManage.value = false
+    }
+  }
+
+  // Patch the custom dictionary from a save response or a
+  // `workspace_commands.updated` WS event (both carry custom entries only, so
+  // the built-in half stays as loaded), letting open tabs pick it up live.
+  function setCustomCommands(custom) {
+    customCommands.value = custom || []
   }
 
   // Eagerly load boards for projects the user has expanded so they show right
@@ -120,6 +151,11 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     groups,
     projects,
     boardsByProject,
+    commands,
+    customCommands,
+    commandsCanManage,
+    loadCommands,
+    setCustomCommands,
     upsertBoard,
     loadWorkspaces,
     selectWorkspace,
