@@ -51,6 +51,7 @@ import { useResponsive } from '@/composables/useResponsive'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { tagNamespace, prefixLabel, buildTagGroups, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
+import { filterBoardTasks } from '@/utils/taskFilter'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -1376,50 +1377,22 @@ async function loadWorkspaceMeta() {
   boardViewStore.setContext(props.boardId, wsId, projectId)
 }
 
-// Due-date predicate for the "Срок" filter.
-function matchesDue(t, mode) {
-  if (mode === 'none') return !t.due_date
-  if (!t.due_date) return false
-  if (mode === 'has') return true
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const due = new Date(t.due_date)
-  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate())
-  const dayMs = 86400000
-  if (mode === 'overdue') return dueDay < today && !t.completed_at
-  if (mode === 'today') return dueDay.getTime() === today.getTime()
-  if (mode === 'week') return dueDay >= today && dueDay - today <= 7 * dayMs
-  return true
-}
+// Filtering runs over tasks AND their subtasks together (see utils/taskFilter):
+// a parent stays visible when it matches or when one of its children does, and
+// in the latter case its on-card child list is narrowed to the matches.
+const filterResult = computed(() =>
+  filterBoardTasks({
+    tasks: allTasks.value,
+    subtasksByParent: subtasksByParent.value,
+    filters,
+  }),
+)
 
 // filter + sort applied before grouping
-const filteredTasks = computed(() => {
-  let arr = allTasks.value
-  if (filters.priorities.length) arr = arr.filter((t) => filters.priorities.includes(t.priority))
-  if (filters.assignees.length)
-    arr = arr.filter((t) => {
-      const ids = t.assignee_ids || []
-      const logins = t.gitlab_assignee_logins || []
-      return filters.assignees.some((a) =>
-        typeof a === 'string' && a.startsWith('gl:')
-          ? logins.includes(a.slice(3))
-          : ids.includes(a),
-      )
-    })
-  if (filters.tags.length)
-    arr = arr.filter((t) => (t.tag_ids || []).some((id) => filters.tags.includes(id)))
-  if (filters.statuses.length) arr = arr.filter((t) => filters.statuses.includes(t.column_id))
-  if (filters.milestones.length)
-    arr = arr.filter((t) => filters.milestones.includes(t.milestone_id || '__none__'))
-  if (filters.due) arr = arr.filter((t) => matchesDue(t, filters.due))
-  const q = filters.q.trim().toLowerCase()
-  if (q)
-    arr = arr.filter(
-      (t) => t.title.toLowerCase().includes(q) || (t.number != null && `#${t.number}`.includes(q)),
-    )
+const filteredTasks = computed(() => sortByLevels(filterResult.value.tasks))
 
-  return sortByLevels(arr)
-})
+// Same map, filter-narrowed — for the views that consume it unsorted.
+const filteredSubtasksByParent = computed(() => filterResult.value.subtasksByParent)
 
 // Apply the composer's multi-level sort to a task array (empty sort = stored order,
 // returned as a fresh copy so callers never mutate the source).
@@ -1441,9 +1414,10 @@ function sortByLevels(arr) {
 // children follow it too; with no sort we keep the raw stored order so on-card
 // drag-reorder stays authoritative.
 const sortedSubtasksByParent = computed(() => {
-  if (!sortLevels.value.length) return subtasksByParent.value
+  const src = filterResult.value.subtasksByParent
+  if (!sortLevels.value.length) return src
   const out = {}
-  for (const [pid, subs] of Object.entries(subtasksByParent.value)) out[pid] = sortByLevels(subs)
+  for (const [pid, subs] of Object.entries(src)) out[pid] = sortByLevels(subs)
   return out
 })
 
@@ -2157,7 +2131,7 @@ async function restoreFromArchive(taskId) {
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
         :project-id="board?.project_id"
-        :subtasks-by-parent="subtasksByParent"
+        :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
         @open="openTask"
         @changed="onChanged"
@@ -2174,7 +2148,7 @@ async function restoreFromArchive(taskId) {
         :tag-prefix="tagPrefix"
         :project-id="board?.project_id"
         :auto-sort="autoActive"
-        :subtasks-by-parent="subtasksByParent"
+        :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
         @open="openTask"
         @changed="onChanged"
@@ -2184,6 +2158,7 @@ async function restoreFromArchive(taskId) {
         v-else-if="layout === 'matrix'"
         :tasks="filteredTasks"
         :subtasks-by-parent="sortedSubtasksByParent"
+        :subtasks-total-by-parent="subtasksByParent"
         :subtasks-expanded="subtasksExpanded"
         :columns="columns"
         :tags-map="tagsMap"
@@ -2282,6 +2257,7 @@ async function restoreFromArchive(taskId) {
                       v-else
                       :task="element"
                       :subtasks="sortedSubtasksByParent[element.id] || []"
+                      :subtasks-total="(subtasksByParent[element.id] || []).length"
                       :subtasks-expanded="subtasksExpanded"
                       :dragging="draggingCard"
                       :columns="columns"

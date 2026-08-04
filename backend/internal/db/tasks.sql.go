@@ -262,45 +262,50 @@ const listBoardSubtasksWithMeta = `-- name: ListBoardSubtasksWithMeta :many
 SELECT
     t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
-    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
+    COALESCE(array_agg(DISTINCT ga.gl_username) FILTER (WHERE ga.gl_username IS NOT NULL), '{}')::text[] AS gitlab_assignee_logins
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
+LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
 GROUP BY t.id
 ORDER BY t.position
 `
 
 type ListBoardSubtasksWithMetaRow struct {
-	ID                 uuid.UUID        `json:"id"`
-	BoardID            uuid.UUID        `json:"board_id"`
-	ColumnID           uuid.UUID        `json:"column_id"`
-	ParentID           *uuid.UUID       `json:"parent_id"`
-	Title              string           `json:"title"`
-	Description        string           `json:"description"`
-	Priority           int32            `json:"priority"`
-	DueDate            *time.Time       `json:"due_date"`
-	Position           float64          `json:"position"`
-	CreatedBy          *uuid.UUID       `json:"created_by"`
-	CompletedAt        *time.Time       `json:"completed_at"`
-	CreatedAt          time.Time        `json:"created_at"`
-	UpdatedAt          time.Time        `json:"updated_at"`
-	ArchivedAt         *time.Time       `json:"archived_at"`
-	Number             *int64           `json:"number"`
-	DueLeadMinutes     *int32           `json:"due_lead_minutes"`
-	DueRepeatMinutes   *int32           `json:"due_repeat_minutes"`
-	DueNotifyEnabled   *bool            `json:"due_notify_enabled"`
-	Recurrence         *json.RawMessage `json:"recurrence"`
-	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
-	StartDate          *time.Time       `json:"start_date"`
-	Estimate           *float64         `json:"estimate"`
-	MilestoneID        *uuid.UUID       `json:"milestone_id"`
-	TagIds             []uuid.UUID      `json:"tag_ids"`
-	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
+	ID                   uuid.UUID        `json:"id"`
+	BoardID              uuid.UUID        `json:"board_id"`
+	ColumnID             uuid.UUID        `json:"column_id"`
+	ParentID             *uuid.UUID       `json:"parent_id"`
+	Title                string           `json:"title"`
+	Description          string           `json:"description"`
+	Priority             int32            `json:"priority"`
+	DueDate              *time.Time       `json:"due_date"`
+	Position             float64          `json:"position"`
+	CreatedBy            *uuid.UUID       `json:"created_by"`
+	CompletedAt          *time.Time       `json:"completed_at"`
+	CreatedAt            time.Time        `json:"created_at"`
+	UpdatedAt            time.Time        `json:"updated_at"`
+	ArchivedAt           *time.Time       `json:"archived_at"`
+	Number               *int64           `json:"number"`
+	DueLeadMinutes       *int32           `json:"due_lead_minutes"`
+	DueRepeatMinutes     *int32           `json:"due_repeat_minutes"`
+	DueNotifyEnabled     *bool            `json:"due_notify_enabled"`
+	Recurrence           *json.RawMessage `json:"recurrence"`
+	EisenhowerQuadrant   *int16           `json:"eisenhower_quadrant"`
+	StartDate            *time.Time       `json:"start_date"`
+	Estimate             *float64         `json:"estimate"`
+	MilestoneID          *uuid.UUID       `json:"milestone_id"`
+	TagIds               []uuid.UUID      `json:"tag_ids"`
+	AssigneeIds          []uuid.UUID      `json:"assignee_ids"`
+	GitlabAssigneeLogins []string         `json:"gitlab_assignee_logins"`
 }
 
 // ListBoardSubtasksWithMeta returns every subtask on a board (parent_id set)
 // with tag/assignee ids, so the kanban can render them under their parents.
+// gitlab_assignee_logins mirrors the top-level query so the composer's
+// "gl:<login>" assignee filter matches subtasks too.
 func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UUID) ([]ListBoardSubtasksWithMetaRow, error) {
 	rows, err := q.db.Query(ctx, listBoardSubtasksWithMeta, boardID)
 	if err != nil {
@@ -336,6 +341,7 @@ func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UU
 			&i.MilestoneID,
 			&i.TagIds,
 			&i.AssigneeIds,
+			&i.GitlabAssigneeLogins,
 		); err != nil {
 			return nil, err
 		}

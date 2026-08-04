@@ -62,14 +62,18 @@ ORDER BY t.position;
 
 -- ListBoardSubtasksWithMeta returns every subtask on a board (parent_id set)
 -- with tag/assignee ids, so the kanban can render them under their parents.
+-- gitlab_assignee_logins mirrors the top-level query so the composer's
+-- "gl:<login>" assignee filter matches subtasks too.
 -- name: ListBoardSubtasksWithMeta :many
 SELECT
     t.*,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
-    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
+    COALESCE(array_agg(DISTINCT ga.gl_username) FILTER (WHERE ga.gl_username IS NOT NULL), '{}')::text[] AS gitlab_assignee_logins
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
+LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
 GROUP BY t.id
 ORDER BY t.position;
