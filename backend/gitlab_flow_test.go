@@ -709,6 +709,57 @@ func TestGitlabSyncFlow(t *testing.T) {
 	if bug["column_id"] != s.col(t, 3) || bug["completed_at"] == nil {
 		t.Fatalf("second sync close: col=%v completed=%v", bug["column_id"], bug["completed_at"])
 	}
+
+	// Third sync with nothing changed → an incremental no-op: the overlap window
+	// re-delivers the issues, but dropUnchangedIssues skips every one (updatedAt +
+	// title/labels hash unchanged), so no create/update lands. This is the headline
+	// perf behaviour — a pull with an empty delta does no work.
+	triggerSync(t, c, s.WS, integID)
+	runs3 := waitSyncRuns(t, c, s.WS, 3)
+	newest := runs3[0]
+	if newest["mode"] != "incremental" {
+		t.Fatalf("third sync mode = %v, want incremental", newest["mode"])
+	}
+	if newest["created_count"] != float64(0) || newest["updated_count"] != float64(0) {
+		t.Fatalf("third sync should be a no-op: created=%v updated=%v",
+			newest["created_count"], newest["updated_count"])
+	}
+
+	// A brand-new issue created after the last sync IS pulled by an incremental sync
+	// (its updatedAt lands in the delta) — incremental adds new tasks, not only
+	// updates existing ones.
+	f.addIssue(glIssue{IID: 42, Title: "Fresh incremental issue"})
+	triggerSync(t, c, s.WS, integID)
+	waitSyncRuns(t, c, s.WS, 4)
+	tasks = c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	if fresh := taskByIid(t, tasks, 42); fresh["title"] != "Fresh incremental issue" {
+		t.Fatalf("incremental sync did not create the new issue: %v", fresh)
+	}
+
+	// Delete issue 1 in GitLab, then a FULL sync (?mode=full) detects the orphaned
+	// link and archives the task — an incremental delta can't tell "deleted" from
+	// "unchanged, so not re-sent", so this is full-sweep only.
+	f.mu.Lock()
+	kept := f.issues[:0]
+	for _, is := range f.issues {
+		if is.IID != 1 {
+			kept = append(kept, is)
+		}
+	}
+	f.issues = kept
+	f.mu.Unlock()
+
+	if r := c.post("/workspaces/"+s.WS+"/gitlab/integrations/"+integID+"/sync?mode=full", nil); r.Status != http.StatusAccepted {
+		t.Fatalf("full sync: status %d\n%s", r.Status, r.Body)
+	}
+	waitSyncRuns(t, c, s.WS, 5)
+
+	tasks = c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	for _, tk := range tasks {
+		if tk["gitlab_iid"] == float64(1) {
+			t.Fatalf("issue 1 deleted in GitLab but its task is still active on the board")
+		}
+	}
 }
 
 // Issue templates: empty without a binding, served from the repo through the fake.

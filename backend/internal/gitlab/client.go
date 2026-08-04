@@ -178,9 +178,9 @@ type Issue struct {
 }
 
 const issuesQuery = `
-query($path: ID!, $username: String, $iids: [String!], $after: String) {
+query($path: ID!, $username: String, $iids: [String!], $after: String, $updatedAfter: Time) {
   project(fullPath: $path) {
-    issues(assigneeUsername: $username, iids: $iids, first: 100, after: $after, sort: UPDATED_DESC) {
+    issues(assigneeUsername: $username, iids: $iids, updatedAfter: $updatedAfter, first: 100, after: $after, sort: UPDATED_DESC) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id
@@ -205,13 +205,35 @@ query($path: ID!, $username: String, $iids: [String!], $after: String) {
 
 // AssignedIssues returns the issues in projectPath assigned to username.
 func (c *Client) AssignedIssues(ctx context.Context, projectPath, username string) ([]Issue, error) {
-	return c.queryIssues(ctx, projectPath, map[string]any{"username": username})
+	return c.AssignedIssuesSince(ctx, projectPath, username, nil)
+}
+
+// AssignedIssuesSince is AssignedIssues restricted (server-side) to issues updated
+// after `since` — the incremental pull. A nil `since` fetches every assigned issue.
+func (c *Client) AssignedIssuesSince(ctx context.Context, projectPath, username string, since *time.Time) ([]Issue, error) {
+	return c.queryIssues(ctx, projectPath, withUpdatedAfter(map[string]any{"username": username}, since))
 }
 
 // AllIssues returns every issue in projectPath regardless of assignee (integration
 // scope "all" — full project import). Paginated; can be large.
 func (c *Client) AllIssues(ctx context.Context, projectPath string) ([]Issue, error) {
-	return c.queryIssues(ctx, projectPath, map[string]any{})
+	return c.AllIssuesSince(ctx, projectPath, nil)
+}
+
+// AllIssuesSince is AllIssues restricted (server-side) to issues updated after
+// `since` — the incremental pull. A nil `since` fetches the whole project.
+func (c *Client) AllIssuesSince(ctx context.Context, projectPath string, since *time.Time) ([]Issue, error) {
+	return c.queryIssues(ctx, projectPath, withUpdatedAfter(map[string]any{}, since))
+}
+
+// withUpdatedAfter adds the GraphQL `updatedAfter` (Time scalar, RFC3339) filter to
+// a query var set when `since` is non-nil. When nil the key is omitted so GitLab
+// applies no time filter (full fetch).
+func withUpdatedAfter(filter map[string]any, since *time.Time) map[string]any {
+	if since != nil {
+		filter["updatedAfter"] = since.UTC().Format(time.RFC3339)
+	}
+	return filter
 }
 
 // IssuesByIIDs returns the issues with the given iids regardless of assignee

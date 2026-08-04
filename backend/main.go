@@ -45,6 +45,11 @@ func main() {
 	// ours is in flight yet, so they can only be stale.
 	rh.FailStaleSyncRuns(context.Background())
 
+	// Record the tick-loop workers in the jobs registry (heartbeat entries) and start
+	// the supervisor that logs a periodic summary of in-flight background jobs.
+	rh.RegisterBackgroundWorkers()
+	go rh.RunJobSupervisor(context.Background())
+
 	// Background GitLab auto-sync worker (idle until an integration sets a
 	// positive sync interval).
 	go rh.RunSyncWorker(context.Background())

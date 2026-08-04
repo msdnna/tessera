@@ -98,6 +98,7 @@ func TestMain(m *testing.M) {
 
 	// Run the background workers like production does — they drain outboxes
 	// (GitLab write-back, notifications) created by the flow tests.
+	rh.RegisterBackgroundWorkers()
 	workerCtx, stopWorkers := context.WithCancel(ctx)
 	go rh.RunSyncWorker(workerCtx)
 	go rh.RunGitlabWriteBackWorker(workerCtx)

@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"tessera/internal/db"
+	"tessera/internal/jobs"
 	"tessera/internal/mail"
 	"tessera/internal/notify"
 	"tessera/internal/realtime"
@@ -33,6 +36,7 @@ type API struct {
 	mailer    mail.Mailer              // transactional email (invitations); no-op when SMTP unset
 	publicURL string                   // external base URL for links in emails
 	senders   map[string]notify.Sender // notification channel transports, keyed by type
+	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
 }
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from
@@ -44,9 +48,12 @@ func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, enc
 		log.Fatalf("failed to init secret sealer: %v", err)
 	}
 	ak := sha256.Sum256([]byte(encryptionKey + ":gitlab-asset"))
+	// A TextHandler renders the background-task summary in logfmt (key=value), with
+	// the call site as source=… — the format the ops log asks for.
+	jobLog := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{AddSource: true}))
 	return &API{
 		q: q, pool: pool, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:],
-		mailer: mailer, publicURL: publicURL, senders: buildSenders(mailer),
+		mailer: mailer, publicURL: publicURL, senders: buildSenders(mailer), jobs: jobs.New(jobLog),
 	}
 }
 
