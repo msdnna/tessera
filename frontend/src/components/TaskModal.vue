@@ -2741,7 +2741,10 @@ function eventText(e) {
   align-items: flex-start;
   position: sticky;
   bottom: 0;
-  background: var(--t-surface);
+  /* No explicit background: inherit the modal's surface so the sticky footer
+     never shows a mismatched strip in dark mode (the modal card already paints
+     --t-surface). Adding it here caused a visible color seam above the form
+     and at the bottom corners. */
   padding-top: 10px;
   margin-top: 4px;
   border-top: 1px solid var(--t-border);

@@ -665,7 +665,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		for _, c := range cols {
 			byName[c.Name] = c
 		}
-		bc := &syncBoard{id: bid, cols: cols, byName: byName, doneID: h.resolveDoneColumn(ctx, b)}
+		bc := &syncBoard{id: bid, cols: cols, byName: byName, doneID: doneColumnID(b)}
 		cache[bid] = bc
 		return bc, nil
 	}
@@ -861,19 +861,6 @@ func (h *API) autoSyncDue(ctx context.Context) {
 }
 
 // ── helpers ────────────────────────────────────────────────
-
-// resolveDoneColumn is the context-based form of doneColumnID for use off the
-// request path: the board's explicit done column, else its rightmost column.
-func (h *API) resolveDoneColumn(ctx context.Context, board db.Board) *uuid.UUID {
-	if board.DoneColumnID != nil {
-		return board.DoneColumnID
-	}
-	col, err := h.q.RightmostColumn(ctx, board.ID)
-	if err != nil {
-		return nil
-	}
-	return &col.ID
-}
 
 // syncCreateTask creates a mirrored task at the end of its target column (or its
 // parent's subtask list when parentID is set). The task has no Tessera creator
