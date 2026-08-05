@@ -247,6 +247,22 @@ private fun ActionDetailDialog(
                     }
                 }
             }
+            // relations — one aggregated row per run (entity_type='relation'), so the
+            // counts never disturb the per-task created/updated counters
+            detail.objOrNull("relations")?.let { rel ->
+                val added = rel.int("added")
+                val removed = rel.int("removed")
+                val deferred = rel.int("deferred")
+                if (added > 0 || removed > 0 || deferred > 0) {
+                    DetailSection {
+                        Text("Связи", color = c.text3, fontSize = 12.sp)
+                        Spacer(Modifier.height(4.dp))
+                        if (added > 0) Text("+$added связей", color = OK, fontSize = 12.5.sp)
+                        if (removed > 0) Text("−$removed удалено", color = ERR, fontSize = 12.5.sp)
+                        if (deferred > 0) Text("$deferred отложено", color = c.text2, fontSize = 12.5.sp)
+                    }
+                }
+            }
             // push payload + result/error
             if (isPush) {
                 DetailSection {
@@ -347,6 +363,9 @@ private fun pushPayloadText(detail: JsonObject): String {
 
 private fun JsonObject.objOrNull(key: String): JsonObject? =
     get(key)?.takeIf { it.isJsonObject }?.asJsonObject
+
+private fun JsonObject.int(key: String): Int =
+    get(key)?.takeUnless { it.isJsonNull }?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
 
 private fun JsonObject.str(key: String): String =
     get(key)?.takeUnless { it.isJsonNull }?.takeIf { it.isJsonPrimitive }?.asString ?: ""

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.SourceMeta
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
@@ -236,6 +238,32 @@ fun AvatarChip(initials: String, modifier: Modifier = Modifier) {
             .padding(horizontal = 5.dp, vertical = 3.dp),
     ) {
         Text(initials, color = c.text2, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/**
+ * Provenance badge for a record owned by an integration (relations today, whatever
+ * gets a `source` column next) — web `.rel-src` parity.
+ *
+ * Deliberately flat neutral grey: it marks where the row came from, not an accent,
+ * so it must not compete with the gradient chips around it.
+ */
+@Composable
+fun SourceBadge(meta: SourceMeta, modifier: Modifier = Modifier) {
+    val c = Tessera.colors
+    Row(
+        modifier
+            .clip(RoundedCornerShape(9.dp))
+            .border(1.dp, c.border, RoundedCornerShape(9.dp))
+            .background(c.surfaceAlt)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        meta.icon?.let {
+            IonIcon(it, size = 11.dp, tint = c.text3)
+            Spacer(Modifier.width(3.dp))
+        }
+        Text(meta.label, color = c.text3, fontSize = 11.sp, maxLines = 1)
     }
 }
 

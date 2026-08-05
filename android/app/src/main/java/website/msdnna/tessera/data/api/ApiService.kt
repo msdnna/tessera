@@ -641,10 +641,13 @@ interface ApiService {
         @Path("integrationId") integrationId: String,
     )
 
+    /** [mode] = "full" forces a full sweep; null/absent = incremental (the backend
+     *  forces full anyway when the binding has never been fully synced). */
     @POST("workspaces/{id}/gitlab/integrations/{integrationId}/sync")
     suspend fun gitlabSyncIntegration(
         @Path("id") workspaceId: String,
         @Path("integrationId") integrationId: String,
+        @Query("mode") mode: String? = null,
     ): website.msdnna.tessera.data.model.GitlabSyncResult
 
     @GET("workspaces/{id}/gitlab/sync-runs")

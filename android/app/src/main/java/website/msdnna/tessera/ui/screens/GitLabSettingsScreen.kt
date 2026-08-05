@@ -67,6 +67,13 @@ import website.msdnna.tessera.util.localDateTimeLabel
 private val IntervalOptions = listOf(
     0 to "Вручную (выкл.)", 300 to "Каждые 5 минут", 900 to "Каждые 15 минут", 3600 to "Каждый час",
 )
+
+// Periodic FULL sweep (catches deletes/drift an incremental pull can't see). 0 = off
+// — a full sync then runs only on the very first sync or via «Полная».
+private val FullIntervalOptions = listOf(
+    0 to "Не форсировать (только вручную)", 21600 to "Раз в 6 часов", 43200 to "Раз в 12 часов",
+    86400 to "Раз в сутки", 172800 to "Раз в 2 суток", 604800 to "Раз в неделю",
+)
 private val DueSourceOptions = listOf(
     "issue_milestone" to "Issue, иначе Milestone", "issue" to "Только Issue",
     "milestone" to "Только Milestone", "off" to "Не синхронизировать",
@@ -316,7 +323,16 @@ private fun BindingRow(
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 integ.id?.let { id ->
-                    TButton("Синхр.", onClick = { vm.sync(workspaceId, id) }, kind = TButtonKind.Secondary, loading = syncing, icon = Ion.REFRESH)
+                    TButton(
+                        "Синхр.", onClick = { vm.sync(workspaceId, id) }, kind = TButtonKind.Secondary,
+                        loading = syncing && !state.syncingFull, enabled = !syncing, icon = Ion.REFRESH,
+                    )
+                    // Full sweep: also re-checks issues an incremental pull skips, so
+                    // deletes and drift in GitLab reach the board.
+                    TButton(
+                        "Полная", onClick = { vm.sync(workspaceId, id, full = true) }, kind = TButtonKind.Ghost,
+                        loading = syncing && state.syncingFull, enabled = !syncing,
+                    )
                 }
                 if (state.isAdmin) {
                     TButton("Изменить", onClick = onEdit, kind = TButtonKind.Secondary)
@@ -356,6 +372,9 @@ private fun IntegrationEditor(
     var boardId by remember(integ) { mutableStateOf(integ.boardId) }
     var enabled by remember(integ) { mutableStateOf(integ.enabled) }
     var interval by remember(integ) { mutableStateOf(integ.syncIntervalSec) }
+    var fullInterval by remember(integ) { mutableStateOf(integ.fullSyncIntervalSec) }
+    // relations_sync is off|pull on the wire, so the switch serialises to those two.
+    var relationsSync by remember(integ) { mutableStateOf(integ.relationsSync != "off") }
     var dueSource by remember(integ) { mutableStateOf(integ.dueSource) }
     var startSource by remember(integ) { mutableStateOf(integ.startSource) }
     var scope by remember(integ) { mutableStateOf(integ.scope.ifBlank { "assigned" }) }
@@ -406,12 +425,24 @@ private fun IntegrationEditor(
             options = IntervalOptions.map { it.first.toString() to it.second },
         ) { interval = it.toInt() }
     }
+    Field("Полная синхронизация") {
+        TSelect(
+            value = FullIntervalOptions.find { it.first == fullInterval }?.second ?: "—",
+            options = FullIntervalOptions.map { it.first.toString() to it.second },
+        ) { fullInterval = it.toInt() }
+    }
     Field("Источник срока") {
         TSelect(DueSourceOptions.find { it.first == dueSource }?.second ?: "—", DueSourceOptions) { dueSource = it }
     }
     Field("Источник начала") {
         TSelect(StartSourceOptions.find { it.first == startSource }?.second ?: "—", StartSourceOptions) { startSource = it }
     }
+    Field("Синхронизировать связи") { TSwitch(relationsSync, { relationsSync = it }) }
+    Text(
+        "Импорт связанных задач из GitLab во вкладку «Связи».",
+        color = c.text3, fontSize = 12.sp,
+    )
+    Spacer(Modifier.height(8.dp))
     Field("Включена") { TSwitch(enabled, { enabled = it }) }
 
     // Write-back (Tessera → GitLab): customizable trigger→action bindings (web GitLabModal).
@@ -470,7 +501,10 @@ private fun IntegrationEditor(
                         workspaceId, binding?.id, pid, ruleLabels,
                         GitlabIntegrationRequest(
                             name = name.trim(), projectPath = projectPath.trim(), boardId = bid,
-                            enabled = enabled, syncIntervalSec = interval, dueSource = dueSource,
+                            enabled = enabled, syncIntervalSec = interval,
+                            fullSyncIntervalSec = fullInterval,
+                            relationsSync = if (relationsSync) "pull" else "off",
+                            dueSource = dueSource,
                             startSource = startSource, scope = scope, closedPolicy = closedPolicy,
                             closedAfter = integ.closedAfter,
                             labelRules = GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),

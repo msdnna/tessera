@@ -81,6 +81,7 @@ import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.MarkdownEditor
 import website.msdnna.tessera.ui.components.MentionItem
 import website.msdnna.tessera.ui.components.RichContent
+import website.msdnna.tessera.ui.components.SourceBadge
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TConfirmPopover
@@ -108,6 +109,7 @@ import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
 import website.msdnna.tessera.util.doneTarget
 import website.msdnna.tessera.util.dueLabel
+import website.msdnna.tessera.util.isExternalSource
 import website.msdnna.tessera.util.moveNeighbors
 import website.msdnna.tessera.util.nextColumn
 import website.msdnna.tessera.util.onColor
@@ -116,6 +118,7 @@ import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
 import website.msdnna.tessera.util.siblingNeighbors
 import website.msdnna.tessera.util.sortedColumns
+import website.msdnna.tessera.util.sourceMeta
 import website.msdnna.tessera.util.toggleTaskMarker
 import website.msdnna.tessera.util.whenLabel
 
@@ -1326,6 +1329,9 @@ private fun RelationsTab(
     var kindMenu by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
 
+    // id of the relation whose delete-confirm popover is open (null = none)
+    var confirmRemove by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(Unit) { vm.ensureRelationCandidates() }
 
     Column(Modifier.fillMaxWidth()) {
@@ -1335,6 +1341,10 @@ private fun RelationsTab(
         relations.forEach { r ->
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(RelKindLabels[r.kind] ?: r.kind, color = c.text3, fontSize = 12.sp, modifier = Modifier.width(90.dp))
+                if (isExternalSource(r.source)) {
+                    SourceBadge(sourceMeta(r.source))
+                    Spacer(Modifier.width(6.dp))
+                }
                 Row(
                     Modifier.weight(1f).clickableNoRipple { onOpen(r.relatedTaskId) },
                     verticalAlignment = Alignment.CenterVertically,
@@ -1348,7 +1358,24 @@ private fun RelationsTab(
                         textDecoration = if (r.relatedCompletedAt != null) TextDecoration.LineThrough else null,
                     )
                 }
-                IonIconButton(Ion.CLOSE, { vm.removeRelation(r.id) }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                Box {
+                    IonIconButton(Ion.CLOSE, { confirmRemove = r.id }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                    // Deleting an integration-owned relation only holds until the next
+                    // sync re-projects it — say so instead of promising it stays gone.
+                    TConfirmPopover(
+                        expanded = confirmRemove == r.id,
+                        message = if (isExternalSource(r.source)) {
+                            "Эта связь вернётся при следующем синке ${sourceMeta(r.source).label}. Удалить?"
+                        } else {
+                            "Убрать связь?"
+                        },
+                        onConfirm = {
+                            vm.removeRelation(r.id)
+                            confirmRemove = null
+                        },
+                        onDismiss = { confirmRemove = null },
+                    )
+                }
             }
         }
 
