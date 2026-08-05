@@ -1789,6 +1789,8 @@ useRealtime((ev) => {
   }
   // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
+  // Custom command dictionary edited elsewhere → the `/`-popup picks it up live.
+  if (ev.type === 'workspace_commands.updated') wsStore.setCustomCommands(ev.data?.commands || [])
   // Board-activity toast for create/move on THIS board (any actor).
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
   if (dragging.value || Date.now() < suppressReloadUntil) return

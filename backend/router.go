@@ -141,6 +141,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
 			protected.GET("/workspaces/:id/tag-prefixes", rh.ListWorkspaceTagPrefixes)
 
+			// Quick-action registry: built-in commands + the workspace's custom
+			// dictionary, for the markdown editor's "/" autocomplete.
+			protected.GET("/workspaces/:id/commands", rh.ListWorkspaceCommands)
+			protected.PUT("/workspaces/:id/commands", rh.SetWorkspaceCommands)
+
 			// Two-level task-estimation config (workspace default + project override).
 			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)
 			protected.PUT("/projects/:id/estimation", rh.SetProjectEstimation)
@@ -202,6 +207,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/tasks/:id/events", rh.ListTaskEvents)
 			protected.GET("/tasks/:id/comments", rh.ListComments)
 			protected.POST("/tasks/:id/comments", rh.CreateComment)
+			// Dry-run of the quick actions in a draft comment, so the editor's
+			// "Будет применено: …" hint comes from the same parser that executes.
+			protected.POST("/tasks/:id/commands/preview", rh.PreviewCommands)
 			protected.PATCH("/comments/:id", rh.UpdateComment)
 			protected.DELETE("/comments/:id", rh.DeleteComment)
 			protected.GET("/tasks/:id/relations", rh.ListRelations)

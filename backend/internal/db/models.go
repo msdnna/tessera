@@ -549,6 +549,15 @@ type Workspace struct {
 	Estimation  *json.RawMessage `json:"estimation"`
 }
 
+type WorkspaceCommand struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Key         string    `json:"key"`
+	Description string    `json:"description"`
+	Position    int32     `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type WorkspaceInvitation struct {
 	ID          uuid.UUID  `json:"id"`
 	WorkspaceID uuid.UUID  `json:"workspace_id"`
