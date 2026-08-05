@@ -35,6 +35,23 @@ func TestRelationKind(t *testing.T) {
 	}
 }
 
+func TestInverseLinkType(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"blocks", "is_blocked_by"},
+		{"is_blocked_by", "blocks"},
+		{"relates_to", "relates_to"}, // symmetric
+		{"RELATED", "relates_to"},    // GraphQL form → canonical REST inverse
+		{"BLOCKS", "is_blocked_by"},
+		{"BLOCKED_BY", "blocks"},
+		{"duplicates", "duplicates"}, // unknown → unchanged
+	}
+	for _, tc := range cases {
+		if got := InverseLinkType(tc.in); got != tc.want {
+			t.Errorf("InverseLinkType(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 // stubGraphQL serves one canned GraphQL response.
 func stubGraphQL(t *testing.T, body string) *Client {
 	t.Helper()

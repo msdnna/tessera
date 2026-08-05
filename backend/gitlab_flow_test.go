@@ -931,6 +931,23 @@ func TestGitlabLinkedItemsRelations(t *testing.T) {
 	if br := byKind["blocked_by"]; br == nil || br["source"] != "gitlab" || br["related_task_id"] != blocker["id"] {
 		t.Fatalf("blocked_by relation wrong (enum BLOCKED_BY dropped?): %v", byKind["blocked_by"])
 	}
+
+	// The link is bidirectional in GitLab, so it must show on BOTH tasks even though
+	// only #1's side declared it here — #2591 rework. #2 sees the reverse "relates",
+	// #3 the inverse of "blocked_by", i.e. it "blocks" #1.
+	relOf := func(taskID string) map[string]any {
+		got := c.get("/tasks/" + taskID + "/relations").listBody(t)
+		if len(got) != 1 {
+			t.Fatalf("task %s relations = %d, want 1 (reverse of #1's link)\n%v", taskID, len(got), got)
+		}
+		return got[0]
+	}
+	if r := relOf(related["id"].(string)); r["kind"] != "relates" || r["source"] != "gitlab" || r["related_task_id"] != central["id"] {
+		t.Fatalf("reverse relates on #2 wrong: %v", r)
+	}
+	if r := relOf(blocker["id"].(string)); r["kind"] != "blocks" || r["source"] != "gitlab" || r["related_task_id"] != central["id"] {
+		t.Fatalf("reverse blocks on #3 wrong: %v", r)
+	}
 }
 
 func TestGitlabIssueTemplates(t *testing.T) {

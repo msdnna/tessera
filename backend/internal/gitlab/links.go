@@ -46,6 +46,27 @@ func RelationKind(linkType string) (string, bool) {
 	}
 }
 
+// InverseLinkType returns the link_type of the same GitLab link seen from the
+// OTHER endpoint: blocks ⇄ is_blocked_by, relates_to is symmetric. GitLab reports
+// every link from both issues' widgets, so within one project a sync that only
+// touched one endpoint can still mirror the link onto the other by recording this
+// inverse — which is what makes a Tessera relation show up on both tasks (#2591).
+// Accepts either spelling and always returns the canonical REST form.
+func InverseLinkType(linkType string) string {
+	kind, ok := RelationKind(linkType)
+	if !ok {
+		return linkType
+	}
+	switch kind {
+	case "blocks":
+		return "is_blocked_by"
+	case "blocked_by":
+		return "blocks"
+	default: // relates — symmetric
+		return "relates_to"
+	}
+}
+
 const linkedItemsQuery = `
 query($path: ID!, $iids: [String!]) {
   project(fullPath: $path) {
