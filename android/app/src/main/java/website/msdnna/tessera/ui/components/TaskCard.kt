@@ -57,6 +57,7 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.theme.ConflictAmber
@@ -70,6 +71,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.divergedColumn
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.onColor
@@ -92,6 +94,9 @@ fun TaskCard(
     onOpen: (Task) -> Unit,
     modifier: Modifier = Modifier,
     nested: Boolean = false,
+    /** Column of the card this one is nested under — a nested card whose own
+     *  column differs shows a marker (it ran ahead of / behind its parent). */
+    parentColumnId: String? = null,
     compact: Boolean = false,
     drag: BoardDragState? = null,
     onDropTask: ((Task) -> Unit)? = null,
@@ -112,6 +117,8 @@ fun TaskCard(
     // Adding a subtask is triggered from the "⋯" menu (no persistent button under
     // the card — that reclaims the empty space); this reveals the inline field.
     var addingSub by remember(task.id) { mutableStateOf(false) }
+    // This card is itself a subtask sitting in another column than its parent.
+    val divergedCol = if (nested) divergedColumn(task.columnId, parentColumnId, state.columns) else null
 
     Column(modifier.fillMaxWidth()) {
         // Parent draws on top (zIndex above any subtasks) so the subtask cards
@@ -162,6 +169,7 @@ fun TaskCard(
                 showMenu = !compact,
                 showAddSub = !nested && !compact,
                 onAddSubtask = { addingSub = true },
+                divergedCol = divergedCol,
             )
             if (onOpenConflict != null && conflictTaskIds.contains(task.id)) {
                 Spacer(Modifier.height(6.dp))
@@ -197,6 +205,7 @@ fun TaskCard(
                         vm = vm,
                         onOpen = onOpen,
                         nested = true,
+                        parentColumnId = task.columnId,
                         drag = drag,
                         onDropTask = onDropTask,
                         conflictTaskIds = conflictTaskIds,
@@ -228,7 +237,11 @@ fun TaskCard(
                     subtasks.forEach { sub ->
                         // A faded copy of the dragged row marks the landing slot.
                         if (nestSlot != null && nestSlot.second == sub.id) SubtaskPreview(drag?.dragging, vm, onOpen)
-                        SubtaskRow(sub, vm, onOpen, modifier = Modifier.animatePlacement().subtaskDrag(drag, onDropTask, sub))
+                        SubtaskRow(
+                            sub, vm, onOpen,
+                            divergedCol = divergedColumn(sub.columnId, task.columnId, state.columns),
+                            modifier = Modifier.animatePlacement().subtaskDrag(drag, onDropTask, sub),
+                        )
                     }
                     // Append slot (drop past the last sibling / onto the body).
                     if (nestSlot != null && nestSlot.second == null) SubtaskPreview(drag?.dragging, vm, onOpen)
@@ -250,6 +263,7 @@ private fun CardHeader(
     showMenu: Boolean,
     showAddSub: Boolean,
     onAddSubtask: () -> Unit,
+    divergedCol: BoardColumn? = null,
 ) {
     val c = Tessera.colors
     var editing by remember(task.id) { mutableStateOf(false) }
@@ -329,7 +343,7 @@ private fun CardHeader(
         }
         // Meta row: task number + GitLab issue link, aligned under the title — 27dp
         // in when a leading checkbox is present (19dp + 8dp gap), else flush left.
-        if (showNumber || showGitlab) {
+        if (showNumber || showGitlab || divergedCol != null) {
             Row(
                 Modifier.padding(start = if (showAddSub) 0.dp else 27.dp, top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -337,9 +351,26 @@ private fun CardHeader(
                 if (showNumber) {
                     task.number?.let { Text("#$it", color = c.text3, fontSize = 11.sp) }
                 }
+                // Expanded subtask card whose column differs from its parent's.
+                if (divergedCol != null) {
+                    if (showNumber) Spacer(Modifier.width(6.dp))
+                    Row(
+                        Modifier.clip(RoundedCornerShape(RadiusSm))
+                            .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier.size(6.dp).clip(CircleShape)
+                                .background(accentGradient(parseHexColor(divergedCol.color, c.text3))),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(divergedCol.name, color = c.text2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
                 if (showGitlab) {
                     task.gitlabIid?.let { iid ->
-                        if (showNumber) Spacer(Modifier.width(6.dp))
+                        if (showNumber || divergedCol != null) Spacer(Modifier.width(6.dp))
                         val ctx = LocalContext.current
                         Row(
                             Modifier.clip(RoundedCornerShape(RadiusSm))
@@ -1023,7 +1054,13 @@ private fun ExpandedSubtaskPreview(sub: Task?, state: BoardUiState, vm: BoardVie
 }
 
 @Composable
-private fun SubtaskRow(sub: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, modifier: Modifier = Modifier) {
+private fun SubtaskRow(
+    sub: Task,
+    vm: BoardViewModel,
+    onOpen: (Task) -> Unit,
+    divergedCol: BoardColumn? = null,
+    modifier: Modifier = Modifier,
+) {
     val c = Tessera.colors
     Row(
         modifier.fillMaxWidth().clickableNoRipple { onOpen(sub) }.padding(horizontal = 10.dp, vertical = 7.dp),
@@ -1051,6 +1088,16 @@ private fun SubtaskRow(sub: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, mo
         )
         val due = shortDate(sub.dueDate)
         if (due.isNotBlank()) Text(due, color = c.text3, fontSize = 11.sp)
+        // This child ran ahead of (or behind) its parent — mark it with the
+        // column's own colour. Just the marker: a row this narrow has no space
+        // for a name, and the modal spells it out.
+        if (divergedCol != null) {
+            Spacer(Modifier.width(6.dp))
+            Box(
+                Modifier.size(7.dp).clip(RoundedCornerShape(2.dp))
+                    .background(accentGradient(parseHexColor(divergedCol.color, c.text3))),
+            )
+        }
     }
 }
 

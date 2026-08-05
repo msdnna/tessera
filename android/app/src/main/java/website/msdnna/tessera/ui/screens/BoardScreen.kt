@@ -245,6 +245,7 @@ fun BoardScreen(
             gitlabMembers = state.gitlabMembers,
             milestones = state.milestones,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
+            boardTasks = state.tasks,
             breadcrumb = breadcrumb,
             estimation = state.estimation,
             onClose = { changed ->

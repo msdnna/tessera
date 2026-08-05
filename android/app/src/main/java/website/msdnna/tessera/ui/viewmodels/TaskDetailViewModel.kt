@@ -19,6 +19,7 @@ import website.msdnna.tessera.data.model.TaskEvent
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.data.repository.TaskRepository
+import website.msdnna.tessera.util.MoveNeighbors
 import website.msdnna.tessera.util.errorMessage
 
 private val TagPalette = listOf(
@@ -33,8 +34,14 @@ data class TaskDetailUiState(
     val relations: List<Relation> = emptyList(),
     val attachments: List<Attachment> = emptyList(),
     val events: List<TaskEvent> = emptyList(),
-    /** The task's board columns — for the recurrence trigger/target selects. */
+    /** The task's board columns — for the status row, recurrence selects and
+     *  the subtask column chips. */
     val columns: List<BoardColumn> = emptyList(),
+    /** `boards.done_column_id` of the task's board — target of the status «close»
+     *  check. Null when the board has none (fall back to the completed flag). */
+    val doneColumnId: String? = null,
+    /** A column move is in flight — the status row disables itself meanwhile. */
+    val moving: Boolean = false,
     /** Cross-board task candidates for the relation autocomplete (lazy-loaded). */
     val relationCandidates: List<WorkspaceTask> = emptyList(),
     /** True once any mutation happened, so the host can refresh the board on close. */
@@ -67,9 +74,15 @@ class TaskDetailViewModel(
         launchCatching {
             val detail = taskRepo.detail(taskId)
             _state.update { it.copy(loading = false, detail = detail) }
-            // Board columns for the recurrence trigger/target selects (best-effort).
+            // Board columns for the status row / recurrence selects, and the board
+            // itself for its done column (both best-effort). Read from the task's
+            // own board id, so a task opened from the relations tab (possibly on
+            // another board) still gets its own columns.
             _state.update {
-                it.copy(columns = runCatching { boardRepo.columns(detail.boardId) }.getOrDefault(emptyList()))
+                it.copy(
+                    columns = runCatching { boardRepo.columns(detail.boardId) }.getOrDefault(emptyList()),
+                    doneColumnId = runCatching { boardRepo.board(detail.boardId) }.getOrNull()?.doneColumnId,
+                )
             }
             // Collab lists are best-effort and independent — a failure of one
             // shouldn't blank the modal.
@@ -128,6 +141,35 @@ class TaskDetailViewModel(
     fun setCompleted(completed: Boolean) = mutate {
         val d = state.value.detail ?: return@mutate
         boardRepo.updateTask(d.asTask(), completed = completed)
+        reloadDetail()
+    }
+
+    // ── status (board column) ─────────────────────────────────────────────────
+    // Moving is `PATCH /tasks/:id/move`, so the backend does the completed/reopened
+    // bookkeeping and the journal entry for us. [neighbours] pins the landing slot
+    // (see util/Status.kt — bare nulls would drop the card near the top).
+
+    /** Moves this task to another column of its board. */
+    fun moveToColumn(columnId: String, neighbours: MoveNeighbors) = mutate {
+        val d = state.value.detail ?: return@mutate
+        if (columnId.isBlank() || columnId == d.columnId) return@mutate
+        _state.update { it.copy(moving = true) }
+        try {
+            boardRepo.moveTask(d.id, columnId, neighbours.beforeId, neighbours.afterId)
+            // A recurring task completed by entering the done column bounces
+            // straight back out with an advanced due date — re-read instead of
+            // trusting the click.
+            reloadDetail()
+        } finally {
+            _state.update { it.copy(moving = false) }
+        }
+    }
+
+    /** The same move for a subtask row, without opening it. */
+    fun moveSubtask(subId: String, columnId: String, neighbours: MoveNeighbors) = mutate {
+        val sub = state.value.detail?.subtasks?.find { it.id == subId } ?: return@mutate
+        if (columnId.isBlank() || columnId == sub.columnId) return@mutate
+        boardRepo.moveTask(subId, columnId, neighbours.beforeId, neighbours.afterId)
         reloadDetail()
     }
 
