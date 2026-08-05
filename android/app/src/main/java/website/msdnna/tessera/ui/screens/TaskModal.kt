@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
@@ -63,6 +64,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
@@ -101,9 +103,11 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.theme.accentGradientTint
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
+import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
@@ -171,6 +175,8 @@ fun TaskModal(
     breadcrumb: List<String>,
     estimation: website.msdnna.tessera.data.model.EstimationConfig =
         website.msdnna.tessera.util.Estimation.DEFAULT,
+    /** Quick-action rows for the comment composer's `/`-popup; empty → no popup. */
+    commands: List<CommandItem> = emptyList(),
     onClose: (changed: Boolean) -> Unit,
 ) {
     val c = Tessera.colors
@@ -180,6 +186,31 @@ fun TaskModal(
 
     var currentId by remember { mutableStateOf(initialTaskId) }
     LaunchedEffect(currentId) { vm.load(currentId, workspaceId, projectId) }
+
+    // Report what the backend actually did with the comment's quick actions: intent
+    // and result can differ (a recurring task bounces straight out of the done
+    // column), so echo its own wording rather than the click.
+    val toastCtx = LocalContext.current
+    LaunchedEffect(state.commandNotice) {
+        val summary = state.commandNotice ?: return@LaunchedEffect
+        val applied = summary.applied.orEmpty().map { it.summary.ifBlank { "/${it.key}" } }
+        val failed = summary.errors.orEmpty().map { "/${it.key}: ${it.error}" }
+        val text = (
+            listOfNotNull(applied.takeIf { it.isNotEmpty() }?.joinToString("; ")?.let { "Применено: $it" }) + failed
+            ).joinToString("\n")
+        if (text.isNotBlank()) android.widget.Toast.makeText(toastCtx, text, android.widget.Toast.LENGTH_LONG).show()
+        vm.consumeCommandNotice()
+    }
+
+    // A failed mutation on an open task was silent until now: `state.error` only
+    // renders in place of a modal that has no detail to show. A comment whose
+    // commands all fail is a 400 with nothing stored — the user has to hear it.
+    LaunchedEffect(state.error) {
+        val err = state.error ?: return@LaunchedEffect
+        if (state.detail == null) return@LaunchedEffect
+        android.widget.Toast.makeText(toastCtx, err, android.widget.Toast.LENGTH_LONG).show()
+        vm.clearError()
+    }
 
     val detail = state.detail
     var title by remember(detail?.id) { mutableStateOf(detail?.title ?: "") }
@@ -306,7 +337,16 @@ fun TaskModal(
                             label = "taskTab",
                         ) { t ->
                             when (t) {
-                                0 -> CommentsTab(vm, state.comments, members, gitlabMembers, me?.id)
+                                0 -> CommentsTab(
+                                    vm = vm,
+                                    comments = state.comments,
+                                    members = members,
+                                    gitlabMembers = gitlabMembers,
+                                    meId = me?.id,
+                                    commands = commands,
+                                    preview = state.commandPreview,
+                                    previewCustom = state.commandCustom,
+                                )
 
                                 1 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
 
@@ -1153,6 +1193,51 @@ private fun buildMentionItems(
     return tessera + gl
 }
 
+/** How long the composer waits after a keystroke before dry-running the draft. */
+private const val CommandPreviewDebounceMs = 400L
+
+/**
+ * «Будет применено» under the composer: one flat row per `/`-command in the draft
+ * with the backend's own wording, errors in the danger colour. Custom dictionary
+ * keys are listed apart — they are never executed and stay in the comment text,
+ * so promising an action for them would be a lie.
+ */
+@Composable
+private fun CommandPreviewStrip(
+    preview: List<website.msdnna.tessera.data.model.CommandOutcome>,
+    custom: List<String>,
+) {
+    val c = Tessera.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(c.surfaceAlt)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        preview.forEach { o ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                Text("/${o.key}", color = c.text2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    o.error.ifBlank { o.summary },
+                    color = if (o.error.isNotBlank()) TesseraDanger else c.text3,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        if (custom.isNotEmpty()) {
+            Text(
+                custom.joinToString(", ") { "/$it" } + " — останется текстом",
+                color = c.text3,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
 // ── tabs ─────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -1162,6 +1247,9 @@ private fun CommentsTab(
     members: List<Member>,
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
     meId: String?,
+    commands: List<CommandItem>,
+    preview: List<website.msdnna.tessera.data.model.CommandOutcome>,
+    previewCustom: List<String>,
 ) {
     val c = Tessera.colors
     var draft by remember { mutableStateOf("") }
@@ -1241,11 +1329,26 @@ private fun CommentsTab(
         MarkdownEditor(
             value = draft,
             onValueChange = { draft = it },
-            placeholder = "Написать комментарий… (@ — упоминание)",
+            placeholder = if (commands.isEmpty()) {
+                "Написать комментарий… (@ — упоминание)"
+            } else {
+                "Написать комментарий… (@ — упоминание, / — команда)"
+            },
             minHeight = 56.dp,
             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
             mentions = mentionItems,
+            commands = commands,
         )
+        // Dry-run the draft against the backend's parser instead of re-implementing
+        // it here: the hint can never disagree with what will actually happen.
+        LaunchedEffect(draft) {
+            delay(CommandPreviewDebounceMs)
+            vm.previewCommands(draft)
+        }
+        if (preview.isNotEmpty() || previewCustom.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            CommandPreviewStrip(preview, previewCustom)
+        }
         Spacer(Modifier.height(8.dp))
         TButton("Отправить", onClick = {
             if (draft.isNotBlank()) {

@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,7 +54,11 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.commandInsertText
+import website.msdnna.tessera.util.detectSlashQuery
+import website.msdnna.tessera.util.matchCommands
 import website.msdnna.tessera.util.toggleTaskMarker
 
 /** Snippet inserted by the mermaid toolbar button (matches the web editor). */
@@ -94,6 +99,9 @@ fun MarkdownEditor(
     uploadImage: (suspend (ByteArray, String, String?) -> String?)? = null,
     // @-mention candidates (Tessera members + GitLab users); empty → mentions off.
     mentions: List<MentionItem> = emptyList(),
+    // Quick-action rows for the `/`-popup; empty → commands off. Only passed where
+    // commands actually run (the new-comment composer) — see the web editor.
+    commands: List<CommandItem> = emptyList(),
 ) {
     // Tokens (names / usernames) highlighted in the preview after an '@'.
     val mentionTokens = remember(mentions) { mentions.map { it.insert } }
@@ -185,9 +193,12 @@ fun MarkdownEditor(
             }
         } else {
             var hadFocus by remember { mutableStateOf(false) }
-            // @-mention autocomplete: match "@query" right before the caret.
+            // Autocomplete: "@query" anywhere before the caret, or a `/`-command at
+            // the start of a line. Mentions win — a mention query can't start a line
+            // with a slash, so the two never compete for the same caret.
             val caret = tfv.selection.min
-            val mq = if (mentions.isNotEmpty()) MENTION_RE.find(tfv.text.substring(0, caret)) else null
+            val upto = tfv.text.substring(0, caret)
+            val mq = if (mentions.isNotEmpty()) MENTION_RE.find(upto) else null
             val query = mq?.groupValues?.get(2)
             val matches = if (query != null) {
                 mentions.filter {
@@ -196,9 +207,17 @@ fun MarkdownEditor(
             } else {
                 emptyList()
             }
+            val slash = if (query == null && commands.isNotEmpty()) detectSlashQuery(upto) else null
+            val cmdMatches = if (slash != null) matchCommands(commands, slash.query) else emptyList()
             fun pickMention(item: MentionItem) {
                 val start = caret - (query?.length ?: 0) - 1
                 val ins = "@${item.insert} "
+                val text = tfv.text.substring(0, start) + ins + tfv.text.substring(caret)
+                update(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
+            }
+            fun pickCommand(item: CommandItem) {
+                val start = slash?.start ?: return
+                val ins = commandInsertText(item)
                 val text = tfv.text.substring(0, start) + ins + tfv.text.substring(caret)
                 update(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
             }
@@ -226,6 +245,7 @@ fun MarkdownEditor(
                 )
             }
             if (matches.isNotEmpty()) MentionSuggestions(matches, onPick = ::pickMention)
+            if (cmdMatches.isNotEmpty()) CommandSuggestions(cmdMatches, onPick = ::pickCommand)
         }
     }
 }
@@ -291,6 +311,56 @@ private fun MentionSuggestions(items: List<MentionItem>, onPick: (MentionItem) -
                 if (item.gitlab) {
                     Spacer(Modifier.width(8.dp))
                     Text("GitLab", color = c.text3, fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * `/`-command suggestions (web parity): the mono `/key` plus its description.
+ * Custom dictionary entries carry a neutral «свои» badge — they are a hint for a
+ * human reader, the backend never executes them, so they must not read as an
+ * action the app will take.
+ */
+@Composable
+private fun CommandSuggestions(items: List<CommandItem>, onPick: (CommandItem) -> Unit) {
+    val c = Tessera.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(c.surfaceAlt)
+            .border(1.dp, c.border, RoundedCornerShape(RadiusMd)),
+    ) {
+        items.forEach { item ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickableNoRipple { onPick(item) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "/${item.key}",
+                    color = c.text1,
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    item.description,
+                    color = c.text3,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!item.builtin) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("свои", color = c.text3, fontSize = 11.sp)
                 }
             }
         }

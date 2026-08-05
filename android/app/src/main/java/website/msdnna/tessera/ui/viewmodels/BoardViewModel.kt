@@ -85,6 +85,13 @@ data class BoardUiState(
         website.msdnna.tessera.util.Estimation.DEFAULT,
     val members: List<Member> = emptyList(),
     val gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
+    /** The backend's built-in quick actions, verbatim: a command added in Go shows
+     *  up in the editor popup without an Android change. */
+    val builtinCommands: List<website.msdnna.tessera.data.model.CommandDef> = emptyList(),
+    /** The workspace's custom command dictionary — suggested, never executed. */
+    val customCommands: List<website.msdnna.tessera.data.model.WorkspaceCommand> = emptyList(),
+    /** The caller can edit the dictionary (owner/admin); gates the editor entry. */
+    val canManageCommands: Boolean = false,
     /** This board's project milestones («Этапы»), for the card chip, the milestone
      *  grouping and the picker. Empty when the project has none. */
     val milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
@@ -172,6 +179,11 @@ data class BoardUiState(
         }
         return sizeAllows && fieldOn(key)
     }
+
+    /** `/`-popup rows for the comment editor: built-ins first (registry order = popup
+     *  order), the custom dictionary after (web `commandItems`). */
+    val commandRows: List<website.msdnna.tessera.util.CommandItem>
+        get() = website.msdnna.tessera.util.commandItems(builtinCommands, customCommands)
 
     /** Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
      *  task has no `created_by`, so matching its author against a Tessera person goes
@@ -337,6 +349,11 @@ class BoardViewModel(
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
             val gitlabMembers = if (workspaceId.isNotBlank()) repo.gitlabMembers(workspaceId) else emptyList()
             val metaTagPrefixes = loadMetaTagPrefixes()
+            val registry = if (workspaceId.isNotBlank()) {
+                repo.workspaceCommands(workspaceId)
+            } else {
+                website.msdnna.tessera.data.model.CommandRegistry()
+            }
             _state.update {
                 val base = it.copy(
                     loading = false,
@@ -353,6 +370,9 @@ class BoardViewModel(
                     estimation = estimation,
                     members = members,
                     gitlabMembers = gitlabMembers,
+                    builtinCommands = registry.builtin.orEmpty(),
+                    customCommands = registry.custom.orEmpty(),
+                    canManageCommands = registry.canManage,
                 )
                 if (cfg != null) base.applyConfig(cfg) else base
             }
@@ -762,6 +782,20 @@ class BoardViewModel(
     fun deleteTag(tagId: String) = launchCatching {
         repo.deleteTag(tagId)
         refreshTagsAndTasks()
+    }
+
+    /**
+     * Replaces the workspace's custom command dictionary (one PUT of the complete
+     * desired state) and refreshes the `/`-popup rows. [onDone] closes the editor
+     * only on success — a rejected key must not silently drop the other rows.
+     */
+    fun saveCustomCommands(
+        commands: List<website.msdnna.tessera.data.model.WorkspaceCommand>,
+        onDone: () -> Unit,
+    ) = launchCatching {
+        val saved = repo.setWorkspaceCommands(workspaceId, commands)
+        _state.update { it.copy(customCommands = saved) }
+        onDone()
     }
 
     fun createTagStandalone(name: String, color: String) = launchCatching {

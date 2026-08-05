@@ -6,8 +6,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.AddRelationRequest
 import website.msdnna.tessera.data.model.Attachment
+import website.msdnna.tessera.data.model.CommandPreview
 import website.msdnna.tessera.data.model.Comment
+import website.msdnna.tessera.data.model.CommentResult
 import website.msdnna.tessera.data.model.CreateCommentRequest
+import website.msdnna.tessera.data.model.PreviewCommandsRequest
 import website.msdnna.tessera.data.model.Relation
 import website.msdnna.tessera.data.model.TaskDetail
 import website.msdnna.tessera.data.model.TaskEvent
@@ -25,8 +28,13 @@ class TaskRepository {
     suspend fun detail(taskId: String): TaskDetail = api.task(taskId)
 
     suspend fun comments(taskId: String): List<Comment> = api.comments(taskId).orEmpty()
-    suspend fun addComment(taskId: String, body: String, mentions: List<String>): Comment =
+    suspend fun addComment(taskId: String, body: String, mentions: List<String>): CommentResult =
         api.createComment(taskId, CreateCommentRequest(body, mentions))
+
+    /** Dry-runs the draft against the backend's own parser: what each `/`-command
+     *  in it would do, without executing anything. */
+    suspend fun previewCommands(taskId: String, body: String): CommandPreview =
+        api.previewCommands(taskId, PreviewCommandsRequest(body))
     suspend fun editComment(commentId: String, body: String): Comment =
         api.updateComment(commentId, UpdateCommentRequest(body))
     suspend fun deleteComment(commentId: String) = api.deleteComment(commentId)

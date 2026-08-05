@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Attachment
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.CommandOutcome
+import website.msdnna.tessera.data.model.CommandSummary
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Recurrence
@@ -21,6 +23,7 @@ import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.data.repository.TaskRepository
 import website.msdnna.tessera.util.MoveNeighbors
 import website.msdnna.tessera.util.errorMessage
+import website.msdnna.tessera.util.hasCommandLine
 
 private val TagPalette = listOf(
     "#7c5cff", "#2f80ed", "#0eb0a9", "#18a058", "#f0a020", "#e0533d", "#eb2f96",
@@ -44,6 +47,13 @@ data class TaskDetailUiState(
     val moving: Boolean = false,
     /** Cross-board task candidates for the relation autocomplete (lazy-loaded). */
     val relationCandidates: List<WorkspaceTask> = emptyList(),
+    /** Dry-run of the `/`-commands in the comment draft — what each would do. */
+    val commandPreview: List<CommandOutcome> = emptyList(),
+    /** Custom dictionary keys seen in the draft; they stay in the comment text. */
+    val commandCustom: List<String> = emptyList(),
+    /** What the last posted comment's commands actually did — the UI reports it
+     *  once and calls [TaskDetailViewModel.consumeCommandNotice]. */
+    val commandNotice: CommandSummary? = null,
     /** True once any mutation happened, so the host can refresh the board on close. */
     val changed: Boolean = false,
 )
@@ -254,9 +264,42 @@ class TaskDetailViewModel(
 
     fun postComment(body: String, members: List<Member>) = mutate {
         if (body.isBlank()) return@mutate
-        taskRepo.addComment(taskId, body, detectMentions(body, members))
-        _state.update { it.copy(comments = taskRepo.comments(taskId), changed = true) }
+        val res = taskRepo.addComment(taskId, body, detectMentions(body, members))
+        _state.update {
+            it.copy(comments = taskRepo.comments(taskId), changed = true, commandPreview = emptyList(), commandCustom = emptyList())
+        }
+        // Quick actions changed the task itself (assignees, column, dates…), and a
+        // command-only comment stores no row at all — re-read the detail so the
+        // modal shows the result rather than the pre-command state.
+        val summary = res.commandSummary
+        if (summary != null && !summary.isEmpty) {
+            reloadDetail()
+            _state.update { it.copy(commandNotice = summary) }
+        }
     }
+
+    /**
+     * Dry-runs the comment draft (debounced by the caller). Failures are silent:
+     * the hint is an aid, and the real run reports for itself.
+     */
+    fun previewCommands(body: String) {
+        if (!hasCommandLine(body)) {
+            _state.update { it.copy(commandPreview = emptyList(), commandCustom = emptyList()) }
+            return
+        }
+        viewModelScope.launch {
+            val res = runCatching { taskRepo.previewCommands(taskId, body) }.getOrNull()
+            _state.update {
+                it.copy(
+                    commandPreview = res?.commands.orEmpty(),
+                    commandCustom = res?.custom.orEmpty(),
+                )
+            }
+        }
+    }
+
+    /** Marks the posted-commands report as shown (it is a one-shot toast). */
+    fun consumeCommandNotice() = _state.update { it.copy(commandNotice = null) }
 
     fun editComment(commentId: String, body: String) = mutate {
         if (body.isBlank()) return@mutate

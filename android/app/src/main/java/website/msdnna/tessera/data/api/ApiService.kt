@@ -366,6 +366,26 @@ interface ApiService {
     @PUT("projects/{id}/estimation")
     suspend fun setProjectEstimation(@Path("id") projectId: String, @Body body: EstimationConfig?): Project
 
+    // ── Quick actions: command registry (workspace) + comment dry-run ────────
+    // The built-in list comes from the backend's own registry, so a command added
+    // in Go shows up in the editor popup without an Android change.
+    @GET("workspaces/{id}/commands")
+    suspend fun workspaceCommands(
+        @Path("id") workspaceId: String,
+    ): website.msdnna.tessera.data.model.CommandRegistry
+
+    @PUT("workspaces/{id}/commands")
+    suspend fun setWorkspaceCommands(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.SetWorkspaceCommandsRequest,
+    ): List<website.msdnna.tessera.data.model.WorkspaceCommand>?
+
+    @POST("tasks/{id}/commands/preview")
+    suspend fun previewCommands(
+        @Path("id") taskId: String,
+        @Body body: website.msdnna.tessera.data.model.PreviewCommandsRequest,
+    ): website.msdnna.tessera.data.model.CommandPreview
+
     @GET("workspaces/{id}/members")
     suspend fun members(@Path("id") workspaceId: String): List<Member>?
 
@@ -437,8 +457,13 @@ interface ApiService {
     @GET("tasks/{id}/comments")
     suspend fun comments(@Path("id") taskId: String): List<Comment>?
 
+    // The reply carries the comment inline plus a `command_summary` when the body
+    // held quick actions; a command-only comment stores no row (id null).
     @POST("tasks/{id}/comments")
-    suspend fun createComment(@Path("id") taskId: String, @Body body: CreateCommentRequest): Comment
+    suspend fun createComment(
+        @Path("id") taskId: String,
+        @Body body: CreateCommentRequest,
+    ): website.msdnna.tessera.data.model.CommentResult
 
     @PATCH("comments/{id}")
     suspend fun updateComment(@Path("id") commentId: String, @Body body: UpdateCommentRequest): Comment

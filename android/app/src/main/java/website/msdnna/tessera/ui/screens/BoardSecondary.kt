@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -39,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Task
+import website.msdnna.tessera.data.model.WorkspaceCommand
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TButton
@@ -55,11 +57,14 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.canonCommandKey
+import website.msdnna.tessera.util.isValidCommandKey
 import website.msdnna.tessera.util.parseHexColor
 
 private val TagPalette = listOf(
@@ -137,6 +142,171 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
                 TButton("Готово", onClick = onDismiss)
             }
         }
+    }
+}
+
+/**
+ * Editor for the workspace's custom command dictionary — the `/`-popup entries
+ * that are only text (they never execute; the built-in list below is what the
+ * backend actually runs). Saved as the complete desired state in one PUT, like
+ * the tag-prefix editor.
+ *
+ * Non-managers still get the modal, read-only: knowing which commands exist is
+ * useful to everyone, and hiding the built-in reference behind a role would be
+ * pointless — the popup suggests them anyway.
+ */
+@Composable
+fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Unit) {
+    val c = Tessera.colors
+    val canManage = state.canManageCommands
+    // Seed from the loaded dictionary each time the modal opens, so an aborted
+    // edit doesn't stick.
+    var rows by remember { mutableStateOf(state.customCommands.map { it.key to it.description }) }
+    val builtinKeys = remember(state.builtinCommands) { state.builtinCommands.map { it.key }.toSet() }
+
+    // Per-row validation, shown inline: the backend rejects the whole PUT on the
+    // first bad key, so catching it here keeps the user from losing the other rows.
+    fun rowError(i: Int): String {
+        val key = canonCommandKey(rows[i].first)
+        return when {
+            key.isEmpty() -> "пустой ключ"
+            !isValidCommandKey(key) -> "латиница, цифры, _ и -"
+            key in builtinKeys -> "встроенная команда"
+            rows.take(i).any { canonCommandKey(it.first) == key } -> "дубль"
+            rows[i].second.length > 200 -> "описание длиннее 200 символов"
+            else -> ""
+        }
+    }
+    val errors = rows.indices.map { rowError(it) }
+    val canSave = errors.all { it.isEmpty() }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg))
+                .background(c.surface).padding(18.dp),
+        ) {
+            Text("Команды редактора", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Свои команды только подсказываются в редакторе и остаются в тексте комментария — " +
+                    "выполняет их адресат, а не Tessera. Встроенные выполняет сервер и вырезает из текста.",
+                color = c.text3,
+                fontSize = 11.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+
+            Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                rows.forEachIndexed { i, row ->
+                    if (!canManage) {
+                        CommandRefRow("/${row.first}", row.second)
+                        return@forEachIndexed
+                    }
+                    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("/", color = c.text3, fontSize = 13.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Box(Modifier.width(104.dp)) {
+                                TTextField(
+                                    value = row.first,
+                                    onValueChange = { v ->
+                                        rows = rows.toMutableList().also { it[i] = v to row.second }
+                                    },
+                                    placeholder = "approve",
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Box(Modifier.weight(1f)) {
+                                TTextField(
+                                    value = row.second,
+                                    onValueChange = { v ->
+                                        rows = rows.toMutableList().also { it[i] = row.first to v }
+                                    },
+                                    placeholder = "Одобрить план",
+                                )
+                            }
+                            // Order in the list is order in the popup, so it has to be movable.
+                            IonIconButton(Ion.SORT, {
+                                if (i > 0) {
+                                    rows = rows.toMutableList().apply {
+                                        val prev = this[i - 1]
+                                        this[i - 1] = this[i]
+                                        this[i] = prev
+                                    }
+                                }
+                            }, boxSize = 28.dp, iconSize = 14.dp, tint = if (i > 0) c.text2 else c.text3)
+                            IonIconButton(Ion.TRASH, {
+                                rows = rows.filterIndexed { j, _ -> j != i }
+                            }, boxSize = 28.dp, iconSize = 14.dp, tint = c.text3)
+                        }
+                        if (errors[i].isNotEmpty()) {
+                            Text(errors[i], color = TesseraDanger, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                }
+                if (rows.isEmpty()) {
+                    Text("Своих команд пока нет", color = c.text3, fontSize = 13.sp)
+                }
+            }
+
+            if (canManage) {
+                Spacer(Modifier.height(4.dp))
+                TButton(
+                    "Добавить",
+                    kind = TButtonKind.Secondary,
+                    enabled = rows.size < 50,
+                    onClick = { rows = rows + ("" to "") },
+                    modifier = Modifier.height(34.dp),
+                )
+            } else {
+                Spacer(Modifier.height(4.dp))
+                Text("Редактировать словарь может владелец или админ", color = c.text3, fontSize = 11.sp)
+            }
+
+            if (state.builtinCommands.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text("Встроенные", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(4.dp))
+                Column(Modifier.heightIn(max = 200.dp).verticalScroll(rememberScrollState())) {
+                    state.builtinCommands.forEach { cmd -> CommandRefRow("/${cmd.key}", cmd.description) }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                if (canManage) {
+                    TButton("Отмена", kind = TButtonKind.Secondary, onClick = onDismiss)
+                    Spacer(Modifier.width(8.dp))
+                    TButton(
+                        "Сохранить",
+                        enabled = canSave,
+                        onClick = {
+                            vm.saveCustomCommands(
+                                rows.map { WorkspaceCommand(canonCommandKey(it.first), it.second.trim()) },
+                                onDismiss,
+                            )
+                        },
+                    )
+                } else {
+                    TButton("Готово", onClick = onDismiss)
+                }
+            }
+        }
+    }
+}
+
+/** One read-only command row: the mono `/key` plus its description. */
+@Composable
+private fun CommandRefRow(key: String, description: String) {
+    val c = Tessera.colors
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Text(
+            key,
+            color = c.text2,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.width(120.dp),
+        )
+        Text(description, color = c.text3, fontSize = 12.sp, modifier = Modifier.weight(1f))
     }
 }
 

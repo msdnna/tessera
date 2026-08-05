@@ -89,8 +89,10 @@ fun BoardScreen(
     onInitialMilestoneConsumed: () -> Unit = {},
     archiveOpen: Boolean = false,
     tagsOpen: Boolean = false,
+    commandsOpen: Boolean = false,
     onCloseArchive: () -> Unit = {},
     onCloseTags: () -> Unit = {},
+    onCloseCommands: () -> Unit = {},
     onTimelineLikeChanged: (Boolean) -> Unit = {},
     onBoardGone: () -> Unit = {},
 ) {
@@ -248,6 +250,7 @@ fun BoardScreen(
             boardTasks = state.tasks,
             breadcrumb = breadcrumb,
             estimation = state.estimation,
+            commands = state.commandRows,
             onClose = { changed ->
                 openTaskId = null
                 if (changed) vm.reload()
@@ -256,6 +259,8 @@ fun BoardScreen(
     }
 
     if (tagsOpen) TagManagerModal(state = state, vm = vm, onDismiss = onCloseTags)
+
+    if (commandsOpen) WorkspaceCommandsModal(state = state, vm = vm, onDismiss = onCloseCommands)
 
     BoardActivityOverlay(
         items = activity,
