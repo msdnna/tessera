@@ -71,7 +71,7 @@ func runStatus(s string) string {
 }
 
 func syncRunToDTO(r db.ListRecentGitlabSyncRunsRow) jobDTO {
-	name := "Синхронизация GitLab · " + r.IntegrationLabel
+	name := gitlabSyncJournalPrefix + r.IntegrationLabel
 	return jobDTO{
 		Key: "syncrun:" + r.ID.String(), Name: name, Kind: jobs.KindSync, Status: runStatus(r.Status),
 		Mode: r.Mode, Trigger: r.Trigger, StartedAt: &r.StartedAt, FinishedAt: r.FinishedAt,

@@ -498,7 +498,7 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	if c.Query("mode") == "full" || integ.LastFullSyncedAt == nil {
 		j.mode = "full"
 	}
-	handle.SetOp(j.mode + " pull")
+	handle.SetOp(syncOpLabel(j.mode))
 	h.beginJournal(c, j)
 	go func() {
 		defer cancel()
@@ -577,12 +577,26 @@ func fmtSyncDuration(d time.Duration) string {
 // gitlabSyncKey / gitlabSyncName name a GitLab pull in the jobs registry. The key is
 // stable per integration so a manual and an auto run can't overlap (busy-guard).
 func gitlabSyncKey(integrationID uuid.UUID) string { return "gitlab_sync:" + integrationID.String() }
+
+// gitlabSyncJournalPrefix names a sync run in the jobs panel. Shared with the journal
+// side (syncRunToDTO) so a run doesn't get renamed the moment it finishes.
+const gitlabSyncJournalPrefix = "Синхронизация GitLab · "
+
 func gitlabSyncName(integ db.GitlabIntegration) string {
 	name := integ.ProjectPath
 	if integ.Name != "" {
 		name = integ.Name
 	}
-	return "Синк GitLab · " + name
+	return gitlabSyncJournalPrefix + name
+}
+
+// syncOpLabel renders a sync run's mode for the jobs panel's current-op line. The
+// wording matches the frontend's mode dictionary (BackgroundJobsModal.vue MODE).
+func syncOpLabel(mode string) string {
+	if mode == "full" {
+		return "полная синхронизация"
+	}
+	return "инкрементальная синхронизация"
 }
 
 // syncBoard caches a board's columns + done column during a sync run.
@@ -1012,7 +1026,7 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		if fullSyncDue(integ) {
 			mode = "full"
 		}
-		handle.SetOp(mode + " pull")
+		handle.SetOp(syncOpLabel(mode))
 		created, updated, serr := h.runSync(syncCtx, integ, cred, actor, "auto", mode)
 		handle.SetCounts(created, updated)
 		handle.Finish(serr)
