@@ -1095,7 +1095,7 @@ private fun MatrixCard(
 ) {
     val c = Tessera.colors
     val accent = PriorityColors.getOrElse(task.priority) { PriorityColors[0] }
-    val subs = state.subtasksOf(task.id)
+    val subs = state.visibleSubtasksOf(task.id)
     var menu by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(RadiusMd)
     Row(
@@ -1437,7 +1437,7 @@ private val TL_SUB_TOP0 = 33.dp
 
 /** Scheduled subtasks (with a start or due) of [task], drawn as thin sub-bars. */
 private fun tlSubBars(state: BoardUiState, task: Task): List<Task> =
-    state.subtasksOf(task.id).filter { it.startDate != null || it.dueDate != null }
+    state.visibleSubtasksOf(task.id).filter { it.startDate != null || it.dueDate != null }
 
 /** Row height grows by one step per scheduled subtask sub-bar (web rowHeight). */
 private fun tlRowHeight(state: BoardUiState, task: Task): androidx.compose.ui.unit.Dp =

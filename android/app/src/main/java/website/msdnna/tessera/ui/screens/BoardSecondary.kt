@@ -51,10 +51,8 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
-import website.msdnna.tessera.ui.viewmodels.BoardFilter
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
-import website.msdnna.tessera.ui.viewmodels.DueFilter
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.parseHexColor

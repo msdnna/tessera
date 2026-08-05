@@ -62,13 +62,15 @@ import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
-import website.msdnna.tessera.ui.viewmodels.BoardFilter
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
-import website.msdnna.tessera.ui.viewmodels.DueFilter
 import website.msdnna.tessera.ui.viewmodels.SortField
+import website.msdnna.tessera.util.BoardFilter
+import website.msdnna.tessera.util.DueFilter
+import website.msdnna.tessera.util.GitlabAuthor
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.boardGitlabAuthors
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.prefixLabel
 import website.msdnna.tessera.util.tagNamespace
@@ -188,6 +190,12 @@ fun BoardComposerBar(
                     onRemove = { vm.setFilter(f.copy(assigneeIds = f.assigneeIds - id)) },
                 )
             }
+            f.authorIds.forEach { id ->
+                FacetChip(
+                    "Автор: ${authorLabel(id, state)}",
+                    onRemove = { vm.setFilter(f.copy(authorIds = f.authorIds - id)) },
+                )
+            }
             f.tagIds.forEach { id ->
                 FacetChip(
                     "Тег: ${state.tags[id]?.name ?: "—"}",
@@ -242,8 +250,18 @@ fun BoardComposerBar(
 
 private fun hasClearable(state: BoardUiState): Boolean = state.sortLevels.isNotEmpty() ||
     state.filter.priorities.isNotEmpty() || state.filter.assigneeIds.isNotEmpty() ||
-    state.filter.tagIds.isNotEmpty() || state.filter.statuses.isNotEmpty() ||
-    state.filter.milestoneIds.isNotEmpty() || state.filter.due != DueFilter.All
+    state.filter.authorIds.isNotEmpty() || state.filter.tagIds.isNotEmpty() ||
+    state.filter.statuses.isNotEmpty() || state.filter.milestoneIds.isNotEmpty() ||
+    state.filter.due != DueFilter.All
+
+/** Display name for an author-facet value: a workspace member, a GitLab member, or —
+ *  for an issue opened by someone outside the roster — the name the synced task carries. */
+private fun authorLabel(id: String, state: BoardUiState): String {
+    if (!id.startsWith("gl:")) return state.membersMap[id]?.name ?: "—"
+    val login = id.removePrefix("gl:")
+    state.gitlabMembers.find { it.glUsername == login }?.let { return it.glName.ifBlank { it.glUsername } }
+    return boardGitlabAuthors(state.tasks).find { it.username == login }?.name ?: login
+}
 
 /** The always-present grouping chip; its dropdown picks status / all tags / a namespace. */
 @Composable
@@ -384,6 +402,45 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                     }
                 }
 
+                "fc" -> {
+                    BackRow { category = null }
+                    state.members.filter { it.userId !in f.authorIds }.forEach { m ->
+                        val nm = m.name.ifBlank { m.email }
+                        TMenuItem(
+                            nm,
+                            onClick = {
+                                vm.setFilter(f.copy(authorIds = f.authorIds + m.userId))
+                                close()
+                            },
+                            leading = { MemberAvatar(22.dp, nm, userId = m.userId) },
+                        )
+                    }
+                    // GitLab logins: the project's GitLab members plus the authors actually
+                    // seen on the board (an issue can be opened by someone outside the
+                    // roster). A login already covered by a linked Tessera row is skipped
+                    // so one person never shows up twice (web parity).
+                    val seen = state.glLoginByUserId.values.toMutableSet()
+                    val glAuthors = buildList {
+                        state.gitlabMembers.forEach { add(GitlabAuthor(it.glUsername, it.glName.ifBlank { it.glUsername }, it.glAvatarUrl)) }
+                        addAll(boardGitlabAuthors(state.tasks))
+                    }.filter { a ->
+                        a.username.isNotBlank() && "gl:${a.username}" !in f.authorIds && seen.add(a.username)
+                    }
+                    if (glAuthors.isNotEmpty()) {
+                        MenuSectionHeader("GitLab")
+                        glAuthors.forEach { a ->
+                            TMenuItem(
+                                a.name,
+                                onClick = {
+                                    vm.setFilter(f.copy(authorIds = f.authorIds + "gl:${a.username}"))
+                                    close()
+                                },
+                                leading = { MemberAvatar(22.dp, a.name, avatarUrl = a.avatarUrl, muted = true) },
+                            )
+                        }
+                    }
+                }
+
                 "ft" -> {
                     BackRow { category = null }
                     // Group the pickable tags by prefix; show section headers only
@@ -445,6 +502,7 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                     if (timeline && state.sortedColumns.isNotEmpty()) ArrowRow("Фильтр: статус") { category = "fs" }
                     ArrowRow("Фильтр: приоритет") { category = "fp" }
                     if (state.members.isNotEmpty()) ArrowRow("Фильтр: исполнитель") { category = "fa" }
+                    if (state.members.isNotEmpty()) ArrowRow("Фильтр: автор") { category = "fc" }
                     if (state.tagList.isNotEmpty()) ArrowRow("Фильтр: тег") { category = "ft" }
                     if (state.milestones.isNotEmpty()) ArrowRow("Фильтр: этап") { category = "fm" }
                     ArrowRow("Фильтр: срок") { category = "fd" }

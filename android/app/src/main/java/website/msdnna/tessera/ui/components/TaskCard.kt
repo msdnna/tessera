@@ -107,9 +107,15 @@ fun TaskCard(
     val c = Tessera.colors
     // Keep ALL subtasks composed during a drag (removing the dragged one would
     // dispose its gesture node and cancel the drag); the dragged one just dims.
-    val subtasks = if (nested || compact) emptyList() else state.subtasksOf(task.id)
+    val subtasks = if (nested || compact) emptyList() else state.visibleSubtasksOf(task.id)
     val accent = PriorityColors.getOrElse(task.priority) { PriorityColors[0] }
     val hasSubs = subtasks.isNotEmpty()
+    // The composer filter hid part of this card's children (the card only stayed on the
+    // board because one of them matched): show a hint and lock child drag-reorder —
+    // reordering against a partial list would write meaningless positions.
+    val subsNarrowed = !nested && !compact && state.isSubtasksNarrowed(task.id)
+    val childDrag = if (subsNarrowed) null else drag
+    val onDropChild = if (subsNarrowed) null else onDropTask
     val shape = RoundedCornerShape(RadiusLg)
     // Subtask cards are a touch lighter than the parent — surface mixed 70/30
     // with the page background (mirrors the web's color-mix).
@@ -206,12 +212,12 @@ fun TaskCard(
                         onOpen = onOpen,
                         nested = true,
                         parentColumnId = task.columnId,
-                        drag = drag,
-                        onDropTask = onDropTask,
+                        drag = childDrag,
+                        onDropTask = onDropChild,
                         conflictTaskIds = conflictTaskIds,
                         onOpenConflict = onOpenConflict,
                         modifier = Modifier.animatePlacement().zIndex((subtasks.size - i).toFloat()).overlapTop(RadiusLg * 2)
-                            .subtaskDrag(drag, onDropTask, sub),
+                            .subtaskDrag(childDrag, onDropChild, sub),
                     )
                 }
                 if (nestSlot != null && nestSlot.second == null) ExpandedSubtaskPreview(drag?.dragging, state, vm)
@@ -240,13 +246,14 @@ fun TaskCard(
                         SubtaskRow(
                             sub, vm, onOpen,
                             divergedCol = divergedColumn(sub.columnId, task.columnId, state.columns),
-                            modifier = Modifier.animatePlacement().subtaskDrag(drag, onDropTask, sub),
+                            modifier = Modifier.animatePlacement().subtaskDrag(childDrag, onDropChild, sub),
                         )
                     }
                     // Append slot (drop past the last sibling / onto the body).
                     if (nestSlot != null && nestSlot.second == null) SubtaskPreview(drag?.dragging, vm, onOpen)
                 }
             }
+            if (subsNarrowed) SubtasksNarrowedHint(subtasks.size, state.subtaskCount(task.id))
         }
         if (!nested && !compact && addingSub) {
             SubtaskCreateField(task, vm, onDone = { addingSub = false })
@@ -653,6 +660,19 @@ private fun ConflictPill(onClick: () -> Unit) {
         Spacer(Modifier.width(5.dp))
         Text("Конфликт", color = ConflictAmber, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
+}
+
+/** «N из M подзадач» — footnote under a filter-narrowed child list, telling you the card
+ *  is only here because a child matched and the rest are hidden (web parity). */
+@Composable
+private fun SubtasksNarrowedHint(shown: Int, total: Int) {
+    val c = Tessera.colors
+    Text(
+        "$shown из $total подзадач — остальные скрыты фильтром",
+        color = c.text3,
+        fontSize = 10.sp,
+        modifier = Modifier.padding(start = 12.dp, top = 4.dp, end = 8.dp),
+    )
 }
 
 /** Display-only milestone («Этап») chip: a flag + the milestone title, dimmed when

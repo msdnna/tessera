@@ -4,7 +4,6 @@ import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
-import java.util.Calendar
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,12 +24,14 @@ import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.repository.BoardRepository
+import website.msdnna.tessera.util.BoardFilter
+import website.msdnna.tessera.util.DueFilter
+import website.msdnna.tessera.util.FilterClock
 import website.msdnna.tessera.util.errorMessage
+import website.msdnna.tessera.util.filterBoardTasks
 import website.msdnna.tessera.util.isoDateKey
 
 enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline, Gantt }
-
-enum class DueFilter { All, Overdue, Today, Week, Has, None }
 
 /** Sort fields available in the multi-level sort editor (web parity). */
 enum class SortField(val key: String, val label: String) {
@@ -44,24 +45,6 @@ enum class SortField(val key: String, val label: String) {
     companion object {
         fun fromKey(key: String): SortField? = entries.firstOrNull { it.key == key }
     }
-}
-
-/** Client-side board filter (web KanbanBoard filters). Empty = show everything. */
-data class BoardFilter(
-    val query: String = "",
-    val priorities: Set<Int> = emptySet(),
-    val tagIds: Set<String> = emptySet(),
-    val assigneeIds: Set<String> = emptySet(),
-    // Status = board column ids (timeline-only facet; lets you hide e.g. «done»).
-    val statuses: Set<String> = emptySet(),
-    // Milestone ids to show; "__none__" matches milestone-less tasks (deep-link from
-    // the «Этапы» screen sets a single id). Empty = no milestone filter.
-    val milestoneIds: Set<String> = emptySet(),
-    val due: DueFilter = DueFilter.All,
-) {
-    val isActive: Boolean
-        get() = query.isNotBlank() || priorities.isNotEmpty() || tagIds.isNotEmpty() ||
-            assigneeIds.isNotEmpty() || statuses.isNotEmpty() || milestoneIds.isNotEmpty() || due != DueFilter.All
 }
 
 private val TagPalette = listOf(
@@ -190,6 +173,33 @@ data class BoardUiState(
         return sizeAllows && fieldOn(key)
     }
 
+    /** Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
+     *  task has no `created_by`, so matching its author against a Tessera person goes
+     *  through this map (see util `matchesAuthor`). */
+    val glLoginByUserId: Map<String, String>
+        get() = gitlabMembers.mapNotNull { g ->
+            g.tesseraUserId?.takeIf { g.glUsername.isNotBlank() }?.let { it to g.glUsername }
+        }.toMap()
+
+    /** Whole-board filter pass (tasks + subtasks together, see util `filterBoardTasks`).
+     *  Computed once per state instance — [applyFilterSort] runs per column/lane. */
+    private val filteredBoard: website.msdnna.tessera.util.FilteredBoard by lazy {
+        if (!filter.isActive) {
+            website.msdnna.tessera.util.FilteredBoard(
+                visibleIds = tasks.mapTo(mutableSetOf()) { it.id },
+                subtasksByParent = subtasks.groupBy { it.parentId.orEmpty() },
+            )
+        } else {
+            filterBoardTasks(
+                tasks = tasks,
+                subtasksByParent = subtasks.groupBy { it.parentId.orEmpty() },
+                filter = filter,
+                clock = FilterClock.now(),
+                glLoginByUserId = glLoginByUserId,
+            )
+        }
+    }
+
     /** Full column list, drag-position source — NOT filtered (DnD needs every card). */
     fun tasksIn(columnId: String): List<Task> =
         tasks.filter { it.columnId == columnId }.sortedBy { it.position }
@@ -199,32 +209,9 @@ data class BoardUiState(
 
     /** Applies the active [filter] then the multi-level [sortLevels]. Used by every view. */
     fun applyFilterSort(list: List<Task>): List<Task> {
-        val today = dateKey(0)
-        val weekEnd = dateKey(DAYS_IN_WEEK)
-        val filtered = list.filter { t ->
-            val q = filter.query.trim().lowercase()
-            val matchesQuery = q.isEmpty() || t.title.lowercase().contains(q) ||
-                t.number?.let { "#$it".contains(q) } == true
-            val matchesPriority = filter.priorities.isEmpty() || t.priority in filter.priorities
-            val matchesTags = filter.tagIds.isEmpty() || t.tagIds.any { it in filter.tagIds }
-            val matchesAssignees = filter.assigneeIds.isEmpty() ||
-                t.assigneeIds.any { it in filter.assigneeIds } ||
-                t.gitlabAssignees.any { "gl:$it" in filter.assigneeIds }
-            val matchesStatus = filter.statuses.isEmpty() || t.columnId in filter.statuses
-            val matchesMilestone = filter.milestoneIds.isEmpty() ||
-                (t.milestoneId ?: "__none__") in filter.milestoneIds
-            val due = isoDateKey(t.dueDate)
-            val matchesDue = when (filter.due) {
-                DueFilter.All -> true
-                DueFilter.Has -> due.isNotEmpty()
-                DueFilter.None -> due.isEmpty()
-                DueFilter.Overdue -> due.isNotEmpty() && due < today && !t.isCompleted
-                DueFilter.Today -> due == today
-                DueFilter.Week -> due.isNotEmpty() && due >= today && due < weekEnd
-            }
-            matchesQuery && matchesPriority && matchesTags && matchesAssignees &&
-                matchesStatus && matchesMilestone && matchesDue
-        }
+        // Every caller passes a subset of [tasks], so membership in the precomputed
+        // visible set is the whole filter — including parents lifted by a child.
+        val filtered = if (filter.isActive) list.filter { it.id in filteredBoard.visibleIds } else list
         if (sortLevels.isEmpty()) return filtered.sortedBy { it.position }
         val comparator = sortLevels
             .map { levelComparator(it) }
@@ -264,6 +251,21 @@ data class BoardUiState(
 
     fun subtasksOf(parentId: String): List<Task> =
         subtasks.filter { it.parentId == parentId }.sortedBy { it.position }
+
+    /** Subtasks as drawn on the card: narrowed to the matching children when the parent
+     *  only stayed on the board because one of them matched (web parity). The task modal
+     *  keeps using [subtasksOf] and always lists every subtask. */
+    fun visibleSubtasksOf(parentId: String): List<Task> =
+        if (!filter.isActive) {
+            subtasksOf(parentId)
+        } else {
+            filteredBoard.subtasksByParent[parentId].orEmpty().sortedBy { it.position }
+        }
+
+    /** True when the filter hid part of this parent's children — the card shows an
+     *  «N из M» hint and locks subtask drag-reorder. */
+    fun isSubtasksNarrowed(parentId: String): Boolean =
+        filter.isActive && parentId in filteredBoard.narrowedParents
 
     fun subtaskCount(parentId: String): Int = subtasks.count { it.parentId == parentId }
 
@@ -1006,17 +1008,6 @@ class BoardViewModel(
     }
 }
 
-private const val DAYS_IN_WEEK = 7
-
-/** A local `yyyy-MM-dd` key for today + [days], matching due-date keys. */
-private fun dateKey(days: Int): String {
-    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, days) }
-    val y = cal.get(Calendar.YEAR)
-    val m = (cal.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
-    val d = cal.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
-    return "$y-$m-$d"
-}
-
 // ── view config ↔ board state (web schema; camelCase keys for cross-device) ──
 
 /** The web layout key for a view mode (Kanban = "board"). */
@@ -1062,6 +1053,7 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
     filters = BoardViewFilters(
         priorities = s.filter.priorities.toList(),
         assignees = s.filter.assigneeIds.toList(),
+        authors = s.filter.authorIds.toList(),
         tags = s.filter.tagIds.toList(),
         statuses = s.filter.statuses.toList(),
         milestones = s.filter.milestoneIds.toList(),
@@ -1097,6 +1089,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
         priorities = c.filters.priorities.toSet(),
         tagIds = c.filters.tags.toSet(),
         assigneeIds = c.filters.assignees.toSet(),
+        authorIds = c.filters.authors.toSet(),
         statuses = c.filters.statuses.toSet(),
         milestoneIds = c.filters.milestones.toSet(),
         due = dueFromWeb(c.filters.due),
