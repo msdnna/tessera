@@ -323,6 +323,10 @@ function refreshBubble() {
 function hideBubble() {
   bubble.value = null
 }
+function onTaScroll() {
+  hideBubble()
+  if (mq.value) updateSugPos()
+}
 function onBlur() {
   // Defer so a bubble-button mousedown can run before we tear it down.
   setTimeout(() => {
@@ -332,11 +336,28 @@ function onBlur() {
 }
 onBeforeUnmount(hideBubble)
 
+// Close the suggestion popup when clicking anywhere outside it (in addition to
+// Esc / Enter / Backspace). Item clicks stay inside `.md2-mentions` and are
+// handled by their own mousedown; a click in the textarea or elsewhere dismisses.
+function onDocMousedown(e) {
+  if (mq.value && !e.target.closest?.('.md2-mentions')) mq.value = null
+}
+onMounted(() => document.addEventListener('mousedown', onDocMousedown))
+onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMousedown))
+
 // ── autocomplete: @-mentions and /-commands ──
 // One popup, two sources. `mq` holds the open query: { kind, start, query },
 // where `start` is the index of the trigger character in the textarea value.
 const mq = ref(null)
 const mqIndex = ref(0)
+// Viewport position of the popup, anchored just BELOW the trigger line so it does
+// not cover the text the user is typing (like GitLab). Measured with the same
+// mirror-div technique as the selection bubble; the popup is `position: fixed`
+// (viewport coords) so it escapes the editor's clipping — inside the boxed
+// composer an `absolute` popup got cropped by the rounded border box.
+const sugPos = ref(null)
+const sugEl = ref(null) // the rendered <ul>, for post-render clamp/flip measurement
+let sugAnchorY = 0 // viewport Y of the trigger line top — used when flipping above
 const isCmd = computed(() => mq.value?.kind === 'command')
 const mentionMatches = computed(() => {
   if (!mq.value || isCmd.value) return []
@@ -359,6 +380,7 @@ function detectSuggest() {
   if (m) {
     mq.value = { kind: 'mention', start: el.selectionStart - m[2].length - 1, query: m[2] }
     mqIndex.value = 0
+    updateSugPos()
     return
   }
   // Commands trigger only at the start of a line — see detectSlashQuery.
@@ -366,9 +388,38 @@ function detectSuggest() {
   if (slash) {
     mq.value = { kind: 'command', ...slash }
     mqIndex.value = 0
+    updateSugPos()
     return
   }
   mq.value = null
+}
+// Place the popup below the trigger char's line, aligned under the trigger.
+// Coords are viewport-relative (the popup is `position: fixed`). After it renders
+// we measure its real size and clamp it into the viewport / flip it above the
+// line when there isn't room below — see clampSugPos.
+function updateSugPos() {
+  const el = ta.value
+  if (!el || !mq.value) return (sugPos.value = null)
+  const c = caretCoords(el, mq.value.start)
+  const rect = el.getBoundingClientRect()
+  const x = rect.left + c.left - el.scrollLeft
+  const y = rect.top + c.top - el.scrollTop
+  sugAnchorY = y
+  sugPos.value = { top: `${y + c.line + 6}px`, left: `${Math.max(8, x)}px` }
+  nextTick(clampSugPos)
+}
+function clampSugPos() {
+  const box = sugEl.value
+  if (!box || !sugPos.value) return
+  const r = box.getBoundingClientRect()
+  const vw = document.documentElement.clientWidth
+  const vh = document.documentElement.clientHeight
+  let left = parseFloat(sugPos.value.left)
+  let top = parseFloat(sugPos.value.top)
+  if (left + r.width > vw - 8) left = Math.max(8, vw - 8 - r.width)
+  // Not enough room below and more room above the line → flip the popup up.
+  if (top + r.height > vh - 8 && sugAnchorY - 6 - r.height > 8) top = sugAnchorY - 6 - r.height
+  sugPos.value = { top: `${top}px`, left: `${left}px` }
 }
 function pickSuggest(item) {
   if (!item || !mq.value) return
@@ -492,7 +543,7 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
             @keydown="onKeydown"
             @select="onSelect"
             @mouseup="onSelect"
-            @scroll="hideBubble"
+            @scroll="onTaScroll"
             @blur="onBlur"
             @paste="onPaste"
             @dragover.prevent
@@ -515,7 +566,12 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
             </div>
           </Transition>
 
-          <ul v-if="mq && !isCmd && mentionMatches.length" class="md2-mentions">
+          <ul
+            v-if="mq && !isCmd && mentionMatches.length"
+            ref="sugEl"
+            class="md2-mentions"
+            :style="sugPos"
+          >
             <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
               <li
                 v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)"
@@ -542,7 +598,12 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
           <!-- Quick actions: `/ключ` in mono plus the description, GitLab-style.
                Custom (dictionary) entries carry a neutral badge — they are hints
                for a human reader, the backend never executes them. -->
-          <ul v-if="mq && isCmd && commandMatches.length" class="md2-mentions md2-cmds">
+          <ul
+            v-if="mq && isCmd && commandMatches.length"
+            ref="sugEl"
+            class="md2-mentions md2-cmds"
+            :style="sugPos"
+          >
             <li
               v-for="(cmd, i) in commandMatches"
               :key="cmd.key"
@@ -757,15 +818,19 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
 }
 
 .md2-mentions {
-  position: absolute;
+  /* Fixed (viewport) positioning so the popup escapes the editor's clipping —
+     inside the boxed composer an absolute popup got cropped by the rounded box.
+     `top`/`left` come from the inline :style (computed under the caret line). */
+  position: fixed;
   left: 0;
-  bottom: 4px;
-  z-index: 30;
+  top: 0;
+  z-index: 4100;
   margin: 0;
   padding: 4px;
   list-style: none;
   min-width: 180px;
-  max-height: 200px;
+  max-width: min(360px, 90vw);
+  max-height: 240px;
   overflow-y: auto;
   background: var(--t-input-bg);
   border: 1px solid var(--t-border);
