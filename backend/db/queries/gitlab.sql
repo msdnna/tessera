@@ -25,8 +25,8 @@ DELETE FROM gitlab_credentials WHERE user_id = $1;
 INSERT INTO gitlab_integrations (
     workspace_id, name, project_path, board_id, label_rules, enabled, owner_user_id,
     sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after,
-    full_sync_interval_sec, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
+    relations_sync, full_sync_interval_sec, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
 RETURNING *;
 
 -- name: UpdateGitlabIntegration :one
@@ -34,7 +34,7 @@ UPDATE gitlab_integrations
 SET name = $2, project_path = $3, board_id = $4, label_rules = $5, enabled = $6,
     owner_user_id = $7, sync_interval_sec = $8, due_source = $9, start_source = $10,
     writeback = $11, scope = $12, closed_policy = $13, closed_after = $14,
-    full_sync_interval_sec = $15, updated_at = now()
+    relations_sync = $15, full_sync_interval_sec = $16, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

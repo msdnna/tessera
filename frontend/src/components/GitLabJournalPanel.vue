@@ -95,6 +95,9 @@ const after = computed(() => detail.value.after || null)
 const tags = computed(() => detail.value.tags || null)
 const comments = computed(() => detail.value.comments || null)
 const assignees = computed(() => detail.value.assignees || null)
+// One aggregated row per run (entity_type='relation'), so relation counts never
+// disturb the per-task created/updated counters: {added, removed, deferred}.
+const relations = computed(() => detail.value.relations || null)
 const isPush = computed(() => selectedAction.value?.direction === 'push')
 const canRetry = computed(() => isPush.value && selectedAction.value?.status === 'fail')
 
@@ -335,6 +338,20 @@ defineExpose({ reload: () => loadRuns() })
             <div class="j-fl">Исполнители (GitLab)</div>
             <div class="j-chips">
               <span v-for="a in assignees" :key="a" class="j-chip">{{ a }}</span>
+            </div>
+          </div>
+
+          <!-- relations (aggregated per run) -->
+          <div v-if="relations" class="j-sec">
+            <div class="j-fl">Связи</div>
+            <div class="j-chips">
+              <span v-if="relations.added" class="j-chip add">+{{ relations.added }} связей</span>
+              <span v-if="relations.removed" class="j-chip rem">
+                −{{ relations.removed }} удалено
+              </span>
+              <span v-if="relations.deferred" class="j-chip">
+                {{ relations.deferred }} отложено
+              </span>
             </div>
           </div>
 

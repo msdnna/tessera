@@ -98,12 +98,12 @@ func (h *API) DisconnectGitlab(c *gin.Context) {
 // gitlabIntegrationView is the JSON shape returned to the client (label_rules
 // decoded from JSONB into the typed rule engine config).
 type gitlabIntegrationView struct {
-	Configured      bool             `json:"configured"`
-	ID              *uuid.UUID       `json:"id"`
-	Name            string           `json:"name"`
-	ProjectPath     string           `json:"project_path"`
-	BoardID         *uuid.UUID       `json:"board_id"`
-	ProjectID       *uuid.UUID       `json:"project_id"` // the integration board's project (for milestone gating)
+	Configured          bool             `json:"configured"`
+	ID                  *uuid.UUID       `json:"id"`
+	Name                string           `json:"name"`
+	ProjectPath         string           `json:"project_path"`
+	BoardID             *uuid.UUID       `json:"board_id"`
+	ProjectID           *uuid.UUID       `json:"project_id"` // the integration board's project (for milestone gating)
 	Enabled             bool             `json:"enabled"`
 	SyncIntervalSec     int32            `json:"sync_interval_sec"`
 	FullSyncIntervalSec int32            `json:"full_sync_interval_sec"`
@@ -114,8 +114,8 @@ type gitlabIntegrationView struct {
 	ClosedAfter         *time.Time       `json:"closed_after"`
 	LastSyncedAt        *time.Time       `json:"last_synced_at"`
 	LastFullSyncedAt    *time.Time       `json:"last_full_synced_at"`
-	LabelRules      gitlab.Rules     `json:"label_rules"`
-	Writeback       gitlab.Writeback `json:"writeback"`
+	LabelRules          gitlab.Rules     `json:"label_rules"`
+	Writeback           gitlab.Writeback `json:"writeback"`
 	// Resolved estimation unit for the integration board (project→workspace→time),
 	// so the UI can disable the estimate write-back toggle when it isn't "time".
 	EstimationUnit string `json:"estimation_unit,omitempty"`
@@ -226,9 +226,9 @@ func (h *API) ListGitlabIntegrations(c *gin.Context) {
 
 // integrationRequest is the shared create/update body for a binding.
 type integrationRequest struct {
-	Name            string          `json:"name"`
-	ProjectPath     string          `json:"project_path" binding:"required"`
-	BoardID         uuid.UUID       `json:"board_id" binding:"required"`
+	Name                string          `json:"name"`
+	ProjectPath         string          `json:"project_path" binding:"required"`
+	BoardID             uuid.UUID       `json:"board_id" binding:"required"`
 	Enabled             bool            `json:"enabled"`
 	SyncIntervalSec     int32           `json:"sync_interval_sec"`
 	FullSyncIntervalSec *int32          `json:"full_sync_interval_sec"` // nil = absent (default 24h); 0 = disabled
@@ -237,6 +237,7 @@ type integrationRequest struct {
 	Scope               string          `json:"scope"`
 	ClosedPolicy        string          `json:"closed_policy"`
 	ClosedAfter         *time.Time      `json:"closed_after"`
+	RelationsSync       string          `json:"relations_sync"`
 	LabelRules          json.RawMessage `json:"label_rules"`
 	Writeback           json.RawMessage `json:"writeback"`
 }
@@ -276,6 +277,13 @@ func (req *integrationRequest) normalize() {
 	}
 	if req.ClosedPolicy != "period" {
 		req.ClosedAfter = nil
+	}
+	// "two_way" is reserved for pushing Tessera relations back to GitLab; until then
+	// anything unknown falls back to the pull-only default.
+	switch req.RelationsSync {
+	case "off", "pull":
+	default:
+		req.RelationsSync = "pull"
 	}
 	req.ProjectPath = strings.TrimSpace(req.ProjectPath)
 	req.Name = strings.TrimSpace(req.Name)
@@ -318,13 +326,13 @@ func (h *API) CreateGitlabIntegration(c *gin.Context) {
 	wbRaw, _ := json.Marshal(parseWriteback(req.Writeback))
 	owner := middleware.CurrentUser(c)
 	integ, err := h.q.CreateGitlabIntegration(c, db.CreateGitlabIntegrationParams{
-		WorkspaceID:     wsID,
-		Name:            req.Name,
-		ProjectPath:     req.ProjectPath,
-		BoardID:         req.BoardID,
-		LabelRules:      rulesOrDefault(req.LabelRules),
-		Enabled:         req.Enabled,
-		OwnerUserID:     &owner,
+		WorkspaceID:         wsID,
+		Name:                req.Name,
+		ProjectPath:         req.ProjectPath,
+		BoardID:             req.BoardID,
+		LabelRules:          rulesOrDefault(req.LabelRules),
+		Enabled:             req.Enabled,
+		OwnerUserID:         &owner,
 		SyncIntervalSec:     req.SyncIntervalSec,
 		FullSyncIntervalSec: *req.FullSyncIntervalSec,
 		DueSource:           req.DueSource,
@@ -333,6 +341,7 @@ func (h *API) CreateGitlabIntegration(c *gin.Context) {
 		Scope:               req.Scope,
 		ClosedPolicy:        req.ClosedPolicy,
 		ClosedAfter:         req.ClosedAfter,
+		RelationsSync:       req.RelationsSync,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
@@ -369,13 +378,13 @@ func (h *API) UpdateGitlabIntegration(c *gin.Context) {
 		owner = &u
 	}
 	updated, err := h.q.UpdateGitlabIntegration(c, db.UpdateGitlabIntegrationParams{
-		ID:              integ.ID,
-		Name:            req.Name,
-		ProjectPath:     req.ProjectPath,
-		BoardID:         req.BoardID,
-		LabelRules:      rulesOrDefault(req.LabelRules),
-		Enabled:         req.Enabled,
-		OwnerUserID:     owner,
+		ID:                  integ.ID,
+		Name:                req.Name,
+		ProjectPath:         req.ProjectPath,
+		BoardID:             req.BoardID,
+		LabelRules:          rulesOrDefault(req.LabelRules),
+		Enabled:             req.Enabled,
+		OwnerUserID:         owner,
 		SyncIntervalSec:     req.SyncIntervalSec,
 		FullSyncIntervalSec: *req.FullSyncIntervalSec,
 		DueSource:           req.DueSource,
@@ -384,6 +393,7 @@ func (h *API) UpdateGitlabIntegration(c *gin.Context) {
 		Scope:               req.Scope,
 		ClosedPolicy:        req.ClosedPolicy,
 		ClosedAfter:         req.ClosedAfter,
+		RelationsSync:       req.RelationsSync,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
@@ -852,6 +862,8 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		}
 	}
 
+	// The iids actually mirrored this run — the scope of the linked-items pass below.
+	var syncedIIDs []int64
 	for _, issue := range issues {
 		if claimed[issue.GlobalID] {
 			continue // synced as a subtask under its parent
@@ -866,6 +878,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 			continue
 		}
 		h.applyClosedPolicy(ctx, integ, issue, taskID)
+		syncedIIDs = append(syncedIIDs, issue.IID)
 		if wasCreated {
 			created++
 		} else {
@@ -887,6 +900,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 				parentID := taskID
 				if ktid, kc, kok := h.syncOneIssue(ctx, integ, kid, kres, wsID, bc.id, col.ID, &parentID, kdone, kdue, kstart, kest, actorID, col.Name, j); kok {
 					h.applyClosedPolicy(ctx, integ, kid, ktid)
+					syncedIIDs = append(syncedIIDs, kid.IID)
 					if kc {
 						created++
 					} else {
@@ -896,6 +910,10 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 			}
 		}
 	}
+
+	// Linked items last: every task the links can point at has been mirrored by now,
+	// so a link between two issues of this run resolves on the first pass.
+	h.syncRelations(ctx, integ, client, syncedIIDs, j)
 
 	if incremental {
 		_ = h.q.MarkGitlabSynced(ctx, integ.ID)

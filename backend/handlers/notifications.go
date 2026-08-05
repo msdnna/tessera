@@ -924,7 +924,6 @@ func quietWindow(enabled bool, startMin, endMin int, tz string, now time.Time) (
 	return end, true
 }
 
-
 // scanDueTasks fires due-date notifications. For each candidate task and each of
 // its participants it resolves the effective (per-task override → user default)
 // enable/lead/repeat, then uses the per-(task,user) state to fire once at the lead

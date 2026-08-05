@@ -6,14 +6,16 @@ JOIN projects p ON p.id = b.project_id
 WHERE p.workspace_id = $1 AND t.number = $2;
 
 -- name: AddTaskRelation :one
-INSERT INTO task_relations (task_id, related_task_id, kind)
-VALUES ($1, $2, $3)
+INSERT INTO task_relations (task_id, related_task_id, kind, source)
+VALUES ($1, $2, $3, 'user')
 ON CONFLICT (task_id, related_task_id, kind) DO NOTHING
 RETURNING *;
 
+-- `source` is provider-neutral (user|gitlab): the client shows where a relation came
+-- from without this query knowing anything about integrations.
 -- name: ListTaskRelations :many
 SELECT
-    r.id, r.task_id, r.related_task_id, r.kind, r.created_at,
+    r.id, r.task_id, r.related_task_id, r.kind, r.source, r.created_at,
     t.number AS related_number,
     t.title  AS related_title,
     t.board_id AS related_board_id,

@@ -327,3 +327,31 @@ describe('device', () => {
     expect(notificationsSupported()).toBe(expected)
   })
 })
+
+// ── sources.js ─────────────────────────────────────────────────────────
+describe('sources', () => {
+  it('sourceMeta labels known sources; only an integration carries an icon', async () => {
+    const { sourceMeta } = await import('@/utils/sources')
+    expect(sourceMeta('user').label).toBe('Tessera')
+    expect(sourceMeta('user').icon).toBe(null)
+    expect(sourceMeta('gitlab').label).toBe('GitLab')
+    expect(sourceMeta('gitlab').icon).toBeTruthy()
+  })
+
+  it('sourceMeta echoes an unknown source and dashes an empty one', async () => {
+    const { sourceMeta } = await import('@/utils/sources')
+    expect(sourceMeta('jira').label).toBe('jira')
+    expect(sourceMeta('jira').icon).toBe(null)
+    expect(sourceMeta(null).label).toBe('—')
+    expect(sourceMeta(undefined).label).toBe('—')
+  })
+
+  it('isExternalSource is true only for a non-user provider', async () => {
+    const { isExternalSource } = await import('@/utils/sources')
+    expect(isExternalSource('gitlab')).toBe(true)
+    expect(isExternalSource('jira')).toBe(true)
+    expect(isExternalSource('user')).toBe(false)
+    expect(isExternalSource('')).toBe(false)
+    expect(isExternalSource(null)).toBe(false)
+  })
+})
