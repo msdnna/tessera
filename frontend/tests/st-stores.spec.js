@@ -15,6 +15,9 @@ const apiMock = vi.hoisted(() => ({
     remove: vi.fn(() => Promise.resolve()),
     groups: vi.fn(() => Promise.resolve({ data: [] })),
     projects: vi.fn(() => Promise.resolve({ data: [] })),
+    commands: vi.fn(() =>
+      Promise.resolve({ data: { builtin: [], custom: [], can_manage: false } }),
+    ),
   },
   projects: { boards: vi.fn(() => Promise.resolve({ data: [] })) },
   gitlab: {
@@ -185,6 +188,40 @@ describe('workspaces store', () => {
     expect(s.groups).toHaveLength(1)
     expect(s.projects).toHaveLength(1)
     expect(localStorage.getItem('tessera_ws')).toBe('w9')
+  })
+
+  it('selectWorkspace loads the command registry and flattens it for the popup', async () => {
+    apiMock.workspaces.commands.mockResolvedValue({
+      data: {
+        builtin: [{ key: 'close', arg: 'none', description: 'Закрыть задачу' }],
+        custom: [{ key: 'approve', description: 'Одобрить план' }],
+        can_manage: true,
+      },
+    })
+    const s = useWorkspacesStore()
+    await s.selectWorkspace('w9')
+    expect(s.commands.map((c) => c.key)).toEqual(['close', 'approve'])
+    expect(s.commands[1].builtin).toBe(false)
+    expect(s.commandsCanManage).toBe(true)
+  })
+
+  it('a failing command registry leaves the popup empty, not the board broken', async () => {
+    apiMock.workspaces.commands.mockRejectedValue(new Error('boom'))
+    const s = useWorkspacesStore()
+    await s.selectWorkspace('w9')
+    expect(s.commands).toEqual([])
+    expect(s.commandsCanManage).toBe(false)
+    expect(s.currentId).toBe('w9')
+  })
+
+  it('setCustomCommands patches the dictionary and keeps the built-ins', async () => {
+    apiMock.workspaces.commands.mockResolvedValue({
+      data: { builtin: [{ key: 'close', arg: 'none', description: '' }], custom: [] },
+    })
+    const s = useWorkspacesStore()
+    await s.selectWorkspace('w9')
+    s.setCustomCommands([{ key: 'hold', description: 'Отложить' }])
+    expect(s.commands.map((c) => c.key)).toEqual(['close', 'hold'])
   })
 
   it('removeWorkspace deletes then reloads and re-picks', async () => {

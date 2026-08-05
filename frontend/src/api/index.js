@@ -169,6 +169,12 @@ export const workspaces = {
   setEstimation: (id, config) => api.put(`/workspaces/${id}/estimation`, config),
   // Every milestone across the workspace's projects with task rollups — for the «Этапы» screen.
   milestones: (id) => api.get(`/workspaces/${id}/milestones`),
+  // Quick-action registry for the editor popup: built-in commands (from the
+  // backend's quickact.Registry) + this workspace's custom dictionary, plus
+  // can_manage — the only place the frontend learns its own workspace role.
+  commands: (id) => api.get(`/workspaces/${id}/commands`),
+  // Full desired state of the custom dictionary (owner/admin only).
+  setCommands: (id, commands) => api.put(`/workspaces/${id}/commands`, { commands }),
 }
 
 export const projects = {
@@ -282,6 +288,9 @@ export const tasks = {
   events: (id) => api.get(`/tasks/${id}/events`),
   comments: (id) => api.get(`/tasks/${id}/comments`),
   addComment: (id, body, mentions) => api.post(`/tasks/${id}/comments`, { body, mentions }),
+  // Dry-run the quick actions in a draft comment — same parser as the real
+  // POST, changes nothing. Powers the «Будет применено: …» hint.
+  previewCommands: (id, body) => api.post(`/tasks/${id}/commands/preview`, { body }),
   updateComment: (commentId, body) => api.patch(`/comments/${commentId}`, { body }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),
