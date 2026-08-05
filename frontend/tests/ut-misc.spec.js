@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { humanizeError } from '@/utils/errors'
+import { makeSlug } from '@/utils/slug'
 import { initials } from '@/utils/initials'
 import { BACKLOG_SCOPE, matchesScope, milestoneKey, milestoneRange } from '@/utils/milestones'
 import { iconComponent, iconKind, sanitizeIconSvg, PROJECT_ICONS } from '@/utils/projectIcons'
@@ -11,6 +12,38 @@ import {
   absolutizeApiUrl,
   wsURL,
 } from '@/utils/serverBase'
+
+// ── slug.js ────────────────────────────────────────────────────────────
+// The address preview must match the server byte for byte, otherwise the user
+// approves one address and gets another. These are the cases from the Go side
+// (internal/slug/slug_test.go) — keep both lists in step.
+describe('makeSlug', () => {
+  it('matches the server transliteration', () => {
+    const cases = [
+      ['Общие задачи', 'obshchie-zadachi'],
+      ['Hello, World!', 'hello-world'],
+      ['  Проект №1  ', 'proekt-1'],
+      ['щётка-ёж', 'shchetka-ezh'],
+      ['объём', 'obem'], // hard/soft signs drop
+      ['---', ''],
+      ['', ''],
+      ['MiXeD Кейс 42', 'mixed-keys-42'],
+    ]
+    for (const [input, want] of cases) {
+      expect(makeSlug(input), `makeSlug(${JSON.stringify(input)})`).toBe(want)
+    }
+  })
+
+  it('collapses separator runs and trims the edges', () => {
+    expect(makeSlug('a   b___c')).toBe('a-b-c')
+    expect(makeSlug('!!!Проект!!!')).toBe('proekt')
+  })
+
+  it('treats nullish input as empty', () => {
+    expect(makeSlug(null)).toBe('')
+    expect(makeSlug(undefined)).toBe('')
+  })
+})
 
 // ── errors.js ──────────────────────────────────────────────────────────
 describe('humanizeError', () => {

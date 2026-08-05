@@ -75,7 +75,12 @@ api.interceptors.response.use(
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }
     const raw = err.response?.data?.error || err.message || 'Ошибка запроса'
-    return Promise.reject(new Error(humanizeError(raw)))
+    const wrapped = new Error(humanizeError(raw))
+    // Keep the HTTP status reachable: most callers just show `e.message`, but a
+    // few need to tell one failure from another (e.g. 409 "address taken" is
+    // fixable inline, everything else is a toast).
+    wrapped.status = err.response?.status
+    return Promise.reject(wrapped)
   },
 )
 
@@ -169,6 +174,9 @@ export const workspaces = {
 export const projects = {
   get: (id) => api.get(`/projects/${id}`),
   update: (id, data) => api.patch(`/projects/${id}`, data),
+  // Change the project's URL address (owner/admin only). Links already handed
+  // out with the old address stop resolving — warn before calling.
+  setSlug: (id, slug) => api.patch(`/projects/${id}/slug`, { slug }),
   move: (id, data) => api.patch(`/projects/${id}/move`, data),
   // Dangerous: move a project (with all boards/tasks) to another workspace.
   transfer: (id, data) => api.post(`/projects/${id}/transfer`, data),

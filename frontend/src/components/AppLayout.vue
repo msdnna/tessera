@@ -73,7 +73,23 @@ useRealtime((ev) => {
   notes.onEvent(ev, authStore.user?.id)
   conflicts.onEvent(ev)
   onProjectGone(ev)
+  onProjectSlugChanged(ev)
 })
+
+// An admin changing a project's address rewrites the URL of every board under
+// it. Anyone with such a board open is now pointing at an address that no
+// longer resolves, so move them to the same board at its new address. The
+// person who made the change already did this locally; this no-ops for them.
+function onProjectSlugChanged(ev) {
+  if (ev.type !== 'project.updated' || ev.scope !== ws.currentId) return
+  const known = ws.projects.find((p) => p.id === ev.data?.id)
+  if (!known || !ev.data?.slug || known.slug === ev.data.slug) return
+  const viewing = route.params.projectSlug === known.slug
+  ws.refresh()
+  if (viewing) {
+    router.replace({ ...route, params: { ...route.params, projectSlug: ev.data.slug } })
+  }
+}
 
 // A project leaving the current workspace (deleted, or transferred elsewhere) fires
 // `project.deleted` in that workspace. Keep every connected client's tree in sync,
