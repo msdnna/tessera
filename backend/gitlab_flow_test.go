@@ -63,6 +63,22 @@ type glMember struct {
 	Name     string
 }
 
+// graphqlLinkType translates a REST link_type (how fixtures are written) into the
+// WorkItemRelatedLinkType enum the GraphQL widget actually emits. Unknown values
+// pass through unchanged so a test can still assert they're ignored.
+func graphqlLinkType(rest string) string {
+	switch rest {
+	case "relates_to":
+		return "RELATED"
+	case "blocks":
+		return "BLOCKS"
+	case "is_blocked_by":
+		return "BLOCKED_BY"
+	default:
+		return rest
+	}
+}
+
 // glLink is one issue-link edge as GitLab reports it from the source issue's side.
 // ProjectPath empty means "same project as the fake".
 type glLink struct {
@@ -244,7 +260,10 @@ func (f *fakeGitlab) linkedItemsQuery(w http.ResponseWriter, vars map[string]any
 				path = f.projectPath
 			}
 			items = append(items, map[string]any{
-				"linkType": l.LinkType,
+				// The GraphQL widget reports the WorkItemRelatedLinkType enum
+				// (RELATED/BLOCKS/BLOCKED_BY), NOT the REST link_type the fixture is
+				// written in — mirroring real GitLab so this path exercises the enum.
+				"linkType": graphqlLinkType(l.LinkType),
 				"linkId":   fmt.Sprintf("gid://gitlab/IssueLink/%d", l.LinkID),
 				"workItem": map[string]any{
 					"iid":       strconv.FormatInt(l.DstIID, 10),
@@ -865,6 +884,55 @@ func TestGitlabSyncFlow(t *testing.T) {
 }
 
 // Issue templates: empty without a binding, served from the repo through the fake.
+// Linked items → relations, over the GraphQL widget path (the default). This is
+// the case that regressed in #2591: the widget reports the WorkItemRelatedLinkType
+// enum (RELATED / BLOCKED_BY), which RelationKind used to drop, so relations never
+// appeared on real GitLab even though the REST-shaped tests passed. The fake now
+// serves the true enum (see graphqlLinkType), so a broken RelationKind fails here.
+func TestGitlabLinkedItemsRelations(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	makeAdmin(t, c)
+	s := mkStack(t, c)
+	f := newFakeGitlab(t, "gl-rel-user", "grp-rel")
+
+	// #1 relates to #2 and is blocked by #3 — the two link types the enum bug hid
+	// (only "blocks" survived it). Fixtures are written in REST spelling; the GraphQL
+	// responder upper-cases them to RELATED / BLOCKED_BY like the real widget.
+	f.addIssue(glIssue{IID: 1, Title: "Central"})
+	f.addIssue(glIssue{IID: 2, Title: "Related one"})
+	f.addIssue(glIssue{IID: 3, Title: "Blocker"})
+	f.links = []glLink{
+		{SrcIID: 1, DstIID: 2, LinkType: "relates_to", LinkID: 501},
+		{SrcIID: 1, DstIID: 3, LinkType: "is_blocked_by", LinkID: 502},
+	}
+
+	connectGitlab(t, c, f)
+	integ := createIntegration(t, c, s.WS, s.Board, f, nil)
+	triggerSync(t, c, s.WS, integ["id"].(string))
+	waitSyncRuns(t, c, s.WS, 1)
+
+	tasks := c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	central := taskByIid(t, tasks, 1)
+	related := taskByIid(t, tasks, 2)
+	blocker := taskByIid(t, tasks, 3)
+
+	rels := c.get("/tasks/" + central["id"].(string) + "/relations").listBody(t)
+	if len(rels) != 2 {
+		t.Fatalf("relations = %d, want 2 (relates + blocked_by)\n%v", len(rels), rels)
+	}
+	byKind := map[string]map[string]any{}
+	for _, r := range rels {
+		byKind[r["kind"].(string)] = r
+	}
+	if rr := byKind["relates"]; rr == nil || rr["source"] != "gitlab" || rr["related_task_id"] != related["id"] {
+		t.Fatalf("relates relation wrong (enum RELATED dropped?): %v", byKind["relates"])
+	}
+	if br := byKind["blocked_by"]; br == nil || br["source"] != "gitlab" || br["related_task_id"] != blocker["id"] {
+		t.Fatalf("blocked_by relation wrong (enum BLOCKED_BY dropped?): %v", byKind["blocked_by"])
+	}
+}
+
 func TestGitlabIssueTemplates(t *testing.T) {
 	t.Parallel()
 	c := signup(t)

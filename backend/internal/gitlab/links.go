@@ -23,13 +23,23 @@ type LinkedItem struct {
 // types line up exactly with three of Tessera's own, so no new kinds are needed.
 // Reports false for anything unrecognised, so an unknown type is skipped rather
 // than stored as a bogus relation.
+//
+// The two GitLab APIs spell these differently, and BOTH forms reach here:
+//   - REST (/issues/:iid/links):      relates_to | blocks | is_blocked_by
+//   - GraphQL WorkItemWidgetLinkedItems (WorkItemRelatedLinkType enum):
+//     RELATED    | BLOCKS | BLOCKED_BY
+//
+// So "relates to" arrives as relates_to OR related, and "blocked by" as
+// is_blocked_by OR blocked_by. Accepting every form is what makes linked items
+// import on modern GitLab (GraphQL path) and not just on instances old enough to
+// fall back to REST — the mismatch is why relations went missing (#2591 rework).
 func RelationKind(linkType string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(linkType)) {
-	case "relates_to":
+	case "relates_to", "related", "relates":
 		return "relates", true
 	case "blocks":
 		return "blocks", true
-	case "is_blocked_by":
+	case "is_blocked_by", "blocked_by":
 		return "blocked_by", true
 	default:
 		return "", false

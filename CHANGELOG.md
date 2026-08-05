@@ -3020,6 +3020,16 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.89.1] — 2026-08-05
+- **fix(gitlab): связи из GitLab не подтягивались на современных инстансах.** GraphQL-виджет
+  `WorkItemWidgetLinkedItems` отдаёт тип связи enum'ом `WorkItemRelatedLinkType`
+  (`RELATED` / `BLOCKS` / `BLOCKED_BY`), а `RelationKind` понимал только REST-формы
+  (`relates_to` / `blocks` / `is_blocked_by`) — поэтому «relates to» и «blocked by»
+  молча отбрасывались, и во вкладке «Связи» ничего не появлялось (проходил только
+  `blocks`). Старые инстансы работали через REST-фолбэк и потому баг не проявляли.
+  Теперь `RelationKind` принимает обе формы. Добавлен e2e через GraphQL-путь с реальными
+  enum-значениями (раньше linked items вообще не покрывались flow-тестом).
+
 ### [0.89.0] — 2026-08-05
 - **feat(gitlab): импорт linked items GitLab во вкладку «Связи».** При синхронизации
   из GitLab связанные задачи (linked items: `relates_to` / `blocks` / `is_blocked_by`)

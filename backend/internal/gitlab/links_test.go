@@ -13,10 +13,16 @@ func TestRelationKind(t *testing.T) {
 		want     string
 		ok       bool
 	}{
+		// REST forms (/issues/:iid/links).
 		{"relates_to", "relates", true},
 		{"blocks", "blocks", true},
 		{"is_blocked_by", "blocked_by", true},
-		{"RELATES_TO", "relates", true}, // GraphQL enums arrive upper-cased
+		// GraphQL WorkItemRelatedLinkType enum — the actual values are RELATED /
+		// BLOCKS / BLOCKED_BY (NOT the upper-case of the REST forms). Dropping these
+		// is what made linked items vanish on modern GitLab (#2591 rework).
+		{"RELATED", "relates", true},
+		{"BLOCKS", "blocks", true},
+		{"BLOCKED_BY", "blocked_by", true},
 		{" blocks ", "blocks", true},
 		{"", "", false},
 		{"duplicates", "", false}, // GitLab has no such link type — never guess
