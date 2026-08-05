@@ -17,7 +17,7 @@ ORDER BY m.position, m.created_at;
 -- «Этапы» roadmap screen (one query, no per-project fan-out).
 -- name: ListWorkspaceMilestones :many
 SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date,
-       m.state, m.position, m.created_at, m.updated_at,
+       m.state, m.position, m.slug, m.created_at, m.updated_at,
        l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id,
        p.name AS project_name, p.slug AS project_slug,
        COALESCE((SELECT b.slug FROM boards b WHERE b.project_id = p.id
@@ -36,11 +36,24 @@ ORDER BY p.name, m.position, m.created_at;
 -- name: GetMilestone :one
 SELECT * FROM milestones WHERE id = $1;
 
+-- GetMilestoneInProjectBySlug resolves a ?milestone=<slug> board scope.
+-- name: GetMilestoneInProjectBySlug :one
+SELECT * FROM milestones WHERE project_id = $1 AND slug = $2;
+
+-- name: MilestoneSlugExistsInProject :one
+SELECT EXISTS(SELECT 1 FROM milestones WHERE project_id = $1 AND slug = $2);
+
+-- name: MilestonesMissingSlug :many
+SELECT id, project_id, title FROM milestones WHERE slug = '';
+
+-- name: SetMilestoneSlug :exec
+UPDATE milestones SET slug = $2 WHERE id = $1;
+
 -- CreateMilestone appends a milestone (position = max+1 within the project).
 -- name: CreateMilestone :one
-INSERT INTO milestones (project_id, title, description, start_date, due_date, state, position)
+INSERT INTO milestones (project_id, title, description, start_date, due_date, state, slug, position)
 VALUES (
-    $1, $2, $3, $4, $5, COALESCE(sqlc.narg('state'), 'active'),
+    $1, $2, $3, $4, $5, COALESCE(sqlc.narg('state'), 'active'), $6,
     (SELECT COALESCE(MAX(position), 0) + 1 FROM milestones WHERE project_id = $1)
 )
 RETURNING *;

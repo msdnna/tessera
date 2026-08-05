@@ -113,9 +113,9 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		GlIid: created.IID, GlProjectPath: integ.ProjectPath, GlWebUrl: created.WebURL,
 		GlUpdatedAt: nil,
 		TitleHash:   hashStr(task.Title), DescHash: hashStr(description),
-		LabelsHash:        hashStr(strings.Join(labels, "\n")),
-		GlAuthor:          authorLogin,
-		GlLastState:       state,
+		LabelsHash:  hashStr(strings.Join(labels, "\n")),
+		GlAuthor:    authorLogin,
+		GlLastState: state,
 	}); cerr != nil {
 		log.Printf("gitlab create issue: link task %s failed: %v", id, cerr)
 		fail(c)

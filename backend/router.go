@@ -119,6 +119,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// GitLab OAuth app config (admin-only).
 			protected.GET("/admin/oauth/gitlab", rh.GetOAuthConfig)
 			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)
+			// Background jobs panel (admin-only): observe/run/cancel background work.
+			protected.GET("/admin/jobs", rh.ListJobs)
+			protected.GET("/admin/jobs/:key", rh.GetJob)
+			protected.POST("/admin/jobs/:key/run", rh.RunJob)
+			protected.POST("/admin/jobs/:key/cancel", rh.CancelJob)
 
 			// Project groups & projects (nested under a workspace).
 			protected.POST("/workspaces/:id/groups", rh.CreateProjectGroup)
@@ -134,6 +139,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Tag-prefix display names (provider-neutral; GitLab modal is one editor).
 			protected.GET("/projects/:id/tag-prefixes", rh.ListTagPrefixes)
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
+			protected.GET("/workspaces/:id/tag-prefixes", rh.ListWorkspaceTagPrefixes)
 
 			// Two-level task-estimation config (workspace default + project override).
 			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)
@@ -149,6 +155,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			protected.GET("/projects/:id", rh.GetProject)
 			protected.PATCH("/projects/:id", rh.UpdateProject)
+			protected.PATCH("/projects/:id/slug", rh.SetProjectSlug)
 			protected.PATCH("/projects/:id/move", rh.MoveProject)
 			protected.POST("/projects/:id/transfer", rh.TransferProject)
 			protected.DELETE("/projects/:id", rh.DeleteProject)

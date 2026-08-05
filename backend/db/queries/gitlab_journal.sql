@@ -3,10 +3,11 @@
 
 -- CreateGitlabSyncRun opens a run row. started_at is supplied by the caller (the
 -- real moment the sync began, not the moment it was recorded), and status is
--- normally 'running' — FinishGitlabSyncRun stamps the outcome afterwards.
+-- normally 'running' — FinishGitlabSyncRun stamps the outcome afterwards. mode is
+-- 'full' | 'incremental' (how issues were fetched).
 -- name: CreateGitlabSyncRun :one
-INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, status, started_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, status, started_at, mode)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- FinishGitlabSyncRun stamps the final status, counts and finish time once a run
@@ -34,6 +35,18 @@ INSERT INTO gitlab_sync_actions (
 SELECT * FROM gitlab_sync_runs
 WHERE integration_id = $1
 ORDER BY started_at DESC
+LIMIT $2;
+
+-- ListRecentGitlabSyncRuns returns finished sync runs across every integration
+-- started within the retention window, with the integration name — the durable
+-- backing for the background-jobs panel's journal (survives a restart, unlike the
+-- in-memory registry). Instance-wide (admin panel), newest first.
+-- name: ListRecentGitlabSyncRuns :many
+SELECT r.*, COALESCE(NULLIF(i.name, ''), i.project_path) AS integration_label
+FROM gitlab_sync_runs r
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE r.finished_at IS NOT NULL AND r.started_at >= $1
+ORDER BY r.started_at DESC
 LIMIT $2;
 
 -- ListGitlabSyncRunsByWorkspace aggregates recent runs across every binding in a

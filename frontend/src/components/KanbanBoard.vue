@@ -50,10 +50,17 @@ import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { PRIORITY_LABELS } from '@/styles/tokens'
-import { tagNamespace, prefixLabel, buildTagGroups, metaPrefixesFromRules } from '@/utils/tagGroups'
+import {
+  tagNamespace,
+  prefixLabel,
+  tagParts,
+  buildTagGroups,
+  metaPrefixesFromRules,
+} from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { filterBoardTasks } from '@/utils/taskFilter'
 import { boardGitlabAuthors } from '@/utils/boardFilters'
+import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -310,15 +317,17 @@ function exitArchive() {
   router.replace({ query: q })
 }
 
-// Sprint scope (navigation overlay): ?milestone=<uuid|backlog>. Drives the
+// Sprint scope (navigation overlay): ?milestone=<slug|uuid|backlog>. Drives the
 // server-side task scope and shows a removable chip; clearing it returns the full
-// board (and de-highlights the sidebar sprint node).
+// board (and de-highlights the sidebar sprint node). The value is passed to the
+// API verbatim — the server resolves slug or UUID.
 const milestoneScope = computed(() => (route.query.milestone ? String(route.query.milestone) : ''))
 const milestoneScopeLabel = computed(() => {
   const s = milestoneScope.value
   if (!s) return ''
-  if (s === 'backlog') return 'Бэклог'
-  return milestonesMap[s]?.title || 'Этап'
+  if (s === BACKLOG_SCOPE) return 'Бэклог'
+  // Keyed by id, so a slug scope needs a scan (a project has few milestones).
+  return (milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)))?.title || 'Этап'
 })
 function clearMilestoneScope() {
   const q = { ...route.query }
@@ -431,14 +440,23 @@ const authorFilterMenu = computed(() => {
 // A single prefix-less bucket stays flat (no redundant header).
 const tagFilterMenu = computed(() => {
   const groups = buildTagGroups(tagsList.value, tagPrefixNames)
+  // Inside a group the header already names the scope, so entries show the bare
+  // value; a flat (single-bucket) menu spells the scope out instead.
+  const flatLabel = (t) => {
+    const p = tagParts(t.name, tagPrefixNames)
+    return p.hasScope ? `${p.scope}: ${p.label}` : p.label
+  }
   if (groups.length <= 1) {
-    return (groups[0]?.tags || []).map((t) => ({ label: t.name, key: `ft.${t.id}` }))
+    return (groups[0]?.tags || []).map((t) => ({ label: flatLabel(t), key: `ft.${t.id}` }))
   }
   return groups.map((g) => ({
     type: 'group',
     label: g.label,
     key: `ftg.${g.key}`,
-    children: g.tags.map((t) => ({ label: t.name, key: `ft.${t.id}` })),
+    children: g.tags.map((t) => ({
+      label: tagParts(t.name, tagPrefixNames).label,
+      key: `ft.${t.id}`,
+    })),
   }))
 })
 // Status filter = which board columns to show (timeline-only facet).
@@ -1397,7 +1415,7 @@ function scheduleReload() {
 async function load(id) {
   loading.value = true
   try {
-    // Sprint navigation: the URL ?milestone=<uuid|backlog> scopes the board to one
+    // Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
     // milestone server-side, so a huge project never loads all its cards at once.
     // ?archived=1 loads the read-only archive instead (subtasks skipped — they are
     // archived together with their parents).
@@ -1537,10 +1555,20 @@ const displayColumns = computed(() => {
     ]
   }
   return [
-    ...groupTags.value.map((t) => ({ key: t.id, name: t.name, color: t.color, tag: t })),
+    ...groupTags.value.map((t) => ({ key: t.id, name: tagColumnName(t), color: t.color, tag: t })),
     { key: '__none__', name: 'Без тегов', color: '', tag: null },
   ]
 })
+
+// Column title for a tag group: the raw "scope::value" is never shown. When the
+// board is already filtered to one prefix the scope sits in the group label
+// ("Тег · Сложность"), so only the value is left; otherwise the friendly scope
+// is spelled out ahead of it.
+function tagColumnName(t) {
+  const parts = tagParts(t.name, tagPrefixNames)
+  if (!parts.hasScope) return parts.label
+  return tagPrefix.value ? parts.label : `${parts.scope}: ${parts.label}`
+}
 
 // Estimation rollup per milestone column: Σ of the column's tasks' own estimates,
 // formatted in the project's unit. Shown only when grouped by milestone.
@@ -1858,7 +1886,7 @@ async function applyTaskQuery() {
 // clean. It *replaces* the milestone facet (rather than appending) so re-entering
 // from the screen for a different milestone doesn't accumulate the previous one
 // that the saved view had persisted.
-// Sprint scope is now driven by a persistent ?milestone=<uuid|backlog> param
+// Sprint scope is now driven by a persistent ?milestone=<slug|uuid|backlog> param
 // (server-side scoped in load(), node-highlighted in the sidebar). Nothing to do
 // here — kept as a no-op so existing call sites stay valid.
 function applyMilestoneQuery() {}
@@ -2200,6 +2228,7 @@ async function restoreFromArchive(taskId) {
         :lists="lists"
         :tags-map="tagsMap"
         :members-map="membersMap"
+        :tag-prefix-names="tagPrefixNames"
         @open="openTask"
         @changed="onChanged"
       />

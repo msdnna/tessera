@@ -19,6 +19,7 @@ import {
   TrashOutline,
   AddOutline,
   SyncOutline,
+  CloudDownloadOutline,
   LogoGitlab,
   ChevronDownOutline,
   TimeOutline,
@@ -103,6 +104,7 @@ const projectPath = ref('')
 const boardId = ref(null)
 const enabled = ref(true)
 const intervalSec = ref(0)
+const fullIntervalSec = ref(86400)
 const dueSource = ref('issue_milestone')
 const startSource = ref('created')
 // relations_sync is 'off' | 'pull' on the wire ('two_way' is reserved for pushing
@@ -213,6 +215,16 @@ const intervalOptions = [
   { label: 'Каждые 5 минут', value: 300 },
   { label: 'Каждые 15 минут', value: 900 },
   { label: 'Каждый час', value: 3600 },
+]
+// Periodic FULL sweep (catches deletes/drift an incremental pull can't see). 0 = off
+// — a full sync then runs only on the very first sync or via «Полная синхронизация».
+const fullIntervalOptions = [
+  { label: 'Не форсировать (только вручную)', value: 0 },
+  { label: 'Раз в 6 часов', value: 21600 },
+  { label: 'Раз в 12 часов', value: 43200 },
+  { label: 'Раз в сутки', value: 86400 },
+  { label: 'Раз в 2 суток', value: 172800 },
+  { label: 'Раз в неделю', value: 604800 },
 ]
 const actionOptions = [
   { label: 'Статус → колонка', value: 'status' },
@@ -380,6 +392,7 @@ async function applyBinding(data) {
     boardId.value = data.board_id || null
     enabled.value = data.enabled !== false
     intervalSec.value = data.sync_interval_sec || 0
+    fullIntervalSec.value = data.full_sync_interval_sec ?? 86400
     dueSource.value = data.due_source || 'issue_milestone'
     startSource.value = data.start_source || 'created'
     relationsSync.value = data.relations_sync !== 'off'
@@ -623,6 +636,7 @@ async function save() {
       board_id: boardId.value,
       enabled: enabled.value,
       sync_interval_sec: Number(intervalSec.value),
+      full_sync_interval_sec: Number(fullIntervalSec.value),
       due_source: dueSource.value,
       start_source: startSource.value,
       relations_sync: relationsSync.value ? 'pull' : 'off',
@@ -695,7 +709,7 @@ async function deleteBinding() {
   }
 }
 
-async function syncNow() {
+async function syncNow(mode) {
   if (!currentId.value) {
     message.warning('Сначала сохраните привязку')
     return
@@ -705,12 +719,18 @@ async function syncNow() {
     // Fire-and-forget: the backend runs the pull in the background and notifies the
     // user who started it when it ends (kind `integration_sync`). We only open the
     // journal, where the run shows up live as "выполняется" — no blocking overlay,
-    // no polling, so a multi-minute batch doesn't hold the modal hostage.
-    const { data } = await glApi.sync(props.wsId, currentId.value)
+    // no polling, so a multi-minute batch doesn't hold the modal hostage. The main
+    // button does an incremental pull; the dropdown's "Полная синхронизация" passes
+    // mode='full'.
+    const { data } = await glApi.sync(props.wsId, currentId.value, mode)
     if (data?.already_running) {
       message.warning('Синхронизация уже выполняется — дождитесь её завершения')
     } else {
-      message.info('Синхронизация запущена в фоне — уведомим по завершении')
+      message.info(
+        mode === 'full'
+          ? 'Полная синхронизация запущена в фоне — уведомим по завершении'
+          : 'Синхронизация запущена в фоне — уведомим по завершении',
+      )
     }
     openRight('journal')
     journalRef.value?.reload()
@@ -728,6 +748,13 @@ const conflictCount = ref(0)
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 const syncMenu = computed(() => [
   {
+    label: 'Полная синхронизация',
+    key: 'full',
+    icon: menuIcon(CloudDownloadOutline),
+    disabled: syncing.value,
+  },
+  { type: 'divider', key: 'd1' },
+  {
     label: 'Журнал синхронизации',
     key: 'journal',
     icon: menuIcon(TimeOutline),
@@ -742,7 +769,8 @@ const syncMenu = computed(() => [
   },
 ])
 function onSyncMenu(key) {
-  if (key === 'journal') openRight('journal')
+  if (key === 'full') syncNow('full')
+  else if (key === 'journal') openRight('journal')
   else if (key === 'conflicts') openRight('conflicts')
 }
 async function loadConflictCount() {
@@ -906,6 +934,13 @@ watch(
                 <n-text depth="3" class="lbl">Автосинхронизация</n-text>
                 <n-select v-model:value="intervalSec" :options="intervalOptions" size="small" />
 
+                <n-text depth="3" class="lbl">Полная синхронизация</n-text>
+                <n-select
+                  v-model:value="fullIntervalSec"
+                  :options="fullIntervalOptions"
+                  size="small"
+                />
+
                 <n-text depth="3" class="lbl">Источник срока</n-text>
                 <n-select v-model:value="dueSource" :options="dueSourceOptions" size="small" />
 
@@ -1017,7 +1052,7 @@ watch(
                     title="Есть неразрешённые конфликты — откройте «Конфликты» в меню рядом"
                   >
                     <n-button-group size="medium">
-                      <n-button :loading="syncing" @click="syncNow">
+                      <n-button :loading="syncing" @click="syncNow()">
                         <template #icon><n-icon :component="SyncOutline" /></template>
                         Синхронизировать
                       </n-button>

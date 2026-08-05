@@ -27,6 +27,35 @@ export function prefixLabel(ns, prefixNames = {}) {
   return prefixNames[canonPrefix(ns)] || ns.trim()
 }
 
+// Split a tag name into its namespace, bare scope and value:
+//   "effort::small" → { ns: 'effort::', scope: 'effort', label: 'small' }
+//   "T: bug"        → { ns: 'T: ',      scope: 'T',      label: 'bug'   }
+//   "urgent"        → { ns: '',         scope: '',       label: 'urgent'}
+// `scope` drops the separator (prefixLabel keeps it — that one titles a *group*,
+// this one titles a pill segment).
+export function splitTag(name) {
+  const s = name || ''
+  const ns = tagNamespace(s)
+  if (!ns) return { ns: '', scope: '', label: s.trim() }
+  return {
+    ns,
+    scope: ns.replace(/:+\s*$/, '').trim(),
+    label: s.slice(ns.length).trim(),
+  }
+}
+
+// Presentation parts of a scoped tag pill: the friendly scope name (configured
+// label if any, else the raw prefix) and the value. A tag whose scope or value
+// side is empty ("effort::", "::small") has no usable split — it falls back to
+// the whole raw name so nothing silently disappears from the UI.
+export function tagParts(name, prefixNames = {}) {
+  const { ns, scope, label } = splitTag(name)
+  if (!ns || !scope || !label) {
+    return { scope: '', label: (name || '').trim(), hasScope: false }
+  }
+  return { scope: prefixNames[canonPrefix(ns)] || scope, label, hasScope: true }
+}
+
 // Canonical prefixes governed by a non-"tag" GitLab label rule (status / priority /
 // group / board / ignore). Those labels drive a task field (or are dropped on sync),
 // so the matching tags shouldn't be manually addable in the tag picker — selecting

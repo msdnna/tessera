@@ -106,7 +106,7 @@ func (q *Queries) DeleteStaleGitlabIssueLinks(ctx context.Context, arg DeleteSta
 }
 
 const getGitlabIntegrationByWorkspaceProject = `-- name: GetGitlabIntegrationByWorkspaceProject :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, relations_sync FROM gitlab_integrations WHERE workspace_id = $1 AND project_path = $2 LIMIT 1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations WHERE workspace_id = $1 AND project_path = $2 LIMIT 1
 `
 
 type GetGitlabIntegrationByWorkspaceProjectParams struct {
@@ -139,6 +139,9 @@ func (q *Queries) GetGitlabIntegrationByWorkspaceProject(ctx context.Context, ar
 		&i.Scope,
 		&i.ClosedPolicy,
 		&i.ClosedAfter,
+		&i.LastFullSyncedAt,
+		&i.MembersSyncedAt,
+		&i.FullSyncIntervalSec,
 		&i.RelationsSync,
 	)
 	return i, err

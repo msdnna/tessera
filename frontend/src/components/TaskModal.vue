@@ -62,7 +62,7 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
+import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
 import { sourceMeta, isExternalSource } from '@/utils/sources'
 import { milestoneRange } from '@/utils/milestones'
@@ -84,6 +84,7 @@ import DueEditor from './DueEditor.vue'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
+import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import EmptyState from './EmptyState.vue'
@@ -352,7 +353,7 @@ const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 // trigger on remount, fixing the "reopen shows only 1 chip" bug).
 const tagsValEl = ref(null)
 const tagsMeasureEl = ref(null)
-const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs)
+const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs, { gap: 5 })
 const assigneeObjs = computed(() =>
   selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
 )
@@ -1364,29 +1365,35 @@ function eventText(e) {
                   <template #trigger>
                     <button ref="tagsValEl" class="val tags-val">
                       <template v-if="tagObjs.length">
-                        <span
+                        <TagPill
                           v-for="t in tagObjs.slice(0, visibleTagCount)"
                           :key="t.id"
                           class="chip"
+                          :tag="t"
+                          :prefix-names="tagPrefixNames"
+                          variant="outline"
+                        />
+                        <span
+                          v-if="visibleTagCount < tagObjs.length"
+                          class="chip chip-more"
                           :style="{
-                            border: '1px solid transparent',
-                            background: tagPillBg(t.color, true),
+                            color: tagText(tagObjs[0].color),
+                            background: softFill(tagObjs[0].color),
                           }"
-                        >
-                          <span
-                            class="accent-grad-text"
-                            :style="{ '--grad': hueGrad(tagText(t.color)) }"
-                            >{{ t.name }}</span
-                          >
-                        </span>
-                        <span v-if="visibleTagCount < tagObjs.length" class="chip chip-more"
                           >+{{ tagObjs.length - visibleTagCount }}</span
                         >
-                        <!-- invisible measurement row: natural chip widths, never sliced -->
+                        <!-- invisible measurement row: natural chip widths, never sliced.
+                             Same component + props as above, else the scope segment
+                             wouldn't be measured and the fit calculation would lie. -->
                         <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
-                          <span v-for="t in tagObjs" :key="`m${t.id}`" class="chip">{{
-                            t.name
-                          }}</span>
+                          <TagPill
+                            v-for="t in tagObjs"
+                            :key="`m${t.id}`"
+                            class="chip"
+                            :tag="t"
+                            :prefix-names="tagPrefixNames"
+                            variant="outline"
+                          />
                         </span>
                       </template>
                       <span v-else class="muted">Нет</span>
@@ -1417,7 +1424,12 @@ function eventText(e) {
                             "
                             @click="toggleTag(t.id)"
                           >
-                            {{ t.name }}
+                            <TagPill
+                              :tag="t"
+                              :prefix-names="tagPrefixNames"
+                              variant="inherit"
+                              :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
+                            />
                           </button>
                         </div>
                       </div>
@@ -1704,7 +1716,12 @@ function eventText(e) {
                         <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
                       </div>
                     </template>
-                    <TaskMiniCard :task="sub" :tags-map="tagsById" :members-map="membersById" />
+                    <TaskMiniCard
+                      :task="sub"
+                      :tags-map="tagsById"
+                      :members-map="membersById"
+                      :tag-prefix-names="tagPrefixNames"
+                    />
                   </n-popover>
                   <EmptyState
                     v-if="!(task?.subtasks || []).length"
@@ -2278,6 +2295,7 @@ function eventText(e) {
   max-width: 100%;
   overflow: hidden;
   flex-wrap: nowrap;
+  gap: 5px;
 }
 .tags-measure {
   position: absolute;

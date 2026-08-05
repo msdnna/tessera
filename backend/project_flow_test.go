@@ -176,6 +176,83 @@ func TestBoardBySlug(t *testing.T) {
 	other.expect(t, other.get("/board-by-slug?project="+pSlug+"&board="+bSlug), http.StatusForbidden)
 }
 
+// Explicit project address at creation, and changing it afterwards.
+func TestProjectSlugChoiceAndRename(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	member := signup(t)
+	ws := mkWorkspace(t, owner, "WS slug rename")
+	owner.expect(t, owner.post("/workspaces/"+ws+"/members",
+		map[string]any{"email": member.Email}), http.StatusCreated)
+
+	// A name is normalized into the address when none is given.
+	auto := owner.expect(t, owner.post("/workspaces/"+ws+"/projects",
+		map[string]any{"name": "Мой Проект!"}), http.StatusCreated)
+	if auto["slug"] != "moy-proekt" {
+		t.Fatalf("derived slug = %v, want moy-proekt", auto["slug"])
+	}
+
+	// An explicit address wins over the name.
+	p := owner.expect(t, owner.post("/workspaces/"+ws+"/projects",
+		map[string]any{"name": "Второй", "slug": "Custom Address"}), http.StatusCreated)
+	if p["slug"] != "custom-address" {
+		t.Fatalf("explicit slug = %v, want custom-address", p["slug"])
+	}
+	pID := p["id"].(string)
+
+	// Asking for a taken address is a conflict, not a silent "-2".
+	if r := owner.post("/workspaces/"+ws+"/projects",
+		map[string]any{"name": "Третий", "slug": "custom-address"}); r.Status != http.StatusConflict {
+		t.Fatalf("duplicate slug on create: status %d\n%s", r.Status, r.Body)
+	}
+	// Nothing usable after normalization → 400.
+	if r := owner.post("/workspaces/"+ws+"/projects",
+		map[string]any{"name": "Четвёртый", "slug": "!!!"}); r.Status != http.StatusBadRequest {
+		t.Fatalf("junk slug on create: status %d", r.Status)
+	}
+
+	b := owner.expect(t, owner.post("/projects/"+pID+"/boards",
+		map[string]any{"name": "Доска"}), http.StatusCreated)
+	bSlug := b["slug"].(string)
+
+	// Renaming the address: the new one resolves, the old one is gone.
+	upd := owner.expect(t, owner.patch("/projects/"+pID+"/slug",
+		map[string]any{"slug": "Новый Слаг"}), http.StatusOK)
+	if upd["slug"] != "novyy-slag" {
+		t.Fatalf("renamed slug = %v, want novyy-slag", upd["slug"])
+	}
+	owner.expect(t, owner.get("/board-by-slug?project=novyy-slag&board="+bSlug), http.StatusOK)
+	owner.expect(t, owner.get("/board-by-slug?project=custom-address&board="+bSlug), http.StatusNotFound)
+
+	// Re-submitting the current address is a no-op, not a conflict with itself.
+	same := owner.expect(t, owner.patch("/projects/"+pID+"/slug",
+		map[string]any{"slug": "novyy-slag"}), http.StatusOK)
+	if same["slug"] != "novyy-slag" {
+		t.Fatalf("no-op rename changed slug: %v", same["slug"])
+	}
+	// Someone else's address stays theirs.
+	if r := owner.patch("/projects/"+pID+"/slug",
+		map[string]any{"slug": "moy-proekt"}); r.Status != http.StatusConflict {
+		t.Fatalf("rename onto taken slug: status %d", r.Status)
+	}
+	if r := owner.patch("/projects/"+pID+"/slug",
+		map[string]any{"slug": "---"}); r.Status != http.StatusBadRequest {
+		t.Fatalf("junk slug on rename: status %d", r.Status)
+	}
+
+	// A plain member may create projects but not choose or change addresses.
+	member.expect(t, member.post("/workspaces/"+ws+"/projects",
+		map[string]any{"name": "От участника"}), http.StatusCreated)
+	if r := member.post("/workspaces/"+ws+"/projects",
+		map[string]any{"name": "С адресом", "slug": "member-choice"}); r.Status != http.StatusForbidden {
+		t.Fatalf("member picking a slug: status %d", r.Status)
+	}
+	if r := member.patch("/projects/"+pID+"/slug",
+		map[string]any{"slug": "member-rename"}); r.Status != http.StatusForbidden {
+		t.Fatalf("member renaming a slug: status %d", r.Status)
+	}
+}
+
 // Estimation config: workspace default + project override, reflected in GETs.
 func TestEstimationConfig(t *testing.T) {
 	t.Parallel()

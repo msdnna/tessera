@@ -60,6 +60,7 @@ type syncJournal struct {
 	integrationID uuid.UUID
 	kind          string // "pull" | "push"
 	trigger       string // "manual" | "auto"
+	mode          string // "full" | "incremental" (pull only; push runs are always "full")
 	actorID       *uuid.UUID
 	startedAt     time.Time  // when the run actually began, stamped into the run row
 	runID         *uuid.UUID // set once the run row exists (beginJournal or flushJournal)
@@ -73,7 +74,7 @@ type syncJournal struct {
 
 func (h *API) newJournal(integrationID uuid.UUID, kind, trigger string, actorID *uuid.UUID) *syncJournal {
 	return &syncJournal{
-		integrationID: integrationID, kind: kind, trigger: trigger, actorID: actorID,
+		integrationID: integrationID, kind: kind, trigger: trigger, mode: "full", actorID: actorID,
 		startedAt: time.Now(), status: "ok",
 	}
 }
@@ -89,7 +90,7 @@ func (h *API) beginJournal(ctx context.Context, j *syncJournal) {
 	}
 	run, err := h.q.CreateGitlabSyncRun(ctx, db.CreateGitlabSyncRunParams{
 		IntegrationID: j.integrationID, Kind: j.kind, Trigger: j.trigger, ActorID: j.actorID,
-		Status: "running", StartedAt: j.startedAt,
+		Status: "running", StartedAt: j.startedAt, Mode: j.mode,
 	})
 	if err != nil {
 		log.Printf("gitlab journal: begin run failed: %v", err)

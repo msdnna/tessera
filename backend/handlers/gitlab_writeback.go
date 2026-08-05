@@ -36,11 +36,12 @@ const (
 // touches the enqueue-ing handlers, so this is just belt-and-suspenders.
 //
 // payload is kind-specific:
-//   state    {"state": "closed"|"opened"}
-//   priority {"priority": <int>}
-//   comment  {"comment_id": "<uuid>", "body": "<text>"}
-//   labels   {} — worker reconciles the task's current tags vs. the issue's labels
-//   due      {} — worker pushes the task's current due_date (empty clears it)
+//
+//	state    {"state": "closed"|"opened"}
+//	priority {"priority": <int>}
+//	comment  {"comment_id": "<uuid>", "body": "<text>"}
+//	labels   {} — worker reconciles the task's current tags vs. the issue's labels
+//	due      {} — worker pushes the task's current due_date (empty clears it)
 func (h *API) enqueueWriteback(ctx context.Context, taskID, actorID uuid.UUID, kind string, payload map[string]any) {
 	if actorID == uuid.Nil {
 		return
@@ -166,12 +167,14 @@ func triggerFromKind(kind string, payload map[string]any) gitlab.BindTrigger {
 func (h *API) RunGitlabWriteBackWorker(ctx context.Context) {
 	ticker := time.NewTicker(writebackWorkerTick)
 	defer ticker.Stop()
+	h.tick(jobGitlabWriteback, "выгрузка изменений в GitLab")
 	h.drainWritebacks(ctx) // drain the backlog at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			h.tick(jobGitlabWriteback, "выгрузка изменений в GitLab")
 			h.drainWritebacks(ctx)
 		}
 	}
@@ -793,8 +796,8 @@ func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, in
 	if _, uerr := h.q.UpdateGitlabLink(ctx, db.UpdateGitlabLinkParams{
 		TaskID: taskID, GlIid: issue.IID, GlWebUrl: issue.WebURL, GlUpdatedAt: issue.UpdatedAt,
 		TitleHash: hashStr(issue.Title), DescHash: hashStr(issue.Description),
-		LabelsHash:        hashStr(labelsKey(issue.Labels)),
-		GlAuthor:          issue.AuthorLogin, GlAuthorName: issue.AuthorName,
+		LabelsHash: hashStr(labelsKey(issue.Labels)),
+		GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
 		GlAuthorAvatarUrl: h.avatarProxyURL(integ.WorkspaceID, issue.AuthorAvatar),
 		GlLastState:       issue.State,
 	}); uerr != nil {

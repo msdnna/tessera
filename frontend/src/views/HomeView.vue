@@ -8,23 +8,23 @@ import EmptyState from '@/components/EmptyState.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad, readableHue } from '@/utils/gradient'
-import { useThemeStore } from '@/stores/theme'
+import { hueGrad } from '@/utils/gradient'
 import { useDateLocale } from '@/composables/useDateLocale'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import TagPill from '@/components/TagPill.vue'
 
 const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
-const theme = useThemeStore()
-// Tag text colour clamped legible for the active theme (web parity).
-const tagText = (hex) => readableHue(hex || '#888', theme.isDark)
 
 const loading = ref(false)
 const summary = ref(null)
 const allTasks = ref([])
 const tagsMap = reactive({})
+// Canonical tag prefix → friendly scope name, workspace-wide (Home spans projects,
+// so it can't reuse a single project's prefix map).
+const prefixNames = reactive({})
 const membersMap = reactive({})
 const filter = ref('me') // me | all | overdue | today | week | completed
 
@@ -73,16 +73,19 @@ async function load() {
   if (!wsId) return
   loading.value = true
   try {
-    const [s, t, tg, mem] = await Promise.all([
+    const [s, t, tg, pfx, mem] = await Promise.all([
       wsApi.summary(wsId),
       wsApi.tasks(wsId),
       wsApi.tags(wsId),
+      wsApi.tagPrefixes(wsId),
       wsApi.members(wsId),
     ])
     summary.value = s.data
     allTasks.value = t.data || []
     for (const k of Object.keys(tagsMap)) delete tagsMap[k]
     for (const x of tg.data || []) tagsMap[x.id] = x
+    for (const k of Object.keys(prefixNames)) delete prefixNames[k]
+    for (const p of pfx.data || []) prefixNames[p.prefix] = p.label
     for (const k of Object.keys(membersMap)) delete membersMap[k]
     for (const m of mem.data || []) membersMap[m.user_id] = m
   } finally {
@@ -140,17 +143,14 @@ watch(() => wsStore.currentId, load)
           />
           <span class="t-num">#{{ t.number }}</span>
           <span class="t-title">{{ t.title }}</span>
-          <span
-            v-for="tid in (t.tag_ids || []).slice(0, 3)"
+          <TagPill
+            v-for="tid in (t.tag_ids || []).filter((id) => tagsMap[id]).slice(0, 3)"
             :key="tid"
             class="t-tag"
-            :style="{
-              background: (tagsMap[tid]?.color || '#888') + '22',
-              color: tagText(tagsMap[tid]?.color),
-            }"
-          >
-            {{ tagsMap[tid]?.name }}
-          </span>
+            :tag="tagsMap[tid]"
+            :prefix-names="prefixNames"
+            variant="ghost"
+          />
           <span class="t-loc">{{ t.project_name }} / {{ t.board_name }}</span>
           <span class="t-col" :style="{ '--c': t.column_color || 'var(--t-text3)' }">
             {{ t.column_name }}

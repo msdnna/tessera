@@ -11,7 +11,7 @@ import {
 } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { milestoneRange } from '@/utils/milestones'
+import { milestoneKey, milestoneRange } from '@/utils/milestones'
 import { formatEstimate } from '@/utils/estimation'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
@@ -87,7 +87,7 @@ function openBoard(g, m) {
   if (!g.boardSlug || !g.projectSlug) return
   router.push({
     path: `/project/${g.projectSlug}/board/${g.boardSlug}`,
-    query: { milestone: m.id },
+    query: { milestone: milestoneKey(m) },
   })
 }
 

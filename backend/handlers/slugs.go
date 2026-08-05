@@ -26,6 +26,15 @@ func (h *API) uniqueProjectSlug(ctx context.Context, name string) string {
 	}
 }
 
+// normalizeProjectSlug turns a user-supplied project address into its canonical
+// form. Unlike uniqueProjectSlug it never invents a suffix: when the caller asks
+// for a specific address, a collision is an error to report, not to paper over.
+// Returns ok=false when nothing usable remains after normalization.
+func normalizeProjectSlug(raw string) (string, bool) {
+	s := slug.Make(raw)
+	return s, s != ""
+}
+
 // uniqueBoardSlug returns a slug unique within the project for a board name,
 // appending -2, -3, … on collision. Falls back to "board" when empty.
 func (h *API) uniqueBoardSlug(ctx context.Context, projectID uuid.UUID, name string) string {
@@ -38,6 +47,27 @@ func (h *API) uniqueBoardSlug(ctx context.Context, projectID uuid.UUID, name str
 		ex, err := h.q.BoardSlugExistsInProject(ctx, db.BoardSlugExistsInProjectParams{ProjectID: projectID, Slug: s})
 		if err != nil || !ex {
 			return s
+		}
+		s = base + "-" + strconv.Itoa(i)
+	}
+}
+
+// uniqueMilestoneSlug returns a slug unique within the project for a milestone
+// title. "backlog" is treated as taken: ?milestone=backlog is the reserved
+// no-milestone scope, so a milestone actually named «Backlog» becomes backlog-2
+// rather than shadowing it.
+func (h *API) uniqueMilestoneSlug(ctx context.Context, projectID uuid.UUID, title string) string {
+	base := slug.Make(title)
+	if base == "" {
+		base = "milestone"
+	}
+	s := base
+	for i := 2; ; i++ {
+		if s != backlogScope {
+			ex, err := h.q.MilestoneSlugExistsInProject(ctx, db.MilestoneSlugExistsInProjectParams{ProjectID: projectID, Slug: s})
+			if err != nil || !ex {
+				return s
+			}
 		}
 		s = base + "-" + strconv.Itoa(i)
 	}
@@ -74,5 +104,9 @@ func (h *API) BackfillSlugs(ctx context.Context) {
 	notes, _ := h.q.NotesMissingSlug(ctx)
 	for _, n := range notes {
 		_ = h.q.SetNoteSlug(ctx, db.SetNoteSlugParams{ID: n.ID, Slug: h.uniqueNoteSlug(ctx, n.WorkspaceID, n.Title)})
+	}
+	milestones, _ := h.q.MilestonesMissingSlug(ctx)
+	for _, m := range milestones {
+		_ = h.q.SetMilestoneSlug(ctx, db.SetMilestoneSlugParams{ID: m.ID, Slug: h.uniqueMilestoneSlug(ctx, m.ProjectID, m.Title)})
 	}
 }
