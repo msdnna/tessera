@@ -265,6 +265,66 @@ func TestMilestoneFlow(t *testing.T) {
 	}
 }
 
+// Milestone slugs: assigned on create, unique per project, "backlog" reserved,
+// and usable in ?milestone= alongside the legacy UUID form.
+func TestMilestoneSlugScope(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+
+	create := func(title string) map[string]any {
+		return c.expect(t, c.post("/projects/"+s.Project+"/milestones",
+			map[string]any{"title": title}), http.StatusCreated)
+	}
+
+	first := create("Спринт 1")
+	if first["slug"] != "sprint-1" {
+		t.Fatalf("slug = %v, want sprint-1", first["slug"])
+	}
+	// Same title in the same project → suffixed, not a unique-index error.
+	if dup := create("Спринт 1"); dup["slug"] != "sprint-1-2" {
+		t.Fatalf("duplicate slug = %v, want sprint-1-2", dup["slug"])
+	}
+	// "backlog" is the reserved no-milestone scope, so it never gets handed out.
+	if bl := create("Backlog"); bl["slug"] != "backlog-2" {
+		t.Fatalf("Backlog slug = %v, want backlog-2", bl["slug"])
+	}
+
+	// The workspace roadmap list needs the slug too — it builds the deep link.
+	wsList := c.get("/workspaces/" + s.WS + "/milestones").listBody(t)
+	if len(wsList) == 0 || wsList[0]["slug"] == nil || wsList[0]["slug"] == "" {
+		t.Fatalf("workspace milestones carry no slug: %v", wsList)
+	}
+
+	msID := first["id"].(string)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Задача спринта")
+	c.expect(t, c.post("/tasks/"+task["id"].(string)+"/milestone",
+		map[string]any{"milestone_id": msID}), http.StatusNoContent)
+	// A second task stays in the backlog, so scope filtering is observable.
+	mkTask(t, c, s.Board, s.col(t, 0), "Задача без этапа")
+
+	scoped := func(scope string) []map[string]any {
+		return c.get("/boards/" + s.Board + "/tasks?milestone=" + scope).listBody(t)
+	}
+	bySlug, byUUID := scoped("sprint-1"), scoped(msID)
+	if len(bySlug) != 1 || len(byUUID) != 1 || bySlug[0]["id"] != byUUID[0]["id"] {
+		t.Fatalf("slug scope %v != uuid scope %v", bySlug, byUUID)
+	}
+	if got := len(scoped(backlogScopeTest)); got != 1 {
+		t.Fatalf("backlog scope = %d tasks, want 1", got)
+	}
+	// A stale/broken link shows an empty scoped board, not the whole board.
+	if got := len(scoped("net-takogo-etapa")); got != 0 {
+		t.Fatalf("unknown slug scope = %d tasks, want 0", got)
+	}
+	if got := len(c.get("/boards/" + s.Board + "/tasks").listBody(t)); got != 2 {
+		t.Fatalf("unscoped board = %d tasks, want 2", got)
+	}
+}
+
+// backlogScopeTest mirrors handlers.backlogScope (different package under test).
+const backlogScopeTest = "backlog"
+
 // Search: task titles/descriptions + note titles/bodies within a workspace.
 func TestWorkspaceSearch(t *testing.T) {
 	t.Parallel()

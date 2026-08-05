@@ -89,6 +89,7 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 		m, cerr := h.q.CreateMilestone(ctx, db.CreateMilestoneParams{
 			ProjectID: projectID, Title: issue.MilestoneTitle, Description: "",
 			StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: &st,
+			Slug: h.uniqueMilestoneSlug(ctx, projectID, issue.MilestoneTitle),
 		})
 		if cerr != nil {
 			return uuid.Nil, cerr

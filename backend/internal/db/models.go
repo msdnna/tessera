@@ -202,6 +202,7 @@ type Milestone struct {
 	Position    float64    `json:"position"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	Slug        string     `json:"slug"`
 }
 
 type Note struct {

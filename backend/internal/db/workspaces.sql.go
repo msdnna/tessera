@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -185,22 +186,33 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 }
 
 const listWorkspacesForUser = `-- name: ListWorkspacesForUser :many
-SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation
+SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation, m.role AS my_role
 FROM workspaces w
 JOIN memberships m ON m.workspace_id = w.id
 WHERE m.user_id = $1
 ORDER BY w.created_at
 `
 
-func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) ([]Workspace, error) {
+type ListWorkspacesForUserRow struct {
+	ID          uuid.UUID        `json:"id"`
+	Name        string           `json:"name"`
+	OwnerID     uuid.UUID        `json:"owner_id"`
+	CreatedAt   time.Time        `json:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
+	TaskCounter int64            `json:"task_counter"`
+	Estimation  *json.RawMessage `json:"estimation"`
+	MyRole      string           `json:"my_role"`
+}
+
+func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) ([]ListWorkspacesForUserRow, error) {
 	rows, err := q.db.Query(ctx, listWorkspacesForUser, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Workspace
+	var items []ListWorkspacesForUserRow
 	for rows.Next() {
-		var i Workspace
+		var i ListWorkspacesForUserRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -209,6 +221,7 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 			&i.UpdatedAt,
 			&i.TaskCounter,
 			&i.Estimation,
+			&i.MyRole,
 		); err != nil {
 			return nil, err
 		}

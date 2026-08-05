@@ -121,17 +121,16 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	// Optional milestone scope (sprint navigation): ?milestone=<uuid> shows one
-	// sprint, ?milestone=backlog shows tasks with no milestone, absent shows all.
+	// Optional milestone scope (sprint navigation): ?milestone=<slug|uuid> shows
+	// one sprint, ?milestone=backlog shows tasks with no milestone, absent shows
+	// all. UUIDs stay accepted so links shared before slugs existed keep working.
 	// ?archived=1 returns the board's archived tasks (read-only archive view).
 	params := db.ListBoardTasksWithMetaParams{BoardID: boardID, Archived: c.Query("archived") == "1"}
 	switch m := c.Query("milestone"); {
-	case m == "backlog":
+	case m == backlogScope:
 		params.Backlog = true
 	case m != "":
-		if mid, perr := uuid.Parse(m); perr == nil {
-			params.MilestoneID = &mid
-		}
+		params.MilestoneID = h.resolveMilestoneScope(c, boardID, m)
 	}
 	tasks, err := h.q.ListBoardTasksWithMeta(c, params)
 	if err != nil {
@@ -139,6 +138,30 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, tasks)
+}
+
+// backlogScope is the reserved ?milestone= value for "tasks with no milestone".
+const backlogScope = "backlog"
+
+// resolveMilestoneScope turns a ?milestone= value into a milestone id: a UUID is
+// used as-is, anything else is looked up as a slug within the board's project.
+// An unresolvable value yields uuid.Nil — a broken or stale link then shows an
+// empty scoped board, exactly as a deleted milestone's UUID does today, instead
+// of silently falling back to the unfiltered board.
+func (h *API) resolveMilestoneScope(c *gin.Context, boardID uuid.UUID, scope string) *uuid.UUID {
+	if mid, err := uuid.Parse(scope); err == nil {
+		return &mid
+	}
+	unmatched := uuid.Nil
+	projectID, err := h.q.ProjectIDForBoard(c, boardID)
+	if err != nil {
+		return &unmatched
+	}
+	m, err := h.q.GetMilestoneInProjectBySlug(c, db.GetMilestoneInProjectBySlugParams{ProjectID: projectID, Slug: scope})
+	if err != nil {
+		return &unmatched
+	}
+	return &m.ID
 }
 
 // ListBoardSubtasks returns every subtask on a board (with meta) so the kanban
