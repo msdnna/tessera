@@ -1,13 +1,18 @@
 package website.msdnna.tessera.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -16,36 +21,130 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
+import website.msdnna.tessera.util.tagParts
 
-/** Small coloured tag chip, matching the web kanban card chips. The fill keeps
- *  the raw tag colour (subtle), but the text is clamped to a legible lightness
- *  for the active theme so dark/light tag colours stay readable (web parity).
- *  Long names truncate; [big] renders a roomier badge (tag manager). */
+/**
+ * Small coloured tag chip, matching the web kanban card chips ([TagPill.vue] parity).
+ *
+ * A **scoped** tag ("type::feature") renders as a GitLab-EE two-segment pill —
+ * «scope value» — where the scope side is a filled accent segment with contrast
+ * text and the value side a soft tint with accent (gradient) text, the whole pill
+ * bordered in the tag's hue. An unscoped tag keeps the plain single-segment chip.
+ * The raw "type::feature" is never shown: the scope segment carries the configured
+ * friendly prefix name (or the bare prefix under the «короткие префиксы» device
+ * preference, or when no name is configured).
+ *
+ * The fill keeps the raw tag colour (subtle), but text is clamped to a legible
+ * lightness for the active theme so dark/light tag colours stay readable.
+ * Long names truncate; [big] renders a roomier badge (tag manager).
+ * [showScope] false drops the scope segment — for a picker already grouped by
+ * scope, where it would just repeat the section header.
+ */
 @Composable
-fun TagChip(name: String, color: String, modifier: Modifier = Modifier, big: Boolean = false) {
+fun TagChip(
+    name: String,
+    color: String,
+    modifier: Modifier = Modifier,
+    big: Boolean = false,
+    prefixNames: Map<String, String> = emptyMap(),
+    showScope: Boolean = true,
+) {
     val base = parseHexColor(color, Tessera.colors.text3)
     val text = readableHue(base, Tessera.colors.isDark)
+    val parts = tagParts(name, prefixNames, Tessera.rawTagPrefix)
+    val shape = RoundedCornerShape(if (big) 6.dp else 4.dp)
+    val fontSize = if (big) 13.sp else 11.sp
+    if (parts.hasScope && showScope) {
+        // Two segments inside one clipped, bordered box: the colour change *is* the
+        // divider, so there's no doubled hairline where the segments meet (the web
+        // drops the shared border edge for the same reason).
+        Row(
+            modifier.clip(shape).border(1.dp, text, shape),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                parts.scope,
+                fontSize = fontSize,
+                fontWeight = FontWeight.SemiBold,
+                color = onColor(base),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.background(accentGradient(base))
+                    .padding(horizontal = if (big) 8.dp else 5.dp, vertical = if (big) 3.dp else 1.dp),
+            )
+            Text(
+                parts.label,
+                fontSize = fontSize,
+                fontWeight = FontWeight.Medium,
+                style = TextStyle(brush = accentGradient(text)),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.background(accentGradient(base.copy(alpha = 0.18f)))
+                    .padding(horizontal = if (big) 9.dp else 6.dp, vertical = if (big) 3.dp else 1.dp),
+            )
+        }
+        return
+    }
     Box(
         modifier
-            .clip(RoundedCornerShape(if (big) 6.dp else 4.dp))
+            .clip(shape)
             .background(accentGradient(base.copy(alpha = 0.18f)))
             .padding(horizontal = if (big) 9.dp else 6.dp, vertical = if (big) 4.dp else 2.dp),
     ) {
         Text(
-            name,
-            fontSize = if (big) 13.sp else 11.sp,
+            parts.label,
+            fontSize = fontSize,
             fontWeight = FontWeight.Medium,
             style = TextStyle(brush = accentGradient(text)),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * A tag name as flat text for a call site that owns the box and the colour — the
+ * tag pickers, whose chips flip fill/text on selection (web `TagPill variant="inherit"`).
+ * A scoped tag reads «scope │ value» with the scope muted behind a hairline
+ * divider in the current colour; [showScope] false leaves the value alone.
+ */
+@Composable
+fun TagLabel(
+    name: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    prefixNames: Map<String, String> = emptyMap(),
+    showScope: Boolean = true,
+    fontSize: TextUnit = 12.sp,
+) {
+    val parts = tagParts(name, prefixNames, Tessera.rawTagPrefix)
+    if (!parts.hasScope || !showScope) {
+        Text(parts.label, color = color, fontSize = fontSize, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
+        return
+    }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            parts.scope,
+            color = color.copy(alpha = 0.78f),
+            fontSize = fontSize,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Box(
+            Modifier.padding(horizontal = 5.dp).width(1.dp).height(fontSize.value.dp)
+                .background(color.copy(alpha = 0.42f)),
+        )
+        Text(parts.label, color = color, fontSize = fontSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -56,12 +155,15 @@ fun TagChip(name: String, color: String, modifier: Modifier = Modifier, big: Boo
  * aren't drawn). Fills its slot exactly and places chips flush-left.
  */
 @Composable
-fun TagChipsFit(tags: List<Tag>, modifier: Modifier = Modifier) {
+fun TagChipsFit(tags: List<Tag>, modifier: Modifier = Modifier, prefixNames: Map<String, String> = emptyMap()) {
+    // The "+N" takes the leading tag's hue (web parity) — a neutral grey chip read
+    // as a separate, unrelated pill next to the coloured ones.
+    val tint = tags.firstOrNull()?.color
     Layout(
         modifier = modifier,
         content = {
-            tags.forEach { TagChip(it.name, it.color) }
-            for (n in 1..tags.size) OverflowChip(n)
+            tags.forEach { TagChip(it.name, it.color, prefixNames = prefixNames) }
+            for (n in 1..tags.size) OverflowChip(n, tint)
         },
     ) { measurables, constraints ->
         val n = tags.size
@@ -97,14 +199,29 @@ fun TagChipsFit(tags: List<Tag>, modifier: Modifier = Modifier) {
     }
 }
 
-/** The "+N" overflow chip for tags that didn't fit (neutral fill). */
+/** The "+N" overflow chip for tags that didn't fit. Takes the leading tag's hue
+ *  ([tint], a hex colour) so it reads as part of the same tag run; falls back to
+ *  the neutral surface when there is no tag to borrow a colour from. */
 @Composable
-private fun OverflowChip(n: Int) {
+private fun OverflowChip(n: Int, tint: String? = null) {
     val c = Tessera.colors
+    val base = tint?.let { parseHexColor(it, c.text3) }
+    // Neutral greys stay flat — only the tinted variant carries the accent gradient.
+    val fill = if (base != null) {
+        Modifier.background(accentGradient(base.copy(alpha = 0.18f)))
+    } else {
+        Modifier.background(c.surfaceAlt)
+    }
     Box(
-        Modifier.clip(RoundedCornerShape(4.dp)).background(c.surfaceAlt).padding(horizontal = 7.dp, vertical = 2.dp),
+        Modifier.clip(RoundedCornerShape(4.dp)).then(fill).padding(horizontal = 7.dp, vertical = 2.dp),
     ) {
-        Text("+$n", fontSize = 11.sp, color = c.text3, fontWeight = FontWeight.Medium, maxLines = 1)
+        Text(
+            "+$n",
+            fontSize = 11.sp,
+            color = if (base != null) readableHue(base, c.isDark) else c.text3,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
     }
 }
 

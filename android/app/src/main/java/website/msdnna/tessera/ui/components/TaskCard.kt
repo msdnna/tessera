@@ -78,6 +78,7 @@ import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.tagParts
 
 /**
  * A kanban card mirroring the web `TaskCard`: completion check, title, #number,
@@ -794,7 +795,11 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
         if (stacked) {
             // Icon → coloured chips (as many as fit) + "+N" for the overflow (web parity).
             StackField(Ion.PRICETAG, c.text2, onClick = { menu = true }) {
-                if (taskTags.isEmpty()) StackValue("") else TagChipsFit(taskTags, Modifier.fillMaxWidth())
+                if (taskTags.isEmpty()) {
+                    StackValue("")
+                } else {
+                    TagChipsFit(taskTags, Modifier.fillMaxWidth(), state.prefixNames)
+                }
             }
         } else if (taskTags.isEmpty()) {
             Pill(onClick = { menu = true }) { IonIcon(Ion.PRICETAG, size = 13.dp, tint = c.text3) }
@@ -809,21 +814,43 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
             val extra = taskTags.drop(1).take(2).map { lerp(c.cardSurface, parseHexColor(it.color, c.text3), 0.35f) }
             val pillShape = RoundedCornerShape(RadiusSm)
             val frontBg = lerp(c.cardSurface, base, 0.18f)
-            Row(
-                Modifier
-                    .then(if (extra.isNotEmpty()) Modifier.padding(end = (extra.size * 5).dp) else Modifier)
-                    .stackedTagShadow(extra, RadiusSm)
-                    .clip(pillShape)
-                    .background(frontBg)
-                    .border(1.dp, base.copy(alpha = 0.45f), pillShape)
-                    .clickableNoRipple { menu = true }
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(first.name, fontSize = 11.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(tagText)))
-                if (taskTags.size > 1) {
-                    Spacer(Modifier.width(4.dp))
-                    Text("+${taskTags.size - 1}", fontSize = 10.sp, style = TextStyle(brush = accentGradient(tagText.copy(alpha = 0.85f))))
+            val stack = if (extra.isNotEmpty()) Modifier.padding(end = (extra.size * 5).dp) else Modifier
+            if (tagParts(first.name, state.prefixNames, Tessera.rawTagPrefix).hasScope) {
+                // Scoped tag: the pill's box belongs to the two-segment [TagChip], so
+                // this row keeps only the stack cascade (moved onto the chip) and the
+                // "+N", which steps right past the peeking layers (web parity).
+                Row(
+                    Modifier.clickableNoRipple { menu = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TagChip(
+                        first.name,
+                        first.color,
+                        modifier = stack.stackedTagShadow(extra, RadiusSm),
+                        prefixNames = state.prefixNames,
+                    )
+                    if (taskTags.size > 1) {
+                        Spacer(Modifier.width(4.dp))
+                        Text("+${taskTags.size - 1}", fontSize = 10.sp, style = TextStyle(brush = accentGradient(tagText.copy(alpha = 0.85f))))
+                    }
+                }
+            } else {
+                Row(
+                    Modifier
+                        .then(stack)
+                        .stackedTagShadow(extra, RadiusSm)
+                        .clip(pillShape)
+                        .background(frontBg)
+                        .border(1.dp, base.copy(alpha = 0.45f), pillShape)
+                        .clickableNoRipple { menu = true }
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(first.name, fontSize = 11.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(tagText)))
+                    if (taskTags.size > 1) {
+                        Spacer(Modifier.width(4.dp))
+                        Text("+${taskTags.size - 1}", fontSize = 10.sp, style = TextStyle(brush = accentGradient(tagText.copy(alpha = 0.85f))))
+                    }
                 }
             }
         }
@@ -856,7 +883,14 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
                                 .clickableNoRipple { vm.toggleTag(task, tag.id) }
                                 .padding(horizontal = 9.dp, vertical = 3.dp),
                         ) {
-                            Text(tag.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp)
+                            // The scope is already the section header when grouping is
+                            // visible — repeating it in every chip is just noise.
+                            TagLabel(
+                                tag.name,
+                                color = if (on) onColor(base) else readableHue(base, c.isDark),
+                                prefixNames = state.prefixNames,
+                                showScope = !headers,
+                            )
                         }
                     }
                 }

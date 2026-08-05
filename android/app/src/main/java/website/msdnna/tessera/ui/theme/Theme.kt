@@ -20,9 +20,20 @@ import androidx.compose.ui.unit.sp
  */
 val LocalTessera = staticCompositionLocalOf { LightPalette }
 
+/**
+ * Device preference for scoped tag pills: "name" shows the configured friendly
+ * prefix label, "raw" the bare prefix ("T"). Web parity: `tessera_tag_prefix_mode`.
+ * Lives next to the palette so any chip can read it without prop-drilling.
+ */
+val LocalTagPrefixMode = staticCompositionLocalOf { "name" }
+
 object Tessera {
     val colors: TesseraColors
         @Composable get() = LocalTessera.current
+
+    /** True when scoped tag pills should show the bare prefix instead of its name. */
+    val rawTagPrefix: Boolean
+        @Composable get() = LocalTagPrefixMode.current == "raw"
 }
 
 /** Shared corner radius — matches the web's `borderRadius: 8px`. */
@@ -44,6 +55,7 @@ private val TesseraTypography = Typography(
 fun TesseraTheme(
     accent: AccentTheme = AccentThemes[0],
     isDark: Boolean = isSystemInDarkTheme(),
+    tagPrefixMode: String = "name",
     content: @Composable () -> Unit,
 ) {
     val base = if (isDark) DarkPalette else LightPalette
@@ -75,7 +87,7 @@ fun TesseraTheme(
         outlineVariant = colors.border,
     )
 
-    CompositionLocalProvider(LocalTessera provides colors) {
+    CompositionLocalProvider(LocalTessera provides colors, LocalTagPrefixMode provides tagPrefixMode) {
         MaterialTheme(colorScheme = m3, typography = TesseraTypography, content = content)
     }
 }

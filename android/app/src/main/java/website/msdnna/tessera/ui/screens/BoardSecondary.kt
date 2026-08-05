@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,12 +35,16 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TConfirmPopover
+import website.msdnna.tessera.ui.components.TSwitch
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TagChip
 import website.msdnna.tessera.ui.components.TesseraLoader
@@ -97,6 +102,8 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
                             TagRow(
                                 tag,
                                 vm,
+                                prefixNames = state.prefixNames,
+                                showScope = !showHeaders,
                                 editing = editingId == tag.id,
                                 onEdit = { editingId = tag.id },
                                 onDone = { editingId = null },
@@ -104,6 +111,7 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
                         }
                     }
                 }
+                if (groups.any { it.key.isNotEmpty() }) PrefixModeRow()
             }
 
             Spacer(Modifier.height(14.dp))
@@ -133,6 +141,33 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
 }
 
 /**
+ * «Короткие префиксы» — a device preference (not synced) that swaps the friendly
+ * prefix name on scoped tag pills for the bare prefix ("T"), for people who want
+ * shorter chips. Web parity: `tessera_tag_prefix_mode` in localStorage. Only shown
+ * when the workspace actually has scoped tags.
+ */
+@Composable
+private fun PrefixModeRow() {
+    val c = Tessera.colors
+    val scope = rememberCoroutineScope()
+    val mode by AppContainer.prefs.tagPrefixMode.collectAsStateWithLifecycle(initialValue = "name")
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Короткие префиксы", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Сырой префикс («T») вместо понятного имени", color = c.text3, fontSize = 11.sp)
+        }
+        Spacer(Modifier.width(8.dp))
+        TSwitch(
+            checked = mode == "raw",
+            onCheckedChange = { on -> scope.launch { AppContainer.prefs.setTagPrefixMode(if (on) "raw" else "name") } },
+        )
+    }
+}
+
+/**
  * One tag row (web `TagManager` parity): the tag's own badge, tapped to open an
  * inline editor (rename field + colour swatches); a trash button stays alongside.
  * [editing] is owned by the modal so a tap outside the row cancels it.
@@ -141,6 +176,8 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
 private fun TagRow(
     tag: website.msdnna.tessera.data.model.Tag,
     vm: BoardViewModel,
+    prefixNames: Map<String, String>,
+    showScope: Boolean,
     editing: Boolean,
     onEdit: () -> Unit,
     onDone: () -> Unit,
@@ -169,7 +206,14 @@ private fun TagRow(
                 )
             } else {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    TagChip(name = tag.name, color = tag.color, big = true, modifier = Modifier.clickableNoRipple { onEdit() })
+                    TagChip(
+                        name = tag.name,
+                        color = tag.color,
+                        big = true,
+                        modifier = Modifier.clickableNoRipple { onEdit() },
+                        prefixNames = prefixNames,
+                        showScope = showScope,
+                    )
                 }
             }
             Box {

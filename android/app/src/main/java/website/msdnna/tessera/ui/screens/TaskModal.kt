@@ -89,6 +89,7 @@ import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TabItem
 import website.msdnna.tessera.ui.components.TagChipsFit
+import website.msdnna.tessera.ui.components.TagLabel
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.UnderlineTabs
 import website.msdnna.tessera.ui.components.clickableNoRipple
@@ -980,7 +981,7 @@ private fun TagsValue(
             } else {
                 // As many whole chips as fit on one line; the rest collapse to a "+N"
                 // chip (web tag-fit) — no clipping a tag name.
-                TagChipsFit(chosen, Modifier.fillMaxWidth())
+                TagChipsFit(chosen, Modifier.fillMaxWidth(), prefixNames)
             }
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
@@ -1012,7 +1013,16 @@ private fun TagsValue(
                                 .background(accentGradient(if (on) base else base.copy(alpha = 0.14f)))
                                 .clickableNoRipple { onToggle(t.id) }
                                 .padding(horizontal = 9.dp, vertical = 3.dp),
-                        ) { Text(t.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp) }
+                        ) {
+                            // Scope already titles the section when headers show — the
+                            // chip repeats only the value then (web `scopeMode="hide"`).
+                            TagLabel(
+                                t.name,
+                                color = if (on) onColor(base) else readableHue(base, c.isDark),
+                                prefixNames = prefixNames,
+                                showScope = !headers,
+                            )
+                        }
                     }
                 }
             }
