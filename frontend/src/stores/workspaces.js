@@ -23,6 +23,11 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
 
   const current = computed(() => list.value.find((w) => w.id === currentId.value) || null)
 
+  // The caller's role in the current workspace, as reported by the workspace
+  // list. Only for hiding controls the server would refuse anyway — every
+  // manager-only action is still gated server-side (requireManager).
+  const canManage = computed(() => ['owner', 'admin'].includes(current.value?.my_role))
+
   async function loadWorkspaces() {
     const res = await wsApi.list()
     list.value = res.data || []
@@ -148,6 +153,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     list,
     currentId,
     current,
+    canManage,
     groups,
     projects,
     boardsByProject,

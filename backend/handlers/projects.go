@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -163,11 +164,37 @@ func (h *API) CreateProject(c *gin.Context) {
 		Name    string     `json:"name" binding:"required"`
 		Color   string     `json:"color"`
 		Icon    string     `json:"icon"`
+		Slug    string     `json:"slug"`
 		GroupID *uuid.UUID `json:"group_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	// An explicit address is a request for that exact address: reject a taken
+	// one instead of silently handing back "name-2". Empty means "derive it".
+	projectSlug := ""
+	if strings.TrimSpace(req.Slug) != "" {
+		if !h.requireManager(c, wsID) {
+			return
+		}
+		s, ok := normalizeProjectSlug(req.Slug)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid slug"})
+			return
+		}
+		taken, err := h.q.ProjectSlugExists(c, s)
+		if err != nil {
+			fail(c)
+			return
+		}
+		if taken {
+			c.JSON(http.StatusConflict, gin.H{"error": "slug already taken"})
+			return
+		}
+		projectSlug = s
+	} else {
+		projectSlug = h.uniqueProjectSlug(c, req.Name)
 	}
 	maxPos, err := h.q.MaxProjectPosition(c, wsID)
 	if err != nil {
@@ -176,7 +203,7 @@ func (h *API) CreateProject(c *gin.Context) {
 	}
 	p, err := h.q.CreateProject(c, db.CreateProjectParams{
 		WorkspaceID: wsID, GroupID: req.GroupID, Name: req.Name,
-		Color: req.Color, Icon: req.Icon, Slug: h.uniqueProjectSlug(c, req.Name),
+		Color: req.Color, Icon: req.Icon, Slug: projectSlug,
 		Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
@@ -233,6 +260,58 @@ func (h *API) UpdateProject(c *gin.Context) {
 		GroupID: req.GroupID, IconMode: normIconMode(req.IconMode),
 		TreeMode: normTreeMode(req.TreeMode),
 	})
+	if err != nil {
+		fail(c)
+		return
+	}
+	h.broadcast(p.WorkspaceID, "project.updated", updated)
+	c.JSON(http.StatusOK, updated)
+}
+
+// SetProjectSlug changes a project's URL address. Owners and admins only —
+// links already handed out stop resolving, so it isn't a per-member edit.
+// The slug is deliberately left out of UpdateProject: recolouring a project
+// shouldn't silently rewrite its URL.
+func (h *API) SetProjectSlug(c *gin.Context) {
+	p, ok := h.loadProject(c)
+	if !ok {
+		return
+	}
+	if !h.requireManager(c, p.WorkspaceID) {
+		return
+	}
+	var req struct {
+		Slug string `json:"slug" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	s, ok := normalizeProjectSlug(req.Slug)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid slug"})
+		return
+	}
+	if s == p.Slug {
+		c.JSON(http.StatusOK, p)
+		return
+	}
+	// Slugs are unique across the whole instance, so the holder may sit in a
+	// workspace the caller can't see — keep the message free of specifics.
+	taken, err := h.q.ProjectSlugExists(c, s)
+	if err != nil {
+		fail(c)
+		return
+	}
+	if taken {
+		c.JSON(http.StatusConflict, gin.H{"error": "slug already taken"})
+		return
+	}
+	if err := h.q.SetProjectSlug(c, db.SetProjectSlugParams{ID: p.ID, Slug: s}); err != nil {
+		fail(c)
+		return
+	}
+	updated, err := h.q.GetProject(c, p.ID)
 	if err != nil {
 		fail(c)
 		return

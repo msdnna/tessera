@@ -60,6 +60,7 @@ import {
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { filterBoardTasks } from '@/utils/taskFilter'
 import { boardGitlabAuthors } from '@/utils/boardFilters'
+import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -316,15 +317,17 @@ function exitArchive() {
   router.replace({ query: q })
 }
 
-// Sprint scope (navigation overlay): ?milestone=<uuid|backlog>. Drives the
+// Sprint scope (navigation overlay): ?milestone=<slug|uuid|backlog>. Drives the
 // server-side task scope and shows a removable chip; clearing it returns the full
-// board (and de-highlights the sidebar sprint node).
+// board (and de-highlights the sidebar sprint node). The value is passed to the
+// API verbatim — the server resolves slug or UUID.
 const milestoneScope = computed(() => (route.query.milestone ? String(route.query.milestone) : ''))
 const milestoneScopeLabel = computed(() => {
   const s = milestoneScope.value
   if (!s) return ''
-  if (s === 'backlog') return 'Бэклог'
-  return milestonesMap[s]?.title || 'Этап'
+  if (s === BACKLOG_SCOPE) return 'Бэклог'
+  // Keyed by id, so a slug scope needs a scan (a project has few milestones).
+  return (milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)))?.title || 'Этап'
 })
 function clearMilestoneScope() {
   const q = { ...route.query }
@@ -1412,7 +1415,7 @@ function scheduleReload() {
 async function load(id) {
   loading.value = true
   try {
-    // Sprint navigation: the URL ?milestone=<uuid|backlog> scopes the board to one
+    // Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
     // milestone server-side, so a huge project never loads all its cards at once.
     // ?archived=1 loads the read-only archive instead (subtasks skipped — they are
     // archived together with their parents).
@@ -1885,7 +1888,7 @@ async function applyTaskQuery() {
 // clean. It *replaces* the milestone facet (rather than appending) so re-entering
 // from the screen for a different milestone doesn't accumulate the previous one
 // that the saved view had persisted.
-// Sprint scope is now driven by a persistent ?milestone=<uuid|backlog> param
+// Sprint scope is now driven by a persistent ?milestone=<slug|uuid|backlog> param
 // (server-side scoped in load(), node-highlighted in the sidebar). Nothing to do
 // here — kept as a no-op so existing call sites stay valid.
 function applyMilestoneQuery() {}

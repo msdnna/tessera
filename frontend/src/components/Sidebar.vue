@@ -32,6 +32,7 @@ import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import ConfirmByName from './ConfirmByName.vue'
+import ProjectCreateModal from './ProjectCreateModal.vue'
 import {
   moveSidebarGroup,
   moveSidebarProject,
@@ -100,13 +101,17 @@ async function onWorkspaceChange(id) {
   await store.selectWorkspace(id)
 }
 
+// Projects are named in a modal (the name decides the URL address, which is
+// assigned once); groups keep the create-then-rename flow.
+const projModalShow = ref(false)
+
 async function addAtRoot(key) {
+  if (key === 'project') {
+    projModalShow.value = true
+    return
+  }
   try {
-    if (key === 'project') {
-      await wsApi.createProject(store.currentId, { name: 'Проект' })
-    } else {
-      await wsApi.createGroup(store.currentId, { name: 'Группа' })
-    }
+    await wsApi.createGroup(store.currentId, { name: 'Группа' })
     await store.refresh()
   } catch (e) {
     message.error(e.message)
@@ -330,6 +335,8 @@ async function deleteWorkspace() {
     </n-scrollbar>
 
     <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
+
+    <ProjectCreateModal v-model:show="projModalShow" @created="store.refresh()" />
 
     <n-modal v-model:show="wsModal.show">
       <n-card title="Новое пространство" style="max-width: 360px" role="dialog">

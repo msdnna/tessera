@@ -37,6 +37,7 @@ import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
 import ProjectRow from './ProjectRow.vue'
+import ProjectCreateModal from './ProjectCreateModal.vue'
 import ProjectIcon from './ProjectIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
 
@@ -143,19 +144,27 @@ const addOptions = [
   { label: 'Группа', key: 'group', icon: menuIcon(FolderOutline) },
 ]
 
+// Projects are named in a modal (see ProjectCreateModal); groups keep the
+// create-then-rename flow.
+const projModalShow = ref(false)
+
 async function onAdd(key) {
-  const wsId = store.currentId
+  if (key === 'project') {
+    projModalShow.value = true
+    return
+  }
   try {
-    if (key === 'project') {
-      await wsApi.createProject(wsId, { name: 'Проект', group_id: props.group.id })
-    } else {
-      await wsApi.createGroup(wsId, { name: 'Группа', parent_id: props.group.id })
-    }
+    await wsApi.createGroup(store.currentId, { name: 'Группа', parent_id: props.group.id })
     await store.refresh()
     expanded.value = true
   } catch (e) {
     message.error(e.message)
   }
+}
+
+async function onProjectCreated() {
+  await store.refresh()
+  expanded.value = true
 }
 
 function startRename() {
@@ -316,6 +325,12 @@ async function commitRename() {
       :options="ctxOptions"
       @select="onCtxSelect"
       @clickoutside="ctxShow = false"
+    />
+
+    <ProjectCreateModal
+      v-model:show="projModalShow"
+      :group-id="group.id"
+      @created="onProjectCreated"
     />
 
     <n-modal v-model:show="confirmDelete">

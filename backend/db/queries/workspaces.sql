@@ -10,7 +10,7 @@ SELECT * FROM workspaces WHERE id = $1;
 UPDATE workspaces SET task_counter = task_counter + 1 WHERE id = $1 RETURNING task_counter;
 
 -- name: ListWorkspacesForUser :many
-SELECT w.*
+SELECT w.*, m.role AS my_role
 FROM workspaces w
 JOIN memberships m ON m.workspace_id = w.id
 WHERE m.user_id = $1

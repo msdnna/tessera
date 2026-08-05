@@ -75,7 +75,12 @@ api.interceptors.response.use(
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }
     const raw = err.response?.data?.error || err.message || 'Ошибка запроса'
-    return Promise.reject(new Error(humanizeError(raw)))
+    const wrapped = new Error(humanizeError(raw))
+    // Keep the HTTP status reachable: most callers just show `e.message`, but a
+    // few need to tell one failure from another (e.g. 409 "address taken" is
+    // fixable inline, everything else is a toast).
+    wrapped.status = err.response?.status
+    return Promise.reject(wrapped)
   },
 )
 
@@ -124,8 +129,10 @@ export const admin = {
   setOAuth: (data) => api.put('/admin/oauth/gitlab', data),
   // Background jobs panel (instance-level).
   jobs: () => api.get('/admin/jobs', { skipLoader: true }),
-  runJob: (key) => api.post(`/admin/jobs/${encodeURIComponent(key)}/run`, null, { skipLoader: true }),
-  cancelJob: (key) => api.post(`/admin/jobs/${encodeURIComponent(key)}/cancel`, null, { skipLoader: true }),
+  runJob: (key) =>
+    api.post(`/admin/jobs/${encodeURIComponent(key)}/run`, null, { skipLoader: true }),
+  cancelJob: (key) =>
+    api.post(`/admin/jobs/${encodeURIComponent(key)}/cancel`, null, { skipLoader: true }),
 }
 
 export const workspaces = {
@@ -173,6 +180,9 @@ export const workspaces = {
 export const projects = {
   get: (id) => api.get(`/projects/${id}`),
   update: (id, data) => api.patch(`/projects/${id}`, data),
+  // Change the project's URL address (owner/admin only). Links already handed
+  // out with the old address stop resolving — warn before calling.
+  setSlug: (id, slug) => api.patch(`/projects/${id}/slug`, { slug }),
   move: (id, data) => api.patch(`/projects/${id}/move`, data),
   // Dangerous: move a project (with all boards/tasks) to another workspace.
   transfer: (id, data) => api.post(`/projects/${id}/transfer`, data),
@@ -215,7 +225,7 @@ export const boards = {
   remove: (id) => api.delete(`/boards/${id}`),
   columns: (id) => api.get(`/boards/${id}/columns`),
   createColumn: (id, data) => api.post(`/boards/${id}/columns`, data),
-  // params.milestone: '<uuid>' scopes to one sprint, 'backlog' to no-sprint tasks.
+  // params.milestone: '<slug|uuid>' scopes to one sprint, 'backlog' to no-sprint tasks.
   tasks: (id, params) => api.get(`/boards/${id}/tasks`, params ? { params } : undefined),
   subtasks: (id) => api.get(`/boards/${id}/subtasks`),
   archive: (id) => api.get(`/boards/${id}/archive`),
