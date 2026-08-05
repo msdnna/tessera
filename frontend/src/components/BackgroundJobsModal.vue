@@ -20,9 +20,7 @@ const now = ref(Date.now())
 let pollTimer = null
 let tickTimer = null
 
-const selected = computed(
-  () => jobs.value.find((j) => j.key === selectedKey.value) || null,
-)
+const selected = computed(() => jobs.value.find((j) => j.key === selectedKey.value) || null)
 
 async function load() {
   loading.value = true
@@ -119,7 +117,11 @@ function nextRunText(j) {
 }
 function fmtTime(iso) {
   return iso
-    ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    ? new Date(iso).toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
     : '—'
 }
 const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
@@ -174,7 +176,9 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
             <div class="bj-row-sub">
               <span class="bj-dot" :style="{ background: statusMeta(j.status).color }" />
               {{ statusMeta(j.status).label }}
-              <span v-if="isWorker(j) && nextRunText(j)" class="bj-op">· след. запуск {{ nextRunText(j) }}</span>
+              <span v-if="isWorker(j) && nextRunText(j)" class="bj-op"
+                >· след. запуск {{ nextRunText(j) }}</span
+              >
               <span v-else-if="j.current_op" class="bj-op">· {{ j.current_op }}</span>
             </div>
           </div>
@@ -234,12 +238,7 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
           </dl>
 
           <div class="bj-actions">
-            <n-button
-              v-if="canRun(selected)"
-              size="small"
-              secondary
-              @click="runJob(selected.key)"
-            >
+            <n-button v-if="canRun(selected)" size="small" secondary @click="runJob(selected.key)">
               <template #icon><n-icon :component="PlayOutline" /></template>
               Запустить сейчас
             </n-button>

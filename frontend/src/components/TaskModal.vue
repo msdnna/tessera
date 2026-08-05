@@ -5,7 +5,6 @@ import {
   NModal,
   NCard,
   NInput,
-  NSwitch,
   NButton,
   NSpace,
   NPopover,
@@ -26,6 +25,7 @@ import {
   PricetagOutline,
   CheckmarkDoneOutline,
   CheckmarkOutline,
+  PlayForwardOutline,
   CheckmarkCircle,
   EllipseOutline,
   ArchiveOutline,
@@ -65,6 +65,14 @@ import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
+import {
+  sortedColumns,
+  columnById,
+  nextColumn,
+  doneTarget,
+  siblingNeighbors,
+  columnTail,
+} from '@/utils/status'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
 import { isTauri } from '@/utils/serverBase'
@@ -331,7 +339,8 @@ const startTs = ref(null)
 const estimate = ref(null) // canonical estimate value | null
 const estInput = ref('') // free-text buffer for the estimate popover
 const recurrence = ref(null) // full recurrence rule object | null
-const columns = ref([]) // board columns, for the recurrence trigger/target selects
+const columns = ref([]) // board columns: status row, subtask rows, recurrence selects
+const doneColumnId = ref(null) // boards.done_column_id — target of the «close» check
 const completed = ref(false)
 const selectedTags = ref([])
 const selectedAssignees = ref([])
@@ -484,18 +493,41 @@ async function loadDetail() {
         boardsApi.columns(t.board_id),
       ])
       parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
-      columns.value = (cols.data || []).map((c) => ({ id: c.id, name: c.name }))
+      // color/position feed the status chip and the "shift right" button; the
+      // recurrence selects only ever needed id/name.
+      columns.value = (cols.data || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        position: c.position,
+      }))
+      doneColumnId.value = b.data.done_column_id || null
     } catch {
       boardInfo.value = null
       parentCandidates.value = []
       columns.value = []
+      doneColumnId.value = null
     }
+    loadSiblings(t)
     loadExtras()
     if (!t.gitlab) loadGlTemplates()
   } catch (e) {
     message.error(e.message)
   } finally {
     loading.value = false
+  }
+}
+
+// The parent's subtask list (ordered) is only needed when this task is itself a
+// subtask and only to pin its position on a move — best-effort, one extra GET.
+async function loadSiblings(t) {
+  siblings.value = []
+  if (!t?.parent_id) return
+  try {
+    const res = await tasksApi.get(t.parent_id)
+    siblings.value = res.data?.subtasks || []
+  } catch {
+    siblings.value = []
   }
 }
 
@@ -621,6 +653,74 @@ async function onDueNotify(patch) {
 function setCompleted(v) {
   completed.value = v
   applyMeta()
+}
+
+// ── status (board column) ───────────────────────────────────
+// The «Выполнено» switch became a status row: [● Колонка ▾] [▸ shift] [✓ close].
+// Moving is PATCH /tasks/:id/move — which already works for subtasks — so the
+// backend does the completed/reopened bookkeeping and the journal entry for us.
+const sortedCols = computed(() => sortedColumns(columns.value))
+const currentColumn = computed(() => columnById(columns.value, task.value?.column_id))
+const nextCol = computed(() => nextColumn(columns.value, task.value?.column_id))
+const doneCol = computed(() => doneTarget(columns.value, doneColumnId.value))
+const moving = ref(false)
+// Sibling order of this task inside its parent (empty for a top-level task) —
+// only used to keep the position stable on a move.
+const siblings = ref([])
+
+// Neighbours for PATCH move: a subtask holds its place in the parent's list, a
+// top-level task appends to the end of the target column. Either way we send
+// something — bare nulls mean positionBetween(nil, nil) = 65536, which drops the
+// card near the top of the column and quietly reshuffles it.
+function moveNeighbors(columnId) {
+  if (task.value?.parent_id) return siblingNeighbors(siblings.value, task.value.id)
+  return { before_id: columnTail(parentCandidates.value, columnId, task.value?.id), after_id: null }
+}
+
+async function moveToColumn(columnId) {
+  if (props.readonly || !task.value || !columnId || columnId === task.value.column_id) return
+  moving.value = true
+  try {
+    await tasksApi.move(task.value.id, {
+      column_id: columnId,
+      ...moveNeighbors(columnId),
+    })
+    // A recurring task completed by entering the done column bounces straight
+    // back out with an advanced due date — re-read instead of trusting the click.
+    await loadDetail()
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    moving.value = false
+  }
+}
+
+// The checkmark closes the task through the board's done column (so the backend
+// stamps completed_at and logs it); boards without one fall back to the flag.
+async function closeTask() {
+  if (props.readonly || !task.value) return
+  if (completed.value) return setCompleted(false)
+  if (doneCol.value && doneCol.value.id !== task.value.column_id)
+    return moveToColumn(doneCol.value.id)
+  setCompleted(true)
+}
+
+const columnOf = (t) => columnById(columns.value, t?.column_id)
+
+// Same move for a subtask row, without opening it.
+async function moveSubtask(sub, columnId) {
+  if (props.readonly || !sub || columnId === sub.column_id) return
+  try {
+    await tasksApi.move(sub.id, {
+      column_id: columnId,
+      ...siblingNeighbors(task.value?.subtasks || [], sub.id),
+    })
+    await loadDetail()
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 
 // ── Create a GitLab issue from this task ──
@@ -1490,12 +1590,64 @@ function eventText(e) {
                 </n-popover>
               </div>
 
-              <!-- completed -->
+              <!-- status: current column · shift right · close.
+                   Works the same for a task and for a subtask — one modal. -->
               <div class="prow">
                 <span class="plabel"
-                  ><n-icon :component="CheckmarkDoneOutline" :size="15" /> Выполнено</span
+                  ><n-icon :component="CheckmarkDoneOutline" :size="15" /> Статус</span
                 >
-                <n-switch :value="completed" @update:value="setCompleted" />
+                <div class="status-row">
+                  <n-popover
+                    v-if="!readonly && sortedCols.length"
+                    trigger="click"
+                    placement="bottom-start"
+                  >
+                    <template #trigger>
+                      <button class="val col-chip" :disabled="moving">
+                        <span class="col-dot" :style="{ background: currentColumn?.color }" />
+                        <span>{{ currentColumn?.name || 'Без колонки' }}</span>
+                      </button>
+                    </template>
+                    <div class="menu pmenu">
+                      <div
+                        v-for="c in sortedCols"
+                        :key="c.id"
+                        class="menu-item col-item"
+                        :class="{ cur: c.id === task?.column_id }"
+                        @click="moveToColumn(c.id)"
+                      >
+                        <span class="col-dot" :style="{ background: c.color }" />
+                        <span>{{ c.name }}</span>
+                      </div>
+                    </div>
+                  </n-popover>
+                  <span v-else class="val col-chip static">
+                    <span class="col-dot" :style="{ background: currentColumn?.color }" />
+                    <span>{{ currentColumn?.name || '—' }}</span>
+                  </span>
+                  <template v-if="!readonly">
+                    <button
+                      class="st-btn"
+                      :disabled="!nextCol || moving"
+                      :title="nextCol ? `Сдвинуть → «${nextCol.name}»` : 'Это последняя колонка'"
+                      @click="moveToColumn(nextCol?.id)"
+                    >
+                      <n-icon :component="PlayForwardOutline" :size="15" />
+                    </button>
+                    <button
+                      class="st-btn"
+                      :class="{ on: completed }"
+                      :disabled="moving"
+                      :title="completed ? 'Вернуть в работу' : 'Выполнено'"
+                      @click="closeTask"
+                    >
+                      <n-icon
+                        :component="completed ? CheckmarkCircle : EllipseOutline"
+                        :size="15"
+                      />
+                    </button>
+                  </template>
+                </div>
               </div>
 
               <!-- parent -->
@@ -1772,6 +1924,31 @@ function eventText(e) {
                         />
                         <span class="sub-title">{{ sub.title }}</span>
                         <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
+                        <!-- status of the subtask, changeable without opening it -->
+                        <n-popover
+                          v-if="!readonly && sortedCols.length"
+                          trigger="click"
+                          placement="bottom-end"
+                        >
+                          <template #trigger>
+                            <span class="col-chip mini" @click.stop>
+                              <span class="col-dot" :style="{ background: columnOf(sub)?.color }" />
+                              <span>{{ columnOf(sub)?.name || '—' }}</span>
+                            </span>
+                          </template>
+                          <div class="menu pmenu" @click.stop>
+                            <div
+                              v-for="c in sortedCols"
+                              :key="c.id"
+                              class="menu-item col-item"
+                              :class="{ cur: c.id === sub.column_id }"
+                              @click="moveSubtask(sub, c.id)"
+                            >
+                              <span class="col-dot" :style="{ background: c.color }" />
+                              <span>{{ c.name }}</span>
+                            </div>
+                          </div>
+                        </n-popover>
                       </div>
                     </template>
                     <TaskMiniCard
@@ -1779,6 +1956,7 @@ function eventText(e) {
                       :tags-map="tagsById"
                       :members-map="membersById"
                       :tag-prefix-names="tagPrefixNames"
+                      :column="columnOf(sub)"
                     />
                   </n-popover>
                   <EmptyState
@@ -2437,6 +2615,76 @@ function eventText(e) {
 .pmenu {
   max-height: 240px;
   overflow-y: auto;
+}
+/* ── status row: [● column ▾] [▸ shift] [✓ close] ──
+   Deliberately neutral (flat surface + the column's own colour as a dot); the
+   accent gradient stays reserved for tags/priority/avatars. */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.col-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 190px;
+  border: 1px solid var(--t-border);
+  background: var(--t-surface-alt);
+}
+.col-chip > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.col-chip[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+.col-chip.mini {
+  max-width: 120px;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.col-chip.mini:hover {
+  background: var(--t-hover);
+}
+.col-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--t-text3);
+}
+.col-item.cur {
+  background: var(--t-hover);
+}
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--t-border);
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+}
+.st-btn:hover:not(:disabled) {
+  background: var(--t-hover);
+}
+.st-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.st-btn.on {
+  color: var(--t-primary);
 }
 .small {
   font-size: 12px;

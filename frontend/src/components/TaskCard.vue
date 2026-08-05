@@ -41,6 +41,7 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
+import { divergedColumn } from '@/utils/status'
 import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
 import RichContent from './RichContent.vue'
@@ -74,8 +75,12 @@ const props = defineProps({
   nested: { type: Boolean, default: false },
   // A board drag is in progress → reveal the "drop to nest" zone on childless cards.
   dragging: { type: Boolean, default: false },
-  // Board status columns [{ id, name }] for the context-menu "move to column".
+  // Board status columns [{ id, name, color, position }] for the context-menu
+  // "move to column" and the subtask divergence chip.
   columns: { type: Array, default: () => [] },
+  // Column of the parent card, set only on a nested subtask card: a subtask that
+  // sits elsewhere than its parent shows that column as a chip.
+  parentColumnId: { type: String, default: null },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tags: { type: Array, default: () => [] },
@@ -610,6 +615,15 @@ async function onSubChange(evt) {
 function subDue(s) {
   return formatDue(s.due_date)
 }
+// Column chip for a child rendered under this card — only when it diverged from
+// this card's own column (otherwise it would sit on every single row).
+function subColumn(s) {
+  return divergedColumn(s, props.task.column_id, props.columns)
+}
+// Same chip for this card when it is itself a nested subtask card.
+const ownColumnChip = computed(() =>
+  props.nested ? divergedColumn(props.task, props.parentColumnId, props.columns) : null,
+)
 async function toggleSubDone(s) {
   if (props.readonly) return
   await tasksApi.update(s.id, {
@@ -724,10 +738,17 @@ async function submitAddSub() {
       <!-- meta line: task number + GitLab issue link, on their own row so long
            titles never wrap around them (kept aligned under the title text). -->
       <div
-        v-if="(show('number') && task.number) || (show('gitlab') && task.gitlab_iid)"
+        v-if="
+          (show('number') && task.number) || (show('gitlab') && task.gitlab_iid) || ownColumnChip
+        "
         class="card-sub"
       >
         <span v-if="show('number') && task.number" class="tnum">#{{ task.number }}</span>
+        <!-- expanded subtask card: its column differs from the parent's -->
+        <span v-if="ownColumnChip" class="col-chip" :title="`Колонка: ${ownColumnChip.name}`">
+          <span class="col-dot" :style="{ background: ownColumnChip.color }" />
+          <span class="col-name">{{ ownColumnChip.name }}</span>
+        </span>
         <a
           v-if="show('gitlab') && task.gitlab_iid"
           class="gl-chip"
@@ -1208,6 +1229,7 @@ async function submitAddSub() {
               :subtasks="[]"
               :nested="true"
               :columns="columns"
+              :parent-column-id="task.column_id"
               :tags-map="tagsMap"
               :members-map="membersMap"
               :tags="tags"
@@ -1248,6 +1270,16 @@ async function submitAddSub() {
                   />
                   <span class="sub-title">{{ s.title }}</span>
                   <span v-if="!isCompact && subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+                  <!-- this child ran ahead of (or behind) its parent — mark it
+                       with the column's own colour. Just the marker: a board
+                       column is ~250px wide, so a name here would eat the title;
+                       the tooltip and the hover card spell it out. -->
+                  <span
+                    v-if="subColumn(s)"
+                    class="col-mark"
+                    :style="{ background: subColumn(s).color }"
+                    :title="`Колонка: ${subColumn(s).name}`"
+                  />
                 </div>
               </template>
               <TaskMiniCard
@@ -1255,6 +1287,7 @@ async function submitAddSub() {
                 :tags-map="tagsMap"
                 :members-map="membersMap"
                 :tag-prefix-names="tagPrefixNames"
+                :column="subColumn(s)"
               />
             </n-popover>
           </div>
@@ -1552,6 +1585,44 @@ async function submitAddSub() {
 .gl-chip:hover {
   color: var(--t-primary);
   border-color: var(--t-primary);
+}
+/* "this subtask is in another column than its parent" chip — flat neutral, the
+   colour comes from the column itself (a dot), never the accent gradient. */
+.col-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(140px, 45%);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--t-text3);
+  border: 1px solid var(--t-border);
+  background: var(--t-surface-alt);
+}
+/* Same meaning as .col-chip, name-less: a rounded square so it never reads as
+   the round priority dot next to it. */
+.col-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--t-text3);
+}
+.col-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.col-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--t-text3);
 }
 .pills {
   display: flex;
