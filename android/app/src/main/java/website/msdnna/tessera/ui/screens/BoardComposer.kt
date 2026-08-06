@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.FlowRowOverflow
 import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -159,10 +159,11 @@ fun BoardComposerBar(
     val sortDrag = remember { SortDragState() }
     Box(
         modifier
-            // The bar's 36dp min height + decoration live on the Box (matching the
-            // 36dp tool buttons); the FlowRow is centred within it so a single
-            // collapsed row sits vertically centred, like the clear-× on the right.
-            .heightIn(min = 36.dp)
+            // Collapsed the bar is pinned to exactly one chip row and clips the rest;
+            // expanded it grows with its content but never below the 36dp tool buttons.
+            // Pinning the *height* (rather than capping FlowRow's `maxLines`) is
+            // deliberate — see [ComposerRowHeight].
+            .then(if (expanded) Modifier.heightIn(min = 36.dp) else Modifier.height(ComposerRowHeight))
             .clip(RoundedCornerShape(RadiusMd))
             .border(1.dp, c.border, RoundedCornerShape(RadiusMd))
             .background(c.surface)
@@ -171,13 +172,13 @@ fun BoardComposerBar(
         FlowRow(
             Modifier
                 .fillMaxWidth()
-                .align(Alignment.Center)
+                // Collapsed rows past the first are clipped away by the Box, so the
+                // content has to hang from the top; expanded, a short bar centres.
+                .align(if (expanded) Alignment.Center else Alignment.TopStart)
                 // Dim the bar's content while collapsed/unfocused so it reads as one
                 // tap-to-expand surface (mirrors the web composer).
                 .alpha(if (expanded) 1f else 0.62f)
                 .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = if (clearable) 28.dp else 8.dp),
-            maxLines = if (expanded) Int.MAX_VALUE else 1,
-            overflow = FlowRowOverflow.Clip,
             // Inter-chip and inter-row gaps match the bar's 8dp edge padding so a
             // multi-row (expanded / overflowing) bar isn't cramped vertically.
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -194,6 +195,14 @@ fun BoardComposerBar(
                     onRemove = { vm.setMilestoneScope(null) },
                 )
             }
+            // Subtask expansion (web `.subtasks-chip`): icon-only, right after the
+            // scope chip, accent-tinted while cards show their subtasks expanded.
+            FacetChip(
+                "",
+                icon = Ion.GIT_BRANCH,
+                accent = state.subtasksExpanded,
+                onClick = { vm.toggleSubtasksExpanded() },
+            )
             GroupChip(state, vm)
             SortChips(state, vm, sortDrag, enabled = expanded)
             f.priorities.sorted().forEach { p ->
@@ -252,7 +261,14 @@ fun BoardComposerBar(
                 )
             }
             AddFacetButton(state, vm)
-            ComposerSearch(f.query, { vm.setFilter(f.copy(query = it)) }, Modifier.weight(1f).zeroIntrinsicWidth())
+            // Collapsed the field is inert anyway (the overlay below eats its taps),
+            // so it is swapped for a plain label — that keeps the weighted text field
+            // out of the layout while the bar is collapsing. See [ComposerRowHeight].
+            if (expanded) {
+                ComposerSearch(f.query, { vm.setFilter(f.copy(query = it)) }, Modifier.weight(1f).zeroIntrinsicWidth())
+            } else {
+                CollapsedSearchLabel(f.query)
+            }
         }
         // Right-edge clear-all (×) — vertically centred like the web composer.
         // Expand/collapse is driven by tapping the bar / tapping outside it.
@@ -595,6 +611,26 @@ private fun BackRow(onClick: () -> Unit) {
 private val FacetChipHeight = 22.dp
 
 /**
+ * Height of one collapsed composer row: a chip plus the bar's 8dp top/bottom padding.
+ *
+ * The collapsed bar used to be produced by `FlowRow(maxLines = 1, overflow = Clip)`
+ * while [ComposerSearch] sat in the same row with `Modifier.weight(1f)`. That pairing
+ * — a line-limited FlowRow plus a weighted child whose intrinsic width is forced to 0
+ * ([zeroIntrinsicWidth]) — is what froze the app mid-collapse: collapsing also plays
+ * the toolbar's `expandHorizontally` animation, so the bar is re-measured at a new
+ * (shrinking) width on every frame, and once the chips no longer fit the row the
+ * line-break/weight pass has no space left to hand the weighted child. Widening the
+ * chips with icons is what started reaching that state, which is why it only appeared
+ * with the icon chips and only "every other time" — it depends on the exact frame
+ * width at which the chips stop fitting.
+ *
+ * So the collapsed bar now clips by *height* instead: FlowRow is left unlimited (a
+ * plain wrap, no overflow state, no intrinsic pass) and the enclosing Box is pinned to
+ * one row and clips the rest. The rendered result is the same single row as before.
+ */
+private val ComposerRowHeight = FacetChipHeight + 16.dp
+
+/**
  * Live state of a sort-chip long-press drag: which chip is lifted, how far it has
  * travelled, and where each chip sits (window coords, like the board's own DnD).
  *
@@ -720,7 +756,8 @@ private fun Modifier.draggableSortChip(
  *
  * [group] / [accent] are the two tinted variants (grouping chip · sprint scope):
  * accent fill, accent icon/text/×. [highlighted] rings the chip while it is the
- * drop target of a sort-chip drag.
+ * drop target of a sort-chip drag. A blank [label] gives the icon-only square chip
+ * the subtask toggle uses (web `.subtasks-chip`).
  */
 @Composable
 private fun FacetChip(
@@ -736,6 +773,7 @@ private fun FacetChip(
     val c = Tessera.colors
     val tinted = group || accent
     val shape = RoundedCornerShape(RadiusSm)
+    val iconOnly = label.isEmpty()
     Row(
         modifier
             .height(FacetChipHeight)
@@ -743,14 +781,24 @@ private fun FacetChip(
             .background(if (tinted) c.primary.copy(alpha = 0.14f) else c.hover)
             .then(if (highlighted) Modifier.border(1.dp, c.primary, shape) else Modifier)
             .then(if (onClick != null) Modifier.clickableNoRipple(onClick = onClick) else Modifier)
-            .padding(start = 9.dp, end = if (onRemove != null) 4.dp else 9.dp),
+            .padding(
+                start = if (iconOnly) 6.dp else 9.dp,
+                end = if (iconOnly) 6.dp else if (onRemove != null) 4.dp else 9.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            IonIcon(icon, size = 13.dp, tint = if (tinted) c.primary else c.text3, gradient = tinted)
-            Spacer(Modifier.width(4.dp))
+            IonIcon(
+                icon,
+                size = if (iconOnly) 14.dp else 13.dp,
+                tint = if (tinted) c.primary else c.text3,
+                gradient = tinted,
+            )
+            if (!iconOnly) Spacer(Modifier.width(4.dp))
         }
-        Text(label, color = if (tinted) c.primary else c.text2, fontSize = 12.sp, maxLines = 1)
+        if (!iconOnly) {
+            Text(label, color = if (tinted) c.primary else c.text2, fontSize = 12.sp, maxLines = 1)
+        }
         if (onRemove != null) {
             Spacer(Modifier.width(2.dp))
             Box(
@@ -759,6 +807,26 @@ private fun FacetChip(
             ) { Text("×", color = if (tinted) c.primary else c.text3, fontSize = 14.sp) }
         }
     }
+}
+
+/**
+ * The collapsed bar's stand-in for [ComposerSearch]: the active query, or the same
+ * «Поиск…» hint. Static text, no weight — the collapsed bar must stay free of the
+ * weighted text field (see [ComposerRowHeight]). Chip-height so the collapsed row
+ * keeps its exact previous height.
+ */
+@Composable
+private fun CollapsedSearchLabel(query: String) {
+    val c = Tessera.colors
+    Text(
+        query.ifEmpty { "Поиск…" },
+        color = if (query.isEmpty()) c.text3 else c.text1,
+        fontSize = 13.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.height(FacetChipHeight).wrapContentHeight(Alignment.CenterVertically)
+            .padding(horizontal = 4.dp),
+    )
 }
 
 /** Borderless inline search inside the bar (web `.composer-search`). */

@@ -452,7 +452,8 @@ private fun BoardToolbar(
                 if (state.viewMode == BoardViewMode.Gantt) {
                     ToolIcon(Ion.GIT_NETWORK, active = state.autoActive) { vm.toggleAutoSort() }
                 }
-                // Subtask expansion lives in the view-customize panel (gear), not the toolbar.
+                // Subtask expansion is a chip in the composer bar (web parity); the
+                // customize panel (gear) keeps the same toggle as a labelled row.
                 // Saved server-side views — popover (web folder button).
                 Box {
                     ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsMenu = true }
