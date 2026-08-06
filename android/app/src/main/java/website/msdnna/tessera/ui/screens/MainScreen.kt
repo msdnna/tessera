@@ -161,6 +161,10 @@ fun MainScreen(
                 ?: runCatching { boardRepo.boards(projectId) }.getOrNull()?.firstOrNull()
                 ?: return@launch
             navTo(MainDest.BoardView(board))
+            // Picking a sprint leaves the archive: the two are alternative scopes of the
+            // same board, and the archive listing ignores the milestone — staying in it
+            // would show archived cards under a chip promising the chosen sprint.
+            boardArchiveOpen = false
             pendingMilestoneId = milestoneId
         }
     }

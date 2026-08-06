@@ -340,8 +340,8 @@ class BoardViewModel(
             val board = runCatching { repo.board(boardId) }.getOrNull()
             projectId = board?.projectId ?: ""
             val columns = repo.columns(boardId)
-            val tasks = repo.tasks(boardId, _state.value.milestoneScope)
-            val subtasks = repo.subtasks(boardId)
+            val tasks = scopedTasks()
+            val subtasks = scopedSubtasks()
             val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
             val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
             val milestones = if (projectId.isNotBlank()) runCatching { repo.milestones(projectId) }.getOrDefault(emptyList()) else emptyList()
@@ -498,8 +498,8 @@ class BoardViewModel(
         val board = runCatching { repo.board(boardId) }.getOrNull()
         projectId = board?.projectId ?: projectId
         val columns = repo.columns(boardId)
-        val tasks = repo.tasks(boardId, _state.value.milestoneScope)
-        val subtasks = repo.subtasks(boardId)
+        val tasks = scopedTasks()
+        val subtasks = scopedSubtasks()
         val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
         val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
         val milestones = if (projectId.isNotBlank()) runCatching { repo.milestones(projectId) }.getOrDefault(emptyList()) else emptyList()
@@ -846,10 +846,22 @@ class BoardViewModel(
         _state.update { it.copy(tasks = tasks, subtasks = emptyList()) }
     }
 
-    /** Leave the archive scope and reload the live board. */
+    /** Leave the archive scope and reload the live board — bare, with no milestone
+     *  narrowing: the sprint the user came from was replaced by the archive scope
+     *  (the bar showed the archive chip in its place), so restoring it behind their
+     *  back would open a board they never asked for. Any «Этап» facet built *inside*
+     *  the archive goes with it, for the same reason. Entering another sprint from
+     *  the sidebar leaves the archive through here first, then applies its scope. */
     fun exitArchive() {
         if (!_state.value.archivedMode) return
-        _state.update { it.copy(archivedMode = false) }
+        _state.update {
+            it.copy(
+                archivedMode = false,
+                milestoneScope = null,
+                filter = it.filter.copy(milestoneIds = emptySet()),
+            )
+        }
+        persistView()
         load(boardId, workspaceId)
     }
 
@@ -1038,11 +1050,24 @@ class BoardViewModel(
     }
 
     private suspend fun refreshTasks() {
-        val tasks = repo.tasks(boardId, _state.value.milestoneScope)
-        val subtasks = repo.subtasks(boardId)
+        val tasks = scopedTasks()
+        val subtasks = scopedSubtasks()
         _state.update { it.copy(tasks = tasks, subtasks = subtasks) }
         markLocalChange()
     }
+
+    /** The board's task set for the scope currently in effect. The archive is a scope
+     *  of its own: it lists the board's archived tasks whole, ignoring the sprint
+     *  narrowing (which the archive endpoint does not take). Every reload path goes
+     *  through here — otherwise any refresh while in the archive (a facet change, a
+     *  realtime echo) silently swaps the archived cards for live ones. */
+    private suspend fun scopedTasks(): List<Task> =
+        if (_state.value.archivedMode) repo.tasks(boardId, archived = true)
+        else repo.tasks(boardId, _state.value.milestoneScope)
+
+    /** Subtasks are archived together with their parents, so the archive has none. */
+    private suspend fun scopedSubtasks(): List<Task> =
+        if (_state.value.archivedMode) emptyList() else repo.subtasks(boardId)
 
     /** Server-side sprint scope (web parity): reload the board showing only [scope]
      *  (<milestone uuid> | "backlog" | null = all). For large GitLab imports. */

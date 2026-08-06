@@ -74,6 +74,7 @@ import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.dashedBorder
+import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -151,6 +152,7 @@ fun BoardComposerBar(
     vm: BoardViewModel,
     expanded: Boolean,
     setExpanded: (Boolean) -> Unit,
+    onExitArchive: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val c = Tessera.colors
@@ -184,16 +186,29 @@ fun BoardComposerBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Sprint scope (web `.facet-accent`): the board is server-side narrowed to
-            // one milestone. Accent-tinted and first, so it reads as the scope the rest
-            // of the chips filter *within*; × drops it and reloads the full board.
-            state.milestoneScope?.let { scope ->
+            // Scope chip, always first: archive (amber, web `.facet-archive`) or sprint
+            // (accent, web `.facet-accent`). They are mutually exclusive — the archive is
+            // a board-wide read-only scope that ignores the sprint narrowing, so showing
+            // both would claim a milestone filter that the archive listing doesn't apply.
+            if (state.archivedMode) {
                 FacetChip(
-                    milestoneScopeLabel(scope, state),
-                    icon = Ion.RIBBON,
-                    accent = true,
-                    onRemove = { vm.setMilestoneScope(null) },
+                    "Архив (только чтение)",
+                    icon = Ion.ARCHIVE,
+                    amber = true,
+                    onRemove = onExitArchive,
                 )
+            } else {
+                // The board is server-side narrowed to one milestone; the chip reads as
+                // the scope the rest of the chips filter *within*, and × drops it and
+                // reloads the full board.
+                state.milestoneScope?.let { scope ->
+                    FacetChip(
+                        milestoneScopeLabel(scope, state),
+                        icon = Ion.RIBBON,
+                        accent = true,
+                        onRemove = { vm.setMilestoneScope(null) },
+                    )
+                }
             }
             // Subtask expansion (web `.subtasks-chip`): icon-only, right after the
             // scope chip, accent-tinted while cards show their subtasks expanded.
@@ -294,7 +309,9 @@ fun BoardComposerBar(
 // The sprint scope counts as clearable: it lives in the bar as a chip, so the ×
 // that "clears the bar" has to drop it too (else the board stays narrowed).
 private fun hasClearable(state: BoardUiState): Boolean = state.sortLevels.isNotEmpty() ||
-    state.milestoneScope != null ||
+    // …but only while its chip is on screen: in the archive the scope chip gives way to
+    // the archive one, and a × for something invisible reads as a stuck bar.
+    (state.milestoneScope != null && !state.archivedMode) ||
     state.filter.priorities.isNotEmpty() || state.filter.assigneeIds.isNotEmpty() ||
     state.filter.authorIds.isNotEmpty() || state.filter.tagIds.isNotEmpty() ||
     state.filter.statuses.isNotEmpty() || state.filter.milestoneIds.isNotEmpty() ||
@@ -765,20 +782,30 @@ private fun FacetChip(
     icon: String? = null,
     group: Boolean = false,
     accent: Boolean = false,
+    amber: Boolean = false,
     highlighted: Boolean = false,
     onClick: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val c = Tessera.colors
-    val tinted = group || accent
+    val tinted = group || accent || amber
+    // Amber (archive scope) carries its own ink — it is a warning tone, not the
+    // workspace accent, so it stays flat: the accent gradient belongs to the accent.
+    val ink = if (amber) ConflictAmber else c.primary
     val shape = RoundedCornerShape(RadiusSm)
     val iconOnly = label.isEmpty()
     Row(
         modifier
             .height(FacetChipHeight)
             .clip(shape)
-            .background(if (tinted) c.primary.copy(alpha = 0.14f) else c.hover)
+            .background(
+                when {
+                    amber -> ConflictAmber.copy(alpha = 0.15f)
+                    tinted -> c.primary.copy(alpha = 0.14f)
+                    else -> c.hover
+                },
+            )
             .then(if (highlighted) Modifier.border(1.dp, c.primary, shape) else Modifier)
             .then(if (onClick != null) Modifier.clickableNoRipple(onClick = onClick) else Modifier)
             .padding(
@@ -791,20 +818,20 @@ private fun FacetChip(
             IonIcon(
                 icon,
                 size = if (iconOnly) 14.dp else 13.dp,
-                tint = if (tinted) c.primary else c.text3,
-                gradient = tinted,
+                tint = if (tinted) ink else c.text3,
+                gradient = tinted && !amber,
             )
             if (!iconOnly) Spacer(Modifier.width(4.dp))
         }
         if (!iconOnly) {
-            Text(label, color = if (tinted) c.primary else c.text2, fontSize = 12.sp, maxLines = 1)
+            Text(label, color = if (tinted) ink else c.text2, fontSize = 12.sp, maxLines = 1)
         }
         if (onRemove != null) {
             Spacer(Modifier.width(2.dp))
             Box(
                 Modifier.clip(CircleShape).clickableNoRipple(onClick = onRemove).padding(horizontal = 3.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("×", color = if (tinted) c.primary else c.text3, fontSize = 14.sp) }
+            ) { Text("×", color = if (tinted) ink else c.text3, fontSize = 14.sp) }
         }
     }
 }

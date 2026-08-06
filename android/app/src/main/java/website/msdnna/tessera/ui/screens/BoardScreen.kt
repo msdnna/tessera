@@ -174,13 +174,9 @@ fun BoardScreen(
             },
             expanded = composerExpanded,
             setExpanded = { composerExpanded = it },
+            onExitArchive = onCloseArchive,
         )
         HorizontalDivider(color = Tessera.colors.border)
-
-        if (state.archivedMode) {
-            ArchiveBanner(onExit = onCloseArchive)
-            HorizontalDivider(color = Tessera.colors.border)
-        }
 
         Box(Modifier.fillMaxSize()) {
             val boardContent: @Composable () -> Unit = {
@@ -318,29 +314,6 @@ private fun activityVerbMeta(verb: String): Triple<String, String, Color> = when
     else -> Triple("переместил(а) задачу", Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
 }
 
-/** Read-only archive banner: marks the board as the archive scope and offers exit. */
-@Composable
-private fun ArchiveBanner(onExit: () -> Unit) {
-    val c = Tessera.colors
-    Row(
-        Modifier.fillMaxWidth().background(c.surfaceAlt).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IonIcon(Ion.ARCHIVE, size = 15.dp, tint = c.text3)
-        Spacer(Modifier.width(8.dp))
-        Text("Архив (только чтение)", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        Row(
-            Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
-                .clickableNoRipple(onClick = onExit).padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IonIcon(Ion.CLOSE, size = 13.dp, tint = c.text2)
-            Spacer(Modifier.width(4.dp))
-            Text("Выйти", color = c.text2, fontSize = 13.sp)
-        }
-    }
-}
-
 @Composable
 private fun ActivityToast(
     activity: BoardActivity,
@@ -420,6 +393,7 @@ private fun BoardToolbar(
     onUpdateBoard: (icon: String, color: String, iconMode: String) -> Unit,
     expanded: Boolean,
     setExpanded: (Boolean) -> Unit,
+    onExitArchive: () -> Unit,
 ) {
     val c = Tessera.colors
     var viewsMenu by remember { mutableStateOf(false) }
@@ -437,6 +411,7 @@ private fun BoardToolbar(
             vm = vm,
             expanded = expanded,
             setExpanded = setExpanded,
+            onExitArchive = onExitArchive,
             modifier = Modifier.weight(1f),
         )
         AnimatedVisibility(
