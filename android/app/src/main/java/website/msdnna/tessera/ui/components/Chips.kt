@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextStyle
@@ -48,15 +49,20 @@ private val TagPillHeightBig = 28.dp
  *
  * A **scoped** tag ("type::feature") renders as a GitLab-EE two-segment pill —
  * «scope value» — where the scope side is a filled accent segment with contrast
- * text and the value side a soft tint with accent (gradient) text, the whole pill
- * bordered in the tag's hue. An unscoped tag keeps the plain single-segment chip.
+ * text and the value side a **flat** soft tint with accent (gradient) text, the
+ * whole pill bordered in the tag's hue. An unscoped tag keeps the plain
+ * single-segment chip.
  * The raw "type::feature" is never shown: the scope segment carries the configured
  * friendly prefix name (or the bare prefix under the «короткие префиксы» device
  * preference, or when no name is configured).
  *
  * The fill keeps the raw tag colour (subtle) but is **opaque** — blended with
  * [surface] rather than alpha-tinted, so neither the card behind it nor the stack
- * cascade peeking out to the right shows through the pill. Text is clamped to a
+ * cascade peeking out to the right shows through the pill. The pale fill is also
+ * **flat**: the accent gradient belongs to the accent-coloured parts (the scope
+ * segment's fill, the value text), and over a 18%-tint it just reads as a grey
+ * wash across the pill (web parity — `tagPillBg` keeps a flat padding-box interior
+ * and puts the gradient on the border). Text is clamped to a
  * legible lightness for the active theme so dark/light tag colours stay readable.
  * The chip is the same height as the other card pills ([TagPillHeight]); its
  * padding only sets the width.
@@ -99,7 +105,7 @@ fun TagChip(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            TagSegment(accentGradient(fill), if (big) 9.dp else 7.dp) {
+            TagSegment(SolidColor(fill), if (big) 9.dp else 7.dp) {
                 Text(
                     parts.label,
                     fontSize = fontSize,
@@ -116,7 +122,7 @@ fun TagChip(
         modifier
             .height(height)
             .clip(shape)
-            .background(accentGradient(fill))
+            .background(fill)
             .padding(horizontal = if (big) 9.dp else 7.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -237,11 +243,11 @@ fun TagChipsFit(tags: List<Tag>, modifier: Modifier = Modifier, prefixNames: Map
 private fun OverflowChip(n: Int, tint: String? = null) {
     val c = Tessera.colors
     val base = tint?.let { parseHexColor(it, c.text3) }
-    // Neutral greys stay flat — only the tinted variant carries the accent gradient.
-    // Opaque fill (blended with the card) for the same reason as [TagChip]: the
-    // stack cascade must not show through.
+    // Flat fill, like the tag chips it stands next to: a gradient over the pale
+    // tint reads as a grey wash, not as the tag's hue. Opaque (blended with the
+    // card) for the same reason as [TagChip]: the stack cascade must not show through.
     val fill = if (base != null) {
-        Modifier.background(accentGradient(lerp(c.cardSurface, base, 0.18f)))
+        Modifier.background(lerp(c.cardSurface, base, 0.18f))
     } else {
         Modifier.background(c.surfaceAlt)
     }
