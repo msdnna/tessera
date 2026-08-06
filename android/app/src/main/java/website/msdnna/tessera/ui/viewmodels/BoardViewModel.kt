@@ -30,6 +30,7 @@ import website.msdnna.tessera.util.FilterClock
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.filterBoardTasks
 import website.msdnna.tessera.util.isoDateKey
+import website.msdnna.tessera.util.moveItem
 
 enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline, Gantt }
 
@@ -683,9 +684,30 @@ class BoardViewModel(
         persistView()
     }
 
+    /** Reorders the sort levels (drag-reorder of the composer's sort chips, web
+     *  `<draggable>` parity). The level order IS the sort precedence — primary
+     *  first — so this must persist, or the order is lost on the next board open. */
+    fun moveSortLevel(from: Int, to: Int) {
+        _state.update { it.copy(sortLevels = it.sortLevels.moveItem(from, to)) }
+        persistView()
+    }
+
     fun clearSort() {
         _state.update { it.copy(sortLevels = emptyList()) }
         persistView()
+    }
+
+    /**
+     * Composer clear-all (×): drops every filter facet, all sort levels **and** the
+     * server-side sprint scope, leaving a board with nothing applied. The scope is
+     * part of what the bar shows (its accent chip), so leaving it behind would make
+     * the × look broken — the bar would still be filtering after a "clear".
+     */
+    fun clearComposer() {
+        val hadScope = _state.value.milestoneScope != null
+        _state.update { it.copy(filter = BoardFilter(), sortLevels = emptyList(), milestoneScope = null) }
+        persistView()
+        if (hadScope) launchCatching { refreshTasks() }
     }
 
     // ── column collapse (kanban) ──────────────────────────────────────────────
@@ -987,13 +1009,22 @@ class BoardViewModel(
         refreshTasks()
     }
 
-    /** Deep-link from the «Этапы» screen: show only this milestone's cards (a
-     *  removable «Этап:» chip). Passing null clears the milestone filter. */
-    fun setMilestoneFilter(milestoneId: String?) {
+    /**
+     * Adds a milestone to the client-side «Этап» facet. Building one's own milestone
+     * filter supersedes the server-side sprint scope, so the scope is dropped and the
+     * full board reloaded (web `onAddSelect` `fm.*`): the scope narrows the fetch, so
+     * a facet for any *other* milestone on top of it would match nothing at all.
+     */
+    fun addMilestoneFilter(milestoneId: String) {
+        val hadScope = _state.value.milestoneScope != null
         _state.update {
-            it.copy(filter = it.filter.copy(milestoneIds = if (milestoneId == null) emptySet() else setOf(milestoneId)))
+            it.copy(
+                filter = it.filter.copy(milestoneIds = it.filter.milestoneIds + milestoneId),
+                milestoneScope = null,
+            )
         }
         persistView()
+        if (hadScope) launchCatching { refreshTasks() }
     }
 
     fun archive(taskId: String) = launchCatching {
@@ -1017,7 +1048,17 @@ class BoardViewModel(
      *  (<milestone uuid> | "backlog" | null = all). For large GitLab imports. */
     fun setMilestoneScope(scope: String?) {
         if (_state.value.milestoneScope == scope) return
-        _state.update { it.copy(milestoneScope = scope) }
+        _state.update {
+            // Entering a sprint from the «Этапы» screen supersedes a hand-built
+            // «Этап» facet (web `watch(route.query.milestone)`): the facet was for
+            // some other milestone, so keeping it would filter the freshly scoped
+            // board down to nothing.
+            it.copy(
+                milestoneScope = scope,
+                filter = if (scope != null) it.filter.copy(milestoneIds = emptySet()) else it.filter,
+            )
+        }
+        persistView()
         launchCatching { refreshTasks() }
     }
 

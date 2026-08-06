@@ -2,6 +2,7 @@ package website.msdnna.tessera.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,27 +26,42 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.IntrinsicMeasurable
 import androidx.compose.ui.layout.IntrinsicMeasureScope
 import androidx.compose.ui.layout.LayoutModifier
 import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -140,6 +156,7 @@ fun BoardComposerBar(
     val c = Tessera.colors
     val f = state.filter
     val clearable = hasClearable(state)
+    val sortDrag = remember { SortDragState() }
     Box(
         modifier
             // The bar's 36dp min height + decoration live on the Box (matching the
@@ -166,15 +183,23 @@ fun BoardComposerBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            GroupChip(state, vm)
-            state.sortLevels.forEachIndexed { i, level ->
-                val label = SortField.fromKey(level.field)?.label ?: level.field
-                val arrow = if (level.dir == "desc") "↓" else "↑"
-                FacetChip("Сорт: $label $arrow", onClick = { vm.toggleSortDir(i) }, onRemove = { vm.removeSortLevel(i) })
+            // Sprint scope (web `.facet-accent`): the board is server-side narrowed to
+            // one milestone. Accent-tinted and first, so it reads as the scope the rest
+            // of the chips filter *within*; × drops it and reloads the full board.
+            state.milestoneScope?.let { scope ->
+                FacetChip(
+                    milestoneScopeLabel(scope, state),
+                    icon = Ion.RIBBON,
+                    accent = true,
+                    onRemove = { vm.setMilestoneScope(null) },
+                )
             }
+            GroupChip(state, vm)
+            SortChips(state, vm, sortDrag, enabled = expanded)
             f.priorities.sorted().forEach { p ->
                 FacetChip(
-                    "Приоритет: ${PriorityLabels.getOrElse(p) { "—" }}",
+                    PriorityLabels.getOrElse(p) { "—" },
+                    icon = Ion.FLAG,
                     onRemove = { vm.setFilter(f.copy(priorities = f.priorities - p)) },
                 )
             }
@@ -186,38 +211,43 @@ fun BoardComposerBar(
                     state.membersMap[id]?.name ?: "—"
                 }
                 FacetChip(
-                    "Исполнитель: $name",
+                    name,
+                    icon = Ion.PERSON,
                     onRemove = { vm.setFilter(f.copy(assigneeIds = f.assigneeIds - id)) },
                 )
             }
             f.authorIds.forEach { id ->
                 FacetChip(
-                    "Автор: ${authorLabel(id, state)}",
+                    authorLabel(id, state),
+                    icon = Ion.PENCIL,
                     onRemove = { vm.setFilter(f.copy(authorIds = f.authorIds - id)) },
                 )
             }
             f.tagIds.forEach { id ->
                 FacetChip(
-                    "Тег: ${state.tags[id]?.name ?: "—"}",
+                    state.tags[id]?.name ?: "—",
+                    icon = Ion.PRICETAG,
                     onRemove = { vm.setFilter(f.copy(tagIds = f.tagIds - id)) },
                 )
             }
             f.statuses.forEach { id ->
                 FacetChip(
-                    "Статус: ${state.sortedColumns.find { it.id == id }?.name ?: "—"}",
+                    state.sortedColumns.find { it.id == id }?.name ?: "—",
+                    icon = Ion.LIST,
                     onRemove = { vm.setFilter(f.copy(statuses = f.statuses - id)) },
                 )
             }
             f.milestoneIds.forEach { id ->
-                val name = if (id == "__none__") "Без этапа" else state.milestonesMap[id]?.title ?: "—"
                 FacetChip(
-                    "Этап: $name",
+                    if (id == "__none__") "Без этапа" else state.milestonesMap[id]?.title ?: "—",
+                    icon = Ion.RIBBON,
                     onRemove = { vm.setFilter(f.copy(milestoneIds = f.milestoneIds - id)) },
                 )
             }
             if (f.due != DueFilter.All) {
                 FacetChip(
-                    "Срок: ${DueChipLabels[f.due] ?: ""}",
+                    DueChipLabels[f.due] ?: "",
+                    icon = Ion.CALENDAR,
                     onRemove = { vm.setFilter(f.copy(due = DueFilter.All)) },
                 )
             }
@@ -229,10 +259,7 @@ fun BoardComposerBar(
         if (clearable) {
             Box(
                 Modifier.align(Alignment.CenterEnd).padding(end = 6.dp).clip(CircleShape)
-                    .clickableNoRipple {
-                        vm.clearFilter()
-                        vm.clearSort()
-                    }
+                    .clickableNoRipple { vm.clearComposer() }
                     .padding(horizontal = 3.dp),
                 contentAlignment = Alignment.Center,
             ) { Text("×", color = c.text3, fontSize = 16.sp) }
@@ -248,11 +275,20 @@ fun BoardComposerBar(
     }
 }
 
+// The sprint scope counts as clearable: it lives in the bar as a chip, so the ×
+// that "clears the bar" has to drop it too (else the board stays narrowed).
 private fun hasClearable(state: BoardUiState): Boolean = state.sortLevels.isNotEmpty() ||
+    state.milestoneScope != null ||
     state.filter.priorities.isNotEmpty() || state.filter.assigneeIds.isNotEmpty() ||
     state.filter.authorIds.isNotEmpty() || state.filter.tagIds.isNotEmpty() ||
     state.filter.statuses.isNotEmpty() || state.filter.milestoneIds.isNotEmpty() ||
     state.filter.due != DueFilter.All
+
+/** Label for the server-side sprint scope chip (web `milestoneScopeLabel`). */
+private fun milestoneScopeLabel(scope: String, state: BoardUiState): String = when (scope) {
+    "backlog" -> "Бэклог"
+    else -> state.milestonesMap[scope]?.title ?: "Этап"
+}
 
 /** Display name for an author-facet value: a workspace member, a GitLab member, or —
  *  for an issue opened by someone outside the roster — the name the synced task carries. */
@@ -275,7 +311,7 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     }
     // Assignee / no-grouping are only meaningful on the swimlane (timeline/Gantt) views.
     val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
-    val label = "Группировка: " + when (state.groupMode) {
+    val label = when (state.groupMode) {
         "tag" -> "теги" + (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(state.tagPrefix, state.prefixNames)}" else "")
         "milestone" -> "этапы"
         "assignee" -> "исполнитель"
@@ -284,7 +320,7 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     }
     var menu by remember { mutableStateOf(false) }
     Box {
-        FacetChip(label, group = true, onClick = { menu = true })
+        FacetChip(label, icon = Ion.ALBUMS, group = true, onClick = { menu = true })
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             CheckRow("По статусам", selected = state.groupMode == "status") {
                 menu = false
@@ -483,15 +519,18 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
 
                 "fm" -> {
                     BackRow { category = null }
+                    // addMilestoneFilter (not setFilter): picking a milestone here
+                    // also drops the server-side sprint scope, so the accent scope
+                    // chip is replaced by this grey facet (web parity).
                     state.milestones.filter { it.id !in f.milestoneIds }.forEach { m ->
                         TMenuItem(m.title, onClick = {
-                            vm.setFilter(f.copy(milestoneIds = f.milestoneIds + m.id))
+                            vm.addMilestoneFilter(m.id)
                             close()
                         })
                     }
                     if ("__none__" !in f.milestoneIds) {
                         TMenuItem("Без этапа", onClick = {
-                            vm.setFilter(f.copy(milestoneIds = f.milestoneIds + "__none__"))
+                            vm.addMilestoneFilter("__none__")
                             close()
                         })
                     }
@@ -551,29 +590,173 @@ private fun BackRow(onClick: () -> Unit) {
     TMenuDivider()
 }
 
-/** A composer chip pill: a label, optional click (group/sort) and remove (×). */
+/** Chip height — web `.facet { height: 22px }`, matching the dashed «+» button so a
+ *  row of chips has one baseline. */
+private val FacetChipHeight = 22.dp
+
+/**
+ * Live state of a sort-chip long-press drag: which chip is lifted, how far it has
+ * travelled, and where each chip sits (window coords, like the board's own DnD).
+ *
+ * The move is committed **once, on release** — unlike the web `<draggable>` there
+ * is no live reshuffling, so the recorded rects stay valid for the whole gesture
+ * (a live swap would move the chips out from under their own bounds mid-drag). The
+ * chip under the lifted one is ringed instead, so the drop is still previewed.
+ */
+private class SortDragState {
+    var from by mutableIntStateOf(-1)
+    var offset by mutableStateOf(Offset.Zero)
+    val bounds = mutableStateMapOf<Int, Rect>()
+
+    val active: Boolean get() = from >= 0
+
+    /** Index of the chip under the lifted chip's centre, or -1 (itself / outside). */
+    val target: Int
+        get() {
+            val src = bounds[from] ?: return -1
+            val point = src.center + offset
+            return bounds.entries.firstOrNull { it.key != from && it.value.contains(point) }?.key ?: -1
+        }
+
+    fun start(index: Int) {
+        from = index
+        offset = Offset.Zero
+    }
+
+    fun reset() {
+        from = -1
+        offset = Offset.Zero
+    }
+}
+
+/**
+ * The sort-level chips: tap flips the direction, long-press-and-drag reorders them.
+ * Level order IS sort precedence (first = primary), which is why the drop persists
+ * through [BoardViewModel.moveSortLevel] rather than living in local UI state.
+ */
+@Composable
+private fun FlowRowScope.SortChips(
+    state: BoardUiState,
+    vm: BoardViewModel,
+    drag: SortDragState,
+    enabled: Boolean,
+) {
+    val haptics = LocalHapticFeedback.current
+    val levels = state.sortLevels
+    // Bounds are keyed by index — drop the tail when a level is removed, else a
+    // stale rect (a chip that no longer exists) can resolve as the drop target.
+    LaunchedEffect(levels.size) { drag.bounds.keys.retainAll { it < levels.size } }
+    val target = if (drag.active) drag.target else -1
+    levels.forEachIndexed { i, level ->
+        val label = SortField.fromKey(level.field)?.label ?: level.field
+        val arrow = if (level.dir == "desc") "↓" else "↑"
+        val lifted = drag.from == i
+        FacetChip(
+            "$label $arrow",
+            icon = Ion.SORT,
+            highlighted = target == i,
+            onClick = { vm.toggleSortDir(i) },
+            onRemove = { vm.removeSortLevel(i) },
+            modifier = Modifier
+                // Ahead of the layer below, so the reported rect is the chip's
+                // resting place — not where the drag has translated it to.
+                .onGloballyPositioned { drag.bounds[i] = it.boundsInWindow() }
+                .zIndex(if (lifted) 1f else 0f)
+                .graphicsLayer {
+                    if (lifted) {
+                        translationX = drag.offset.x
+                        translationY = drag.offset.y
+                        scaleX = 1.05f
+                        scaleY = 1.05f
+                        alpha = 0.9f
+                    }
+                }
+                .draggableSortChip(drag, i, enabled, haptics) { from, to -> vm.moveSortLevel(from, to) },
+        )
+    }
+}
+
+/**
+ * Arms long-press drag-reorder on a sort chip. Armed only while the composer is
+ * [enabled] (expanded) — collapsed, the bar's overlay swallows gestures and a long
+ * press should just expand it. [onDrop] is read through `rememberUpdatedState`, so
+ * a chip whose `pointerInput` survived recomposition still commits against the
+ * current levels instead of a stale closure (the `ColumnDrag` trap).
+ */
+private fun Modifier.draggableSortChip(
+    drag: SortDragState,
+    index: Int,
+    enabled: Boolean,
+    haptics: HapticFeedback,
+    onDrop: (from: Int, to: Int) -> Unit,
+): Modifier = composed {
+    val latestOnDrop by rememberUpdatedState(onDrop)
+    this.pointerInput(index, enabled) {
+        if (!enabled) return@pointerInput
+        detectDragGesturesAfterLongPress(
+            onDragStart = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                drag.start(index)
+            },
+            onDrag = { change, amount ->
+                change.consume()
+                drag.offset += amount
+            },
+            onDragEnd = {
+                val to = drag.target
+                drag.reset()
+                if (to >= 0) latestOnDrop(index, to)
+            },
+            onDragCancel = { drag.reset() },
+        )
+    }
+}
+
+/**
+ * A composer chip pill (web `.facet`): a per-kind icon in place of the old text
+ * prefix («Сорт: », «Приоритет: »…), a label, optional click (group/sort) and
+ * remove (×). Squared-off 6dp corners and a fixed 22dp height, matching the web
+ * chip and the adjacent dashed «+» button.
+ *
+ * [group] / [accent] are the two tinted variants (grouping chip · sprint scope):
+ * accent fill, accent icon/text/×. [highlighted] rings the chip while it is the
+ * drop target of a sort-chip drag.
+ */
 @Composable
 private fun FacetChip(
     label: String,
+    icon: String? = null,
     group: Boolean = false,
+    accent: Boolean = false,
+    highlighted: Boolean = false,
     onClick: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val c = Tessera.colors
+    val tinted = group || accent
+    val shape = RoundedCornerShape(RadiusSm)
     Row(
-        Modifier.clip(RoundedCornerShape(50))
-            .background(if (group) c.primary.copy(alpha = 0.14f) else c.hover)
+        modifier
+            .height(FacetChipHeight)
+            .clip(shape)
+            .background(if (tinted) c.primary.copy(alpha = 0.14f) else c.hover)
+            .then(if (highlighted) Modifier.border(1.dp, c.primary, shape) else Modifier)
             .then(if (onClick != null) Modifier.clickableNoRipple(onClick = onClick) else Modifier)
-            .padding(start = 9.dp, end = if (onRemove != null) 3.dp else 9.dp, top = 3.dp, bottom = 3.dp),
+            .padding(start = 9.dp, end = if (onRemove != null) 4.dp else 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = if (group) c.text1 else c.text2, fontSize = 12.sp, maxLines = 1)
+        if (icon != null) {
+            IonIcon(icon, size = 13.dp, tint = if (tinted) c.primary else c.text3, gradient = tinted)
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(label, color = if (tinted) c.primary else c.text2, fontSize = 12.sp, maxLines = 1)
         if (onRemove != null) {
             Spacer(Modifier.width(2.dp))
             Box(
                 Modifier.clip(CircleShape).clickableNoRipple(onClick = onRemove).padding(horizontal = 3.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("×", color = c.text3, fontSize = 14.sp) }
+            ) { Text("×", color = if (tinted) c.primary else c.text3, fontSize = 14.sp) }
         }
     }
 }
