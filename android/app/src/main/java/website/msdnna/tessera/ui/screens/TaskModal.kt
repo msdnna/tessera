@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -234,13 +236,24 @@ fun TaskModal(
     // otherwise not refresh and the deleted card would linger.
     fun close() = onClose(vm.state.value.changed)
 
-    Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = { close() },
+        // decorFitsSystemWindows=false lets the dialog window see the IME inset, so
+        // `imePadding()` below can shrink the modal to the space above the keyboard —
+        // otherwise the keyboard covers the bottom of the modal (the comment composer
+        // and its `/`-suggestions) and only manual scrolling reveals it.
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
         // Back off a non-default tab returns to the first tab; a second Back (now
         // disabled) falls through to the Dialog's dismiss and closes the modal.
         BackHandler(enabled = tab != 0) { tab = 0 }
         Column(
             Modifier
                 .popupAppear(TransformOrigin.Center)
+                // With decorFitsSystemWindows off the window spans the whole display,
+                // so the modal has to keep clear of the bars itself.
+                .systemBarsPadding()
+                .imePadding()
                 .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.94f)
                 .clip(RoundedCornerShape(RadiusLg))

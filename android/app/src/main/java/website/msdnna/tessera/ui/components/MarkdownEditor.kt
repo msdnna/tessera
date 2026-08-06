@@ -12,11 +12,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -25,6 +29,7 @@ import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -110,6 +116,11 @@ fun MarkdownEditor(
     var uploading by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // Scroll anchor + the live IME inset, used to keep the editor's bottom visible
+    // once the keyboard is up (see the tail Spacer below).
+    val tail = remember { BringIntoViewRequester() }
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
 
     // Internal selection-aware state; resynced when [value] changes externally
     // (e.g. an image insert appends to the parent's string).
@@ -193,6 +204,7 @@ fun MarkdownEditor(
             }
         } else {
             var hadFocus by remember { mutableStateOf(false) }
+            var focused by remember { mutableStateOf(false) }
             // Autocomplete: "@query" anywhere before the caret, or a `/`-command at
             // the start of a line. Mentions win — a mention query can't start a line
             // with a slash, so the two never compete for the same caret.
@@ -237,7 +249,10 @@ fun MarkdownEditor(
                         .background(c.surface)
                         .border(1.dp, c.border, RoundedCornerShape(RadiusMd))
                         .padding(12.dp)
-                        .onFocusChanged { if (it.isFocused) hadFocus = true else if (hadFocus) onBlur?.invoke() },
+                        .onFocusChanged {
+                            focused = it.isFocused
+                            if (it.isFocused) hadFocus = true else if (hadFocus) onBlur?.invoke()
+                        },
                     decorationBox = { inner ->
                         if (tfv.text.isEmpty()) Text(placeholder, color = c.placeholder, fontSize = 14.sp)
                         inner()
@@ -246,6 +261,16 @@ fun MarkdownEditor(
             }
             if (matches.isNotEmpty()) MentionSuggestions(matches, onPick = ::pickMention)
             if (cmdMatches.isNotEmpty()) CommandSuggestions(cmdMatches, onPick = ::pickCommand)
+            // Keep the editor's bottom edge — the field and, once typing starts, the
+            // suggestion list — inside the scroll viewport. The anchor is a zero-height
+            // marker under the list, so bringing it into view scrolls to the END of the
+            // block instead of its top. Re-run while the IME animates in (imeBottom
+            // changes) and whenever the list grows: right after focus the keyboard has
+            // not yet taken its space, so a single scroll would stop short.
+            Spacer(Modifier.fillMaxWidth().height(1.dp).bringIntoViewRequester(tail))
+            LaunchedEffect(focused, imeBottom, matches.size, cmdMatches.size) {
+                if (focused) runCatching { tail.bringIntoView() }
+            }
         }
     }
 }

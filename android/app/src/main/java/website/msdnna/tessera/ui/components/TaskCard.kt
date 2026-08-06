@@ -837,13 +837,14 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
             } else {
                 Row(
                     Modifier
+                        .height(TagPillHeight)
                         .then(stack)
                         .stackedTagShadow(extra, RadiusSm)
                         .clip(pillShape)
                         .background(frontBg)
                         .border(1.dp, base.copy(alpha = 0.45f), pillShape)
                         .clickableNoRipple { menu = true }
-                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                        .padding(horizontal = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(first.name, fontSize = 11.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(tagText)))

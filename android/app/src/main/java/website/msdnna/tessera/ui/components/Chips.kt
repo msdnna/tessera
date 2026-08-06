@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,12 +17,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +38,11 @@ import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.tagParts
 
+/** Tag pills stand the same height as the other card pills (`Pill` in TaskCard) —
+ *  a shorter chip read as a different, misaligned control in the same row. */
+val TagPillHeight = 24.dp
+private val TagPillHeightBig = 28.dp
+
 /**
  * Small coloured tag chip, matching the web kanban card chips ([TagPill.vue] parity).
  *
@@ -45,8 +54,12 @@ import website.msdnna.tessera.util.tagParts
  * friendly prefix name (or the bare prefix under the «короткие префиксы» device
  * preference, or when no name is configured).
  *
- * The fill keeps the raw tag colour (subtle), but text is clamped to a legible
- * lightness for the active theme so dark/light tag colours stay readable.
+ * The fill keeps the raw tag colour (subtle) but is **opaque** — blended with
+ * [surface] rather than alpha-tinted, so neither the card behind it nor the stack
+ * cascade peeking out to the right shows through the pill. Text is clamped to a
+ * legible lightness for the active theme so dark/light tag colours stay readable.
+ * The chip is the same height as the other card pills ([TagPillHeight]); its
+ * padding only sets the width.
  * Long names truncate; [big] renders a roomier badge (tag manager).
  * [showScope] false drops the scope segment — for a picker already grouped by
  * scope, where it would just repeat the section header.
@@ -59,48 +72,53 @@ fun TagChip(
     big: Boolean = false,
     prefixNames: Map<String, String> = emptyMap(),
     showScope: Boolean = true,
+    surface: Color = Tessera.colors.cardSurface,
 ) {
     val base = parseHexColor(color, Tessera.colors.text3)
     val text = readableHue(base, Tessera.colors.isDark)
     val parts = tagParts(name, prefixNames, Tessera.rawTagPrefix)
     val shape = RoundedCornerShape(if (big) 6.dp else 4.dp)
     val fontSize = if (big) 13.sp else 11.sp
+    val height = if (big) TagPillHeightBig else TagPillHeight
+    val fill = lerp(surface, base, 0.18f)
     if (parts.hasScope && showScope) {
         // Two segments inside one clipped, bordered box: the colour change *is* the
         // divider, so there's no doubled hairline where the segments meet (the web
         // drops the shared border edge for the same reason).
         Row(
-            modifier.clip(shape).border(1.dp, text, shape),
+            modifier.height(height).clip(shape).border(1.dp, text, shape),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                parts.scope,
-                fontSize = fontSize,
-                fontWeight = FontWeight.SemiBold,
-                color = onColor(base),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.background(accentGradient(base))
-                    .padding(horizontal = if (big) 8.dp else 5.dp, vertical = if (big) 3.dp else 1.dp),
-            )
-            Text(
-                parts.label,
-                fontSize = fontSize,
-                fontWeight = FontWeight.Medium,
-                style = TextStyle(brush = accentGradient(text)),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.background(accentGradient(base.copy(alpha = 0.18f)))
-                    .padding(horizontal = if (big) 9.dp else 6.dp, vertical = if (big) 3.dp else 1.dp),
-            )
+            TagSegment(accentGradient(base), if (big) 8.dp else 6.dp) {
+                Text(
+                    parts.scope,
+                    fontSize = fontSize,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onColor(base),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            TagSegment(accentGradient(fill), if (big) 9.dp else 7.dp) {
+                Text(
+                    parts.label,
+                    fontSize = fontSize,
+                    fontWeight = FontWeight.Medium,
+                    style = TextStyle(brush = accentGradient(text)),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         return
     }
     Box(
         modifier
+            .height(height)
             .clip(shape)
-            .background(accentGradient(base.copy(alpha = 0.18f)))
-            .padding(horizontal = if (big) 9.dp else 6.dp, vertical = if (big) 4.dp else 2.dp),
+            .background(accentGradient(fill))
+            .padding(horizontal = if (big) 9.dp else 7.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             parts.label,
@@ -111,6 +129,17 @@ fun TagChip(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/** One side of a two-segment scoped pill: fills the pill's height so both segments
+ *  meet edge to edge (a padding-sized segment would leave the border showing through
+ *  above and below the shorter one). */
+@Composable
+private fun TagSegment(fill: Brush, horizontal: Dp, content: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxHeight().background(fill).padding(horizontal = horizontal),
+        contentAlignment = Alignment.Center,
+    ) { content() }
 }
 
 /**
@@ -209,13 +238,16 @@ private fun OverflowChip(n: Int, tint: String? = null) {
     val c = Tessera.colors
     val base = tint?.let { parseHexColor(it, c.text3) }
     // Neutral greys stay flat — only the tinted variant carries the accent gradient.
+    // Opaque fill (blended with the card) for the same reason as [TagChip]: the
+    // stack cascade must not show through.
     val fill = if (base != null) {
-        Modifier.background(accentGradient(base.copy(alpha = 0.18f)))
+        Modifier.background(accentGradient(lerp(c.cardSurface, base, 0.18f)))
     } else {
         Modifier.background(c.surfaceAlt)
     }
     Box(
-        Modifier.clip(RoundedCornerShape(4.dp)).then(fill).padding(horizontal = 7.dp, vertical = 2.dp),
+        Modifier.height(TagPillHeight).clip(RoundedCornerShape(4.dp)).then(fill).padding(horizontal = 7.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             "+$n",

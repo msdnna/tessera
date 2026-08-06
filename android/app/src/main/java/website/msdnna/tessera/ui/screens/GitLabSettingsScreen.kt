@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +60,7 @@ import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.GitlabViewModel
 import website.msdnna.tessera.util.Ion
@@ -321,22 +324,28 @@ private fun BindingRow(
                 color = c.text3, fontSize = 12.sp,
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Icon-over-caption tiles, not text buttons: four labelled buttons don't
+            // fit a phone card side by side — «Удалить» wrapped one letter per line.
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 integ.id?.let { id ->
-                    TButton(
-                        "Синхр.", onClick = { vm.sync(workspaceId, id) }, kind = TButtonKind.Secondary,
-                        loading = syncing && !state.syncingFull, enabled = !syncing, icon = Ion.REFRESH,
+                    ActionTile(
+                        "Синхр.", Ion.REFRESH, Modifier.weight(1f), onClick = { vm.sync(workspaceId, id) },
+                        loading = syncing && !state.syncingFull, enabled = !syncing,
                     )
                     // Full sweep: also re-checks issues an incremental pull skips, so
                     // deletes and drift in GitLab reach the board.
-                    TButton(
-                        "Полная", onClick = { vm.sync(workspaceId, id, full = true) }, kind = TButtonKind.Ghost,
+                    ActionTile(
+                        "Полная", Ion.REPEAT, Modifier.weight(1f),
+                        onClick = { vm.sync(workspaceId, id, full = true) },
                         loading = syncing && state.syncingFull, enabled = !syncing,
                     )
                 }
                 if (state.isAdmin) {
-                    TButton("Изменить", onClick = onEdit, kind = TButtonKind.Secondary)
-                    TButton("Удалить", onClick = { confirmDelete = true }, kind = TButtonKind.Ghost)
+                    ActionTile("Изменить", Ion.PENCIL, Modifier.weight(1f), onClick = onEdit)
+                    ActionTile(
+                        "Удалить", Ion.TRASH, Modifier.weight(1f),
+                        onClick = { confirmDelete = true }, danger = true,
+                    )
                 }
             }
         }
@@ -352,6 +361,43 @@ private fun BindingRow(
             },
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+/**
+ * A compact card action: a glyph over a small caption, sharing the row width with
+ * its siblings (same shape as the board-layout selector tiles). Four of these fit
+ * a phone card where four text buttons wrap; [danger] tints the destructive one,
+ * [loading] swaps the glyph for a spinner in place.
+ */
+@Composable
+private fun ActionTile(
+    label: String,
+    icon: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    danger: Boolean = false,
+) {
+    val c = Tessera.colors
+    val active = enabled && !loading
+    val fg = (if (danger) TesseraDanger else c.text1).copy(alpha = if (active) 1f else 0.45f)
+    Column(
+        modifier
+            .clip(RoundedCornerShape(RadiusSm))
+            .background(c.surfaceAlt)
+            .clickableNoRipple(enabled = active, onClick = onClick)
+            .padding(top = 9.dp, bottom = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
+        } else {
+            IonIcon(icon, size = 18.dp, tint = fg)
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(label, color = fg, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
     }
 }
 
