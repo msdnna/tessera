@@ -89,6 +89,32 @@ api.interceptors.response.use(
   },
 )
 
+// In-flight GET coalescing for read-only metadata. When several components mount
+// in the same tick (a board open, or the GitLab settings modal and its panels)
+// they fire identical GETs — members, integrations, columns, tag-prefixes — at
+// once. Sharing one in-flight request collapses those duplicate round-trips.
+// Each caller still gets its OWN deep clone of the data, so no consumer can
+// mutate another's copy. Only genuinely concurrent calls share; once the request
+// settles the key is dropped, so this never serves stale data on a later fetch.
+const inflightGets = new Map()
+function cloneData(d) {
+  if (d == null) return d
+  try {
+    return structuredClone(d)
+  } catch {
+    return JSON.parse(JSON.stringify(d))
+  }
+}
+function sharedGet(url, config) {
+  const key = url + '::' + JSON.stringify(config?.params ?? null)
+  let p = inflightGets.get(key)
+  if (!p) {
+    p = api.get(url, config).finally(() => inflightGets.delete(key))
+    inflightGets.set(key, p)
+  }
+  return p.then((res) => ({ ...res, data: cloneData(res.data) }))
+}
+
 export const auth = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
@@ -146,8 +172,8 @@ export const workspaces = {
   create: (data) => api.post('/workspaces', data),
   // Dangerous: delete a workspace with everything in it (owner only, 403 otherwise).
   remove: (id) => api.delete(`/workspaces/${id}`),
-  members: (id) => api.get(`/workspaces/${id}/members`),
-  gitlabMembers: (id) => api.get(`/workspaces/${id}/gitlab/members`),
+  members: (id) => sharedGet(`/workspaces/${id}/members`),
+  gitlabMembers: (id) => sharedGet(`/workspaces/${id}/gitlab/members`),
   addMember: (id, data) => api.post(`/workspaces/${id}/members`, data),
   updateMemberRole: (id, userId, role) =>
     api.patch(`/workspaces/${id}/members/${userId}`, { role }),
@@ -166,14 +192,14 @@ export const workspaces = {
   summary: (id) => api.get(`/workspaces/${id}/summary`),
   // Every tag across the workspace's projects — read-only, for cross-project
   // views (Home). Tags are created/listed per-project (see `projects` below).
-  tags: (id) => api.get(`/workspaces/${id}/tags`),
+  tags: (id) => sharedGet(`/workspaces/${id}/tags`),
   // Friendly tag-prefix names across the workspace's projects, deduped by prefix —
   // lets cross-project views render scoped tag pills («scope │ value») too.
-  tagPrefixes: (id) => api.get(`/workspaces/${id}/tag-prefixes`),
+  tagPrefixes: (id) => sharedGet(`/workspaces/${id}/tag-prefixes`),
   // Workspace-wide default estimation config; `null` clears it to the built-in default.
   setEstimation: (id, config) => api.put(`/workspaces/${id}/estimation`, config),
   // Every milestone across the workspace's projects with task rollups — for the «Этапы» screen.
-  milestones: (id) => api.get(`/workspaces/${id}/milestones`),
+  milestones: (id) => sharedGet(`/workspaces/${id}/milestones`),
   // Quick-action registry for the editor popup: built-in commands (from the
   // backend's quickact.Registry) + this workspace's custom dictionary, plus
   // can_manage — the only place the frontend learns its own workspace role.
@@ -194,16 +220,16 @@ export const projects = {
   remove: (id) => api.delete(`/projects/${id}`),
   boards: (id) => api.get(`/projects/${id}/boards`),
   createBoard: (id, data) => api.post(`/projects/${id}/boards`, data),
-  tags: (id) => api.get(`/projects/${id}/tags`),
+  tags: (id) => sharedGet(`/projects/${id}/tags`),
   createTag: (id, data) => api.post(`/projects/${id}/tags`, data),
   updateTag: (tagId, data) => api.patch(`/tags/${tagId}`, data),
   deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
-  tagPrefixes: (id) => api.get(`/projects/${id}/tag-prefixes`),
+  tagPrefixes: (id) => sharedGet(`/projects/${id}/tag-prefixes`),
   setTagPrefixes: (id, prefixes) => api.put(`/projects/${id}/tag-prefixes`, { prefixes }),
   // Per-project estimation override; `null` clears it to inherit the workspace default.
   setEstimation: (id, config) => api.put(`/projects/${id}/estimation`, config),
   // Milestones («Этап»): project-scoped.
-  milestones: (id) => api.get(`/projects/${id}/milestones`),
+  milestones: (id) => sharedGet(`/projects/${id}/milestones`),
   createMilestone: (id, data) => api.post(`/projects/${id}/milestones`, data),
 }
 
@@ -228,7 +254,7 @@ export const boards = {
   update: (id, data) => api.patch(`/boards/${id}`, data),
   setDoneColumn: (id, columnId) => api.patch(`/boards/${id}/done-column`, { column_id: columnId }),
   remove: (id) => api.delete(`/boards/${id}`),
-  columns: (id) => api.get(`/boards/${id}/columns`),
+  columns: (id) => sharedGet(`/boards/${id}/columns`),
   createColumn: (id, data) => api.post(`/boards/${id}/columns`, data),
   // params.milestone: '<slug|uuid>' scopes to one sprint, 'backlog' to no-sprint tasks.
   tasks: (id, params) => api.get(`/boards/${id}/tasks`, params ? { params } : undefined),
@@ -266,6 +292,9 @@ export const columns = {
 
 export const tasks = {
   get: (id) => api.get(`/tasks/${id}`),
+  // Board cards ship without the description (see backend task_list_dto.go); the
+  // card fetches it lazily on hover. Background call — no global progress bar.
+  description: (id) => api.get(`/tasks/${id}/description`, { skipLoader: true }),
   update: (id, data) => api.patch(`/tasks/${id}`, data),
   move: (id, data) => api.patch(`/tasks/${id}/move`, data),
   setParent: (id, parentId) => api.patch(`/tasks/${id}/parent`, { parent_id: parentId }),
@@ -295,19 +324,27 @@ export const tasks = {
   addComment: (id, body, mentions) => api.post(`/tasks/${id}/comments`, { body, mentions }),
   // Dry-run the quick actions in a draft comment — same parser as the real
   // POST, changes nothing. Powers the «Будет применено: …» hint.
-  previewCommands: (id, body) => api.post(`/tasks/${id}/commands/preview`, { body }),
+  previewCommands: (id, body) =>
+    api.post(`/tasks/${id}/commands/preview`, { body }, { skipLoader: true }),
   updateComment: (commentId, body) => api.patch(`/comments/${commentId}`, { body }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),
   addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),
   removeRelation: (relationId) => api.delete(`/relations/${relationId}`),
   attachments: (id) => api.get(`/tasks/${id}/attachments`),
+  // Attachment up/download can be large and slow — keep them off the global bar
+  // (their call sites show local progress); a blocking overlay here froze the
+  // whole task modal on a remote install.
   uploadAttachment: (id, formData) =>
     api.post(`/tasks/${id}/attachments`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      skipLoader: true,
     }),
   downloadAttachment: (attachmentId) =>
-    api.get(`/attachments/${attachmentId}/download`, { responseType: 'blob' }),
+    api.get(`/attachments/${attachmentId}/download`, {
+      responseType: 'blob',
+      skipLoader: true,
+    }),
   removeAttachment: (attachmentId) => api.delete(`/attachments/${attachmentId}`),
 }
 
@@ -331,8 +368,11 @@ export const notificationChannels = {
   create: (data) => api.post('/notification-channels', data),
   update: (id, data) => api.patch(`/notification-channels/${id}`, data),
   remove: (id) => api.delete(`/notification-channels/${id}`),
-  test: (id) => api.post(`/notification-channels/${id}/test`),
-  previewTemplate: (template) => api.post('/notification-template-preview', { template }),
+  // Both reach out to an external transport (SMTP / Telegram / webhook) and can
+  // stall for seconds — background them so the settings dialog stays usable.
+  test: (id) => api.post(`/notification-channels/${id}/test`, null, { skipLoader: true }),
+  previewTemplate: (template) =>
+    api.post('/notification-template-preview', { template }, { skipLoader: true }),
   // Auto-register this client as a routable "device" channel (idempotent).
   registerDevice: (data) => api.post('/notification-devices', data),
 }
@@ -356,7 +396,7 @@ export const gitlab = {
   connect: (data) => api.post('/gitlab/connection', data), // { base_url, token }
   disconnect: () => api.delete('/gitlab/connection'),
   // Per-workspace integration bindings (multi-binding: several GL project → board).
-  listIntegrations: (wsId) => api.get(`/workspaces/${wsId}/gitlab/integrations`),
+  listIntegrations: (wsId) => sharedGet(`/workspaces/${wsId}/gitlab/integrations`),
   createIntegration: (wsId, data) => api.post(`/workspaces/${wsId}/gitlab/integrations`, data),
   updateIntegration: (wsId, integId, data) =>
     api.put(`/workspaces/${wsId}/gitlab/integrations/${integId}`, data),
@@ -373,17 +413,29 @@ export const gitlab = {
   // Sync journal: run/action history + retry of a failed push.
   syncRuns: (wsId, limit = 50) =>
     api.get(`/workspaces/${wsId}/gitlab/sync-runs`, { params: { limit } }),
-  syncRunActions: (wsId, runId) => api.get(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions`),
+  // One run's actions, keyset-paginated by seq WITHOUT the heavy before/after
+  // diff (fetched per row on demand). Returns { items, has_more, next_after_seq }.
+  // A 2500-action run used to ship as one multi-MB blocking response.
+  syncRunActions: (wsId, runId, { limit, afterSeq } = {}) =>
+    api.get(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions`, {
+      params: { limit, after_seq: afterSeq },
+      skipLoader: true,
+    }),
+  // Lazily fetch one action's before/after diff JSONB → { detail }.
+  syncActionDetail: (wsId, runId, actionId) =>
+    api.get(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions/${actionId}/detail`, {
+      skipLoader: true,
+    }),
   retryWriteback: (wsId, runId, actionId) =>
     api.post(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions/${actionId}/retry`),
   // Create a GitLab issue from a task (returns the new link view) + the project's
   // issue templates for prefilling the description.
   createIssue: (taskId, data) => api.post(`/tasks/${taskId}/gitlab-issue`, data),
   issueTemplates: (wsId, integId) =>
-    api.get(
-      `/workspaces/${wsId}/gitlab/issue-templates`,
-      integId ? { params: { integration_id: integId } } : undefined,
-    ),
+    api.get(`/workspaces/${wsId}/gitlab/issue-templates`, {
+      params: integId ? { integration_id: integId } : undefined,
+      skipLoader: true,
+    }),
   // Write-back conflicts: open-conflict inbox + interactive resolution.
   conflicts: (wsId) => api.get(`/workspaces/${wsId}/gitlab/conflicts`),
   resolveConflict: (taskId, conflictId, data) =>

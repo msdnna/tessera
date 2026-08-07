@@ -24,9 +24,12 @@ const { formatDue } = useDateLocale()
 const runs = ref([])
 const loading = ref(false)
 const expandedRunId = ref(null)
-const actionsByRun = ref({}) // runId → actions[]
+// runId → { items: action[], hasMore: bool, nextSeq: number|null }. Actions are
+// keyset-paginated (a run can hold thousands) and carry no before/after diff —
+// that's fetched per row on select (see selectAction).
+const actionsByRun = ref({})
 const loadingActions = ref(false)
-const selectedAction = ref(null) // { ...action, runId }
+const selectedAction = ref(null) // { ...action, runId, detail? }
 const retrying = ref(false)
 
 // reset=false is the live-refresh form (a background run finished): the list is
@@ -58,20 +61,52 @@ async function toggleRun(run) {
   }
   expandedRunId.value = run.id
   if (!actionsByRun.value[run.id]) {
-    loadingActions.value = true
-    try {
-      const { data } = await glApi.syncRunActions(props.wsId, run.id)
-      actionsByRun.value = { ...actionsByRun.value, [run.id]: data || [] }
-    } catch (e) {
-      message.error(e.message)
-    } finally {
-      loadingActions.value = false
-    }
+    await loadActions(run, true)
   }
 }
 
-function selectAction(run, a) {
-  selectedAction.value = { ...a, runId: run.id }
+// loadActions fetches one keyset page of a run's actions. reset=true starts over;
+// otherwise it appends the next page from the stored cursor ("Показать ещё").
+async function loadActions(run, reset) {
+  const existing = actionsByRun.value[run.id]
+  const afterSeq = reset ? undefined : (existing?.nextSeq ?? undefined)
+  loadingActions.value = true
+  try {
+    const { data } = await glApi.syncRunActions(props.wsId, run.id, { afterSeq })
+    const page = data?.items || []
+    const prev = reset ? [] : existing?.items || []
+    actionsByRun.value = {
+      ...actionsByRun.value,
+      [run.id]: {
+        items: [...prev, ...page],
+        hasMore: !!data?.has_more,
+        nextSeq: data?.next_after_seq ?? null,
+      },
+    }
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    loadingActions.value = false
+  }
+}
+
+// selectAction shows a row's detail, lazily fetching the before/after diff the
+// list omits. The diff is cached back onto the row so re-selecting is instant,
+// and a guard drops the response if the user moved on to another row meanwhile.
+async function selectAction(run, a) {
+  selectedAction.value = { ...a, runId: run.id, detail: a.detail || {} }
+  if (a.has_detail && a.detail === undefined) {
+    try {
+      const { data } = await glApi.syncActionDetail(props.wsId, run.id, a.id)
+      const detail = data?.detail || {}
+      a.detail = detail
+      if (selectedAction.value?.id === a.id) {
+        selectedAction.value = { ...selectedAction.value, detail }
+      }
+    } catch (e) {
+      message.error(e.message)
+    }
+  }
 }
 
 async function retry() {
@@ -258,14 +293,13 @@ defineExpose({ reload: () => loadRuns() })
             />
           </button>
           <div v-if="expandedRunId === run.id" class="j-actions">
-            <div v-if="loadingActions" class="j-muted">Загрузка…</div>
             <empty-state
-              v-else-if="!(actionsByRun[run.id] || []).length"
+              v-if="!loadingActions && !(actionsByRun[run.id]?.items || []).length"
               size="small"
               text="Нет записанных действий"
             />
             <button
-              v-for="a in actionsByRun[run.id] || []"
+              v-for="a in actionsByRun[run.id]?.items || []"
               :key="a.id"
               class="j-action"
               :class="{
@@ -276,6 +310,14 @@ defineExpose({ reload: () => loadRuns() })
             >
               <span class="j-op" :class="a.op">{{ a.op }}</span>
               <span class="j-action-sum">{{ a.summary }}</span>
+            </button>
+            <div v-if="loadingActions" class="j-muted">Загрузка…</div>
+            <button
+              v-else-if="actionsByRun[run.id]?.hasMore"
+              class="j-more"
+              @click="loadActions(run, false)"
+            >
+              Показать ещё
             </button>
           </div>
         </div>
@@ -688,5 +730,19 @@ defineExpose({ reload: () => loadRuns() })
   font-size: 12px;
   color: var(--t-text3);
   padding: 6px 8px;
+}
+.j-more {
+  align-self: flex-start;
+  margin: 4px 0 2px 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--t-primary);
+  background: none;
+  border: 1px solid var(--t-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.j-more:hover {
+  background: var(--t-hover);
 }
 </style>

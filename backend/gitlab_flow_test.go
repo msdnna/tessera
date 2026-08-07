@@ -801,7 +801,7 @@ func TestGitlabSyncFlow(t *testing.T) {
 	}
 
 	// Journal actions: three pull-creates.
-	actions := c.get("/workspaces/" + s.WS + "/gitlab/sync-runs/" + run["id"].(string) + "/actions").listBody(t)
+	actions := c.get("/workspaces/" + s.WS + "/gitlab/sync-runs/" + run["id"].(string) + "/actions").itemsBody(t)
 	if len(actions) != 3 {
 		t.Fatalf("run actions = %d, want 3\n%v", len(actions), actions)
 	}

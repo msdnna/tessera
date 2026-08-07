@@ -173,6 +173,19 @@ func (r resp) listBody(t *testing.T) []map[string]any {
 	return l
 }
 
+// itemsBody decodes a paginated {items:[…], has_more, next_after_seq} envelope
+// and returns the items (e.g. the journal actions page).
+func (r resp) itemsBody(t *testing.T) []map[string]any {
+	t.Helper()
+	var env struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(r.Body, &env); err != nil {
+		t.Fatalf("decode items envelope (%d): %v\n%s", r.Status, err, r.Body)
+	}
+	return env.Items
+}
+
 // doReq performs a JSON request with an optional bearer token.
 func doReq(t *testing.T, token, method, path string, body any) resp {
 	t.Helper()

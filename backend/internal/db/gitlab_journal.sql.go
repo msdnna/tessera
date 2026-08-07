@@ -180,6 +180,28 @@ func (q *Queries) GetGitlabSyncAction(ctx context.Context, arg GetGitlabSyncActi
 	return i, err
 }
 
+const getGitlabSyncActionDetail = `-- name: GetGitlabSyncActionDetail :one
+SELECT a.detail
+FROM gitlab_sync_actions a
+JOIN gitlab_sync_runs r ON r.id = a.run_id
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE a.id = $1 AND i.workspace_id = $2
+`
+
+type GetGitlabSyncActionDetailParams struct {
+	ActionID    uuid.UUID `json:"action_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// GetGitlabSyncActionDetail returns one action's detail JSONB, scoped to the
+// workspace's bindings (ownership check). Backs the lazy per-row detail fetch.
+func (q *Queries) GetGitlabSyncActionDetail(ctx context.Context, arg GetGitlabSyncActionDetailParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getGitlabSyncActionDetail, arg.ActionID, arg.WorkspaceID)
+	var detail []byte
+	err := row.Scan(&detail)
+	return detail, err
+}
+
 const getGitlabSyncActionInWorkspace = `-- name: GetGitlabSyncActionInWorkspace :one
 SELECT a.id, a.run_id, a.seq, a.direction, a.entity_type, a.op, a.task_id, a.gl_iid, a.summary, a.detail, a.status, a.error, a.created_at, r.integration_id AS run_integration_id
 FROM gitlab_sync_actions a
@@ -330,6 +352,74 @@ func (q *Queries) ListGitlabSyncActions(ctx context.Context, runID uuid.UUID) ([
 			&i.Status,
 			&i.Error,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGitlabSyncActionsPage = `-- name: ListGitlabSyncActionsPage :many
+SELECT id, seq, direction, entity_type, op, task_id, gl_iid, summary, status, error, created_at,
+       (detail <> '{}'::jsonb)::boolean AS has_detail
+FROM gitlab_sync_actions
+WHERE run_id = $1 AND seq > $2
+ORDER BY seq
+LIMIT $3
+`
+
+type ListGitlabSyncActionsPageParams struct {
+	RunID    uuid.UUID `json:"run_id"`
+	AfterSeq int32     `json:"after_seq"`
+	LimitN   int32     `json:"limit_n"`
+}
+
+type ListGitlabSyncActionsPageRow struct {
+	ID         uuid.UUID  `json:"id"`
+	Seq        int32      `json:"seq"`
+	Direction  string     `json:"direction"`
+	EntityType string     `json:"entity_type"`
+	Op         string     `json:"op"`
+	TaskID     *uuid.UUID `json:"task_id"`
+	GlIid      *int64     `json:"gl_iid"`
+	Summary    string     `json:"summary"`
+	Status     string     `json:"status"`
+	Error      string     `json:"error"`
+	CreatedAt  time.Time  `json:"created_at"`
+	HasDetail  bool       `json:"has_detail"`
+}
+
+// ListGitlabSyncActionsPage returns one run's actions in sequence order WITHOUT
+// the heavy `detail` JSONB (before/after diffs) — the journal list renders from
+// summary/status alone, and a row's detail is fetched on demand. Keyset paginated
+// by seq so a 2500-action run streams in bounded pages instead of one multi-MB
+// response. has_detail lets the UI show the "expand for diff" affordance.
+func (q *Queries) ListGitlabSyncActionsPage(ctx context.Context, arg ListGitlabSyncActionsPageParams) ([]ListGitlabSyncActionsPageRow, error) {
+	rows, err := q.db.Query(ctx, listGitlabSyncActionsPage, arg.RunID, arg.AfterSeq, arg.LimitN)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGitlabSyncActionsPageRow
+	for rows.Next() {
+		var i ListGitlabSyncActionsPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Seq,
+			&i.Direction,
+			&i.EntityType,
+			&i.Op,
+			&i.TaskID,
+			&i.GlIid,
+			&i.Summary,
+			&i.Status,
+			&i.Error,
+			&i.CreatedAt,
+			&i.HasDetail,
 		); err != nil {
 			return nil, err
 		}

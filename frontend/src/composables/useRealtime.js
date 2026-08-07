@@ -2,17 +2,35 @@ import { onMounted, onUnmounted } from 'vue'
 import { wsURL } from '@/utils/serverBase'
 
 // useRealtime opens the /api/ws WebSocket and invokes `onEvent({scope,type,data})`
-// for every server broadcast. Auto-reconnects with a fixed backoff. The caller
-// filters events by scope (workspace id) itself.
+// for every server broadcast. Auto-reconnects with exponential backoff (capped,
+// jittered) so a backend restart or a flapping link doesn't hammer the server
+// with a fixed-interval retry storm from every open tab. The caller filters
+// events by scope (workspace id) itself.
+const RECONNECT_BASE = 1000 // ms
+const RECONNECT_MAX = 30000 // ms
+
 export function useRealtime(onEvent) {
   let ws = null
   let retry = null
+  let attempts = 0
   let closed = false
+
+  function scheduleReconnect() {
+    if (closed) return
+    // Exponential backoff with full jitter: base*2^n capped, then randomised in
+    // [0, cap] so many tabs don't reconnect in lockstep after an outage.
+    const cap = Math.min(RECONNECT_MAX, RECONNECT_BASE * 2 ** attempts)
+    attempts += 1
+    retry = setTimeout(connect, Math.random() * cap)
+  }
 
   function connect() {
     // Web: ws(s)://<location.host>/api/ws. Desktop (Tauri): derived from the
     // configured server origin. See utils/serverBase.js.
     ws = new WebSocket(wsURL())
+    ws.onopen = () => {
+      attempts = 0 // healthy connection → reset the backoff
+    }
     ws.onmessage = (e) => {
       try {
         onEvent(JSON.parse(e.data))
@@ -21,7 +39,7 @@ export function useRealtime(onEvent) {
       }
     }
     ws.onclose = () => {
-      if (!closed) retry = setTimeout(connect, 3000)
+      if (!closed) scheduleReconnect()
     }
     ws.onerror = () => ws && ws.close()
   }
@@ -35,6 +53,7 @@ export function useRealtime(onEvent) {
     const dead = !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING
     if (dead) {
       clearTimeout(retry)
+      attempts = 0 // user-triggered recovery → reconnect immediately, no backoff
       connect()
     }
   }

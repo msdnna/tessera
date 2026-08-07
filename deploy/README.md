@@ -84,6 +84,43 @@ docker compose exec -T postgres pg_dump -U tessera tessera | gzip > backup-$(dat
 Encrypt dumps (`gpg`) and store them **off the box** (object storage / another
 host). Test a restore periodically. Snapshot the VDS disk before each update.
 
+## Behind an organization proxy
+
+If Tessera sits behind a proxy/load-balancer you don't control (an org edge, an
+API gateway), that proxy — not the bundled Caddy/nginx — governs latency and the
+WebSocket. Getting the live board and snappy responses right there needs:
+
+- **WebSocket upgrade** on `/api/ws`: forward `Upgrade` / `Connection` headers and
+  use HTTP/1.1 to the upstream. Without it the realtime socket never connects and
+  clients fall back to silent staleness + reconnect churn.
+- **Idle timeout ≥ 60s** on that route (ideally minutes). The backend pings every
+  25s to hold the socket open; a proxy that reaps idle connections faster than
+  that will drop the board's live updates repeatedly.
+- **Response compression** (`gzip`/`br`) for `application/json`, OR let the backend's
+  own gzip pass through untouched (don't strip `Accept-Encoding` on the way in or
+  `Content-Encoding` on the way out). Tessera gzips its JSON itself; the board /
+  sync-journal payloads shrink ~10x, which is the difference between sub-second and
+  multi-second loads on a constrained link.
+- **Upstream keep-alive**: reuse connections to Tessera's frontend container rather
+  than opening a fresh TCP + TLS per request — a board open fires ~10 calls at once
+  and per-request connection setup dominates otherwise.
+
+The bundled `frontend/nginx.conf` already does all of the above for the built-in
+path; mirror those settings on the external proxy.
+
+## Tuning Postgres for the host
+
+`docker-compose.yml` ships conservative Postgres settings sized for a ~2GB box.
+On a larger VDS, raise them in `.env` (then `docker compose up -d postgres`):
+
+```
+PG_SHARED_BUFFERS=1GB           # ~25% of RAM
+PG_EFFECTIVE_CACHE_SIZE=3GB     # ~50-75% of RAM
+PG_WORK_MEM=64MB
+PG_MAINTENANCE_WORK_MEM=512MB
+PG_RANDOM_PAGE_COST=1.1         # SSD; leave at 4 only for spinning disks
+```
+
 ## Security posture (built in)
 
 - Postgres + backend have **no host ports** — internet-unreachable by design.

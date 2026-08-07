@@ -75,30 +75,47 @@ func positionBetween(prev, next *float64) float64 {
 	}
 }
 
-// requireMember authorizes the current user against a workspace. It writes a
-// 403 and returns false when the user is not a member.
-func (h *API) requireMember(c *gin.Context, workspaceID uuid.UUID) bool {
-	_, err := h.q.GetMembership(c, db.GetMembershipParams{
-		WorkspaceID: workspaceID,
-		UserID:      middleware.CurrentUser(c),
-	})
-	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not a member of this workspace"})
-		return false
-	}
-	return true
+// membershipResult is the cached outcome of a per-request membership lookup.
+type membershipResult struct {
+	role string
+	ok   bool
 }
 
-// memberRole returns the caller's role in a workspace, or "" if not a member.
-func (h *API) memberRole(c *gin.Context, workspaceID uuid.UUID) string {
+// lookupMembership resolves the caller's membership in a workspace, memoized for
+// the lifetime of the request. A single request often checks membership more than
+// once (e.g. requireMember in a handler, then memberRole for a permission gate, or
+// nested resource resolution) — without this each check was its own SQL round-trip.
+func (h *API) lookupMembership(c *gin.Context, workspaceID uuid.UUID) membershipResult {
+	key := "membership:" + workspaceID.String()
+	if v, exists := c.Get(key); exists {
+		return v.(membershipResult)
+	}
+	res := membershipResult{}
 	m, err := h.q.GetMembership(c, db.GetMembershipParams{
 		WorkspaceID: workspaceID,
 		UserID:      middleware.CurrentUser(c),
 	})
-	if err != nil {
-		return ""
+	if err == nil {
+		res.role = m.Role
+		res.ok = true
 	}
-	return m.Role
+	c.Set(key, res)
+	return res
+}
+
+// requireMember authorizes the current user against a workspace. It writes a
+// 403 and returns false when the user is not a member.
+func (h *API) requireMember(c *gin.Context, workspaceID uuid.UUID) bool {
+	if h.lookupMembership(c, workspaceID).ok {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "not a member of this workspace"})
+	return false
+}
+
+// memberRole returns the caller's role in a workspace, or "" if not a member.
+func (h *API) memberRole(c *gin.Context, workspaceID uuid.UUID) string {
+	return h.lookupMembership(c, workspaceID).role
 }
 
 // requireManager authorizes the caller as owner or admin of a workspace — the

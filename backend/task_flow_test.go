@@ -78,15 +78,63 @@ func TestTaskCreateGetUpdate(t *testing.T) {
 		}
 	}
 
-	// Full-replace fact: a title-only PATCH wipes description/priority/due.
+	// Full-replace for the present fields: a title-only PATCH wipes priority/due.
+	// Description is the tri-state exception — omitted, it is PRESERVED (board
+	// cards omit it since the list payload no longer carries it), so it must keep
+	// the prior value rather than blanking.
 	wiped := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "Только название"}), http.StatusOK)
-	if wiped["description"] != "" || wiped["priority"] != float64(0) || wiped["due_date"] != nil {
+	if wiped["description"] != "Новое описание" || wiped["priority"] != float64(0) || wiped["due_date"] != nil {
 		t.Fatalf("full-replace expectation changed: %v", wiped)
+	}
+	// Present description (even empty) still replaces — the modal can clear it.
+	cleared := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "x", "description": ""}), http.StatusOK)
+	if cleared["description"] != "" {
+		t.Fatalf("explicit empty description should clear: %v", cleared)
 	}
 
 	// Title is required.
 	if r := c.patch("/tasks/"+id, map[string]any{"description": "без названия"}); r.Status != http.StatusBadRequest {
 		t.Fatalf("update without title: %d", r.Status)
+	}
+}
+
+// The board list omits the (potentially large) description to stay small, but
+// flags has_description so the card can offer a lazy "hover to load" affordance;
+// the full text comes from GET /tasks/:id/description.
+func TestBoardListOmitsDescription(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+
+	withDesc := c.expect(t, c.post("/boards/"+s.Board+"/tasks", map[string]any{
+		"title": "С описанием", "column_id": s.col(t, 0), "description": "# Длинный markdown",
+	}), http.StatusCreated)
+	withID := withDesc["id"].(string)
+	noDesc := c.expect(t, c.post("/boards/"+s.Board+"/tasks", map[string]any{
+		"title": "Без описания", "column_id": s.col(t, 0),
+	}), http.StatusCreated)
+	noID := noDesc["id"].(string)
+
+	for _, row := range c.get("/boards/" + s.Board + "/tasks").listBody(t) {
+		if _, present := row["description"]; present {
+			t.Fatalf("board list leaked description: %v", row)
+		}
+		switch row["id"] {
+		case withID:
+			if row["has_description"] != true {
+				t.Fatalf("task with description: has_description=%v", row["has_description"])
+			}
+		case noID:
+			if row["has_description"] != false {
+				t.Fatalf("task without description: has_description=%v", row["has_description"])
+			}
+		}
+	}
+
+	// The dedicated endpoint returns the full text on demand.
+	got := c.expect(t, c.get("/tasks/"+withID+"/description"), http.StatusOK)
+	if got["description"] != "# Длинный markdown" {
+		t.Fatalf("description endpoint: %v", got)
 	}
 }
 

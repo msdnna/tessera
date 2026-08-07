@@ -1,24 +1,20 @@
 <script setup>
-// Full-screen connection state, mirroring the Android LoadingState/ErrorState:
-//   • slow    — server reachable but a request has dragged on: the shared branded
-//               LoaderOverlay (TesseraSpinner + cross-fading captions).
-//   • offline — a request couldn't reach the server: an error glyph, a line,
-//               and a single retry that reloads the app.
+// Global connection feedback:
+//   • active  — a request is in flight and slow enough to surface: a thin,
+//               non-blocking accent progress bar pinned to the top of the
+//               viewport. It never captures pointer events or covers the board
+//               (task #2616 — a remote install makes every call take a beat, so
+//               blocking the UI each time made the app feel broken).
+//   • offline — a request couldn't reach the server: a real error state, so it
+//               keeps the full-screen glyph + retry.
 // Driven by the shared `connection` reactive (api interceptors feed it). Offline
-// wins over slow. Nothing renders on the common fast path.
+// wins over the bar. Nothing renders on the common fast path.
 import { computed } from 'vue'
 import { NIcon, NButton } from 'naive-ui'
 import { CloudOfflineOutline, RefreshOutline } from '@vicons/ionicons5'
 import { connection } from '@/composables/useConnection'
-import LoaderOverlay from '@/components/LoaderOverlay.vue'
 
-const CAPTIONS = [
-  'Пытаемся связаться с сервером…',
-  'Это занимает чуть больше времени, чем обычно…',
-  'Всё ещё ждём ответ сервера…',
-]
-
-const slow = computed(() => connection.slow && !connection.offline)
+const active = computed(() => connection.active && !connection.offline)
 
 function retry() {
   window.location.reload()
@@ -26,8 +22,12 @@ function retry() {
 </script>
 
 <template>
-  <!-- Server reachable but slow. -->
-  <loader-overlay :show="slow" :messages="CAPTIONS" :interval="3500" />
+  <!-- Server reachable but a call is taking a beat — non-blocking top bar. -->
+  <transition name="tp-fade">
+    <div v-if="active" class="top-progress" role="progressbar" aria-label="Загрузка">
+      <div class="top-progress__bar" />
+    </div>
+  </transition>
 
   <!-- Server unreachable — error + retry. -->
   <transition name="conn-fade">
@@ -48,6 +48,49 @@ function retry() {
 </template>
 
 <style scoped>
+/* Thin indeterminate progress bar, top of the viewport, non-interactive. */
+.top-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 9002;
+  pointer-events: none;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--t-primary) 12%, transparent);
+}
+.top-progress__bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: 0 2px 2px 0;
+  background: var(--t-accent-grad, var(--t-primary));
+  animation: top-progress-slide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes top-progress-slide {
+  0% {
+    left: -45%;
+    width: 35%;
+  }
+  50% {
+    width: 50%;
+  }
+  100% {
+    left: 100%;
+    width: 35%;
+  }
+}
+.tp-fade-enter-active,
+.tp-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.tp-fade-enter-from,
+.tp-fade-leave-to {
+  opacity: 0;
+}
+
 .conn-overlay {
   position: fixed;
   inset: 0;

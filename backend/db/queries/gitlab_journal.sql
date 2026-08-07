@@ -74,6 +74,28 @@ SELECT * FROM gitlab_sync_actions
 WHERE run_id = $1
 ORDER BY seq;
 
+-- ListGitlabSyncActionsPage returns one run's actions in sequence order WITHOUT
+-- the heavy `detail` JSONB (before/after diffs) — the journal list renders from
+-- summary/status alone, and a row's detail is fetched on demand. Keyset paginated
+-- by seq so a 2500-action run streams in bounded pages instead of one multi-MB
+-- response. has_detail lets the UI show the "expand for diff" affordance.
+-- name: ListGitlabSyncActionsPage :many
+SELECT id, seq, direction, entity_type, op, task_id, gl_iid, summary, status, error, created_at,
+       (detail <> '{}'::jsonb)::boolean AS has_detail
+FROM gitlab_sync_actions
+WHERE run_id = @run_id AND seq > @after_seq
+ORDER BY seq
+LIMIT @limit_n;
+
+-- GetGitlabSyncActionDetail returns one action's detail JSONB, scoped to the
+-- workspace's bindings (ownership check). Backs the lazy per-row detail fetch.
+-- name: GetGitlabSyncActionDetail :one
+SELECT a.detail
+FROM gitlab_sync_actions a
+JOIN gitlab_sync_runs r ON r.id = a.run_id
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE a.id = @action_id AND i.workspace_id = @workspace_id;
+
 -- name: GetGitlabSyncAction :one
 SELECT a.* FROM gitlab_sync_actions a
 JOIN gitlab_sync_runs r ON r.id = a.run_id

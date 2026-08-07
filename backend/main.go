@@ -4,6 +4,8 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -69,8 +71,18 @@ func main() {
 	// Idle until a task carries a "schedule"-trigger recurrence rule.
 	go rh.RunRecurrenceWorker(context.Background())
 
+	// Explicit server so we can bound the header read and idle keep-alive without
+	// capping ReadTimeout/WriteTimeout — those would forcibly cut long-lived
+	// WebSocket connections and large attachment up/downloads. ReadHeaderTimeout
+	// blunts slow-header (Slowloris) clients; IdleTimeout recycles dead keep-alives.
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           r,
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	log.Printf("Server starting on :%s", cfg.Port)
-	if err := r.Run(":" + cfg.Port); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err) //nolint:gocritic // nothing to clean up on listen failure
 	}
 }

@@ -7,9 +7,13 @@ import (
 )
 
 const (
-	writeWait  = 10 * time.Second
-	pongWait   = 60 * time.Second
-	pingPeriod = (pongWait * 9) / 10
+	writeWait = 10 * time.Second
+	pongWait  = 60 * time.Second
+	// Ping well inside common proxy idle timeouts (nginx/Caddy default to ~60s;
+	// the org install sits behind a third-party proxy we don't control): a 25s
+	// keepalive keeps an otherwise-quiet socket from being reaped mid-session.
+	// Must stay < pongWait so a missed pong still trips the read deadline.
+	pingPeriod = 25 * time.Second
 )
 
 // Client is one WebSocket connection. Clients are currently read-only
