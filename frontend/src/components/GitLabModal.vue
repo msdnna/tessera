@@ -19,6 +19,7 @@ import {
   TrashOutline,
   AddOutline,
   SyncOutline,
+  CloudDownloadOutline,
   LogoGitlab,
   ChevronDownOutline,
   TimeOutline,
@@ -28,7 +29,6 @@ import {
 } from '@vicons/ionicons5'
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
-import LoaderOverlay from '@/components/LoaderOverlay.vue'
 import GitLabJournalPanel from '@/components/GitLabJournalPanel.vue'
 import ConflictResolverPanel from '@/components/ConflictResolverPanel.vue'
 import { useGitlabStore } from '@/stores/gitlab'
@@ -39,7 +39,9 @@ const props = defineProps({
   show: { type: Boolean, default: false },
   wsId: { type: String, default: null },
 })
-const emit = defineEmits(['update:show', 'synced'])
+// No 'synced' emit any more — a background sync reports itself over the workspace
+// socket (`integration.sync`), which every client picks up, not just the starter.
+const emit = defineEmits(['update:show'])
 
 const message = useMessage()
 const gl = useGitlabStore()
@@ -102,8 +104,12 @@ const projectPath = ref('')
 const boardId = ref(null)
 const enabled = ref(true)
 const intervalSec = ref(0)
+const fullIntervalSec = ref(86400)
 const dueSource = ref('issue_milestone')
 const startSource = ref('created')
+// relations_sync is 'off' | 'pull' on the wire ('two_way' is reserved for pushing
+// Tessera relations back), so the switch serialises to those two values.
+const relationsSync = ref(true)
 const lastSynced = ref(null)
 // ── write-back (Tessera → GitLab), opt-in; all off by default ──
 const wbEnabled = ref(false) // master toggle for the whole binding table
@@ -197,22 +203,28 @@ const columnOptions = ref([]) // {label:name, value:name} — for label-rules va
 const columnIdOptions = ref([]) // {label:name, value:id} — for column-move bindings
 const columnNameById = ref({}) // id → name, to stamp column_name on save
 const saving = ref(false)
+// Only covers the POST that kicks the sync off — the sync itself runs detached on
+// the server, so nothing here blocks on it.
 const syncing = ref(false)
-// The sync runs in the background (so a large batch can't drop the long request);
-// we poll the journal for the result. Meanwhile, friendly cross-fading captions on
-// the same branded LoaderOverlay used by the connection overlay.
-const SYNC_MESSAGES = [
-  'Подключаемся к GitLab…',
-  'Загружаем задачи из проектов…',
-  'Сопоставляем метки и обновляем доски…',
-  'Почти готово…',
-]
+// Journal panel instance, so a freshly started run shows up immediately when the
+// pane was already open (null until the pane is rendered — it loads on mount).
+const journalRef = ref(null)
 
 const intervalOptions = [
   { label: 'Вручную (выкл.)', value: 0 },
   { label: 'Каждые 5 минут', value: 300 },
   { label: 'Каждые 15 минут', value: 900 },
   { label: 'Каждый час', value: 3600 },
+]
+// Periodic FULL sweep (catches deletes/drift an incremental pull can't see). 0 = off
+// — a full sync then runs only on the very first sync or via «Полная синхронизация».
+const fullIntervalOptions = [
+  { label: 'Не форсировать (только вручную)', value: 0 },
+  { label: 'Раз в 6 часов', value: 21600 },
+  { label: 'Раз в 12 часов', value: 43200 },
+  { label: 'Раз в сутки', value: 86400 },
+  { label: 'Раз в 2 суток', value: 172800 },
+  { label: 'Раз в неделю', value: 604800 },
 ]
 const actionOptions = [
   { label: 'Статус → колонка', value: 'status' },
@@ -380,8 +392,10 @@ async function applyBinding(data) {
     boardId.value = data.board_id || null
     enabled.value = data.enabled !== false
     intervalSec.value = data.sync_interval_sec || 0
+    fullIntervalSec.value = data.full_sync_interval_sec ?? 86400
     dueSource.value = data.due_source || 'issue_milestone'
     startSource.value = data.start_source || 'created'
+    relationsSync.value = data.relations_sync !== 'off'
     lastSynced.value = data.last_synced_at || null
     const wb = data.writeback || {}
     wbEnabled.value = wb.enabled === true
@@ -622,8 +636,10 @@ async function save() {
       board_id: boardId.value,
       enabled: enabled.value,
       sync_interval_sec: Number(intervalSec.value),
+      full_sync_interval_sec: Number(fullIntervalSec.value),
       due_source: dueSource.value,
       start_source: startSource.value,
+      relations_sync: relationsSync.value ? 'pull' : 'off',
       scope: scope.value,
       closed_policy: closedPolicy.value,
       closed_after:
@@ -693,56 +709,31 @@ async function deleteBinding() {
   }
 }
 
-async function syncNow() {
+async function syncNow(mode) {
   if (!currentId.value) {
     message.warning('Сначала сохраните привязку')
     return
   }
   syncing.value = true
   try {
-    // Baseline: the newest existing run, so we can tell our new run apart.
-    let baseline = 0
-    try {
-      const prev = (await glApi.syncRuns(props.wsId, 1)).data || []
-      if (prev[0]) baseline = new Date(prev[0].started_at).getTime()
-    } catch {
-      /* journal not critical for starting */
-    }
-    // The sync now runs in the background (large batches used to drop the long
-    // request). Kick it off, then poll the journal for the run to finish.
-    await glApi.sync(props.wsId, currentId.value)
-    const startedAt = Date.now()
-    const MAX_MS = 30 * 60 * 1000
-    let settled = false
-    while (Date.now() - startedAt < MAX_MS) {
-      await new Promise((r) => setTimeout(r, 2000))
-      let runs
-      try {
-        runs = (await glApi.syncRuns(props.wsId, 5)).data || []
-      } catch {
-        continue
-      }
-      const run = runs.find(
-        (r) => r.kind === 'pull' && r.finished_at && new Date(r.started_at).getTime() > baseline,
+    // Fire-and-forget: the backend runs the pull in the background and notifies the
+    // user who started it when it ends (kind `integration_sync`). We only open the
+    // journal, where the run shows up live as "выполняется" — no blocking overlay,
+    // no polling, so a multi-minute batch doesn't hold the modal hostage. The main
+    // button does an incremental pull; the dropdown's "Полная синхронизация" passes
+    // mode='full'.
+    const { data } = await glApi.sync(props.wsId, currentId.value, mode)
+    if (data?.already_running) {
+      message.warning('Синхронизация уже выполняется — дождитесь её завершения')
+    } else {
+      message.info(
+        mode === 'full'
+          ? 'Полная синхронизация запущена в фоне — уведомим по завершении'
+          : 'Синхронизация запущена в фоне — уведомим по завершении',
       )
-      if (!run) continue
-      settled = true
-      if (run.status === 'error') {
-        message.error('Синхронизация не удалась: ' + (run.error || 'ошибка'))
-      } else {
-        const created = run.created_count || 0
-        const updated = run.updated_count || 0
-        lastSynced.value = run.finished_at
-        message.success(
-          `Синхронизировано: ${created + updated} задач (+${created} новых, ${updated} обновлено)`,
-        )
-        emit('synced')
-      }
-      break
     }
-    if (!settled) {
-      message.info('Синхронизация выполняется в фоне — результат появится в журнале')
-    }
+    openRight('journal')
+    journalRef.value?.reload()
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -756,6 +747,13 @@ async function syncNow() {
 const conflictCount = ref(0)
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 const syncMenu = computed(() => [
+  {
+    label: 'Полная синхронизация',
+    key: 'full',
+    icon: menuIcon(CloudDownloadOutline),
+    disabled: syncing.value,
+  },
+  { type: 'divider', key: 'd1' },
   {
     label: 'Журнал синхронизации',
     key: 'journal',
@@ -771,7 +769,8 @@ const syncMenu = computed(() => [
   },
 ])
 function onSyncMenu(key) {
-  if (key === 'journal') openRight('journal')
+  if (key === 'full') syncNow('full')
+  else if (key === 'journal') openRight('journal')
   else if (key === 'conflicts') openRight('conflicts')
 }
 async function loadConflictCount() {
@@ -935,6 +934,13 @@ watch(
                 <n-text depth="3" class="lbl">Автосинхронизация</n-text>
                 <n-select v-model:value="intervalSec" :options="intervalOptions" size="small" />
 
+                <n-text depth="3" class="lbl">Полная синхронизация</n-text>
+                <n-select
+                  v-model:value="fullIntervalSec"
+                  :options="fullIntervalOptions"
+                  size="small"
+                />
+
                 <n-text depth="3" class="lbl">Источник срока</n-text>
                 <n-select v-model:value="dueSource" :options="dueSourceOptions" size="small" />
 
@@ -955,6 +961,14 @@ watch(
                   <n-text depth="3" class="lbl">Закрытые не старше</n-text>
                   <n-date-picker v-model:value="closedAfter" type="date" size="small" clearable />
                 </template>
+
+                <n-text depth="3" class="lbl">
+                  Синхронизировать связи
+                  <span class="lbl-hint">
+                    Импорт связанных задач из GitLab во вкладку «Связи»
+                  </span>
+                </n-text>
+                <div><n-switch v-model:value="relationsSync" /></div>
 
                 <n-text depth="3" class="lbl">Включена</n-text>
                 <div><n-switch v-model:value="enabled" /></div>
@@ -1038,7 +1052,7 @@ watch(
                     title="Есть неразрешённые конфликты — откройте «Конфликты» в меню рядом"
                   >
                     <n-button-group size="medium">
-                      <n-button :loading="syncing" @click="syncNow">
+                      <n-button :loading="syncing" @click="syncNow()">
                         <template #icon><n-icon :component="SyncOutline" /></template>
                         Синхронизировать
                       </n-button>
@@ -1328,6 +1342,7 @@ watch(
             <!-- JOURNAL: sync run history -->
             <git-lab-journal-panel
               v-else-if="rightMode === 'journal'"
+              ref="journalRef"
               class="gl-pane-fill"
               :ws-id="wsId"
             />
@@ -1342,8 +1357,6 @@ watch(
           </div>
         </div>
       </n-card>
-      <!-- Branded loader while a sync runs — dims/blurs the whole modal card. -->
-      <loader-overlay :show="syncing" contained :messages="SYNC_MESSAGES" :interval="2600" />
     </div>
   </n-modal>
 </template>
@@ -1441,6 +1454,14 @@ watch(
 }
 .lbl {
   font-size: 12px;
+}
+/* Second line under a settings label, for options whose name isn't self-explanatory. */
+.lbl-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0.7;
 }
 .est-wb {
   display: flex;

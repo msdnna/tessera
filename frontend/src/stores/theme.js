@@ -111,6 +111,15 @@ export const useThemeStore = defineStore('theme', () => {
   const weekStart = ref(typeof cached.week_start === 'number' ? cached.week_start : 1)
   const boardBackground = ref(cached.board_background || '')
 
+  // Tag-scope display: 'name' shows the friendly prefix label, 'raw' shows the
+  // bare prefix (short chips). Device-level UX preference (long vs short tags),
+  // so it lives in localStorage only — not synced to the DB prefs. See #2604.
+  const tagPrefixMode = ref(localStorage.getItem('tessera_tag_prefix_mode') || 'name')
+  function setTagPrefixMode(m) {
+    tagPrefixMode.value = m === 'raw' ? 'raw' : 'name'
+    localStorage.setItem('tessera_tag_prefix_mode', tagPrefixMode.value)
+  }
+
   const palette = computed(() => (isDark.value ? DARK : LIGHT))
   const primaryColor = computed(() => activeTheme.value.primary)
   const onPrimaryColor = computed(() => textOnPrimary(activeTheme.value.primary))
@@ -294,11 +303,13 @@ export const useThemeStore = defineStore('theme', () => {
     root.style.setProperty('--t-bg', p.bg)
     root.style.setProperty('--t-surface', p.surface)
     root.style.setProperty('--t-surface-alt', p.surfaceAlt)
+    root.style.setProperty('--t-input-bg', p.inputBg)
     root.style.setProperty('--t-hover', p.hover)
     root.style.setProperty('--t-border', p.border)
     root.style.setProperty('--t-text1', p.text1)
     root.style.setProperty('--t-text2', p.text2)
     root.style.setProperty('--t-text3', p.text3)
+    root.style.setProperty('--t-placeholder', p.placeholder)
     root.style.setProperty('--t-primary', activeTheme.value.primary)
     root.style.setProperty('--t-on-primary', onPrimaryColor.value)
     root.setAttribute('data-theme', isDark.value ? 'dark' : 'light')
@@ -342,11 +353,13 @@ export const useThemeStore = defineStore('theme', () => {
     dateFormat,
     weekStart,
     boardBackground,
+    tagPrefixMode,
     // actions
     selectColor,
     setThemeMode,
     toggle,
     setBoardBackground,
+    setTagPrefixMode,
     setLocale,
     hydrate,
     reset,

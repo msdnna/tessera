@@ -49,6 +49,51 @@ class TagGroupsTest {
         assertThat(prefixLabel("S: ")).isEqualTo("S:")
     }
 
+    // ── splitTag ─────────────────────────────────────────────────────────────
+    @Test
+    fun `splitTag drops the separator from the scope`() {
+        assertThat(splitTag("effort::small")).isEqualTo(TagSplit("effort::", "effort", "small"))
+        assertThat(splitTag("T: bug")).isEqualTo(TagSplit("T: ", "T", "bug"))
+        assertThat(splitTag("Приоритет: высокий")).isEqualTo(TagSplit("Приоритет: ", "Приоритет", "высокий"))
+    }
+
+    @Test
+    fun `splitTag unscoped keeps the whole name as the label`() {
+        assertThat(splitTag("urgent")).isEqualTo(TagSplit("", "", "urgent"))
+        assertThat(splitTag("  urgent  ")).isEqualTo(TagSplit("", "", "urgent"))
+        assertThat(splitTag("")).isEqualTo(TagSplit("", "", ""))
+    }
+
+    // ── tagParts ─────────────────────────────────────────────────────────────
+    @Test
+    fun `tagParts uses the friendly prefix name when configured`() {
+        val parts = tagParts("S: готово", mapOf("s:" to "Статус"))
+        assertThat(parts).isEqualTo(TagParts("Статус", "готово", true))
+    }
+
+    @Test
+    fun `tagParts falls back to the bare prefix without a configured name`() {
+        assertThat(tagParts("type::feature")).isEqualTo(TagParts("type", "feature", true))
+    }
+
+    @Test
+    fun `tagParts raw mode ignores the friendly name`() {
+        val parts = tagParts("S: готово", mapOf("s:" to "Статус"), raw = true)
+        assertThat(parts).isEqualTo(TagParts("S", "готово", true))
+    }
+
+    @Test
+    fun `tagParts unscoped tag has no scope segment`() {
+        assertThat(tagParts("urgent")).isEqualTo(TagParts("", "urgent", false))
+    }
+
+    @Test
+    fun `tagParts half-split tag falls back to the raw name`() {
+        // Neither side may be empty — otherwise the pill would drop half the name.
+        assertThat(tagParts("effort::")).isEqualTo(TagParts("", "effort::", false))
+        assertThat(tagParts("::small")).isEqualTo(TagParts("", "::small", false))
+    }
+
     // ── metaPrefixesFromRules ────────────────────────────────────────────────
     @Test
     fun `metaPrefixesFromRules keeps only non-tag prefix rules`() {

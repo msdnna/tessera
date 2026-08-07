@@ -28,6 +28,7 @@ import {
   CheckboxOutline,
   SquareOutline,
   SwapHorizontalOutline,
+  LinkOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -40,6 +41,7 @@ const warnIcon = (icon) => () => h(NIcon, { color: '#f0a020' }, { default: () =>
 const primIcon = (icon) => () => h(NIcon, { color: 'var(--t-primary)' }, { default: () => h(icon) })
 import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
+import { makeSlug } from '@/utils/slug'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import ProjectIcon from './ProjectIcon.vue'
 import TesseraIcon from './TesseraIcon.vue'
@@ -48,6 +50,7 @@ import ConfirmByName from './ConfirmByName.vue'
 import EstimationModal from './EstimationModal.vue'
 import MilestoneManager from './MilestoneManager.vue'
 import { DEFAULT_ESTIMATION, resolveEstimation } from '@/utils/estimation'
+import { BACKLOG_SCOPE, matchesScope, milestoneKey } from '@/utils/milestones'
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
@@ -158,13 +161,14 @@ function openMilestone(m) {
   }
   router.push({
     path: `/project/${props.project.slug}/board/${b.slug}`,
-    query: { milestone: m ? m.id : 'backlog' },
+    query: { milestone: m ? milestoneKey(m) : BACKLOG_SCOPE },
   })
 }
 function msActive(m) {
+  const scope = String(route.query.milestone || '')
   return (
     route.params.projectSlug === props.project.slug &&
-    String(route.query.milestone || '') === (m ? m.id : 'backlog')
+    (m ? matchesScope(m, scope) : scope === BACKLOG_SCOPE)
   )
 }
 
@@ -258,6 +262,10 @@ const pcOptions = computed(() => {
     { type: 'divider', key: 'd1' },
     { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
     { label: 'Оценка задач…', key: 'estimation', icon: menuIcon(TimerOutline) },
+    // Manager-only — hidden for members, and refused server-side regardless.
+    ...(store.canManage
+      ? [{ label: 'Изменить адрес…', key: 'slug', icon: menuIcon(LinkOutline) }]
+      : []),
     { label: 'Этапы…', key: 'milestones', icon: menuIcon(RibbonOutline) },
     {
       label: 'Показывать в дереве',
@@ -316,6 +324,7 @@ function onProjectCtxSelect(key) {
   if (key === 'add-board') startAddBoard()
   else if (key === 'rename') startRename()
   else if (key === 'estimation') estShow.value = true
+  else if (key === 'slug') openSlugEdit()
   else if (key === 'milestones') msShow.value = true
   else if (key === 'tm-boards') updateField({ tree_mode: 'boards' })
   else if (key === 'tm-milestones') updateField({ tree_mode: 'milestones' })
@@ -323,6 +332,50 @@ function onProjectCtxSelect(key) {
   else if (key === 'toggle-closed') toggleShowClosed()
   else if (key === 'transfer') openTransfer()
   else if (key === 'delete') remove()
+}
+
+// ── Change the project's URL address (owner/admin) ──
+// The address is assigned once at creation and deliberately survives renames,
+// so links keep working. Changing it here is the escape hatch — at the cost of
+// every link already handed out, hence the warning.
+const slugShow = ref(false)
+const slugInput = ref('')
+const slugError = ref('')
+const slugBusy = ref(false)
+const slugPreview = computed(() => makeSlug(slugInput.value))
+function openSlugEdit() {
+  settingsShow.value = false
+  slugInput.value = props.project.slug || ''
+  slugError.value = ''
+  slugShow.value = true
+}
+async function doSetSlug() {
+  const next = slugPreview.value
+  if (!next || slugBusy.value) return
+  if (next === props.project.slug) {
+    slugShow.value = false
+    return
+  }
+  slugBusy.value = true
+  slugError.value = ''
+  try {
+    const res = await projApi.setSlug(props.project.id, next)
+    slugShow.value = false
+    // Keep an open board of this project reachable: same board, new address.
+    if (route.params.projectSlug === props.project.slug) {
+      router.replace({
+        ...route,
+        params: { ...route.params, projectSlug: res.data.slug },
+      })
+    }
+    await store.refresh()
+    message.success('Адрес проекта изменён')
+  } catch (e) {
+    if (e.status === 409) slugError.value = 'Такой адрес уже занят — выберите другой'
+    else message.error(e.message)
+  } finally {
+    slugBusy.value = false
+  }
 }
 
 // ── Transfer project to another workspace (dangerous) ──
@@ -676,6 +729,47 @@ async function addBoard() {
       @confirm="doRemove"
     />
 
+    <n-modal v-model:show="slugShow">
+      <n-card title="Адрес проекта" style="max-width: 420px" role="dialog" :bordered="false">
+        <div class="slug-body">
+          <n-text depth="3" class="slug-hint">
+            Текущий адрес: <span class="slug-url">/project/{{ project.slug }}</span>
+          </n-text>
+          <n-input
+            v-model:value="slugInput"
+            placeholder="адрес-проекта"
+            :status="slugError ? 'error' : undefined"
+            :disabled="slugBusy"
+            @keyup.enter="doSetSlug"
+          />
+          <n-text v-if="slugError" type="error" class="slug-hint">{{ slugError }}</n-text>
+          <n-text depth="3" class="slug-hint">
+            Новый адрес:
+            <span v-if="slugPreview" class="slug-url">/project/{{ slugPreview }}</span>
+            <span v-else>—</span>
+          </n-text>
+          <p class="slug-warn">
+            Ссылки на доски и задачи этого проекта, отправленные раньше,
+            <strong>перестанут работать</strong>. Открытые вкладки переключатся на новый адрес.
+          </p>
+        </div>
+        <template #footer>
+          <div class="slug-actions">
+            <n-button size="small" :disabled="slugBusy" @click="slugShow = false">Отмена</n-button>
+            <n-button
+              type="primary"
+              size="small"
+              :disabled="!slugPreview || slugBusy"
+              :loading="slugBusy"
+              @click="doSetSlug"
+            >
+              Изменить адрес
+            </n-button>
+          </div>
+        </template>
+      </n-card>
+    </n-modal>
+
     <n-modal v-model:show="transferShow">
       <n-card
         title="Перенести в другое пространство"
@@ -877,6 +971,28 @@ async function addBoard() {
   font-size: 12px;
 }
 .transfer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.slug-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.slug-hint {
+  font-size: 12px;
+}
+.slug-url {
+  font-family: var(--t-font-mono, ui-monospace, monospace);
+}
+.slug-warn {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--t-text2);
+}
+.slug-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;

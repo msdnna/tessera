@@ -63,6 +63,32 @@ type glMember struct {
 	Name     string
 }
 
+// graphqlLinkType translates a REST link_type (how fixtures are written) into the
+// WorkItemRelatedLinkType enum the GraphQL widget actually emits. Unknown values
+// pass through unchanged so a test can still assert they're ignored.
+func graphqlLinkType(rest string) string {
+	switch rest {
+	case "relates_to":
+		return "RELATED"
+	case "blocks":
+		return "BLOCKS"
+	case "is_blocked_by":
+		return "BLOCKED_BY"
+	default:
+		return rest
+	}
+}
+
+// glLink is one issue-link edge as GitLab reports it from the source issue's side.
+// ProjectPath empty means "same project as the fake".
+type glLink struct {
+	SrcIID      int64
+	DstIID      int64
+	LinkType    string // relates_to | blocks | is_blocked_by
+	ProjectPath string
+	LinkID      int64
+}
+
 // fakeGitlab is an in-memory GitLab instance serving the exact API subset the
 // backend's client uses. pageSize < len(issues) exercises GraphQL pagination.
 type fakeGitlab struct {
@@ -73,12 +99,24 @@ type fakeGitlab struct {
 	projectPath string
 	pageSize    int
 
-	mu        sync.Mutex
+	mu sync.Mutex
+	// Artificial per-request latency, so a test can catch a sync mid-flight (the
+	// manual sync is detached — its "running" state is what the UI shows).
+	delay     time.Duration
 	issues    []*glIssue
 	members   []glMember
 	templates map[string]string // name → content
 	nextIID   int64
 	nextMsID  int64
+
+	// Issue links, plus the switch that decides which of the two client paths serves
+	// them: with linkedItemsWidget the GraphQL widget answers, without it the widget
+	// is absent from the response (an older self-hosted GitLab) and the client must
+	// fall back to REST. linkCalls counts either kind of request, so a test can prove
+	// relations_sync=off costs no round-trips at all.
+	links             []glLink
+	linkedItemsWidget bool
+	linkCalls         int
 }
 
 func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
@@ -87,6 +125,7 @@ func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
 		t: t, username: username, token: "glpat-test-" + username,
 		projectPath: projectPath, pageSize: 2,
 		templates: map[string]string{}, nextIID: 100, nextMsID: 9000,
+		linkedItemsWidget: true,
 	}
 	f.srv = httptest.NewServer(f)
 	t.Cleanup(f.srv.Close)
@@ -131,7 +170,21 @@ func (f *fakeGitlab) findIssue(iid int64) *glIssue {
 	return nil
 }
 
+// setDelay makes every fake response take d, stretching a sync into a window a
+// test can observe.
+func (f *fakeGitlab) setDelay(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.delay = d
+}
+
 func (f *fakeGitlab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	d := f.delay
+	f.mu.Unlock()
+	if d > 0 {
+		time.Sleep(d)
+	}
 	switch {
 	case r.URL.Path == "/api/graphql":
 		f.graphql(w, r)
@@ -167,6 +220,8 @@ func (f *fakeGitlab) graphql(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
 			"currentUser": map[string]any{"id": "gid://gitlab/User/99", "username": f.username},
 		}})
+	case strings.Contains(req.Query, "linkedItems"):
+		f.linkedItemsQuery(w, req.Variables)
 	case strings.Contains(req.Query, "workItems"):
 		// Child-item hierarchy: none of the fixture issues group subtasks.
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
@@ -175,6 +230,71 @@ func (f *fakeGitlab) graphql(w http.ResponseWriter, r *http.Request) {
 	default:
 		f.issuesQuery(w, req.Variables)
 	}
+}
+
+// linkedItemsQuery serves the WorkItemWidgetLinkedItems batch. When the fake is
+// configured without the widget, the work items come back carrying only an unrelated
+// widget — exactly what an older GitLab returns, and the client's cue to use REST.
+func (f *fakeGitlab) linkedItemsQuery(w http.ResponseWriter, vars map[string]any) {
+	f.mu.Lock()
+	f.linkCalls++
+	widget := f.linkedItemsWidget
+	f.mu.Unlock()
+
+	raw, _ := vars["iids"].([]any)
+	nodes := make([]any, 0, len(raw))
+	for _, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		iid, _ := strconv.ParseInt(s, 10, 64)
+		if !widget {
+			nodes = append(nodes, map[string]any{"iid": s, "widgets": []any{map[string]any{}}})
+			continue
+		}
+		items := make([]any, 0)
+		for _, l := range f.linksFor(iid) {
+			path := l.ProjectPath
+			if path == "" {
+				path = f.projectPath
+			}
+			items = append(items, map[string]any{
+				// The GraphQL widget reports the WorkItemRelatedLinkType enum
+				// (RELATED/BLOCKS/BLOCKED_BY), NOT the REST link_type the fixture is
+				// written in — mirroring real GitLab so this path exercises the enum.
+				"linkType": graphqlLinkType(l.LinkType),
+				"linkId":   fmt.Sprintf("gid://gitlab/IssueLink/%d", l.LinkID),
+				"workItem": map[string]any{
+					"iid":       strconv.FormatInt(l.DstIID, 10),
+					"webUrl":    f.srv.URL + "/" + path + "/-/issues/" + strconv.FormatInt(l.DstIID, 10),
+					"namespace": map[string]any{"fullPath": path},
+				},
+			})
+		}
+		nodes = append(nodes, map[string]any{
+			"iid": s,
+			"widgets": []any{
+				map[string]any{},
+				map[string]any{"linkedItems": map[string]any{"nodes": items}},
+			},
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
+		"project": map[string]any{"workItems": map[string]any{"nodes": nodes}},
+	}})
+}
+
+func (f *fakeGitlab) linksFor(srcIID int64) []glLink {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []glLink
+	for _, l := range f.links {
+		if l.SrcIID == srcIID {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // issuesQuery serves the paginated issues query with optional iids / assignee
@@ -291,6 +411,24 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 	}
 	rest := strings.TrimPrefix(r.URL.Path, prefix)
 	switch {
+	case strings.HasPrefix(rest, "issues/") && strings.HasSuffix(rest, "/links"):
+		f.mu.Lock()
+		f.linkCalls++
+		f.mu.Unlock()
+		iid, _ := strconv.ParseInt(strings.TrimSuffix(strings.TrimPrefix(rest, "issues/"), "/links"), 10, 64)
+		out := make([]any, 0)
+		for _, l := range f.linksFor(iid) {
+			path := l.ProjectPath
+			if path == "" {
+				path = f.projectPath
+			}
+			out = append(out, map[string]any{
+				"iid": l.DstIID, "issue_link_id": l.LinkID, "link_type": l.LinkType,
+				"web_url":    f.srv.URL + "/" + path + "/-/issues/" + strconv.FormatInt(l.DstIID, 10),
+				"references": map[string]any{"full": fmt.Sprintf("%s#%d", path, l.DstIID)},
+			})
+		}
+		writeJSON(w, http.StatusOK, out)
 	case rest == "members/all":
 		if r.URL.Query().Get("page") != "1" {
 			writeJSON(w, http.StatusOK, []any{})
@@ -417,13 +555,27 @@ func waitSyncRuns(t *testing.T, c *client, wsID string, want int) []map[string]a
 	return nil
 }
 
-// triggerSync starts a manual sync and asserts the 202 accepted contract.
-func triggerSync(t *testing.T, c *client, wsID, integID string) {
+// triggerSync starts a manual sync and asserts the 202 accepted contract: the
+// request returns immediately (the pull runs detached) naming the journal run it
+// opened, which the client watches instead of blocking.
+func triggerSync(t *testing.T, c *client, wsID, integID string) string {
 	t.Helper()
 	r := c.post("/workspaces/"+wsID+"/gitlab/integrations/"+integID+"/sync", nil)
 	if r.Status != http.StatusAccepted {
 		t.Fatalf("sync: status %d\n%s", r.Status, r.Body)
 	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(r.Body), &body); err != nil {
+		t.Fatalf("sync: bad body %q: %v", r.Body, err)
+	}
+	if body["started"] != true {
+		t.Fatalf("sync: not started: %v", body)
+	}
+	runID, _ := body["run_id"].(string)
+	if runID == "" {
+		t.Fatalf("sync: no run_id in %v", body)
+	}
+	return runID
 }
 
 // taskByIid finds the board task mirroring a GitLab issue iid.
@@ -560,11 +712,16 @@ func TestGitlabSyncFlow(t *testing.T) {
 	integ := createIntegration(t, c, s.WS, s.Board, f, nil)
 	integID := integ["id"].(string)
 
-	triggerSync(t, c, s.WS, integID)
+	runID := triggerSync(t, c, s.WS, integID)
 	runs := waitSyncRuns(t, c, s.WS, 1)
 	run := runs[0]
 	if run["kind"] != "pull" || run["trigger"] != "manual" || run["status"] != "ok" {
 		t.Fatalf("run: %v", run)
+	}
+	// The row named in the 202 is the one the sync filled in — the client watches
+	// that id rather than guessing which run is "its" one.
+	if run["id"] != runID {
+		t.Fatalf("journal run id = %v, want the id returned by the sync call %q", run["id"], runID)
 	}
 	if run["created_count"] != float64(3) {
 		t.Fatalf("created_count = %v, want 3", run["created_count"])
@@ -673,9 +830,126 @@ func TestGitlabSyncFlow(t *testing.T) {
 	if bug["column_id"] != s.col(t, 3) || bug["completed_at"] == nil {
 		t.Fatalf("second sync close: col=%v completed=%v", bug["column_id"], bug["completed_at"])
 	}
+
+	// Third sync with nothing changed → an incremental no-op: the overlap window
+	// re-delivers the issues, but dropUnchangedIssues skips every one (updatedAt +
+	// title/labels hash unchanged), so no create/update lands. This is the headline
+	// perf behaviour — a pull with an empty delta does no work.
+	triggerSync(t, c, s.WS, integID)
+	runs3 := waitSyncRuns(t, c, s.WS, 3)
+	newest := runs3[0]
+	if newest["mode"] != "incremental" {
+		t.Fatalf("third sync mode = %v, want incremental", newest["mode"])
+	}
+	if newest["created_count"] != float64(0) || newest["updated_count"] != float64(0) {
+		t.Fatalf("third sync should be a no-op: created=%v updated=%v",
+			newest["created_count"], newest["updated_count"])
+	}
+
+	// A brand-new issue created after the last sync IS pulled by an incremental sync
+	// (its updatedAt lands in the delta) — incremental adds new tasks, not only
+	// updates existing ones.
+	f.addIssue(glIssue{IID: 42, Title: "Fresh incremental issue"})
+	triggerSync(t, c, s.WS, integID)
+	waitSyncRuns(t, c, s.WS, 4)
+	tasks = c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	if fresh := taskByIid(t, tasks, 42); fresh["title"] != "Fresh incremental issue" {
+		t.Fatalf("incremental sync did not create the new issue: %v", fresh)
+	}
+
+	// Delete issue 1 in GitLab, then a FULL sync (?mode=full) detects the orphaned
+	// link and archives the task — an incremental delta can't tell "deleted" from
+	// "unchanged, so not re-sent", so this is full-sweep only.
+	f.mu.Lock()
+	kept := f.issues[:0]
+	for _, is := range f.issues {
+		if is.IID != 1 {
+			kept = append(kept, is)
+		}
+	}
+	f.issues = kept
+	f.mu.Unlock()
+
+	if r := c.post("/workspaces/"+s.WS+"/gitlab/integrations/"+integID+"/sync?mode=full", nil); r.Status != http.StatusAccepted {
+		t.Fatalf("full sync: status %d\n%s", r.Status, r.Body)
+	}
+	waitSyncRuns(t, c, s.WS, 5)
+
+	tasks = c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	for _, tk := range tasks {
+		if tk["gitlab_iid"] == float64(1) {
+			t.Fatalf("issue 1 deleted in GitLab but its task is still active on the board")
+		}
+	}
 }
 
 // Issue templates: empty without a binding, served from the repo through the fake.
+// Linked items → relations, over the GraphQL widget path (the default). This is
+// the case that regressed in #2591: the widget reports the WorkItemRelatedLinkType
+// enum (RELATED / BLOCKED_BY), which RelationKind used to drop, so relations never
+// appeared on real GitLab even though the REST-shaped tests passed. The fake now
+// serves the true enum (see graphqlLinkType), so a broken RelationKind fails here.
+func TestGitlabLinkedItemsRelations(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	makeAdmin(t, c)
+	s := mkStack(t, c)
+	f := newFakeGitlab(t, "gl-rel-user", "grp-rel")
+
+	// #1 relates to #2 and is blocked by #3 — the two link types the enum bug hid
+	// (only "blocks" survived it). Fixtures are written in REST spelling; the GraphQL
+	// responder upper-cases them to RELATED / BLOCKED_BY like the real widget.
+	f.addIssue(glIssue{IID: 1, Title: "Central"})
+	f.addIssue(glIssue{IID: 2, Title: "Related one"})
+	f.addIssue(glIssue{IID: 3, Title: "Blocker"})
+	f.links = []glLink{
+		{SrcIID: 1, DstIID: 2, LinkType: "relates_to", LinkID: 501},
+		{SrcIID: 1, DstIID: 3, LinkType: "is_blocked_by", LinkID: 502},
+	}
+
+	connectGitlab(t, c, f)
+	integ := createIntegration(t, c, s.WS, s.Board, f, nil)
+	triggerSync(t, c, s.WS, integ["id"].(string))
+	waitSyncRuns(t, c, s.WS, 1)
+
+	tasks := c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	central := taskByIid(t, tasks, 1)
+	related := taskByIid(t, tasks, 2)
+	blocker := taskByIid(t, tasks, 3)
+
+	rels := c.get("/tasks/" + central["id"].(string) + "/relations").listBody(t)
+	if len(rels) != 2 {
+		t.Fatalf("relations = %d, want 2 (relates + blocked_by)\n%v", len(rels), rels)
+	}
+	byKind := map[string]map[string]any{}
+	for _, r := range rels {
+		byKind[r["kind"].(string)] = r
+	}
+	if rr := byKind["relates"]; rr == nil || rr["source"] != "gitlab" || rr["related_task_id"] != related["id"] {
+		t.Fatalf("relates relation wrong (enum RELATED dropped?): %v", byKind["relates"])
+	}
+	if br := byKind["blocked_by"]; br == nil || br["source"] != "gitlab" || br["related_task_id"] != blocker["id"] {
+		t.Fatalf("blocked_by relation wrong (enum BLOCKED_BY dropped?): %v", byKind["blocked_by"])
+	}
+
+	// The link is bidirectional in GitLab, so it must show on BOTH tasks even though
+	// only #1's side declared it here — #2591 rework. #2 sees the reverse "relates",
+	// #3 the inverse of "blocked_by", i.e. it "blocks" #1.
+	relOf := func(taskID string) map[string]any {
+		got := c.get("/tasks/" + taskID + "/relations").listBody(t)
+		if len(got) != 1 {
+			t.Fatalf("task %s relations = %d, want 1 (reverse of #1's link)\n%v", taskID, len(got), got)
+		}
+		return got[0]
+	}
+	if r := relOf(related["id"].(string)); r["kind"] != "relates" || r["source"] != "gitlab" || r["related_task_id"] != central["id"] {
+		t.Fatalf("reverse relates on #2 wrong: %v", r)
+	}
+	if r := relOf(blocker["id"].(string)); r["kind"] != "blocks" || r["source"] != "gitlab" || r["related_task_id"] != central["id"] {
+		t.Fatalf("reverse blocks on #3 wrong: %v", r)
+	}
+}
+
 func TestGitlabIssueTemplates(t *testing.T) {
 	t.Parallel()
 	c := signup(t)

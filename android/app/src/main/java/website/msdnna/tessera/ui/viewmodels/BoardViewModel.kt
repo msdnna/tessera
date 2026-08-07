@@ -4,7 +4,6 @@ import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
-import java.util.Calendar
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,12 +24,15 @@ import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.repository.BoardRepository
+import website.msdnna.tessera.util.BoardFilter
+import website.msdnna.tessera.util.DueFilter
+import website.msdnna.tessera.util.FilterClock
 import website.msdnna.tessera.util.errorMessage
+import website.msdnna.tessera.util.filterBoardTasks
 import website.msdnna.tessera.util.isoDateKey
+import website.msdnna.tessera.util.moveItem
 
 enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline, Gantt }
-
-enum class DueFilter { All, Overdue, Today, Week, Has, None }
 
 /** Sort fields available in the multi-level sort editor (web parity). */
 enum class SortField(val key: String, val label: String) {
@@ -44,24 +46,6 @@ enum class SortField(val key: String, val label: String) {
     companion object {
         fun fromKey(key: String): SortField? = entries.firstOrNull { it.key == key }
     }
-}
-
-/** Client-side board filter (web KanbanBoard filters). Empty = show everything. */
-data class BoardFilter(
-    val query: String = "",
-    val priorities: Set<Int> = emptySet(),
-    val tagIds: Set<String> = emptySet(),
-    val assigneeIds: Set<String> = emptySet(),
-    // Status = board column ids (timeline-only facet; lets you hide e.g. «done»).
-    val statuses: Set<String> = emptySet(),
-    // Milestone ids to show; "__none__" matches milestone-less tasks (deep-link from
-    // the «Этапы» screen sets a single id). Empty = no milestone filter.
-    val milestoneIds: Set<String> = emptySet(),
-    val due: DueFilter = DueFilter.All,
-) {
-    val isActive: Boolean
-        get() = query.isNotBlank() || priorities.isNotEmpty() || tagIds.isNotEmpty() ||
-            assigneeIds.isNotEmpty() || statuses.isNotEmpty() || milestoneIds.isNotEmpty() || due != DueFilter.All
 }
 
 private val TagPalette = listOf(
@@ -102,6 +86,13 @@ data class BoardUiState(
         website.msdnna.tessera.util.Estimation.DEFAULT,
     val members: List<Member> = emptyList(),
     val gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
+    /** The backend's built-in quick actions, verbatim: a command added in Go shows
+     *  up in the editor popup without an Android change. */
+    val builtinCommands: List<website.msdnna.tessera.data.model.CommandDef> = emptyList(),
+    /** The workspace's custom command dictionary — suggested, never executed. */
+    val customCommands: List<website.msdnna.tessera.data.model.WorkspaceCommand> = emptyList(),
+    /** The caller can edit the dictionary (owner/admin); gates the editor entry. */
+    val canManageCommands: Boolean = false,
     /** This board's project milestones («Этапы»), for the card chip, the milestone
      *  grouping and the picker. Empty when the project has none. */
     val milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
@@ -190,6 +181,38 @@ data class BoardUiState(
         return sizeAllows && fieldOn(key)
     }
 
+    /** `/`-popup rows for the comment editor: built-ins first (registry order = popup
+     *  order), the custom dictionary after (web `commandItems`). */
+    val commandRows: List<website.msdnna.tessera.util.CommandItem>
+        get() = website.msdnna.tessera.util.commandItems(builtinCommands, customCommands)
+
+    /** Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
+     *  task has no `created_by`, so matching its author against a Tessera person goes
+     *  through this map (see util `matchesAuthor`). */
+    val glLoginByUserId: Map<String, String>
+        get() = gitlabMembers.mapNotNull { g ->
+            g.tesseraUserId?.takeIf { g.glUsername.isNotBlank() }?.let { it to g.glUsername }
+        }.toMap()
+
+    /** Whole-board filter pass (tasks + subtasks together, see util `filterBoardTasks`).
+     *  Computed once per state instance — [applyFilterSort] runs per column/lane. */
+    private val filteredBoard: website.msdnna.tessera.util.FilteredBoard by lazy {
+        if (!filter.isActive) {
+            website.msdnna.tessera.util.FilteredBoard(
+                visibleIds = tasks.mapTo(mutableSetOf()) { it.id },
+                subtasksByParent = subtasks.groupBy { it.parentId.orEmpty() },
+            )
+        } else {
+            filterBoardTasks(
+                tasks = tasks,
+                subtasksByParent = subtasks.groupBy { it.parentId.orEmpty() },
+                filter = filter,
+                clock = FilterClock.now(),
+                glLoginByUserId = glLoginByUserId,
+            )
+        }
+    }
+
     /** Full column list, drag-position source — NOT filtered (DnD needs every card). */
     fun tasksIn(columnId: String): List<Task> =
         tasks.filter { it.columnId == columnId }.sortedBy { it.position }
@@ -199,32 +222,9 @@ data class BoardUiState(
 
     /** Applies the active [filter] then the multi-level [sortLevels]. Used by every view. */
     fun applyFilterSort(list: List<Task>): List<Task> {
-        val today = dateKey(0)
-        val weekEnd = dateKey(DAYS_IN_WEEK)
-        val filtered = list.filter { t ->
-            val q = filter.query.trim().lowercase()
-            val matchesQuery = q.isEmpty() || t.title.lowercase().contains(q) ||
-                t.number?.let { "#$it".contains(q) } == true
-            val matchesPriority = filter.priorities.isEmpty() || t.priority in filter.priorities
-            val matchesTags = filter.tagIds.isEmpty() || t.tagIds.any { it in filter.tagIds }
-            val matchesAssignees = filter.assigneeIds.isEmpty() ||
-                t.assigneeIds.any { it in filter.assigneeIds } ||
-                t.gitlabAssignees.any { "gl:$it" in filter.assigneeIds }
-            val matchesStatus = filter.statuses.isEmpty() || t.columnId in filter.statuses
-            val matchesMilestone = filter.milestoneIds.isEmpty() ||
-                (t.milestoneId ?: "__none__") in filter.milestoneIds
-            val due = isoDateKey(t.dueDate)
-            val matchesDue = when (filter.due) {
-                DueFilter.All -> true
-                DueFilter.Has -> due.isNotEmpty()
-                DueFilter.None -> due.isEmpty()
-                DueFilter.Overdue -> due.isNotEmpty() && due < today && !t.isCompleted
-                DueFilter.Today -> due == today
-                DueFilter.Week -> due.isNotEmpty() && due >= today && due < weekEnd
-            }
-            matchesQuery && matchesPriority && matchesTags && matchesAssignees &&
-                matchesStatus && matchesMilestone && matchesDue
-        }
+        // Every caller passes a subset of [tasks], so membership in the precomputed
+        // visible set is the whole filter — including parents lifted by a child.
+        val filtered = if (filter.isActive) list.filter { it.id in filteredBoard.visibleIds } else list
         if (sortLevels.isEmpty()) return filtered.sortedBy { it.position }
         val comparator = sortLevels
             .map { levelComparator(it) }
@@ -264,6 +264,21 @@ data class BoardUiState(
 
     fun subtasksOf(parentId: String): List<Task> =
         subtasks.filter { it.parentId == parentId }.sortedBy { it.position }
+
+    /** Subtasks as drawn on the card: narrowed to the matching children when the parent
+     *  only stayed on the board because one of them matched (web parity). The task modal
+     *  keeps using [subtasksOf] and always lists every subtask. */
+    fun visibleSubtasksOf(parentId: String): List<Task> =
+        if (!filter.isActive) {
+            subtasksOf(parentId)
+        } else {
+            filteredBoard.subtasksByParent[parentId].orEmpty().sortedBy { it.position }
+        }
+
+    /** True when the filter hid part of this parent's children — the card shows an
+     *  «N из M» hint and locks subtask drag-reorder. */
+    fun isSubtasksNarrowed(parentId: String): Boolean =
+        filter.isActive && parentId in filteredBoard.narrowedParents
 
     fun subtaskCount(parentId: String): Int = subtasks.count { it.parentId == parentId }
 
@@ -325,8 +340,8 @@ class BoardViewModel(
             val board = runCatching { repo.board(boardId) }.getOrNull()
             projectId = board?.projectId ?: ""
             val columns = repo.columns(boardId)
-            val tasks = repo.tasks(boardId, _state.value.milestoneScope)
-            val subtasks = repo.subtasks(boardId)
+            val tasks = scopedTasks()
+            val subtasks = scopedSubtasks()
             val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
             val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
             val milestones = if (projectId.isNotBlank()) runCatching { repo.milestones(projectId) }.getOrDefault(emptyList()) else emptyList()
@@ -335,6 +350,11 @@ class BoardViewModel(
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
             val gitlabMembers = if (workspaceId.isNotBlank()) repo.gitlabMembers(workspaceId) else emptyList()
             val metaTagPrefixes = loadMetaTagPrefixes()
+            val registry = if (workspaceId.isNotBlank()) {
+                repo.workspaceCommands(workspaceId)
+            } else {
+                website.msdnna.tessera.data.model.CommandRegistry()
+            }
             _state.update {
                 val base = it.copy(
                     loading = false,
@@ -351,6 +371,9 @@ class BoardViewModel(
                     estimation = estimation,
                     members = members,
                     gitlabMembers = gitlabMembers,
+                    builtinCommands = registry.builtin.orEmpty(),
+                    customCommands = registry.custom.orEmpty(),
+                    canManageCommands = registry.canManage,
                 )
                 if (cfg != null) base.applyConfig(cfg) else base
             }
@@ -475,8 +498,8 @@ class BoardViewModel(
         val board = runCatching { repo.board(boardId) }.getOrNull()
         projectId = board?.projectId ?: projectId
         val columns = repo.columns(boardId)
-        val tasks = repo.tasks(boardId, _state.value.milestoneScope)
-        val subtasks = repo.subtasks(boardId)
+        val tasks = scopedTasks()
+        val subtasks = scopedSubtasks()
         val dependencies = runCatching { repo.dependencies(boardId) }.getOrDefault(emptyList())
         val tags = if (projectId.isNotBlank()) runCatching { repo.tags(projectId) }.getOrDefault(emptyList()) else emptyList()
         val milestones = if (projectId.isNotBlank()) runCatching { repo.milestones(projectId) }.getOrDefault(emptyList()) else emptyList()
@@ -661,9 +684,30 @@ class BoardViewModel(
         persistView()
     }
 
+    /** Reorders the sort levels (drag-reorder of the composer's sort chips, web
+     *  `<draggable>` parity). The level order IS the sort precedence — primary
+     *  first — so this must persist, or the order is lost on the next board open. */
+    fun moveSortLevel(from: Int, to: Int) {
+        _state.update { it.copy(sortLevels = it.sortLevels.moveItem(from, to)) }
+        persistView()
+    }
+
     fun clearSort() {
         _state.update { it.copy(sortLevels = emptyList()) }
         persistView()
+    }
+
+    /**
+     * Composer clear-all (×): drops every filter facet, all sort levels **and** the
+     * server-side sprint scope, leaving a board with nothing applied. The scope is
+     * part of what the bar shows (its accent chip), so leaving it behind would make
+     * the × look broken — the bar would still be filtering after a "clear".
+     */
+    fun clearComposer() {
+        val hadScope = _state.value.milestoneScope != null
+        _state.update { it.copy(filter = BoardFilter(), sortLevels = emptyList(), milestoneScope = null) }
+        persistView()
+        if (hadScope) launchCatching { refreshTasks() }
     }
 
     // ── column collapse (kanban) ──────────────────────────────────────────────
@@ -762,6 +806,20 @@ class BoardViewModel(
         refreshTagsAndTasks()
     }
 
+    /**
+     * Replaces the workspace's custom command dictionary (one PUT of the complete
+     * desired state) and refreshes the `/`-popup rows. [onDone] closes the editor
+     * only on success — a rejected key must not silently drop the other rows.
+     */
+    fun saveCustomCommands(
+        commands: List<website.msdnna.tessera.data.model.WorkspaceCommand>,
+        onDone: () -> Unit,
+    ) = launchCatching {
+        val saved = repo.setWorkspaceCommands(workspaceId, commands)
+        _state.update { it.copy(customCommands = saved) }
+        onDone()
+    }
+
     fun createTagStandalone(name: String, color: String) = launchCatching {
         repo.createTag(projectId, name, color)
         refreshTagsAndTasks()
@@ -788,10 +846,22 @@ class BoardViewModel(
         _state.update { it.copy(tasks = tasks, subtasks = emptyList()) }
     }
 
-    /** Leave the archive scope and reload the live board. */
+    /** Leave the archive scope and reload the live board — bare, with no milestone
+     *  narrowing: the sprint the user came from was replaced by the archive scope
+     *  (the bar showed the archive chip in its place), so restoring it behind their
+     *  back would open a board they never asked for. Any «Этап» facet built *inside*
+     *  the archive goes with it, for the same reason. Entering another sprint from
+     *  the sidebar leaves the archive through here first, then applies its scope. */
     fun exitArchive() {
         if (!_state.value.archivedMode) return
-        _state.update { it.copy(archivedMode = false) }
+        _state.update {
+            it.copy(
+                archivedMode = false,
+                milestoneScope = null,
+                filter = it.filter.copy(milestoneIds = emptySet()),
+            )
+        }
+        persistView()
         load(boardId, workspaceId)
     }
 
@@ -951,13 +1021,22 @@ class BoardViewModel(
         refreshTasks()
     }
 
-    /** Deep-link from the «Этапы» screen: show only this milestone's cards (a
-     *  removable «Этап:» chip). Passing null clears the milestone filter. */
-    fun setMilestoneFilter(milestoneId: String?) {
+    /**
+     * Adds a milestone to the client-side «Этап» facet. Building one's own milestone
+     * filter supersedes the server-side sprint scope, so the scope is dropped and the
+     * full board reloaded (web `onAddSelect` `fm.*`): the scope narrows the fetch, so
+     * a facet for any *other* milestone on top of it would match nothing at all.
+     */
+    fun addMilestoneFilter(milestoneId: String) {
+        val hadScope = _state.value.milestoneScope != null
         _state.update {
-            it.copy(filter = it.filter.copy(milestoneIds = if (milestoneId == null) emptySet() else setOf(milestoneId)))
+            it.copy(
+                filter = it.filter.copy(milestoneIds = it.filter.milestoneIds + milestoneId),
+                milestoneScope = null,
+            )
         }
         persistView()
+        if (hadScope) launchCatching { refreshTasks() }
     }
 
     fun archive(taskId: String) = launchCatching {
@@ -971,17 +1050,40 @@ class BoardViewModel(
     }
 
     private suspend fun refreshTasks() {
-        val tasks = repo.tasks(boardId, _state.value.milestoneScope)
-        val subtasks = repo.subtasks(boardId)
+        val tasks = scopedTasks()
+        val subtasks = scopedSubtasks()
         _state.update { it.copy(tasks = tasks, subtasks = subtasks) }
         markLocalChange()
     }
+
+    /** The board's task set for the scope currently in effect. The archive is a scope
+     *  of its own: it lists the board's archived tasks whole, ignoring the sprint
+     *  narrowing (which the archive endpoint does not take). Every reload path goes
+     *  through here — otherwise any refresh while in the archive (a facet change, a
+     *  realtime echo) silently swaps the archived cards for live ones. */
+    private suspend fun scopedTasks(): List<Task> =
+        if (_state.value.archivedMode) repo.tasks(boardId, archived = true)
+        else repo.tasks(boardId, _state.value.milestoneScope)
+
+    /** Subtasks are archived together with their parents, so the archive has none. */
+    private suspend fun scopedSubtasks(): List<Task> =
+        if (_state.value.archivedMode) emptyList() else repo.subtasks(boardId)
 
     /** Server-side sprint scope (web parity): reload the board showing only [scope]
      *  (<milestone uuid> | "backlog" | null = all). For large GitLab imports. */
     fun setMilestoneScope(scope: String?) {
         if (_state.value.milestoneScope == scope) return
-        _state.update { it.copy(milestoneScope = scope) }
+        _state.update {
+            // Entering a sprint from the «Этапы» screen supersedes a hand-built
+            // «Этап» facet (web `watch(route.query.milestone)`): the facet was for
+            // some other milestone, so keeping it would filter the freshly scoped
+            // board down to nothing.
+            it.copy(
+                milestoneScope = scope,
+                filter = if (scope != null) it.filter.copy(milestoneIds = emptySet()) else it.filter,
+            )
+        }
+        persistView()
         launchCatching { refreshTasks() }
     }
 
@@ -1004,17 +1106,6 @@ class BoardViewModel(
         const val ACTIVITY_BURST_WINDOW_MS = 4000L
         const val ACTIVITY_BURST_MAX = 5
     }
-}
-
-private const val DAYS_IN_WEEK = 7
-
-/** A local `yyyy-MM-dd` key for today + [days], matching due-date keys. */
-private fun dateKey(days: Int): String {
-    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, days) }
-    val y = cal.get(Calendar.YEAR)
-    val m = (cal.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
-    val d = cal.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
-    return "$y-$m-$d"
 }
 
 // ── view config ↔ board state (web schema; camelCase keys for cross-device) ──
@@ -1062,6 +1153,7 @@ private fun configFromState(s: BoardUiState): BoardViewConfig = BoardViewConfig(
     filters = BoardViewFilters(
         priorities = s.filter.priorities.toList(),
         assignees = s.filter.assigneeIds.toList(),
+        authors = s.filter.authorIds.toList(),
         tags = s.filter.tagIds.toList(),
         statuses = s.filter.statuses.toList(),
         milestones = s.filter.milestoneIds.toList(),
@@ -1097,6 +1189,7 @@ private fun BoardUiState.applyConfig(c: BoardViewConfig): BoardUiState = copy(
         priorities = c.filters.priorities.toSet(),
         tagIds = c.filters.tags.toSet(),
         assigneeIds = c.filters.assignees.toSet(),
+        authorIds = c.filters.authors.toSet(),
         statuses = c.filters.statuses.toSet(),
         milestoneIds = c.filters.milestones.toSet(),
         due = dueFromWeb(c.filters.due),

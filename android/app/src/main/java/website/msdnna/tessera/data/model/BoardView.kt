@@ -51,6 +51,9 @@ data class SortLevel(
 data class BoardViewFilters(
     @SerializedName("priorities") val priorities: List<Int> = emptyList(),
     @SerializedName("assignees") val assignees: List<String> = emptyList(),
+    // Author facet (web `filters.authors`): Tessera user ids and `gl:<login>` values —
+    // same key as web, so a saved view stays cross-client.
+    @SerializedName("authors") val authors: List<String> = emptyList(),
     @SerializedName("tags") val tags: List<String> = emptyList(),
     @SerializedName("statuses") val statuses: List<String> = emptyList(),
     @SerializedName("milestones") val milestones: List<String> = emptyList(),

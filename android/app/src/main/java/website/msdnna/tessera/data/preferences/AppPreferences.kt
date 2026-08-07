@@ -46,6 +46,10 @@ class AppPreferences(private val context: Context) {
 
         // Project ids whose sidebar stages tree shows closed milestones (web `tessera_ms_tree_*`).
         val SHOW_CLOSED_STAGES = stringSetPreferencesKey("show_closed_stages")
+
+        // "name" (friendly prefix label) | "raw" (bare prefix) on scoped tag pills
+        // — device preference, web `tessera_tag_prefix_mode`.
+        val TAG_PREFIX_MODE = stringPreferencesKey("tag_prefix_mode")
         val LAST_DEST = stringPreferencesKey("last_dest")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val RECENT_ASSIGNEES = stringPreferencesKey("recent_assignees")
@@ -227,6 +231,14 @@ class AppPreferences(private val context: Context) {
             val cur = prefs[Keys.RECENT_ASSIGNEES].orEmpty().split('\n').filter { it.isNotBlank() }
             prefs[Keys.RECENT_ASSIGNEES] = (listOf(id) + cur.filter { it != id }).take(30).joinToString("\n")
         }
+    }
+
+    /** Scoped-tag pill prefix mode: "name" (friendly label) or "raw" (bare prefix). */
+    val tagPrefixMode: Flow<String> = context.dataStore.data
+        .map { if (it[Keys.TAG_PREFIX_MODE] == "raw") "raw" else "name" }
+
+    suspend fun setTagPrefixMode(mode: String) {
+        context.dataStore.edit { it[Keys.TAG_PREFIX_MODE] = if (mode == "raw") "raw" else "name" }
     }
 
     suspend fun setAccentKey(key: String) {

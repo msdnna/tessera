@@ -17,7 +17,7 @@ import (
 // clients resolve project → workspace → built-in default and do all the input
 // parsing / output formatting (the backend only validates and stores minutes).
 type estimationConfig struct {
-	Unit        string  `json:"unit"`                   // "time" | "points" | "custom"
+	Unit        string  `json:"unit"`                    // "time" | "points" | "custom"
 	HoursPerDay float64 `json:"hours_per_day,omitempty"` // time only
 	DaysPerWeek float64 `json:"days_per_week,omitempty"` // time only
 	PointsScale string  `json:"points_scale,omitempty"`  // points only: fibonacci | tshirt | linear

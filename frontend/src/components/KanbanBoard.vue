@@ -33,6 +33,7 @@ import {
   ListOutline,
   CalendarOutline,
   GitBranchOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
 import {
   boards,
@@ -49,8 +50,17 @@ import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { PRIORITY_LABELS } from '@/styles/tokens'
-import { tagNamespace, prefixLabel, buildTagGroups, metaPrefixesFromRules } from '@/utils/tagGroups'
+import {
+  tagNamespace,
+  prefixLabel,
+  tagParts,
+  buildTagGroups,
+  metaPrefixesFromRules,
+} from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
+import { filterBoardTasks } from '@/utils/taskFilter'
+import { boardGitlabAuthors } from '@/utils/boardFilters'
+import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -133,6 +143,16 @@ const gitlabMembersList = computed(() =>
     (g) => !(g.tessera_user_id && membersMap[g.tessera_user_id]),
   ),
 )
+// Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
+// task has no `created_by`, so matching its author against a Tessera person goes
+// through this map (see utils/boardFilters matchesAuthor).
+const glLoginByUserId = computed(() => {
+  const m = {}
+  for (const g of Object.values(gitlabMembersMap)) {
+    if (g.tessera_user_id && g.gl_username) m[g.tessera_user_id] = g.gl_username
+  }
+  return m
+})
 
 // view controls (layout comes from the store, above)
 const subtasksExpanded = ref(false) // full property cards vs compact rows
@@ -280,6 +300,7 @@ const sortLevels = ref([])
 const filters = reactive({
   priorities: [],
   assignees: [],
+  authors: [],
   tags: [],
   statuses: [],
   milestones: [],
@@ -296,15 +317,17 @@ function exitArchive() {
   router.replace({ query: q })
 }
 
-// Sprint scope (navigation overlay): ?milestone=<uuid|backlog>. Drives the
+// Sprint scope (navigation overlay): ?milestone=<slug|uuid|backlog>. Drives the
 // server-side task scope and shows a removable chip; clearing it returns the full
-// board (and de-highlights the sidebar sprint node).
+// board (and de-highlights the sidebar sprint node). The value is passed to the
+// API verbatim — the server resolves slug or UUID.
 const milestoneScope = computed(() => (route.query.milestone ? String(route.query.milestone) : ''))
 const milestoneScopeLabel = computed(() => {
   const s = milestoneScope.value
   if (!s) return ''
-  if (s === 'backlog') return 'Бэклог'
-  return milestonesMap[s]?.title || 'Этап'
+  if (s === BACKLOG_SCOPE) return 'Бэклог'
+  // Keyed by id, so a slug scope needs a scan (a project has few milestones).
+  return (milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)))?.title || 'Этап'
 })
 function clearMilestoneScope() {
   const q = { ...route.query }
@@ -387,19 +410,53 @@ const memberFilterMenu = computed(() => {
   if (!gl.length) return tessera
   return [...tessera, { type: 'group', label: 'GitLab', key: 'fag', children: gl }]
 })
+// Author filter menu — same shape as the assignee one (avatar hints, `gl:`-prefixed
+// GitLab values, `fc.` = creator keys), plus the GitLab authors actually seen on the
+// board: an issue can be opened by someone outside the project's member roster.
+// Logins already represented by a Tessera row (linked accounts) are skipped so one
+// person never shows up twice.
+const authorFilterMenu = computed(() => {
+  const tessera = membersList.value.map((m) => ({
+    label: m.name,
+    key: `fc.${m.user_id}`,
+    avatarUserId: m.user_id,
+  }))
+  const seen = new Set(Object.values(glLoginByUserId.value))
+  const gl = []
+  const pushGl = (username, name, avatar) => {
+    if (!username || seen.has(username)) return
+    seen.add(username)
+    gl.push({ label: name || username, key: `fc.gl:${username}`, avatarSrc: avatar })
+  }
+  gitlabMembersList.value.forEach((g) => pushGl(g.gl_username, g.gl_name, g.gl_avatar_url))
+  boardGitlabAuthors(allTasks.value).forEach((a) =>
+    pushGl(a.gl_username, a.gl_name, a.gl_avatar_url),
+  )
+  if (!gl.length) return tessera
+  return [...tessera, { type: 'group', label: 'GitLab', key: 'fcg', children: gl }]
+})
 // Tag filter menu, grouped by prefix (friendly names). Naive `type:'group'`
 // renders inline section headers — works on desktop and the mobile drill alike.
 // A single prefix-less bucket stays flat (no redundant header).
 const tagFilterMenu = computed(() => {
   const groups = buildTagGroups(tagsList.value, tagPrefixNames)
+  // Inside a group the header already names the scope, so entries show the bare
+  // value; a flat (single-bucket) menu spells the scope out instead.
+  const flatLabel = (t) => {
+    const p = tagParts(t.name, tagPrefixNames)
+    return p.hasScope ? `${p.scope}: ${p.label}` : p.label
+  }
   if (groups.length <= 1) {
-    return (groups[0]?.tags || []).map((t) => ({ label: t.name, key: `ft.${t.id}` }))
+    return (groups[0]?.tags || []).map((t) => ({ label: flatLabel(t), key: `ft.${t.id}` }))
   }
   return groups.map((g) => ({
     type: 'group',
     label: g.label,
     key: `ftg.${g.key}`,
-    children: g.tags.map((t) => ({ label: t.name, key: `ft.${t.id}` })),
+    children: g.tags.map((t) => ({
+      label: tagParts(t.name, tagPrefixNames).label,
+      key: `ft.${t.id}`,
+    })),
   }))
 })
 // Status filter = which board columns to show (timeline-only facet).
@@ -415,6 +472,7 @@ const activeFilterCount = computed(
   () =>
     filters.priorities.length +
     filters.assignees.length +
+    filters.authors.length +
     filters.tags.length +
     filters.statuses.length +
     filters.milestones.length +
@@ -424,6 +482,7 @@ const activeFilterCount = computed(
 function resetFilters() {
   filters.priorities = []
   filters.assignees = []
+  filters.authors = []
   filters.tags = []
   filters.statuses = []
   filters.milestones = []
@@ -442,6 +501,7 @@ const CHIP_ICONS = {
   sort: SwapVerticalOutline,
   priority: FlagOutline,
   assignee: PersonOutline,
+  author: CreateOutline,
   tag: PricetagOutline,
   status: ListOutline,
   milestone: RibbonOutline,
@@ -490,6 +550,26 @@ const facetChips = computed(() => {
       icon: CHIP_ICONS.assignee,
       text: name,
       label: `Исполнитель: ${name}`,
+    })
+  })
+  filters.authors.forEach((a) => {
+    let name
+    if (typeof a === 'string' && a.startsWith('gl:')) {
+      const u = a.slice(3)
+      const g2 = gitlabMembersList.value.find((x) => x.gl_username === u)
+      // Board-only authors aren't in the member roster — fall back to the name the
+      // synced task carries.
+      const b = g2 ? null : boardGitlabAuthors(allTasks.value).find((x) => x.gl_username === u)
+      name = (g2 && (g2.gl_name || g2.gl_username)) || b?.gl_name || u
+    } else {
+      name = membersMap[a]?.name || '—'
+    }
+    out.push({
+      kind: 'author',
+      value: a,
+      icon: CHIP_ICONS.author,
+      text: name,
+      label: `Автор: ${name}`,
     })
   })
   filters.tags.forEach((t) => {
@@ -572,6 +652,11 @@ const addOptions = computed(() => {
       label: 'Фильтр: исполнитель',
       key: 'fa',
       children: memberFilterMenu.value,
+    },
+    {
+      label: 'Фильтр: автор',
+      key: 'fc',
+      children: authorFilterMenu.value,
     },
     { label: 'Фильтр: тег', key: 'ft', children: tagFilterMenu.value },
     { label: 'Фильтр: этап', key: 'fm', children: milestoneFilterMenu.value },
@@ -701,6 +786,9 @@ function onAddFacet(key) {
   } else if (key.startsWith('fa.')) {
     const v = key.slice(3)
     if (!filters.assignees.includes(v)) filters.assignees.push(v)
+  } else if (key.startsWith('fc.')) {
+    const v = key.slice(3)
+    if (!filters.authors.includes(v)) filters.authors.push(v)
   } else if (key.startsWith('ft.')) {
     const v = key.slice(3)
     if (!filters.tags.includes(v)) filters.tags.push(v)
@@ -722,6 +810,7 @@ function removeChip(c) {
   else if (c.kind === 'priority')
     filters.priorities = filters.priorities.filter((x) => x !== c.value)
   else if (c.kind === 'assignee') filters.assignees = filters.assignees.filter((x) => x !== c.value)
+  else if (c.kind === 'author') filters.authors = filters.authors.filter((x) => x !== c.value)
   else if (c.kind === 'tag') filters.tags = filters.tags.filter((x) => x !== c.value)
   else if (c.kind === 'status') filters.statuses = filters.statuses.filter((x) => x !== c.value)
   else if (c.kind === 'milestone')
@@ -799,6 +888,7 @@ function defaultToolbar(forLayout) {
     filters: {
       priorities: [],
       assignees: [],
+      authors: [],
       tags: [],
       statuses: [],
       milestones: [],
@@ -824,6 +914,7 @@ function snapshotToolbar() {
     filters: {
       priorities: [...filters.priorities],
       assignees: [...filters.assignees],
+      authors: [...filters.authors],
       tags: [...filters.tags],
       statuses: [...filters.statuses],
       milestones: [...filters.milestones],
@@ -847,7 +938,16 @@ function loadToolbar(s) {
   autoSort.value = !!s.autoSort
   Object.assign(
     filters,
-    { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
+    {
+      priorities: [],
+      assignees: [],
+      authors: [],
+      tags: [],
+      statuses: [],
+      milestones: [],
+      due: '',
+      q: '',
+    },
     s.filters || {},
   )
   loadCustomize(s)
@@ -921,6 +1021,7 @@ function restoreView() {
           filters: {
             priorities: [],
             assignees: [],
+            authors: [],
             tags: [],
             statuses: [],
             due: '',
@@ -1027,7 +1128,16 @@ function applyViewConfig(c) {
   subtasksExpanded.value = !!c.subtasksExpanded
   Object.assign(
     filters,
-    { priorities: [], assignees: [], tags: [], statuses: [], milestones: [], due: '', q: '' },
+    {
+      priorities: [],
+      assignees: [],
+      authors: [],
+      tags: [],
+      statuses: [],
+      milestones: [],
+      due: '',
+      q: '',
+    },
     c.filters || {},
   )
   loadCustomize(c)
@@ -1305,7 +1415,7 @@ function scheduleReload() {
 async function load(id) {
   loading.value = true
   try {
-    // Sprint navigation: the URL ?milestone=<uuid|backlog> scopes the board to one
+    // Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
     // milestone server-side, so a huge project never loads all its cards at once.
     // ?archived=1 loads the read-only archive instead (subtasks skipped — they are
     // archived together with their parents).
@@ -1376,50 +1486,23 @@ async function loadWorkspaceMeta() {
   boardViewStore.setContext(props.boardId, wsId, projectId)
 }
 
-// Due-date predicate for the "Срок" filter.
-function matchesDue(t, mode) {
-  if (mode === 'none') return !t.due_date
-  if (!t.due_date) return false
-  if (mode === 'has') return true
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const due = new Date(t.due_date)
-  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate())
-  const dayMs = 86400000
-  if (mode === 'overdue') return dueDay < today && !t.completed_at
-  if (mode === 'today') return dueDay.getTime() === today.getTime()
-  if (mode === 'week') return dueDay >= today && dueDay - today <= 7 * dayMs
-  return true
-}
+// Filtering runs over tasks AND their subtasks together (see utils/taskFilter):
+// a parent stays visible when it matches or when one of its children does, and
+// in the latter case its on-card child list is narrowed to the matches.
+const filterResult = computed(() =>
+  filterBoardTasks({
+    tasks: allTasks.value,
+    subtasksByParent: subtasksByParent.value,
+    filters,
+    glLoginByUserId: glLoginByUserId.value,
+  }),
+)
 
 // filter + sort applied before grouping
-const filteredTasks = computed(() => {
-  let arr = allTasks.value
-  if (filters.priorities.length) arr = arr.filter((t) => filters.priorities.includes(t.priority))
-  if (filters.assignees.length)
-    arr = arr.filter((t) => {
-      const ids = t.assignee_ids || []
-      const logins = t.gitlab_assignee_logins || []
-      return filters.assignees.some((a) =>
-        typeof a === 'string' && a.startsWith('gl:')
-          ? logins.includes(a.slice(3))
-          : ids.includes(a),
-      )
-    })
-  if (filters.tags.length)
-    arr = arr.filter((t) => (t.tag_ids || []).some((id) => filters.tags.includes(id)))
-  if (filters.statuses.length) arr = arr.filter((t) => filters.statuses.includes(t.column_id))
-  if (filters.milestones.length)
-    arr = arr.filter((t) => filters.milestones.includes(t.milestone_id || '__none__'))
-  if (filters.due) arr = arr.filter((t) => matchesDue(t, filters.due))
-  const q = filters.q.trim().toLowerCase()
-  if (q)
-    arr = arr.filter(
-      (t) => t.title.toLowerCase().includes(q) || (t.number != null && `#${t.number}`.includes(q)),
-    )
+const filteredTasks = computed(() => sortByLevels(filterResult.value.tasks))
 
-  return sortByLevels(arr)
-})
+// Same map, filter-narrowed — for the views that consume it unsorted.
+const filteredSubtasksByParent = computed(() => filterResult.value.subtasksByParent)
 
 // Apply the composer's multi-level sort to a task array (empty sort = stored order,
 // returned as a fresh copy so callers never mutate the source).
@@ -1441,18 +1524,17 @@ function sortByLevels(arr) {
 // children follow it too; with no sort we keep the raw stored order so on-card
 // drag-reorder stays authoritative.
 const sortedSubtasksByParent = computed(() => {
-  if (!sortLevels.value.length) return subtasksByParent.value
+  const src = filterResult.value.subtasksByParent
+  if (!sortLevels.value.length) return src
   const out = {}
-  for (const [pid, subs] of Object.entries(subtasksByParent.value)) out[pid] = sortByLevels(subs)
+  for (const [pid, subs] of Object.entries(src)) out[pid] = sortByLevels(subs)
   return out
 })
 
-// The board's task-completing column: explicit if set, else the rightmost.
-const doneColumnId = computed(() => {
-  if (board.value?.done_column_id) return board.value.done_column_id
-  const cols = columns.value
-  return cols.length ? cols[cols.length - 1].id : null
-})
+// The board's task-completing column, or null when it has none. No fallback to
+// the rightmost column: it made clearing the done column look like a no-op
+// whenever that column was also the rightmost one (#2588).
+const doneColumnId = computed(() => board.value?.done_column_id ?? null)
 async function onSetDone(columnId) {
   try {
     const r = await boards.setDoneColumn(props.boardId, columnId)
@@ -1473,10 +1555,20 @@ const displayColumns = computed(() => {
     ]
   }
   return [
-    ...groupTags.value.map((t) => ({ key: t.id, name: t.name, color: t.color, tag: t })),
+    ...groupTags.value.map((t) => ({ key: t.id, name: tagColumnName(t), color: t.color, tag: t })),
     { key: '__none__', name: 'Без тегов', color: '', tag: null },
   ]
 })
+
+// Column title for a tag group: the raw "scope::value" is never shown. When the
+// board is already filtered to one prefix the scope sits in the group label
+// ("Тег · Сложность"), so only the value is left; otherwise the friendly scope
+// is spelled out ahead of it.
+function tagColumnName(t) {
+  const parts = tagParts(t.name, tagPrefixNames)
+  if (!parts.hasScope) return parts.label
+  return tagPrefix.value ? parts.label : `${parts.scope}: ${parts.label}`
+}
 
 // Estimation rollup per milestone column: Σ of the column's tasks' own estimates,
 // formatted in the project's unit. Shown only when grouped by milestone.
@@ -1697,6 +1789,8 @@ useRealtime((ev) => {
   }
   // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
+  // Custom command dictionary edited elsewhere → the `/`-popup picks it up live.
+  if (ev.type === 'workspace_commands.updated') wsStore.setCustomCommands(ev.data?.commands || [])
   // Board-activity toast for create/move on THIS board (any actor).
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
   if (dragging.value || Date.now() < suppressReloadUntil) return
@@ -1794,7 +1888,7 @@ async function applyTaskQuery() {
 // clean. It *replaces* the milestone facet (rather than appending) so re-entering
 // from the screen for a different milestone doesn't accumulate the previous one
 // that the saved view had persisted.
-// Sprint scope is now driven by a persistent ?milestone=<uuid|backlog> param
+// Sprint scope is now driven by a persistent ?milestone=<slug|uuid|backlog> param
 // (server-side scoped in load(), node-highlighted in the sidebar). Nothing to do
 // here — kept as a no-op so existing call sites stay valid.
 function applyMilestoneQuery() {}
@@ -2136,6 +2230,7 @@ async function restoreFromArchive(taskId) {
         :lists="lists"
         :tags-map="tagsMap"
         :members-map="membersMap"
+        :tag-prefix-names="tagPrefixNames"
         @open="openTask"
         @changed="onChanged"
       />
@@ -2157,7 +2252,7 @@ async function restoreFromArchive(taskId) {
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
         :project-id="board?.project_id"
-        :subtasks-by-parent="subtasksByParent"
+        :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
         @open="openTask"
         @changed="onChanged"
@@ -2174,7 +2269,7 @@ async function restoreFromArchive(taskId) {
         :tag-prefix="tagPrefix"
         :project-id="board?.project_id"
         :auto-sort="autoActive"
-        :subtasks-by-parent="subtasksByParent"
+        :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
         @open="openTask"
         @changed="onChanged"
@@ -2184,6 +2279,7 @@ async function restoreFromArchive(taskId) {
         v-else-if="layout === 'matrix'"
         :tasks="filteredTasks"
         :subtasks-by-parent="sortedSubtasksByParent"
+        :subtasks-total-by-parent="subtasksByParent"
         :subtasks-expanded="subtasksExpanded"
         :columns="columns"
         :tags-map="tagsMap"
@@ -2282,6 +2378,7 @@ async function restoreFromArchive(taskId) {
                       v-else
                       :task="element"
                       :subtasks="sortedSubtasksByParent[element.id] || []"
+                      :subtasks-total="(subtasksByParent[element.id] || []).length"
                       :subtasks-expanded="subtasksExpanded"
                       :dragging="draggingCard"
                       :columns="columns"

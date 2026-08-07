@@ -11,8 +11,11 @@ import {
 } from '@vicons/ionicons5'
 import { uploads as uploadsApi } from '@/api'
 import { toggleTaskMarker } from '@/utils/markdown'
+import { detectSlashQuery, matchCommands, commandInsertText } from '@/utils/commands'
 import { isTauri } from '@/utils/serverBase'
+import { scrollParent } from '@/utils/dom'
 import RichContent from './RichContent.vue'
+import TesseraSpinner from './TesseraSpinner.vue'
 import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({
@@ -22,6 +25,9 @@ const props = defineProps({
   // `label` is the inserted text (Tessera name or GitLab @username), `display` the row
   // label (falls back to label). Empty → mentions off.
   mentionItems: { type: Array, default: () => [] },
+  // Quick actions for the `/`-autocomplete: [{ key, description, arg, builtin }]
+  // (see utils/commands.js `commandItems`). Empty → the `/`-popup stays off.
+  commandItems: { type: Array, default: () => [] },
   minRows: { type: Number, default: 3 },
   // 'write' | 'preview' — sets the initial tab (re-applied when it changes,
   // e.g. when a different task loads). User tab clicks override locally.
@@ -32,6 +38,9 @@ const props = defineProps({
   variant: { type: String, default: 'default' },
   // Boxed only: show a send button in the toolbar that emits `submit`.
   send: { type: Boolean, default: false },
+  // Boxed + send only: the parent is posting — the send button shows a spinner and
+  // both the button and Ctrl+Enter are inert until it clears (no double-submit).
+  sending: { type: Boolean, default: false },
   // Default variant only: render the built-in top toolbar. Set false to host the
   // actions elsewhere (e.g. the description's header) via the exposed methods +
   // `update:mode` — see TaskModal's .desc-head.
@@ -47,6 +56,7 @@ function toggleMode() {
   mode.value = mode.value === 'write' ? 'preview' : 'write'
 }
 function onSend() {
+  if (props.sending) return
   emit('submit')
 }
 watch(
@@ -64,23 +74,16 @@ function setValue(v) {
   emit('update:modelValue', v)
 }
 
-// The nearest scrollable ancestor (the modal body) — its scrollTop must be
-// restored around the height reset, or the `height:auto` reflow makes the
-// browser re-anchor the (focused) textarea and the modal jumps.
-function scrollParent(el) {
-  let p = el?.parentElement
-  while (p) {
-    const oy = getComputedStyle(p).overflowY
-    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p
-    p = p.parentElement
-  }
-  return null
-}
 // Auto-grow: the textarea height follows its content so long text isn't trapped
 // behind an inner scrollbar (the modal scrolls instead).
 function autoGrow() {
   const el = ta.value
   if (!el) return
+  // Skip while the editor has no width — e.g. inside a collapsed panel (grid track
+  // at 0fr). scrollHeight measured at ~0 width explodes (text wraps per glyph),
+  // which would leave a giant textarea once the panel is shown again. The height is
+  // recomputed via the exposed autoGrow() when the panel reappears.
+  if (el.clientWidth === 0) return
   const sp = scrollParent(el)
   const top = sp ? sp.scrollTop : null
   el.style.height = 'auto'
@@ -319,6 +322,10 @@ function refreshBubble() {
 function hideBubble() {
   bubble.value = null
 }
+function onTaScroll() {
+  hideBubble()
+  if (mq.value) updateSugPos()
+}
 function onBlur() {
   // Defer so a bubble-button mousedown can run before we tear it down.
   setTimeout(() => {
@@ -328,36 +335,98 @@ function onBlur() {
 }
 onBeforeUnmount(hideBubble)
 
-// ── @-mention autocomplete ──
-const mq = ref(null) // { start, query } while open
+// Close the suggestion popup when clicking anywhere outside it (in addition to
+// Esc / Enter / Backspace). Item clicks stay inside `.md2-mentions` and are
+// handled by their own mousedown; a click in the textarea or elsewhere dismisses.
+function onDocMousedown(e) {
+  if (mq.value && !e.target.closest?.('.md2-mentions')) mq.value = null
+}
+onMounted(() => document.addEventListener('mousedown', onDocMousedown))
+onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMousedown))
+
+// ── autocomplete: @-mentions and /-commands ──
+// One popup, two sources. `mq` holds the open query: { kind, start, query },
+// where `start` is the index of the trigger character in the textarea value.
+const mq = ref(null)
 const mqIndex = ref(0)
+// Viewport position of the popup, anchored just BELOW the trigger line so it does
+// not cover the text the user is typing (like GitLab). Measured with the same
+// mirror-div technique as the selection bubble; the popup is `position: fixed`
+// (viewport coords) so it escapes the editor's clipping — inside the boxed
+// composer an `absolute` popup got cropped by the rounded border box.
+const sugPos = ref(null)
+const sugEl = ref(null) // the rendered <ul>, for post-render clamp/flip measurement
+let sugAnchorY = 0 // viewport Y of the trigger line top — used when flipping above
+const isCmd = computed(() => mq.value?.kind === 'command')
 const mentionMatches = computed(() => {
-  if (!mq.value) return []
+  if (!mq.value || isCmd.value) return []
   const q = mq.value.query.toLowerCase()
   return props.mentionItems
     .filter((m) => m.label.toLowerCase().includes(q) || (m.display || '').toLowerCase().includes(q))
     .slice(0, 8)
 })
-function detectMention() {
+const commandMatches = computed(() =>
+  isCmd.value ? matchCommands(props.commandItems, mq.value.query) : [],
+)
+const sugMatches = computed(() => (isCmd.value ? commandMatches.value : mentionMatches.value))
+
+function detectSuggest() {
   const el = ta.value
-  if (!el || !props.mentionItems.length) return (mq.value = null)
+  if (!el) return (mq.value = null)
   // Read the live DOM value: the modelValue prop lags one input behind.
   const upto = el.value.slice(0, el.selectionStart)
-  const m = upto.match(/(^|\s)@([^\s@]*)$/)
+  const m = props.mentionItems.length ? upto.match(/(^|\s)@([^\s@]*)$/) : null
   if (m) {
-    mq.value = { start: el.selectionStart - m[2].length - 1, query: m[2] }
+    mq.value = { kind: 'mention', start: el.selectionStart - m[2].length - 1, query: m[2] }
     mqIndex.value = 0
-  } else {
-    mq.value = null
+    updateSugPos()
+    return
   }
+  // Commands trigger only at the start of a line — see detectSlashQuery.
+  const slash = props.commandItems.length ? detectSlashQuery(upto) : null
+  if (slash) {
+    mq.value = { kind: 'command', ...slash }
+    mqIndex.value = 0
+    updateSugPos()
+    return
+  }
+  mq.value = null
 }
-function pickMention(item) {
+// Place the popup below the trigger char's line, aligned under the trigger.
+// Coords are viewport-relative (the popup is `position: fixed`). After it renders
+// we measure its real size and clamp it into the viewport / flip it above the
+// line when there isn't room below — see clampSugPos.
+function updateSugPos() {
+  const el = ta.value
+  if (!el || !mq.value) return (sugPos.value = null)
+  const c = caretCoords(el, mq.value.start)
+  const rect = el.getBoundingClientRect()
+  const x = rect.left + c.left - el.scrollLeft
+  const y = rect.top + c.top - el.scrollTop
+  sugAnchorY = y
+  sugPos.value = { top: `${y + c.line + 6}px`, left: `${Math.max(8, x)}px` }
+  nextTick(clampSugPos)
+}
+function clampSugPos() {
+  const box = sugEl.value
+  if (!box || !sugPos.value) return
+  const r = box.getBoundingClientRect()
+  const vw = document.documentElement.clientWidth
+  const vh = document.documentElement.clientHeight
+  let left = parseFloat(sugPos.value.left)
+  let top = parseFloat(sugPos.value.top)
+  if (left + r.width > vw - 8) left = Math.max(8, vw - 8 - r.width)
+  // Not enough room below and more room above the line → flip the popup up.
+  if (top + r.height > vh - 8 && sugAnchorY - 6 - r.height > 8) top = sugAnchorY - 6 - r.height
+  sugPos.value = { top: `${top}px`, left: `${left}px` }
+}
+function pickSuggest(item) {
   if (!item || !mq.value) return
   const el = ta.value
-  const val = el.value
-  const insert = `@${item.label} `
-  const next = val.slice(0, mq.value.start) + insert + val.slice(el.selectionStart)
-  if (!picked.value.some((p) => p.id === item.id)) picked.value.push({ ...item })
+  const cmd = isCmd.value
+  const insert = cmd ? commandInsertText(item) : `@${item.label} `
+  const next = el.value.slice(0, mq.value.start) + insert + el.value.slice(el.selectionStart)
+  if (!cmd && !picked.value.some((p) => p.id === item.id)) picked.value.push({ ...item })
   setValue(next)
   const caret = mq.value.start + insert.length
   mq.value = null
@@ -370,28 +439,27 @@ function pickMention(item) {
 function onInput(e) {
   setValue(e.target.value)
   autoGrow()
-  detectMention()
+  detectSuggest()
   hideBubble()
 }
 function onSelect() {
   if (!mq.value) refreshBubble()
 }
 function onKeydown(e) {
-  if (mq.value && mentionMatches.value.length) {
+  if (mq.value && sugMatches.value.length) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      mqIndex.value = (mqIndex.value + 1) % mentionMatches.value.length
+      mqIndex.value = (mqIndex.value + 1) % sugMatches.value.length
       return
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      mqIndex.value =
-        (mqIndex.value - 1 + mentionMatches.value.length) % mentionMatches.value.length
+      mqIndex.value = (mqIndex.value - 1 + sugMatches.value.length) % sugMatches.value.length
       return
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault()
-      pickMention(mentionMatches.value[mqIndex.value])
+      pickSuggest(sugMatches.value[mqIndex.value])
       return
     }
     if (e.key === 'Escape') {
@@ -402,6 +470,7 @@ function onKeydown(e) {
   }
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault()
+    if (props.sending) return
     emit('submit')
   }
 }
@@ -420,7 +489,7 @@ function clear() {
 function focus() {
   ta.value?.focus()
 }
-defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode })
+defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, autoGrow })
 </script>
 
 <template>
@@ -474,7 +543,7 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
             @keydown="onKeydown"
             @select="onSelect"
             @mouseup="onSelect"
-            @scroll="hideBubble"
+            @scroll="onTaScroll"
             @blur="onBlur"
             @paste="onPaste"
             @dragover.prevent
@@ -497,29 +566,60 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
             </div>
           </Transition>
 
-          <ul v-if="mq && mentionMatches.length" class="md2-mentions">
-            <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
+          <Transition name="md2-sug">
+            <ul
+              v-if="mq && !isCmd && mentionMatches.length"
+              ref="sugEl"
+              class="md2-mentions"
+              :style="sugPos"
+            >
+              <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
+                <li
+                  v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)"
+                  class="md2-mention-sep"
+                >
+                  GitLab
+                </li>
+                <li
+                  class="md2-mention-item"
+                  :class="{ active: i === mqIndex }"
+                  @mousedown.prevent="pickSuggest(m)"
+                >
+                  <UserAvatar
+                    class="md2-mention-av"
+                    :user-id="m.avatarUserId"
+                    :src="m.avatarSrc"
+                    :name="m.display || m.label"
+                  />
+                  <span class="md2-mention-name">{{ m.display || m.label }}</span>
+                </li>
+              </template>
+            </ul>
+          </Transition>
+
+          <!-- Quick actions: `/ключ` in mono plus the description, GitLab-style.
+               Custom (dictionary) entries carry a neutral badge — they are hints
+               for a human reader, the backend never executes them. -->
+          <Transition name="md2-sug">
+            <ul
+              v-if="mq && isCmd && commandMatches.length"
+              ref="sugEl"
+              class="md2-mentions md2-cmds"
+              :style="sugPos"
+            >
               <li
-                v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)"
-                class="md2-mention-sep"
-              >
-                GitLab
-              </li>
-              <li
-                class="md2-mention-item"
+                v-for="(cmd, i) in commandMatches"
+                :key="cmd.key"
+                class="md2-mention-item md2-cmd-item"
                 :class="{ active: i === mqIndex }"
-                @mousedown.prevent="pickMention(m)"
+                @mousedown.prevent="pickSuggest(cmd)"
               >
-                <UserAvatar
-                  class="md2-mention-av"
-                  :user-id="m.avatarUserId"
-                  :src="m.avatarSrc"
-                  :name="m.display || m.label"
-                />
-                <span class="md2-mention-name">{{ m.display || m.label }}</span>
+                <code class="md2-cmd-key">/{{ cmd.key }}</code>
+                <span class="md2-cmd-desc">{{ cmd.description }}</span>
+                <span v-if="!cmd.builtin" class="md2-cmd-tag">свои</span>
               </li>
-            </template>
-          </ul>
+            </ul>
+          </Transition>
         </div>
 
         <RichContent
@@ -583,10 +683,13 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
           v-if="send"
           type="button"
           class="md2-send"
-          title="Отправить (Ctrl+Enter)"
+          :class="{ busy: sending }"
+          :disabled="sending"
+          :title="sending ? 'Отправка…' : 'Отправить (Ctrl+Enter)'"
           @mousedown.prevent="onSend"
         >
-          <n-icon :component="SendOutline" :size="16" />
+          <TesseraSpinner v-if="sending" :size="16" variant="white" />
+          <n-icon v-else :component="SendOutline" :size="16" />
         </button>
       </div>
     </div>
@@ -666,7 +769,7 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   min-height: calc(v-bind(minRows) * 1.55em);
 }
 .md2-write textarea::placeholder {
-  color: var(--t-text3);
+  color: var(--t-placeholder);
 }
 
 /* Floating selection toolbar */
@@ -677,7 +780,7 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   display: flex;
   gap: 1px;
   padding: 3px;
-  background: var(--t-surface);
+  background: var(--t-input-bg);
   border: 1px solid var(--t-border);
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
@@ -722,17 +825,21 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
 }
 
 .md2-mentions {
-  position: absolute;
+  /* Fixed (viewport) positioning so the popup escapes the editor's clipping —
+     inside the boxed composer an absolute popup got cropped by the rounded box.
+     `top`/`left` come from the inline :style (computed under the caret line). */
+  position: fixed;
   left: 0;
-  bottom: 4px;
-  z-index: 30;
+  top: 0;
+  z-index: 4100;
   margin: 0;
   padding: 4px;
   list-style: none;
   min-width: 180px;
-  max-height: 200px;
+  max-width: min(360px, 90vw);
+  max-height: 240px;
   overflow-y: auto;
-  background: var(--t-surface);
+  background: var(--t-input-bg);
   border: 1px solid var(--t-border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
@@ -767,6 +874,63 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Suggestion popup enter/leave: soft fade + a short rise. Position is driven by
+   `top`/`left` (inline :style), so the animation is free to use `transform`
+   without fighting the fixed positioning / flip-up logic. */
+.md2-sug-enter-active {
+  transition:
+    opacity 0.12s ease-out,
+    transform 0.12s ease-out;
+}
+.md2-sug-leave-active {
+  transition:
+    opacity 0.09s ease-in,
+    transform 0.09s ease-in;
+}
+.md2-sug-enter-from,
+.md2-sug-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .md2-sug-enter-active,
+  .md2-sug-leave-active {
+    transition: none;
+  }
+  .md2-sug-enter-from,
+  .md2-sug-leave-to {
+    transform: none;
+  }
+}
+.md2-cmds {
+  min-width: 280px;
+}
+.md2-cmd-item {
+  gap: 10px;
+}
+.md2-cmd-key {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--t-text1);
+}
+.md2-cmd-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.md2-cmd-tag {
+  /* Neutral, flat — custom commands are documentation, not an accent action. */
+  margin-left: auto;
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--t-border);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--t-text3);
+}
 .md2-mention-sep {
   padding: 6px 8px 2px;
   font-size: 10px;
@@ -781,16 +945,24 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   min-height: calc(v-bind(minRows) * 1.55em);
 }
 
-/* ── boxed composer (comments) ── */
+/* ── boxed composer (comments) ──
+   Mirrors the Naive n-input skin (background / hover border / text colours) so
+   the composer reads as one more field of the modal instead of a floating box. */
 .md2-boxed .md2-body {
   border: 1px solid var(--t-border);
   border-radius: 10px;
-  background: var(--t-surface);
+  background: var(--t-input-bg);
   padding: 8px 10px;
   transition: border-color 0.15s ease;
 }
+.md2-boxed .md2-body:hover:not(:focus-within) {
+  border-color: color-mix(in srgb, var(--t-primary) 45%, var(--t-border));
+}
 .md2-boxed .md2-body:focus-within {
   border-color: var(--t-primary);
+}
+.md2-boxed .md2-write textarea {
+  color: var(--t-text2);
 }
 .md2-toolbar {
   display: flex;
@@ -858,5 +1030,9 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
 }
 .md2-send:hover {
   filter: brightness(1.06);
+}
+.md2-send.busy {
+  cursor: default;
+  filter: none;
 }
 </style>

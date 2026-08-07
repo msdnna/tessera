@@ -150,6 +150,23 @@ class BoardRepository {
         api.pinGitlabAssignee(taskId, PinGitlabAssigneeRequest(m.glUsername, m.glName, m.glAvatarUrl))
     suspend fun removeGitlabAssignee(taskId: String, username: String) = api.removeGitlabAssignee(taskId, username)
 
+    /** The workspace's quick-action registry (built-ins + custom dictionary + the
+     *  caller's right to edit it). Best-effort: without it the editor simply has
+     *  no `/`-popup, which must not break the board load. */
+    suspend fun workspaceCommands(workspaceId: String): website.msdnna.tessera.data.model.CommandRegistry =
+        runCatching { api.workspaceCommands(workspaceId) }
+            .getOrDefault(website.msdnna.tessera.data.model.CommandRegistry())
+
+    /** Replaces the whole custom dictionary (complete desired state, like tag prefixes). */
+    suspend fun setWorkspaceCommands(
+        workspaceId: String,
+        commands: List<website.msdnna.tessera.data.model.WorkspaceCommand>,
+    ): List<website.msdnna.tessera.data.model.WorkspaceCommand> =
+        api.setWorkspaceCommands(
+            workspaceId,
+            website.msdnna.tessera.data.model.SetWorkspaceCommandsRequest(commands),
+        ).orEmpty()
+
     suspend fun createTag(projectId: String, name: String, color: String): Tag =
         api.createTag(projectId, CreateTagRequest(name, color))
     suspend fun updateTag(tagId: String, name: String, color: String): Tag =

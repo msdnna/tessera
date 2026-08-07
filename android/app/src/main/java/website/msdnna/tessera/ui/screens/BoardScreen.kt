@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,8 +91,10 @@ fun BoardScreen(
     onInitialMilestoneConsumed: () -> Unit = {},
     archiveOpen: Boolean = false,
     tagsOpen: Boolean = false,
+    commandsOpen: Boolean = false,
     onCloseArchive: () -> Unit = {},
     onCloseTags: () -> Unit = {},
+    onCloseCommands: () -> Unit = {},
     onTimelineLikeChanged: (Boolean) -> Unit = {},
     onBoardGone: () -> Unit = {},
 ) {
@@ -145,6 +149,16 @@ fun BoardScreen(
     // the tools off and a tap anywhere outside the bar (the board area) collapses
     // it again — the same defocus-on-outside-tap as the tag editor.
     var composerExpanded by remember(board.id) { mutableStateOf(false) }
+    // Defocusing the composer also drops the search field's focus, so the keyboard
+    // goes down with the bar instead of hanging over a collapsed one.
+    val focusManager = LocalFocusManager.current
+    fun collapseComposer() {
+        composerExpanded = false
+        focusManager.clearFocus()
+    }
+    // Back closes the composer before anything else — this handler is registered
+    // deeper than MainScreen's drawer/navigation ones, so it wins while expanded.
+    BackHandler(enabled = composerExpanded) { collapseComposer() }
     // Local copy so an icon/colour edit reflects live in the customize panel; the
     // sidebar tree is refreshed separately via wsVm.updateBoard → loadBoards.
     var currentBoard by remember(board.id) { mutableStateOf(board) }
@@ -160,16 +174,9 @@ fun BoardScreen(
             },
             expanded = composerExpanded,
             setExpanded = { composerExpanded = it },
+            onExitArchive = onCloseArchive,
         )
         HorizontalDivider(color = Tessera.colors.border)
-
-        if (state.archivedMode) {
-            ArchiveBanner(onExit = onCloseArchive)
-            HorizontalDivider(color = Tessera.colors.border)
-        } else if (state.milestones.isNotEmpty()) {
-            SprintScopeBar(state = state, onSelect = vm::setMilestoneScope)
-            HorizontalDivider(color = Tessera.colors.border)
-        }
 
         Box(Modifier.fillMaxSize()) {
             val boardContent: @Composable () -> Unit = {
@@ -220,7 +227,7 @@ fun BoardScreen(
                 ) { boardContent() }
             }
             if (composerExpanded) {
-                Box(Modifier.fillMaxSize().clickableNoRipple { composerExpanded = false })
+                Box(Modifier.fillMaxSize().clickableNoRipple { collapseComposer() })
             }
         }
     }
@@ -245,8 +252,10 @@ fun BoardScreen(
             gitlabMembers = state.gitlabMembers,
             milestones = state.milestones,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
+            boardTasks = state.tasks,
             breadcrumb = breadcrumb,
             estimation = state.estimation,
+            commands = state.commandRows,
             onClose = { changed ->
                 openTaskId = null
                 if (changed) vm.reload()
@@ -255,6 +264,8 @@ fun BoardScreen(
     }
 
     if (tagsOpen) TagManagerModal(state = state, vm = vm, onDismiss = onCloseTags)
+
+    if (commandsOpen) WorkspaceCommandsModal(state = state, vm = vm, onDismiss = onCloseCommands)
 
     BoardActivityOverlay(
         items = activity,
@@ -301,95 +312,6 @@ private fun activityVerbMeta(verb: String): Triple<String, String, Color> = when
     "completed" -> Triple("завершил(а) задачу", Ion.CHECK_CIRCLE, Color(0xFF18A058))
     "reopened" -> Triple("вернул(а) в работу", Ion.ELLIPSE, Color(0xFFE0922F))
     else -> Triple("переместил(а) задачу", Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
-}
-
-/** Read-only archive banner: marks the board as the archive scope and offers exit. */
-@Composable
-private fun ArchiveBanner(onExit: () -> Unit) {
-    val c = Tessera.colors
-    Row(
-        Modifier.fillMaxWidth().background(c.surfaceAlt).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IonIcon(Ion.ARCHIVE, size = 15.dp, tint = c.text3)
-        Spacer(Modifier.width(8.dp))
-        Text("Архив (только чтение)", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        Row(
-            Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
-                .clickableNoRipple(onClick = onExit).padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IonIcon(Ion.CLOSE, size = 13.dp, tint = c.text2)
-            Spacer(Modifier.width(4.dp))
-            Text("Выйти", color = c.text2, fontSize = 13.sp)
-        }
-    }
-}
-
-/**
- * Sprint scope bar (web parity): server-side navigation between sprints on boards
- * that have milestones. Picks «Все задачи» / «Бэклог» / a milestone; the selection
- * re-scopes the board on the server (for large GitLab imports). A removable chip
- * marks an active sprint scope.
- */
-@Composable
-private fun SprintScopeBar(
-    state: website.msdnna.tessera.ui.viewmodels.BoardUiState,
-    onSelect: (String?) -> Unit,
-) {
-    val c = Tessera.colors
-    var open by remember { mutableStateOf(false) }
-    val scope = state.milestoneScope
-    val label = when (scope) {
-        null -> "Все задачи"
-        "backlog" -> "Бэклог"
-        else -> state.milestonesMap[scope]?.title ?: "Этап"
-    }
-    val active = scope != null
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box {
-            Row(
-                Modifier.clip(RoundedCornerShape(RadiusSm))
-                    .background(if (active) accentGradient(c.primary) else SolidColor(c.surface))
-                    .border(1.dp, if (active) Color.Transparent else c.border, RoundedCornerShape(RadiusSm))
-                    .clickableNoRipple { open = true }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IonIcon(Ion.GIT_MERGE, size = 14.dp, tint = if (active) c.onPrimary else c.text3)
-                Spacer(Modifier.width(6.dp))
-                Text("Этап: $label", color = if (active) c.onPrimary else c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.width(4.dp))
-                IonIcon(Ion.CHEVRON_DOWN, size = 12.dp, tint = if (active) c.onPrimary else c.text3)
-            }
-            TDropdown(expanded = open, onDismiss = { open = false }) {
-                TMenuItem("Все задачи", onClick = {
-                    open = false
-                    onSelect(null)
-                })
-                TMenuItem("Бэклог (без этапа)", onClick = {
-                    open = false
-                    onSelect("backlog")
-                })
-                state.milestones.forEach { m ->
-                    TMenuItem(m.title, onClick = {
-                        open = false
-                        onSelect(m.id)
-                    })
-                }
-            }
-        }
-        if (active) {
-            Spacer(Modifier.width(8.dp))
-            IonIcon(
-                Ion.CLOSE, size = 16.dp, tint = c.text3,
-                modifier = Modifier.clip(CircleShape).clickableNoRipple { onSelect(null) },
-            )
-        }
-    }
 }
 
 @Composable
@@ -471,6 +393,7 @@ private fun BoardToolbar(
     onUpdateBoard: (icon: String, color: String, iconMode: String) -> Unit,
     expanded: Boolean,
     setExpanded: (Boolean) -> Unit,
+    onExitArchive: () -> Unit,
 ) {
     val c = Tessera.colors
     var viewsMenu by remember { mutableStateOf(false) }
@@ -488,6 +411,7 @@ private fun BoardToolbar(
             vm = vm,
             expanded = expanded,
             setExpanded = setExpanded,
+            onExitArchive = onExitArchive,
             modifier = Modifier.weight(1f),
         )
         AnimatedVisibility(
@@ -503,7 +427,8 @@ private fun BoardToolbar(
                 if (state.viewMode == BoardViewMode.Gantt) {
                     ToolIcon(Ion.GIT_NETWORK, active = state.autoActive) { vm.toggleAutoSort() }
                 }
-                // Subtask expansion lives in the view-customize panel (gear), not the toolbar.
+                // Subtask expansion is a chip in the composer bar (web parity); the
+                // customize panel (gear) keeps the same toggle as a labelled row.
                 // Saved server-side views — popover (web folder button).
                 Box {
                     ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsMenu = true }

@@ -51,9 +51,9 @@ func (q *Queries) CreateGitlabSyncAction(ctx context.Context, arg CreateGitlabSy
 
 const createGitlabSyncRun = `-- name: CreateGitlabSyncRun :one
 
-INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, started_at)
-VALUES ($1, $2, $3, $4, now())
-RETURNING id, integration_id, kind, trigger, actor_id, status, created_count, updated_count, deleted_count, action_count, error, started_at, finished_at
+INSERT INTO gitlab_sync_runs (integration_id, kind, trigger, actor_id, status, started_at, mode)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, integration_id, kind, trigger, actor_id, status, created_count, updated_count, deleted_count, action_count, error, started_at, finished_at, mode
 `
 
 type CreateGitlabSyncRunParams struct {
@@ -61,16 +61,26 @@ type CreateGitlabSyncRunParams struct {
 	Kind          string     `json:"kind"`
 	Trigger       string     `json:"trigger"`
 	ActorID       *uuid.UUID `json:"actor_id"`
+	Status        string     `json:"status"`
+	StartedAt     time.Time  `json:"started_at"`
+	Mode          string     `json:"mode"`
 }
 
 // GitLab sync journal: run + action history written by the pull engine and the
 // write-back worker, read back by the journal modal. See migration 0033.
+// CreateGitlabSyncRun opens a run row. started_at is supplied by the caller (the
+// real moment the sync began, not the moment it was recorded), and status is
+// normally 'running' — FinishGitlabSyncRun stamps the outcome afterwards. mode is
+// 'full' | 'incremental' (how issues were fetched).
 func (q *Queries) CreateGitlabSyncRun(ctx context.Context, arg CreateGitlabSyncRunParams) (GitlabSyncRun, error) {
 	row := q.db.QueryRow(ctx, createGitlabSyncRun,
 		arg.IntegrationID,
 		arg.Kind,
 		arg.Trigger,
 		arg.ActorID,
+		arg.Status,
+		arg.StartedAt,
+		arg.Mode,
 	)
 	var i GitlabSyncRun
 	err := row.Scan(
@@ -87,8 +97,23 @@ func (q *Queries) CreateGitlabSyncRun(ctx context.Context, arg CreateGitlabSyncR
 		&i.Error,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Mode,
 	)
 	return i, err
+}
+
+const failStaleGitlabSyncRuns = `-- name: FailStaleGitlabSyncRuns :exec
+UPDATE gitlab_sync_runs
+SET status = 'error', error = 'прервано перезапуском сервиса', finished_at = now()
+WHERE status = 'running' AND finished_at IS NULL
+`
+
+// FailStaleGitlabSyncRuns closes runs left in 'running' by a process that died
+// mid-sync (restart/crash). Called once at startup — nothing can legitimately be
+// running at that point, so no in-flight run is clobbered.
+func (q *Queries) FailStaleGitlabSyncRuns(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, failStaleGitlabSyncRuns)
+	return err
 }
 
 const finishGitlabSyncRun = `-- name: FinishGitlabSyncRun :exec
@@ -210,7 +235,7 @@ func (q *Queries) GetGitlabSyncActionInWorkspace(ctx context.Context, arg GetGit
 }
 
 const getGitlabSyncRun = `-- name: GetGitlabSyncRun :one
-SELECT id, integration_id, kind, trigger, actor_id, status, created_count, updated_count, deleted_count, action_count, error, started_at, finished_at FROM gitlab_sync_runs WHERE id = $1 AND integration_id = $2
+SELECT id, integration_id, kind, trigger, actor_id, status, created_count, updated_count, deleted_count, action_count, error, started_at, finished_at, mode FROM gitlab_sync_runs WHERE id = $1 AND integration_id = $2
 `
 
 type GetGitlabSyncRunParams struct {
@@ -236,12 +261,13 @@ func (q *Queries) GetGitlabSyncRun(ctx context.Context, arg GetGitlabSyncRunPara
 		&i.Error,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Mode,
 	)
 	return i, err
 }
 
 const getGitlabSyncRunInWorkspace = `-- name: GetGitlabSyncRunInWorkspace :one
-SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at FROM gitlab_sync_runs r
+SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at, r.mode FROM gitlab_sync_runs r
 JOIN gitlab_integrations i ON i.id = r.integration_id
 WHERE r.id = $1 AND i.workspace_id = $2
 `
@@ -270,6 +296,7 @@ func (q *Queries) GetGitlabSyncRunInWorkspace(ctx context.Context, arg GetGitlab
 		&i.Error,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Mode,
 	)
 	return i, err
 }
@@ -315,7 +342,7 @@ func (q *Queries) ListGitlabSyncActions(ctx context.Context, runID uuid.UUID) ([
 }
 
 const listGitlabSyncRuns = `-- name: ListGitlabSyncRuns :many
-SELECT id, integration_id, kind, trigger, actor_id, status, created_count, updated_count, deleted_count, action_count, error, started_at, finished_at FROM gitlab_sync_runs
+SELECT id, integration_id, kind, trigger, actor_id, status, created_count, updated_count, deleted_count, action_count, error, started_at, finished_at, mode FROM gitlab_sync_runs
 WHERE integration_id = $1
 ORDER BY started_at DESC
 LIMIT $2
@@ -349,6 +376,7 @@ func (q *Queries) ListGitlabSyncRuns(ctx context.Context, arg ListGitlabSyncRuns
 			&i.Error,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.Mode,
 		); err != nil {
 			return nil, err
 		}
@@ -361,7 +389,7 @@ func (q *Queries) ListGitlabSyncRuns(ctx context.Context, arg ListGitlabSyncRuns
 }
 
 const listGitlabSyncRunsByWorkspace = `-- name: ListGitlabSyncRunsByWorkspace :many
-SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at FROM gitlab_sync_runs r
+SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at, r.mode FROM gitlab_sync_runs r
 JOIN gitlab_integrations i ON i.id = r.integration_id
 WHERE i.workspace_id = $1
 ORDER BY r.started_at DESC
@@ -398,6 +426,79 @@ func (q *Queries) ListGitlabSyncRunsByWorkspace(ctx context.Context, arg ListGit
 			&i.Error,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.Mode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentGitlabSyncRuns = `-- name: ListRecentGitlabSyncRuns :many
+SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at, r.mode, COALESCE(NULLIF(i.name, ''), i.project_path) AS integration_label
+FROM gitlab_sync_runs r
+JOIN gitlab_integrations i ON i.id = r.integration_id
+WHERE r.finished_at IS NOT NULL AND r.started_at >= $1
+ORDER BY r.started_at DESC
+LIMIT $2
+`
+
+type ListRecentGitlabSyncRunsParams struct {
+	StartedAt time.Time `json:"started_at"`
+	Limit     int32     `json:"limit"`
+}
+
+type ListRecentGitlabSyncRunsRow struct {
+	ID               uuid.UUID  `json:"id"`
+	IntegrationID    uuid.UUID  `json:"integration_id"`
+	Kind             string     `json:"kind"`
+	Trigger          string     `json:"trigger"`
+	ActorID          *uuid.UUID `json:"actor_id"`
+	Status           string     `json:"status"`
+	CreatedCount     int32      `json:"created_count"`
+	UpdatedCount     int32      `json:"updated_count"`
+	DeletedCount     int32      `json:"deleted_count"`
+	ActionCount      int32      `json:"action_count"`
+	Error            string     `json:"error"`
+	StartedAt        time.Time  `json:"started_at"`
+	FinishedAt       *time.Time `json:"finished_at"`
+	Mode             string     `json:"mode"`
+	IntegrationLabel string     `json:"integration_label"`
+}
+
+// ListRecentGitlabSyncRuns returns finished sync runs across every integration
+// started within the retention window, with the integration name — the durable
+// backing for the background-jobs panel's journal (survives a restart, unlike the
+// in-memory registry). Instance-wide (admin panel), newest first.
+func (q *Queries) ListRecentGitlabSyncRuns(ctx context.Context, arg ListRecentGitlabSyncRunsParams) ([]ListRecentGitlabSyncRunsRow, error) {
+	rows, err := q.db.Query(ctx, listRecentGitlabSyncRuns, arg.StartedAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRecentGitlabSyncRunsRow
+	for rows.Next() {
+		var i ListRecentGitlabSyncRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IntegrationID,
+			&i.Kind,
+			&i.Trigger,
+			&i.ActorID,
+			&i.Status,
+			&i.CreatedCount,
+			&i.UpdatedCount,
+			&i.DeletedCount,
+			&i.ActionCount,
+			&i.Error,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Mode,
+			&i.IntegrationLabel,
 		); err != nil {
 			return nil, err
 		}

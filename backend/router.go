@@ -119,6 +119,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// GitLab OAuth app config (admin-only).
 			protected.GET("/admin/oauth/gitlab", rh.GetOAuthConfig)
 			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)
+			// Background jobs panel (admin-only): observe/run/cancel background work.
+			protected.GET("/admin/jobs", rh.ListJobs)
+			protected.GET("/admin/jobs/:key", rh.GetJob)
+			protected.POST("/admin/jobs/:key/run", rh.RunJob)
+			protected.POST("/admin/jobs/:key/cancel", rh.CancelJob)
 
 			// Project groups & projects (nested under a workspace).
 			protected.POST("/workspaces/:id/groups", rh.CreateProjectGroup)
@@ -134,6 +139,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Tag-prefix display names (provider-neutral; GitLab modal is one editor).
 			protected.GET("/projects/:id/tag-prefixes", rh.ListTagPrefixes)
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
+			protected.GET("/workspaces/:id/tag-prefixes", rh.ListWorkspaceTagPrefixes)
+
+			// Quick-action registry: built-in commands + the workspace's custom
+			// dictionary, for the markdown editor's "/" autocomplete.
+			protected.GET("/workspaces/:id/commands", rh.ListWorkspaceCommands)
+			protected.PUT("/workspaces/:id/commands", rh.SetWorkspaceCommands)
 
 			// Two-level task-estimation config (workspace default + project override).
 			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)
@@ -149,6 +160,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			protected.GET("/projects/:id", rh.GetProject)
 			protected.PATCH("/projects/:id", rh.UpdateProject)
+			protected.PATCH("/projects/:id/slug", rh.SetProjectSlug)
 			protected.PATCH("/projects/:id/move", rh.MoveProject)
 			protected.POST("/projects/:id/transfer", rh.TransferProject)
 			protected.DELETE("/projects/:id", rh.DeleteProject)
@@ -195,6 +207,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/tasks/:id/events", rh.ListTaskEvents)
 			protected.GET("/tasks/:id/comments", rh.ListComments)
 			protected.POST("/tasks/:id/comments", rh.CreateComment)
+			// Dry-run of the quick actions in a draft comment, so the editor's
+			// "Будет применено: …" hint comes from the same parser that executes.
+			protected.POST("/tasks/:id/commands/preview", rh.PreviewCommands)
 			protected.PATCH("/comments/:id", rh.UpdateComment)
 			protected.DELETE("/comments/:id", rh.DeleteComment)
 			protected.GET("/tasks/:id/relations", rh.ListRelations)

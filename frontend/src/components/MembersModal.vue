@@ -15,6 +15,7 @@ import {
 } from 'naive-ui'
 import { TrashOutline, CopyOutline, MailOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
+import { copyText } from '@/utils/clipboard'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -102,12 +103,8 @@ async function revokeInvite(invId) {
 }
 
 async function copyLink() {
-  try {
-    await navigator.clipboard.writeText(lastLink.value)
-    message.success('Ссылка скопирована')
-  } catch {
-    message.info(lastLink.value)
-  }
+  if (await copyText(lastLink.value)) message.success('Ссылка скопирована')
+  else message.info(lastLink.value)
 }
 
 watch(

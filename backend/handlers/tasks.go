@@ -2,18 +2,15 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
-	"tessera/internal/gitlab"
 	"tessera/internal/recur"
 	"tessera/middleware"
 )
@@ -121,17 +118,16 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	// Optional milestone scope (sprint navigation): ?milestone=<uuid> shows one
-	// sprint, ?milestone=backlog shows tasks with no milestone, absent shows all.
+	// Optional milestone scope (sprint navigation): ?milestone=<slug|uuid> shows
+	// one sprint, ?milestone=backlog shows tasks with no milestone, absent shows
+	// all. UUIDs stay accepted so links shared before slugs existed keep working.
 	// ?archived=1 returns the board's archived tasks (read-only archive view).
 	params := db.ListBoardTasksWithMetaParams{BoardID: boardID, Archived: c.Query("archived") == "1"}
 	switch m := c.Query("milestone"); {
-	case m == "backlog":
+	case m == backlogScope:
 		params.Backlog = true
 	case m != "":
-		if mid, perr := uuid.Parse(m); perr == nil {
-			params.MilestoneID = &mid
-		}
+		params.MilestoneID = h.resolveMilestoneScope(c, boardID, m)
 	}
 	tasks, err := h.q.ListBoardTasksWithMeta(c, params)
 	if err != nil {
@@ -139,6 +135,30 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, tasks)
+}
+
+// backlogScope is the reserved ?milestone= value for "tasks with no milestone".
+const backlogScope = "backlog"
+
+// resolveMilestoneScope turns a ?milestone= value into a milestone id: a UUID is
+// used as-is, anything else is looked up as a slug within the board's project.
+// An unresolvable value yields uuid.Nil — a broken or stale link then shows an
+// empty scoped board, exactly as a deleted milestone's UUID does today, instead
+// of silently falling back to the unfiltered board.
+func (h *API) resolveMilestoneScope(c *gin.Context, boardID uuid.UUID, scope string) *uuid.UUID {
+	if mid, err := uuid.Parse(scope); err == nil {
+		return &mid
+	}
+	unmatched := uuid.Nil
+	projectID, err := h.q.ProjectIDForBoard(c, boardID)
+	if err != nil {
+		return &unmatched
+	}
+	m, err := h.q.GetMilestoneInProjectBySlug(c, db.GetMilestoneInProjectBySlugParams{ProjectID: projectID, Slug: scope})
+	if err != nil {
+		return &unmatched
+	}
+	return &m.ID
 }
 
 // ListBoardSubtasks returns every subtask on a board (with meta) so the kanban
@@ -186,32 +206,11 @@ func (h *API) SetTaskParent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	boardID, columnID := t.BoardID, t.ColumnID
-	if req.ParentID != nil {
-		if *req.ParentID == t.ID {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "a task cannot be its own parent"})
-			return
-		}
-		parent, err := h.q.GetTask(c, *req.ParentID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid parent"})
-			return
-		}
-		// The parent must not itself be a child of this task (1-level cycle).
-		if parent.ParentID != nil && *parent.ParentID == t.ID {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "cyclic parent"})
-			return
-		}
-		boardID, columnID = parent.BoardID, parent.ColumnID
-	}
-	updated, err := h.q.SetTaskParent(c, db.SetTaskParentParams{
-		ID: id, ParentID: req.ParentID, BoardID: boardID, ColumnID: columnID,
-	})
+	updated, err := h.applyParent(c, t, wsID, req.ParentID)
 	if err != nil {
-		fail(c)
+		respondOpError(c, err)
 		return
 	}
-	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -303,79 +302,22 @@ func (h *API) UpdateTask(c *gin.Context) {
 		return
 	}
 
-	// Preserve the original completion timestamp; set/clear on toggle.
-	completedAt := t.CompletedAt
-	switch {
-	case req.Completed && completedAt == nil:
-		now := time.Now()
-		completedAt = &now
-	case !req.Completed:
-		completedAt = nil
-	}
-
-	// Normalise the recurrence rule and manage its anchor (or NULL if invalid).
-	recurrence := recurrenceToStore(req.Recurrence, req.DueDate, t.Recurrence, t.DueDate)
-
-	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
-		ID: id, Title: req.Title, Description: req.Description,
-		Priority: req.Priority, DueDate: req.DueDate, CompletedAt: completedAt,
-		Recurrence: recurrence, StartDate: req.StartDate, Estimate: normalizeEstimate(req.Estimate),
+	// This endpoint is full-replace: every field in the body is authoritative, so
+	// each one is set on the patch (a quick action sets only what it touches).
+	updated, err := h.applyTaskPatch(c, t, wsID, taskPatch{
+		Title:       &req.Title,
+		Description: &req.Description,
+		Priority:    &req.Priority,
+		DueDate:     setTime(req.DueDate),
+		StartDate:   setTime(req.StartDate),
+		Estimate:    setFloat(req.Estimate),
+		Completed:   &req.Completed,
+		Recurrence:  req.Recurrence, RecurrenceSet: true,
 	})
 	if err != nil {
-		fail(c)
+		respondOpError(c, err)
 		return
 	}
-
-	// A recurring task whose trigger is "complete" advances when it enters the
-	// completed state (rescheduled, or duplicated, per its rule).
-	if t.CompletedAt == nil && updated.CompletedAt != nil {
-		if advanced, ok := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerComplete); ok {
-			updated = advanced
-		}
-	}
-	// A manual due-date change on a GitLab-linked task wins over the sync.
-	if !sameTime(t.DueDate, updated.DueDate) {
-		_ = h.q.MarkGitlabDueOverridden(c, id)
-	}
-	// Likewise a manual start-date change wins over the sync.
-	if !sameTime(t.StartDate, updated.StartDate) {
-		_ = h.q.MarkGitlabStartOverridden(c, id)
-	}
-	// A manual estimate change wins over the GitLab timeEstimate pull.
-	if !sameEstimate(t.Estimate, updated.Estimate) {
-		_ = h.q.MarkGitlabEstimateOverridden(c, id)
-	}
-	changes := h.journalUpdate(c, t, updated)
-	if len(changes) > 0 {
-		h.notifyTaskParticipants(c, updated, wsID, "updated",
-			fmt.Sprintf("%s изменил(а) задачу #%s: %s",
-				h.actorName(c), taskRef(updated.Number), strings.Join(changes, ", ")))
-	}
-	// Mirror user-side changes back to a linked GitLab issue (opt-in per integration).
-	actor := middleware.CurrentUser(c)
-	// The explicit "Completed" flag is the legitimate source of a state push
-	// (drives set_state → close/reopen). Column moves use a separate trigger.
-	if (t.CompletedAt == nil) != (updated.CompletedAt == nil) {
-		h.enqueueWriteback(c, id, actor, gitlab.TrigCompletion, map[string]any{"completed": updated.CompletedAt != nil})
-	}
-	if t.Priority != updated.Priority {
-		h.enqueueWriteback(c, id, actor, gitlab.TrigPriority, map[string]any{"priority": updated.Priority})
-	}
-	// Due-date push reads the latest task state at push time, so the payload only
-	// carries the date kind (also lets a burst of edits coalesce to one pending row).
-	if !sameTime(t.DueDate, updated.DueDate) {
-		h.enqueueWriteback(c, id, actor, gitlab.TrigDue, map[string]any{"date_kind": "due"})
-	}
-	if !sameEstimate(t.Estimate, updated.Estimate) {
-		h.enqueueWriteback(c, id, actor, gitlab.TrigEstimate, map[string]any{})
-	}
-	// Title/description push reads the latest task state at push time (empty payload),
-	// and is conflict-checked — GitLab issue bodies get edited richly, so a naive
-	// overwrite is gated behind three-way detection.
-	if t.Title != updated.Title || t.Description != updated.Description {
-		h.enqueueWriteback(c, id, actor, gitlab.TrigTitleDesc, map[string]any{})
-	}
-	h.broadcastAs(c, wsID, "task.updated", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -468,93 +410,15 @@ func (h *API) MoveTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// Target column must be on the same board.
-	col, err := h.q.GetColumn(c, req.ColumnID)
-	if err != nil || col.BoardID != t.BoardID {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "column does not belong to this board"})
-		return
-	}
 	prev, next, ok := h.neighborTaskPositions(c, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
-	updated, err := h.q.MoveTask(c, db.MoveTaskParams{
-		ID: id, ColumnID: req.ColumnID, Position: positionBetween(prev, next),
-	})
+	updated, err := h.applyMove(c, t, wsID, req.ColumnID, positionBetween(prev, next))
 	if err != nil {
-		fail(c)
+		respondOpError(c, err)
 		return
 	}
-
-	if t.ColumnID != req.ColumnID {
-		h.logEvent(c, id, "moved", map[string]any{"to": col.Name})
-		h.notifyTaskParticipants(c, updated, wsID, "moved",
-			fmt.Sprintf("%s переместил(а) задачу #%s → «%s»",
-				h.actorName(c), taskRef(updated.Number), col.Name))
-	}
-
-	// Auto-toggle completion based on the board's configured "done" column:
-	// moving in completes the task, moving out reopens it.
-	if board, berr := h.q.GetBoard(c, t.BoardID); berr == nil {
-		doneID := h.doneColumnID(c, board)
-		targetIsDone := doneID != nil && *doneID == req.ColumnID
-		sourceIsDone := doneID != nil && *doneID == t.ColumnID
-		switch {
-		case targetIsDone && updated.CompletedAt == nil:
-			now := time.Now()
-			if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
-				ID: updated.ID, Title: updated.Title, Description: updated.Description,
-				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
-				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
-			}); derr == nil {
-				updated = done
-				h.logEvent(c, id, "completed", nil)
-				// A "complete"-triggered recurring task bounces straight back out of
-				// done with its due date advanced — overriding the move just made.
-				if advanced, ok := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerComplete); ok {
-					updated = advanced
-				}
-			}
-		case sourceIsDone && !targetIsDone && updated.CompletedAt != nil:
-			if reopened, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
-				ID: updated.ID, Title: updated.Title, Description: updated.Description,
-				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: nil,
-				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
-			}); derr == nil {
-				updated = reopened
-				h.logEvent(c, id, "reopened", nil)
-			}
-		}
-	}
-
-	// Column-triggered recurrence: moving the task into its configured column
-	// advances it (independent of completion).
-	if t.ColumnID != req.ColumnID {
-		if rule, ok := recur.Parse(updated.Recurrence); ok &&
-			rule.Trigger == recur.TriggerColumn && rule.TriggerColumn == req.ColumnID.String() {
-			if advanced, acted := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerColumn); acted {
-				updated = advanced
-			}
-		}
-	}
-
-	actor := middleware.CurrentUser(c)
-	// Mirror the move to GitLab as a "column" trigger (any column change) — this drives
-	// column→label bindings. It never pushes issue state, so a move alone can't close
-	// an issue (the decoupling requirement).
-	if t.ColumnID != req.ColumnID {
-		h.enqueueWriteback(c, id, actor, gitlab.TrigColumn,
-			map[string]any{"column_id": req.ColumnID.String(), "column_name": col.Name})
-	}
-	// A completion change here comes only from the board's done-column auto-complete;
-	// mirror it as a "completion" trigger (drives set_state) so a done column still
-	// closes the issue by default. Teams that don't want that make "Готово" a
-	// non-done column (no auto-complete → no completion trigger).
-	if (t.CompletedAt == nil) != (updated.CompletedAt == nil) {
-		h.enqueueWriteback(c, id, actor, gitlab.TrigCompletion,
-			map[string]any{"completed": updated.CompletedAt != nil})
-	}
-	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -639,23 +503,10 @@ func (h *API) ArchiveTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if c.Query("subtasks") == "detach" {
-		if err := h.q.DetachChildren(c, &id); err != nil {
-			fail(c)
-			return
-		}
-		if err := h.q.ArchiveTask(c, id); err != nil {
-			fail(c)
-			return
-		}
-	} else if err := h.q.ArchiveTaskCascade(c, id); err != nil {
-		fail(c)
+	if err := h.applyArchive(c, t, wsID, c.Query("subtasks") == "detach"); err != nil {
+		respondOpError(c, err)
 		return
 	}
-	h.logEvent(c, id, "archived", nil)
-	h.notifyTaskParticipants(c, t, wsID, "archived",
-		fmt.Sprintf("%s архивировал(а) задачу #%s%s", h.actorName(c), taskRef(t.Number), shortCtx(t.Title)))
-	h.broadcast(wsID, "task.archived", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
 
@@ -747,14 +598,10 @@ func (h *API) AddTaskTag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.q.AddTaskTag(c, db.AddTaskTagParams{TaskID: id, TagID: req.TagID}); err != nil {
-		fail(c)
+	if err := h.applyTag(c, id, wsID, req.TagID, true); err != nil {
+		respondOpError(c, err)
 		return
 	}
-	h.broadcast(wsID, "task.tagged", gin.H{"task_id": id, "tag_id": req.TagID})
-	// Reconcile labels back to the linked issue (the worker reads the task's
-	// current tags, so the empty payload coalesces a burst into one row).
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigLabels, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -772,12 +619,10 @@ func (h *API) RemoveTaskTag(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.q.RemoveTaskTag(c, db.RemoveTaskTagParams{TaskID: id, TagID: tagID}); err != nil {
-		fail(c)
+	if err := h.applyTag(c, id, wsID, tagID, false); err != nil {
+		respondOpError(c, err)
 		return
 	}
-	h.broadcast(wsID, "task.untagged", gin.H{"task_id": id, "tag_id": tagID})
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigLabels, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -787,7 +632,7 @@ func (h *API) AddTaskAssignee(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.loadTask(c, id)
+	t, wsID, ok := h.loadTask(c, id)
 	if !ok {
 		return
 	}
@@ -798,16 +643,10 @@ func (h *API) AddTaskAssignee(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.q.AddTaskAssignee(c, db.AddTaskAssigneeParams{TaskID: id, UserID: req.UserID}); err != nil {
-		fail(c)
+	if err := h.applyAssignee(c, t, wsID, req.UserID, true); err != nil {
+		respondOpError(c, err)
 		return
 	}
-	t, _, _ := h.loadTask(c, id)
-	h.logEvent(c, id, "assigned", map[string]any{"user_id": req.UserID})
-	h.notify(c, req.UserID, wsID, &id, "assigned",
-		fmt.Sprintf("%s назначил вам задачу #%s%s", h.actorName(c), taskRef(t.Number), shortCtx(t.Title)))
-	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "user_id": req.UserID})
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 
@@ -817,7 +656,7 @@ func (h *API) RemoveTaskAssignee(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.loadTask(c, id)
+	t, wsID, ok := h.loadTask(c, id)
 	if !ok {
 		return
 	}
@@ -825,13 +664,10 @@ func (h *API) RemoveTaskAssignee(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: id, UserID: userID}); err != nil {
-		fail(c)
+	if err := h.applyAssignee(c, t, wsID, userID, false); err != nil {
+		respondOpError(c, err)
 		return
 	}
-	h.logEvent(c, id, "unassigned", map[string]any{"user_id": userID})
-	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "user_id": userID})
-	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	c.Status(http.StatusNoContent)
 }
 

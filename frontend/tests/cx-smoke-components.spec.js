@@ -141,3 +141,41 @@ describe('ColumnHeader.vue', () => {
     expect(w.emitted('toggle-collapse')).toBeTruthy()
   })
 })
+
+// ── ProjectCreateModal ────────────────────────────────────────────────────────
+// The name a project is created with decides its URL address, which is assigned
+// once — so the preview has to track what the server would derive, and the
+// manual-address control has to stay manager-only (the server refuses others).
+describe('ProjectCreateModal.vue', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  const mountModal = async (role) => {
+    const { useWorkspacesStore } = await import('@/stores/workspaces')
+    const store = useWorkspacesStore()
+    store.list = [{ id: 'ws1', name: 'WS', my_role: role }]
+    store.currentId = 'ws1'
+    const ProjectCreateModal = (await import('@/components/ProjectCreateModal.vue')).default
+    return mount(ProjectCreateModal, {
+      props: { show: true },
+      global: {
+        // n-modal teleports its body out of the wrapper; keep it inline so the
+        // rendered card is what `w.text()` sees.
+        stubs: { ...naiveStubs, teleport: true },
+      },
+    })
+  }
+
+  it('previews the address the server would derive from the name', async () => {
+    const w = await mountModal('owner')
+    w.vm.name = 'Мой Проект!'
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('/project/moy-proekt')
+  })
+
+  it('offers the manual-address control to managers only', async () => {
+    const asOwner = await mountModal('owner')
+    expect(asOwner.text()).toContain('Задать адрес вручную')
+    const asMember = await mountModal('member')
+    expect(asMember.text()).not.toContain('Задать адрес вручную')
+  })
+})

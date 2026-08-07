@@ -71,6 +71,7 @@ const KIND_META = {
   archived: 'Архивирование',
   due_soon: 'Скоро дедлайн',
   reminder: 'Напоминания (по времени)',
+  integration_sync: 'Синхронизация интеграций',
 }
 
 // Minute presets for the due-date schedule selects.

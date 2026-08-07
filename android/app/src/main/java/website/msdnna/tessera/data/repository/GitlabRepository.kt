@@ -36,8 +36,10 @@ class GitlabRepository {
     suspend fun deleteIntegration(workspaceId: String, id: String) =
         api.gitlabDeleteIntegration(workspaceId, id)
 
-    suspend fun sync(workspaceId: String, integrationId: String): GitlabSyncResult =
-        api.gitlabSyncIntegration(workspaceId, integrationId)
+    /** Manual sync; [full] = true asks for a full sweep (`?mode=full`) instead of the
+     *  default incremental pull. */
+    suspend fun sync(workspaceId: String, integrationId: String, full: Boolean = false): GitlabSyncResult =
+        api.gitlabSyncIntegration(workspaceId, integrationId, if (full) "full" else null)
 
     /** Sync-journal: recent runs, the actions of one run, and retrying a failed push. */
     suspend fun syncRuns(workspaceId: String): List<website.msdnna.tessera.data.model.GitlabSyncRun> =

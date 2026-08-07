@@ -12,11 +12,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -25,6 +29,7 @@ import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,12 +41,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,7 +60,11 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.commandInsertText
+import website.msdnna.tessera.util.detectSlashQuery
+import website.msdnna.tessera.util.matchCommands
 import website.msdnna.tessera.util.toggleTaskMarker
 
 /** Snippet inserted by the mermaid toolbar button (matches the web editor). */
@@ -94,6 +105,9 @@ fun MarkdownEditor(
     uploadImage: (suspend (ByteArray, String, String?) -> String?)? = null,
     // @-mention candidates (Tessera members + GitLab users); empty → mentions off.
     mentions: List<MentionItem> = emptyList(),
+    // Quick-action rows for the `/`-popup; empty → commands off. Only passed where
+    // commands actually run (the new-comment composer) — see the web editor.
+    commands: List<CommandItem> = emptyList(),
 ) {
     // Tokens (names / usernames) highlighted in the preview after an '@'.
     val mentionTokens = remember(mentions) { mentions.map { it.insert } }
@@ -102,6 +116,11 @@ fun MarkdownEditor(
     var uploading by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // Scroll anchor + the live IME inset, used to keep the editor's bottom visible
+    // once the keyboard is up (see the tail Spacer below).
+    val tail = remember { BringIntoViewRequester() }
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
 
     // Internal selection-aware state; resynced when [value] changes externally
     // (e.g. an image insert appends to the parent's string).
@@ -185,9 +204,13 @@ fun MarkdownEditor(
             }
         } else {
             var hadFocus by remember { mutableStateOf(false) }
-            // @-mention autocomplete: match "@query" right before the caret.
+            var focused by remember { mutableStateOf(false) }
+            // Autocomplete: "@query" anywhere before the caret, or a `/`-command at
+            // the start of a line. Mentions win — a mention query can't start a line
+            // with a slash, so the two never compete for the same caret.
             val caret = tfv.selection.min
-            val mq = if (mentions.isNotEmpty()) MENTION_RE.find(tfv.text.substring(0, caret)) else null
+            val upto = tfv.text.substring(0, caret)
+            val mq = if (mentions.isNotEmpty()) MENTION_RE.find(upto) else null
             val query = mq?.groupValues?.get(2)
             val matches = if (query != null) {
                 mentions.filter {
@@ -196,9 +219,17 @@ fun MarkdownEditor(
             } else {
                 emptyList()
             }
+            val slash = if (query == null && commands.isNotEmpty()) detectSlashQuery(upto) else null
+            val cmdMatches = if (slash != null) matchCommands(commands, slash.query) else emptyList()
             fun pickMention(item: MentionItem) {
                 val start = caret - (query?.length ?: 0) - 1
                 val ins = "@${item.insert} "
+                val text = tfv.text.substring(0, start) + ins + tfv.text.substring(caret)
+                update(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
+            }
+            fun pickCommand(item: CommandItem) {
+                val start = slash?.start ?: return
+                val ins = commandInsertText(item)
                 val text = tfv.text.substring(0, start) + ins + tfv.text.substring(caret)
                 update(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
             }
@@ -218,7 +249,10 @@ fun MarkdownEditor(
                         .background(c.surface)
                         .border(1.dp, c.border, RoundedCornerShape(RadiusMd))
                         .padding(12.dp)
-                        .onFocusChanged { if (it.isFocused) hadFocus = true else if (hadFocus) onBlur?.invoke() },
+                        .onFocusChanged {
+                            focused = it.isFocused
+                            if (it.isFocused) hadFocus = true else if (hadFocus) onBlur?.invoke()
+                        },
                     decorationBox = { inner ->
                         if (tfv.text.isEmpty()) Text(placeholder, color = c.placeholder, fontSize = 14.sp)
                         inner()
@@ -226,6 +260,17 @@ fun MarkdownEditor(
                 )
             }
             if (matches.isNotEmpty()) MentionSuggestions(matches, onPick = ::pickMention)
+            if (cmdMatches.isNotEmpty()) CommandSuggestions(cmdMatches, onPick = ::pickCommand)
+            // Keep the editor's bottom edge — the field and, once typing starts, the
+            // suggestion list — inside the scroll viewport. The anchor is a zero-height
+            // marker under the list, so bringing it into view scrolls to the END of the
+            // block instead of its top. Re-run while the IME animates in (imeBottom
+            // changes) and whenever the list grows: right after focus the keyboard has
+            // not yet taken its space, so a single scroll would stop short.
+            Spacer(Modifier.fillMaxWidth().height(1.dp).bringIntoViewRequester(tail))
+            LaunchedEffect(focused, imeBottom, matches.size, cmdMatches.size) {
+                if (focused) runCatching { tail.bringIntoView() }
+            }
         }
     }
 }
@@ -291,6 +336,56 @@ private fun MentionSuggestions(items: List<MentionItem>, onPick: (MentionItem) -
                 if (item.gitlab) {
                     Spacer(Modifier.width(8.dp))
                     Text("GitLab", color = c.text3, fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * `/`-command suggestions (web parity): the mono `/key` plus its description.
+ * Custom dictionary entries carry a neutral «свои» badge — they are a hint for a
+ * human reader, the backend never executes them, so they must not read as an
+ * action the app will take.
+ */
+@Composable
+private fun CommandSuggestions(items: List<CommandItem>, onPick: (CommandItem) -> Unit) {
+    val c = Tessera.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(c.surfaceAlt)
+            .border(1.dp, c.border, RoundedCornerShape(RadiusMd)),
+    ) {
+        items.forEach { item ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickableNoRipple { onPick(item) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "/${item.key}",
+                    color = c.text1,
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    item.description,
+                    color = c.text3,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!item.builtin) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("свои", color = c.text3, fontSize = 11.sp)
                 }
             }
         }

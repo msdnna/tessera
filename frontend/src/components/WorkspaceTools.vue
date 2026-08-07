@@ -10,6 +10,8 @@ import {
   ExtensionPuzzleOutline,
   LogoGitlab,
   TimerOutline,
+  ServerOutline,
+  TerminalOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
@@ -18,11 +20,14 @@ import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useAuthStore } from '@/stores/auth'
 import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
 import EstimationModal from './EstimationModal.vue'
+import WorkspaceCommandsModal from './WorkspaceCommandsModal.vue'
+import BackgroundJobsModal from './BackgroundJobsModal.vue'
 import { DEFAULT_ESTIMATION } from '@/utils/estimation'
 
 defineProps({ placement: { type: String, default: 'bottom-end' } })
@@ -31,6 +36,7 @@ const theme = useThemeStore()
 const ws = useWorkspacesStore()
 const notes = useNotificationsStore()
 const conflicts = useConflictsStore()
+const auth = useAuthStore()
 const router = useRouter()
 // On touch (mobile) tooltips fire on tap and overlap the dropdown/popover they
 // label — suppress them there.
@@ -39,10 +45,14 @@ const { isMobile } = useResponsive()
 const showMembers = ref(false)
 const showGitlab = ref(false)
 const showEstimation = ref(false)
+const showCommands = ref(false)
+const showJobs = ref(false)
 // Browser Back closes these modals instead of leaving the board.
 useOverlayBack(showMembers, () => (showMembers.value = false))
 useOverlayBack(showGitlab, () => (showGitlab.value = false))
 useOverlayBack(showEstimation, () => (showEstimation.value = false))
+useOverlayBack(showCommands, () => (showCommands.value = false))
+useOverlayBack(showJobs, () => (showJobs.value = false))
 // GitLab row carries an orange conflict count when there are unresolved conflicts.
 const glLabel = () =>
   h('span', { style: 'display:inline-flex;align-items:center;gap:8px' }, [
@@ -67,10 +77,22 @@ const integrationOptions = computed(() => [
     key: 'estimation',
     icon: () => h(NIcon, null, { default: () => h(TimerOutline) }),
   },
+  // The dictionary is workspace settings: owner/admin only (the PUT is gated by
+  // requireManager server-side, this only hides a door that would 403).
+  ...(ws.commandsCanManage
+    ? [
+        {
+          label: 'Команды редактора',
+          key: 'commands',
+          icon: () => h(NIcon, null, { default: () => h(TerminalOutline) }),
+        },
+      ]
+    : []),
 ])
 function onIntegrationSelect(key) {
   if (key === 'gitlab') showGitlab.value = true
   else if (key === 'estimation') showEstimation.value = true
+  else if (key === 'commands') showCommands.value = true
 }
 
 function openNotification(n) {
@@ -125,6 +147,22 @@ function fmtTime(d) {
         {{ conflicts.count ? `Интеграции · конфликтов: ${conflicts.count}` : 'Интеграции' }}
       </n-tooltip>
     </n-dropdown>
+
+    <!-- Background jobs (admin only) -->
+    <n-tooltip v-if="auth.isAdmin" :disabled="isMobile">
+      <template #trigger>
+        <n-button
+          quaternary
+          circle
+          size="small"
+          aria-label="Фоновые задания"
+          @click="showJobs = true"
+        >
+          <n-icon :component="ServerOutline" />
+        </n-button>
+      </template>
+      Фоновые задания
+    </n-tooltip>
 
     <!-- Notifications -->
     <n-popover trigger="click" :placement="placement">
@@ -212,6 +250,8 @@ function fmtTime(d) {
       :value="ws.current?.estimation || null"
       :inherited="DEFAULT_ESTIMATION"
     />
+    <WorkspaceCommandsModal v-model:show="showCommands" :workspace-id="ws.currentId" />
+    <BackgroundJobsModal v-if="auth.isAdmin" v-model:show="showJobs" />
   </div>
 </template>
 

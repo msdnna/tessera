@@ -32,7 +32,7 @@ const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () 
 import { tasks as tasksApi, projects as projectsApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, hueGradVert, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
-import { buildTagGroups } from '@/utils/tagGroups'
+import { buildTagGroups, tagParts } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import {
   formatEstimate,
@@ -41,10 +41,12 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { pressMoved } from '@/utils/dnd'
+import { divergedColumn } from '@/utils/status'
 import UserAvatar from './UserAvatar.vue'
 import DueEditor from './DueEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
+import TagPill from './TagPill.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
@@ -62,6 +64,10 @@ const tagText = (c) => readableHue(c, theme.isDark)
 const props = defineProps({
   task: { type: Object, required: true },
   subtasks: { type: Array, default: () => [] },
+  // How many subtasks the task really has. When the composer filter narrowed the
+  // list (`subtasks` is shorter), the card says "N из M" and locks child DnD —
+  // reordering a partial list would write meaningless float8 positions.
+  subtasksTotal: { type: Number, default: 0 },
   // Render subtasks as full property cards (vs compact name-only rows).
   subtasksExpanded: { type: Boolean, default: false },
   // This card is itself a first-level subtask shown below its parent: darker
@@ -69,8 +75,12 @@ const props = defineProps({
   nested: { type: Boolean, default: false },
   // A board drag is in progress → reveal the "drop to nest" zone on childless cards.
   dragging: { type: Boolean, default: false },
-  // Board status columns [{ id, name }] for the context-menu "move to column".
+  // Board status columns [{ id, name, color, position }] for the context-menu
+  // "move to column" and the subtask divergence chip.
   columns: { type: Array, default: () => [] },
+  // Column of the parent card, set only on a nested subtask card: a subtask that
+  // sits elsewhere than its parent shows that column as a chip.
+  parentColumnId: { type: String, default: null },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tags: { type: Array, default: () => [] },
@@ -184,6 +194,12 @@ async function commitTitle() {
 const taskTags = computed(() =>
   (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
 )
+// The single-tag pill hands its box over to TagPill when the tag is scoped, so
+// the GitLab-EE two-tone pill isn't boxed-in by the button's own soft fill.
+const firstTagScoped = computed(() => {
+  const t = taskTags.value[0]
+  return t ? tagParts(t.name, props.tagPrefixNames).hasScope : false
+})
 // Stacked tags row: fit as many chips as the row width allows, rest → +N.
 const stagValEl = ref(null)
 const stagMeasureEl = ref(null)
@@ -555,6 +571,9 @@ async function toggleGlAssignee(m) {
 }
 
 // ── subtasks ──
+// The composer filter hid some of this card's children (task #2602): the board
+// shows only the matching ones, the modal still lists them all.
+const subsNarrowed = computed(() => props.subtasksTotal > props.subtasks.length)
 const addingSub = ref(false)
 const newSubTitle = ref('')
 const subInput = ref(null)
@@ -596,6 +615,15 @@ async function onSubChange(evt) {
 function subDue(s) {
   return formatDue(s.due_date)
 }
+// Column chip for a child rendered under this card — only when it diverged from
+// this card's own column (otherwise it would sit on every single row).
+function subColumn(s) {
+  return divergedColumn(s, props.task.column_id, props.columns)
+}
+// Same chip for this card when it is itself a nested subtask card.
+const ownColumnChip = computed(() =>
+  props.nested ? divergedColumn(props.task, props.parentColumnId, props.columns) : null,
+)
 async function toggleSubDone(s) {
   if (props.readonly) return
   await tasksApi.update(s.id, {
@@ -710,10 +738,17 @@ async function submitAddSub() {
       <!-- meta line: task number + GitLab issue link, on their own row so long
            titles never wrap around them (kept aligned under the title text). -->
       <div
-        v-if="(show('number') && task.number) || (show('gitlab') && task.gitlab_iid)"
+        v-if="
+          (show('number') && task.number) || (show('gitlab') && task.gitlab_iid) || ownColumnChip
+        "
         class="card-sub"
       >
         <span v-if="show('number') && task.number" class="tnum">#{{ task.number }}</span>
+        <!-- expanded subtask card: its column differs from the parent's -->
+        <span v-if="ownColumnChip" class="col-chip" :title="`Колонка: ${ownColumnChip.name}`">
+          <span class="col-dot" :style="{ background: ownColumnChip.color }" />
+          <span class="col-name">{{ ownColumnChip.name }}</span>
+        </span>
         <a
           v-if="show('gitlab') && task.gitlab_iid"
           class="gl-chip"
@@ -905,21 +940,38 @@ async function submitAddSub() {
                 <button
                   v-else-if="!stackFields"
                   class="pill tag-pill"
-                  :style="{
-                    border: '1px solid transparent',
-                    background: tagPillBg(taskTags[0].color),
-                    color: tagText(taskTags[0].color),
-                    boxShadow: stackShadow,
-                    marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
-                  }"
+                  :style="
+                    firstTagScoped
+                      ? { border: 'none', background: 'none', padding: 0 }
+                      : {
+                          border: '1px solid transparent',
+                          background: tagPillBg(taskTags[0].color),
+                          boxShadow: stackShadow,
+                          marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
+                        }
+                  "
                   @click.stop
                 >
+                  <!-- Scoped pill: the cascade shadow sits on the pill itself and the
+                       +N moves right past it, so the stack peeks BEHIND the tag (not
+                       shoved out past the +N). Unscoped keeps +N inside the soft box. -->
+                  <TagPill
+                    class="tname"
+                    :tag="taskTags[0]"
+                    :prefix-names="tagPrefixNames"
+                    variant="grad-text"
+                    :style="firstTagScoped ? { boxShadow: stackShadow } : null"
+                  />
                   <span
-                    class="tname accent-grad-text"
-                    :style="{ '--grad': hueGrad(tagText(taskTags[0].color)) }"
-                    >{{ taskTags[0].name }}</span
+                    v-if="taskTags.length > 1"
+                    class="more"
+                    :style="{
+                      color: tagText(taskTags[0].color),
+                      marginLeft:
+                        firstTagScoped && stackLayers ? stackLayers * 5 + 'px' : undefined,
+                    }"
+                    >+{{ taskTags.length - 1 }}</span
                   >
-                  <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
                 </button>
                 <!-- stacked: leading tag icon + outlined-oval chips that fit on the
                      row, rest → +N (same behaviour as the task modal). -->
@@ -930,38 +982,48 @@ async function submitAddSub() {
                     :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
                   />
                   <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
-                    <span
+                    <TagPill
                       v-for="t in taskTags.slice(0, visibleTagCount)"
                       :key="t.id"
                       class="mchip"
-                      :style="{ background: tagPillBg(t.color, true) }"
-                    >
-                      <span
-                        class="accent-grad-text"
-                        :style="{ '--grad': hueGrad(tagText(t.color)) }"
-                        >{{ t.name }}</span
-                      >
-                    </span>
-                    <span v-if="visibleTagCount < taskTags.length" class="mchip chip-more"
+                      :tag="t"
+                      :prefix-names="tagPrefixNames"
+                      variant="outline"
+                    />
+                    <span
+                      v-if="visibleTagCount < taskTags.length"
+                      class="mchip chip-more"
+                      :style="{
+                        color: tagText(taskTags[0].color),
+                        background: softFill(taskTags[0].color),
+                      }"
                       >+{{ taskTags.length - visibleTagCount }}</span
                     >
+                    <!-- measurement copies must be the same component with the same
+                         props, or the scope segment wouldn't be measured (useTagFit). -->
                     <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
-                      <span v-for="t in taskTags" :key="`m${t.id}`" class="mchip">{{
-                        t.name
-                      }}</span>
+                      <TagPill
+                        v-for="t in taskTags"
+                        :key="`m${t.id}`"
+                        class="mchip"
+                        :tag="t"
+                        :prefix-names="tagPrefixNames"
+                        variant="outline"
+                      />
                     </span>
                   </span>
                   <span v-else class="pill-text sf-empty">—</span>
                 </button>
               </template>
               <div class="preview">
-                <span
+                <TagPill
                   v-for="t in taskTags"
                   :key="t.id"
                   class="chip"
-                  :style="{ background: (t.color || '#888') + '22', color: tagText(t.color) }"
-                  >{{ t.name }}</span
-                >
+                  :tag="t"
+                  :prefix-names="tagPrefixNames"
+                  variant="ghost"
+                />
               </div>
             </n-popover>
           </template>
@@ -990,7 +1052,12 @@ async function submitAddSub() {
                     "
                     @click="toggleTag(t.id)"
                   >
-                    {{ t.name }}
+                    <TagPill
+                      :tag="t"
+                      :prefix-names="tagPrefixNames"
+                      variant="inherit"
+                      :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
+                    />
                   </button>
                 </div>
               </div>
@@ -1151,6 +1218,7 @@ async function submitAddSub() {
         :animation="150"
         :delay="300"
         :touch-start-threshold="6"
+        :disabled="subsNarrowed"
         @click.stop
         @change="onSubChange"
       >
@@ -1161,6 +1229,7 @@ async function submitAddSub() {
               :subtasks="[]"
               :nested="true"
               :columns="columns"
+              :parent-column-id="task.column_id"
               :tags-map="tagsMap"
               :members-map="membersMap"
               :tags="tags"
@@ -1201,14 +1270,36 @@ async function submitAddSub() {
                   />
                   <span class="sub-title">{{ s.title }}</span>
                   <span v-if="!isCompact && subDue(s)" class="sub-due">{{ subDue(s) }}</span>
+                  <!-- this child ran ahead of (or behind) its parent — mark it
+                       with the column's own colour. Just the marker: a board
+                       column is ~250px wide, so a name here would eat the title;
+                       the tooltip and the hover card spell it out. -->
+                  <span
+                    v-if="subColumn(s)"
+                    class="col-mark"
+                    :style="{ background: subColumn(s).color }"
+                    :title="`Колонка: ${subColumn(s).name}`"
+                  />
                 </div>
               </template>
-              <TaskMiniCard :task="s" :tags-map="tagsMap" :members-map="membersMap" />
+              <TaskMiniCard
+                :task="s"
+                :tags-map="tagsMap"
+                :members-map="membersMap"
+                :tag-prefix-names="tagPrefixNames"
+                :column="subColumn(s)"
+              />
             </n-popover>
           </div>
         </template>
       </draggable>
     </transition>
+
+    <!-- The filter hid part of the children: say so, so a short list doesn't read
+         as "this parent only has one subtask". -->
+    <div v-if="!nested && subsNarrowed" class="subs-narrowed" @click.stop>
+      {{ subtasks.length }} из {{ subtasksTotal }} подзадач — остальные скрыты фильтром
+    </div>
 
     <!-- Adding a subtask is triggered from the hover action bar / context menu;
          this is just the inline title input it reveals. -->
@@ -1494,6 +1585,44 @@ async function submitAddSub() {
 .gl-chip:hover {
   color: var(--t-primary);
   border-color: var(--t-primary);
+}
+/* "this subtask is in another column than its parent" chip — flat neutral, the
+   colour comes from the column itself (a dot), never the accent gradient. */
+.col-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(140px, 45%);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--t-text3);
+  border: 1px solid var(--t-border);
+  background: var(--t-surface-alt);
+}
+/* Same meaning as .col-chip, name-less: a rounded square so it never reads as
+   the round priority dot next to it. */
+.col-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--t-text3);
+}
+.col-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.col-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--t-text3);
 }
 .pills {
   display: flex;
@@ -1904,6 +2033,14 @@ async function submitAddSub() {
 }
 .sub-add-input {
   margin-top: 6px;
+}
+/* "N из M подзадач" hint under a filter-narrowed child list. */
+.subs-narrowed {
+  margin: 4px 0 0 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--t-text3);
+  opacity: 0.85;
 }
 /* Subtask collapse/expand: cross-fade + slight slide when the board toggles
    between the compact rows ("list") and full property cards ("stack"). The

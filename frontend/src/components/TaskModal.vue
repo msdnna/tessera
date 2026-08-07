@@ -1,11 +1,10 @@
 <script setup>
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NModal,
   NCard,
   NInput,
-  NSwitch,
   NButton,
   NSpace,
   NPopover,
@@ -26,6 +25,7 @@ import {
   PricetagOutline,
   CheckmarkDoneOutline,
   CheckmarkOutline,
+  PlayForwardOutline,
   CheckmarkCircle,
   EllipseOutline,
   ArchiveOutline,
@@ -51,6 +51,9 @@ import {
   GitNetworkOutline,
   EyeOutline,
   CreateOutline,
+  ShareSocialOutline,
+  ChevronForwardOutline,
+  ChevronBackOutline,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -62,11 +65,25 @@ import {
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
+import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
+import { sourceMeta, isExternalSource } from '@/utils/sources'
 import { milestoneRange } from '@/utils/milestones'
+import {
+  sortedColumns,
+  columnById,
+  nextColumn,
+  doneTarget,
+  siblingNeighbors,
+  columnTail,
+} from '@/utils/status'
 import { toggleTaskMarker } from '@/utils/markdown'
+import { hasCommandLine } from '@/utils/commands'
 import { isTauri } from '@/utils/serverBase'
+import { taskLink } from '@/utils/taskLink'
+import { copyText } from '@/utils/clipboard'
+import { scrollParent } from '@/utils/dom'
+import { useResponsive } from '@/composables/useResponsive'
 import {
   formatEstimate,
   formatEstimateFull,
@@ -83,6 +100,7 @@ import DueEditor from './DueEditor.vue'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
+import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import EmptyState from './EmptyState.vue'
@@ -142,14 +160,42 @@ function loadSplitRatio() {
   const v = parseFloat(localStorage.getItem(SPLIT_KEY))
   return v >= SPLIT_MIN && v <= SPLIT_MAX ? v : 0.46
 }
-// grid-template-columns for .form (ignored in the stacked flex layout). The 8px
-// middle track is the divider handle.
-const splitCols = computed(
-  () => `minmax(0, ${splitRatio.value}fr) 14px minmax(0, ${1 - splitRatio.value}fr)`,
-)
+
+// ── wide-screen only: hide the right column (tabs) to focus on the task's own
+// fields + description. Two handles reach it (a header button and a double-click
+// on the divider grip), since a bare 14px grip isn't a touch target. Persisted in
+// localStorage (non-critical UX state). In the stacked layout the right column IS
+// the comments in the main flow — hiding it would hide the conversation — so the
+// button is gated on `wide` and the state is a no-op there. ──
+const { isMobile: narrow } = useResponsive(1099)
+const wide = computed(() => !narrow.value)
+const PANE_KEY = 'tessera_task_pane'
+const rightHidden = ref(localStorage.getItem(PANE_KEY) === 'hidden')
+function toggleRightPane() {
+  rightHidden.value = !rightHidden.value
+  try {
+    localStorage.setItem(PANE_KEY, rightHidden.value ? 'hidden' : 'shown')
+  } catch {
+    /* storage disabled — non-fatal */
+  }
+  // The composer's textarea can't measure its height while the panel is collapsed
+  // (0-width) — recompute it once the panel is visible again, or it stays at
+  // whatever it last measured.
+  if (!rightHidden.value) nextTick(() => commentEditor.value?.autoGrow?.())
+}
+
+// grid-template-columns for .form (ignored in the stacked flex layout). The 14px
+// middle track is the divider handle; when the right column is hidden its track
+// collapses to 0fr (the .form transition animates the reflow).
+const splitCols = computed(() => {
+  if (rightHidden.value) return `minmax(0, 1fr) 14px 0fr`
+  return `minmax(0, ${splitRatio.value}fr) 14px minmax(0, ${1 - splitRatio.value}fr)`
+})
 let splitDragging = false
 function startSplitDrag(e) {
-  if (!formEl.value) return
+  // Don't start a resize when there's no right column to resize (collapsed or the
+  // stacked layout) — dragging would otherwise "revive" the hidden panel.
+  if (!formEl.value || rightHidden.value || !wide.value) return
   splitDragging = true
   e.preventDefault()
   window.addEventListener('pointermove', onSplitDrag)
@@ -201,11 +247,86 @@ const membersById = computed(() =>
 )
 
 const comments = ref([])
+const commentsPane = ref(null) // the .comments container (narrow-layout scroll fallback)
+const commentsListEl = ref(null) // the .c-list — the internal scroller in wide layout
+// Gates the enter fade to genuinely-new comments: false during a task's initial
+// population (the whole thread shouldn't fade in on open), flipped true once loaded.
+const commentsHydrated = ref(false)
 const detailTabs = ref(null)
 const newComment = ref('')
 const commentEditor = ref(null)
 const editingCommentId = ref(null)
 const editingCommentBody = ref('')
+// True while a comment POST is in flight (spinner on the send button, guards
+// double-submit); retryInfo holds { attempt, max } while waiting to retry an
+// offline send, else null.
+const posting = ref(false)
+const retryInfo = ref(null)
+
+// ── «Поделиться»: copy a shareable link to this task ──
+// The link (/board/<id>?task=<n>) self-canonicalizes to slugs, so it is correct
+// regardless of which board/workspace the modal was opened from. On copy the
+// share icon morphs into a checkmark for 1.6s — that IS the confirmation (no toast).
+const shareUrl = computed(() => taskLink(task.value))
+const shared = ref(false)
+let shareTimer = null
+async function shareTask() {
+  const url = shareUrl.value
+  if (!url) return
+  if (!(await copyText(url))) {
+    message.error('Не удалось скопировать ссылку')
+    return
+  }
+  shared.value = true
+  clearTimeout(shareTimer)
+  shareTimer = setTimeout(() => (shared.value = false), 1600)
+}
+
+// ── quick actions ──
+// The command registry is workspace-wide (loaded once by the store); the popup
+// is only offered where commands actually run — the new-comment composer.
+// Editing an existing comment and the description do not execute them.
+const commandItems = computed(() => store.commands || [])
+const cmdPreview = ref([]) // [{ key, summary, error }] from the dry-run
+const cmdCustom = ref([]) // custom keys seen in the draft — kept as plain text
+let cmdTimer = null
+// Dry-run the draft against the backend's parser (debounced) instead of
+// re-implementing it here: the hint can never disagree with what will happen.
+watch(newComment, (body) => {
+  clearTimeout(cmdTimer)
+  if (!hasCommandLine(body)) {
+    cmdPreview.value = []
+    cmdCustom.value = []
+    return
+  }
+  cmdTimer = setTimeout(async () => {
+    try {
+      const res = await tasksApi.previewCommands(props.taskId, body)
+      cmdPreview.value = res.data?.commands || []
+      cmdCustom.value = res.data?.custom || []
+    } catch {
+      cmdPreview.value = []
+      cmdCustom.value = []
+    }
+  }, 400)
+})
+watch(
+  () => props.taskId,
+  () => {
+    clearTimeout(cmdTimer)
+    cmdPreview.value = []
+    cmdCustom.value = []
+    // Reset per-task transient UI (share confirmation, a pending offline retry).
+    shared.value = false
+    clearTimeout(shareTimer)
+    cancelRetry()
+  },
+)
+onBeforeUnmount(() => {
+  clearTimeout(cmdTimer)
+  clearTimeout(shareTimer)
+  cancelRetry()
+})
 
 const relations = ref([])
 const relNumber = ref(null)
@@ -291,7 +412,8 @@ const startTs = ref(null)
 const estimate = ref(null) // canonical estimate value | null
 const estInput = ref('') // free-text buffer for the estimate popover
 const recurrence = ref(null) // full recurrence rule object | null
-const columns = ref([]) // board columns, for the recurrence trigger/target selects
+const columns = ref([]) // board columns: status row, subtask rows, recurrence selects
+const doneColumnId = ref(null) // boards.done_column_id — target of the «close» check
 const completed = ref(false)
 const selectedTags = ref([])
 const selectedAssignees = ref([])
@@ -351,7 +473,7 @@ const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 // trigger on remount, fixing the "reopen shows only 1 chip" bug).
 const tagsValEl = ref(null)
 const tagsMeasureEl = ref(null)
-const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs)
+const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs, { gap: 5 })
 const assigneeObjs = computed(() =>
   selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
 )
@@ -444,12 +566,22 @@ async function loadDetail() {
         boardsApi.columns(t.board_id),
       ])
       parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
-      columns.value = (cols.data || []).map((c) => ({ id: c.id, name: c.name }))
+      // color/position feed the status chip and the "shift right" button; the
+      // recurrence selects only ever needed id/name.
+      columns.value = (cols.data || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        position: c.position,
+      }))
+      doneColumnId.value = b.data.done_column_id || null
     } catch {
       boardInfo.value = null
       parentCandidates.value = []
       columns.value = []
+      doneColumnId.value = null
     }
+    loadSiblings(t)
     loadExtras()
     if (!t.gitlab) loadGlTemplates()
   } catch (e) {
@@ -459,10 +591,29 @@ async function loadDetail() {
   }
 }
 
+// The parent's subtask list (ordered) is only needed when this task is itself a
+// subtask and only to pin its position on a move — best-effort, one extra GET.
+async function loadSiblings(t) {
+  siblings.value = []
+  if (!t?.parent_id) return
+  try {
+    const res = await tasksApi.get(t.parent_id)
+    siblings.value = res.data?.subtasks || []
+  } catch {
+    siblings.value = []
+  }
+}
+
+// Set when the modal (re)opens; consumed once by loadExtras to auto-scroll the
+// comments to the newest — so opening scrolls to the bottom, but an in-place
+// reload (a move, a subtask edit) does not yank the view back down.
+let scrollOnOpen = false
 // Comments / relations / attachments / journal load in parallel — none of them
 // should block the modal opening, so failures are swallowed individually.
 async function loadExtras() {
   const id = props.taskId
+  // Populate the thread without the enter fade (only later, user-posted comments fade).
+  commentsHydrated.value = false
   const [c, r, a, e] = await Promise.allSettled([
     tasksApi.comments(id),
     tasksApi.relations(id),
@@ -473,12 +624,22 @@ async function loadExtras() {
   relations.value = r.status === 'fulfilled' ? r.value.data || [] : []
   attachments.value = a.status === 'fulfilled' ? a.value.data || [] : []
   events.value = e.status === 'fulfilled' ? e.value.data || [] : []
+  // On open, land on the newest comment — but only in the wide layout, where the
+  // right column scrolls on its own. In the stacked layout the whole modal scrolls,
+  // and jumping to the bottom would skip past the title and description.
+  if (scrollOnOpen && wide.value) scrollCommentsToBottom()
+  scrollOnOpen = false
+  // Enable the enter fade only after this population has rendered.
+  nextTick(() => (commentsHydrated.value = true))
 }
 
 watch(
   () => [props.show, props.taskId],
   ([show]) => {
-    if (show) loadDetail()
+    if (show) {
+      scrollOnOpen = true
+      loadDetail()
+    }
   },
 )
 
@@ -581,6 +742,74 @@ async function onDueNotify(patch) {
 function setCompleted(v) {
   completed.value = v
   applyMeta()
+}
+
+// ── status (board column) ───────────────────────────────────
+// The «Выполнено» switch became a status row: [● Колонка ▾] [▸ shift] [✓ close].
+// Moving is PATCH /tasks/:id/move — which already works for subtasks — so the
+// backend does the completed/reopened bookkeeping and the journal entry for us.
+const sortedCols = computed(() => sortedColumns(columns.value))
+const currentColumn = computed(() => columnById(columns.value, task.value?.column_id))
+const nextCol = computed(() => nextColumn(columns.value, task.value?.column_id))
+const doneCol = computed(() => doneTarget(columns.value, doneColumnId.value))
+const moving = ref(false)
+// Sibling order of this task inside its parent (empty for a top-level task) —
+// only used to keep the position stable on a move.
+const siblings = ref([])
+
+// Neighbours for PATCH move: a subtask holds its place in the parent's list, a
+// top-level task appends to the end of the target column. Either way we send
+// something — bare nulls mean positionBetween(nil, nil) = 65536, which drops the
+// card near the top of the column and quietly reshuffles it.
+function moveNeighbors(columnId) {
+  if (task.value?.parent_id) return siblingNeighbors(siblings.value, task.value.id)
+  return { before_id: columnTail(parentCandidates.value, columnId, task.value?.id), after_id: null }
+}
+
+async function moveToColumn(columnId) {
+  if (props.readonly || !task.value || !columnId || columnId === task.value.column_id) return
+  moving.value = true
+  try {
+    await tasksApi.move(task.value.id, {
+      column_id: columnId,
+      ...moveNeighbors(columnId),
+    })
+    // A recurring task completed by entering the done column bounces straight
+    // back out with an advanced due date — re-read instead of trusting the click.
+    await loadDetail()
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    moving.value = false
+  }
+}
+
+// The checkmark closes the task through the board's done column (so the backend
+// stamps completed_at and logs it); boards without one fall back to the flag.
+async function closeTask() {
+  if (props.readonly || !task.value) return
+  if (completed.value) return setCompleted(false)
+  if (doneCol.value && doneCol.value.id !== task.value.column_id)
+    return moveToColumn(doneCol.value.id)
+  setCompleted(true)
+}
+
+const columnOf = (t) => columnById(columns.value, t?.column_id)
+
+// Same move for a subtask row, without opening it.
+async function moveSubtask(sub, columnId) {
+  if (props.readonly || !sub || columnId === sub.column_id) return
+  try {
+    await tasksApi.move(sub.id, {
+      column_id: columnId,
+      ...siblingNeighbors(task.value?.subtasks || [], sub.id),
+    })
+    await loadDetail()
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 
 // ── Create a GitLab issue from this task ──
@@ -826,19 +1055,117 @@ function fmtWhen(d) {
     minute: '2-digit',
   })
 }
+// Scroll the comments to the bottom (the newest message) so a freshly-sent comment
+// isn't hidden behind the composer and a re-opened task lands on the latest activity.
+// Pins to the bottom across several frames until the height stops changing — late
+// reflow (web-font swap, async markdown/avatars) otherwise strands a long thread
+// mid-way. Instant, not smooth: a smooth animation races that same reflow and stops
+// short. The scroller is .c-list in the wide layout, the modal body in the stacked
+// one (resolved via scrollParent; null → nothing scrolls, no-op).
+async function scrollCommentsToBottom() {
+  await nextTick()
+  const list = commentsListEl.value
+  const sp = list && list.scrollHeight > list.clientHeight ? list : scrollParent(commentsPane.value)
+  if (!sp) return
+  let last = -1
+  let stable = 0
+  let frames = 0
+  const pin = () => {
+    sp.scrollTop = sp.scrollHeight
+    if (sp.scrollHeight === last) stable += 1
+    else stable = 0
+    last = sp.scrollHeight
+    // Stop once the height has held for a few frames, or after a hard cap (~0.5s).
+    if (stable < 3 && ++frames < 30) requestAnimationFrame(pin)
+  }
+  pin()
+}
+
+// ── offline retry for a comment POST ──
+// A network error (server unreachable — err.offline) is retried a few times with
+// a growing backoff; an HTTP error is not (the server answered — resending won't
+// help). The draft is preserved throughout, and a banner under the composer shows
+// progress with a Cancel that aborts the wait.
+const RETRY_BACKOFFS = [2000, 5000, 10000]
+let retryTimer = null
+let retryResolve = null
+// Wait `ms`, resolving true on timeout or false if cancelRetry() fires first.
+function waitOrCancel(ms) {
+  return new Promise((resolve) => {
+    retryResolve = resolve
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      retryResolve = null
+      resolve(true)
+    }, ms)
+  })
+}
+function cancelRetry() {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+  if (retryResolve) {
+    const r = retryResolve
+    retryResolve = null
+    r(false)
+  }
+  retryInfo.value = null
+}
+
 async function postComment() {
   const body = newComment.value.trim()
-  if (!body) return
+  if (!body || posting.value) return
   const mentions = commentEditor.value?.getMentions?.() || []
+  posting.value = true
   try {
-    await tasksApi.addComment(props.taskId, body, mentions)
-    newComment.value = ''
-    commentEditor.value?.clear?.()
-    const c = await tasksApi.comments(props.taskId)
-    comments.value = c.data || []
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
+    // attempt 0 is the initial send; 1..N are retries, each preceded by its backoff.
+    for (let attempt = 0; attempt <= RETRY_BACKOFFS.length; attempt++) {
+      try {
+        const res = await tasksApi.addComment(props.taskId, body, mentions)
+        retryInfo.value = null
+        newComment.value = ''
+        commentEditor.value?.clear?.()
+        cmdPreview.value = []
+        const c = await tasksApi.comments(props.taskId)
+        comments.value = c.data || []
+        // Quick actions changed the task itself (assignees, column, dates…), and a
+        // command-only comment produces no comment row at all — reload the detail so
+        // the modal shows the result rather than the pre-command state.
+        const summary = res.data?.command_summary
+        if (summary?.applied?.length || summary?.errors?.length) {
+          await loadDetail()
+          reportCommands(summary)
+        }
+        emit('changed')
+        scrollCommentsToBottom()
+        return
+      } catch (e) {
+        // Only "server unreachable" is worth retrying; an HTTP error (4xx/5xx) is
+        // the server rejecting the comment — resending won't change that.
+        const backoff = RETRY_BACKOFFS[attempt]
+        if (!e.offline || backoff == null) {
+          retryInfo.value = null
+          message.error(e.offline ? 'Сервер недоступен — комментарий не отправлен' : e.message)
+          return
+        }
+        retryInfo.value = { attempt: attempt + 1, max: RETRY_BACKOFFS.length }
+        if (!(await waitOrCancel(backoff))) return // cancelled by the user
+      }
+    }
+  } finally {
+    posting.value = false
+    retryInfo.value = null
+  }
+}
+
+// Report what the backend actually did — intent and result can differ (a
+// recurring task bounces straight out of the done column), so we echo its text.
+function reportCommands(summary) {
+  const applied = (summary.applied || []).map((o) => o.summary || `/${o.key}`)
+  if (applied.length) message.success(`Применено: ${applied.join('; ')}`)
+  for (const err of summary.errors || []) {
+    message.warning(`/${err.key}: ${err.error}`)
   }
 }
 function startEditComment(c) {
@@ -884,6 +1211,17 @@ async function onCommentCheck(c, i) {
 // ── relations (by #N) ──
 function relKindLabel(k) {
   return relKindOptions.find((o) => o.value === k)?.label || k
+}
+// Badge meta for a relation owned by an integration; null for hand-made ones (no
+// badge at all — "Tessera" on every row would be noise).
+function relSource(r) {
+  return isExternalSource(r.source) ? sourceMeta(r.source) : null
+}
+// Deleting an integration-owned relation only holds until the next sync re-projects
+// it, so the confirm says so instead of promising a permanent removal.
+function relDeleteHint(r) {
+  const src = relSource(r)
+  return src ? `Эта связь вернётся при следующем синке ${src.label}. Удалить?` : 'Убрать связь?'
 }
 async function addRelation() {
   const n = Number(relNumber.value)
@@ -1025,9 +1363,13 @@ function eventText(e) {
         <template #icon><TesseraSpinner /></template>
         <div ref="formEl" class="form" :style="{ '--tm-cols': splitCols }">
           <div class="modal-head">
-            <n-popover trigger="click" placement="bottom-start">
+            <!-- Render the breadcrumb popover only when there's a breadcrumb: an
+                 n-popover #trigger slot must resolve to exactly one child, and an
+                 empty breadcrumb (before boardInfo loads, or if it fails) left the
+                 slot empty and threw during render, white-screening the modal. -->
+            <n-popover v-if="breadcrumb.length" trigger="click" placement="bottom-start">
               <template #trigger>
-                <div v-if="breadcrumb.length" class="crumbs" title="Перенести в другую доску">
+                <div class="crumbs" title="Перенести в другую доску">
                   <template v-for="(c, i) in breadcrumb" :key="i">
                     <span class="crumb">{{ c }}</span>
                     <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
@@ -1057,6 +1399,37 @@ function eventText(e) {
             </n-popover>
             <span class="head-right">
               <span v-if="task?.number" class="tnum">#{{ task.number }}</span>
+              <!-- Share: copy a link to this task; the icon morphs to a checkmark. -->
+              <button
+                v-if="shareUrl"
+                class="head-btn"
+                :class="{ done: shared }"
+                :title="shared ? 'Ссылка скопирована' : 'Скопировать ссылку на задачу'"
+                @click="shareTask"
+              >
+                <Transition name="tm-share" mode="out-in">
+                  <n-icon
+                    v-if="shared"
+                    key="ok"
+                    :component="CheckmarkOutline"
+                    :size="15"
+                    class="grad-icon"
+                  />
+                  <n-icon v-else key="share" :component="ShareSocialOutline" :size="15" />
+                </Transition>
+              </button>
+              <!-- Wide layout only: hide/show the right column (tabs). -->
+              <button
+                v-if="wide"
+                class="head-btn"
+                :title="rightHidden ? 'Показать панель' : 'Скрыть панель'"
+                @click="toggleRightPane"
+              >
+                <n-icon
+                  :component="rightHidden ? ChevronBackOutline : ChevronForwardOutline"
+                  :size="15"
+                />
+              </button>
               <!-- GitLab provenance moved next to the Tessera number to free up
                    vertical space (icon + issue iid in parens, links to GitLab). -->
               <a
@@ -1352,29 +1725,35 @@ function eventText(e) {
                   <template #trigger>
                     <button ref="tagsValEl" class="val tags-val">
                       <template v-if="tagObjs.length">
-                        <span
+                        <TagPill
                           v-for="t in tagObjs.slice(0, visibleTagCount)"
                           :key="t.id"
                           class="chip"
+                          :tag="t"
+                          :prefix-names="tagPrefixNames"
+                          variant="outline"
+                        />
+                        <span
+                          v-if="visibleTagCount < tagObjs.length"
+                          class="chip chip-more"
                           :style="{
-                            border: '1px solid transparent',
-                            background: tagPillBg(t.color, true),
+                            color: tagText(tagObjs[0].color),
+                            background: softFill(tagObjs[0].color),
                           }"
-                        >
-                          <span
-                            class="accent-grad-text"
-                            :style="{ '--grad': hueGrad(tagText(t.color)) }"
-                            >{{ t.name }}</span
-                          >
-                        </span>
-                        <span v-if="visibleTagCount < tagObjs.length" class="chip chip-more"
                           >+{{ tagObjs.length - visibleTagCount }}</span
                         >
-                        <!-- invisible measurement row: natural chip widths, never sliced -->
+                        <!-- invisible measurement row: natural chip widths, never sliced.
+                             Same component + props as above, else the scope segment
+                             wouldn't be measured and the fit calculation would lie. -->
                         <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
-                          <span v-for="t in tagObjs" :key="`m${t.id}`" class="chip">{{
-                            t.name
-                          }}</span>
+                          <TagPill
+                            v-for="t in tagObjs"
+                            :key="`m${t.id}`"
+                            class="chip"
+                            :tag="t"
+                            :prefix-names="tagPrefixNames"
+                            variant="outline"
+                          />
                         </span>
                       </template>
                       <span v-else class="muted">Нет</span>
@@ -1405,7 +1784,12 @@ function eventText(e) {
                             "
                             @click="toggleTag(t.id)"
                           >
-                            {{ t.name }}
+                            <TagPill
+                              :tag="t"
+                              :prefix-names="tagPrefixNames"
+                              variant="inherit"
+                              :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
+                            />
                           </button>
                         </div>
                       </div>
@@ -1420,12 +1804,64 @@ function eventText(e) {
                 </n-popover>
               </div>
 
-              <!-- completed -->
+              <!-- status: current column · shift right · close.
+                   Works the same for a task and for a subtask — one modal. -->
               <div class="prow">
                 <span class="plabel"
-                  ><n-icon :component="CheckmarkDoneOutline" :size="15" /> Выполнено</span
+                  ><n-icon :component="CheckmarkDoneOutline" :size="15" /> Статус</span
                 >
-                <n-switch :value="completed" @update:value="setCompleted" />
+                <div class="status-row">
+                  <n-popover
+                    v-if="!readonly && sortedCols.length"
+                    trigger="click"
+                    placement="bottom-start"
+                  >
+                    <template #trigger>
+                      <button class="val col-chip" :disabled="moving">
+                        <span class="col-dot" :style="{ background: currentColumn?.color }" />
+                        <span>{{ currentColumn?.name || 'Без колонки' }}</span>
+                      </button>
+                    </template>
+                    <div class="menu pmenu">
+                      <div
+                        v-for="c in sortedCols"
+                        :key="c.id"
+                        class="menu-item col-item"
+                        :class="{ cur: c.id === task?.column_id }"
+                        @click="moveToColumn(c.id)"
+                      >
+                        <span class="col-dot" :style="{ background: c.color }" />
+                        <span>{{ c.name }}</span>
+                      </div>
+                    </div>
+                  </n-popover>
+                  <span v-else class="val col-chip static">
+                    <span class="col-dot" :style="{ background: currentColumn?.color }" />
+                    <span>{{ currentColumn?.name || '—' }}</span>
+                  </span>
+                  <template v-if="!readonly">
+                    <button
+                      class="st-btn"
+                      :disabled="!nextCol || moving"
+                      :title="nextCol ? `Сдвинуть → «${nextCol.name}»` : 'Это последняя колонка'"
+                      @click="moveToColumn(nextCol?.id)"
+                    >
+                      <n-icon :component="PlayForwardOutline" :size="15" />
+                    </button>
+                    <button
+                      class="st-btn"
+                      :class="{ on: completed }"
+                      :disabled="moving"
+                      :title="completed ? 'Вернуть в работу' : 'Выполнено'"
+                      @click="closeTask"
+                    >
+                      <n-icon
+                        :component="completed ? CheckmarkCircle : EllipseOutline"
+                        :size="15"
+                      />
+                    </button>
+                  </template>
+                </div>
               </div>
 
               <!-- parent -->
@@ -1530,16 +1966,18 @@ function eventText(e) {
             </div>
           </div>
 
-          <!-- Draggable divider (wide layout only); resizes the two columns. -->
+          <!-- Draggable divider (wide layout only); drag resizes the two columns,
+               a double-click hides/shows the right column. -->
           <div
             class="tm-divider"
-            title="Потяните, чтобы изменить ширину"
+            :title="rightHidden ? 'Двойной клик — показать панель' : 'Потяните / двойной клик'"
             @pointerdown="startSplitDrag"
+            @dblclick="toggleRightPane"
           >
             <span class="tm-divider-grip"></span>
           </div>
 
-          <div class="tm-col-right">
+          <div class="tm-col-right" :class="{ 'tm-col-hidden': rightHidden }">
             <!-- Subtasks / comments / relations / files / history (#8) -->
             <!-- Keyed by task so the line indicator doesn't slide when switching
                between a task and its subtask / related task. -->
@@ -1566,66 +2004,77 @@ function eventText(e) {
                     />
                   </span>
                 </template>
-                <div class="comments">
-                  <div class="c-list">
-                    <div v-for="c in comments" :key="c.id" class="comment">
-                      <UserAvatar
-                        class="c-ava"
-                        :user-id="c.author_id || ''"
-                        :src="c.gl_author_avatar_url"
-                        :name="c.author_name || c.gl_author_name || '?'"
-                      />
-                      <div class="c-body">
-                        <div class="c-head">
-                          <span class="c-author">{{
-                            c.author_name || c.gl_author_name || 'Кто-то'
-                          }}</span>
-                          <span v-if="!c.author_name && c.gl_author_name" class="c-gl"
-                            >· GitLab</span
-                          >
-                          <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
-                          <span v-if="c.author_id === meId" class="c-acts">
-                            <button class="c-act" title="Изменить" @click="startEditComment(c)">
-                              ✎
-                            </button>
-                            <n-popconfirm
-                              :positive-button-props="{ type: 'error' }"
-                              positive-text="Удалить"
-                              @positive-click="deleteComment(c.id)"
-                            >
-                              <template #trigger>
-                                <button class="c-act" title="Удалить">✕</button>
-                              </template>
-                              Удалить комментарий?
-                            </n-popconfirm>
-                          </span>
-                        </div>
-                        <template v-if="editingCommentId === c.id">
-                          <MarkdownEditor
-                            v-model="editingCommentBody"
-                            variant="boxed"
-                            :mention-items="mentionItems"
-                            :min-rows="2"
-                            placeholder="Комментарий…"
-                            @submit="saveComment"
-                          />
-                          <n-space :size="6" style="margin-top: 6px">
-                            <n-button size="tiny" type="primary" @click="saveComment"
-                              >Сохранить</n-button
-                            >
-                            <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
-                          </n-space>
-                        </template>
-                        <RichContent
-                          v-else
-                          class="c-text"
-                          :source="c.body"
-                          :members="mentionItems"
-                          :interactive="c.author_id === meId"
-                          @toggle="onCommentCheck(c, $event)"
+                <div ref="commentsPane" class="comments">
+                  <div ref="commentsListEl" class="c-list">
+                    <!-- display:contents wrapper (.c-items) so the comment rows stay
+                         direct flex children of .c-list; only newly-posted comments
+                         fade in (no `appear`, so the initial list doesn't animate). -->
+                    <TransitionGroup
+                      :name="commentsHydrated ? 'c-fade' : ''"
+                      tag="div"
+                      class="c-items"
+                    >
+                      <div v-for="c in comments" :key="c.id" class="comment">
+                        <UserAvatar
+                          class="c-ava"
+                          :user-id="c.author_id || ''"
+                          :src="c.gl_author_avatar_url"
+                          :name="c.author_name || c.gl_author_name || '?'"
                         />
+                        <div class="c-body">
+                          <div class="c-head">
+                            <span class="c-author">{{
+                              c.author_name || c.gl_author_name || 'Кто-то'
+                            }}</span>
+                            <span v-if="!c.author_name && c.gl_author_name" class="c-gl"
+                              >· GitLab</span
+                            >
+                            <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
+                            <span v-if="c.author_id === meId" class="c-acts">
+                              <button class="c-act" title="Изменить" @click="startEditComment(c)">
+                                ✎
+                              </button>
+                              <n-popconfirm
+                                :positive-button-props="{ type: 'error' }"
+                                positive-text="Удалить"
+                                @positive-click="deleteComment(c.id)"
+                              >
+                                <template #trigger>
+                                  <button class="c-act" title="Удалить">✕</button>
+                                </template>
+                                Удалить комментарий?
+                              </n-popconfirm>
+                            </span>
+                          </div>
+                          <template v-if="editingCommentId === c.id">
+                            <MarkdownEditor
+                              v-model="editingCommentBody"
+                              variant="boxed"
+                              :mention-items="mentionItems"
+                              :min-rows="2"
+                              placeholder="Комментарий…"
+                              @submit="saveComment"
+                            />
+                            <n-space :size="6" style="margin-top: 6px">
+                              <n-button size="tiny" type="primary" @click="saveComment"
+                                >Сохранить</n-button
+                              >
+                              <n-button size="tiny" @click="editingCommentId = null"
+                                >Отмена</n-button
+                              >
+                            </n-space>
+                          </template>
+                          <RichContent
+                            v-else
+                            class="c-text"
+                            :source="c.body"
+                            :members="mentionItems"
+                            :interactive="c.author_id === meId"
+                            @toggle="onCommentCheck(c, $event)"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    </TransitionGroup>
                     <EmptyState
                       v-if="!comments.length"
                       class="c-empty"
@@ -1640,11 +2089,37 @@ function eventText(e) {
                       v-model="newComment"
                       variant="boxed"
                       send
+                      :sending="posting"
                       :mention-items="mentionItems"
+                      :command-items="commandItems"
                       :min-rows="3"
-                      placeholder="Написать комментарий… (@ — упоминание, Ctrl+Enter — отправить)"
+                      placeholder="Написать комментарий… (@ — упоминание, / — команда, Ctrl+Enter — отправить)"
                       @submit="postComment"
                     />
+                    <!-- Offline-retry banner: shown while waiting to resend after a
+                         network failure; the draft stays put, Cancel aborts. -->
+                    <Transition name="tm-share">
+                      <div v-if="retryInfo" class="retry-bar">
+                        <TesseraSpinner :size="14" />
+                        <span
+                          >Нет связи — повтор попытки ({{ retryInfo.attempt }}/{{
+                            retryInfo.max
+                          }})…</span
+                        >
+                        <button class="retry-cancel" @click="cancelRetry">Отмена</button>
+                      </div>
+                    </Transition>
+                    <!-- Dry-run hint: what the built-in commands in the draft will
+                         do. Custom keys are listed apart — they stay in the text. -->
+                    <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
+                      <span v-for="(c, i) in cmdPreview" :key="`${c.key}-${i}`" class="cmd-chip">
+                        <code>/{{ c.key }}</code>
+                        <span :class="{ err: c.error }">{{ c.error || c.summary }}</span>
+                      </span>
+                      <span v-if="cmdCustom.length" class="cmd-note">
+                        {{ cmdCustom.map((k) => `/${k}`).join(', ') }} — останется текстом
+                      </span>
+                    </div>
                   </div>
                 </div>
               </n-tab-pane>
@@ -1690,9 +2165,40 @@ function eventText(e) {
                         />
                         <span class="sub-title">{{ sub.title }}</span>
                         <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
+                        <!-- status of the subtask, changeable without opening it -->
+                        <n-popover
+                          v-if="!readonly && sortedCols.length"
+                          trigger="click"
+                          placement="bottom-end"
+                        >
+                          <template #trigger>
+                            <span class="col-chip mini" @click.stop>
+                              <span class="col-dot" :style="{ background: columnOf(sub)?.color }" />
+                              <span>{{ columnOf(sub)?.name || '—' }}</span>
+                            </span>
+                          </template>
+                          <div class="menu pmenu" @click.stop>
+                            <div
+                              v-for="c in sortedCols"
+                              :key="c.id"
+                              class="menu-item col-item"
+                              :class="{ cur: c.id === sub.column_id }"
+                              @click="moveSubtask(sub, c.id)"
+                            >
+                              <span class="col-dot" :style="{ background: c.color }" />
+                              <span>{{ c.name }}</span>
+                            </div>
+                          </div>
+                        </n-popover>
                       </div>
                     </template>
-                    <TaskMiniCard :task="sub" :tags-map="tagsById" :members-map="membersById" />
+                    <TaskMiniCard
+                      :task="sub"
+                      :tags-map="tagsById"
+                      :members-map="membersById"
+                      :tag-prefix-names="tagPrefixNames"
+                      :column="columnOf(sub)"
+                    />
                   </n-popover>
                   <EmptyState
                     v-if="!(task?.subtasks || []).length"
@@ -1727,6 +2233,10 @@ function eventText(e) {
                 <div class="relations">
                   <div v-for="r in relations" :key="r.id" class="relrow">
                     <span class="rel-kind">{{ relKindLabel(r.kind) }}</span>
+                    <span v-if="relSource(r)" class="rel-src" :title="relSource(r).label">
+                      <n-icon v-if="relSource(r).icon" :component="relSource(r).icon" :size="12" />
+                      {{ relSource(r).label }}
+                    </span>
                     <button
                       class="rel-link"
                       :class="{ done: r.related_completed_at }"
@@ -1745,7 +2255,7 @@ function eventText(e) {
                           <n-icon :component="CloseOutline" />
                         </button>
                       </template>
-                      Убрать связь?
+                      {{ relDeleteHint(r) }}
                     </n-popconfirm>
                   </div>
                   <EmptyState
@@ -1978,9 +2488,21 @@ function eventText(e) {
   .form {
     display: grid;
     /* left | divider track | right — overridable via the --tm-cols var that the
-       draggable divider writes (persisted in localStorage). */
+       draggable divider writes (persisted in localStorage). The transition
+       animates the collapse/expand when the right column is hidden/shown. */
     grid-template-columns: var(--tm-cols, minmax(0, 1fr) 14px minmax(0, 1.05fr));
     align-items: start;
+    transition: grid-template-columns 0.18s ease;
+  }
+  /* Right column collapsed to a 0fr track: fade it out and stop it catching
+     clicks while it shrinks. */
+  .tm-col-right {
+    transition: opacity 0.12s ease;
+  }
+  .tm-col-right.tm-col-hidden {
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
   }
   /* Head + title span all three tracks. */
   .modal-head,
@@ -2003,21 +2525,59 @@ function eventText(e) {
     cursor: col-resize;
     touch-action: none;
   }
+  /* The right column is a fixed-height flex box that does NOT scroll as a whole:
+     the tab strip stays pinned while the active pane scrolls inside it (so
+     scrolling comments never carry the tabs off-screen). The footer lives in the
+     card's #footer slot so it stays pinned full-width. */
   .tm-col-right {
     grid-column: 3;
-    display: block;
     min-width: 0;
+    max-height: calc(90vh - 210px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
-  /* Independent scroll per column; footer lives in the card's
-     #footer slot so it stays pinned full-width. Viewport-based cap avoids
-     depending on the n-card/n-spin height cascade. */
-  .tm-col-left,
-  .tm-col-right {
+  .tm-col-left {
     max-height: calc(90vh - 210px);
     overflow-y: auto;
-    /* Reserve the scrollbar gutter always, so revealing the bar on hover doesn't
-       reflow the content (was causing a visible jitter). The thumb stays
-       transparent until hover / focus — idle modal still reads clean. */
+  }
+  /* The tabs fill the right column; the nav is pinned (flex:none), the active pane
+     takes the rest and scrolls. */
+  .tm-col-right .detail-tabs {
+    margin: 0;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .detail-tabs :deep(.n-tabs-nav) {
+    flex: none;
+  }
+  .detail-tabs :deep(.n-tab-pane) {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Comments tab: the list scrolls internally, the composer is a pinned footer that
+     sits OUTSIDE the scroll area — so scrolling content can't bleed under its top
+     border (which the previous position:sticky composer did). */
+  .tm-col-right .comments {
+    flex: 1;
+    min-height: 0;
+  }
+  .tm-col-right .c-list {
+    overflow-y: auto;
+  }
+  .tm-col-right .comment-add {
+    position: static;
+  }
+  /* Idle: reserved gutter, transparent thumb; reveal on hover/focus — one skin for
+     all three scrollers (left column, the active tab pane, the comment list). */
+  .tm-col-left,
+  .detail-tabs :deep(.n-tab-pane),
+  .tm-col-right .c-list {
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
@@ -2025,16 +2585,20 @@ function eventText(e) {
   }
   .tm-col-left:hover,
   .tm-col-left:focus-within,
-  .tm-col-right:hover,
-  .tm-col-right:focus-within {
+  .detail-tabs :deep(.n-tab-pane):hover,
+  .detail-tabs :deep(.n-tab-pane):focus-within,
+  .tm-col-right .c-list:hover,
+  .tm-col-right .c-list:focus-within {
     scrollbar-color: var(--t-border) transparent;
   }
   .tm-col-left::-webkit-scrollbar,
-  .tm-col-right::-webkit-scrollbar {
+  .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar,
+  .tm-col-right .c-list::-webkit-scrollbar {
     width: 10px;
   }
   .tm-col-left::-webkit-scrollbar-thumb,
-  .tm-col-right::-webkit-scrollbar-thumb {
+  .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar-thumb,
+  .tm-col-right .c-list::-webkit-scrollbar-thumb {
     border-radius: 5px;
     border: 3px solid transparent;
     background: transparent;
@@ -2042,14 +2606,12 @@ function eventText(e) {
   }
   .tm-col-left:hover::-webkit-scrollbar-thumb,
   .tm-col-left:focus-within::-webkit-scrollbar-thumb,
-  .tm-col-right:hover::-webkit-scrollbar-thumb,
-  .tm-col-right:focus-within::-webkit-scrollbar-thumb {
+  .detail-tabs :deep(.n-tab-pane):hover::-webkit-scrollbar-thumb,
+  .detail-tabs :deep(.n-tab-pane):focus-within::-webkit-scrollbar-thumb,
+  .tm-col-right .c-list:hover::-webkit-scrollbar-thumb,
+  .tm-col-right .c-list:focus-within::-webkit-scrollbar-thumb {
     background: var(--t-border);
     background-clip: padding-box;
-  }
-  /* Align the right column's tabs with the left column's first property row. */
-  .tm-col-right .detail-tabs {
-    margin-top: 0;
   }
 }
 .title-input :deep(input) {
@@ -2067,6 +2629,8 @@ function eventText(e) {
   align-items: center;
   gap: 8px;
   flex: none;
+  /* Stay pinned right even when the breadcrumb (the other flex child) is absent. */
+  margin-left: auto;
 }
 .tnum {
   font-size: 12px;
@@ -2084,6 +2648,73 @@ function eventText(e) {
 }
 .gl-num:hover {
   color: var(--t-primary);
+}
+/* Small neutral icon buttons in the head (share, hide/show panel). */
+.head-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--t-text3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.head-btn:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+/* Share icon morph (share ⇄ checkmark). */
+.tm-share-enter-active,
+.tm-share-leave-active {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.tm-share-enter-from,
+.tm-share-leave-to {
+  opacity: 0;
+  transform: scale(0.7);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-share-enter-active,
+  .tm-share-leave-active {
+    transition: none;
+  }
+  .tm-share-enter-from,
+  .tm-share-leave-to {
+    transform: none;
+  }
+  .form,
+  .tm-col-right {
+    transition: none;
+  }
+}
+/* Offline-retry banner under the composer — neutral, informational. */
+.retry-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.retry-cancel {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--t-primary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.retry-cancel:hover {
+  text-decoration: underline;
 }
 .desc-head {
   display: flex;
@@ -2262,6 +2893,7 @@ function eventText(e) {
   max-width: 100%;
   overflow: hidden;
   flex-wrap: nowrap;
+  gap: 5px;
 }
 .tags-measure {
   position: absolute;
@@ -2349,6 +2981,76 @@ function eventText(e) {
 .pmenu {
   max-height: 240px;
   overflow-y: auto;
+}
+/* ── status row: [● column ▾] [▸ shift] [✓ close] ──
+   Deliberately neutral (flat surface + the column's own colour as a dot); the
+   accent gradient stays reserved for tags/priority/avatars. */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.col-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 190px;
+  border: 1px solid var(--t-border);
+  background: var(--t-surface-alt);
+}
+.col-chip > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.col-chip[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+.col-chip.mini {
+  max-width: 120px;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.col-chip.mini:hover {
+  background: var(--t-hover);
+}
+.col-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--t-text3);
+}
+.col-item.cur {
+  background: var(--t-hover);
+}
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--t-border);
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+}
+.st-btn:hover:not(:disabled) {
+  background: var(--t-hover);
+}
+.st-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.st-btn.on {
+  color: var(--t-primary);
 }
 .small {
   font-size: 12px;
@@ -2651,9 +3353,32 @@ function eventText(e) {
   flex-direction: column;
   gap: 12px;
   flex: 1 1 auto;
+  /* When a comment is appended while scrolled to the bottom, the browser's scroll
+     anchoring tries to keep an upper element fixed and nudges scrollTop — which read
+     as a "bounce" (the top comment briefly slid under the pinned tabs). We pin to the
+     bottom ourselves, so let the anchor go. */
+  overflow-anchor: none;
 }
 .c-empty {
   margin: auto 0;
+}
+/* Wrapper generates no box — comment rows stay direct flex children of .c-list. */
+.c-items {
+  display: contents;
+}
+/* Newly-posted comments ease in — opacity only. A translate would shift layout mid-
+   scroll and fight the bottom-pin (the "bounce" where the top row clipped under the
+   tabs), so the motion is a pure fade. */
+.c-fade-enter-active {
+  transition: opacity 0.25s ease;
+}
+.c-fade-enter-from {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .c-fade-enter-active {
+    transition: none;
+  }
 }
 .comment {
   display: flex;
@@ -2725,7 +3450,10 @@ function eventText(e) {
   align-items: flex-start;
   position: sticky;
   bottom: 0;
-  background: var(--t-surface);
+  /* No explicit background: inherit the modal's surface so the sticky footer
+     never shows a mismatched strip in dark mode (the modal card already paints
+     --t-surface). Adding it here caused a visible color seam above the form
+     and at the bottom corners. */
   padding-top: 10px;
   margin-top: 4px;
   border-top: 1px solid var(--t-border);
@@ -2737,6 +3465,31 @@ function eventText(e) {
   font-size: 13px;
   color: var(--t-text3);
   padding: 4px 0 8px;
+}
+/* Command dry-run hint under the composer — flat and neutral: it states a fact,
+   it is not an action. */
+.cmd-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.cmd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cmd-chip code {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+  color: var(--t-text2);
+}
+.cmd-chip .err {
+  color: var(--t-error, #e5484d);
+}
+.cmd-note {
+  font-style: italic;
 }
 
 /* relations */
@@ -2755,6 +3508,22 @@ function eventText(e) {
   color: var(--t-text3);
   width: 96px;
   flex: none;
+}
+/* Source badge: deliberately flat neutral grey — it marks provenance, not an accent,
+   so it must not compete with the accent-gradient chips elsewhere in the modal. */
+.rel-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 0 6px;
+  height: 18px;
+  border: 1px solid var(--t-border);
+  border-radius: 9px;
+  background: var(--t-surface-alt);
+  color: var(--t-text3);
+  font-size: 11px;
+  line-height: 1;
 }
 .rel-link {
   display: flex;

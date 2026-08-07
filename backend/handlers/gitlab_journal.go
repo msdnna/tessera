@@ -60,7 +60,10 @@ type syncJournal struct {
 	integrationID uuid.UUID
 	kind          string // "pull" | "push"
 	trigger       string // "manual" | "auto"
+	mode          string // "full" | "incremental" (pull only; push runs are always "full")
 	actorID       *uuid.UUID
+	startedAt     time.Time  // when the run actually began, stamped into the run row
+	runID         *uuid.UUID // set once the run row exists (beginJournal or flushJournal)
 	actions       []journalAction
 	created       int
 	updated       int
@@ -70,7 +73,39 @@ type syncJournal struct {
 }
 
 func (h *API) newJournal(integrationID uuid.UUID, kind, trigger string, actorID *uuid.UUID) *syncJournal {
-	return &syncJournal{integrationID: integrationID, kind: kind, trigger: trigger, actorID: actorID, status: "ok"}
+	return &syncJournal{
+		integrationID: integrationID, kind: kind, trigger: trigger, mode: "full", actorID: actorID,
+		startedAt: time.Now(), status: "ok",
+	}
+}
+
+// beginJournal opens the run row before the sync starts, so a long manual run is
+// visible as "running" in the journal while it works instead of appearing only
+// once it finishes. Manual runs only — an auto heartbeat with no changes must not
+// litter the journal, and flushJournal still decides that at the end.
+// Best-effort: a failure here just falls back to create-on-flush.
+func (h *API) beginJournal(ctx context.Context, j *syncJournal) {
+	if j == nil || j.trigger != "manual" || j.runID != nil {
+		return
+	}
+	run, err := h.q.CreateGitlabSyncRun(ctx, db.CreateGitlabSyncRunParams{
+		IntegrationID: j.integrationID, Kind: j.kind, Trigger: j.trigger, ActorID: j.actorID,
+		Status: "running", StartedAt: j.startedAt, Mode: j.mode,
+	})
+	if err != nil {
+		log.Printf("gitlab journal: begin run failed: %v", err)
+		return
+	}
+	j.runID = &run.ID
+}
+
+// FailStaleSyncRuns closes runs still marked "running" from a previous process
+// lifetime — a crash or restart mid-sync would otherwise leave them spinning in
+// the journal forever. Safe at startup: nothing of ours is running yet.
+func (h *API) FailStaleSyncRuns(ctx context.Context) {
+	if err := h.q.FailStaleGitlabSyncRuns(ctx); err != nil {
+		log.Printf("gitlab journal: fail stale runs: %v", err)
+	}
 }
 
 // add appends an action, bumping the run's create/update/delete counts and
@@ -106,24 +141,31 @@ func (j *syncJournal) abort(err error) {
 	j.errText = err.Error()
 }
 
-// flushJournal persists the run and its actions, then prunes old runs. A
-// successful auto run with no actions is skipped so the journal isn't filled with
-// empty heartbeats (gitlab_integrations.last_synced_at already records that).
-// Best-effort: a journal write failure must never break the sync itself.
+// flushJournal persists the run and its actions, then prunes old runs. When
+// beginJournal already opened the run row, its actions are appended to it and the
+// status stamped — otherwise the row is created here, still carrying the real
+// start time. A successful auto run with no actions is skipped so the journal
+// isn't filled with empty heartbeats (gitlab_integrations.last_synced_at already
+// records that). Best-effort: a journal write failure must never break the sync.
 func (h *API) flushJournal(ctx context.Context, j *syncJournal) {
 	if j == nil {
 		return
 	}
-	if len(j.actions) == 0 && j.status == "ok" && j.trigger != "manual" {
-		return
+	if j.runID == nil {
+		if len(j.actions) == 0 && j.status == "ok" && j.trigger != "manual" {
+			return
+		}
+		run, err := h.q.CreateGitlabSyncRun(ctx, db.CreateGitlabSyncRunParams{
+			IntegrationID: j.integrationID, Kind: j.kind, Trigger: j.trigger, ActorID: j.actorID,
+			Status: "running", StartedAt: j.startedAt,
+		})
+		if err != nil {
+			log.Printf("gitlab journal: create run failed: %v", err)
+			return
+		}
+		j.runID = &run.ID
 	}
-	run, err := h.q.CreateGitlabSyncRun(ctx, db.CreateGitlabSyncRunParams{
-		IntegrationID: j.integrationID, Kind: j.kind, Trigger: j.trigger, ActorID: j.actorID,
-	})
-	if err != nil {
-		log.Printf("gitlab journal: create run failed: %v", err)
-		return
-	}
+	runID := *j.runID
 	for i, a := range j.actions {
 		detail := []byte("{}")
 		if a.Detail != nil {
@@ -132,7 +174,7 @@ func (h *API) flushJournal(ctx context.Context, j *syncJournal) {
 			}
 		}
 		if cerr := h.q.CreateGitlabSyncAction(ctx, db.CreateGitlabSyncActionParams{
-			RunID: run.ID, Seq: int32(i), Direction: a.Direction, EntityType: a.EntityType,
+			RunID: runID, Seq: int32(i), Direction: a.Direction, EntityType: a.EntityType,
 			Op: a.Op, TaskID: a.TaskID, GlIid: a.GlIid, Summary: a.Summary,
 			Detail: detail, Status: a.Status, Error: a.Err,
 		}); cerr != nil {
@@ -140,7 +182,7 @@ func (h *API) flushJournal(ctx context.Context, j *syncJournal) {
 		}
 	}
 	if ferr := h.q.FinishGitlabSyncRun(ctx, db.FinishGitlabSyncRunParams{
-		ID: run.ID, Status: j.status, CreatedCount: int32(j.created), UpdatedCount: int32(j.updated),
+		ID: runID, Status: j.status, CreatedCount: int32(j.created), UpdatedCount: int32(j.updated),
 		DeletedCount: int32(j.deleted), ActionCount: int32(len(j.actions)), Error: j.errText,
 	}); ferr != nil {
 		log.Printf("gitlab journal: finish run failed: %v", ferr)

@@ -89,26 +89,29 @@ const createGitlabIntegration = `-- name: CreateGitlabIntegration :one
 
 INSERT INTO gitlab_integrations (
     workspace_id, name, project_path, board_id, label_rules, enabled, owner_user_id,
-    sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now())
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after
+    sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after,
+    relations_sync, full_sync_interval_sec, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync
 `
 
 type CreateGitlabIntegrationParams struct {
-	WorkspaceID     uuid.UUID  `json:"workspace_id"`
-	Name            string     `json:"name"`
-	ProjectPath     string     `json:"project_path"`
-	BoardID         uuid.UUID  `json:"board_id"`
-	LabelRules      []byte     `json:"label_rules"`
-	Enabled         bool       `json:"enabled"`
-	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
-	SyncIntervalSec int32      `json:"sync_interval_sec"`
-	DueSource       string     `json:"due_source"`
-	StartSource     string     `json:"start_source"`
-	Writeback       []byte     `json:"writeback"`
-	Scope           string     `json:"scope"`
-	ClosedPolicy    string     `json:"closed_policy"`
-	ClosedAfter     *time.Time `json:"closed_after"`
+	WorkspaceID         uuid.UUID  `json:"workspace_id"`
+	Name                string     `json:"name"`
+	ProjectPath         string     `json:"project_path"`
+	BoardID             uuid.UUID  `json:"board_id"`
+	LabelRules          []byte     `json:"label_rules"`
+	Enabled             bool       `json:"enabled"`
+	OwnerUserID         *uuid.UUID `json:"owner_user_id"`
+	SyncIntervalSec     int32      `json:"sync_interval_sec"`
+	DueSource           string     `json:"due_source"`
+	StartSource         string     `json:"start_source"`
+	Writeback           []byte     `json:"writeback"`
+	Scope               string     `json:"scope"`
+	ClosedPolicy        string     `json:"closed_policy"`
+	ClosedAfter         *time.Time `json:"closed_after"`
+	RelationsSync       string     `json:"relations_sync"`
+	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
 }
 
 // ── Per-workspace integration ──────────────────────────────
@@ -128,6 +131,8 @@ func (q *Queries) CreateGitlabIntegration(ctx context.Context, arg CreateGitlabI
 		arg.Scope,
 		arg.ClosedPolicy,
 		arg.ClosedAfter,
+		arg.RelationsSync,
+		arg.FullSyncIntervalSec,
 	)
 	var i GitlabIntegration
 	err := row.Scan(
@@ -149,6 +154,10 @@ func (q *Queries) CreateGitlabIntegration(ctx context.Context, arg CreateGitlabI
 		&i.Scope,
 		&i.ClosedPolicy,
 		&i.ClosedAfter,
+		&i.LastFullSyncedAt,
+		&i.MembersSyncedAt,
+		&i.FullSyncIntervalSec,
+		&i.RelationsSync,
 	)
 	return i, err
 }
@@ -338,7 +347,7 @@ func (q *Queries) GetGitlabCredential(ctx context.Context, userID uuid.UUID) (Gi
 }
 
 const getGitlabIntegration = `-- name: GetGitlabIntegration :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after FROM gitlab_integrations WHERE id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations WHERE id = $1
 `
 
 func (q *Queries) GetGitlabIntegration(ctx context.Context, id uuid.UUID) (GitlabIntegration, error) {
@@ -363,12 +372,16 @@ func (q *Queries) GetGitlabIntegration(ctx context.Context, id uuid.UUID) (Gitla
 		&i.Scope,
 		&i.ClosedPolicy,
 		&i.ClosedAfter,
+		&i.LastFullSyncedAt,
+		&i.MembersSyncedAt,
+		&i.FullSyncIntervalSec,
+		&i.RelationsSync,
 	)
 	return i, err
 }
 
 const getGitlabIntegrationByBoard = `-- name: GetGitlabIntegrationByBoard :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after FROM gitlab_integrations WHERE board_id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations WHERE board_id = $1
 `
 
 // GetGitlabIntegrationByBoard resolves the binding that mirrors into a given board
@@ -395,12 +408,16 @@ func (q *Queries) GetGitlabIntegrationByBoard(ctx context.Context, boardID uuid.
 		&i.Scope,
 		&i.ClosedPolicy,
 		&i.ClosedAfter,
+		&i.LastFullSyncedAt,
+		&i.MembersSyncedAt,
+		&i.FullSyncIntervalSec,
+		&i.RelationsSync,
 	)
 	return i, err
 }
 
 const getGitlabIntegrationByProject = `-- name: GetGitlabIntegrationByProject :one
-SELECT i.id, i.workspace_id, i.project_path, i.board_id, i.label_rules, i.enabled, i.created_at, i.updated_at, i.owner_user_id, i.sync_interval_sec, i.last_synced_at, i.due_source, i.start_source, i.writeback, i.name, i.scope, i.closed_policy, i.closed_after FROM gitlab_integrations i
+SELECT i.id, i.workspace_id, i.project_path, i.board_id, i.label_rules, i.enabled, i.created_at, i.updated_at, i.owner_user_id, i.sync_interval_sec, i.last_synced_at, i.due_source, i.start_source, i.writeback, i.name, i.scope, i.closed_policy, i.closed_after, i.last_full_synced_at, i.members_synced_at, i.full_sync_interval_sec, i.relations_sync FROM gitlab_integrations i
 JOIN boards b ON b.id = i.board_id
 WHERE b.project_id = $1
 ORDER BY i.created_at
@@ -431,6 +448,10 @@ func (q *Queries) GetGitlabIntegrationByProject(ctx context.Context, projectID u
 		&i.Scope,
 		&i.ClosedPolicy,
 		&i.ClosedAfter,
+		&i.LastFullSyncedAt,
+		&i.MembersSyncedAt,
+		&i.FullSyncIntervalSec,
+		&i.RelationsSync,
 	)
 	return i, err
 }
@@ -561,8 +582,82 @@ func (q *Queries) LinkedIidsForIntegration(ctx context.Context, integrationID uu
 	return items, nil
 }
 
+const linkedSyncKeysForIntegration = `-- name: LinkedSyncKeysForIntegration :many
+SELECT gl_global_id, gl_updated_at, title_hash, labels_hash FROM gitlab_links WHERE integration_id = $1
+`
+
+type LinkedSyncKeysForIntegrationRow struct {
+	GlGlobalID  string     `json:"gl_global_id"`
+	GlUpdatedAt *time.Time `json:"gl_updated_at"`
+	TitleHash   string     `json:"title_hash"`
+	LabelsHash  string     `json:"labels_hash"`
+}
+
+// LinkedSyncKeysForIntegration returns the change-detection keys of every linked
+// issue, so an incremental sync can cheaply skip issues whose GitLab updatedAt is
+// unchanged (the 5-minute overlap window re-delivers already-synced issues).
+// title_hash/labels_hash guard the second-precision timestamp: two edits in the same
+// second share an updatedAt, so content hashes break the tie (desc_hash is omitted —
+// the stored one is of the asset-rewritten body, not comparable to the raw issue).
+func (q *Queries) LinkedSyncKeysForIntegration(ctx context.Context, integrationID uuid.UUID) ([]LinkedSyncKeysForIntegrationRow, error) {
+	rows, err := q.db.Query(ctx, linkedSyncKeysForIntegration, integrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LinkedSyncKeysForIntegrationRow
+	for rows.Next() {
+		var i LinkedSyncKeysForIntegrationRow
+		if err := rows.Scan(
+			&i.GlGlobalID,
+			&i.GlUpdatedAt,
+			&i.TitleHash,
+			&i.LabelsHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const linkedTasksForIntegration = `-- name: LinkedTasksForIntegration :many
+SELECT task_id, gl_global_id FROM gitlab_links WHERE integration_id = $1
+`
+
+type LinkedTasksForIntegrationRow struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	GlGlobalID string    `json:"gl_global_id"`
+}
+
+// LinkedTasksForIntegration maps every linked task to its GitLab global id, so a
+// full sweep can detect issues deleted in GitLab (a link with no matching issue in
+// the fetch) and archive the orphaned task.
+func (q *Queries) LinkedTasksForIntegration(ctx context.Context, integrationID uuid.UUID) ([]LinkedTasksForIntegrationRow, error) {
+	rows, err := q.db.Query(ctx, linkedTasksForIntegration, integrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LinkedTasksForIntegrationRow
+	for rows.Next() {
+		var i LinkedTasksForIntegrationRow
+		if err := rows.Scan(&i.TaskID, &i.GlGlobalID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAutoSyncIntegrations = `-- name: ListAutoSyncIntegrations :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after FROM gitlab_integrations
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations
 WHERE enabled
   AND sync_interval_sec > 0
   AND owner_user_id IS NOT NULL
@@ -600,6 +695,10 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 			&i.Scope,
 			&i.ClosedPolicy,
 			&i.ClosedAfter,
+			&i.LastFullSyncedAt,
+			&i.MembersSyncedAt,
+			&i.FullSyncIntervalSec,
+			&i.RelationsSync,
 		); err != nil {
 			return nil, err
 		}
@@ -612,7 +711,7 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 }
 
 const listDueSyncIntegrations = `-- name: ListDueSyncIntegrations :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after FROM gitlab_integrations
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations
 WHERE enabled
   AND sync_interval_sec > 0
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
@@ -648,6 +747,10 @@ func (q *Queries) ListDueSyncIntegrations(ctx context.Context) ([]GitlabIntegrat
 			&i.Scope,
 			&i.ClosedPolicy,
 			&i.ClosedAfter,
+			&i.LastFullSyncedAt,
+			&i.MembersSyncedAt,
+			&i.FullSyncIntervalSec,
+			&i.RelationsSync,
 		); err != nil {
 			return nil, err
 		}
@@ -660,7 +763,7 @@ func (q *Queries) ListDueSyncIntegrations(ctx context.Context) ([]GitlabIntegrat
 }
 
 const listGitlabIntegrationsByWorkspace = `-- name: ListGitlabIntegrationsByWorkspace :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after FROM gitlab_integrations WHERE workspace_id = $1 ORDER BY name, created_at
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations WHERE workspace_id = $1 ORDER BY name, created_at
 `
 
 func (q *Queries) ListGitlabIntegrationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]GitlabIntegration, error) {
@@ -691,6 +794,10 @@ func (q *Queries) ListGitlabIntegrationsByWorkspace(ctx context.Context, workspa
 			&i.Scope,
 			&i.ClosedPolicy,
 			&i.ClosedAfter,
+			&i.LastFullSyncedAt,
+			&i.MembersSyncedAt,
+			&i.FullSyncIntervalSec,
+			&i.RelationsSync,
 		); err != nil {
 			return nil, err
 		}
@@ -809,6 +916,28 @@ UPDATE gitlab_links SET estimate_overridden = true WHERE task_id = $1
 
 func (q *Queries) MarkGitlabEstimateOverridden(ctx context.Context, taskID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markGitlabEstimateOverridden, taskID)
+	return err
+}
+
+const markGitlabFullSynced = `-- name: MarkGitlabFullSynced :exec
+UPDATE gitlab_integrations SET last_synced_at = now(), last_full_synced_at = now() WHERE id = $1
+`
+
+// MarkGitlabFullSynced stamps both the last sync time and the last FULL sweep time,
+// so the auto worker can tell when the next forced full sweep is due.
+func (q *Queries) MarkGitlabFullSynced(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markGitlabFullSynced, id)
+	return err
+}
+
+const markGitlabMembersSynced = `-- name: MarkGitlabMembersSynced :exec
+UPDATE gitlab_integrations SET members_synced_at = now() WHERE id = $1
+`
+
+// MarkGitlabMembersSynced stamps when the assignable-member roster was last pulled,
+// so an incremental sync can throttle the (expensive) roster refresh.
+func (q *Queries) MarkGitlabMembersSynced(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markGitlabMembersSynced, id)
 	return err
 }
 
@@ -968,26 +1097,29 @@ const updateGitlabIntegration = `-- name: UpdateGitlabIntegration :one
 UPDATE gitlab_integrations
 SET name = $2, project_path = $3, board_id = $4, label_rules = $5, enabled = $6,
     owner_user_id = $7, sync_interval_sec = $8, due_source = $9, start_source = $10,
-    writeback = $11, scope = $12, closed_policy = $13, closed_after = $14, updated_at = now()
+    writeback = $11, scope = $12, closed_policy = $13, closed_after = $14,
+    relations_sync = $15, full_sync_interval_sec = $16, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync
 `
 
 type UpdateGitlabIntegrationParams struct {
-	ID              uuid.UUID  `json:"id"`
-	Name            string     `json:"name"`
-	ProjectPath     string     `json:"project_path"`
-	BoardID         uuid.UUID  `json:"board_id"`
-	LabelRules      []byte     `json:"label_rules"`
-	Enabled         bool       `json:"enabled"`
-	OwnerUserID     *uuid.UUID `json:"owner_user_id"`
-	SyncIntervalSec int32      `json:"sync_interval_sec"`
-	DueSource       string     `json:"due_source"`
-	StartSource     string     `json:"start_source"`
-	Writeback       []byte     `json:"writeback"`
-	Scope           string     `json:"scope"`
-	ClosedPolicy    string     `json:"closed_policy"`
-	ClosedAfter     *time.Time `json:"closed_after"`
+	ID                  uuid.UUID  `json:"id"`
+	Name                string     `json:"name"`
+	ProjectPath         string     `json:"project_path"`
+	BoardID             uuid.UUID  `json:"board_id"`
+	LabelRules          []byte     `json:"label_rules"`
+	Enabled             bool       `json:"enabled"`
+	OwnerUserID         *uuid.UUID `json:"owner_user_id"`
+	SyncIntervalSec     int32      `json:"sync_interval_sec"`
+	DueSource           string     `json:"due_source"`
+	StartSource         string     `json:"start_source"`
+	Writeback           []byte     `json:"writeback"`
+	Scope               string     `json:"scope"`
+	ClosedPolicy        string     `json:"closed_policy"`
+	ClosedAfter         *time.Time `json:"closed_after"`
+	RelationsSync       string     `json:"relations_sync"`
+	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
 }
 
 func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabIntegrationParams) (GitlabIntegration, error) {
@@ -1006,6 +1138,8 @@ func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabI
 		arg.Scope,
 		arg.ClosedPolicy,
 		arg.ClosedAfter,
+		arg.RelationsSync,
+		arg.FullSyncIntervalSec,
 	)
 	var i GitlabIntegration
 	err := row.Scan(
@@ -1027,6 +1161,10 @@ func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabI
 		&i.Scope,
 		&i.ClosedPolicy,
 		&i.ClosedAfter,
+		&i.LastFullSyncedAt,
+		&i.MembersSyncedAt,
+		&i.FullSyncIntervalSec,
+		&i.RelationsSync,
 	)
 	return i, err
 }

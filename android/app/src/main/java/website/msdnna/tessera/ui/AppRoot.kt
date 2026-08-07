@@ -104,6 +104,7 @@ fun AppRoot(
 
     val accentKey by prefs.accentKey.collectAsStateWithLifecycle(initialValue = "purple")
     val isDark by prefs.darkMode.collectAsStateWithLifecycle(initialValue = false)
+    val tagPrefixMode by prefs.tagPrefixMode.collectAsStateWithLifecycle(initialValue = "name")
     val preferences by prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences())
     val token by prefs.authToken.collectAsStateWithLifecycle(initialValue = "")
     val user by prefs.user.collectAsStateWithLifecycle(initialValue = null)
@@ -195,7 +196,7 @@ fun AppRoot(
         (view.context as? Activity)?.finish()
     }
 
-    TesseraTheme(accent = accentByKey(accentKey), isDark = isDark) {
+    TesseraTheme(accent = accentByKey(accentKey), isDark = isDark, tagPrefixMode = tagPrefixMode) {
         Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
             when {
                 boot is Boot.Loading -> BootLoading()

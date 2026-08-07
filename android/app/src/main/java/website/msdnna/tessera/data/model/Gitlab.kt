@@ -99,6 +99,12 @@ data class GitlabIntegration(
     @SerializedName("project_id") val projectId: String? = null,
     @SerializedName("enabled") val enabled: Boolean = true,
     @SerializedName("sync_interval_sec") val syncIntervalSec: Int = 0,
+    // Forced periodic FULL sweep (catches deletes/drift an incremental pull can't
+    // see); 0 = only on the first sync or a manual "Полная синхронизация".
+    @SerializedName("full_sync_interval_sec") val fullSyncIntervalSec: Int = 86400,
+    // relations_sync: off|pull — import GitLab issue links into the relations tab
+    // ("two_way" is reserved on the backend for pushing Tessera relations back).
+    @SerializedName("relations_sync") val relationsSync: String = "pull",
     @SerializedName("due_source") val dueSource: String = "issue_milestone",
     @SerializedName("start_source") val startSource: String = "created",
     // scope: assigned|all — how much of the GL project to import.
@@ -134,6 +140,8 @@ data class GitlabIntegrationRequest(
     @SerializedName("board_id") val boardId: String,
     @SerializedName("enabled") val enabled: Boolean,
     @SerializedName("sync_interval_sec") val syncIntervalSec: Int,
+    @SerializedName("full_sync_interval_sec") val fullSyncIntervalSec: Int,
+    @SerializedName("relations_sync") val relationsSync: String,
     @SerializedName("due_source") val dueSource: String,
     @SerializedName("start_source") val startSource: String,
     @SerializedName("scope") val scope: String,

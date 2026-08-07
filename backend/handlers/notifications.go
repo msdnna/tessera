@@ -658,12 +658,14 @@ const (
 func (h *API) RunNotificationWorker(ctx context.Context) {
 	ticker := time.NewTicker(notifyWorkerTick)
 	defer ticker.Stop()
+	h.tick(jobNotifyDelivery, "рассылка уведомлений")
 	h.drainDeliveries(ctx) // drain the backlog at startup, don't wait a tick
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			h.tick(jobNotifyDelivery, "рассылка уведомлений")
 			h.drainDeliveries(ctx)
 		}
 	}
@@ -847,6 +849,9 @@ func notifyTitle(kind string) string {
 		return "Скоро дедлайн"
 	case "reminder":
 		return "Напоминание"
+	case "integration_sync":
+		// Provider-neutral: the core knows "an integration synced", not GitLab.
+		return "Синхронизация завершена"
 	default:
 		return "Уведомление"
 	}
@@ -863,6 +868,7 @@ const notifyScanTick = 60 * time.Second
 func (h *API) RunNotificationScanner(ctx context.Context) {
 	ticker := time.NewTicker(notifyScanTick)
 	defer ticker.Stop()
+	h.tick(jobNotifyScanner, "проверка сроков и напоминаний")
 	h.scanDueTasks(ctx)
 	h.scanReminders(ctx)
 	for {
@@ -870,6 +876,7 @@ func (h *API) RunNotificationScanner(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			h.tick(jobNotifyScanner, "проверка сроков и напоминаний")
 			h.scanDueTasks(ctx)
 			h.scanReminders(ctx)
 		}
@@ -916,7 +923,6 @@ func quietWindow(enabled bool, startMin, endMin int, tz string, now time.Time) (
 	}
 	return end, true
 }
-
 
 // scanDueTasks fires due-date notifications. For each candidate task and each of
 // its participants it resolves the effective (per-task override → user default)

@@ -5,11 +5,16 @@ import { CalendarClearOutline } from '@vicons/ionicons5'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import UserAvatar from './UserAvatar.vue'
+import TagPill from './TagPill.vue'
 
 const props = defineProps({
   task: { type: Object, required: true },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
+  tagPrefixNames: { type: Object, default: () => ({}) },
+  // Column of the task, passed only where a divergence chip is shown on the row
+  // it belongs to — the hover card then explains what that chip means.
+  column: { type: Object, default: null },
 })
 
 const tags = computed(() =>
@@ -40,14 +45,20 @@ const due = computed(() => {
     </div>
 
     <div v-if="tags.length" class="mini-tags">
-      <span
+      <TagPill
         v-for="t in tags"
         :key="t.id"
         class="mini-tag"
-        :style="{ borderColor: t.color || 'var(--t-border)', color: t.color || 'var(--t-text2)' }"
-      >
-        {{ t.name }}
-      </span>
+        :style="{ borderColor: t.color || 'var(--t-border)' }"
+        :tag="t"
+        :prefix-names="tagPrefixNames"
+        variant="plain"
+      />
+    </div>
+
+    <div v-if="column" class="mini-col">
+      <span class="mini-dot" :style="{ background: column.color }" />
+      Колонка: {{ column.name }}
     </div>
 
     <div class="mini-foot">
@@ -118,6 +129,20 @@ const due = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+.mini-col {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.mini-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--t-text3);
 }
 .mini-due {
   display: inline-flex;

@@ -99,12 +99,15 @@ data class Comment(
     val isGitlab: Boolean get() = authorId == null && glAuthorName != null
 }
 
-/** A task relation (referenced by #N) — mirrors `ListTaskRelationsRow`. */
+/** A task relation (referenced by #N) — mirrors `ListTaskRelationsRow`. [source] is
+ *  provider-neutral (user|gitlab): a non-user source means an integration owns the
+ *  row and will re-create it on the next sync. */
 data class Relation(
     @SerializedName("id") val id: String = "",
     @SerializedName("task_id") val taskId: String = "",
     @SerializedName("related_task_id") val relatedTaskId: String = "",
     @SerializedName("kind") val kind: String = "relates",
+    @SerializedName("source") val source: String = "user",
     @SerializedName("related_number") val relatedNumber: Long? = null,
     @SerializedName("related_title") val relatedTitle: String = "",
     @SerializedName("related_board_id") val relatedBoardId: String = "",

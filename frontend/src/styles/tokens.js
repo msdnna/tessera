@@ -3,6 +3,9 @@ export const DARK = {
   surface: '#1e1e24',
   surfaceAlt: '#26262e',
   cardSurface: '#1e1e24',
+  // Background of text inputs — matches Naive's Input.color so hand-rolled
+  // fields (the boxed comment composer) sit on the same surface as the rest.
+  inputBg: '#26262e',
   hover: '#2d2d36',
   border: '#33333d',
   text1: '#f0f0f3',
@@ -16,6 +19,7 @@ export const LIGHT = {
   surface: '#ffffff',
   surfaceAlt: '#f3f4f6',
   cardSurface: '#ffffff',
+  inputBg: '#ffffff',
   hover: '#eef0f3',
   border: '#e6e8ec',
   text1: '#1f2329',

@@ -42,6 +42,43 @@ fun prefixLabel(ns: String, prefixNames: Map<String, String> = emptyMap()): Stri
     return prefixNames[canonPrefix(ns)] ?: ns.trim()
 }
 
+/** A tag name split into its namespace, bare [scope] and [label] value. */
+data class TagSplit(val ns: String, val scope: String, val label: String)
+
+/** Splits a tag name into namespace, bare scope and value (web `splitTag`):
+ *  - "effort::small" → ns "effort::", scope "effort", label "small"
+ *  - "T: bug"        → ns "T: ",      scope "T",      label "bug"
+ *  - "urgent"        → ns "",         scope "",       label "urgent"
+ *  [scope] drops the separator — [prefixLabel] keeps it, but that one titles a
+ *  *group*, this one titles a pill segment. */
+fun splitTag(name: String): TagSplit {
+    val ns = tagNamespace(name)
+    if (ns.isEmpty()) return TagSplit("", "", name.trim())
+    return TagSplit(
+        ns = ns,
+        scope = ns.trimEnd().trimEnd(':').trim(),
+        label = name.substring(ns.length).trim(),
+    )
+}
+
+/** Presentation parts of a tag pill (web `tagParts`): the friendly scope name
+ *  (configured label if any, else the raw prefix) and the value. A tag whose scope
+ *  or value side is empty ("effort::", "::small") has no usable split — it falls
+ *  back to the whole raw name so nothing silently disappears from the UI.
+ *  [raw] shows the bare prefix ("T") instead of the friendly name — the device
+ *  «короткие префиксы» preference. */
+fun tagParts(name: String, prefixNames: Map<String, String> = emptyMap(), raw: Boolean = false): TagParts {
+    val (ns, scope, label) = splitTag(name)
+    if (ns.isEmpty() || scope.isEmpty() || label.isEmpty()) {
+        return TagParts(scope = "", label = name.trim(), hasScope = false)
+    }
+    val friendly = if (raw) scope else prefixNames[canonPrefix(ns)] ?: scope
+    return TagParts(scope = friendly, label = label, hasScope = true)
+}
+
+/** Scope/value pair for a tag pill; [hasScope] false means render [label] alone. */
+data class TagParts(val scope: String, val label: String, val hasScope: Boolean)
+
 /** Canonical prefixes of GitLab label rules that map a label to a NON-tag action
  *  (status / priority / board / ignore / …). Those labels aren't user tags, so they
  *  are hidden from the ADD tag-picker (web `metaPrefixesFromRules`). Only prefix-type

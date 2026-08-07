@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +60,7 @@ import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.GitlabViewModel
 import website.msdnna.tessera.util.Ion
@@ -66,6 +69,13 @@ import website.msdnna.tessera.util.localDateTimeLabel
 
 private val IntervalOptions = listOf(
     0 to "Вручную (выкл.)", 300 to "Каждые 5 минут", 900 to "Каждые 15 минут", 3600 to "Каждый час",
+)
+
+// Periodic FULL sweep (catches deletes/drift an incremental pull can't see). 0 = off
+// — a full sync then runs only on the very first sync or via «Полная».
+private val FullIntervalOptions = listOf(
+    0 to "Не форсировать (только вручную)", 21600 to "Раз в 6 часов", 43200 to "Раз в 12 часов",
+    86400 to "Раз в сутки", 172800 to "Раз в 2 суток", 604800 to "Раз в неделю",
 )
 private val DueSourceOptions = listOf(
     "issue_milestone" to "Issue, иначе Milestone", "issue" to "Только Issue",
@@ -314,13 +324,28 @@ private fun BindingRow(
                 color = c.text3, fontSize = 12.sp,
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Icon-over-caption tiles, not text buttons: four labelled buttons don't
+            // fit a phone card side by side — «Удалить» wrapped one letter per line.
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 integ.id?.let { id ->
-                    TButton("Синхр.", onClick = { vm.sync(workspaceId, id) }, kind = TButtonKind.Secondary, loading = syncing, icon = Ion.REFRESH)
+                    ActionTile(
+                        "Синхр.", Ion.REFRESH, Modifier.weight(1f), onClick = { vm.sync(workspaceId, id) },
+                        loading = syncing && !state.syncingFull, enabled = !syncing,
+                    )
+                    // Full sweep: also re-checks issues an incremental pull skips, so
+                    // deletes and drift in GitLab reach the board.
+                    ActionTile(
+                        "Полная", Ion.REPEAT, Modifier.weight(1f),
+                        onClick = { vm.sync(workspaceId, id, full = true) },
+                        loading = syncing && state.syncingFull, enabled = !syncing,
+                    )
                 }
                 if (state.isAdmin) {
-                    TButton("Изменить", onClick = onEdit, kind = TButtonKind.Secondary)
-                    TButton("Удалить", onClick = { confirmDelete = true }, kind = TButtonKind.Ghost)
+                    ActionTile("Изменить", Ion.PENCIL, Modifier.weight(1f), onClick = onEdit)
+                    ActionTile(
+                        "Удалить", Ion.TRASH, Modifier.weight(1f),
+                        onClick = { confirmDelete = true }, danger = true,
+                    )
                 }
             }
         }
@@ -336,6 +361,43 @@ private fun BindingRow(
             },
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+/**
+ * A compact card action: a glyph over a small caption, sharing the row width with
+ * its siblings (same shape as the board-layout selector tiles). Four of these fit
+ * a phone card where four text buttons wrap; [danger] tints the destructive one,
+ * [loading] swaps the glyph for a spinner in place.
+ */
+@Composable
+private fun ActionTile(
+    label: String,
+    icon: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    danger: Boolean = false,
+) {
+    val c = Tessera.colors
+    val active = enabled && !loading
+    val fg = (if (danger) TesseraDanger else c.text1).copy(alpha = if (active) 1f else 0.45f)
+    Column(
+        modifier
+            .clip(RoundedCornerShape(RadiusSm))
+            .background(c.surfaceAlt)
+            .clickableNoRipple(enabled = active, onClick = onClick)
+            .padding(top = 9.dp, bottom = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
+        } else {
+            IonIcon(icon, size = 18.dp, tint = fg)
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(label, color = fg, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
     }
 }
 
@@ -356,6 +418,9 @@ private fun IntegrationEditor(
     var boardId by remember(integ) { mutableStateOf(integ.boardId) }
     var enabled by remember(integ) { mutableStateOf(integ.enabled) }
     var interval by remember(integ) { mutableStateOf(integ.syncIntervalSec) }
+    var fullInterval by remember(integ) { mutableStateOf(integ.fullSyncIntervalSec) }
+    // relations_sync is off|pull on the wire, so the switch serialises to those two.
+    var relationsSync by remember(integ) { mutableStateOf(integ.relationsSync != "off") }
     var dueSource by remember(integ) { mutableStateOf(integ.dueSource) }
     var startSource by remember(integ) { mutableStateOf(integ.startSource) }
     var scope by remember(integ) { mutableStateOf(integ.scope.ifBlank { "assigned" }) }
@@ -406,12 +471,24 @@ private fun IntegrationEditor(
             options = IntervalOptions.map { it.first.toString() to it.second },
         ) { interval = it.toInt() }
     }
+    Field("Полная синхронизация") {
+        TSelect(
+            value = FullIntervalOptions.find { it.first == fullInterval }?.second ?: "—",
+            options = FullIntervalOptions.map { it.first.toString() to it.second },
+        ) { fullInterval = it.toInt() }
+    }
     Field("Источник срока") {
         TSelect(DueSourceOptions.find { it.first == dueSource }?.second ?: "—", DueSourceOptions) { dueSource = it }
     }
     Field("Источник начала") {
         TSelect(StartSourceOptions.find { it.first == startSource }?.second ?: "—", StartSourceOptions) { startSource = it }
     }
+    Field("Синхронизировать связи") { TSwitch(relationsSync, { relationsSync = it }) }
+    Text(
+        "Импорт связанных задач из GitLab во вкладку «Связи».",
+        color = c.text3, fontSize = 12.sp,
+    )
+    Spacer(Modifier.height(8.dp))
     Field("Включена") { TSwitch(enabled, { enabled = it }) }
 
     // Write-back (Tessera → GitLab): customizable trigger→action bindings (web GitLabModal).
@@ -470,7 +547,10 @@ private fun IntegrationEditor(
                         workspaceId, binding?.id, pid, ruleLabels,
                         GitlabIntegrationRequest(
                             name = name.trim(), projectPath = projectPath.trim(), boardId = bid,
-                            enabled = enabled, syncIntervalSec = interval, dueSource = dueSource,
+                            enabled = enabled, syncIntervalSec = interval,
+                            fullSyncIntervalSec = fullInterval,
+                            relationsSync = if (relationsSync) "pull" else "off",
+                            dueSource = dueSource,
                             startSource = startSource, scope = scope, closedPolicy = closedPolicy,
                             closedAfter = integ.closedAfter,
                             labelRules = GitlabRules(rules.map { it.toRule() }, defaultColumn, defaultAction, tagKeepPrefix),

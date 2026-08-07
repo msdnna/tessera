@@ -57,6 +57,7 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.theme.ConflictAmber
@@ -70,12 +71,14 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.divergedColumn
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.tagParts
 
 /**
  * A kanban card mirroring the web `TaskCard`: completion check, title, #number,
@@ -92,6 +95,9 @@ fun TaskCard(
     onOpen: (Task) -> Unit,
     modifier: Modifier = Modifier,
     nested: Boolean = false,
+    /** Column of the card this one is nested under — a nested card whose own
+     *  column differs shows a marker (it ran ahead of / behind its parent). */
+    parentColumnId: String? = null,
     compact: Boolean = false,
     drag: BoardDragState? = null,
     onDropTask: ((Task) -> Unit)? = null,
@@ -102,9 +108,15 @@ fun TaskCard(
     val c = Tessera.colors
     // Keep ALL subtasks composed during a drag (removing the dragged one would
     // dispose its gesture node and cancel the drag); the dragged one just dims.
-    val subtasks = if (nested || compact) emptyList() else state.subtasksOf(task.id)
+    val subtasks = if (nested || compact) emptyList() else state.visibleSubtasksOf(task.id)
     val accent = PriorityColors.getOrElse(task.priority) { PriorityColors[0] }
     val hasSubs = subtasks.isNotEmpty()
+    // The composer filter hid part of this card's children (the card only stayed on the
+    // board because one of them matched): show a hint and lock child drag-reorder —
+    // reordering against a partial list would write meaningless positions.
+    val subsNarrowed = !nested && !compact && state.isSubtasksNarrowed(task.id)
+    val childDrag = if (subsNarrowed) null else drag
+    val onDropChild = if (subsNarrowed) null else onDropTask
     val shape = RoundedCornerShape(RadiusLg)
     // Subtask cards are a touch lighter than the parent — surface mixed 70/30
     // with the page background (mirrors the web's color-mix).
@@ -112,6 +124,8 @@ fun TaskCard(
     // Adding a subtask is triggered from the "⋯" menu (no persistent button under
     // the card — that reclaims the empty space); this reveals the inline field.
     var addingSub by remember(task.id) { mutableStateOf(false) }
+    // This card is itself a subtask sitting in another column than its parent.
+    val divergedCol = if (nested) divergedColumn(task.columnId, parentColumnId, state.columns) else null
 
     Column(modifier.fillMaxWidth()) {
         // Parent draws on top (zIndex above any subtasks) so the subtask cards
@@ -162,6 +176,7 @@ fun TaskCard(
                 showMenu = !compact,
                 showAddSub = !nested && !compact,
                 onAddSubtask = { addingSub = true },
+                divergedCol = divergedCol,
             )
             if (onOpenConflict != null && conflictTaskIds.contains(task.id)) {
                 Spacer(Modifier.height(6.dp))
@@ -197,12 +212,13 @@ fun TaskCard(
                         vm = vm,
                         onOpen = onOpen,
                         nested = true,
-                        drag = drag,
-                        onDropTask = onDropTask,
+                        parentColumnId = task.columnId,
+                        drag = childDrag,
+                        onDropTask = onDropChild,
                         conflictTaskIds = conflictTaskIds,
                         onOpenConflict = onOpenConflict,
                         modifier = Modifier.animatePlacement().zIndex((subtasks.size - i).toFloat()).overlapTop(RadiusLg * 2)
-                            .subtaskDrag(drag, onDropTask, sub),
+                            .subtaskDrag(childDrag, onDropChild, sub),
                     )
                 }
                 if (nestSlot != null && nestSlot.second == null) ExpandedSubtaskPreview(drag?.dragging, state, vm)
@@ -228,12 +244,17 @@ fun TaskCard(
                     subtasks.forEach { sub ->
                         // A faded copy of the dragged row marks the landing slot.
                         if (nestSlot != null && nestSlot.second == sub.id) SubtaskPreview(drag?.dragging, vm, onOpen)
-                        SubtaskRow(sub, vm, onOpen, modifier = Modifier.animatePlacement().subtaskDrag(drag, onDropTask, sub))
+                        SubtaskRow(
+                            sub, vm, onOpen,
+                            divergedCol = divergedColumn(sub.columnId, task.columnId, state.columns),
+                            modifier = Modifier.animatePlacement().subtaskDrag(childDrag, onDropChild, sub),
+                        )
                     }
                     // Append slot (drop past the last sibling / onto the body).
                     if (nestSlot != null && nestSlot.second == null) SubtaskPreview(drag?.dragging, vm, onOpen)
                 }
             }
+            if (subsNarrowed) SubtasksNarrowedHint(subtasks.size, state.subtaskCount(task.id))
         }
         if (!nested && !compact && addingSub) {
             SubtaskCreateField(task, vm, onDone = { addingSub = false })
@@ -250,6 +271,7 @@ private fun CardHeader(
     showMenu: Boolean,
     showAddSub: Boolean,
     onAddSubtask: () -> Unit,
+    divergedCol: BoardColumn? = null,
 ) {
     val c = Tessera.colors
     var editing by remember(task.id) { mutableStateOf(false) }
@@ -329,7 +351,7 @@ private fun CardHeader(
         }
         // Meta row: task number + GitLab issue link, aligned under the title — 27dp
         // in when a leading checkbox is present (19dp + 8dp gap), else flush left.
-        if (showNumber || showGitlab) {
+        if (showNumber || showGitlab || divergedCol != null) {
             Row(
                 Modifier.padding(start = if (showAddSub) 0.dp else 27.dp, top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -337,9 +359,26 @@ private fun CardHeader(
                 if (showNumber) {
                     task.number?.let { Text("#$it", color = c.text3, fontSize = 11.sp) }
                 }
+                // Expanded subtask card whose column differs from its parent's.
+                if (divergedCol != null) {
+                    if (showNumber) Spacer(Modifier.width(6.dp))
+                    Row(
+                        Modifier.clip(RoundedCornerShape(RadiusSm))
+                            .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier.size(6.dp).clip(CircleShape)
+                                .background(accentGradient(parseHexColor(divergedCol.color, c.text3))),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(divergedCol.name, color = c.text2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
                 if (showGitlab) {
                     task.gitlabIid?.let { iid ->
-                        if (showNumber) Spacer(Modifier.width(6.dp))
+                        if (showNumber || divergedCol != null) Spacer(Modifier.width(6.dp))
                         val ctx = LocalContext.current
                         Row(
                             Modifier.clip(RoundedCornerShape(RadiusSm))
@@ -624,6 +663,19 @@ private fun ConflictPill(onClick: () -> Unit) {
     }
 }
 
+/** «N из M подзадач» — footnote under a filter-narrowed child list, telling you the card
+ *  is only here because a child matched and the rest are hidden (web parity). */
+@Composable
+private fun SubtasksNarrowedHint(shown: Int, total: Int) {
+    val c = Tessera.colors
+    Text(
+        "$shown из $total подзадач — остальные скрыты фильтром",
+        color = c.text3,
+        fontSize = 10.sp,
+        modifier = Modifier.padding(start = 12.dp, top = 4.dp, end = 8.dp),
+    )
+}
+
 /** Display-only milestone («Этап») chip: a flag + the milestone title, dimmed when
  *  the milestone is closed. Only shown when the task is assigned one (web parity;
  *  assigning/clearing happens in the task modal). */
@@ -743,7 +795,11 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
         if (stacked) {
             // Icon → coloured chips (as many as fit) + "+N" for the overflow (web parity).
             StackField(Ion.PRICETAG, c.text2, onClick = { menu = true }) {
-                if (taskTags.isEmpty()) StackValue("") else TagChipsFit(taskTags, Modifier.fillMaxWidth())
+                if (taskTags.isEmpty()) {
+                    StackValue("")
+                } else {
+                    TagChipsFit(taskTags, Modifier.fillMaxWidth(), state.prefixNames)
+                }
             }
         } else if (taskTags.isEmpty()) {
             Pill(onClick = { menu = true }) { IonIcon(Ion.PRICETAG, size = 13.dp, tint = c.text3) }
@@ -758,21 +814,44 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
             val extra = taskTags.drop(1).take(2).map { lerp(c.cardSurface, parseHexColor(it.color, c.text3), 0.35f) }
             val pillShape = RoundedCornerShape(RadiusSm)
             val frontBg = lerp(c.cardSurface, base, 0.18f)
-            Row(
-                Modifier
-                    .then(if (extra.isNotEmpty()) Modifier.padding(end = (extra.size * 5).dp) else Modifier)
-                    .stackedTagShadow(extra, RadiusSm)
-                    .clip(pillShape)
-                    .background(frontBg)
-                    .border(1.dp, base.copy(alpha = 0.45f), pillShape)
-                    .clickableNoRipple { menu = true }
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(first.name, fontSize = 11.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(tagText)))
-                if (taskTags.size > 1) {
-                    Spacer(Modifier.width(4.dp))
-                    Text("+${taskTags.size - 1}", fontSize = 10.sp, style = TextStyle(brush = accentGradient(tagText.copy(alpha = 0.85f))))
+            val stack = if (extra.isNotEmpty()) Modifier.padding(end = (extra.size * 5).dp) else Modifier
+            if (tagParts(first.name, state.prefixNames, Tessera.rawTagPrefix).hasScope) {
+                // Scoped tag: the pill's box belongs to the two-segment [TagChip], so
+                // this row keeps only the stack cascade (moved onto the chip) and the
+                // "+N", which steps right past the peeking layers (web parity).
+                Row(
+                    Modifier.clickableNoRipple { menu = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TagChip(
+                        first.name,
+                        first.color,
+                        modifier = stack.stackedTagShadow(extra, RadiusSm),
+                        prefixNames = state.prefixNames,
+                    )
+                    if (taskTags.size > 1) {
+                        Spacer(Modifier.width(4.dp))
+                        Text("+${taskTags.size - 1}", fontSize = 10.sp, style = TextStyle(brush = accentGradient(tagText.copy(alpha = 0.85f))))
+                    }
+                }
+            } else {
+                Row(
+                    Modifier
+                        .height(TagPillHeight)
+                        .then(stack)
+                        .stackedTagShadow(extra, RadiusSm)
+                        .clip(pillShape)
+                        .background(frontBg)
+                        .border(1.dp, base.copy(alpha = 0.45f), pillShape)
+                        .clickableNoRipple { menu = true }
+                        .padding(horizontal = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(first.name, fontSize = 11.sp, fontWeight = FontWeight.Medium, style = TextStyle(brush = accentGradient(tagText)))
+                    if (taskTags.size > 1) {
+                        Spacer(Modifier.width(4.dp))
+                        Text("+${taskTags.size - 1}", fontSize = 10.sp, style = TextStyle(brush = accentGradient(tagText.copy(alpha = 0.85f))))
+                    }
                 }
             }
         }
@@ -805,7 +884,14 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
                                 .clickableNoRipple { vm.toggleTag(task, tag.id) }
                                 .padding(horizontal = 9.dp, vertical = 3.dp),
                         ) {
-                            Text(tag.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp)
+                            // The scope is already the section header when grouping is
+                            // visible — repeating it in every chip is just noise.
+                            TagLabel(
+                                tag.name,
+                                color = if (on) onColor(base) else readableHue(base, c.isDark),
+                                prefixNames = state.prefixNames,
+                                showScope = !headers,
+                            )
                         }
                     }
                 }
@@ -1023,7 +1109,13 @@ private fun ExpandedSubtaskPreview(sub: Task?, state: BoardUiState, vm: BoardVie
 }
 
 @Composable
-private fun SubtaskRow(sub: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, modifier: Modifier = Modifier) {
+private fun SubtaskRow(
+    sub: Task,
+    vm: BoardViewModel,
+    onOpen: (Task) -> Unit,
+    divergedCol: BoardColumn? = null,
+    modifier: Modifier = Modifier,
+) {
     val c = Tessera.colors
     Row(
         modifier.fillMaxWidth().clickableNoRipple { onOpen(sub) }.padding(horizontal = 10.dp, vertical = 7.dp),
@@ -1051,6 +1143,16 @@ private fun SubtaskRow(sub: Task, vm: BoardViewModel, onOpen: (Task) -> Unit, mo
         )
         val due = shortDate(sub.dueDate)
         if (due.isNotBlank()) Text(due, color = c.text3, fontSize = 11.sp)
+        // This child ran ahead of (or behind) its parent — mark it with the
+        // column's own colour. Just the marker: a row this narrow has no space
+        // for a name, and the modal spells it out.
+        if (divergedCol != null) {
+            Spacer(Modifier.width(6.dp))
+            Box(
+                Modifier.size(7.dp).clip(RoundedCornerShape(2.dp))
+                    .background(accentGradient(parseHexColor(divergedCol.color, c.text3))),
+            )
+        }
     }
 }
 

@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -51,9 +53,11 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,6 +66,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
@@ -80,15 +85,16 @@ import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.MarkdownEditor
 import website.msdnna.tessera.ui.components.MentionItem
 import website.msdnna.tessera.ui.components.RichContent
+import website.msdnna.tessera.ui.components.SourceBadge
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TMenuItem
-import website.msdnna.tessera.ui.components.TSwitch
 import website.msdnna.tessera.ui.components.TabItem
 import website.msdnna.tessera.ui.components.TagChipsFit
+import website.msdnna.tessera.ui.components.TagLabel
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.UnderlineTabs
 import website.msdnna.tessera.ui.components.clickableNoRipple
@@ -99,16 +105,26 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.theme.accentGradientTint
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
+import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.columnById
+import website.msdnna.tessera.util.doneTarget
 import website.msdnna.tessera.util.dueLabel
+import website.msdnna.tessera.util.isExternalSource
+import website.msdnna.tessera.util.moveNeighbors
+import website.msdnna.tessera.util.nextColumn
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.siblingNeighbors
+import website.msdnna.tessera.util.sortedColumns
+import website.msdnna.tessera.util.sourceMeta
 import website.msdnna.tessera.util.toggleTaskMarker
 import website.msdnna.tessera.util.whenLabel
 
@@ -154,9 +170,15 @@ fun TaskModal(
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
     milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
     parentCandidates: List<Task>,
+    /** Every card of the host board — only used to work out a moved task's landing
+     *  slot (sibling order / column tail); a task from another board simply
+     *  matches nothing here and the backend picks the default slot. */
+    boardTasks: List<Task> = emptyList(),
     breadcrumb: List<String>,
     estimation: website.msdnna.tessera.data.model.EstimationConfig =
         website.msdnna.tessera.util.Estimation.DEFAULT,
+    /** Quick-action rows for the comment composer's `/`-popup; empty → no popup. */
+    commands: List<CommandItem> = emptyList(),
     onClose: (changed: Boolean) -> Unit,
 ) {
     val c = Tessera.colors
@@ -166,6 +188,31 @@ fun TaskModal(
 
     var currentId by remember { mutableStateOf(initialTaskId) }
     LaunchedEffect(currentId) { vm.load(currentId, workspaceId, projectId) }
+
+    // Report what the backend actually did with the comment's quick actions: intent
+    // and result can differ (a recurring task bounces straight out of the done
+    // column), so echo its own wording rather than the click.
+    val toastCtx = LocalContext.current
+    LaunchedEffect(state.commandNotice) {
+        val summary = state.commandNotice ?: return@LaunchedEffect
+        val applied = summary.applied.orEmpty().map { it.summary.ifBlank { "/${it.key}" } }
+        val failed = summary.errors.orEmpty().map { "/${it.key}: ${it.error}" }
+        val text = (
+            listOfNotNull(applied.takeIf { it.isNotEmpty() }?.joinToString("; ")?.let { "Применено: $it" }) + failed
+            ).joinToString("\n")
+        if (text.isNotBlank()) android.widget.Toast.makeText(toastCtx, text, android.widget.Toast.LENGTH_LONG).show()
+        vm.consumeCommandNotice()
+    }
+
+    // A failed mutation on an open task was silent until now: `state.error` only
+    // renders in place of a modal that has no detail to show. A comment whose
+    // commands all fail is a 400 with nothing stored — the user has to hear it.
+    LaunchedEffect(state.error) {
+        val err = state.error ?: return@LaunchedEffect
+        if (state.detail == null) return@LaunchedEffect
+        android.widget.Toast.makeText(toastCtx, err, android.widget.Toast.LENGTH_LONG).show()
+        vm.clearError()
+    }
 
     val detail = state.detail
     var title by remember(detail?.id) { mutableStateOf(detail?.title ?: "") }
@@ -189,13 +236,24 @@ fun TaskModal(
     // otherwise not refresh and the deleted card would linger.
     fun close() = onClose(vm.state.value.changed)
 
-    Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = { close() },
+        // decorFitsSystemWindows=false lets the dialog window see the IME inset, so
+        // `imePadding()` below can shrink the modal to the space above the keyboard —
+        // otherwise the keyboard covers the bottom of the modal (the comment composer
+        // and its `/`-suggestions) and only manual scrolling reveals it.
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
         // Back off a non-default tab returns to the first tab; a second Back (now
         // disabled) falls through to the Dialog's dismiss and closes the modal.
         BackHandler(enabled = tab != 0) { tab = 0 }
         Column(
             Modifier
                 .popupAppear(TransformOrigin.Center)
+                // With decorFitsSystemWindows off the window spans the whole display,
+                // so the modal has to keep clear of the bars itself.
+                .systemBarsPadding()
+                .imePadding()
                 .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.94f)
                 .clip(RoundedCornerShape(RadiusLg))
@@ -220,6 +278,11 @@ fun TaskModal(
 
                         PropertyGrid(
                             vm = vm,
+                            taskId = detail.id,
+                            columnId = detail.columnId,
+                            doneColumnId = state.doneColumnId,
+                            moving = state.moving,
+                            boardTasks = boardTasks,
                             priority = detail.priority,
                             dueIso = detail.dueDate,
                             startIso = detail.startDate,
@@ -287,9 +350,18 @@ fun TaskModal(
                             label = "taskTab",
                         ) { t ->
                             when (t) {
-                                0 -> CommentsTab(vm, state.comments, members, gitlabMembers, me?.id)
+                                0 -> CommentsTab(
+                                    vm = vm,
+                                    comments = state.comments,
+                                    members = members,
+                                    gitlabMembers = gitlabMembers,
+                                    meId = me?.id,
+                                    commands = commands,
+                                    preview = state.commandPreview,
+                                    previewCustom = state.commandCustom,
+                                )
 
-                                1 -> SubtasksTab(vm, detail.columnId, detail.subtasks) { currentId = it }
+                                1 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
 
                                 2 -> RelationsTab(
                                     vm = vm,
@@ -400,6 +472,11 @@ private fun TitleField(title: String, onChange: (String) -> Unit) {
 @Composable
 private fun PropertyGrid(
     vm: TaskDetailViewModel,
+    taskId: String,
+    columnId: String,
+    doneColumnId: String?,
+    moving: Boolean,
+    boardTasks: List<Task>,
     priority: Int,
     dueIso: String?,
     startIso: String?,
@@ -481,7 +558,34 @@ private fun PropertyGrid(
                 )
             }
         }
-        PropRow(Ion.CHECK, "Выполнено") { TSwitch(checked = completed, onCheckedChange = { vm.setCompleted(it) }) }
+        // Status: current column · shift right · close. Replaces the old
+        // «Выполнено» switch — the column IS the status, and closing goes through
+        // the board's done column so the backend stamps and logs it.
+        val siblings = remember(boardTasks, parentId) {
+            if (parentId == null) emptyList() else boardTasks.filter { it.parentId == parentId }.sortedBy { it.position }
+        }
+        fun neighboursFor(target: String) =
+            moveNeighbors(taskId, parentId, target, siblings, parentCandidates)
+        val doneCol = doneTarget(columns, doneColumnId)
+        PropRow(Ion.CHECK, "Статус") {
+            StatusValue(
+                columns = columns,
+                columnId = columnId,
+                completed = completed,
+                moving = moving,
+                onMove = { target -> vm.moveToColumn(target, neighboursFor(target)) },
+                onToggleDone = {
+                    when {
+                        completed -> vm.setCompleted(false)
+
+                        doneCol != null && doneCol.id != columnId ->
+                            vm.moveToColumn(doneCol.id, neighboursFor(doneCol.id))
+
+                        else -> vm.setCompleted(true)
+                    }
+                },
+            )
+        }
         PropRow(Ion.GIT_MERGE, "Родитель") {
             ParentValue(parentId, parentCandidates, onAttach = { vm.attachToParent(it) }, onDetach = { vm.detachFromParent() })
         }
@@ -498,6 +602,112 @@ private fun PropRow(icon: String, label: String, value: @Composable () -> Unit) 
             Text(label, color = c.text2, fontSize = 14.sp)
         }
         Box(Modifier.weight(1f)) { value() }
+    }
+}
+
+/** A dot in the column's own colour — same visual weight as the priority dot. */
+@Composable
+private fun ColumnDot(column: BoardColumn?, size: Dp = 8.dp) {
+    val c = Tessera.colors
+    Box(Modifier.size(size).clip(CircleShape).background(accentGradient(parseHexColor(column?.color, c.text3))))
+}
+
+/**
+ * A column chip that opens a picker of the board's columns. Shared by the status
+ * row and the subtask rows ([mini]); picking a column moves the task there.
+ */
+@Composable
+private fun ColumnChipPicker(
+    columns: List<BoardColumn>,
+    columnId: String,
+    enabled: Boolean = true,
+    mini: Boolean = false,
+    onPick: (String) -> Unit,
+) {
+    val c = Tessera.colors
+    val cols = remember(columns) { sortedColumns(columns) }
+    val current = columnById(columns, columnId)
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.clip(RoundedCornerShape(RadiusSm))
+                .background(c.surfaceAlt)
+                .clickableNoRipple(enabled = enabled && cols.isNotEmpty()) { menu = true }
+                .padding(horizontal = if (mini) 7.dp else 9.dp, vertical = if (mini) 3.dp else 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ColumnDot(current, size = if (mini) 6.dp else 8.dp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                current?.name ?: "—",
+                color = c.text2,
+                fontSize = if (mini) 11.sp else 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
+            cols.forEach { col ->
+                Row(
+                    Modifier.fillMaxWidth().clickableNoRipple {
+                        menu = false
+                        onPick(col.id)
+                    }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ColumnDot(col)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        col.name,
+                        color = if (col.id == columnId) c.primary else c.text1,
+                        fontSize = 14.sp,
+                        fontWeight = if (col.id == columnId) FontWeight.Medium else FontWeight.Normal,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The status row: [● column ▾] [› shift right] [✓ close]. The column is the
+ * status, so «Выполнено» became a check that walks the task into the board's
+ * done column (falling back to the plain flag when the board has none).
+ */
+@Composable
+private fun StatusValue(
+    columns: List<BoardColumn>,
+    columnId: String,
+    completed: Boolean,
+    moving: Boolean,
+    onMove: (String) -> Unit,
+    onToggleDone: () -> Unit,
+) {
+    val c = Tessera.colors
+    val next = nextColumn(columns, columnId)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ColumnChipPicker(columns, columnId, enabled = !moving, onPick = onMove)
+        Spacer(Modifier.width(8.dp))
+        // One tap for the most common status change: shift one column right.
+        IonIcon(
+            Ion.CHEVRON_FORWARD,
+            size = 16.dp,
+            tint = if (next != null && !moving) c.text2 else c.text3.copy(alpha = 0.4f),
+            modifier = Modifier.clip(CircleShape)
+                .clickableNoRipple(enabled = next != null && !moving) { next?.let { onMove(it.id) } }
+                .padding(4.dp),
+        )
+        Spacer(Modifier.width(4.dp))
+        IonIcon(
+            if (completed) Ion.CHECK_CIRCLE else Ion.ELLIPSE,
+            gradient = completed,
+            size = 17.dp,
+            tint = if (completed) c.primary else c.text3,
+            modifier = Modifier.clip(CircleShape)
+                .clickableNoRipple(enabled = !moving) { onToggleDone() }
+                .padding(4.dp),
+        )
     }
 }
 
@@ -827,7 +1037,7 @@ private fun TagsValue(
             } else {
                 // As many whole chips as fit on one line; the rest collapse to a "+N"
                 // chip (web tag-fit) — no clipping a tag name.
-                TagChipsFit(chosen, Modifier.fillMaxWidth())
+                TagChipsFit(chosen, Modifier.fillMaxWidth(), prefixNames)
             }
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
@@ -859,7 +1069,16 @@ private fun TagsValue(
                                 .background(accentGradient(if (on) base else base.copy(alpha = 0.14f)))
                                 .clickableNoRipple { onToggle(t.id) }
                                 .padding(horizontal = 9.dp, vertical = 3.dp),
-                        ) { Text(t.name, color = if (on) onColor(base) else readableHue(base, c.isDark), fontSize = 12.sp) }
+                        ) {
+                            // Scope already titles the section when headers show — the
+                            // chip repeats only the value then (web `scopeMode="hide"`).
+                            TagLabel(
+                                t.name,
+                                color = if (on) onColor(base) else readableHue(base, c.isDark),
+                                prefixNames = prefixNames,
+                                showScope = !headers,
+                            )
+                        }
                     }
                 }
             }
@@ -987,6 +1206,51 @@ private fun buildMentionItems(
     return tessera + gl
 }
 
+/** How long the composer waits after a keystroke before dry-running the draft. */
+private const val CommandPreviewDebounceMs = 400L
+
+/**
+ * «Будет применено» under the composer: one flat row per `/`-command in the draft
+ * with the backend's own wording, errors in the danger colour. Custom dictionary
+ * keys are listed apart — they are never executed and stay in the comment text,
+ * so promising an action for them would be a lie.
+ */
+@Composable
+private fun CommandPreviewStrip(
+    preview: List<website.msdnna.tessera.data.model.CommandOutcome>,
+    custom: List<String>,
+) {
+    val c = Tessera.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(c.surfaceAlt)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        preview.forEach { o ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                Text("/${o.key}", color = c.text2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    o.error.ifBlank { o.summary },
+                    color = if (o.error.isNotBlank()) TesseraDanger else c.text3,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        if (custom.isNotEmpty()) {
+            Text(
+                custom.joinToString(", ") { "/$it" } + " — останется текстом",
+                color = c.text3,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
 // ── tabs ─────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -996,6 +1260,9 @@ private fun CommentsTab(
     members: List<Member>,
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
     meId: String?,
+    commands: List<CommandItem>,
+    preview: List<website.msdnna.tessera.data.model.CommandOutcome>,
+    previewCustom: List<String>,
 ) {
     val c = Tessera.colors
     var draft by remember { mutableStateOf("") }
@@ -1075,11 +1342,26 @@ private fun CommentsTab(
         MarkdownEditor(
             value = draft,
             onValueChange = { draft = it },
-            placeholder = "Написать комментарий… (@ — упоминание)",
+            placeholder = if (commands.isEmpty()) {
+                "Написать комментарий… (@ — упоминание)"
+            } else {
+                "Написать комментарий… (@ — упоминание, / — команда)"
+            },
             minHeight = 56.dp,
             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
             mentions = mentionItems,
+            commands = commands,
         )
+        // Dry-run the draft against the backend's parser instead of re-implementing
+        // it here: the hint can never disagree with what will actually happen.
+        LaunchedEffect(draft) {
+            delay(CommandPreviewDebounceMs)
+            vm.previewCommands(draft)
+        }
+        if (preview.isNotEmpty() || previewCustom.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            CommandPreviewStrip(preview, previewCustom)
+        }
         Spacer(Modifier.height(8.dp))
         TButton("Отправить", onClick = {
             if (draft.isNotBlank()) {
@@ -1091,7 +1373,13 @@ private fun CommentsTab(
 }
 
 @Composable
-private fun SubtasksTab(vm: TaskDetailViewModel, columnId: String, subtasks: List<Task>, onOpen: (String) -> Unit) {
+private fun SubtasksTab(
+    vm: TaskDetailViewModel,
+    columnId: String,
+    subtasks: List<Task>,
+    columns: List<BoardColumn>,
+    onOpen: (String) -> Unit,
+) {
     val c = Tessera.colors
     Column(Modifier.fillMaxWidth()) {
         if (subtasks.isEmpty()) {
@@ -1122,7 +1410,19 @@ private fun SubtasksTab(vm: TaskDetailViewModel, columnId: String, subtasks: Lis
                     modifier = Modifier.weight(1f),
                 )
                 val due = shortDate(sub.dueDate)
-                if (due.isNotBlank()) Text(due, color = c.text3, fontSize = 11.sp)
+                if (due.isNotBlank()) {
+                    Text(due, color = c.text3, fontSize = 11.sp)
+                    Spacer(Modifier.width(8.dp))
+                }
+                // Status of the subtask, changeable without opening it.
+                if (columns.isNotEmpty()) {
+                    ColumnChipPicker(
+                        columns = columns,
+                        columnId = sub.columnId,
+                        mini = true,
+                        onPick = { target -> vm.moveSubtask(sub.id, target, siblingNeighbors(subtasks, sub.id)) },
+                    )
+                }
             }
             Spacer(Modifier.height(6.dp))
         }
@@ -1145,6 +1445,9 @@ private fun RelationsTab(
     var kindMenu by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
 
+    // id of the relation whose delete-confirm popover is open (null = none)
+    var confirmRemove by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(Unit) { vm.ensureRelationCandidates() }
 
     Column(Modifier.fillMaxWidth()) {
@@ -1154,6 +1457,10 @@ private fun RelationsTab(
         relations.forEach { r ->
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(RelKindLabels[r.kind] ?: r.kind, color = c.text3, fontSize = 12.sp, modifier = Modifier.width(90.dp))
+                if (isExternalSource(r.source)) {
+                    SourceBadge(sourceMeta(r.source))
+                    Spacer(Modifier.width(6.dp))
+                }
                 Row(
                     Modifier.weight(1f).clickableNoRipple { onOpen(r.relatedTaskId) },
                     verticalAlignment = Alignment.CenterVertically,
@@ -1167,7 +1474,24 @@ private fun RelationsTab(
                         textDecoration = if (r.relatedCompletedAt != null) TextDecoration.LineThrough else null,
                     )
                 }
-                IonIconButton(Ion.CLOSE, { vm.removeRelation(r.id) }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                Box {
+                    IonIconButton(Ion.CLOSE, { confirmRemove = r.id }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                    // Deleting an integration-owned relation only holds until the next
+                    // sync re-projects it — say so instead of promising it stays gone.
+                    TConfirmPopover(
+                        expanded = confirmRemove == r.id,
+                        message = if (isExternalSource(r.source)) {
+                            "Эта связь вернётся при следующем синке ${sourceMeta(r.source).label}. Удалить?"
+                        } else {
+                            "Убрать связь?"
+                        },
+                        onConfirm = {
+                            vm.removeRelation(r.id)
+                            confirmRemove = null
+                        },
+                        onDismiss = { confirmRemove = null },
+                    )
+                }
             }
         }
 

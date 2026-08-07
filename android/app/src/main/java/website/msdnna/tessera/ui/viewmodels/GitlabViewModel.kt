@@ -38,6 +38,9 @@ data class GitlabUiState(
     val saving: Boolean = false,
     // id of the binding a sync is currently running for (null = none)
     val syncingId: String? = null,
+    // true when the running sync was started as a full sweep (drives which of the
+    // two sync buttons shows the spinner)
+    val syncingFull: Boolean = false,
 )
 
 /** Owns the GitLab settings screen: the per-user connection, the per-workspace
@@ -193,17 +196,19 @@ class GitlabViewModel : ViewModel() {
         }
     }
 
-    fun sync(workspaceId: String, integrationId: String) {
+    /** [full] = true runs a full sweep (`?mode=full`) — it also re-checks issues the
+     *  incremental pull skips, so deletes and drift in GitLab land on the board. */
+    fun sync(workspaceId: String, integrationId: String, full: Boolean = false) {
         viewModelScope.launch {
-            _state.update { it.copy(syncingId = integrationId, error = null) }
+            _state.update { it.copy(syncingId = integrationId, syncingFull = full, error = null) }
             // The sync runs in the background server-side (a large batch used to drop
             // the long request). Kick it off, then poll the workspace journal for the
             // run to finish so we can still show totals.
             val baselineId = runCatching { repo.syncRuns(workspaceId).firstOrNull()?.id }.getOrNull()
             try {
-                repo.sync(workspaceId, integrationId)
+                repo.sync(workspaceId, integrationId, full)
             } catch (e: Exception) {
-                _state.update { it.copy(syncingId = null, error = errorMessage(e)) }
+                _state.update { it.copy(syncingId = null, syncingFull = false, error = errorMessage(e)) }
                 return@launch
             }
             repeat(900) {
@@ -214,10 +219,13 @@ class GitlabViewModel : ViewModel() {
                     ?: return@repeat
                 _state.update {
                     if (run.status == "error") {
-                        it.copy(syncingId = null, error = "Синхронизация не удалась: ${run.error.ifBlank { "ошибка" }}")
+                        it.copy(
+                            syncingId = null, syncingFull = false,
+                            error = "Синхронизация не удалась: ${run.error.ifBlank { "ошибка" }}",
+                        )
                     } else {
                         it.copy(
-                            syncingId = null,
+                            syncingId = null, syncingFull = false,
                             message = "Синхронизировано: ${run.createdCount + run.updatedCount} (+${run.createdCount}, ~${run.updatedCount})",
                         )
                     }
@@ -225,7 +233,9 @@ class GitlabViewModel : ViewModel() {
                 reloadIntegrations(workspaceId)
                 return@launch
             }
-            _state.update { it.copy(syncingId = null, message = "Синхронизация выполняется в фоне — см. журнал") }
+            _state.update {
+                it.copy(syncingId = null, syncingFull = false, message = "Синхронизация выполняется в фоне — см. журнал")
+            }
         }
     }
 

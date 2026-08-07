@@ -127,6 +127,7 @@ fun MainScreen(
     var membersOpen by remember { mutableStateOf(false) }
     var boardArchiveOpen by remember { mutableStateOf(false) }
     var boardTagsOpen by remember { mutableStateOf(false) }
+    var boardCommandsOpen by remember { mutableStateOf(false) }
 
     // Navigation back-stack of visited destinations (the current `dest` is the top,
     // held separately). The system Back gesture pops this instead of closing the
@@ -160,6 +161,10 @@ fun MainScreen(
                 ?: runCatching { boardRepo.boards(projectId) }.getOrNull()?.firstOrNull()
                 ?: return@launch
             navTo(MainDest.BoardView(board))
+            // Picking a sprint leaves the archive: the two are alternative scopes of the
+            // same board, and the archive listing ignores the milestone — staying in it
+            // would show archived cards under a chip promising the chosen sprint.
+            boardArchiveOpen = false
             pendingMilestoneId = milestoneId
         }
     }
@@ -352,6 +357,7 @@ fun MainScreen(
                     onMarkAll = { notifVm.markAllRead() },
                     onArchive = { boardArchiveOpen = true },
                     onTags = { boardTagsOpen = true },
+                    onCommands = { boardCommandsOpen = true },
                 )
                 HorizontalDivider(color = c.border)
 
@@ -407,8 +413,10 @@ fun MainScreen(
                                 onInitialMilestoneConsumed = { pendingMilestoneId = null },
                                 archiveOpen = boardArchiveOpen,
                                 tagsOpen = boardTagsOpen,
+                                commandsOpen = boardCommandsOpen,
                                 onCloseArchive = { boardArchiveOpen = false },
                                 onCloseTags = { boardTagsOpen = false },
+                                onCloseCommands = { boardCommandsOpen = false },
                                 onTimelineLikeChanged = { boardTimelineLike = it },
                                 onBoardGone = { if (dest is MainDest.BoardView) dest = MainDest.Home },
                             )
@@ -649,6 +657,7 @@ private fun TopBar(
     onMarkAll: () -> Unit,
     onArchive: () -> Unit,
     onTags: () -> Unit,
+    onCommands: () -> Unit,
 ) {
     val c = Tessera.colors
     var boardMenu by remember { mutableStateOf(false) }
@@ -710,6 +719,10 @@ private fun TopBar(
                     TMenuItem("Управление тегами", icon = Ion.PRICETAGS, onClick = {
                         boardMenu = false
                         onTags()
+                    })
+                    TMenuItem("Команды редактора", icon = Ion.CODE, onClick = {
+                        boardMenu = false
+                        onCommands()
                     })
                 }
             }

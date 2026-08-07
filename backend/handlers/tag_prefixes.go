@@ -41,6 +41,35 @@ func (h *API) ListTagPrefixes(c *gin.Context) {
 	c.JSON(http.StatusOK, rows)
 }
 
+// ListWorkspaceTagPrefixes returns prefix→label display names across every
+// project in a workspace — for cross-project views (Home, workspace task lists)
+// that render scoped tag pills but have no single project to scope to. Prefixes
+// are already canonical in storage; the same prefix may be labelled differently
+// per project, so rows are deduped by prefix with the first non-empty label
+// winning (query order is by prefix, so the result is stable).
+func (h *API) ListWorkspaceTagPrefixes(c *gin.Context) {
+	wsID, ok := parseID(c, "id")
+	if !ok || !h.requireMember(c, wsID) {
+		return
+	}
+	rows, err := h.q.ListWorkspaceTagPrefixes(c, wsID)
+	if err != nil {
+		fail(c)
+		return
+	}
+	seen := make(map[string]bool, len(rows))
+	out := make([]db.TagPrefix, 0, len(rows))
+	for _, r := range rows {
+		key := canonPrefix(r.Prefix)
+		if key == "" || strings.TrimSpace(r.Label) == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, r)
+	}
+	c.JSON(http.StatusOK, out)
+}
+
 // SetTagPrefixes replaces the project's full set of prefix display names. The
 // payload is the complete desired state: prefixes are canonicalised, blank
 // labels are dropped, and anything not listed is removed. Callers that only

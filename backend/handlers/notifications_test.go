@@ -9,12 +9,12 @@ import (
 
 func TestShortCtx(t *testing.T) {
 	cases := map[string]string{
-		"Починить чайник":    " «Починить чайник»", // 15 runes → inlined
-		"0123456789012345":   " «0123456789012345»", // exactly 16 → inlined
-		"01234567890123456":  "",                    // 17 runes → omitted
-		"":                   "",
-		"   ":                "",
-		"  Полить цветы  ":   " «Полить цветы»", // trimmed, then short
+		"Починить чайник":   " «Починить чайник»",  // 15 runes → inlined
+		"0123456789012345":  " «0123456789012345»", // exactly 16 → inlined
+		"01234567890123456": "",                    // 17 runes → omitted
+		"":                  "",
+		"   ":               "",
+		"  Полить цветы  ":  " «Полить цветы»", // trimmed, then short
 	}
 	for in, want := range cases {
 		if got := shortCtx(in); got != want {
