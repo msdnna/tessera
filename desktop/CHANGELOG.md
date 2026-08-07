@@ -4,6 +4,13 @@ All notable changes to the Tessera desktop app (Tauri v2) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/). The desktop app
 is versioned independently (`desktop/VERSION`), like the other components.
 
+## [0.2.3] — 2026-08-07
+
+- **Пересборка с обновлённым веб-фронтом.** Desktop — обёртка над веб-фронтом, и в
+  бандл нужно вложить свежую сборку frontend'а (перф-правки «вечного лоадера» и
+  сопутствующие фиксы). Код/конфиг обёртки не менялись — бамп нужен, чтобы выпустить
+  новый инсталлятор с актуальным фронтом.
+
 ## [0.2.2] — 2026-07-28
 
 - **Ребрендинг иконок → tessera-brand-v2.** Набор иконок Tauri
