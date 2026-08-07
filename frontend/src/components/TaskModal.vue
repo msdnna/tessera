@@ -249,6 +249,9 @@ const membersById = computed(() =>
 const comments = ref([])
 const commentsPane = ref(null) // the .comments container (narrow-layout scroll fallback)
 const commentsListEl = ref(null) // the .c-list — the internal scroller in wide layout
+// Gates the enter fade to genuinely-new comments: false during a task's initial
+// population (the whole thread shouldn't fade in on open), flipped true once loaded.
+const commentsHydrated = ref(false)
 const detailTabs = ref(null)
 const newComment = ref('')
 const commentEditor = ref(null)
@@ -609,6 +612,8 @@ let scrollOnOpen = false
 // should block the modal opening, so failures are swallowed individually.
 async function loadExtras() {
   const id = props.taskId
+  // Populate the thread without the enter fade (only later, user-posted comments fade).
+  commentsHydrated.value = false
   const [c, r, a, e] = await Promise.allSettled([
     tasksApi.comments(id),
     tasksApi.relations(id),
@@ -622,8 +627,10 @@ async function loadExtras() {
   // On open, land on the newest comment — but only in the wide layout, where the
   // right column scrolls on its own. In the stacked layout the whole modal scrolls,
   // and jumping to the bottom would skip past the title and description.
-  if (scrollOnOpen && wide.value) scrollCommentsToBottom(false)
+  if (scrollOnOpen && wide.value) scrollCommentsToBottom()
   scrollOnOpen = false
+  // Enable the enter fade only after this population has rendered.
+  nextTick(() => (commentsHydrated.value = true))
 }
 
 watch(
@@ -1048,23 +1055,30 @@ function fmtWhen(d) {
     minute: '2-digit',
   })
 }
-// Scroll the comments pane to its bottom (the latest message, just above the
-// sticky composer) so a freshly-sent comment isn't hidden behind the input, and
-// a re-opened task lands on the newest activity. The scroll container is the
-// right column in the wide layout, the modal body in the stacked one; scrollParent
-// resolves it (and returns null if nothing scrolls — then a no-op).
-async function scrollCommentsToBottom(smooth) {
+// Scroll the comments to the bottom (the newest message) so a freshly-sent comment
+// isn't hidden behind the composer and a re-opened task lands on the latest activity.
+// Pins to the bottom across several frames until the height stops changing — late
+// reflow (web-font swap, async markdown/avatars) otherwise strands a long thread
+// mid-way. Instant, not smooth: a smooth animation races that same reflow and stops
+// short. The scroller is .c-list in the wide layout, the modal body in the stacked
+// one (resolved via scrollParent; null → nothing scrolls, no-op).
+async function scrollCommentsToBottom() {
   await nextTick()
-  // Wide layout: the comment list (.c-list) scrolls inside a fixed-height pane.
-  // Narrow layout: the whole modal scrolls — walk up to that scroller. Wait a frame
-  // so a just-posted (possibly tall) comment and the reset composer have laid out
-  // before we measure scrollHeight, otherwise the jump lands short and clips it.
   const list = commentsListEl.value
   const sp = list && list.scrollHeight > list.clientHeight ? list : scrollParent(commentsPane.value)
   if (!sp) return
-  requestAnimationFrame(() => {
-    sp.scrollTo({ top: sp.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
-  })
+  let last = -1
+  let stable = 0
+  let frames = 0
+  const pin = () => {
+    sp.scrollTop = sp.scrollHeight
+    if (sp.scrollHeight === last) stable += 1
+    else stable = 0
+    last = sp.scrollHeight
+    // Stop once the height has held for a few frames, or after a hard cap (~0.5s).
+    if (stable < 3 && ++frames < 30) requestAnimationFrame(pin)
+  }
+  pin()
 }
 
 // ── offline retry for a comment POST ──
@@ -1124,7 +1138,7 @@ async function postComment() {
           reportCommands(summary)
         }
         emit('changed')
-        scrollCommentsToBottom(true)
+        scrollCommentsToBottom()
         return
       } catch (e) {
         // Only "server unreachable" is worth retrying; an HTTP error (4xx/5xx) is
@@ -1995,7 +2009,7 @@ function eventText(e) {
                     <!-- display:contents wrapper (.c-items) so the comment rows stay
                          direct flex children of .c-list; only newly-posted comments
                          fade in (no `appear`, so the initial list doesn't animate). -->
-                    <TransitionGroup name="c-fade" tag="div" class="c-items">
+                    <TransitionGroup :name="commentsHydrated ? 'c-fade' : ''" tag="div" class="c-items">
                       <div v-for="c in comments" :key="c.id" class="comment">
                       <UserAvatar
                         class="c-ava"
@@ -3333,6 +3347,11 @@ function eventText(e) {
   flex-direction: column;
   gap: 12px;
   flex: 1 1 auto;
+  /* When a comment is appended while scrolled to the bottom, the browser's scroll
+     anchoring tries to keep an upper element fixed and nudges scrollTop — which read
+     as a "bounce" (the top comment briefly slid under the pinned tabs). We pin to the
+     bottom ourselves, so let the anchor go. */
+  overflow-anchor: none;
 }
 .c-empty {
   margin: auto 0;
@@ -3341,22 +3360,18 @@ function eventText(e) {
 .c-items {
   display: contents;
 }
-/* Newly-posted comments ease in (softer than a hard pop). */
+/* Newly-posted comments ease in — opacity only. A translate would shift layout mid-
+   scroll and fight the bottom-pin (the "bounce" where the top row clipped under the
+   tabs), so the motion is a pure fade. */
 .c-fade-enter-active {
-  transition:
-    opacity 0.25s ease,
-    transform 0.25s ease;
+  transition: opacity 0.25s ease;
 }
 .c-fade-enter-from {
   opacity: 0;
-  transform: translateY(6px);
 }
 @media (prefers-reduced-motion: reduce) {
   .c-fade-enter-active {
     transition: none;
-  }
-  .c-fade-enter-from {
-    transform: none;
   }
 }
 .comment {
