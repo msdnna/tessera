@@ -79,6 +79,11 @@ function setValue(v) {
 function autoGrow() {
   const el = ta.value
   if (!el) return
+  // Skip while the editor has no width — e.g. inside a collapsed panel (grid track
+  // at 0fr). scrollHeight measured at ~0 width explodes (text wraps per glyph),
+  // which would leave a giant textarea once the panel is shown again. The height is
+  // recomputed via the exposed autoGrow() when the panel reappears.
+  if (el.clientWidth === 0) return
   const sp = scrollParent(el)
   const top = sp ? sp.scrollTop : null
   el.style.height = 'auto'
@@ -484,7 +489,7 @@ function clear() {
 function focus() {
   ta.value?.focus()
 }
-defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode })
+defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, autoGrow })
 </script>
 
 <template>

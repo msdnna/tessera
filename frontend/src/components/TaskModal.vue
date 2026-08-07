@@ -178,6 +178,10 @@ function toggleRightPane() {
   } catch {
     /* storage disabled — non-fatal */
   }
+  // The composer's textarea can't measure its height while the panel is collapsed
+  // (0-width) — recompute it once the panel is visible again, or it stays at
+  // whatever it last measured.
+  if (!rightHidden.value) nextTick(() => commentEditor.value?.autoGrow?.())
 }
 
 // grid-template-columns for .form (ignored in the stacked flex layout). The 14px
@@ -243,7 +247,8 @@ const membersById = computed(() =>
 )
 
 const comments = ref([])
-const commentsPane = ref(null) // the .comments container, for scroll-to-latest
+const commentsPane = ref(null) // the .comments container (narrow-layout scroll fallback)
+const commentsListEl = ref(null) // the .c-list — the internal scroller in wide layout
 const detailTabs = ref(null)
 const newComment = ref('')
 const commentEditor = ref(null)
@@ -596,8 +601,10 @@ async function loadSiblings(t) {
   }
 }
 
-// Task id we've already auto-scrolled on open, so it happens once per open.
-let openScrolledId = null
+// Set when the modal (re)opens; consumed once by loadExtras to auto-scroll the
+// comments to the newest — so opening scrolls to the bottom, but an in-place
+// reload (a move, a subtask edit) does not yank the view back down.
+let scrollOnOpen = false
 // Comments / relations / attachments / journal load in parallel — none of them
 // should block the modal opening, so failures are swallowed individually.
 async function loadExtras() {
@@ -612,21 +619,20 @@ async function loadExtras() {
   relations.value = r.status === 'fulfilled' ? r.value.data || [] : []
   attachments.value = a.status === 'fulfilled' ? a.value.data || [] : []
   events.value = e.status === 'fulfilled' ? e.value.data || [] : []
-  // On first load of this task, land on the newest comment — but only in the wide
-  // layout, where the right column scrolls on its own. In the stacked layout the
-  // whole modal scrolls, and jumping to the bottom would skip past the title and
-  // description. Guarded by task id so later reloads (moves, subtask edits) don't
-  // yank the view back down.
-  if (wide.value && openScrolledId !== id) {
-    openScrolledId = id
-    scrollCommentsToBottom(false)
-  }
+  // On open, land on the newest comment — but only in the wide layout, where the
+  // right column scrolls on its own. In the stacked layout the whole modal scrolls,
+  // and jumping to the bottom would skip past the title and description.
+  if (scrollOnOpen && wide.value) scrollCommentsToBottom(false)
+  scrollOnOpen = false
 }
 
 watch(
   () => [props.show, props.taskId],
   ([show]) => {
-    if (show) loadDetail()
+    if (show) {
+      scrollOnOpen = true
+      loadDetail()
+    }
   },
 )
 
@@ -1049,9 +1055,16 @@ function fmtWhen(d) {
 // resolves it (and returns null if nothing scrolls — then a no-op).
 async function scrollCommentsToBottom(smooth) {
   await nextTick()
-  const sp = scrollParent(commentsPane.value)
+  // Wide layout: the comment list (.c-list) scrolls inside a fixed-height pane.
+  // Narrow layout: the whole modal scrolls — walk up to that scroller. Wait a frame
+  // so a just-posted (possibly tall) comment and the reset composer have laid out
+  // before we measure scrollHeight, otherwise the jump lands short and clips it.
+  const list = commentsListEl.value
+  const sp = list && list.scrollHeight > list.clientHeight ? list : scrollParent(commentsPane.value)
   if (!sp) return
-  sp.scrollTo({ top: sp.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  requestAnimationFrame(() => {
+    sp.scrollTo({ top: sp.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  })
 }
 
 // ── offline retry for a comment POST ──
@@ -1092,7 +1105,8 @@ async function postComment() {
   const mentions = commentEditor.value?.getMentions?.() || []
   posting.value = true
   try {
-    for (let attempt = 1; attempt <= RETRY_BACKOFFS.length + 1; attempt++) {
+    // attempt 0 is the initial send; 1..N are retries, each preceded by its backoff.
+    for (let attempt = 0; attempt <= RETRY_BACKOFFS.length; attempt++) {
       try {
         const res = await tasksApi.addComment(props.taskId, body, mentions)
         retryInfo.value = null
@@ -1115,13 +1129,13 @@ async function postComment() {
       } catch (e) {
         // Only "server unreachable" is worth retrying; an HTTP error (4xx/5xx) is
         // the server rejecting the comment — resending won't change that.
-        const backoff = RETRY_BACKOFFS[attempt - 1]
+        const backoff = RETRY_BACKOFFS[attempt]
         if (!e.offline || backoff == null) {
           retryInfo.value = null
           message.error(e.offline ? 'Сервер недоступен — комментарий не отправлен' : e.message)
           return
         }
-        retryInfo.value = { attempt: attempt + 1, max: RETRY_BACKOFFS.length + 1 }
+        retryInfo.value = { attempt: attempt + 1, max: RETRY_BACKOFFS.length }
         if (!(await waitOrCancel(backoff))) return // cancelled by the user
       }
     }
@@ -1335,9 +1349,13 @@ function eventText(e) {
         <template #icon><TesseraSpinner /></template>
         <div ref="formEl" class="form" :style="{ '--tm-cols': splitCols }">
           <div class="modal-head">
-            <n-popover trigger="click" placement="bottom-start">
+            <!-- Render the breadcrumb popover only when there's a breadcrumb: an
+                 n-popover #trigger slot must resolve to exactly one child, and an
+                 empty breadcrumb (before boardInfo loads, or if it fails) left the
+                 slot empty and threw during render, white-screening the modal. -->
+            <n-popover v-if="breadcrumb.length" trigger="click" placement="bottom-start">
               <template #trigger>
-                <div v-if="breadcrumb.length" class="crumbs" title="Перенести в другую доску">
+                <div class="crumbs" title="Перенести в другую доску">
                   <template v-for="(c, i) in breadcrumb" :key="i">
                     <span class="crumb">{{ c }}</span>
                     <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
@@ -1973,8 +1991,12 @@ function eventText(e) {
                   </span>
                 </template>
                 <div ref="commentsPane" class="comments">
-                  <div class="c-list">
-                    <div v-for="c in comments" :key="c.id" class="comment">
+                  <div ref="commentsListEl" class="c-list">
+                    <!-- display:contents wrapper (.c-items) so the comment rows stay
+                         direct flex children of .c-list; only newly-posted comments
+                         fade in (no `appear`, so the initial list doesn't animate). -->
+                    <TransitionGroup name="c-fade" tag="div" class="c-items">
+                      <div v-for="c in comments" :key="c.id" class="comment">
                       <UserAvatar
                         class="c-ava"
                         :user-id="c.author_id || ''"
@@ -2031,7 +2053,8 @@ function eventText(e) {
                           @toggle="onCommentCheck(c, $event)"
                         />
                       </div>
-                    </div>
+                      </div>
+                    </TransitionGroup>
                     <EmptyState
                       v-if="!comments.length"
                       class="c-empty"
@@ -2482,21 +2505,59 @@ function eventText(e) {
     cursor: col-resize;
     touch-action: none;
   }
+  /* The right column is a fixed-height flex box that does NOT scroll as a whole:
+     the tab strip stays pinned while the active pane scrolls inside it (so
+     scrolling comments never carry the tabs off-screen). The footer lives in the
+     card's #footer slot so it stays pinned full-width. */
   .tm-col-right {
     grid-column: 3;
-    display: block;
     min-width: 0;
+    max-height: calc(90vh - 210px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
-  /* Independent scroll per column; footer lives in the card's
-     #footer slot so it stays pinned full-width. Viewport-based cap avoids
-     depending on the n-card/n-spin height cascade. */
-  .tm-col-left,
-  .tm-col-right {
+  .tm-col-left {
     max-height: calc(90vh - 210px);
     overflow-y: auto;
-    /* Reserve the scrollbar gutter always, so revealing the bar on hover doesn't
-       reflow the content (was causing a visible jitter). The thumb stays
-       transparent until hover / focus — idle modal still reads clean. */
+  }
+  /* The tabs fill the right column; the nav is pinned (flex:none), the active pane
+     takes the rest and scrolls. */
+  .tm-col-right .detail-tabs {
+    margin: 0;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .detail-tabs :deep(.n-tabs-nav) {
+    flex: none;
+  }
+  .detail-tabs :deep(.n-tab-pane) {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Comments tab: the list scrolls internally, the composer is a pinned footer that
+     sits OUTSIDE the scroll area — so scrolling content can't bleed under its top
+     border (which the previous position:sticky composer did). */
+  .tm-col-right .comments {
+    flex: 1;
+    min-height: 0;
+  }
+  .tm-col-right .c-list {
+    overflow-y: auto;
+  }
+  .tm-col-right .comment-add {
+    position: static;
+  }
+  /* Idle: reserved gutter, transparent thumb; reveal on hover/focus — one skin for
+     all three scrollers (left column, the active tab pane, the comment list). */
+  .tm-col-left,
+  .detail-tabs :deep(.n-tab-pane),
+  .tm-col-right .c-list {
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
@@ -2504,16 +2565,20 @@ function eventText(e) {
   }
   .tm-col-left:hover,
   .tm-col-left:focus-within,
-  .tm-col-right:hover,
-  .tm-col-right:focus-within {
+  .detail-tabs :deep(.n-tab-pane):hover,
+  .detail-tabs :deep(.n-tab-pane):focus-within,
+  .tm-col-right .c-list:hover,
+  .tm-col-right .c-list:focus-within {
     scrollbar-color: var(--t-border) transparent;
   }
   .tm-col-left::-webkit-scrollbar,
-  .tm-col-right::-webkit-scrollbar {
+  .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar,
+  .tm-col-right .c-list::-webkit-scrollbar {
     width: 10px;
   }
   .tm-col-left::-webkit-scrollbar-thumb,
-  .tm-col-right::-webkit-scrollbar-thumb {
+  .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar-thumb,
+  .tm-col-right .c-list::-webkit-scrollbar-thumb {
     border-radius: 5px;
     border: 3px solid transparent;
     background: transparent;
@@ -2521,14 +2586,12 @@ function eventText(e) {
   }
   .tm-col-left:hover::-webkit-scrollbar-thumb,
   .tm-col-left:focus-within::-webkit-scrollbar-thumb,
-  .tm-col-right:hover::-webkit-scrollbar-thumb,
-  .tm-col-right:focus-within::-webkit-scrollbar-thumb {
+  .detail-tabs :deep(.n-tab-pane):hover::-webkit-scrollbar-thumb,
+  .detail-tabs :deep(.n-tab-pane):focus-within::-webkit-scrollbar-thumb,
+  .tm-col-right .c-list:hover::-webkit-scrollbar-thumb,
+  .tm-col-right .c-list:focus-within::-webkit-scrollbar-thumb {
     background: var(--t-border);
     background-clip: padding-box;
-  }
-  /* Align the right column's tabs with the left column's first property row. */
-  .tm-col-right .detail-tabs {
-    margin-top: 0;
   }
 }
 .title-input :deep(input) {
@@ -2546,6 +2609,8 @@ function eventText(e) {
   align-items: center;
   gap: 8px;
   flex: none;
+  /* Stay pinned right even when the breadcrumb (the other flex child) is absent. */
+  margin-left: auto;
 }
 .tnum {
   font-size: 12px;
@@ -3271,6 +3336,28 @@ function eventText(e) {
 }
 .c-empty {
   margin: auto 0;
+}
+/* Wrapper generates no box — comment rows stay direct flex children of .c-list. */
+.c-items {
+  display: contents;
+}
+/* Newly-posted comments ease in (softer than a hard pop). */
+.c-fade-enter-active {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+.c-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .c-fade-enter-active {
+    transition: none;
+  }
+  .c-fade-enter-from {
+    transform: none;
+  }
 }
 .comment {
   display: flex;
