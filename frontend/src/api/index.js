@@ -80,6 +80,11 @@ api.interceptors.response.use(
     // few need to tell one failure from another (e.g. 409 "address taken" is
     // fixable inline, everything else is a toast).
     wrapped.status = err.response?.status
+    // Distinguish "server unreachable" (network/DNS/timeout — no response at all)
+    // from an HTTP error the server answered with. Callers that retry (e.g. the
+    // comment composer) only retry when offline; a 4xx/5xx is not a connectivity
+    // problem and must not be re-sent.
+    wrapped.offline = !reached
     return Promise.reject(wrapped)
   },
 )

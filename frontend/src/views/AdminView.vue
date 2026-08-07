@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { NButton, NTag, NPopconfirm, NIcon, NSpin, NInput, NSwitch, useMessage } from 'naive-ui'
 import { ShieldCheckmarkOutline, KeyOutline, SearchOutline, LogoGitlab } from '@vicons/ionicons5'
 import { admin } from '@/api'
+import { copyText } from '@/utils/clipboard'
 import { useAuthStore } from '@/stores/auth'
 import UserAvatar from '@/components/UserAvatar.vue'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
@@ -70,8 +71,8 @@ async function copyResetLink(u) {
     // The backend returns a path-only link when PUBLIC_URL is unset — qualify it
     // against the current origin so the copied value is always clickable.
     const full = link.startsWith('http') ? link : `${window.location.origin}${link}`
-    await navigator.clipboard.writeText(full)
-    message.success('Ссылка для сброса пароля скопирована')
+    if (await copyText(full)) message.success('Ссылка для сброса пароля скопирована')
+    else message.info(full)
   } catch (e) {
     message.error(e.message)
   } finally {

@@ -10,6 +10,7 @@ import {
   LinkOutline,
   CloseOutline,
 } from '@vicons/ionicons5'
+import { copyText } from '@/utils/clipboard'
 import UserAvatar from './UserAvatar.vue'
 
 // A transient, bottom-left stack of board-activity toasts: who
@@ -54,21 +55,7 @@ function open(t) {
 async function copyLink(t) {
   const num = t.number ?? t.id
   const url = `${location.origin}${location.pathname}?task=${num}`
-  try {
-    await navigator.clipboard.writeText(url)
-  } catch {
-    // Fallback for insecure contexts / older webviews.
-    const el = document.createElement('textarea')
-    el.value = url
-    document.body.appendChild(el)
-    el.select()
-    try {
-      document.execCommand('copy')
-    } catch {
-      /* give up silently */
-    }
-    document.body.removeChild(el)
-  }
+  await copyText(url)
   t.copied = true
   setTimeout(() => (t.copied = false), 1600)
 }

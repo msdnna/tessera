@@ -13,7 +13,9 @@ import { uploads as uploadsApi } from '@/api'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { detectSlashQuery, matchCommands, commandInsertText } from '@/utils/commands'
 import { isTauri } from '@/utils/serverBase'
+import { scrollParent } from '@/utils/dom'
 import RichContent from './RichContent.vue'
+import TesseraSpinner from './TesseraSpinner.vue'
 import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({
@@ -36,6 +38,9 @@ const props = defineProps({
   variant: { type: String, default: 'default' },
   // Boxed only: show a send button in the toolbar that emits `submit`.
   send: { type: Boolean, default: false },
+  // Boxed + send only: the parent is posting — the send button shows a spinner and
+  // both the button and Ctrl+Enter are inert until it clears (no double-submit).
+  sending: { type: Boolean, default: false },
   // Default variant only: render the built-in top toolbar. Set false to host the
   // actions elsewhere (e.g. the description's header) via the exposed methods +
   // `update:mode` — see TaskModal's .desc-head.
@@ -51,6 +56,7 @@ function toggleMode() {
   mode.value = mode.value === 'write' ? 'preview' : 'write'
 }
 function onSend() {
+  if (props.sending) return
   emit('submit')
 }
 watch(
@@ -68,18 +74,6 @@ function setValue(v) {
   emit('update:modelValue', v)
 }
 
-// The nearest scrollable ancestor (the modal body) — its scrollTop must be
-// restored around the height reset, or the `height:auto` reflow makes the
-// browser re-anchor the (focused) textarea and the modal jumps.
-function scrollParent(el) {
-  let p = el?.parentElement
-  while (p) {
-    const oy = getComputedStyle(p).overflowY
-    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p
-    p = p.parentElement
-  }
-  return null
-}
 // Auto-grow: the textarea height follows its content so long text isn't trapped
 // behind an inner scrollbar (the modal scrolls instead).
 function autoGrow() {
@@ -471,6 +465,7 @@ function onKeydown(e) {
   }
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault()
+    if (props.sending) return
     emit('submit')
   }
 }
@@ -566,56 +561,60 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
             </div>
           </Transition>
 
-          <ul
-            v-if="mq && !isCmd && mentionMatches.length"
-            ref="sugEl"
-            class="md2-mentions"
-            :style="sugPos"
-          >
-            <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
-              <li
-                v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)"
-                class="md2-mention-sep"
-              >
-                GitLab
-              </li>
-              <li
-                class="md2-mention-item"
-                :class="{ active: i === mqIndex }"
-                @mousedown.prevent="pickSuggest(m)"
-              >
-                <UserAvatar
-                  class="md2-mention-av"
-                  :user-id="m.avatarUserId"
-                  :src="m.avatarSrc"
-                  :name="m.display || m.label"
-                />
-                <span class="md2-mention-name">{{ m.display || m.label }}</span>
-              </li>
-            </template>
-          </ul>
+          <Transition name="md2-sug">
+            <ul
+              v-if="mq && !isCmd && mentionMatches.length"
+              ref="sugEl"
+              class="md2-mentions"
+              :style="sugPos"
+            >
+              <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
+                <li
+                  v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)"
+                  class="md2-mention-sep"
+                >
+                  GitLab
+                </li>
+                <li
+                  class="md2-mention-item"
+                  :class="{ active: i === mqIndex }"
+                  @mousedown.prevent="pickSuggest(m)"
+                >
+                  <UserAvatar
+                    class="md2-mention-av"
+                    :user-id="m.avatarUserId"
+                    :src="m.avatarSrc"
+                    :name="m.display || m.label"
+                  />
+                  <span class="md2-mention-name">{{ m.display || m.label }}</span>
+                </li>
+              </template>
+            </ul>
+          </Transition>
 
           <!-- Quick actions: `/ключ` in mono plus the description, GitLab-style.
                Custom (dictionary) entries carry a neutral badge — they are hints
                for a human reader, the backend never executes them. -->
-          <ul
-            v-if="mq && isCmd && commandMatches.length"
-            ref="sugEl"
-            class="md2-mentions md2-cmds"
-            :style="sugPos"
-          >
-            <li
-              v-for="(cmd, i) in commandMatches"
-              :key="cmd.key"
-              class="md2-mention-item md2-cmd-item"
-              :class="{ active: i === mqIndex }"
-              @mousedown.prevent="pickSuggest(cmd)"
+          <Transition name="md2-sug">
+            <ul
+              v-if="mq && isCmd && commandMatches.length"
+              ref="sugEl"
+              class="md2-mentions md2-cmds"
+              :style="sugPos"
             >
-              <code class="md2-cmd-key">/{{ cmd.key }}</code>
-              <span class="md2-cmd-desc">{{ cmd.description }}</span>
-              <span v-if="!cmd.builtin" class="md2-cmd-tag">свои</span>
-            </li>
-          </ul>
+              <li
+                v-for="(cmd, i) in commandMatches"
+                :key="cmd.key"
+                class="md2-mention-item md2-cmd-item"
+                :class="{ active: i === mqIndex }"
+                @mousedown.prevent="pickSuggest(cmd)"
+              >
+                <code class="md2-cmd-key">/{{ cmd.key }}</code>
+                <span class="md2-cmd-desc">{{ cmd.description }}</span>
+                <span v-if="!cmd.builtin" class="md2-cmd-tag">свои</span>
+              </li>
+            </ul>
+          </Transition>
         </div>
 
         <RichContent
@@ -679,10 +678,13 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
           v-if="send"
           type="button"
           class="md2-send"
-          title="Отправить (Ctrl+Enter)"
+          :class="{ busy: sending }"
+          :disabled="sending"
+          :title="sending ? 'Отправка…' : 'Отправить (Ctrl+Enter)'"
           @mousedown.prevent="onSend"
         >
-          <n-icon :component="SendOutline" :size="16" />
+          <TesseraSpinner v-if="sending" :size="16" variant="white" />
+          <n-icon v-else :component="SendOutline" :size="16" />
         </button>
       </div>
     </div>
@@ -867,6 +869,34 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Suggestion popup enter/leave: soft fade + a short rise. Position is driven by
+   `top`/`left` (inline :style), so the animation is free to use `transform`
+   without fighting the fixed positioning / flip-up logic. */
+.md2-sug-enter-active {
+  transition:
+    opacity 0.12s ease-out,
+    transform 0.12s ease-out;
+}
+.md2-sug-leave-active {
+  transition:
+    opacity 0.09s ease-in,
+    transform 0.09s ease-in;
+}
+.md2-sug-enter-from,
+.md2-sug-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .md2-sug-enter-active,
+  .md2-sug-leave-active {
+    transition: none;
+  }
+  .md2-sug-enter-from,
+  .md2-sug-leave-to {
+    transform: none;
+  }
+}
 .md2-cmds {
   min-width: 280px;
 }
@@ -995,5 +1025,9 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode }
 }
 .md2-send:hover {
   filter: brightness(1.06);
+}
+.md2-send.busy {
+  cursor: default;
+  filter: none;
 }
 </style>

@@ -119,11 +119,25 @@ describe('api error handling', () => {
     expect(connection.offline).toBe(true)
   })
 
+  it('tags a network error with offline=true so callers can retry', async () => {
+    instanceAdapter.mockImplementation(() => {
+      const err = new Error('Network Error')
+      err.isAxiosError = true
+      return Promise.reject(err)
+    })
+    await expect(auth.me()).rejects.toMatchObject({ offline: true })
+  })
+
   it('a reached error response leaves offline false', async () => {
     connection.offline = true
     instanceAdapter.mockImplementation((config) => fail(config, 500, { error: 'boom' }))
     await expect(auth.me()).rejects.toThrow()
     expect(connection.offline).toBe(false)
+  })
+
+  it('an HTTP error carries offline=false (not a connectivity failure)', async () => {
+    instanceAdapter.mockImplementation((config) => fail(config, 500, { error: 'boom' }))
+    await expect(auth.me()).rejects.toMatchObject({ offline: false })
   })
 })
 

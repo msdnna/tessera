@@ -51,6 +51,9 @@ import {
   GitNetworkOutline,
   EyeOutline,
   CreateOutline,
+  ShareSocialOutline,
+  ChevronForwardOutline,
+  ChevronBackOutline,
 } from '@vicons/ionicons5'
 import {
   tasks as tasksApi,
@@ -77,6 +80,10 @@ import {
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
 import { isTauri } from '@/utils/serverBase'
+import { taskLink } from '@/utils/taskLink'
+import { copyText } from '@/utils/clipboard'
+import { scrollParent } from '@/utils/dom'
+import { useResponsive } from '@/composables/useResponsive'
 import {
   formatEstimate,
   formatEstimateFull,
@@ -153,14 +160,38 @@ function loadSplitRatio() {
   const v = parseFloat(localStorage.getItem(SPLIT_KEY))
   return v >= SPLIT_MIN && v <= SPLIT_MAX ? v : 0.46
 }
-// grid-template-columns for .form (ignored in the stacked flex layout). The 8px
-// middle track is the divider handle.
-const splitCols = computed(
-  () => `minmax(0, ${splitRatio.value}fr) 14px minmax(0, ${1 - splitRatio.value}fr)`,
-)
+
+// ── wide-screen only: hide the right column (tabs) to focus on the task's own
+// fields + description. Two handles reach it (a header button and a double-click
+// on the divider grip), since a bare 14px grip isn't a touch target. Persisted in
+// localStorage (non-critical UX state). In the stacked layout the right column IS
+// the comments in the main flow — hiding it would hide the conversation — so the
+// button is gated on `wide` and the state is a no-op there. ──
+const { isMobile: narrow } = useResponsive(1099)
+const wide = computed(() => !narrow.value)
+const PANE_KEY = 'tessera_task_pane'
+const rightHidden = ref(localStorage.getItem(PANE_KEY) === 'hidden')
+function toggleRightPane() {
+  rightHidden.value = !rightHidden.value
+  try {
+    localStorage.setItem(PANE_KEY, rightHidden.value ? 'hidden' : 'shown')
+  } catch {
+    /* storage disabled — non-fatal */
+  }
+}
+
+// grid-template-columns for .form (ignored in the stacked flex layout). The 14px
+// middle track is the divider handle; when the right column is hidden its track
+// collapses to 0fr (the .form transition animates the reflow).
+const splitCols = computed(() => {
+  if (rightHidden.value) return `minmax(0, 1fr) 14px 0fr`
+  return `minmax(0, ${splitRatio.value}fr) 14px minmax(0, ${1 - splitRatio.value}fr)`
+})
 let splitDragging = false
 function startSplitDrag(e) {
-  if (!formEl.value) return
+  // Don't start a resize when there's no right column to resize (collapsed or the
+  // stacked layout) — dragging would otherwise "revive" the hidden panel.
+  if (!formEl.value || rightHidden.value || !wide.value) return
   splitDragging = true
   e.preventDefault()
   window.addEventListener('pointermove', onSplitDrag)
@@ -212,11 +243,36 @@ const membersById = computed(() =>
 )
 
 const comments = ref([])
+const commentsPane = ref(null) // the .comments container, for scroll-to-latest
 const detailTabs = ref(null)
 const newComment = ref('')
 const commentEditor = ref(null)
 const editingCommentId = ref(null)
 const editingCommentBody = ref('')
+// True while a comment POST is in flight (spinner on the send button, guards
+// double-submit); retryInfo holds { attempt, max } while waiting to retry an
+// offline send, else null.
+const posting = ref(false)
+const retryInfo = ref(null)
+
+// ── «Поделиться»: copy a shareable link to this task ──
+// The link (/board/<id>?task=<n>) self-canonicalizes to slugs, so it is correct
+// regardless of which board/workspace the modal was opened from. On copy the
+// share icon morphs into a checkmark for 1.6s — that IS the confirmation (no toast).
+const shareUrl = computed(() => taskLink(task.value))
+const shared = ref(false)
+let shareTimer = null
+async function shareTask() {
+  const url = shareUrl.value
+  if (!url) return
+  if (!(await copyText(url))) {
+    message.error('Не удалось скопировать ссылку')
+    return
+  }
+  shared.value = true
+  clearTimeout(shareTimer)
+  shareTimer = setTimeout(() => (shared.value = false), 1600)
+}
 
 // ── quick actions ──
 // The command registry is workspace-wide (loaded once by the store); the popup
@@ -252,9 +308,17 @@ watch(
     clearTimeout(cmdTimer)
     cmdPreview.value = []
     cmdCustom.value = []
+    // Reset per-task transient UI (share confirmation, a pending offline retry).
+    shared.value = false
+    clearTimeout(shareTimer)
+    cancelRetry()
   },
 )
-onBeforeUnmount(() => clearTimeout(cmdTimer))
+onBeforeUnmount(() => {
+  clearTimeout(cmdTimer)
+  clearTimeout(shareTimer)
+  cancelRetry()
+})
 
 const relations = ref([])
 const relNumber = ref(null)
@@ -532,6 +596,8 @@ async function loadSiblings(t) {
   }
 }
 
+// Task id we've already auto-scrolled on open, so it happens once per open.
+let openScrolledId = null
 // Comments / relations / attachments / journal load in parallel — none of them
 // should block the modal opening, so failures are swallowed individually.
 async function loadExtras() {
@@ -546,6 +612,15 @@ async function loadExtras() {
   relations.value = r.status === 'fulfilled' ? r.value.data || [] : []
   attachments.value = a.status === 'fulfilled' ? a.value.data || [] : []
   events.value = e.status === 'fulfilled' ? e.value.data || [] : []
+  // On first load of this task, land on the newest comment — but only in the wide
+  // layout, where the right column scrolls on its own. In the stacked layout the
+  // whole modal scrolls, and jumping to the bottom would skip past the title and
+  // description. Guarded by task id so later reloads (moves, subtask edits) don't
+  // yank the view back down.
+  if (wide.value && openScrolledId !== id) {
+    openScrolledId = id
+    scrollCommentsToBottom(false)
+  }
 }
 
 watch(
@@ -967,28 +1042,92 @@ function fmtWhen(d) {
     minute: '2-digit',
   })
 }
+// Scroll the comments pane to its bottom (the latest message, just above the
+// sticky composer) so a freshly-sent comment isn't hidden behind the input, and
+// a re-opened task lands on the newest activity. The scroll container is the
+// right column in the wide layout, the modal body in the stacked one; scrollParent
+// resolves it (and returns null if nothing scrolls — then a no-op).
+async function scrollCommentsToBottom(smooth) {
+  await nextTick()
+  const sp = scrollParent(commentsPane.value)
+  if (!sp) return
+  sp.scrollTo({ top: sp.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+}
+
+// ── offline retry for a comment POST ──
+// A network error (server unreachable — err.offline) is retried a few times with
+// a growing backoff; an HTTP error is not (the server answered — resending won't
+// help). The draft is preserved throughout, and a banner under the composer shows
+// progress with a Cancel that aborts the wait.
+const RETRY_BACKOFFS = [2000, 5000, 10000]
+let retryTimer = null
+let retryResolve = null
+// Wait `ms`, resolving true on timeout or false if cancelRetry() fires first.
+function waitOrCancel(ms) {
+  return new Promise((resolve) => {
+    retryResolve = resolve
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      retryResolve = null
+      resolve(true)
+    }, ms)
+  })
+}
+function cancelRetry() {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+  if (retryResolve) {
+    const r = retryResolve
+    retryResolve = null
+    r(false)
+  }
+  retryInfo.value = null
+}
+
 async function postComment() {
   const body = newComment.value.trim()
-  if (!body) return
+  if (!body || posting.value) return
   const mentions = commentEditor.value?.getMentions?.() || []
+  posting.value = true
   try {
-    const res = await tasksApi.addComment(props.taskId, body, mentions)
-    newComment.value = ''
-    commentEditor.value?.clear?.()
-    cmdPreview.value = []
-    const c = await tasksApi.comments(props.taskId)
-    comments.value = c.data || []
-    // Quick actions changed the task itself (assignees, column, dates…), and a
-    // command-only comment produces no comment row at all — reload the detail so
-    // the modal shows the result rather than the pre-command state.
-    const summary = res.data?.command_summary
-    if (summary?.applied?.length || summary?.errors?.length) {
-      await loadDetail()
-      reportCommands(summary)
+    for (let attempt = 1; attempt <= RETRY_BACKOFFS.length + 1; attempt++) {
+      try {
+        const res = await tasksApi.addComment(props.taskId, body, mentions)
+        retryInfo.value = null
+        newComment.value = ''
+        commentEditor.value?.clear?.()
+        cmdPreview.value = []
+        const c = await tasksApi.comments(props.taskId)
+        comments.value = c.data || []
+        // Quick actions changed the task itself (assignees, column, dates…), and a
+        // command-only comment produces no comment row at all — reload the detail so
+        // the modal shows the result rather than the pre-command state.
+        const summary = res.data?.command_summary
+        if (summary?.applied?.length || summary?.errors?.length) {
+          await loadDetail()
+          reportCommands(summary)
+        }
+        emit('changed')
+        scrollCommentsToBottom(true)
+        return
+      } catch (e) {
+        // Only "server unreachable" is worth retrying; an HTTP error (4xx/5xx) is
+        // the server rejecting the comment — resending won't change that.
+        const backoff = RETRY_BACKOFFS[attempt - 1]
+        if (!e.offline || backoff == null) {
+          retryInfo.value = null
+          message.error(e.offline ? 'Сервер недоступен — комментарий не отправлен' : e.message)
+          return
+        }
+        retryInfo.value = { attempt: attempt + 1, max: RETRY_BACKOFFS.length + 1 }
+        if (!(await waitOrCancel(backoff))) return // cancelled by the user
+      }
     }
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
+  } finally {
+    posting.value = false
+    retryInfo.value = null
   }
 }
 
@@ -1228,6 +1367,37 @@ function eventText(e) {
             </n-popover>
             <span class="head-right">
               <span v-if="task?.number" class="tnum">#{{ task.number }}</span>
+              <!-- Share: copy a link to this task; the icon morphs to a checkmark. -->
+              <button
+                v-if="shareUrl"
+                class="head-btn"
+                :class="{ done: shared }"
+                :title="shared ? 'Ссылка скопирована' : 'Скопировать ссылку на задачу'"
+                @click="shareTask"
+              >
+                <Transition name="tm-share" mode="out-in">
+                  <n-icon
+                    v-if="shared"
+                    key="ok"
+                    :component="CheckmarkOutline"
+                    :size="15"
+                    class="grad-icon"
+                  />
+                  <n-icon v-else key="share" :component="ShareSocialOutline" :size="15" />
+                </Transition>
+              </button>
+              <!-- Wide layout only: hide/show the right column (tabs). -->
+              <button
+                v-if="wide"
+                class="head-btn"
+                :title="rightHidden ? 'Показать панель' : 'Скрыть панель'"
+                @click="toggleRightPane"
+              >
+                <n-icon
+                  :component="rightHidden ? ChevronBackOutline : ChevronForwardOutline"
+                  :size="15"
+                />
+              </button>
               <!-- GitLab provenance moved next to the Tessera number to free up
                    vertical space (icon + issue iid in parens, links to GitLab). -->
               <a
@@ -1764,16 +1934,18 @@ function eventText(e) {
             </div>
           </div>
 
-          <!-- Draggable divider (wide layout only); resizes the two columns. -->
+          <!-- Draggable divider (wide layout only); drag resizes the two columns,
+               a double-click hides/shows the right column. -->
           <div
             class="tm-divider"
-            title="Потяните, чтобы изменить ширину"
+            :title="rightHidden ? 'Двойной клик — показать панель' : 'Потяните / двойной клик'"
             @pointerdown="startSplitDrag"
+            @dblclick="toggleRightPane"
           >
             <span class="tm-divider-grip"></span>
           </div>
 
-          <div class="tm-col-right">
+          <div class="tm-col-right" :class="{ 'tm-col-hidden': rightHidden }">
             <!-- Subtasks / comments / relations / files / history (#8) -->
             <!-- Keyed by task so the line indicator doesn't slide when switching
                between a task and its subtask / related task. -->
@@ -1800,7 +1972,7 @@ function eventText(e) {
                     />
                   </span>
                 </template>
-                <div class="comments">
+                <div ref="commentsPane" class="comments">
                   <div class="c-list">
                     <div v-for="c in comments" :key="c.id" class="comment">
                       <UserAvatar
@@ -1874,12 +2046,26 @@ function eventText(e) {
                       v-model="newComment"
                       variant="boxed"
                       send
+                      :sending="posting"
                       :mention-items="mentionItems"
                       :command-items="commandItems"
                       :min-rows="3"
                       placeholder="Написать комментарий… (@ — упоминание, / — команда, Ctrl+Enter — отправить)"
                       @submit="postComment"
                     />
+                    <!-- Offline-retry banner: shown while waiting to resend after a
+                         network failure; the draft stays put, Cancel aborts. -->
+                    <Transition name="tm-share">
+                      <div v-if="retryInfo" class="retry-bar">
+                        <TesseraSpinner :size="14" />
+                        <span
+                          >Нет связи — повтор попытки ({{ retryInfo.attempt }}/{{
+                            retryInfo.max
+                          }})…</span
+                        >
+                        <button class="retry-cancel" @click="cancelRetry">Отмена</button>
+                      </div>
+                    </Transition>
                     <!-- Dry-run hint: what the built-in commands in the draft will
                          do. Custom keys are listed apart — they stay in the text. -->
                     <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
@@ -2259,9 +2445,21 @@ function eventText(e) {
   .form {
     display: grid;
     /* left | divider track | right — overridable via the --tm-cols var that the
-       draggable divider writes (persisted in localStorage). */
+       draggable divider writes (persisted in localStorage). The transition
+       animates the collapse/expand when the right column is hidden/shown. */
     grid-template-columns: var(--tm-cols, minmax(0, 1fr) 14px minmax(0, 1.05fr));
     align-items: start;
+    transition: grid-template-columns 0.18s ease;
+  }
+  /* Right column collapsed to a 0fr track: fade it out and stop it catching
+     clicks while it shrinks. */
+  .tm-col-right {
+    transition: opacity 0.12s ease;
+  }
+  .tm-col-right.tm-col-hidden {
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
   }
   /* Head + title span all three tracks. */
   .modal-head,
@@ -2365,6 +2563,73 @@ function eventText(e) {
 }
 .gl-num:hover {
   color: var(--t-primary);
+}
+/* Small neutral icon buttons in the head (share, hide/show panel). */
+.head-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--t-text3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.head-btn:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+/* Share icon morph (share ⇄ checkmark). */
+.tm-share-enter-active,
+.tm-share-leave-active {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.tm-share-enter-from,
+.tm-share-leave-to {
+  opacity: 0;
+  transform: scale(0.7);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-share-enter-active,
+  .tm-share-leave-active {
+    transition: none;
+  }
+  .tm-share-enter-from,
+  .tm-share-leave-to {
+    transform: none;
+  }
+  .form,
+  .tm-col-right {
+    transition: none;
+  }
+}
+/* Offline-retry banner under the composer — neutral, informational. */
+.retry-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.retry-cancel {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--t-primary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.retry-cancel:hover {
+  text-decoration: underline;
 }
 .desc-head {
   display: flex;

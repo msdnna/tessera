@@ -121,6 +121,13 @@ const openModal = async (TaskModal) => {
 describe('TaskModal status row', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    // TaskModal uses useResponsive (matchMedia) for its wide/stacked layout; jsdom
+    // has none — stub a desktop-width match so the modal mounts.
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })
     move.mockClear()
     update.mockClear()
   })
