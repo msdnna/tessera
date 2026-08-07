@@ -30,16 +30,27 @@ func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 	return &Client{hub: hub, conn: conn, send: make(chan Event, 32)}
 }
 
-// Start registers the client and launches its read/write pumps.
+// Start registers the client and launches its read/write pumps. A connection
+// that arrives after the hub has been closed is dropped instead of blocking
+// forever on a channel nobody reads.
 func (c *Client) Start() {
-	c.hub.register <- c
+	select {
+	case c.hub.register <- c:
+	case <-c.hub.done:
+		_ = c.conn.Close()
+		return
+	}
 	go c.writePump()
 	go c.readPump()
 }
 
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		select {
+		case c.hub.unregister <- c:
+		case <-c.hub.done:
+			// Hub is gone; it already closed our send channel.
+		}
 		_ = c.conn.Close()
 	}()
 	c.conn.SetReadLimit(512)

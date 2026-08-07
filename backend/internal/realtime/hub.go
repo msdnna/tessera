@@ -30,6 +30,11 @@ type Hub struct {
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan Event
+	// done is closed by Close to stop Run and release every client. Clients
+	// select on it when handing themselves to Run so a connection racing with
+	// shutdown parks nobody on an unread channel.
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 // NewHub returns an initialised Hub ready to Run.
@@ -39,13 +44,32 @@ func NewHub() *Hub {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan Event, 64),
+		done:       make(chan struct{}),
 	}
 }
 
-// Run owns the client set; call it once in its own goroutine.
+// Close stops Run and disconnects every client with a normal close frame, so
+// browsers reconnect to the replacement process instead of reporting a broken
+// socket. Safe to call more than once; safe to call without a running Run.
+func (h *Hub) Close() {
+	h.closeOnce.Do(func() { close(h.done) })
+}
+
+// Run owns the client set; call it once in its own goroutine. It returns once
+// Close is called.
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.done:
+			// Closing each send channel makes the write pumps emit a close
+			// frame and exit. Run owns the map, so nothing else closes these.
+			h.mu.Lock()
+			for c := range h.clients {
+				delete(h.clients, c)
+				close(c.send)
+			}
+			h.mu.Unlock()
+			return
 		case c := <-h.register:
 			h.mu.Lock()
 			h.clients[c] = struct{}{}

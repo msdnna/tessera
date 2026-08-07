@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // Config holds the runtime configuration loaded from the environment.
@@ -36,6 +37,14 @@ type Config struct {
 	// tauri://localhost), so all known forms are allowed by default. Override
 	// with DESKTOP_CORS_ORIGINS (comma-separated).
 	DesktopOrigins []string
+	// Budget for draining in-flight requests and background workers after
+	// SIGTERM/SIGINT before the process exits anyway (GRACEFUL_TIMEOUT).
+	GracefulTimeout time.Duration
+	// How often a personal access token's last_used_at is actually written.
+	// Touching on every request costs a pool connection per call for a value
+	// nobody reads at second precision (PAT_TOUCH_INTERVAL; 0 disables the
+	// throttle and writes on every request).
+	PATTouchInterval time.Duration
 }
 
 // New reads configuration from the environment. In production
@@ -120,7 +129,26 @@ func New() *Config {
 		PublicURL:      publicURL,
 		CORSOrigin:     corsOrigin,
 		DesktopOrigins: desktopOrigins,
+
+		GracefulTimeout:  getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
+		PATTouchInterval: getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
 	}
+}
+
+// getEnvDuration reads a Go duration string ("20s", "5m"). An unparseable value
+// falls back to the default rather than failing the boot — a typo in an
+// operational knob shouldn't keep the server down.
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(v))
+	if err != nil || d < 0 {
+		log.Printf("WARNING: %s=%q is not a valid duration — using %s", key, v, fallback)
+		return fallback
+	}
+	return d
 }
 
 // splitCSV splits a comma-separated env value into a trimmed, non-empty slice.
