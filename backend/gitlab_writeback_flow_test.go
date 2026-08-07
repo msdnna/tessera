@@ -288,7 +288,7 @@ func TestGitlabWritebackPushFlow(t *testing.T) {
 		if run["kind"] != "push" {
 			continue
 		}
-		for _, a := range c.get("/workspaces/" + s.WS + "/gitlab/sync-runs/" + run["id"].(string) + "/actions").listBody(t) {
+		for _, a := range c.get("/workspaces/" + s.WS + "/gitlab/sync-runs/" + run["id"].(string) + "/actions").itemsBody(t) {
 			if a["direction"] != "push" || a["op"] != "push" || a["status"] != "ok" {
 				t.Fatalf("push action: %v", a)
 			}
@@ -331,7 +331,7 @@ func TestGitlabWritebackRetry(t *testing.T) {
 			if run["kind"] != "push" {
 				continue
 			}
-			for _, a := range c.get("/workspaces/" + s.WS + "/gitlab/sync-runs/" + run["id"].(string) + "/actions").listBody(t) {
+			for _, a := range c.get("/workspaces/" + s.WS + "/gitlab/sync-runs/" + run["id"].(string) + "/actions").itemsBody(t) {
 				if a["status"] == "fail" && a["entity_type"] == "column" {
 					runID, actionID = run["id"].(string), a["id"].(string)
 				}

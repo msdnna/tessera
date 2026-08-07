@@ -6,6 +6,7 @@ package main
 import (
 	"log"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -30,6 +31,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)
 	}
+	// Compress JSON responses. The big list/journal payloads are highly
+	// repetitive text and shrink ~10x, which is the difference between a snappy
+	// board and a multi-second wait on a constrained link (the org install sits
+	// behind a proxy that doesn't compress /api). The WebSocket endpoint is
+	// excluded — its response is hijacked for the upgrade and must not be wrapped.
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/api/ws"})))
 	r.Use(middleware.CORS(cfg.CORSOrigin, cfg.DesktopOrigins...))
 
 	api := r.Group("/api")
@@ -187,6 +194,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.DELETE("/columns/:id", rh.DeleteColumn)
 
 			protected.GET("/tasks/:id", rh.GetTask)
+			protected.GET("/tasks/:id/description", rh.GetTaskDescription)
 			protected.PATCH("/tasks/:id", rh.UpdateTask)
 			protected.PATCH("/tasks/:id/move", rh.MoveTask)
 			protected.PATCH("/tasks/:id/eisenhower", rh.SetTaskEisenhower)
@@ -282,6 +290,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Sync journal: run/action history + retry of failed pushes.
 			protected.GET("/workspaces/:id/gitlab/sync-runs", rh.ListGitlabSyncRuns)
 			protected.GET("/workspaces/:id/gitlab/sync-runs/:runId/actions", rh.ListGitlabSyncActions)
+			protected.GET("/workspaces/:id/gitlab/sync-runs/:runId/actions/:actionId/detail", rh.GetGitlabSyncActionDetail)
 			protected.POST("/workspaces/:id/gitlab/sync-runs/:runId/actions/:actionId/retry", rh.RetryGitlabWriteback)
 			// Write-back conflicts: inbox + interactive ours/theirs/manual resolution.
 			protected.GET("/workspaces/:id/gitlab/conflicts", rh.ListGitlabConflicts)

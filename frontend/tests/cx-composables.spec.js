@@ -140,33 +140,35 @@ describe('useApiImage', () => {
 
 // ── useConnection ─────────────────────────────────────────────────────────────
 describe('useConnection', () => {
-  it('balances pending across start/end and clears slow at zero', async () => {
+  it('balances pending and surfaces the non-blocking bar past the show delay', async () => {
     vi.useFakeTimers()
     const mod = await import('@/composables/useConnection')
     const { connection, reqStart, reqEnd, setOffline } = mod
 
     // Fresh singleton for the assertions below.
     connection.pending = 0
-    connection.slow = false
+    connection.active = false
     connection.offline = false
 
     reqStart()
     reqStart()
     expect(connection.pending).toBe(2)
 
-    // Not yet slow — under the 4s threshold.
-    vi.advanceTimersByTime(1000)
-    expect(connection.slow).toBe(false)
+    // Not yet shown — under the ~250ms show delay (fast calls never flash the bar).
+    vi.advanceTimersByTime(100)
+    expect(connection.active).toBe(false)
 
-    // Cross the threshold with work still in flight → slow surfaces.
-    vi.advanceTimersByTime(4000)
-    expect(connection.slow).toBe(true)
+    // Past the delay with work still in flight → the top bar surfaces.
+    vi.advanceTimersByTime(300)
+    expect(connection.active).toBe(true)
 
     reqEnd(true) // reached the server → clears offline
     expect(connection.offline).toBe(false)
     reqEnd(true)
     expect(connection.pending).toBe(0)
-    expect(connection.slow).toBe(false)
+    // The bar lingers for its minimum-visible window, then clears.
+    vi.advanceTimersByTime(500)
+    expect(connection.active).toBe(false)
 
     setOffline(true)
     expect(connection.offline).toBe(true)

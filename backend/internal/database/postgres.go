@@ -27,6 +27,22 @@ func Connect(ctx context.Context, url string) *pgxpool.Pool {
 		return nil
 	}
 
+	// Pool sizing. Explicit pool_* params in DATABASE_URL still win (ParseConfig
+	// already applied them); we only fill sane defaults where the URL was silent.
+	// MinConns keeps a few connections warm so the first burst of a page load
+	// doesn't pay per-request connect+TLS+auth latency (a big share of the
+	// "first wave is slow, second is fast" the org install shows). MaxConns floors
+	// the pool high enough for the ~10 parallel calls a board open fires at once.
+	if cfg.MaxConns < 20 {
+		cfg.MaxConns = 20
+	}
+	if cfg.MinConns == 0 {
+		cfg.MinConns = 4
+	}
+	cfg.MaxConnLifetime = time.Hour
+	cfg.MaxConnIdleTime = 30 * time.Minute
+	cfg.HealthCheckPeriod = time.Minute
+
 	for i := 0; i < 10; i++ {
 		pool, err := pgxpool.NewWithConfig(ctx, cfg)
 		if err != nil {

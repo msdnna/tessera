@@ -134,7 +134,7 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 		fail(c)
 		return
 	}
-	c.JSON(http.StatusOK, tasks)
+	c.JSON(http.StatusOK, slimBoardTasks(tasks))
 }
 
 // backlogScope is the reserved ?milestone= value for "tasks with no milestone".
@@ -184,7 +184,7 @@ func (h *API) ListBoardSubtasks(c *gin.Context) {
 		fail(c)
 		return
 	}
-	c.JSON(http.StatusOK, subs)
+	c.JSON(http.StatusOK, slimBoardSubtasks(subs))
 }
 
 // SetTaskParent attaches a task to a parent (becoming its subtask, inheriting
@@ -253,6 +253,22 @@ func (h *API) GetTask(c *gin.Context) {
 	})
 }
 
+// GetTaskDescription returns just a task's description markdown. The board lists
+// omit descriptions to stay small (see task_list_dto.go); the card fetches this
+// lazily when the user hovers the description affordance. One membership check +
+// one row read — far lighter than GetTask's full tags/assignees/subtasks fan-out.
+func (h *API) GetTaskDescription(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	t, _, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": t.ID, "description": t.Description})
+}
+
 // GetTaskByNumber resolves a per-workspace task number (the #252 on cards) to
 // its task — backs human-readable deep links (?task=<number>). Returns the task
 // row; the client then opens it (which loads full detail by id).
@@ -289,7 +305,7 @@ func (h *API) UpdateTask(c *gin.Context) {
 	}
 	var req struct {
 		Title       string           `json:"title" binding:"required"`
-		Description string           `json:"description"`
+		Description *string          `json:"description"`
 		Priority    int32            `json:"priority"`
 		DueDate     *time.Time       `json:"due_date"`
 		StartDate   *time.Time       `json:"start_date"`
@@ -302,11 +318,15 @@ func (h *API) UpdateTask(c *gin.Context) {
 		return
 	}
 
-	// This endpoint is full-replace: every field in the body is authoritative, so
-	// each one is set on the patch (a quick action sets only what it touches).
+	// Full-replace for the fields present in the body — a quick action sets only
+	// what it touches. Description is the one exception: it's tri-state. Board
+	// cards / timeline / gantt no longer receive descriptions (they're stripped
+	// from the list payloads to keep boards small), so those inline edits OMIT
+	// description and it must be preserved, not blanked. Omitted (nil) → keep the
+	// stored text; present (incl. "") → replace, so the modal can still clear it.
 	updated, err := h.applyTaskPatch(c, t, wsID, taskPatch{
 		Title:       &req.Title,
-		Description: &req.Description,
+		Description: req.Description,
 		Priority:    &req.Priority,
 		DueDate:     setTime(req.DueDate),
 		StartDate:   setTime(req.StartDate),
@@ -551,7 +571,7 @@ func (h *API) ListBoardArchived(c *gin.Context) {
 		fail(c)
 		return
 	}
-	c.JSON(http.StatusOK, rows)
+	c.JSON(http.StatusOK, slimBoardArchivedTasks(rows))
 }
 
 // DeleteTask removes a task and its subtasks.

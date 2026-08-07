@@ -196,35 +196,6 @@ func (h *API) flushJournal(ctx context.Context, j *syncJournal) {
 
 // ── HTTP: read the journal & retry failed pushes ───────────
 
-// syncActionDTO re-exposes a journal action with detail as raw JSON (the generated
-// struct carries it as []byte, which would marshal as base64).
-type syncActionDTO struct {
-	ID         uuid.UUID       `json:"id"`
-	Seq        int32           `json:"seq"`
-	Direction  string          `json:"direction"`
-	EntityType string          `json:"entity_type"`
-	Op         string          `json:"op"`
-	TaskID     *uuid.UUID      `json:"task_id"`
-	GlIid      *int64          `json:"gl_iid"`
-	Summary    string          `json:"summary"`
-	Detail     json.RawMessage `json:"detail"`
-	Status     string          `json:"status"`
-	Error      string          `json:"error"`
-	CreatedAt  time.Time       `json:"created_at"`
-}
-
-func toSyncActionDTO(a db.GitlabSyncAction) syncActionDTO {
-	detail := json.RawMessage(a.Detail)
-	if len(detail) == 0 {
-		detail = json.RawMessage("{}")
-	}
-	return syncActionDTO{
-		ID: a.ID, Seq: a.Seq, Direction: a.Direction, EntityType: a.EntityType, Op: a.Op,
-		TaskID: a.TaskID, GlIid: a.GlIid, Summary: a.Summary, Detail: detail,
-		Status: a.Status, Error: a.Error, CreatedAt: a.CreatedAt,
-	}
-}
-
 // journalWorkspace resolves the :id workspace after a membership check, writing
 // the appropriate error response on failure.
 func (h *API) journalWorkspace(c *gin.Context) (uuid.UUID, bool) {
@@ -262,8 +233,19 @@ func (h *API) ListGitlabSyncRuns(c *gin.Context) {
 	c.JSON(http.StatusOK, runs)
 }
 
-// ListGitlabSyncActions returns the actions of one run (scoped to the workspace's
-// bindings), in sequence order.
+// journalPageSize / journalPageMax bound how many actions one page returns. A run
+// can hold thousands of actions; the list ships them in keyset pages (by seq)
+// instead of one multi-MB blob, and never carries the heavy `detail` diff — that
+// is fetched per row on demand via GetGitlabSyncActionDetail.
+const (
+	journalPageSize = 500
+	journalPageMax  = 2000
+)
+
+// ListGitlabSyncActions returns a page of one run's actions (scoped to the
+// workspace's bindings), in sequence order, without their detail diffs.
+// ?limit=<n> caps the page; ?after_seq=<n> is the keyset cursor (pass the last
+// seq of the previous page). The reply is {items, has_more, next_after_seq}.
 func (h *API) ListGitlabSyncActions(c *gin.Context) {
 	wsID, ok := h.journalWorkspace(c)
 	if !ok {
@@ -280,16 +262,65 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 		fail(c)
 		return
 	}
-	actions, err := h.q.ListGitlabSyncActions(c, runID)
+	limit := int32(journalPageSize)
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= journalPageMax {
+			limit = int32(n)
+		}
+	}
+	// seq is 0-based, so -1 is "before the first row" (includes seq 0).
+	afterSeq := int32(-1)
+	if v := c.Query("after_seq"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			afterSeq = int32(n)
+		}
+	}
+	rows, err := h.q.ListGitlabSyncActionsPage(c, db.ListGitlabSyncActionsPageParams{
+		RunID: runID, AfterSeq: afterSeq, LimitN: limit,
+	})
 	if err != nil {
 		fail(c)
 		return
 	}
-	out := make([]syncActionDTO, 0, len(actions))
-	for _, a := range actions {
-		out = append(out, toSyncActionDTO(a))
+	if rows == nil {
+		rows = []db.ListGitlabSyncActionsPageRow{}
 	}
-	c.JSON(http.StatusOK, out)
+	hasMore := int32(len(rows)) == limit
+	var nextAfterSeq *int32
+	if hasMore {
+		s := rows[len(rows)-1].Seq
+		nextAfterSeq = &s
+	}
+	c.JSON(http.StatusOK, gin.H{"items": rows, "has_more": hasMore, "next_after_seq": nextAfterSeq})
+}
+
+// GetGitlabSyncActionDetail returns one action's before/after diff JSONB, scoped
+// to the workspace's bindings. Backs the journal's lazy "expand this row" fetch,
+// so the list stays light and only an inspected action pays for its diff.
+func (h *API) GetGitlabSyncActionDetail(c *gin.Context) {
+	wsID, ok := h.journalWorkspace(c)
+	if !ok {
+		return
+	}
+	actionID, ok := parseID(c, "actionId")
+	if !ok {
+		return
+	}
+	detail, err := h.q.GetGitlabSyncActionDetail(c, db.GetGitlabSyncActionDetailParams{
+		ActionID: actionID, WorkspaceID: wsID,
+	})
+	if err != nil {
+		if notFound(c, err) {
+			return
+		}
+		fail(c)
+		return
+	}
+	raw := json.RawMessage(detail)
+	if len(raw) == 0 {
+		raw = json.RawMessage("{}")
+	}
+	c.JSON(http.StatusOK, gin.H{"detail": raw})
 }
 
 // RetryGitlabWriteback re-enqueues a failed push action by re-creating its outbox

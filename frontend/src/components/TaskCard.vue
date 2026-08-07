@@ -135,7 +135,7 @@ const hasAnyPill = computed(
     (show('due') && (props.showEmpty || due.value)) ||
     (show('estimate') && estText.value) ||
     (show('milestone') && taskMilestone.value) ||
-    (show('description') && props.task.description && props.task.description.trim()) ||
+    (show('description') && hasDescription.value) ||
     (show('tags') && (props.showEmpty || taskTags.value.length)) ||
     (show('assignee') &&
       (props.showEmpty || author.value || assignees.value.length || glAssignees.value.length)),
@@ -369,10 +369,44 @@ function hasTag(id) {
   return (props.task.tag_ids || []).includes(id)
 }
 
+// Board cards ship without the description text (stripped from the list payload
+// to keep boards small); the list carries a has_description flag instead. The
+// pill shows on that flag and lazily fetches the text on hover. The OR also
+// honours a description a modal edit may have merged back onto the task object.
+const hasDescription = computed(
+  () => !!props.task.has_description || !!(props.task.description && props.task.description.trim()),
+)
+// Hover preview text, kept in local state (not on the prop). null = not loaded;
+// seeded from the task when a description happens to be present, otherwise fetched
+// once on first hover. Reset when the card is reused for a different task.
+const descText = ref(props.task.description ?? null)
+const descLoading = ref(false)
+watch(
+  () => props.task.id,
+  () => {
+    descText.value = props.task.description ?? null
+  },
+)
+async function loadDescriptionPreview() {
+  if (descText.value !== null || descLoading.value) return
+  descLoading.value = true
+  try {
+    const { data } = await tasksApi.description(props.task.id)
+    descText.value = data?.description || ''
+  } catch {
+    descText.value = ''
+  } finally {
+    descLoading.value = false
+  }
+}
+
+// Board cards don't carry the description (stripped from the list payload), and
+// they never edit it — so the full-replace update OMITS description and the
+// backend preserves the stored text (see UpdateTask). Sending description:'' here
+// would blank it. Description is edited only in the task modal.
 function base() {
   return {
     title: props.task.title,
-    description: props.task.description || '',
     priority: props.task.priority || 0,
     due_date: props.task.due_date || null,
     start_date: props.task.start_date || null,
@@ -436,10 +470,11 @@ const ctxOptions = computed(() => {
     },
   ]
 })
+// Same as base(): omit description so an inline context-menu edit preserves the
+// stored text instead of blanking it (the card never carries it).
 function baseOf(t) {
   return {
     title: t.title,
-    description: t.description || '',
     priority: t.priority || 0,
     due_date: t.due_date || null,
     start_date: t.start_date || null,
@@ -626,9 +661,9 @@ const ownColumnChip = computed(() =>
 )
 async function toggleSubDone(s) {
   if (props.readonly) return
+  // Omit description — subtask rows don't carry it either; the backend preserves it.
   await tasksApi.update(s.id, {
     title: s.title,
-    description: s.description || '',
     priority: s.priority || 0,
     due_date: s.due_date || null,
     start_date: s.start_date || null,
@@ -903,13 +938,15 @@ async function submitAddSub() {
           <template v-else>Этап</template>
         </n-tooltip>
 
-        <!-- description: shown only when set (and not in stack mode); hover previews
-             the rendered markdown, click opens the task. -->
+        <!-- description: shown when the task has one (and not in stack mode); the
+             text is fetched lazily on hover (board cards don't carry it), rendered
+             as markdown in the popover; click opens the task. -->
         <n-popover
-          v-if="show('description') && !stackFields && task.description && task.description.trim()"
+          v-if="show('description') && !stackFields && hasDescription"
           trigger="hover"
           placement="top-start"
           :style="{ padding: '0' }"
+          @update:show="(v) => v && loadDescriptionPreview()"
         >
           <template #trigger>
             <div
@@ -921,7 +958,8 @@ async function submitAddSub() {
             </div>
           </template>
           <div class="desc-pop">
-            <RichContent :source="task.description" :members="members" />
+            <div v-if="descLoading || descText === null" class="desc-loading">Загрузка…</div>
+            <RichContent v-else :source="descText || ''" :members="members" />
           </div>
         </n-popover>
 
@@ -1818,6 +1856,11 @@ async function submitAddSub() {
   overflow: auto;
   padding: 10px 12px;
   font-size: 13px;
+}
+.desc-loading {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--t-text3);
 }
 .chip {
   font-size: 11px;

@@ -124,6 +124,14 @@ const props = defineProps({
   // Archive view: the task is shown read-only (no edits/comments); the footer
   // offers Restore instead of Save/Archive/Delete.
   readonly: { type: Boolean, default: false },
+  // Board context, passed from the kanban so the modal doesn't re-fetch the
+  // board + its (already-in-memory) tasks + columns on every open. Used only when
+  // the opened task belongs to this board; a deep-link / cross-board open falls
+  // back to fetching. board: the board object; boardColumns / boardTopTasks: the
+  // parent's live columns and top-level task list.
+  board: { type: Object, default: null },
+  boardColumns: { type: Array, default: () => [] },
+  boardTopTasks: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:show', 'changed', 'open', 'restore'])
 
@@ -558,28 +566,44 @@ async function loadDetail() {
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
     selectedAssignees.value = (t.assignees || []).map((x) => x.id)
-    try {
-      const b = await boardsApi.get(t.board_id)
-      boardInfo.value = { name: b.data.name, projectId: b.data.project_id }
-      const [bt, cols] = await Promise.all([
-        boardsApi.tasks(t.board_id),
-        boardsApi.columns(t.board_id),
-      ])
-      parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
-      // color/position feed the status chip and the "shift right" button; the
-      // recurrence selects only ever needed id/name.
-      columns.value = (cols.data || []).map((c) => ({
+    // Board context is already in the kanban's memory for the current board — use
+    // it instead of re-fetching the board + its full task/column lists on every
+    // open (the tasks list is the same payload the board just loaded). Only a
+    // deep-link or a cross-board open (task not on this board) falls back to GETs.
+    const ctx = props.board && props.board.id === t.board_id ? props.board : null
+    if (ctx) {
+      boardInfo.value = { name: ctx.name, projectId: ctx.project_id }
+      parentCandidates.value = (props.boardTopTasks || []).filter((x) => x.id !== t.id)
+      columns.value = (props.boardColumns || []).map((c) => ({
         id: c.id,
         name: c.name,
         color: c.color,
         position: c.position,
       }))
-      doneColumnId.value = b.data.done_column_id || null
-    } catch {
-      boardInfo.value = null
-      parentCandidates.value = []
-      columns.value = []
-      doneColumnId.value = null
+      doneColumnId.value = ctx.done_column_id || null
+    } else {
+      try {
+        const b = await boardsApi.get(t.board_id)
+        boardInfo.value = { name: b.data.name, projectId: b.data.project_id }
+        const cols = await boardsApi.columns(t.board_id)
+        // parentCandidates powers the "make subtask of…" picker (top-level tasks).
+        const bt = await boardsApi.tasks(t.board_id)
+        parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
+        // color/position feed the status chip and the "shift right" button; the
+        // recurrence selects only ever needed id/name.
+        columns.value = (cols.data || []).map((c) => ({
+          id: c.id,
+          name: c.name,
+          color: c.color,
+          position: c.position,
+        }))
+        doneColumnId.value = b.data.done_column_id || null
+      } catch {
+        boardInfo.value = null
+        parentCandidates.value = []
+        columns.value = []
+        doneColumnId.value = null
+      }
     }
     loadSiblings(t)
     loadExtras()

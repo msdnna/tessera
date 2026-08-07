@@ -21,6 +21,25 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-tessera}
       TZ: ${TZ:-Europe/Moscow}
+    # Performance knobs — the stock defaults (shared_buffers=128MB, work_mem=4MB,
+    # random_page_cost=4 for spinning disks) throttle a busy board on a modern
+    # SSD VDS. Defaults below suit a ~2GB-RAM box; override in .env to match the
+    # host (e.g. PG_SHARED_BUFFERS=1GB on a 4GB box). random_page_cost=1.1 tells
+    # the planner the disk is an SSD so it prefers index scans.
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=${PG_SHARED_BUFFERS:-512MB}"
+      - "-c"
+      - "effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-1536MB}"
+      - "-c"
+      - "work_mem=${PG_WORK_MEM:-32MB}"
+      - "-c"
+      - "maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-256MB}"
+      - "-c"
+      - "random_page_cost=${PG_RANDOM_PAGE_COST:-1.1}"
+      - "-c"
+      - "max_connections=${PG_MAX_CONNECTIONS:-100}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:

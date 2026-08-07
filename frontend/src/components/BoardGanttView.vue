@@ -533,9 +533,10 @@ async function onUp() {
   const t = findTask(g.id)
   if (!t) return
   try {
+    // Omit description — board tasks don't carry it; the backend preserves the
+    // stored text on a full-replace that leaves description out.
     await tasksApi.update(t.id, {
       title: t.title,
-      description: t.description || '',
       priority: t.priority || 0,
       due_date: p.due != null ? new Date(p.due).toISOString() : null,
       start_date: p.start != null ? new Date(p.start).toISOString() : null,
