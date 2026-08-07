@@ -41,6 +41,10 @@ var (
 	testQueries *db.Queries
 	testAPI     *handlers.API // spawn Run*Worker(ctx) again to drain an outbox now (workers drain once at startup)
 	userSeq     atomic.Int64
+
+	// testUploadDir is the harness upload root, so tests can plant files that
+	// predate current validation (e.g. legacy SVGs).
+	testUploadDir string
 )
 
 func TestMain(m *testing.M) {
@@ -83,6 +87,7 @@ func TestMain(m *testing.M) {
 		log.Fatalf("harness: %v", err)
 	}
 	defer os.RemoveAll(uploadDir)
+	testUploadDir = uploadDir
 
 	cfg := &config.Config{
 		JWTSecret:     "integration-test-secret-min32chars!!",
@@ -153,6 +158,7 @@ type client struct {
 type resp struct {
 	Status int
 	Body   []byte
+	Header http.Header
 }
 
 func (r resp) mapBody(t *testing.T) map[string]any {
@@ -216,7 +222,7 @@ func doReq(t *testing.T, token, method, path string, body any) resp {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	return resp{Status: res.StatusCode, Body: data}
+	return resp{Status: res.StatusCode, Body: data, Header: res.Header}
 }
 
 func (c *client) do(method, path string, body any) resp {
@@ -354,5 +360,5 @@ func uploadFile(t *testing.T, c *client, path, field, filename string, content [
 	}
 	defer res.Body.Close()
 	data, _ := io.ReadAll(res.Body)
-	return resp{Status: res.StatusCode, Body: data}
+	return resp{Status: res.StatusCode, Body: data, Header: res.Header}
 }
