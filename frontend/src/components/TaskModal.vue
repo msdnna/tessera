@@ -2009,64 +2009,70 @@ function eventText(e) {
                     <!-- display:contents wrapper (.c-items) so the comment rows stay
                          direct flex children of .c-list; only newly-posted comments
                          fade in (no `appear`, so the initial list doesn't animate). -->
-                    <TransitionGroup :name="commentsHydrated ? 'c-fade' : ''" tag="div" class="c-items">
+                    <TransitionGroup
+                      :name="commentsHydrated ? 'c-fade' : ''"
+                      tag="div"
+                      class="c-items"
+                    >
                       <div v-for="c in comments" :key="c.id" class="comment">
-                      <UserAvatar
-                        class="c-ava"
-                        :user-id="c.author_id || ''"
-                        :src="c.gl_author_avatar_url"
-                        :name="c.author_name || c.gl_author_name || '?'"
-                      />
-                      <div class="c-body">
-                        <div class="c-head">
-                          <span class="c-author">{{
-                            c.author_name || c.gl_author_name || 'Кто-то'
-                          }}</span>
-                          <span v-if="!c.author_name && c.gl_author_name" class="c-gl"
-                            >· GitLab</span
-                          >
-                          <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
-                          <span v-if="c.author_id === meId" class="c-acts">
-                            <button class="c-act" title="Изменить" @click="startEditComment(c)">
-                              ✎
-                            </button>
-                            <n-popconfirm
-                              :positive-button-props="{ type: 'error' }"
-                              positive-text="Удалить"
-                              @positive-click="deleteComment(c.id)"
-                            >
-                              <template #trigger>
-                                <button class="c-act" title="Удалить">✕</button>
-                              </template>
-                              Удалить комментарий?
-                            </n-popconfirm>
-                          </span>
-                        </div>
-                        <template v-if="editingCommentId === c.id">
-                          <MarkdownEditor
-                            v-model="editingCommentBody"
-                            variant="boxed"
-                            :mention-items="mentionItems"
-                            :min-rows="2"
-                            placeholder="Комментарий…"
-                            @submit="saveComment"
-                          />
-                          <n-space :size="6" style="margin-top: 6px">
-                            <n-button size="tiny" type="primary" @click="saveComment"
-                              >Сохранить</n-button
-                            >
-                            <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
-                          </n-space>
-                        </template>
-                        <RichContent
-                          v-else
-                          class="c-text"
-                          :source="c.body"
-                          :members="mentionItems"
-                          :interactive="c.author_id === meId"
-                          @toggle="onCommentCheck(c, $event)"
+                        <UserAvatar
+                          class="c-ava"
+                          :user-id="c.author_id || ''"
+                          :src="c.gl_author_avatar_url"
+                          :name="c.author_name || c.gl_author_name || '?'"
                         />
-                      </div>
+                        <div class="c-body">
+                          <div class="c-head">
+                            <span class="c-author">{{
+                              c.author_name || c.gl_author_name || 'Кто-то'
+                            }}</span>
+                            <span v-if="!c.author_name && c.gl_author_name" class="c-gl"
+                              >· GitLab</span
+                            >
+                            <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
+                            <span v-if="c.author_id === meId" class="c-acts">
+                              <button class="c-act" title="Изменить" @click="startEditComment(c)">
+                                ✎
+                              </button>
+                              <n-popconfirm
+                                :positive-button-props="{ type: 'error' }"
+                                positive-text="Удалить"
+                                @positive-click="deleteComment(c.id)"
+                              >
+                                <template #trigger>
+                                  <button class="c-act" title="Удалить">✕</button>
+                                </template>
+                                Удалить комментарий?
+                              </n-popconfirm>
+                            </span>
+                          </div>
+                          <template v-if="editingCommentId === c.id">
+                            <MarkdownEditor
+                              v-model="editingCommentBody"
+                              variant="boxed"
+                              :mention-items="mentionItems"
+                              :min-rows="2"
+                              placeholder="Комментарий…"
+                              @submit="saveComment"
+                            />
+                            <n-space :size="6" style="margin-top: 6px">
+                              <n-button size="tiny" type="primary" @click="saveComment"
+                                >Сохранить</n-button
+                              >
+                              <n-button size="tiny" @click="editingCommentId = null"
+                                >Отмена</n-button
+                              >
+                            </n-space>
+                          </template>
+                          <RichContent
+                            v-else
+                            class="c-text"
+                            :source="c.body"
+                            :members="mentionItems"
+                            :interactive="c.author_id === meId"
+                            @toggle="onCommentCheck(c, $event)"
+                          />
+                        </div>
                       </div>
                     </TransitionGroup>
                     <EmptyState
