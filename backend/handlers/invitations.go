@@ -145,6 +145,9 @@ func (h *API) AcceptInvitation(c *gin.Context) {
 		return
 	}
 	_ = h.q.MarkInvitationAccepted(c, inv.ID)
+	// Live sockets snapshot their workspace set at connect; drop this user's so
+	// they reconnect into the workspace they just joined.
+	h.hub.DropUser(user.ID)
 	ws, err := h.q.GetWorkspace(c, inv.WorkspaceID)
 	if err != nil {
 		c.Status(http.StatusNoContent)

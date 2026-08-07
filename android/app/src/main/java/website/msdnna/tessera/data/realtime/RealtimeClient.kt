@@ -29,6 +29,11 @@ data class RealtimeEvent(
  * Opens the `/api/ws` WebSocket and invokes [onEvent] for every broadcast,
  * mirroring the web `useRealtime`. Auto-reconnects with a fixed backoff; the
  * caller filters by scope (workspace id). Online-first: there's no offline queue.
+ *
+ * The socket is authenticated with the same bearer token as the REST calls —
+ * OkHttp can set request headers, so unlike the browser client there's no need
+ * for the subprotocol dance. The server refuses the handshake without a valid
+ * token and only sends events for workspaces the user belongs to.
  */
 class RealtimeClient(private val onEvent: (RealtimeEvent) -> Unit) {
     private val client = OkHttpClient.Builder()
@@ -45,7 +50,14 @@ class RealtimeClient(private val onEvent: (RealtimeEvent) -> Unit) {
     fun connect() {
         if (closed || ws != null) return
         val url = wsUrl() ?: return
-        val req = Request.Builder().url(url).build()
+        // Re-read the token on every (re)connect: a refresh-on-401 may have
+        // rotated it since the last attempt.
+        val token = RetrofitClient.authToken
+        if (token.isBlank()) {
+            scheduleReconnect() // logged out or mid-refresh — retry, don't go silent
+            return
+        }
+        val req = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
         ws = client.newWebSocket(
             req,
             object : WebSocketListener() {

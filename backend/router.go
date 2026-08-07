@@ -23,7 +23,7 @@ import (
 // the background workers and slug backfill).
 func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, mailer mail.Mailer) (*gin.Engine, *handlers.API) {
 	versionHandler := handlers.NewVersionHandler(appVersion)
-	wsHandler := handlers.NewWSHandler(hub)
+	wsHandler := handlers.NewWSHandler(hub, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL)
 
@@ -57,7 +57,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		api.GET("/auth/gitlab/authorize", authHandler.GitlabAuthorize)
 		api.GET("/auth/gitlab/callback", authHandler.GitlabCallback)
 
-		// Live updates. Per-workspace scoping + WS auth land in a later phase.
+		// Live updates. Not in the protected group because the browser
+		// WebSocket API can't send an Authorization header — the handler does
+		// its own bearer check (header or subprotocol) before upgrading, and
+		// scopes the socket to the user's workspaces.
 		api.GET("/ws", wsHandler.Connect)
 
 		// Inline images embedded in descriptions/comments are served publicly
