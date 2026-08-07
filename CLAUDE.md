@@ -80,9 +80,18 @@ Note · Reminder (доставка push — только через Android) · 
 - **Версионирование per-component + единый CHANGELOG** ведём с первого дня.
   Бамп на каждое содержательное изменение компонента (patch/minor/major по semver).
   `docs:`/`chore:`/`refactor:` без поведенческих изменений — **без** бампа. См. скилл **tessera-ship**.
-- **CHANGELOG:** корневой `CHANGELOG.md` (Keep a Changelog) с секциями `## backend` /
-  `## frontend`; у Android — отдельный `android/CHANGELOG.md`. `bump-version.sh` правит
-  только файл VERSION — changelog и коммит делаются вручную.
+- **CHANGELOG через фрагменты (важно — против merge-конфликтов).** Фича-ветка НЕ трогает
+  `CHANGELOG.md`/`VERSION`, а кладёт запись фрагментом `changelog.d/<component>/<task#>.md`
+  (уникальное имя на задачу → не конфликтует при merge). **Бамп версий и сборку changelog
+  делаем на `develop`:** `make changelog-release` поднимает `VERSION` (уровень = максимум
+  по фрагментам) и вставляет запись в нужную секцию. Корневой `CHANGELOG.md` (Keep a Changelog,
+  секции `## backend`/`## frontend`), Android — `android/CHANGELOG.md`. Формат — `changelog.d/README.md`.
+- **Модель веток:** одна ветка на **родительскую** задачу (`feat/<родитель#>-slug`); подзадачи —
+  отдельными conventional-коммитами внутри неё (одна поверхность на ревью, погранульность
+  по коммитам). Не плодить ветку на подзадачу.
+- **Миграции последовательны** (`golang-migrate` линеен): номер `NNNN_` занимать **перед
+  самым merge**; миграционные задачи разбирать **после** безмиграционных, чтобы не плодить
+  параллельные номера. Коллизию номеров чинить renumber'ом более позднего.
 - **Pre-commit quality gate:** `make lint-<comp>` + `make test-<comp>` зелёные перед коммитом.
   Lint **чиним**, не глушим.
 - **Conventional Commits**; коммитим локально после каждого проверенного фикса/фичи.
