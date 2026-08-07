@@ -76,7 +76,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 		// Protected — require a valid access token.
 		protected := api.Group("/")
-		protected.Use(middleware.Auth(cfg.JWTSecret, queries))
+		protected.Use(middleware.Auth(cfg.JWTSecret, queries, cfg.PATTouchInterval))
 		{
 			protected.GET("/auth/me", authHandler.Me)
 			protected.POST("/auth/resend-verification", authHandler.ResendVerification)
