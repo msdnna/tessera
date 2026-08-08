@@ -95,6 +95,12 @@ func TestMain(m *testing.M) {
 		EncryptionKey: "integration-test-encryption-key",
 		PublicURL:     "http://tessera.test",
 		CORSOrigin:    "*",
+		// Off for the shared server: every test signs up and logs in from the
+		// same loopback address, so a shared throttle would make unrelated tests
+		// fail each other. The limiter gets its own server in limits_flow_test.go.
+		// Body limits are left zero on purpose — newRouter falls back to the
+		// production ceilings, so the rest of the suite runs against them.
+		RateLimitEnabled: false,
 	}
 	router, rh := newRouter(cfg, testQueries, testPool, hub, mail.New(mail.Config{}))
 	testAPI = rh
