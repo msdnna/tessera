@@ -50,6 +50,12 @@ var (
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 
+	// Notification webhook channels in these tests deliver to a loopback mock
+	// server — the self-hosted "notifier on the same host" case — so opt into
+	// private targets. The SSRF guard itself is exercised in the notify package
+	// tests, where t.Setenv toggles the flag per case.
+	os.Setenv("NOTIFY_ALLOW_PRIVATE_URLS", "true")
+
 	dbURL := os.Getenv("TEST_DATABASE_URL")
 	if dbURL == "" {
 		dbURL = "postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable"

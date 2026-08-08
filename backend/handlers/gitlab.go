@@ -21,6 +21,7 @@ import (
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
 	"tessera/internal/jobs"
+	"tessera/internal/netguard"
 	"tessera/middleware"
 )
 
@@ -55,6 +56,16 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 		return
 	}
 	req.BaseURL = strings.TrimRight(strings.TrimSpace(req.BaseURL), "/")
+
+	// Reject a base URL that is not a real http(s) destination up front — a
+	// file:// / javascript: / userinfo / hostless URL is a misconfiguration (or
+	// an SSRF probe) the caller should hear about as a clear 400, not a 502 from
+	// a failed token exchange. The transport's guarded dialer is the backstop
+	// for a hostname that resolves to a private address.
+	if _, err := netguard.ValidateURL(req.BaseURL, gitlab.AllowPrivateURLs()); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid GitLab base URL: " + err.Error()})
+		return
+	}
 
 	client := gitlab.New(req.BaseURL, req.Token)
 	user, err := client.CurrentUser(c)
