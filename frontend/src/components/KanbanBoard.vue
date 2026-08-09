@@ -297,16 +297,35 @@ const groupTags = computed(() =>
 )
 // Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
 const sortLevels = ref([])
-const filters = reactive({
-  priorities: [],
-  assignees: [],
-  authors: [],
-  tags: [],
-  statuses: [],
-  milestones: [],
-  due: '',
-  q: '',
-})
+// Single source of truth for the filter facets. Everything that needs a blank
+// filter set (live state, reset, toolbar defaults/snapshot/restore, saved-view
+// apply, legacy-blob migration) derives from here — adding a facet used to mean
+// editing the same literal in six places, and forgetting one only showed up on
+// the migration path, i.e. at users rather than in tests.
+function defaultFilters() {
+  return {
+    priorities: [],
+    assignees: [],
+    authors: [],
+    tags: [],
+    statuses: [],
+    milestones: [],
+    due: '',
+    q: '',
+  }
+}
+// Copy `src` onto a fresh default set: unknown keys are dropped and arrays are
+// copied (never shared with a parsed localStorage blob or a saved view config).
+function cloneFilters(src) {
+  const out = defaultFilters()
+  for (const k of Object.keys(out)) {
+    const v = src?.[k]
+    if (v === undefined || v === null) continue
+    out[k] = Array.isArray(out[k]) ? (Array.isArray(v) ? [...v] : []) : v
+  }
+  return out
+}
+const filters = reactive(defaultFilters())
 
 // Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
 // create, no inline edits) with a Restore action. Reuses all board filters/grouping.
@@ -480,14 +499,7 @@ const activeFilterCount = computed(
     (filters.q.trim() ? 1 : 0),
 )
 function resetFilters() {
-  filters.priorities = []
-  filters.assignees = []
-  filters.authors = []
-  filters.tags = []
-  filters.statuses = []
-  filters.milestones = []
-  filters.due = ''
-  filters.q = ''
+  Object.assign(filters, defaultFilters())
 }
 
 // ── composer bar: grouping + sort + filters as removable chips ──
@@ -885,16 +897,7 @@ function defaultToolbar(forLayout) {
     sortLevels: [],
     subtasksExpanded: false,
     autoSort: false,
-    filters: {
-      priorities: [],
-      assignees: [],
-      authors: [],
-      tags: [],
-      statuses: [],
-      milestones: [],
-      due: '',
-      q: '',
-    },
+    filters: defaultFilters(),
     colCollapse: {},
     autoCollapseEmpty: false,
     cardSize: 'medium',
@@ -911,16 +914,7 @@ function snapshotToolbar() {
     sortLevels: sortLevels.value.map((l) => ({ ...l })),
     subtasksExpanded: subtasksExpanded.value,
     autoSort: autoSort.value,
-    filters: {
-      priorities: [...filters.priorities],
-      assignees: [...filters.assignees],
-      authors: [...filters.authors],
-      tags: [...filters.tags],
-      statuses: [...filters.statuses],
-      milestones: [...filters.milestones],
-      due: filters.due,
-      q: filters.q,
-    },
+    filters: cloneFilters(filters),
     colCollapse: { ...colCollapse },
     autoCollapseEmpty: autoCollapseEmpty.value,
     cardSize: cardSize.value,
@@ -936,20 +930,7 @@ function loadToolbar(s) {
   sortLevels.value = (s.sortLevels || []).map((l) => ({ ...l }))
   subtasksExpanded.value = !!s.subtasksExpanded
   autoSort.value = !!s.autoSort
-  Object.assign(
-    filters,
-    {
-      priorities: [],
-      assignees: [],
-      authors: [],
-      tags: [],
-      statuses: [],
-      milestones: [],
-      due: '',
-      q: '',
-    },
-    s.filters || {},
-  )
+  Object.assign(filters, cloneFilters(s.filters))
   loadCustomize(s)
 }
 // Restore the customize-view state (collapse + card/field settings). Split out so
@@ -981,6 +962,7 @@ function writeView() {
 // The view watcher fires on every search keystroke; a synchronous localStorage
 // write per keystroke is a visible input-lag source on mid hardware. Debounce so
 // we persist once the user pauses, and flush on unmount so nothing is lost.
+const VIEW_PERSIST_MS = 300 // idle time after the last toolbar change before we write
 let persistTimer = null
 function persistView() {
   if (restoring || swapping) return
@@ -988,7 +970,7 @@ function persistView() {
   persistTimer = setTimeout(() => {
     persistTimer = null
     writeView()
-  }, 300)
+  }, VIEW_PERSIST_MS)
 }
 onBeforeUnmount(() => {
   if (persistTimer) {
@@ -1008,8 +990,12 @@ function restoreView() {
         if (v.layout) layout.value = v.layout
       } else {
         // Migrate the old single-config format into the current layout's slot.
+        // Built on top of the defaults so every key the old blob predates
+        // (milestones, autoSort, colCollapse, cardSize, fieldVis, …) is present
+        // rather than left to loadToolbar's own defaulting to paper over.
         if (v.layout) layout.value = v.layout
         toolbarByLayout[layout.value] = {
+          ...defaultToolbar(layout.value),
           groupMode: v.groupMode || defaultToolbar(layout.value).groupMode,
           tagPrefix: v.tagPrefix || '',
           sortLevels: Array.isArray(v.sortLevels)
@@ -1018,16 +1004,7 @@ function restoreView() {
               ? [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
               : [],
           subtasksExpanded: !!v.subtasksExpanded,
-          filters: {
-            priorities: [],
-            assignees: [],
-            authors: [],
-            tags: [],
-            statuses: [],
-            due: '',
-            q: '',
-            ...(v.filters || {}),
-          },
+          filters: cloneFilters(v.filters),
         }
       }
       loadToolbar(toolbarByLayout[layout.value] || defaultToolbar(layout.value))
@@ -1106,7 +1083,7 @@ function currentViewConfig() {
     tagPrefix: tagPrefix.value,
     sortLevels: sortLevels.value,
     subtasksExpanded: subtasksExpanded.value,
-    filters: { ...filters },
+    filters: cloneFilters(filters),
     colCollapse: { ...colCollapse },
     autoCollapseEmpty: autoCollapseEmpty.value,
     cardSize: cardSize.value,
@@ -1126,20 +1103,7 @@ function applyViewConfig(c) {
     sortLevels.value = [{ field: c.sortBy, dir: c.sortDir || 'asc' }]
   else sortLevels.value = []
   subtasksExpanded.value = !!c.subtasksExpanded
-  Object.assign(
-    filters,
-    {
-      priorities: [],
-      assignees: [],
-      authors: [],
-      tags: [],
-      statuses: [],
-      milestones: [],
-      due: '',
-      q: '',
-    },
-    c.filters || {},
-  )
+  Object.assign(filters, cloneFilters(c.filters))
   loadCustomize(c)
 }
 async function saveView() {
@@ -1180,6 +1144,7 @@ async function deleteView(v) {
 // Autosave: when enabled and a named view is loaded, re-save it (debounced,
 // silent) as the toolbar/customize state changes. Guarded by restoring/swapping
 // like persistView so applying a view doesn't immediately re-save it.
+const AUTOSAVE_MS = 700 // longer than VIEW_PERSIST_MS: this one costs a request
 let autosaveTimer = null
 async function autosaveCurrent() {
   const name = currentViewName.value.trim()
@@ -1198,7 +1163,7 @@ watch(
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null
       autosaveCurrent()
-    }, 700)
+    }, AUTOSAVE_MS)
   },
 )
 
@@ -1307,9 +1272,13 @@ const dragging = ref(false) // any drag (column OR card): autoscroll, reload gua
 // Card-only drag: gates the per-card subtask nest dropzone hint. A column drag must
 // NOT flip this, otherwise every childless card flashes a dashed drop hint.
 const draggingCard = ref(false)
+// How long our own mutations keep realtime-driven reloads muted: long enough to
+// cover the round-trip plus the echo of our own broadcast, short enough that a
+// concurrent edit by someone else still lands promptly.
+const SUPPRESS_RELOAD_MS = 1500
 let suppressReloadUntil = 0
 function suppress() {
-  suppressReloadUntil = Date.now() + 1500
+  suppressReloadUntil = Date.now() + SUPPRESS_RELOAD_MS
 }
 
 // ── custom edge auto-scroll during drag ──
@@ -1406,10 +1375,12 @@ function onDragEnd() {
     edgeRAF = null
   }
 }
+// Coalesces the burst of realtime events one action produces into a single reload.
+const RELOAD_DEBOUNCE_MS = 200
 let reloadTimer = null
 function scheduleReload() {
   clearTimeout(reloadTimer)
-  reloadTimer = setTimeout(() => load(props.boardId), 200)
+  reloadTimer = setTimeout(() => load(props.boardId), RELOAD_DEBOUNCE_MS)
 }
 
 async function load(id) {
@@ -1883,16 +1854,6 @@ async function applyTaskQuery() {
   }
 }
 
-// Deep-link from the «Этапы» screen: ?milestone=<id> filters the board to exactly
-// that milestone (a removable chip), then the param is stripped so the URL stays
-// clean. It *replaces* the milestone facet (rather than appending) so re-entering
-// from the screen for a different milestone doesn't accumulate the previous one
-// that the saved view had persisted.
-// Sprint scope is now driven by a persistent ?milestone=<slug|uuid|backlog> param
-// (server-side scoped in load(), node-highlighted in the sidebar). Nothing to do
-// here — kept as a no-op so existing call sites stay valid.
-function applyMilestoneQuery() {}
-
 onMounted(async () => {
   ro = new ResizeObserver(() => measure())
   if (boardScroll.value) {
@@ -1931,7 +1892,6 @@ onMounted(async () => {
   await load(props.boardId)
   loadViews()
   applyTaskQuery()
-  applyMilestoneQuery()
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
@@ -1956,7 +1916,6 @@ watch(
     await load(id)
     loadViews()
     applyTaskQuery()
-    applyMilestoneQuery()
   },
 )
 watch(
