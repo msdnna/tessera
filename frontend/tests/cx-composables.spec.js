@@ -379,4 +379,19 @@ describe('useTaskMenu', () => {
       after_id: null,
     })
   })
+
+  // The menu acts on tasks that came from a board/list payload, and those are
+  // stripped of their description (backend task_list_dto.go). The update body is
+  // full-replace with description as the one tri-state field: sending an empty
+  // one would wipe the stored text, so it must be absent entirely.
+  it('never sends a description with an inline update', async () => {
+    const { open, select } = useTaskMenu({})
+    open({ clientX: 0, clientY: 0 }, { id: 't7', title: 'Без описания' })
+    await select('toggle')
+    await select('prio:3')
+    for (const [, body] of tasksApi.update.mock.calls) {
+      expect(body).not.toHaveProperty('description')
+    }
+  })
+
 })

@@ -11,6 +11,7 @@ import {
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { pressMoved } from '@/utils/dnd'
+import { taskBasePatch } from '@/utils/taskPatch'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 
@@ -73,18 +74,6 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
     requestAnimationFrame(() => (show.value = true))
   }
 
-  function base(t) {
-    return {
-      title: t.title,
-      description: t.description || '',
-      priority: t.priority || 0,
-      due_date: t.due_date || null,
-      start_date: t.start_date || null,
-      recurrence: t.recurrence || null,
-      completed: !!t.completed_at,
-    }
-  }
-
   async function select(key) {
     const t = target.value
     show.value = false
@@ -99,10 +88,12 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
       return
     }
     try {
+      // taskBasePatch omits the description on purpose — these views never load
+      // it, and sending an empty one would wipe the stored text.
       if (key === 'toggle') {
-        await tasksApi.update(t.id, { ...base(t), completed: !t.completed_at })
+        await tasksApi.update(t.id, { ...taskBasePatch(t), completed: !t.completed_at })
       } else if (key.startsWith('prio:')) {
-        await tasksApi.update(t.id, { ...base(t), priority: Number(key.slice(5)) })
+        await tasksApi.update(t.id, { ...taskBasePatch(t), priority: Number(key.slice(5)) })
       } else if (key.startsWith('col:')) {
         await tasksApi.move(t.id, { column_id: key.slice(4), before_id: null, after_id: null })
       }
