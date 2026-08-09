@@ -142,9 +142,19 @@ async function removeRelation(id) {
         {{ relDeleteHint(r) }}
       </n-popconfirm>
     </div>
-    <EmptyState v-if="!relations.length" size="small" :icon="GitMergeOutline" text="Связей пока нет" />
+    <EmptyState
+      v-if="!relations.length"
+      size="small"
+      :icon="GitMergeOutline"
+      text="Связей пока нет"
+    />
     <div class="rel-add">
-      <n-select v-model:value="relKind" :options="relKindOptions" size="small" style="width: 150px" />
+      <n-select
+        v-model:value="relKind"
+        :options="relKindOptions"
+        size="small"
+        style="width: 150px"
+      />
       <n-popover
         trigger="manual"
         :show="relPickerOpen"

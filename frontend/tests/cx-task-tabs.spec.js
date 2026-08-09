@@ -63,8 +63,21 @@ describe('TaskHistoryTab.vue', () => {
     const w = mount(C, {
       props: {
         events: [
-          { id: '1', actor_id: 'u1', actor_name: 'Аня', kind: 'created', created_at: '2026-03-07T09:05:00Z' },
-          { id: '2', actor_id: 'u2', actor_name: 'Боря', kind: 'moved', data: { to: 'Готово' }, created_at: '2026-03-07T10:00:00Z' },
+          {
+            id: '1',
+            actor_id: 'u1',
+            actor_name: 'Аня',
+            kind: 'created',
+            created_at: '2026-03-07T09:05:00Z',
+          },
+          {
+            id: '2',
+            actor_id: 'u2',
+            actor_name: 'Боря',
+            kind: 'moved',
+            data: { to: 'Готово' },
+            created_at: '2026-03-07T10:00:00Z',
+          },
         ],
       },
       global: { stubs },
@@ -76,7 +89,9 @@ describe('TaskHistoryTab.vue', () => {
 
   it('falls back to «Кто-то» for a system event and shows the empty state', async () => {
     const C = (await import('@/components/task/TaskHistoryTab.vue')).default
-    expect(mount(C, { props: { events: [] }, global: { stubs } }).findAll('.histrow')).toHaveLength(0)
+    expect(mount(C, { props: { events: [] }, global: { stubs } }).findAll('.histrow')).toHaveLength(
+      0,
+    )
     const w = mount(C, {
       props: { events: [{ id: '1', kind: 'created', created_at: '2026-03-07T09:05:00Z' }] },
       global: { stubs },
@@ -224,7 +239,10 @@ describe('TaskSubtasksTab.vue', () => {
     const w = mount(C, { props: { task, columns }, global: { stubs } })
     await w.findAll('.check')[0].trigger('click')
     await flushPromises()
-    expect(api.tasks.update).toHaveBeenCalledWith('s1', expect.objectContaining({ completed: true }))
+    expect(api.tasks.update).toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ completed: true }),
+    )
     expect(w.emitted('changed')).toHaveLength(1)
   })
 

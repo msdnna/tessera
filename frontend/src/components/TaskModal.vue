@@ -53,12 +53,7 @@ import {
   ChevronForwardOutline,
   ChevronBackOutline,
 } from '@vicons/ionicons5'
-import {
-  tasks as tasksApi,
-  boards as boardsApi,
-  projects as projApi,
-  gitlab as glApi,
-} from '@/api'
+import { tasks as tasksApi, boards as boardsApi, projects as projApi, gitlab as glApi } from '@/api'
 import { storeToRefs } from 'pinia'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useBoardViewStore } from '@/stores/boardView'
@@ -903,7 +898,6 @@ async function onSubtaskChanged() {
   await loadDetail()
   emit('changed')
 }
-
 </script>
 
 <template>
@@ -2468,5 +2462,4 @@ async function onSubtaskChanged() {
   background: var(--t-text3);
   opacity: 0.55;
 }
-
 </style>

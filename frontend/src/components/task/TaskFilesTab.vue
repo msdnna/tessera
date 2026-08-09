@@ -107,7 +107,12 @@ async function deleteAttachment(id) {
         Удалить файл «{{ a.filename }}»?
       </n-popconfirm>
     </div>
-    <EmptyState v-if="!attachments.length" size="small" :icon="AttachOutline" text="Файлов пока нет" />
+    <EmptyState
+      v-if="!attachments.length"
+      size="small"
+      :icon="AttachOutline"
+      text="Файлов пока нет"
+    />
     <input ref="fileInput" type="file" hidden @change="onFileChosen" />
     <n-button size="small" :loading="uploading" @click="pickFile">
       <template #icon><n-icon :component="AttachOutline" /></template>
