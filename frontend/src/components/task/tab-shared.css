@@ -1,0 +1,84 @@
+/* Rules shared by the task-modal detail tabs (and, for the column menu, by the
+   modal's own status row). Imported into each component's *scoped* style block, so
+   the selectors stay scoped per component — this file exists to keep the three
+   copies from drifting, not to add globals. */
+
+/* Bare icon-button on a row (edit / delete / download). */
+.c-act {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--t-text3);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+}
+.c-act:hover {
+  color: var(--t-text1);
+}
+
+/* ── column chip + its popover menu ──
+   Deliberately neutral (flat surface + the column's own colour as a dot); the
+   accent gradient stays reserved for tags/priority/avatars. */
+.col-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 190px;
+  border: 1px solid var(--t-border);
+  background: var(--t-surface-alt);
+}
+.col-chip > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.col-chip[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+.col-chip.mini {
+  max-width: 120px;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.col-chip.mini:hover {
+  background: var(--t-hover);
+}
+.col-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--t-text3);
+}
+.col-item.cur {
+  background: var(--t-hover);
+}
+.menu {
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.menu-item:hover {
+  background: var(--t-hover);
+}
+.pmenu {
+  max-height: 240px;
+  overflow-y: auto;
+}
