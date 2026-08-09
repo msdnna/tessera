@@ -44,7 +44,7 @@ import {
   gitlab as gitlabApi,
 } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useBoardViewStore } from '@/stores/boardView'
+import { useBoardViewStore, defaultFieldVis } from '@/stores/boardView'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
@@ -92,9 +92,33 @@ const route = useRoute()
 const router = useRouter()
 const { isMobile } = useResponsive()
 
+// Board context lives in the store (single owner): cards and the task modal read
+// it from there instead of taking it as props. These bindings keep the local
+// names — the maps are the store's reactive objects, written in place by
+// loadBoardMeta; the refs are the store's own, so assignment writes through.
+const {
+  board,
+  columns,
+  metaTagPrefixes,
+  tagsList,
+  membersList,
+  milestonesList,
+  gitlabMembersList,
+  gitlabCanCreate,
+  gitlabFetchTemplates,
+  gitlabIntegrationId,
+  cardSize,
+  stackFields,
+  showEmpty,
+} = storeToRefs(boardViewStore)
+const tagsMap = boardViewStore.tagsMap
+const membersMap = boardViewStore.membersMap
+const gitlabMembersMap = boardViewStore.gitlabMembersMap
+const milestonesMap = boardViewStore.milestonesMap
+const tagPrefixNames = boardViewStore.prefixNames
+const fieldVis = boardViewStore.fieldVis
+
 const loading = ref(false)
-const board = ref(null)
-const columns = ref([])
 const allTasks = ref([])
 const subtasksByParent = ref({})
 const lists = ref({})
@@ -117,32 +141,6 @@ const cardH = reactive({}) // card key → last measured px (from the rendered c
 const cardKey = (dcol, el) => `${dcol.key}::${el.id}`
 let cardIO = null // toggles visibility by real viewport position
 let cardRO = null // measures rendered cards (settles after content layout)
-const tagsMap = reactive({})
-const membersMap = reactive({})
-// GitLab project members (assignable on integration boards even without a Tessera
-// account), keyed by gl_user_id; empty for non-integration boards.
-const gitlabMembersMap = reactive({})
-// True when this board is the workspace's GitLab integration board and the
-// integration allows creating issues from tasks (writeback.push_create) — gates the
-// "Создать issue в GitLab" action in the task modal.
-const gitlabCanCreate = ref(false)
-const gitlabFetchTemplates = ref(false)
-const gitlabIntegrationId = ref(null)
-// Canonical tag prefixes governed by non-"tag" GitLab rules (status/priority/…),
-// hidden from tag pickers. Rebuilt per board in loadBoardMeta.
-const metaTagPrefixes = ref(new Set())
-const tagsList = computed(() => Object.values(tagsMap))
-const membersList = computed(() => Object.values(membersMap))
-// Project milestones («Этап»), keyed by id; cards/modal resolve a task's milestone_id.
-const milestonesMap = reactive({})
-const milestonesList = computed(() => Object.values(milestonesMap))
-// GitLab roster minus members that already map to a Tessera user in this workspace
-// (they appear in the Tessera member list instead — avoids showing one person twice).
-const gitlabMembersList = computed(() =>
-  Object.values(gitlabMembersMap).filter(
-    (g) => !(g.tessera_user_id && membersMap[g.tessera_user_id]),
-  ),
-)
 // Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
 // task has no `created_by`, so matching its author against a Tessera person goes
 // through this map (see utils/boardFilters matchesAuthor).
@@ -168,24 +166,10 @@ const autoSort = ref(false)
 // manually expanded (an explicit `false` wins over autoCollapseEmpty).
 const colCollapse = reactive({})
 const autoCollapseEmpty = ref(false)
-const cardSize = ref('medium') // 'compact' | 'medium' | 'large'
-const stackFields = ref(false) // pills stacked vertically vs. horizontal wrap
-const showEmpty = ref(true) // render empty (unset) placeholder pills
+// cardSize / stackFields / showEmpty / fieldVis are owned by the store (cards read
+// them from there) but remain part of this board's saved view — snapshotToolbar and
+// loadCustomize below read and write them exactly as before.
 const autosaveView = ref(false) // auto re-save the loaded named view on change
-function defaultFieldVis() {
-  return {
-    priority: true,
-    due: true,
-    assignee: true,
-    tags: true,
-    estimate: true,
-    milestone: true,
-    description: true,
-    number: true,
-    gitlab: true,
-  }
-}
-const fieldVis = reactive(defaultFieldVis())
 const customizeOpen = ref(false)
 // Board-name mirror for the customize panel's rename input (kept in sync with the
 // loaded board; committed via boards.update on blur/enter).
@@ -270,9 +254,9 @@ function recomputeComposerFit() {
 }
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
-// Friendly display names for tag prefixes (canonical prefix → label), loaded
-// per-project. Falls back to the raw prefix where no name is configured.
-const tagPrefixNames = reactive({})
+// Friendly display names for tag prefixes (canonical prefix → label, owned by the
+// store) are loaded per-project. Falls back to the raw prefix where no name is
+// configured.
 
 // Detected namespaces from the project tags, for the prefix picker. Labels use
 // the configured friendly name (else the raw prefix), sorted alphabetically.
@@ -1401,6 +1385,10 @@ async function load(id) {
     ])
     board.value = b.data
     columns.value = c.data || []
+    // Publish the identity as soon as the board itself is known: cards render
+    // before loadWorkspaceMeta resolves, and a stale projectId from the previous
+    // board would scope their tag creation / estimation config to the wrong one.
+    boardViewStore.setContext(id, wsStore.currentId, b.data?.project_id || null)
     allTasks.value = t.data || []
     const byParent = {}
     for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(sub)
@@ -1427,14 +1415,13 @@ async function loadWorkspaceMeta() {
     gitlabApi.listIntegrations(wsId).catch(() => ({ data: { integrations: [] } })),
     projectsApi.milestones(projectId).catch(() => ({ data: [] })),
   ])
-  for (const k of Object.keys(tagsMap)) delete tagsMap[k]
-  for (const t of tg.data || []) tagsMap[t.id] = t
-  for (const k of Object.keys(milestonesMap)) delete milestonesMap[k]
-  for (const m of ms.data || []) milestonesMap[m.id] = m
-  for (const k of Object.keys(membersMap)) delete membersMap[k]
-  for (const m of mem.data || []) membersMap[m.user_id] = m
-  for (const k of Object.keys(gitlabMembersMap)) delete gitlabMembersMap[k]
-  for (const g of glMem.data || []) gitlabMembersMap[g.gl_user_id] = g
+  boardViewStore.refill(tagsMap, Object.fromEntries((tg.data || []).map((t) => [t.id, t])))
+  boardViewStore.refill(milestonesMap, Object.fromEntries((ms.data || []).map((m) => [m.id, m])))
+  boardViewStore.refill(membersMap, Object.fromEntries((mem.data || []).map((m) => [m.user_id, m])))
+  boardViewStore.refill(
+    gitlabMembersMap,
+    Object.fromEntries((glMem.data || []).map((g) => [g.gl_user_id, g])),
+  )
   // Issue-creation is offered only on the binding that targets THIS board.
   const gi = (glInt.data?.integrations || []).find((b) => b.board_id === props.boardId) || {}
   gitlabIntegrationId.value = gi.id || null
@@ -1448,12 +1435,10 @@ async function loadWorkspaceMeta() {
     for (const p of metaPrefixesFromRules(bi.label_rules)) mp.add(p)
   }
   metaTagPrefixes.value = mp
-  for (const k of Object.keys(tagPrefixNames)) delete tagPrefixNames[k]
-  for (const p of pfx.data || []) tagPrefixNames[p.prefix] = p.label
-  // Mirror tags + prefix names + context to the store so the header Теги manager works.
-  boardViewStore.setTags(tagsList.value)
-  boardViewStore.setPrefixNames({ ...tagPrefixNames })
-  boardViewStore.setMilestones(milestonesList.value)
+  boardViewStore.refill(
+    tagPrefixNames,
+    Object.fromEntries((pfx.data || []).map((p) => [p.prefix, p.label])),
+  )
   boardViewStore.setContext(props.boardId, wsId, projectId)
 }
 
@@ -1804,9 +1789,7 @@ async function reloadMilestones() {
   if (!projectId) return
   try {
     const { data } = await projectsApi.milestones(projectId)
-    for (const k of Object.keys(milestonesMap)) delete milestonesMap[k]
-    for (const m of data || []) milestonesMap[m.id] = m
-    boardViewStore.setMilestones(milestonesList.value)
+    boardViewStore.refill(milestonesMap, Object.fromEntries((data || []).map((m) => [m.id, m])))
   } catch {
     /* keep the current list on error */
   }
@@ -2240,14 +2223,6 @@ async function restoreFromArchive(taskId) {
         :subtasks-by-parent="sortedSubtasksByParent"
         :subtasks-total-by-parent="subtasksByParent"
         :subtasks-expanded="subtasksExpanded"
-        :columns="columns"
-        :tags-map="tagsMap"
-        :members-map="membersMap"
-        :tags="tagsList"
-        :tag-prefix-names="tagPrefixNames"
-        :members="membersList"
-        :ws-id="wsStore.currentId"
-        :project-id="board?.project_id"
         @open="openTask"
         @changed="onChanged"
         @create="createInQuadrant"
@@ -2340,21 +2315,6 @@ async function restoreFromArchive(taskId) {
                       :subtasks-total="(subtasksByParent[element.id] || []).length"
                       :subtasks-expanded="subtasksExpanded"
                       :dragging="draggingCard"
-                      :columns="columns"
-                      :tags-map="tagsMap"
-                      :members-map="membersMap"
-                      :tags="tagsList"
-                      :tag-prefix-names="tagPrefixNames"
-                      :meta-tag-prefixes="metaTagPrefixes"
-                      :members="membersList"
-                      :gitlab-members="gitlabMembersList"
-                      :milestones-map="milestonesMap"
-                      :ws-id="wsStore.currentId"
-                      :project-id="board?.project_id"
-                      :field-vis="fieldVis"
-                      :show-empty="showEmpty"
-                      :stack-fields="stackFields"
-                      :card-size="cardSize"
                       :readonly="archivedMode"
                       @open="openTask"
                       @changed="onChanged"
@@ -2418,20 +2378,7 @@ async function restoreFromArchive(taskId) {
     <TaskModal
       :show="showTaskModal"
       :task-id="selectedTaskId"
-      :ws-id="wsStore.currentId"
-      :project-id="board?.project_id"
-      :board="board"
-      :board-columns="columns"
       :board-top-tasks="allTasks"
-      :tags="tagsList"
-      :tag-prefix-names="tagPrefixNames"
-      :meta-tag-prefixes="metaTagPrefixes"
-      :members="membersList"
-      :gitlab-members="gitlabMembersList"
-      :milestones="milestonesList"
-      :gitlab-can-create="gitlabCanCreate"
-      :gitlab-fetch-templates="gitlabFetchTemplates"
-      :gitlab-integration-id="gitlabIntegrationId"
       :readonly="archivedMode"
       @update:show="(v) => v || closeTask()"
       @changed="onChanged"

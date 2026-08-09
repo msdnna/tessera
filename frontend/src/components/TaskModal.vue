@@ -62,7 +62,9 @@ import {
   projects as projApi,
   gitlab as glApi,
 } from '@/api'
+import { storeToRefs } from 'pinia'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useBoardViewStore } from '@/stores/boardView'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
@@ -108,32 +110,38 @@ import EmptyState from './EmptyState.vue'
 const props = defineProps({
   show: { type: Boolean, default: false },
   taskId: { type: String, default: null },
-  wsId: { type: String, default: null },
-  projectId: { type: String, default: null },
-  tags: { type: Array, default: () => [] },
-  tagPrefixNames: { type: Object, default: () => ({}) },
-  // Canonical tag prefixes governed by status/priority/meta GitLab rules — hidden
-  // from the tag picker so they can't be toggled out of sync with the mapped field.
-  metaTagPrefixes: { type: Set, default: () => new Set() },
-  members: { type: Array, default: () => [] },
-  gitlabMembers: { type: Array, default: () => [] },
-  milestones: { type: Array, default: () => [] },
-  gitlabCanCreate: { type: Boolean, default: false },
-  gitlabFetchTemplates: { type: Boolean, default: false },
-  gitlabIntegrationId: { type: String, default: null },
   // Archive view: the task is shown read-only (no edits/comments); the footer
   // offers Restore instead of Save/Archive/Delete.
   readonly: { type: Boolean, default: false },
-  // Board context, passed from the kanban so the modal doesn't re-fetch the
-  // board + its (already-in-memory) tasks + columns on every open. Used only when
-  // the opened task belongs to this board; a deep-link / cross-board open falls
-  // back to fetching. board: the board object; boardColumns / boardTopTasks: the
-  // parent's live columns and top-level task list.
-  board: { type: Object, default: null },
-  boardColumns: { type: Array, default: () => [] },
+  // The kanban's live top-level task list, so the parent picker doesn't re-fetch
+  // what is already in memory. Stays a prop: it's the board's *task* state, which
+  // the board owns, not shared board context.
   boardTopTasks: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:show', 'changed', 'open', 'restore'])
+
+// Board context (workspace/project, tags, members, milestones, the board itself
+// with its columns, and the GitLab integration flags) comes from the board store
+// instead of thirteen props threaded through the kanban. Bound to the names the
+// rest of this component and its template already use. `board`/`boardColumns` are
+// used only when the opened task belongs to the open board; a deep-link or
+// cross-board open still falls back to fetching.
+const bv = useBoardViewStore()
+const {
+  board,
+  columns: boardColumns,
+  metaTagPrefixes,
+  tagsList: tags,
+  membersList: members,
+  milestonesList: milestones,
+  gitlabMembersList: gitlabMembers,
+  gitlabCanCreate,
+  gitlabFetchTemplates,
+  gitlabIntegrationId,
+} = storeToRefs(bv)
+const tagPrefixNames = bv.prefixNames
+const wsId = computed(() => bv.wsId)
+const projectId = computed(() => bv.projectId)
 
 const store = useWorkspacesStore()
 const theme = useThemeStore()
@@ -230,13 +238,13 @@ function endSplitDrag() {
 // name; GitLab-only users (no Tessera account) insert their `@username` so GitLab
 // resolves the mention on writeback. `label` is the inserted text, `display` the row.
 const mentionItems = computed(() => {
-  const tessera = (props.members || []).map((m) => ({
+  const tessera = (members.value || []).map((m) => ({
     id: m.user_id,
     label: m.name,
     display: m.name,
     avatarUserId: m.user_id,
   }))
-  const gl = (props.gitlabMembers || [])
+  const gl = (gitlabMembers.value || [])
     .filter((g) => !(g.tessera_user_id && membersById.value[g.tessera_user_id]))
     .map((g) => ({
       id: null,
@@ -249,9 +257,9 @@ const mentionItems = computed(() => {
 })
 
 // Lookup maps for subtask hover cards (built from the tags/members props).
-const tagsById = computed(() => Object.fromEntries((props.tags || []).map((t) => [t.id, t])))
+const tagsById = computed(() => Object.fromEntries((tags.value || []).map((t) => [t.id, t])))
 const membersById = computed(() =>
-  Object.fromEntries((props.members || []).map((m) => [m.user_id, m])),
+  Object.fromEntries((members.value || []).map((m) => [m.user_id, m])),
 )
 
 const comments = ref([])
@@ -349,10 +357,10 @@ const relKindOptions = [
 const relPickerOpen = ref(false)
 const relTasks = ref([]) // workspace tasks, lazily loaded
 async function ensureRelTasks() {
-  if (relTasks.value.length || !props.wsId) return
+  if (relTasks.value.length || !wsId.value) return
   try {
     // include_subtasks so subtasks can be linked (e.g. blocking deps between subtasks).
-    const res = await wsApi.tasks(props.wsId, { include_subtasks: 1 })
+    const res = await wsApi.tasks(wsId.value, { include_subtasks: 1 })
     relTasks.value = res.data || []
   } catch {
     /* non-fatal — manual number entry still works */
@@ -433,7 +441,7 @@ const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value })
 // ── estimation ──────────────────────────────────────────────
 // Effective unit config for this task's project (project override → workspace
 // default → built-in). boardInfo.projectId is the reliable source once loaded.
-const estCfg = computed(() => store.estimationFor(props.projectId || boardInfo.value?.projectId))
+const estCfg = computed(() => store.estimationFor(projectId.value || boardInfo.value?.projectId))
 // Compact estimate ("8н") — used to prefill the free-text editor, which parses
 // that same syntax.
 const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
@@ -467,12 +475,12 @@ function onEstShow(shown) {
 }
 
 const tagObjs = computed(() =>
-  selectedTags.value.map((id) => props.tags.find((t) => t.id === id)).filter(Boolean),
+  selectedTags.value.map((id) => tags.value.find((t) => t.id === id)).filter(Boolean),
 )
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
 // renders flat without a header.
 const tagPickerGroups = computed(() =>
-  buildTagGroups(props.tags, props.tagPrefixNames, props.metaTagPrefixes),
+  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
 )
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 
@@ -483,7 +491,7 @@ const tagsValEl = ref(null)
 const tagsMeasureEl = ref(null)
 const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs, { gap: 5 })
 const assigneeObjs = computed(() =>
-  selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
+  selectedAssignees.value.map((id) => members.value.find((m) => m.user_id === id)).filter(Boolean),
 )
 // External GitLab assignees (display-only) from the task detail.
 const glAssignees = computed(() => task.value?.gitlab_assignees || [])
@@ -570,11 +578,11 @@ async function loadDetail() {
     // it instead of re-fetching the board + its full task/column lists on every
     // open (the tasks list is the same payload the board just loaded). Only a
     // deep-link or a cross-board open (task not on this board) falls back to GETs.
-    const ctx = props.board && props.board.id === t.board_id ? props.board : null
+    const ctx = board.value && board.value.id === t.board_id ? board.value : null
     if (ctx) {
       boardInfo.value = { name: ctx.name, projectId: ctx.project_id }
       parentCandidates.value = (props.boardTopTasks || []).filter((x) => x.id !== t.id)
-      columns.value = (props.boardColumns || []).map((c) => ({
+      columns.value = (boardColumns.value || []).map((c) => ({
         id: c.id,
         name: c.name,
         color: c.color,
@@ -708,8 +716,8 @@ const newMilestoneTitle = ref('')
 // Locally-created milestones shown immediately, before the board reloads its meta.
 const extraMilestones = ref([])
 const milestoneOptions = computed(() => {
-  const seen = new Set(props.milestones.map((m) => m.id))
-  return [...props.milestones, ...extraMilestones.value.filter((m) => !seen.has(m.id))]
+  const seen = new Set(milestones.value.map((m) => m.id))
+  return [...milestones.value, ...extraMilestones.value.filter((m) => !seen.has(m.id))]
 })
 const taskMilestone = computed(() =>
   task.value?.milestone_id
@@ -728,9 +736,9 @@ async function setMilestone(milestoneId) {
 }
 async function createMilestone() {
   const title = newMilestoneTitle.value.trim()
-  if (!title || !props.projectId) return
+  if (!title || !projectId.value) return
   try {
-    const { data } = await projApi.createMilestone(props.projectId, { title })
+    const { data } = await projApi.createMilestone(projectId.value, { title })
     extraMilestones.value.push(data)
     newMilestoneTitle.value = ''
     await setMilestone(data.id)
@@ -850,9 +858,9 @@ const glTemplateOptions = computed(() =>
 async function loadGlTemplates() {
   glTemplates.value = []
   glTemplate.value = null
-  if (!props.gitlabFetchTemplates || !props.wsId) return
+  if (!gitlabFetchTemplates.value || !wsId.value) return
   try {
-    const res = await glApi.issueTemplates(props.wsId, props.gitlabIntegrationId)
+    const res = await glApi.issueTemplates(wsId.value, gitlabIntegrationId.value)
     glTemplates.value = res.data || []
   } catch {
     glTemplates.value = []
@@ -981,7 +989,7 @@ async function createTag() {
   if (!n) return
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
   try {
-    const res = await projApi.createTag(props.projectId, {
+    const res = await projApi.createTag(projectId.value, {
       name: n,
       color: palette[Math.floor(Math.random() * palette.length)],
     })
@@ -1917,7 +1925,7 @@ function eventText(e) {
               </div>
 
               <!-- create GitLab issue from this task -->
-              <div v-if="task && !task.gitlab && props.gitlabCanCreate" class="prow">
+              <div v-if="task && !task.gitlab && gitlabCanCreate" class="prow">
                 <span class="plabel"><n-icon :component="LogoGitlab" :size="15" /> GitLab</span>
                 <button class="val" :disabled="glCreating" @click="createGlIssue">
                   <span class="muted">{{ glCreating ? 'Создание…' : 'Создать issue' }}</span>
@@ -1930,7 +1938,7 @@ function eventText(e) {
                 <span class="slabel">Описание</span>
                 <div class="desc-head-r">
                   <n-select
-                    v-if="task && !task.gitlab && props.gitlabFetchTemplates && glTemplates.length"
+                    v-if="task && !task.gitlab && gitlabFetchTemplates && glTemplates.length"
                     v-model:value="glTemplate"
                     :options="glTemplateOptions"
                     size="small"

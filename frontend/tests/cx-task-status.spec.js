@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
+import { seedBoardStore } from './helpers/boardStore'
 
 const COLS = [
   { id: 'c1', name: 'К работе', color: '#9aa0aa', position: 1 },
@@ -110,7 +111,7 @@ const flush = async (w) => {
 // Mount closed and open it, or the modal renders its empty shell forever.
 const openModal = async (TaskModal) => {
   const w = mount(TaskModal, {
-    props: { show: false, taskId: 't1', wsId: 'w1', projectId: 'p1' },
+    props: { show: false, taskId: 't1' },
     global: { stubs },
   })
   await w.setProps({ show: true })
@@ -121,6 +122,10 @@ const openModal = async (TaskModal) => {
 describe('TaskModal status row', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    // Workspace/project context comes from the store now. Board + columns stay
+    // empty on purpose: that is the cross-board / deep-link open, where the modal
+    // falls back to fetching the board itself (what these cases exercise).
+    seedBoardStore({ board: null, columns: [] })
     // TaskModal uses useResponsive (matchMedia) for its wide/stacked layout; jsdom
     // has none — stub a desktop-width match so the modal mounts.
     window.matchMedia = vi.fn().mockReturnValue({
@@ -181,12 +186,16 @@ describe('TaskModal status row', () => {
 })
 
 describe('TaskCard subtask column marker', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    // The card reads the board's status columns from the store, not from props.
+    seedBoardStore({ columns: COLS })
+  })
 
   it('marks only the child that diverged from its parent', async () => {
     const TaskCard = (await import('@/components/TaskCard.vue')).default
     const w = mount(TaskCard, {
-      props: { task: TASK, subtasks: TASK.subtasks, subtasksTotal: 2, columns: COLS },
+      props: { task: TASK, subtasks: TASK.subtasks, subtasksTotal: 2 },
       global: { stubs },
     })
     await w.vm.$nextTick()
@@ -194,5 +203,64 @@ describe('TaskCard subtask column marker', () => {
     const marks = w.findAll('.col-mark')
     expect(marks.length).toBe(1)
     expect(marks[0].attributes('title')).toBe('Колонка: В процессе')
+  })
+})
+
+// The card takes tags, assignees, milestones and the customize-view display
+// settings from the board store instead of props (#2664). Mount it with nothing
+// but the task itself and check the context still reaches the pills — otherwise a
+// missed binding degrades silently into an empty pill rather than an error.
+describe('TaskCard board context from the store', () => {
+  const TAGGED = {
+    id: 't2',
+    board_id: 'b1',
+    column_id: 'c1',
+    title: 'С контекстом',
+    number: 42,
+    priority: 3,
+    tag_ids: ['tag1'],
+    assignee_ids: ['u1'],
+    milestone_id: 'm1',
+  }
+  const seed = (over) =>
+    seedBoardStore({
+      columns: COLS,
+      tags: [{ id: 'tag1', name: 'backend', color: '#7c5cff' }],
+      members: [{ user_id: 'u1', name: 'Аня' }],
+      milestones: [{ id: 'm1', title: 'Спринт 1' }],
+      // 'large' allows every field; the medium preset deliberately omits the
+      // milestone pill, which would make the assertions below test the preset.
+      cardSize: 'large',
+      ...over,
+    })
+  const mountCard = async () => {
+    const TaskCard = (await import('@/components/TaskCard.vue')).default
+    const w = mount(TaskCard, { props: { task: TAGGED }, global: { stubs } })
+    await w.vm.$nextTick()
+    return w
+  }
+
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('resolves tag, assignee and milestone through the store maps', async () => {
+    seed()
+    const w = await mountCard()
+    expect(w.text()).toContain('backend')
+    expect(w.text()).toContain('Спринт 1')
+    expect(w.html()).toContain('Аня')
+  })
+
+  it('honours the store fieldVis toggle', async () => {
+    seed({ fieldVis: { milestone: false } })
+    const w = await mountCard()
+    expect(w.text()).toContain('backend')
+    expect(w.text()).not.toContain('Спринт 1')
+  })
+
+  it('honours the store cardSize preset (compact drops the pills)', async () => {
+    seed({ cardSize: 'compact' })
+    const w = await mountCard()
+    expect(w.text()).toContain('С контекстом')
+    expect(w.text()).not.toContain('backend')
   })
 })

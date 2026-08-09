@@ -47,7 +47,9 @@ import DueEditor from './DueEditor.vue'
 import RichContent from './RichContent.vue'
 import TaskMiniCard from './TaskMiniCard.vue'
 import TagPill from './TagPill.vue'
+import { storeToRefs } from 'pinia'
 import { useThemeStore } from '@/stores/theme'
+import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useDateLocale } from '@/composables/useDateLocale'
@@ -75,44 +77,44 @@ const props = defineProps({
   nested: { type: Boolean, default: false },
   // A board drag is in progress → reveal the "drop to nest" zone on childless cards.
   dragging: { type: Boolean, default: false },
-  // Board status columns [{ id, name, color, position }] for the context-menu
-  // "move to column" and the subtask divergence chip.
-  columns: { type: Array, default: () => [] },
   // Column of the parent card, set only on a nested subtask card: a subtask that
   // sits elsewhere than its parent shows that column as a chip.
   parentColumnId: { type: String, default: null },
-  tagsMap: { type: Object, default: () => ({}) },
-  membersMap: { type: Object, default: () => ({}) },
-  tags: { type: Array, default: () => [] },
-  tagPrefixNames: { type: Object, default: () => ({}) },
-  // Canonical tag prefixes governed by status/priority/meta GitLab rules — hidden
-  // from the tag picker so they can't be toggled out of sync with the mapped field.
-  metaTagPrefixes: { type: Set, default: () => new Set() },
-  members: { type: Array, default: () => [] },
-  gitlabMembers: { type: Array, default: () => [] },
-  milestonesMap: { type: Object, default: () => ({}) },
-  wsId: { type: String, default: null },
-  projectId: { type: String, default: null },
-  // Customize-view: per-field pill visibility (key → false hides), whether empty
-  // (unset) pills render, whether pills stack vertically, and the card size preset
-  // which controls the card's composition (compact = title only, medium = key
-  // fields, large = everything).
-  fieldVis: { type: Object, default: () => ({}) },
-  showEmpty: { type: Boolean, default: true },
-  stackFields: { type: Boolean, default: false },
-  cardSize: { type: String, default: 'medium' },
   // Archive view: card is display-only (no inline edits/DnD/menu); shows a Restore
   // affordance instead. Clicking the card still opens the read-only task modal.
   readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open', 'changed', 'restore'])
 
+// Everything about the open board — reference data (tags, members, milestones,
+// status columns), the tag-prefix names and the customize-view display settings —
+// comes from the board store rather than being threaded through as props. Bound to
+// the local names the rest of this component (and its template) already uses:
+// `columns`, `tagsMap`, … stay spelled the same, they're just no longer props.
+const bv = useBoardViewStore()
+const {
+  columns,
+  metaTagPrefixes,
+  tagsList: tags,
+  membersList: members,
+  gitlabMembersList: gitlabMembers,
+  showEmpty,
+  stackFields,
+  cardSize,
+} = storeToRefs(bv)
+const tagsMap = bv.tagsMap
+const membersMap = bv.membersMap
+const milestonesMap = bv.milestonesMap
+const tagPrefixNames = bv.prefixNames
+const fieldVis = bv.fieldVis
+const projectId = computed(() => bv.projectId)
+
 // A field is visible unless its customize toggle is explicitly false (missing key
 // defaults to shown → back-compat with older saved views).
-const fv = (k) => props.fieldVis?.[k] !== false
+const fv = (k) => fieldVis?.[k] !== false
 // Card-size composition: compact shows only the title; medium a curated subset;
 // large everything. The per-field fieldVis toggles further refine within that.
-const isCompact = computed(() => props.cardSize === 'compact')
+const isCompact = computed(() => cardSize.value === 'compact')
 // Compact cards still show subtasks, but always collapsed and name-only (no
 // checkbox / priority dot / due), so the expanded stack never applies there.
 const subsExpanded = computed(() => props.subtasksExpanded && !isCompact.value)
@@ -122,7 +124,7 @@ const SIZE_FIELDS = {
   large: null, // null = all fields allowed
 }
 const sizeAllows = (k) => {
-  const set = SIZE_FIELDS[props.cardSize] ?? null
+  const set = SIZE_FIELDS[cardSize.value] ?? null
   return set === null ? true : set.includes(k)
 }
 // A field renders when the size preset allows it AND its fieldVis toggle is on.
@@ -131,20 +133,20 @@ const show = (k) => sizeAllows(k) && fv(k)
 const hasAnyPill = computed(
   () =>
     hasConflict.value ||
-    (show('priority') && (props.showEmpty || props.task.priority)) ||
-    (show('due') && (props.showEmpty || due.value)) ||
+    (show('priority') && (showEmpty.value || props.task.priority)) ||
+    (show('due') && (showEmpty.value || due.value)) ||
     (show('estimate') && estText.value) ||
     (show('milestone') && taskMilestone.value) ||
     (show('description') && hasDescription.value) ||
-    (show('tags') && (props.showEmpty || taskTags.value.length)) ||
+    (show('tags') && (showEmpty.value || taskTags.value.length)) ||
     (show('assignee') &&
-      (props.showEmpty || author.value || assignees.value.length || glAssignees.value.length)),
+      (showEmpty.value || author.value || assignees.value.length || glAssignees.value.length)),
 )
 
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
 // renders flat without a header.
 const tagPickerGroups = computed(() =>
-  buildTagGroups(props.tags, props.tagPrefixNames, props.metaTagPrefixes),
+  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
 )
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 
@@ -191,24 +193,22 @@ async function commitTitle() {
   await apply({ title: n })
 }
 
-const taskTags = computed(() =>
-  (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
-)
+const taskTags = computed(() => (props.task.tag_ids || []).map((id) => tagsMap[id]).filter(Boolean))
 // The single-tag pill hands its box over to TagPill when the tag is scoped, so
 // the GitLab-EE two-tone pill isn't boxed-in by the button's own soft fill.
 const firstTagScoped = computed(() => {
   const t = taskTags.value[0]
-  return t ? tagParts(t.name, props.tagPrefixNames).hasScope : false
+  return t ? tagParts(t.name, tagPrefixNames).hasScope : false
 })
 // Stacked tags row: fit as many chips as the row width allows, rest → +N.
 const stagValEl = ref(null)
 const stagMeasureEl = ref(null)
 const { visibleCount: visibleTagCount } = useTagFit(stagValEl, stagMeasureEl, taskTags, { pad: 4 })
 const taskMilestone = computed(() =>
-  props.task.milestone_id ? props.milestonesMap[props.task.milestone_id] || null : null,
+  props.task.milestone_id ? milestonesMap[props.task.milestone_id] || null : null,
 )
 const assignees = computed(() =>
-  (props.task.assignee_ids || []).map((id) => props.membersMap[id]).filter(Boolean),
+  (props.task.assignee_ids || []).map((id) => membersMap[id]).filter(Boolean),
 )
 // External GitLab assignees (no Tessera account). The board query carries only
 // their names/logins (no avatar), so resolve the avatar from the workspace
@@ -218,7 +218,7 @@ const glAssignees = computed(() => {
   const names = props.task.gitlab_assignees || []
   if (!logins.length) return names.map((n) => ({ name: n }))
   return logins.map((login) => {
-    const m = props.gitlabMembers.find((x) => x.gl_username === login)
+    const m = gitlabMembers.value.find((x) => x.gl_username === login)
     return { login, name: m?.gl_name || login, avatar_url: m?.gl_avatar_url || null }
   })
 })
@@ -234,7 +234,7 @@ const author = computed(() => {
       gl: true,
     }
   if (t.created_by) {
-    const m = props.membersMap[t.created_by]
+    const m = membersMap[t.created_by]
     if (m) return { name: m.name, id: t.created_by }
   }
   return null
@@ -279,10 +279,10 @@ const assigneeQuery = ref('')
 const recentAssignees = ref(readRecentAssignees())
 const pickerMembers = computed(() => {
   const q = assigneeQuery.value.trim().toLowerCase()
-  if (q) return props.members.filter((m) => (m.name || '').toLowerCase().includes(q))
+  if (q) return members.value.filter((m) => (m.name || '').toLowerCase().includes(q))
   // No query: assigned first, then MRU, then alphabetical — deduped, capped at 10
   // (but never hiding a currently-assigned member so they can be removed).
-  const byId = new Map(props.members.map((m) => [m.user_id, m]))
+  const byId = new Map(members.value.map((m) => [m.user_id, m]))
   const seen = new Set()
   const out = []
   const add = (id) => {
@@ -293,7 +293,7 @@ const pickerMembers = computed(() => {
   const assigned = props.task.assignee_ids || []
   assigned.forEach(add)
   recentAssignees.value.forEach(add)
-  ;[...props.members]
+  ;[...members.value]
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     .forEach((m) => add(m.user_id))
   return out.slice(0, Math.max(10, assigned.length))
@@ -312,7 +312,7 @@ const startTs = computed(() => (props.task.start_date ? Date.parse(props.task.st
 const done = computed(() => !!props.task.completed_at)
 // Estimate chip: the task's own estimate, or — if unset — the rollup sum of its
 // subtasks (so a parent shows "Σ …"). Unit resolved from the project config.
-const estCfg = computed(() => wsStore.estimationFor(props.projectId))
+const estCfg = computed(() => wsStore.estimationFor(projectId.value))
 const ownEstimate = computed(() => props.task?.estimate ?? null)
 const rollupEstimate = computed(() => sumEstimates(props.subtasks))
 const estIsRollup = computed(() => ownEstimate.value == null && rollupEstimate.value != null)
@@ -433,7 +433,7 @@ const pendingArchiveTarget = ref(null)
 const ctxOptions = computed(() => {
   const t = ctxTarget.value
   const isMain = t && t.id === props.task.id
-  const cols = props.columns.filter((c) => c.id !== t?.column_id)
+  const cols = columns.value.filter((c) => c.id !== t?.column_id)
   return [
     { label: 'Открыть', key: 'open', icon: menuIcon(OpenOutline) },
     {
@@ -569,7 +569,7 @@ async function createTag() {
   const n = newTagName.value.trim()
   if (!n) return
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
-  const res = await projectsApi.createTag(props.projectId, {
+  const res = await projectsApi.createTag(projectId.value, {
     name: n,
     color: palette[Math.floor(Math.random() * palette.length)],
   })
@@ -653,11 +653,11 @@ function subDue(s) {
 // Column chip for a child rendered under this card — only when it diverged from
 // this card's own column (otherwise it would sit on every single row).
 function subColumn(s) {
-  return divergedColumn(s, props.task.column_id, props.columns)
+  return divergedColumn(s, props.task.column_id, columns.value)
 }
 // Same chip for this card when it is itself a nested subtask card.
 const ownColumnChip = computed(() =>
-  props.nested ? divergedColumn(props.task, props.parentColumnId, props.columns) : null,
+  props.nested ? divergedColumn(props.task, props.parentColumnId, columns.value) : null,
 )
 async function toggleSubDone(s) {
   if (props.readonly) return
@@ -1266,19 +1266,7 @@ async function submitAddSub() {
               :task="s"
               :subtasks="[]"
               :nested="true"
-              :columns="columns"
               :parent-column-id="task.column_id"
-              :tags-map="tagsMap"
-              :members-map="membersMap"
-              :tags="tags"
-              :members="members"
-              :gitlab-members="gitlabMembers"
-              :ws-id="wsId"
-              :project-id="projectId"
-              :field-vis="fieldVis"
-              :show-empty="showEmpty"
-              :stack-fields="stackFields"
-              :card-size="cardSize"
               @open="emit('open', $event)"
               @changed="emit('changed')"
             />
