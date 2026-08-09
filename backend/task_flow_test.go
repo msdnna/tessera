@@ -138,6 +138,79 @@ func TestBoardListOmitsDescription(t *testing.T) {
 	}
 }
 
+// A task carrying several tags AND several assignees at once is the case the
+// board queries used to fan out on: joining both M:N tables produced a row per
+// *combination* (3 tags × 2 assignees = 6 rows), collapsed again by array_agg.
+// The LATERAL rewrite emits one row per task, so this pins down both halves of
+// the contract — exactly one row per task, and the full sets in each array.
+func TestBoardListAggregatesMultiValuedMeta(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	mate := signup(t)
+	s := mkStack(t, c)
+	c.expect(t, c.post("/workspaces/"+s.WS+"/members", map[string]any{"email": mate.Email}), http.StatusCreated)
+
+	tagIDs := map[string]bool{}
+	for _, name := range []string{"альфа", "бета", "гамма"} {
+		tag := c.expect(t, c.post("/projects/"+s.Project+"/tags", map[string]any{"name": name}), http.StatusCreated)
+		tagIDs[tag["id"].(string)] = true
+	}
+	wantAssignees := map[string]bool{c.UserID: true, mate.UserID: true}
+
+	parent := mkTask(t, c, s.Board, s.col(t, 0), "Родитель")["id"].(string)
+	child := mkTask(t, c, s.Board, s.col(t, 0), "Подзадача")["id"].(string)
+	c.expect(t, c.patch("/tasks/"+child+"/parent", map[string]any{"parent_id": parent}), http.StatusOK)
+
+	// Same multi-valued meta on both, so the top-level and subtask queries are
+	// each exercised with more than one row to aggregate.
+	for _, id := range []string{parent, child} {
+		for tagID := range tagIDs {
+			c.expect(t, c.post("/tasks/"+id+"/tags", map[string]any{"tag_id": tagID}), http.StatusNoContent)
+		}
+		for userID := range wantAssignees {
+			if r := c.post("/tasks/"+id+"/assignees", map[string]any{"user_id": userID}); r.Status != http.StatusNoContent {
+				t.Fatalf("add assignee %s to %s: %d\n%s", userID, id, r.Status, r.Body)
+			}
+		}
+	}
+
+	check := func(what, path, wantID string) {
+		t.Helper()
+		var seen int
+		for _, row := range c.get(path).listBody(t) {
+			if row["id"] != wantID {
+				continue
+			}
+			seen++
+			gotTags, _ := row["tag_ids"].([]any)
+			if len(gotTags) != len(tagIDs) {
+				t.Fatalf("%s tag_ids = %v, want %d ids", what, row["tag_ids"], len(tagIDs))
+			}
+			for _, v := range gotTags {
+				if !tagIDs[v.(string)] {
+					t.Fatalf("%s unexpected tag id %v", what, v)
+				}
+			}
+			gotAs, _ := row["assignee_ids"].([]any)
+			if len(gotAs) != len(wantAssignees) {
+				t.Fatalf("%s assignee_ids = %v, want %d ids", what, row["assignee_ids"], len(wantAssignees))
+			}
+			for _, v := range gotAs {
+				if !wantAssignees[v.(string)] {
+					t.Fatalf("%s unexpected assignee id %v", what, v)
+				}
+			}
+		}
+		// GROUP BY used to collapse the fanned-out rows; a LATERAL that lost its
+		// aggregate would leak them into the response instead, so pin the count.
+		if seen != 1 {
+			t.Fatalf("%s appeared %d times in the listing, want exactly 1", what, seen)
+		}
+	}
+	check("top-level task", "/boards/"+s.Board+"/tasks", parent)
+	check("subtask", "/boards/"+s.Board+"/subtasks", child)
+}
+
 // Kanban move: to another column, and between two neighbours (midpoint position).
 func TestTaskMoveBetweenNeighbours(t *testing.T) {
 	t.Parallel()
