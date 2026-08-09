@@ -60,6 +60,20 @@ import {
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { filterBoardTasks } from '@/utils/taskFilter'
 import { boardGitlabAuthors } from '@/utils/boardFilters'
+import {
+  emptyFilters,
+  cloneFilters,
+  countActiveFilters,
+  encodeFacet,
+  decodeFacet,
+  NO_MILESTONE,
+  applyFilterFacet,
+  removeFilterFacet,
+  encodeGroup,
+  decodeGroup,
+  encodeSort,
+  decodeSort,
+} from '@/utils/facetKeys'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
@@ -281,35 +295,9 @@ const groupTags = computed(() =>
 )
 // Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
 const sortLevels = ref([])
-// Single source of truth for the filter facets. Everything that needs a blank
-// filter set (live state, reset, toolbar defaults/snapshot/restore, saved-view
-// apply, legacy-blob migration) derives from here — adding a facet used to mean
-// editing the same literal in six places, and forgetting one only showed up on
-// the migration path, i.e. at users rather than in tests.
-function defaultFilters() {
-  return {
-    priorities: [],
-    assignees: [],
-    authors: [],
-    tags: [],
-    statuses: [],
-    milestones: [],
-    due: '',
-    q: '',
-  }
-}
-// Copy `src` onto a fresh default set: unknown keys are dropped and arrays are
-// copied (never shared with a parsed localStorage blob or a saved view config).
-function cloneFilters(src) {
-  const out = defaultFilters()
-  for (const k of Object.keys(out)) {
-    const v = src?.[k]
-    if (v === undefined || v === null) continue
-    out[k] = Array.isArray(out[k]) ? (Array.isArray(v) ? [...v] : []) : v
-  }
-  return out
-}
-const filters = reactive(defaultFilters())
+// The blank filter set and its shape live in `utils/facetKeys.js` alongside the
+// menu-key protocol, so a new facet is declared once instead of in six literals.
+const filters = reactive(emptyFilters())
 
 // Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
 // create, no inline edits) with a Restore action. Reuses all board filters/grouping.
@@ -402,12 +390,12 @@ const priorityFilterOptions = PRIORITY_LABELS.map((label, value) => ({ label, va
 const memberFilterMenu = computed(() => {
   const tessera = membersList.value.map((m) => ({
     label: m.name,
-    key: `fa.${m.user_id}`,
+    key: encodeFacet('assignee', m.user_id),
     avatarUserId: m.user_id,
   }))
   const gl = gitlabMembersList.value.map((g) => ({
     label: g.gl_name || g.gl_username,
-    key: `fa.gl:${g.gl_username}`,
+    key: encodeFacet('assignee', `gl:${g.gl_username}`),
     avatarSrc: g.gl_avatar_url,
   }))
   if (!gl.length) return tessera
@@ -421,7 +409,7 @@ const memberFilterMenu = computed(() => {
 const authorFilterMenu = computed(() => {
   const tessera = membersList.value.map((m) => ({
     label: m.name,
-    key: `fc.${m.user_id}`,
+    key: encodeFacet('author', m.user_id),
     avatarUserId: m.user_id,
   }))
   const seen = new Set(Object.values(glLoginByUserId.value))
@@ -429,7 +417,11 @@ const authorFilterMenu = computed(() => {
   const pushGl = (username, name, avatar) => {
     if (!username || seen.has(username)) return
     seen.add(username)
-    gl.push({ label: name || username, key: `fc.gl:${username}`, avatarSrc: avatar })
+    gl.push({
+      label: name || username,
+      key: encodeFacet('author', `gl:${username}`),
+      avatarSrc: avatar,
+    })
   }
   gitlabMembersList.value.forEach((g) => pushGl(g.gl_username, g.gl_name, g.gl_avatar_url))
   boardGitlabAuthors(allTasks.value).forEach((a) =>
@@ -450,7 +442,10 @@ const tagFilterMenu = computed(() => {
     return p.hasScope ? `${p.scope}: ${p.label}` : p.label
   }
   if (groups.length <= 1) {
-    return (groups[0]?.tags || []).map((t) => ({ label: flatLabel(t), key: `ft.${t.id}` }))
+    return (groups[0]?.tags || []).map((t) => ({
+      label: flatLabel(t),
+      key: encodeFacet('tag', t.id),
+    }))
   }
   return groups.map((g) => ({
     type: 'group',
@@ -458,7 +453,7 @@ const tagFilterMenu = computed(() => {
     key: `ftg.${g.key}`,
     children: g.tags.map((t) => ({
       label: tagParts(t.name, tagPrefixNames).label,
-      key: `ft.${t.id}`,
+      key: encodeFacet('tag', t.id),
     })),
   }))
 })
@@ -468,22 +463,12 @@ const statusFilterOptions = computed(() =>
 )
 // Milestone filter menu (+ an explicit "Без этапа" bucket).
 const milestoneFilterMenu = computed(() => [
-  ...milestonesList.value.map((m) => ({ label: m.title, key: `fm.${m.id}` })),
-  { label: 'Без этапа', key: 'fm.__none__' },
+  ...milestonesList.value.map((m) => ({ label: m.title, key: encodeFacet('milestone', m.id) })),
+  { label: 'Без этапа', key: encodeFacet('milestone', NO_MILESTONE) },
 ])
-const activeFilterCount = computed(
-  () =>
-    filters.priorities.length +
-    filters.assignees.length +
-    filters.authors.length +
-    filters.tags.length +
-    filters.statuses.length +
-    filters.milestones.length +
-    (filters.due ? 1 : 0) +
-    (filters.q.trim() ? 1 : 0),
-)
+const activeFilterCount = computed(() => countActiveFilters(filters))
 function resetFilters() {
-  Object.assign(filters, defaultFilters())
+  Object.assign(filters, emptyFilters())
 }
 
 // ── composer bar: grouping + sort + filters as removable chips ──
@@ -583,7 +568,7 @@ const facetChips = computed(() => {
     })
   })
   filters.milestones.forEach((m) => {
-    const nm = m === '__none__' ? 'без этапа' : milestonesMap[m]?.title || '—'
+    const nm = m === NO_MILESTONE ? 'без этапа' : milestonesMap[m]?.title || '—'
     out.push({
       kind: 'milestone',
       value: m,
@@ -615,21 +600,21 @@ const groupModeLabel = computed(() => {
 })
 const addOptions = computed(() => {
   const grouping = [
-    { label: 'По статусам', key: 'g.status' },
-    { label: 'По тегам (все)', key: 'g.tag' },
+    { label: 'По статусам', key: encodeGroup('status') },
+    { label: 'По тегам (все)', key: encodeGroup('tag') },
     ...tagPrefixOptions.value
       .filter((o) => o.value)
       .map((o) => ({
         label: `По тегам · ${o.label}`,
-        key: `g.tagp.${encodeURIComponent(o.value)}`,
+        key: encodeGroup('tag', o.value),
       })),
-    { label: 'По этапам', key: 'g.milestone' },
+    { label: 'По этапам', key: encodeGroup('milestone') },
   ]
   // Timeline swimlanes can also be per-assignee or ungrouped.
   if (timelineLike.value) {
     grouping.push(
-      { label: 'По исполнителю', key: 'g.assignee' },
-      { label: 'Без группировки', key: 'g.none' },
+      { label: 'По исполнителю', key: encodeGroup('assignee') },
+      { label: 'Без группировки', key: encodeGroup('none') },
     )
   }
   const opts = [
@@ -637,12 +622,15 @@ const addOptions = computed(() => {
     {
       label: 'Сортировка',
       key: 'sort',
-      children: sortFieldsForMenu.value.map((o) => ({ label: o.label, key: `s.${o.value}` })),
+      children: sortFieldsForMenu.value.map((o) => ({ label: o.label, key: encodeSort(o.value) })),
     },
     {
       label: 'Фильтр: приоритет',
       key: 'fp',
-      children: priorityFilterOptions.map((o) => ({ label: o.label, key: `fp.${o.value}` })),
+      children: priorityFilterOptions.map((o) => ({
+        label: o.label,
+        key: encodeFacet('priority', o.value),
+      })),
     },
     {
       label: 'Фильтр: исполнитель',
@@ -661,7 +649,7 @@ const addOptions = computed(() => {
       key: 'fd',
       children: dueOptions
         .filter((o) => o.value)
-        .map((o) => ({ label: o.label, key: `fd.${o.value}` })),
+        .map((o) => ({ label: o.label, key: encodeFacet('due', o.value) })),
     },
   ]
   // Status (column) filter — timeline only, so the user can hide e.g. the «done»
@@ -670,7 +658,10 @@ const addOptions = computed(() => {
     opts.splice(2, 0, {
       label: 'Фильтр: статус',
       key: 'fs',
-      children: statusFilterOptions.value.map((o) => ({ label: o.label, key: `fs.${o.value}` })),
+      children: statusFilterOptions.value.map((o) => ({
+        label: o.label,
+        key: encodeFacet('status', o.value),
+      })),
     })
   }
   return opts
@@ -754,64 +745,28 @@ function onAddShow(v) {
   if (!v) addLevel.value = null // reset drill state when the menu actually closes
 }
 function onAddFacet(key) {
-  if (key === 'g.status') {
-    groupMode.value = 'status'
-    tagPrefix.value = ''
-  } else if (key === 'g.tag') {
-    groupMode.value = 'tag'
-    tagPrefix.value = ''
-  } else if (key.startsWith('g.tagp.')) {
-    groupMode.value = 'tag'
-    tagPrefix.value = decodeURIComponent(key.slice('g.tagp.'.length))
-  } else if (key === 'g.milestone') {
-    groupMode.value = 'milestone'
-    tagPrefix.value = ''
-  } else if (key === 'g.assignee') {
-    groupMode.value = 'assignee'
-    tagPrefix.value = ''
-  } else if (key === 'g.none') {
-    groupMode.value = 'none'
-    tagPrefix.value = ''
-  } else if (key.startsWith('s.')) {
-    const f = key.slice(2)
-    if (!sortLevels.value.some((l) => l.field === f))
-      sortLevels.value.push({ field: f, dir: 'asc' })
-  } else if (key.startsWith('fp.')) {
-    const v = Number(key.slice(3))
-    if (!filters.priorities.includes(v)) filters.priorities.push(v)
-  } else if (key.startsWith('fa.')) {
-    const v = key.slice(3)
-    if (!filters.assignees.includes(v)) filters.assignees.push(v)
-  } else if (key.startsWith('fc.')) {
-    const v = key.slice(3)
-    if (!filters.authors.includes(v)) filters.authors.push(v)
-  } else if (key.startsWith('ft.')) {
-    const v = key.slice(3)
-    if (!filters.tags.includes(v)) filters.tags.push(v)
-  } else if (key.startsWith('fs.')) {
-    const v = key.slice(3)
-    if (!filters.statuses.includes(v)) filters.statuses.push(v)
-  } else if (key.startsWith('fm.')) {
-    const v = key.slice(3)
-    if (!filters.milestones.includes(v)) filters.milestones.push(v)
-    // Building a custom multi-sprint filter supersedes the tree's single-sprint
-    // scope — drop it so the full board loads and the client filter applies.
-    if (route.query.milestone) clearMilestoneScope()
-  } else if (key.startsWith('fd.')) {
-    filters.due = key.slice(3)
+  const g = decodeGroup(key)
+  if (g) {
+    groupMode.value = g.mode
+    tagPrefix.value = g.prefix
+    return
   }
+  const sortField = decodeSort(key)
+  if (sortField) {
+    if (!sortLevels.value.some((l) => l.field === sortField))
+      sortLevels.value.push({ field: sortField, dir: 'asc' })
+    return
+  }
+  const facet = decodeFacet(key)
+  if (!facet) return
+  applyFilterFacet(filters, facet)
+  // Building a custom multi-sprint filter supersedes the tree's single-sprint
+  // scope — drop it so the full board loads and the client filter applies.
+  if (facet.kind === 'milestone' && route.query.milestone) clearMilestoneScope()
 }
 function removeChip(c) {
   if (c.kind === 'sort') sortLevels.value.splice(c.i, 1)
-  else if (c.kind === 'priority')
-    filters.priorities = filters.priorities.filter((x) => x !== c.value)
-  else if (c.kind === 'assignee') filters.assignees = filters.assignees.filter((x) => x !== c.value)
-  else if (c.kind === 'author') filters.authors = filters.authors.filter((x) => x !== c.value)
-  else if (c.kind === 'tag') filters.tags = filters.tags.filter((x) => x !== c.value)
-  else if (c.kind === 'status') filters.statuses = filters.statuses.filter((x) => x !== c.value)
-  else if (c.kind === 'milestone')
-    filters.milestones = filters.milestones.filter((x) => x !== c.value)
-  else if (c.kind === 'due') filters.due = ''
+  else removeFilterFacet(filters, c.kind, c.value)
 }
 function onChipClick(c) {
   if (c.kind === 'group') {
@@ -881,7 +836,7 @@ function defaultToolbar(forLayout) {
     sortLevels: [],
     subtasksExpanded: false,
     autoSort: false,
-    filters: defaultFilters(),
+    filters: emptyFilters(),
     colCollapse: {},
     autoCollapseEmpty: false,
     cardSize: 'medium',
