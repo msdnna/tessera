@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, h } from 'vue'
+import { ref, reactive, computed, toRef, watch, onMounted, onBeforeUnmount, nextTick, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import draggable from 'vuedraggable'
 import {
@@ -51,6 +51,7 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
 import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
 import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
+import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import {
   tagNamespace,
@@ -803,15 +804,9 @@ function toggleAuto() {
 }
 
 // ── per-board, per-layout toolbar state (localStorage, per device) ──
-// Group/sort/filter state is kept independently per layout: switching board↔
-// timeline swaps the live refs in and out of `toolbarByLayout`, so each layout
-// remembers its own grouping/sort/filters (a status filter set on the timeline
-// doesn't leak into the board, where that facet isn't even offered).
-const viewKey = computed(() => `tessera_view_${props.boardId}`)
-let restoring = false
-let swapping = false
-const toolbarByLayout = {}
-
+// Only the *shape* of that state lives here (what a toolbar snapshot holds and how
+// it is applied); the storage key, the per-layout slots, the debounced write and the
+// restoring/swapping mutex live in `useBoardViewConfig`.
 function defaultToolbar(forLayout) {
   return {
     groupMode: forLayout === 'timeline' || forLayout === 'gantt' ? 'assignee' : 'status',
@@ -869,87 +864,39 @@ function loadCustomize(s) {
   autosaveView.value = !!s.autosaveView
 }
 
-function writeView() {
-  if (restoring) return
-  try {
-    toolbarByLayout[layout.value] = snapshotToolbar()
-    localStorage.setItem(
-      viewKey.value,
-      JSON.stringify({ layout: layout.value, toolbars: toolbarByLayout }),
-    )
-  } catch {
-    /* storage full / disabled — non-fatal */
+// Rebuild a pre-per-layout blob into a toolbar snapshot. Built on top of the
+// defaults so every key the old blob predates (milestones, autoSort, colCollapse,
+// cardSize, fieldVis, …) is present rather than left to loadToolbar's own
+// defaulting to paper over.
+function migrateToolbar(v, forLayout) {
+  return {
+    ...defaultToolbar(forLayout),
+    groupMode: v.groupMode || defaultToolbar(forLayout).groupMode,
+    tagPrefix: v.tagPrefix || '',
+    sortLevels: Array.isArray(v.sortLevels)
+      ? v.sortLevels
+      : v.sortBy && v.sortBy !== 'position'
+        ? [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
+        : [],
+    subtasksExpanded: !!v.subtasksExpanded,
+    filters: cloneFilters(v.filters),
   }
 }
-// The view watcher fires on every search keystroke; a synchronous localStorage
-// write per keystroke is a visible input-lag source on mid hardware. Debounce so
-// we persist once the user pauses, and flush on unmount so nothing is lost.
-const VIEW_PERSIST_MS = 300 // idle time after the last toolbar change before we write
-let persistTimer = null
-function persistView() {
-  if (restoring || swapping) return
-  if (persistTimer) clearTimeout(persistTimer)
-  persistTimer = setTimeout(() => {
-    persistTimer = null
-    writeView()
-  }, VIEW_PERSIST_MS)
-}
-onBeforeUnmount(() => {
-  if (persistTimer) {
-    clearTimeout(persistTimer)
-    persistTimer = null
-    writeView()
-  }
+
+const {
+  restoreView,
+  persistView,
+  isGuarded: viewLoadInFlight,
+  guard: withViewLoad,
+} = useBoardViewConfig({
+  boardId: toRef(props, 'boardId'),
+  layout,
+  defaults: defaultToolbar,
+  snapshot: snapshotToolbar,
+  load: loadToolbar,
+  migrate: migrateToolbar,
 })
-function restoreView() {
-  restoring = true
-  try {
-    const raw = localStorage.getItem(viewKey.value)
-    if (raw) {
-      const v = JSON.parse(raw)
-      if (v.toolbars) {
-        Object.assign(toolbarByLayout, v.toolbars)
-        if (v.layout) layout.value = v.layout
-      } else {
-        // Migrate the old single-config format into the current layout's slot.
-        // Built on top of the defaults so every key the old blob predates
-        // (milestones, autoSort, colCollapse, cardSize, fieldVis, …) is present
-        // rather than left to loadToolbar's own defaulting to paper over.
-        if (v.layout) layout.value = v.layout
-        toolbarByLayout[layout.value] = {
-          ...defaultToolbar(layout.value),
-          groupMode: v.groupMode || defaultToolbar(layout.value).groupMode,
-          tagPrefix: v.tagPrefix || '',
-          sortLevels: Array.isArray(v.sortLevels)
-            ? v.sortLevels
-            : v.sortBy && v.sortBy !== 'position'
-              ? [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
-              : [],
-          subtasksExpanded: !!v.subtasksExpanded,
-          filters: cloneFilters(v.filters),
-        }
-      }
-      loadToolbar(toolbarByLayout[layout.value] || defaultToolbar(layout.value))
-    } else {
-      loadToolbar(defaultToolbar(layout.value))
-    }
-  } catch {
-    loadToolbar(defaultToolbar(layout.value))
-  } finally {
-    nextTick(() => (restoring = false))
-  }
-}
-// Swap the toolbar state when the layout changes (each layout keeps its own).
-watch(layout, (newL, oldL) => {
-  if (restoring || newL === oldL) return
-  swapping = true
-  toolbarByLayout[oldL] = snapshotToolbar()
-  loadToolbar(toolbarByLayout[newL] || defaultToolbar(newL))
-  nextTick(() => {
-    swapping = false
-    persistView()
-  })
-})
+
 watch(
   [
     groupMode,
@@ -1043,15 +990,10 @@ async function saveView() {
   }
 }
 function applyView(v) {
-  // Guard the layout-swap watcher: applyViewConfig sets layout AND the toolbar
-  // fields itself, so the swap must not also fire and clobber them.
-  restoring = true
-  applyViewConfig(v.config)
-  currentViewName.value = v.name
-  showLoadView.value = false
-  nextTick(() => {
-    restoring = false
-    persistView()
+  withViewLoad(() => {
+    applyViewConfig(v.config)
+    currentViewName.value = v.name
+    showLoadView.value = false
   })
 }
 async function deleteView(v) {
@@ -1080,7 +1022,7 @@ async function autosaveCurrent() {
 watch(
   () => (autosaveView.value && currentViewName.value ? JSON.stringify(currentViewConfig()) : ''),
   (sig) => {
-    if (!sig || restoring || swapping) return
+    if (!sig || viewLoadInFlight()) return
     if (autosaveTimer) clearTimeout(autosaveTimer)
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null

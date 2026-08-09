@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 
 import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
 import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
+import { useBoardViewConfig, VIEW_PERSIST_MS } from '@/composables/useBoardViewConfig'
 
 // jsdom ships neither observer, and both composables build them in onMounted —
 // these fakes let a test drive the callbacks by hand.
@@ -222,5 +223,134 @@ describe('useBoardDragScroll', () => {
     expect(api.dragging.value).toBe(false)
     expect(remove).toHaveBeenCalledWith('dragover', expect.any(Function))
     remove.mockRestore()
+  })
+})
+
+describe('useBoardViewConfig', () => {
+  // A toolbar snapshot is just `{ groupMode }` here — the composable is deliberately
+  // blind to the real shape, which stays in KanbanBoard.
+  function mountView({ boardId = 'b1', layout: initial = 'board' } = {}) {
+    const id = ref(boardId)
+    const layout = ref(initial)
+    const state = ref('')
+    const load = vi.fn((s) => (state.value = s.groupMode))
+    const defaults = vi.fn((l) => ({ groupMode: l === 'timeline' ? 'assignee' : 'status' }))
+    const snapshot = vi.fn(() => ({ groupMode: state.value }))
+    const migrate = vi.fn((v, l) => ({ ...defaults(l), groupMode: v.groupMode }))
+    const { api, wrapper } = host(() =>
+      useBoardViewConfig({ boardId: id, layout, defaults, snapshot, load, migrate }),
+    )
+    return { api, wrapper, layout, state, load, defaults, migrate }
+  }
+  function stored(boardId = 'b1') {
+    const raw = localStorage.getItem(`tessera_view_${boardId}`)
+    return raw === null ? null : JSON.parse(raw)
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    vi.useFakeTimers()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('restores the defaults of the current layout when nothing is stored', () => {
+    const { api, state, defaults } = mountView({ layout: 'timeline' })
+    api.restoreView()
+    expect(defaults).toHaveBeenCalledWith('timeline')
+    expect(state.value).toBe('assignee')
+  })
+
+  it('restores the stored layout and that layout slot', () => {
+    localStorage.setItem(
+      'tessera_view_b1',
+      JSON.stringify({ layout: 'timeline', toolbars: { timeline: { groupMode: 'tag' } } }),
+    )
+    const { api, layout, state } = mountView()
+    api.restoreView()
+    expect(layout.value).toBe('timeline')
+    expect(state.value).toBe('tag')
+  })
+
+  it('routes a pre-per-layout blob through migrate', () => {
+    localStorage.setItem('tessera_view_b1', JSON.stringify({ groupMode: 'tag' }))
+    const { api, state, migrate } = mountView()
+    api.restoreView()
+    expect(migrate).toHaveBeenCalledWith({ groupMode: 'tag' }, 'board')
+    expect(state.value).toBe('tag')
+  })
+
+  it('falls back to the defaults when the stored blob is corrupt', () => {
+    localStorage.setItem('tessera_view_b1', 'not json')
+    const { api, state } = mountView()
+    api.restoreView()
+    expect(state.value).toBe('status')
+  })
+
+  it('debounces the write into one slot per layout', () => {
+    const { api, state } = mountView()
+    state.value = 'tag'
+    api.persistView()
+    api.persistView()
+    expect(stored()).toBe(null)
+    vi.advanceTimersByTime(VIEW_PERSIST_MS)
+    expect(stored()).toEqual({ layout: 'board', toolbars: { board: { groupMode: 'tag' } } })
+  })
+
+  it('does not persist while a restore is in flight', async () => {
+    // The deep watcher in KanbanBoard fires as `load` writes the very refs it
+    // watches; without the mutex that write would be persisted straight back.
+    const { api } = mountView()
+    api.restoreView()
+    api.persistView()
+    vi.advanceTimersByTime(VIEW_PERSIST_MS)
+    expect(stored()).toBe(null)
+    await nextTick()
+    api.persistView()
+    vi.advanceTimersByTime(VIEW_PERSIST_MS)
+    expect(stored().toolbars.board).toEqual({ groupMode: 'status' })
+  })
+
+  it('a layout swap banks the old layout and loads the new one', async () => {
+    const { api, layout, state } = mountView()
+    api.restoreView()
+    await nextTick()
+    state.value = 'tag'
+    layout.value = 'timeline'
+    await nextTick()
+    expect(state.value).toBe('assignee') // the defaults of the layout we switched to
+    await nextTick()
+    vi.advanceTimersByTime(VIEW_PERSIST_MS)
+    expect(stored()).toEqual({
+      layout: 'timeline',
+      toolbars: { board: { groupMode: 'tag' }, timeline: { groupMode: 'assignee' } },
+    })
+  })
+
+  it('guard keeps the swap watcher off a bulk apply that sets the layout itself', async () => {
+    const { api, layout, state, load } = mountView()
+    api.restoreView()
+    await nextTick()
+    load.mockClear()
+    // Applying a saved view sets layout AND the toolbar fields; the swap must not
+    // fire on top and clobber them with the other layout's slot.
+    api.guard(() => {
+      layout.value = 'timeline'
+      state.value = 'tag'
+    })
+    await nextTick()
+    expect(load).not.toHaveBeenCalled()
+    expect(state.value).toBe('tag')
+  })
+
+  it('flushes a pending write on unmount', () => {
+    const { api, wrapper, state } = mountView()
+    state.value = 'tag'
+    api.persistView()
+    wrapper.unmount()
+    expect(stored().toolbars.board).toEqual({ groupMode: 'tag' })
+    // The pending timer was cleared, not left to fire a second time.
+    state.value = 'status'
+    vi.advanceTimersByTime(VIEW_PERSIST_MS)
+    expect(stored().toolbars.board).toEqual({ groupMode: 'tag' })
   })
 })
