@@ -49,6 +49,8 @@ import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
+import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
+import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import {
   tagNamespace,
@@ -136,25 +138,6 @@ const loading = ref(false)
 const allTasks = ref([])
 const subtasksByParent = ref({})
 const lists = ref({})
-// ── card-list virtualization (IntersectionObserver windowing) ──────────────
-// Every column item keeps its wrapper <div> so vuedraggable's child count,
-// indices, drop targets and the before/after math in onColChange stay identical
-// (DnD untouched). Cards more than ~800px outside the viewport collapse to a
-// cheap placeholder of their last-measured height; only near-viewport cards
-// mount the heavy TaskCard. Visibility is driven by each card's *real* viewport
-// position (one IO, root = viewport), so there's no model-vs-DOM divergence to
-// thrash the scrollbar and the bottom is always reachable. Parity with Android's
-// LazyColumn. Measuring before collapsing keeps placeholder height exact → no
-// jump. IO swaps are frozen during a drag so SortableJS sees a stable DOM.
-const VCARD_EST = 190 // placeholder px until a card has been measured
-// Keyed by "columnKey::taskId", NOT taskId alone: under tag grouping one task can
-// appear in several columns at once, and a bare-id key would make those instances
-// share visibility/height — collapsing/leaking cards across columns while scrolling.
-const vis = reactive({}) // card key → in/near viewport (undefined = not yet known)
-const cardH = reactive({}) // card key → last measured px (from the rendered card)
-const cardKey = (dcol, el) => `${dcol.key}::${el.id}`
-let cardIO = null // toggles visibility by real viewport position
-let cardRO = null // measures rendered cards (settles after content layout)
 // Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
 // task has no `created_by`, so matching its author against a Tessera person goes
 // through this map (see utils/boardFilters matchesAuthor).
@@ -1207,10 +1190,6 @@ function closeTask() {
   }
 }
 
-const dragging = ref(false) // any drag (column OR card): autoscroll, reload guard, reveal
-// Card-only drag: gates the per-card subtask nest dropzone hint. A column drag must
-// NOT flip this, otherwise every childless card flashes a dashed drop hint.
-const draggingCard = ref(false)
 // How long our own mutations keep realtime-driven reloads muted: long enough to
 // cover the round-trip plus the echo of our own broadcast, short enough that a
 // concurrent edit by someone else still lands promptly.
@@ -1220,100 +1199,17 @@ function suppress() {
   suppressReloadUntil = Date.now() + SUPPRESS_RELOAD_MS
 }
 
-// ── custom edge auto-scroll during drag ──
-// Sortable's built-in auto-scroll doesn't reliably scroll a nested horizontal
-// container on touch. Rather than chase flaky move events, we read the position
-// of Sortable's own drag image (`.sortable-fallback` on touch, `.sortable-drag`
-// on desktop) each animation frame, with a dragover fallback for desktop.
-const EDGE = 72 // px from a board edge that triggers scrolling
-const STEP_COOLDOWN = 600 // ms between one-column steps while held at the edge
-let edgeRAF = null
-let pointerX = null // last desktop dragover X (touch uses the drag image)
-let lastStep = 0
-function onDragOver(e) {
-  pointerX = e.clientX
-}
-function dragX() {
-  // Touch: the moving clone follows the finger. (On desktop `.sortable-drag` is
-  // the static original, so there we fall back to the dragover X instead.)
-  const clone = document.querySelector('.sortable-fallback')
-  if (clone) {
-    const r = clone.getBoundingClientRect()
-    return r.left + r.width / 2
-  }
-  return pointerX
-}
-let scrollIdx = null // tracked target column index (avoids reading mid-animation scrollLeft)
-// Scroll exactly one column in `dir` (-1 left / +1 right), snapping to its start.
-function stepColumn(dir) {
-  const el = boardScroll.value
-  if (!el) return
-  const stride = colWidth.value + GAP
-  const maxIdx = Math.round((el.scrollWidth - el.clientWidth) / stride)
-  if (scrollIdx == null) scrollIdx = Math.round(el.scrollLeft / stride)
-  scrollIdx = Math.max(0, Math.min(maxIdx, scrollIdx + dir))
-  el.scrollTo({ left: scrollIdx * stride, behavior: 'smooth' })
-}
-function autoScrollTick() {
-  const el = boardScroll.value
-  const px = dragX()
-  if (dragging.value && el && px != null) {
-    const rect = el.getBoundingClientRect()
-    let dir = 0
-    if (px < rect.left + EDGE) dir = -1
-    else if (px > rect.right - EDGE) dir = 1
-    if (dir !== 0) {
-      // One column per entry, then one more every cooldown if held at the edge.
-      const now = performance.now()
-      if (now - lastStep > STEP_COOLDOWN) {
-        stepColumn(dir)
-        lastStep = now
-      }
-    } else {
-      // Centre: re-sync the target to where we actually are so the next step
-      // moves exactly one column (no skipping from a mid-animation read).
-      lastStep = 0
-      scrollIdx = Math.round(el.scrollLeft / (colWidth.value + GAP))
-    }
-  }
-  edgeRAF = requestAnimationFrame(autoScrollTick)
-}
-// Card drag adds the nest-hint flag on top of the shared drag setup; column drag
-// calls onDragStart directly and leaves draggingCard false.
-function onCardDragStart() {
-  draggingCard.value = true
-  onDragStart()
-}
-function onDragStart() {
-  dragging.value = true
-  pointerX = null
-  scrollIdx = null
-  lastStep = 0
-  // Mobile uses scroll-snap (x mandatory) + smooth scrolling, which both revert
-  // our per-frame scrollLeft nudges — disable them for the duration of the drag.
-  const el = boardScroll.value
-  if (el) {
-    el.style.scrollSnapType = 'none'
-    el.style.scrollBehavior = 'auto'
-  }
-  window.addEventListener('dragover', onDragOver, { passive: true })
-  if (!edgeRAF) edgeRAF = requestAnimationFrame(autoScrollTick)
-}
-function onDragEnd() {
-  dragging.value = false
-  draggingCard.value = false
-  pointerX = null
-  const el = boardScroll.value
-  if (el) {
-    el.style.scrollSnapType = ''
-    el.style.scrollBehavior = ''
-  }
-  window.removeEventListener('dragover', onDragOver)
-  if (edgeRAF) {
-    cancelAnimationFrame(edgeRAF)
-    edgeRAF = null
-  }
-}
+// Edge auto-scroll + the shared drag flags live in `useBoardDragScroll`; the board
+// only supplies the scrolling element and the column stride.
+const { dragging, draggingCard, onDragStart, onCardDragStart, onDragEnd } = useBoardDragScroll({
+  scrollEl: boardScroll,
+  colWidth,
+  gap: GAP,
+})
+// Card-list windowing. Frozen while a drag is in flight so SortableJS sees a
+// stable DOM, hence the dependency on `dragging` above.
+const { vis, cardH, regCard, reset: resetCardViewport } = useCardViewport({ frozen: dragging })
+
 // Coalesces the burst of realtime events one action produces into a single reload.
 const RELOAD_DEBOUNCE_MS = 200
 let reloadTimer = null
@@ -1519,15 +1415,6 @@ function rebuildLists() {
   lists.value = map
 }
 watch([filteredTasks, groupMode, tagPrefix, milestonesList], rebuildLists)
-
-// Observe each card wrapper (stable per task id via item-key) once. Off-screen
-// cards collapse to a placeholder; near-viewport cards mount the real TaskCard.
-function regCard(el, id) {
-  if (!el || !cardIO) return
-  el.dataset.cardId = id
-  cardIO.observe(el)
-  cardRO.observe(el)
-}
 
 // Mutable mirror of displayColumns for column drag-reorder (status mode only).
 const colModel = ref([])
@@ -1798,30 +1685,6 @@ onMounted(async () => {
     ro.observe(boardScroll.value)
     measure()
   }
-  // Card-list windowing: reveal cards within 800px of the viewport; collapse the
-  // rest. Frozen mid-drag so SortableJS sees a stable DOM.
-  cardIO = new IntersectionObserver(
-    (entries) => {
-      if (dragging.value) return
-      for (const en of entries) {
-        const id = en.target.dataset.cardId
-        if (id) vis[id] = en.isIntersecting
-      }
-    },
-    { rootMargin: '800px 0px' },
-  )
-  // Measure rendered cards (re-fires as TaskCard content settles, unlike a
-  // one-shot read), so a collapsed card's placeholder gets its exact height.
-  // Skip wrappers showing a placeholder to avoid feeding back a stale height.
-  cardRO = new ResizeObserver((entries) => {
-    for (const en of entries) {
-      const el = en.target
-      const id = el.dataset.cardId
-      if (!id || el.firstElementChild?.classList.contains('card-ph')) continue
-      const h = Math.round(en.contentRect.height)
-      if (h > 0 && cardH[id] !== h) cardH[id] = h
-    }
-  })
   // Re-measure the composer fit on bar resize (window / sidebar toggle).
   composerRO = new ResizeObserver(recomputeComposerFit)
   if (subbarEl.value) composerRO.observe(subbarEl.value)
@@ -1833,8 +1696,6 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
-  cardIO?.disconnect()
-  cardRO?.disconnect()
   // Drop any pending debounced reload so it can't fire against a board we've just
   // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
   clearTimeout(reloadTimer)
@@ -1846,10 +1707,7 @@ watch(
   () => props.boardId,
   async (id) => {
     if (!id) return
-    // Drop the previous board's windowing state so its measured heights /
-    // visibility don't bleed in (re-seeded fresh by the IO/RO on render).
-    for (const k of Object.keys(vis)) delete vis[k]
-    for (const k of Object.keys(cardH)) delete cardH[k]
+    resetCardViewport()
     restoreView()
     await load(id)
     loadViews()
@@ -2257,11 +2115,15 @@ async function restoreFromArchive(taskId) {
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element, index }">
-                  <div :ref="(el) => regCard(el, cardKey(dcol, element))" class="card-wrap">
+                  <div :ref="(el) => regCard(el, cardKey(dcol.key, element.id))" class="card-wrap">
                     <div
-                      v-if="colCollapsedNow(dcol) || !(vis[cardKey(dcol, element)] ?? index < 12)"
+                      v-if="
+                        colCollapsedNow(dcol) || !(vis[cardKey(dcol.key, element.id)] ?? index < 12)
+                      "
                       class="card-ph"
-                      :style="{ height: (cardH[cardKey(dcol, element)] || VCARD_EST) + 'px' }"
+                      :style="{
+                        height: (cardH[cardKey(dcol.key, element.id)] || VCARD_EST) + 'px',
+                      }"
                     />
                     <TaskCard
                       v-else
