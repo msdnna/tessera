@@ -40,6 +40,19 @@ export function isAllDayMs(ms) {
   return d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0
 }
 
+// Parse a serialised task date to epoch ms; null/'' → null (an unset endpoint).
+export const parseDate = (s) => (s ? Date.parse(s) : null)
+
+// Effective day-span endpoints of a task. A one-ended task (only start OR only due)
+// collapses to a 1-day span — both views draw it as a single-day bar.
+export function spanOf(t) {
+  const s = parseDate(t.start_date)
+  const d = parseDate(t.due_date)
+  const a = s ?? d
+  const b = d ?? s
+  return { a: startOfDay(a), b: startOfDay(b), hasStart: s != null, hasDue: d != null }
+}
+
 // Zoom tier from the current px-per-day. Thresholds tuned by feel:
 //  - below ~20px/day a 2-digit day number doesn't fit a cell → group by weeks;
 //  - at/above ~140px/day a day is wide enough to show ≥3 hour ticks → hours.

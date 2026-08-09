@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, toRef, onBeforeUnmount } from 'vue'
 import { NDropdown, NPopconfirm, NIcon, NTooltip } from 'naive-ui'
 import {
   TimerOutline,
@@ -19,7 +19,6 @@ import {
   formatEstimateFull,
   estimateRangeShort,
   estimateTooltip,
-  sumEstimates,
   estimateToDays,
 } from '@/utils/estimation'
 import {
@@ -27,16 +26,14 @@ import {
   HOUR_MS,
   startOfDay,
   isAllDayMs,
-  tierFor,
   barSpan,
   anchorMs,
   xAt,
-  buildDays,
-  buildMonthBands,
-  buildWeekBands,
-  hourTicksInWindow,
-  hourStepFor,
+  parseDate as parse,
 } from '@/utils/timeAxis'
+import { useChartTimeline } from '@/composables/useChartTimeline'
+import { useChartLanes } from '@/composables/useChartLanes'
+import { useChartRows, SUB_STEP, SUB_TOP0 } from '@/composables/useChartRows'
 import UserAvatar from './UserAvatar.vue'
 
 const wsStore = useWorkspacesStore()
@@ -67,18 +64,9 @@ const props = defineProps({
 })
 const emit = defineEmits(['open', 'changed'])
 
-// Effort total per lane (sum of estimates), shown in the lane header. The unit
-// comes from the project's estimation config.
+// Estimation unit/config of the project — drives every estimate the chart renders
+// (lane totals, the ghost bar, the hover card).
 const estCfg = computed(() => wsStore.estimationFor(props.projectId))
-function laneEffort(lane) {
-  const total = sumEstimates(lane.tasks)
-  return total != null ? formatEstimate(total, estCfg.value) : ''
-}
-// Spelled-out lane total for the effort tooltip (a sum → no projected window).
-function laneEffortFull(lane) {
-  const total = sumEstimates(lane.tasks)
-  return total != null ? formatEstimateFull(total, estCfg.value) : ''
-}
 
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
@@ -102,160 +90,66 @@ function toggleLeft() {
   leftCollapsed.value = !leftCollapsed.value
 }
 
-// ── zoom (px per day) ──
-// The range spans week-grouping (zoomed out) through hour-precision (zoomed in);
-// `tierFor(dayW)` picks the axis granularity. Default sits in the days tier.
-// Stops land in each tier: weeks ≤18, days 24–112, hours ≥140 (≥3 hour ticks).
-const ZOOM = [6, 10, 14, 18, 24, 32, 44, 60, 84, 112, 140, 180, 230]
-const zoomIdx = ref(5) // → 32px/day (days tier)
-const dayW = computed(() => ZOOM[zoomIdx.value])
-// While the user is actively zooming (a burst of wheel ticks), bars/today/ghost
-// SNAP instead of CSS-transitioning — animating every intermediate step made the
-// chart jitter on multi-step zoom. `zooming` gates the `.animate` class; a short
-// debounce re-enables transitions once the scale has settled.
-const zooming = ref(false)
-let zoomSettle = 0
-// Re-zoom while keeping the day under `anchorClientX` (a viewport x; omit → centre
-// of the viewport) pinned in place. We read the day at the anchor BEFORE the width
-// changes, then on the next tick (once axisW has reflowed) set scrollLeft so that
-// same day lands back under the anchor — no more snapping to the earliest task.
-function applyZoom(newIdx, anchorClientX) {
-  newIdx = Math.max(0, Math.min(ZOOM.length - 1, newIdx))
-  if (newIdx === zoomIdx.value) return
-  const el = scrollEl.value
-  const oldW = ZOOM[zoomIdx.value]
-  const newW = ZOOM[newIdx]
-  let anchorX = null
-  let dayAtAnchor = null
-  if (el) {
-    const rect = el.getBoundingClientRect()
-    anchorX = anchorClientX != null ? anchorClientX - rect.left : el.clientWidth / 2
-    dayAtAnchor = (el.scrollLeft + anchorX - leftW.value) / oldW
-  }
-  zooming.value = true
-  clearTimeout(zoomSettle)
-  zoomSettle = setTimeout(() => (zooming.value = false), 200)
-  zoomIdx.value = newIdx
-  if (el && dayAtAnchor != null) {
-    nextTick(() => {
-      el.scrollLeft = Math.max(0, dayAtAnchor * newW + leftW.value - anchorX)
-    })
-  }
-}
-function zoomIn(anchorX) {
-  applyZoom(zoomIdx.value + 1, anchorX)
-}
-function zoomOut(anchorX) {
-  applyZoom(zoomIdx.value - 1, anchorX)
-}
-
-// ── date helpers (pure axis math lives in utils/timeAxis) ──
-const todayMs = startOfDay(Date.now())
-const parse = (s) => (s ? Date.parse(s) : null)
-// Current axis granularity tier: 'weeks' | 'days' | 'hours'.
-const tier = computed(() => tierFor(dayW.value))
-// Horizontal scroll position + viewport width, rAF-throttled — drives the windowed
-// hour-tick rendering (only paints the visible slice).
-const scrollX = ref(0)
-const viewW = ref(0)
-// Vertical scroll + viewport height + the body's y-offset within the scroll content
-// (header height), rAF-throttled — drives row virtualization below.
-const scrollY = ref(0)
-const viewH = ref(0)
-const bodyTop = ref(0)
-const bodyEl = ref(null)
-
 // A task is "scheduled" when it has at least one of start/due.
 const scheduled = computed(() => props.tasks.filter((t) => t.start_date || t.due_date))
 const unscheduled = computed(() => props.tasks.filter((t) => !t.start_date && !t.due_date))
 
-// Effective span endpoints of a task (a one-ended task is a 1-day bar).
-function spanOf(t) {
-  const s = parse(t.start_date)
-  const d = parse(t.due_date)
-  const a = s ?? d
-  const b = d ?? s
-  return { a: startOfDay(a), b: startOfDay(b), hasStart: s != null, hasDue: d != null }
-}
-
-// ── axis range: covers every scheduled task (incl. its estimate ghost) + today ──
-const range = computed(() => {
-  let lo = todayMs
-  let hi = todayMs
-  for (const t of scheduled.value) {
-    const { a, b } = spanOf(t)
-    lo = Math.min(lo, a)
-    hi = Math.max(hi, b)
-    // The estimate "ghost" can reach past the due date — keep its end on-scale.
-    const gd = estimateToDays(t.estimate, estCfg.value)
-    if (gd != null) hi = Math.max(hi, a + Math.ceil(gd) * DAY_MS)
-  }
-  lo -= 3 * DAY_MS
-  hi += 7 * DAY_MS
-  const days = Math.round((hi - lo) / DAY_MS) + 1
-  return { start: startOfDay(lo), days }
-})
-const axisW = computed(() => range.value.days * dayW.value)
-const dayIndex = (ms) => Math.round((startOfDay(ms) - range.value.start) / DAY_MS)
-
-// Axis header bands. Months always show; the second band is per-day (days/hours
-// tiers) or per-week (weeks tier); the hours tier adds an hour-tick row.
-const days = computed(() => buildDays(range.value.start, range.value.days, todayMs))
-const monthBands = computed(() => buildMonthBands(days.value))
-const weekBands = computed(() => (tier.value === 'weeks' ? buildWeekBands(days.value) : []))
-// Hour ticks only for the visible viewport slice (+ a margin) — "lazy lines" so a
-// wide board doesn't render thousands of header nodes in the hours tier.
-const hourTicks = computed(() => {
-  if (tier.value !== 'hours') return []
-  const lo = scrollX.value - leftW.value - 200
-  const hi = scrollX.value - leftW.value + viewW.value + 200
-  return hourTicksInWindow(range.value.days, dayW.value, lo, hi)
-})
-// Minor-gridline period (px): the hour-tick step in the hours tier, else one day.
-const subW = computed(() => {
-  const step = hourStepFor(dayW.value)
-  return tier.value === 'hours' && step ? (step / 24) * dayW.value : dayW.value
+// ── the chart engine, shared with the Gantt view ──
+// Axis range + header bands, zoom, the scroll viewport, pan/ctrl-wheel and the hover
+// cursor guide all live in useChartTimeline; only the bar layout below is ours.
+const {
+  scrollEl,
+  bodyEl,
+  ZOOM,
+  zoomIdx,
+  dayW,
+  zooming,
+  zoomIn,
+  zoomOut,
+  todayMs,
+  tier,
+  range,
+  axisW,
+  days,
+  monthBands,
+  weekBands,
+  hourTicks,
+  subW,
+  todayLeft,
+  milestoneMarkers,
+  scrollY,
+  viewH,
+  bodyTop,
+  onScroll,
+  centerToday,
+  pan,
+  onPanDown,
+  onWheel,
+  cursor,
+  cursorPill,
+  cursorLabel,
+  onHoverMove,
+  onHoverLeave,
+} = useChartTimeline({
+  scheduled,
+  milestones: toRef(props, 'milestones'),
+  estCfg,
+  leftW,
+  // A bar drag owns the pointer — the guide would otherwise trail the dragged edge.
+  cursorBlocked: () => !!drag.value,
 })
 
 // ── lanes (swimlanes) — driven by the composer-bar's groupMode ──
-const lanes = computed(() => {
-  const mode = props.groupMode
-  const buckets = new Map()
-  const ensure = (key, label, color) => {
-    if (!buckets.has(key)) buckets.set(key, { key, label, color, tasks: [] })
-    return buckets.get(key)
-  }
-  // For 'status' grouping, seed lanes in column order so empty columns still show
-  // and the lane order matches the board.
-  if (mode === 'status') {
-    for (const col of props.statusColumns) ensure(col.id, col.name, col.color)
-  }
-  for (const t of scheduled.value) {
-    if (mode === 'assignee') {
-      const id = (t.assignee_ids || [])[0]
-      const m = id ? props.membersMap[id] : null
-      ensure(id || '∅', m?.name || 'Не назначено').tasks.push(t)
-    } else if (mode === 'tag') {
-      // Respect the prefix when grouping by a tag namespace.
-      const ids = (t.tag_ids || []).filter((id) => {
-        const tag = props.tagsMap[id]
-        return tag && (!props.tagPrefix || (tag.name || '').startsWith(props.tagPrefix))
-      })
-      const id = ids[0]
-      const tag = id ? props.tagsMap[id] : null
-      ensure(id || '∅', tag?.name || 'Без тега', tag?.color).tasks.push(t)
-    } else if (mode === 'status') {
-      const col = props.statusColumns.find((c) => c.id === t.column_id)
-      ensure(t.column_id || '∅', col?.name || '—', col?.color).tasks.push(t)
-    } else {
-      ensure('all', 'Все задачи').tasks.push(t)
-    }
-  }
-  const arr = [...buckets.values()].filter((l) => l.tasks.length || mode === 'status')
-  // Lane tasks keep the incoming `props.tasks` order — which already reflects the
-  // composer's sort (e.g. «Сорт: Статус»); re-sorting by start here would override it.
-  if (mode !== 'status') arr.sort((a, b) => (a.key === '∅' ? 1 : 0) - (b.key === '∅' ? 1 : 0))
-  return arr
+// Lane tasks keep the incoming `props.tasks` order, which already reflects the
+// composer's sort (e.g. «Сорт: Статус»).
+const { lanes, laneEffort, laneEffortFull } = useChartLanes({
+  source: scheduled,
+  statusColumns: toRef(props, 'statusColumns'),
+  membersMap: toRef(props, 'membersMap'),
+  tagsMap: toRef(props, 'tagsMap'),
+  groupMode: toRef(props, 'groupMode'),
+  tagPrefix: toRef(props, 'tagPrefix'),
+  estCfg,
 })
 
 const overdueCount = computed(
@@ -265,88 +159,16 @@ const overdueCount = computed(
     ).length,
 )
 
-// ── row virtualization ──
-// The body renders one DOM row per lane-header and per task; on a board with 200+
-// tasks that (with per-row gridlines + bars) dominates the cost of every zoom and
-// scroll. We window it: only rows intersecting the viewport (plus a margin) render,
-// with top/bottom spacers that preserve the total scroll height. Bars are positioned
-// by pure axis math, so windowing changes nothing about their geometry.
-const ROW_H = 36
-// Subtask sub-bars stack below the parent bar within the same row; each adds
-// SUB_STEP to the row height. SUB_TOP0 sits just under the 24px parent bar (the
-// 14px sub-bar height lives in the .subbar CSS).
-const SUB_STEP = 18 // sub-bar height (14) + gap (4)
-const SUB_TOP0 = 34 // first sub-bar top (parent bar bottom 30 + 4px gap)
-// Scheduled subtasks of a task (those with a start or due), drawn as sub-bars.
-function subBars(t) {
-  const subs = props.subtasksByParent[t.id]
-  if (!subs || !subs.length) return []
-  return subs.filter((s) => s.start_date || s.due_date)
-}
-// Row height grows by SUB_STEP per scheduled subtask (36 when none).
-function rowHeight(t) {
-  return ROW_H + SUB_STEP * subBars(t).length
-}
-// Resolve a task by id across top-level tasks AND subtasks — the drag-reschedule
-// save step needs it, since a dragged sub-bar's task lives in subtasksByParent.
-function findTask(id) {
-  const top = props.tasks.find((x) => x.id === id)
-  if (top) return top
-  for (const arr of Object.values(props.subtasksByParent)) {
-    const s = arr.find((x) => x.id === id)
-    if (s) return s
-  }
-  return null
-}
-const laneH = ref(30) // lane-header row height; measured once (styling is uniform)
-function measureLaneH() {
-  const h = bodyEl.value?.querySelector('.tl-lanehead')?.offsetHeight
-  if (h) laneH.value = h
-}
-// Flat ordered list of visual rows (lane header, then its task rows), matching the
-// document flow so spacer heights stay exact.
-const flatRows = computed(() => {
-  const out = []
-  for (const lane of lanes.value) {
-    out.push({ t: 'lane', key: `L${lane.key}`, lane })
-    for (const task of lane.tasks) out.push({ t: 'task', key: task.id, task })
-  }
-  return out
+// ── row geometry + virtualization (shared with the Gantt view) ──
+const { subBars, rowHeight, findTask, vwindow } = useChartRows({
+  lanes,
+  tasks: toRef(props, 'tasks'),
+  subtasksByParent: toRef(props, 'subtasksByParent'),
+  scrollY,
+  viewH,
+  bodyTop,
+  bodyEl,
 })
-const rowH = (r) => (r.t === 'lane' ? laneH.value : rowHeight(r.task))
-const rowLayout = computed(() => {
-  const rows = flatRows.value
-  const tops = new Array(rows.length)
-  let y = 0
-  for (let i = 0; i < rows.length; i++) {
-    tops[i] = y
-    y += rowH(rows[i])
-  }
-  return { tops, height: y }
-})
-const VMARGIN = 600 // px of off-screen rows kept rendered above/below the viewport
-const vwindow = computed(() => {
-  const rows = flatRows.value
-  const { tops, height } = rowLayout.value
-  const n = rows.length
-  if (!n) return { rows: [], top: 0, bottom: 0 }
-  const lo = scrollY.value - bodyTop.value - VMARGIN
-  const hi = scrollY.value - bodyTop.value + (viewH.value || 800) + VMARGIN
-  let start = 0
-  while (start < n && tops[start] + rowH(rows[start]) < lo) start++
-  if (start >= n) return { rows: [], top: height, bottom: 0 }
-  let end = start
-  while (end < n && tops[end] < hi) end++
-  if (end <= start) end = Math.min(n, start + 1)
-  const last = end - 1
-  return {
-    rows: rows.slice(start, end),
-    top: tops[start],
-    bottom: height - (tops[last] + rowH(rows[last])),
-  }
-})
-onMounted(() => nextTick(measureLaneH))
-watch(lanes, () => nextTick(measureLaneH))
 
 // ── drag-to-reschedule (move whole bar / resize an edge) ──
 // During a drag we hold a transient preview so only the dragged bar re-renders.
@@ -480,126 +302,8 @@ function ghostGeom(t) {
 }
 // Today-line x: the real current time in the hours tier (sub-day precision), else
 // the centre of today's day cell.
-const todayLeft = computed(() =>
-  tier.value === 'hours'
-    ? xAt(Date.now(), range.value.start, dayW.value)
-    : dayIndex(todayMs) * dayW.value + dayW.value / 2,
-)
-
-// Milestone due-markers: dashed vertical lines at each milestone's due date that
-// falls within the current axis range.
-const milestoneMarkers = computed(() =>
-  (props.milestones || [])
-    .filter((m) => m.due_date)
-    .map((m) => {
-      const di = dayIndex(parse(m.due_date))
-      return { id: m.id, title: m.title, di, left: di * dayW.value + dayW.value / 2 }
-    })
-    .filter((m) => m.di >= 0 && m.di < range.value.days),
-)
-
-// ── scroll-to-today ──
-// rAF-driven so the glide is reliable: native `scrollTo({behavior:'smooth'})` on
-// this overflow container was a no-op in practice (jumped instantly).
-const scrollEl = ref(null)
-let scrollRaf = 0
-function animateScrollLeft(target) {
-  const el = scrollEl.value
-  if (!el) return
-  cancelAnimationFrame(scrollRaf)
-  const from = el.scrollLeft
-  const dist = target - from
-  if (Math.abs(dist) < 1) {
-    el.scrollLeft = target
-    return
-  }
-  const t0 = performance.now()
-  const dur = 340
-  const ease = (p) => 1 - Math.pow(1 - p, 3)
-  const step = (now) => {
-    const p = Math.min(1, (now - t0) / dur)
-    el.scrollLeft = from + dist * ease(p)
-    if (p < 1) scrollRaf = requestAnimationFrame(step)
-  }
-  scrollRaf = requestAnimationFrame(step)
-}
-function centerToday(smooth = true) {
-  const el = scrollEl.value
-  if (!el) return
-  const left = Math.max(0, dayIndex(todayMs) * dayW.value - el.clientWidth / 2 + leftW.value)
-  if (smooth === false) el.scrollLeft = left
-  else animateScrollLeft(left)
-}
-watch(
-  scrollEl,
-  (el) =>
-    el &&
-    nextTick(() => {
-      centerToday(false)
-      syncScroll()
-    }),
-)
-
-// rAF-throttled scroll/resize sync for the windowed hour ticks.
-let scrollRaf2 = 0
-function syncScroll() {
-  const el = scrollEl.value
-  if (!el) return
-  scrollX.value = el.scrollLeft
-  viewW.value = el.clientWidth
-  scrollY.value = el.scrollTop
-  viewH.value = el.clientHeight
-  if (bodyEl.value) bodyTop.value = bodyEl.value.offsetTop
-}
-function onScroll() {
-  if (scrollRaf2) return
-  scrollRaf2 = requestAnimationFrame(() => {
-    scrollRaf2 = 0
-    syncScroll()
-  })
-}
-
-// ── pan: middle-button anywhere, or left-drag on empty timeline space ──
-// (bars stop propagation on their own pointerdown, so a pointerdown that reaches
-// the scroll container is on empty space.)
-const pan = ref(null)
-function onPanDown(e) {
-  const middle = e.button === 1
-  const emptyLeft = e.button === 0 && e.target.closest('.tl-track') && !e.target.closest('.bar')
-  if (!middle && !emptyLeft) return
-  const el = scrollEl.value
-  if (!el) return
-  e.preventDefault()
-  pan.value = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop }
-  window.addEventListener('pointermove', onPanMove)
-  window.addEventListener('pointerup', onPanUp)
-}
-function onPanMove(e) {
-  const p = pan.value
-  const el = scrollEl.value
-  if (!p || !el) return
-  el.scrollLeft = p.sl - (e.clientX - p.x)
-  el.scrollTop = p.st - (e.clientY - p.y)
-}
-function onPanUp() {
-  pan.value = null
-  window.removeEventListener('pointermove', onPanMove)
-  window.removeEventListener('pointerup', onPanUp)
-}
-// Ctrl/Cmd + wheel zooms, anchored on the day under the cursor.
-function onWheel(e) {
-  if (!(e.ctrlKey || e.metaKey)) return
-  e.preventDefault()
-  if (e.deltaY < 0) zoomIn(e.clientX)
-  else zoomOut(e.clientX)
-}
 onBeforeUnmount(() => {
-  cancelAnimationFrame(scrollRaf)
-  cancelAnimationFrame(scrollRaf2)
-  clearTimeout(zoomSettle)
   clearTimeout(collapseSettle)
-  window.removeEventListener('pointermove', onPanMove)
-  window.removeEventListener('pointerup', onPanUp)
 })
 
 // ── hover preview card ──
@@ -651,46 +355,6 @@ const hoverEstimateRange = computed(() =>
 function ghostTitle(t) {
   return estimateTooltip(t.start_date, t.estimate, estCfg.value)
 }
-
-// ── hover cursor-line ──
-// A neutral vertical guide tracking the pointer over the chart, with a date/time
-// pill pinned to the top of the viewport. Lets you read off the exact date a
-// bar's edge lands on. Kept separate from the bar hover preview (which sits beside
-// the bar) so the two never collide. Suppressed while dragging/panning.
-const cursor = ref(null) // { axisX, ms } in content (axis) coords, or null
-const cursorPill = ref({ x: 0, top: 0 }) // fixed viewport coords for the date pill
-function onHoverMove(e) {
-  if (drag.value || pan.value) {
-    cursor.value = null
-    return
-  }
-  const el = scrollEl.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  const xv = e.clientX - rect.left
-  // Off the chart (over the sticky left column or past the right edge): hide.
-  if (xv < leftW.value || xv > el.clientWidth) {
-    cursor.value = null
-    return
-  }
-  const axisX = Math.max(0, Math.min(axisW.value, el.scrollLeft + xv - leftW.value))
-  cursor.value = { axisX, ms: range.value.start + (axisX / dayW.value) * DAY_MS }
-  cursorPill.value = { x: e.clientX, top: rect.top }
-}
-function onHoverLeave() {
-  cursor.value = null
-}
-// Day + short month (+ year off the current one), and the clock time in the hours tier.
-const cursorLabel = computed(() => {
-  if (!cursor.value) return ''
-  const dt = new Date(cursor.value.ms)
-  const o = { day: '2-digit', month: 'short' }
-  if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric'
-  let s = dt.toLocaleDateString('ru-RU', o)
-  if (tier.value === 'hours')
-    s += ` ${dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
-  return s
-})
 </script>
 
 <template>
