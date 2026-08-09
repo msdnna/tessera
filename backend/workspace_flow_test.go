@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // registerAs registers a user with a specific email (for invitation flows where
@@ -225,4 +226,67 @@ func TestWorkspaceSummaryAndListScoping(t *testing.T) {
 		t.Fatalf("stranger sees a foreign workspace")
 	}
 	other.expect(t, other.get("/workspaces/"+s.WS+"/summary"), http.StatusForbidden)
+}
+
+// Every summary bucket, including the day boundaries. The counts are derived in SQL
+// from caller-supplied midnights (WorkspaceTaskSummary), so the edges matter: a task
+// due exactly at today+7d is outside due_week, a completed task is never overdue, and
+// subtasks are not counted at all.
+func TestWorkspaceSummaryBuckets(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	helper := signup(t)
+	s := mkStack(t, c)
+	c.expect(t, c.post("/workspaces/"+s.WS+"/members",
+		map[string]any{"email": helper.Email}), http.StatusCreated)
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	col := s.col(t, 0)
+
+	due := func(title string, at time.Time) map[string]any {
+		t.Helper()
+		return c.expect(t, c.post("/boards/"+s.Board+"/tasks", map[string]any{
+			"title": title, "column_id": col, "due_date": at.Format(time.RFC3339),
+		}), http.StatusCreated)
+	}
+
+	due("просрочена", today.AddDate(0, 0, -1).Add(12*time.Hour))
+	due("сегодня", today.Add(time.Hour))
+	due("через три дня", today.AddDate(0, 0, 3))
+	due("ровно через неделю", today.AddDate(0, 0, 7)) // week_end is exclusive
+	due("через десять дней", today.AddDate(0, 0, 10))
+
+	// Completed tasks drop out of the due buckets even when the date has passed.
+	pastDone := due("готовая просроченная", today.AddDate(0, 0, -2))
+	c.expect(t, c.patch("/tasks/"+pastDone["id"].(string), map[string]any{
+		"title": "готовая просроченная", "completed": true,
+	}), http.StatusOK)
+
+	// Assignment: one task on the caller, one on someone else (so "assigned" is the
+	// caller's own count, not "has any assignee").
+	mine := mkTask(t, c, s.Board, col, "моя")
+	c.expect(t, c.post("/tasks/"+mine["id"].(string)+"/assignees",
+		map[string]any{"user_id": c.UserID}), http.StatusNoContent)
+	theirs := mkTask(t, c, s.Board, col, "чужая")
+	c.expect(t, c.post("/tasks/"+theirs["id"].(string)+"/assignees",
+		map[string]any{"user_id": helper.UserID}), http.StatusNoContent)
+
+	// A subtask is excluded from every count, overdue date notwithstanding.
+	child := due("подзадача просрочена", today.AddDate(0, 0, -1))
+	c.expect(t, c.patch("/tasks/"+child["id"].(string)+"/parent",
+		map[string]any{"parent_id": mine["id"].(string)}), http.StatusOK)
+
+	sum := c.expect(t, c.get("/workspaces/"+s.WS+"/summary"), http.StatusOK)
+	for _, want := range []struct {
+		key string
+		n   float64
+	}{
+		{"total", 8}, {"completed", 1}, {"active", 7}, {"assigned", 1},
+		{"overdue", 1}, {"due_today", 1}, {"due_week", 2}, {"unassigned", 6},
+	} {
+		if sum[want.key] != want.n {
+			t.Errorf("summary[%s] = %v, want %v\nfull: %v", want.key, sum[want.key], want.n, sum)
+		}
+	}
 }
