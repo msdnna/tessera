@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { renderMarkdown, renderRich, toggleTaskMarker, toEditorHtml } from '@/utils/markdown'
+import {
+  renderMarkdown,
+  renderRich,
+  sanitizeSvgFragment,
+  toggleTaskMarker,
+  toEditorHtml,
+} from '@/utils/markdown'
 
 describe('renderMarkdown', () => {
   it('renders markdown to sanitised html', () => {
@@ -90,5 +96,70 @@ describe('toEditorHtml', () => {
     expect(toEditorHtml('**b**')).toContain('<strong>b</strong>')
     expect(toEditorHtml('<p>raw</p>')).toBe('<p>raw</p>')
     expect(toEditorHtml('')).toBe('')
+  })
+})
+
+describe('sanitizeSvgFragment', () => {
+  const svg = (inner) => `<svg xmlns="http://www.w3.org/2000/svg">${inner}</svg>`
+  // The fragment is what RichContent mounts; serialise it the same way to assert on it.
+  const clean = (src) => {
+    const host = document.createElement('div')
+    const frag = sanitizeSvgFragment(src)
+    if (frag) host.append(frag)
+    return host.innerHTML
+  }
+
+  it('keeps the diagram markup itself', () => {
+    const out = clean(svg('<g class="node"><rect width="10" height="10"/></g>'))
+    expect(out).toContain('<rect')
+    expect(out).toContain('class="node"')
+  })
+
+  it('keeps <foreignObject> labels (mermaid draws node text as HTML)', () => {
+    const out = clean(svg('<foreignObject><div>Node label</div></foreignObject>'))
+    expect(out).toContain('Node label')
+    expect(out.toLowerCase()).toContain('foreignobject')
+  })
+
+  it('keeps the inline <style> mermaid ships its classes in', () => {
+    const out = clean(svg('<style>.node rect{fill:#fff}</style><g class="node"></g>'))
+    expect(out).toContain('.node rect')
+  })
+
+  it('strips <script> inside the svg', () => {
+    const out = clean(svg('<script>alert(1)</script><rect></rect>'))
+    expect(out.toLowerCase()).not.toContain('<script')
+    expect(out).toContain('<rect')
+  })
+
+  it('still sanitises the HTML inside <foreignObject>', () => {
+    const out = clean(
+      svg('<foreignObject><div><img src="x" onerror="alert(1)">ok</div></foreignObject>'),
+    )
+    expect(out).not.toContain('onerror')
+    expect(out).toContain('ok')
+  })
+
+  it('strips <script> smuggled inside <foreignObject>', () => {
+    const out = clean(svg('<foreignObject><div><script>alert(1)</script>ok</div></foreignObject>'))
+    expect(out.toLowerCase()).not.toContain('<script')
+    expect(out).toContain('ok')
+  })
+
+  it('strips event handlers on svg elements', () => {
+    const out = clean('<svg onload="alert(1)"><rect onclick="alert(2)"></rect></svg>')
+    expect(out).not.toContain('onload')
+    expect(out).not.toContain('onclick')
+  })
+
+  it('strips javascript: hrefs', () => {
+    const out = clean(svg('<a href="javascript:alert(1)"><rect></rect></a>'))
+    expect(out.toLowerCase()).not.toContain('javascript:')
+  })
+
+  it('returns null for empty / falsy input', () => {
+    expect(sanitizeSvgFragment('')).toBeNull()
+    expect(sanitizeSvgFragment(null)).toBeNull()
+    expect(sanitizeSvgFragment(undefined)).toBeNull()
   })
 })
