@@ -180,6 +180,9 @@ func (h *API) AddMember(c *gin.Context) {
 		fail(c)
 		return
 	}
+	// Live sockets snapshot their workspace set at connect; drop the new
+	// member's so they reconnect and start receiving this workspace's events.
+	h.hub.DropUser(user.ID)
 	c.JSON(http.StatusCreated, m)
 }
 
@@ -261,5 +264,8 @@ func (h *API) RemoveMember(c *gin.Context) {
 		fail(c)
 		return
 	}
+	// Cut the removed member's live sockets — otherwise they keep streaming
+	// this workspace's events until they happen to reconnect.
+	h.hub.DropUser(userID)
 	c.Status(http.StatusNoContent)
 }

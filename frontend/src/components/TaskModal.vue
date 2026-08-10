@@ -981,7 +981,7 @@ async function onSubtaskChanged() {
                 class="gl-num"
                 :href="task.gitlab.web_url"
                 target="_blank"
-                rel="noopener"
+                rel="noopener noreferrer"
                 :title="`Открыть issue !${task.gitlab.iid} в GitLab`"
               >
                 (<n-icon :component="LogoGitlab" :size="12" /> !{{ task.gitlab.iid }})

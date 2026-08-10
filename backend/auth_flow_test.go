@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"testing"
+	"time"
 )
 
 // Smoke: register → me → refresh → login round-trip.
@@ -41,6 +42,39 @@ func TestAuthRegisterLoginRefresh(t *testing.T) {
 	r = doReq(t, "", http.MethodPost, "/auth/register", map[string]any{"email": c.Email, "name": "x", "password": "password-123"})
 	if r.Status != http.StatusConflict {
 		t.Fatalf("duplicate register: status %d", r.Status)
+	}
+}
+
+// #2626: a login against an unknown email must be indistinguishable from a
+// login with the wrong password — same status, same body, and a comparable
+// amount of work. Before the fix the unknown-email branch skipped bcrypt
+// entirely and answered ~1000x faster, which enumerates accounts with nothing
+// but a stopwatch.
+func TestLoginDoesNotEnumerateEmails(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+
+	start := time.Now()
+	known := doReq(t, "", http.MethodPost, "/auth/login",
+		map[string]any{"email": c.Email, "password": "wrong-password"})
+	knownDur := time.Since(start)
+
+	start = time.Now()
+	unknown := doReq(t, "", http.MethodPost, "/auth/login",
+		map[string]any{"email": "no-such-" + c.Email, "password": "wrong-password"})
+	unknownDur := time.Since(start)
+
+	if known.Status != http.StatusUnauthorized || unknown.Status != http.StatusUnauthorized {
+		t.Fatalf("statuses: known-email %d, unknown-email %d, want both 401", known.Status, unknown.Status)
+	}
+	if string(known.Body) != string(unknown.Body) {
+		t.Fatalf("responses differ and leak whether the account exists:\nknown:   %s\nunknown: %s", known.Body, unknown.Body)
+	}
+	// Deliberately loose: this asserts "bcrypt ran at all", not equal timing.
+	// The regression it guards against is three orders of magnitude, while a
+	// tight bound would just be flaky under -race and parallel tests.
+	if unknownDur*4 < knownDur {
+		t.Fatalf("unknown-email login took %v vs %v for a known email — bcrypt looks skipped", unknownDur, knownDur)
 	}
 }
 

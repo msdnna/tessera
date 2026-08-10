@@ -528,7 +528,15 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, 
       </button>
     </div>
 
-    <input ref="imgInput" type="file" accept="image/*" hidden @change="onImgFile" />
+    <!-- Enumerated rather than image/*: the server rejects SVG (it would run as
+         active content on our origin), so the picker shouldn't offer it. -->
+    <input
+      ref="imgInput"
+      type="file"
+      accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+      hidden
+      @change="onImgFile"
+    />
 
     <div class="md2-body">
       <Transition name="md2-fade" mode="out-in" @after-enter="autoGrow">

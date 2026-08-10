@@ -277,7 +277,7 @@ async function submitAddSub() {
           class="gl-chip"
           :href="task.gitlab_url"
           target="_blank"
-          rel="noopener"
+          rel="noopener noreferrer"
           :title="`GitLab issue !${task.gitlab_iid} — открыть`"
           @click.stop
         >

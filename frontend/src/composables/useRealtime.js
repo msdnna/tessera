@@ -4,8 +4,14 @@ import { wsURL } from '@/utils/serverBase'
 // useRealtime opens the /api/ws WebSocket and invokes `onEvent({scope,type,data})`
 // for every server broadcast. Auto-reconnects with exponential backoff (capped,
 // jittered) so a backend restart or a flapping link doesn't hammer the server
-// with a fixed-interval retry storm from every open tab. The caller filters
-// events by scope (workspace id) itself.
+// with a fixed-interval retry storm from every open tab.
+//
+// The socket is authenticated: the server only sends events for workspaces the
+// user belongs to, and refuses the handshake without a valid token. The browser
+// WebSocket API can't set an Authorization header, so the token rides as a
+// subprotocol (`['bearer', token]`) — a header, unlike a query param, which
+// would end up in the server's access log. The caller still filters by scope to
+// pick out the workspace it is currently viewing.
 const RECONNECT_BASE = 1000 // ms
 const RECONNECT_MAX = 30000 // ms
 
@@ -25,9 +31,19 @@ export function useRealtime(onEvent) {
   }
 
   function connect() {
+    // Read the token on every (re)connect rather than once: a refresh-on-401
+    // may have rotated it since the last attempt, and the reconnect is what
+    // picks the new one up.
+    const token = localStorage.getItem('tessera_token')
+    if (!token) {
+      // Mid-refresh (or logged out): retry on the same backoff instead of
+      // going permanently silent.
+      scheduleReconnect()
+      return
+    }
     // Web: ws(s)://<location.host>/api/ws. Desktop (Tauri): derived from the
     // configured server origin. See utils/serverBase.js.
-    ws = new WebSocket(wsURL())
+    ws = new WebSocket(wsURL(), ['bearer', token])
     ws.onopen = () => {
       attempts = 0 // healthy connection → reset the backoff
     }

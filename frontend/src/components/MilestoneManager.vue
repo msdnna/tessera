@@ -254,7 +254,7 @@ watch(
                 tag="a"
                 :href="m.gl_url"
                 target="_blank"
-                rel="noopener"
+                rel="noopener noreferrer"
                 title="Открыть в GitLab"
               >
                 <template #icon><n-icon :component="LogoGitlab" /></template>
