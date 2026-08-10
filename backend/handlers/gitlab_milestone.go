@@ -60,7 +60,7 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 		state = "active"
 	}
 	numeric := gidNumericID(issue.MilestoneGID)
-	titleHash := hashStr(issue.MilestoneTitle)
+	titleHash := gitlab.HashStr(issue.MilestoneTitle)
 	var iid *int64
 	if issue.MilestoneIID != 0 {
 		v := issue.MilestoneIID
@@ -169,7 +169,7 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 	if cerr := h.q.CreateGitlabMilestoneLink(c, db.CreateGitlabMilestoneLinkParams{
 		MilestoneID: id, IntegrationID: integ.ID, GlGlobalID: created.GlobalID(),
 		GlIid: iid, GlNumericID: created.ID, GlWebUrl: created.WebURL, GlState: state,
-		TitleHash: hashStr(m.Title),
+		TitleHash: gitlab.HashStr(m.Title),
 	}); cerr != nil {
 		fail(c)
 		return

@@ -795,8 +795,8 @@ func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, in
 	issue := issues[0]
 	if _, uerr := h.q.UpdateGitlabLink(ctx, db.UpdateGitlabLinkParams{
 		TaskID: taskID, GlIid: issue.IID, GlWebUrl: issue.WebURL, GlUpdatedAt: issue.UpdatedAt,
-		TitleHash: hashStr(issue.Title), DescHash: hashStr(issue.Description),
-		LabelsHash: hashStr(labelsKey(issue.Labels)),
+		TitleHash: gitlab.HashStr(issue.Title), DescHash: gitlab.HashStr(issue.Description),
+		LabelsHash: gitlab.HashStr(gitlab.LabelsKey(issue.Labels)),
 		GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
 		GlAuthorAvatarUrl: h.avatarProxyURL(integ.WorkspaceID, issue.AuthorAvatar),
 		GlLastState:       issue.State,
