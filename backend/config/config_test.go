@@ -16,6 +16,8 @@ func clearEnv(t *testing.T) {
 		"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "ENCRYPTION_KEY", "PUBLIC_URL",
 		"CORS_ORIGIN", "DESKTOP_CORS_ORIGINS", "PORT", "UPLOAD_DIR",
 		"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",
+		"TRUSTED_PROXIES", "RATE_LIMIT_ENABLED",
+		"MAX_BODY_BYTES", "MAX_UPLOAD_BYTES", "MAX_ATTACHMENT_BYTES",
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -71,6 +73,65 @@ func TestNewProdLocksCORSToPublicURL(t *testing.T) {
 	t.Setenv("CORS_ORIGIN", "https://other.example.com")
 	if got := New().CORSOrigin; got != "https://other.example.com" {
 		t.Fatalf("explicit CORS = %s", got)
+	}
+}
+
+func TestLimitDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg := New()
+
+	if !cfg.RateLimitEnabled {
+		t.Error("auth throttling must be on unless explicitly disabled")
+	}
+	if cfg.MaxBodyBytes != DefaultMaxBodyBytes ||
+		cfg.MaxUploadBytes != DefaultMaxUploadBytes ||
+		cfg.MaxAttachmentBytes != DefaultMaxAttachmentBytes {
+		t.Errorf("body limits: %d/%d/%d", cfg.MaxBodyBytes, cfg.MaxUploadBytes, cfg.MaxAttachmentBytes)
+	}
+	if len(cfg.TrustedProxies) != 2 {
+		t.Errorf("trusted proxies default = %v, want the loopback pair", cfg.TrustedProxies)
+	}
+}
+
+func TestLimitOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("RATE_LIMIT_ENABLED", "false")
+	t.Setenv("MAX_BODY_BYTES", "4096")
+	t.Setenv("TRUSTED_PROXIES", "10.0.0.1, 10.0.0.2")
+	cfg := New()
+
+	if cfg.RateLimitEnabled {
+		t.Error("RATE_LIMIT_ENABLED=false ignored")
+	}
+	if cfg.MaxBodyBytes != 4096 {
+		t.Errorf("MAX_BODY_BYTES = %d, want 4096", cfg.MaxBodyBytes)
+	}
+	if len(cfg.TrustedProxies) != 2 || cfg.TrustedProxies[0] != "10.0.0.1" {
+		t.Errorf("TRUSTED_PROXIES = %v", cfg.TrustedProxies)
+	}
+}
+
+// A malformed security knob must keep the safe default rather than resolve to
+// the zero value — "off" and "no limit" are exactly the dangerous readings.
+func TestLimitGarbageKeepsDefaults(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("RATE_LIMIT_ENABLED", "yes-please")
+	t.Setenv("MAX_BODY_BYTES", "0")
+	t.Setenv("MAX_UPLOAD_BYTES", "-1")
+	t.Setenv("MAX_ATTACHMENT_BYTES", "twenty")
+	cfg := New()
+
+	if !cfg.RateLimitEnabled {
+		t.Error("unparseable RATE_LIMIT_ENABLED turned throttling off")
+	}
+	if cfg.MaxBodyBytes != DefaultMaxBodyBytes {
+		t.Errorf("MAX_BODY_BYTES=0 accepted: %d", cfg.MaxBodyBytes)
+	}
+	if cfg.MaxUploadBytes != DefaultMaxUploadBytes {
+		t.Errorf("negative MAX_UPLOAD_BYTES accepted: %d", cfg.MaxUploadBytes)
+	}
+	if cfg.MaxAttachmentBytes != DefaultMaxAttachmentBytes {
+		t.Errorf("unparseable MAX_ATTACHMENT_BYTES accepted: %d", cfg.MaxAttachmentBytes)
 	}
 }
 
