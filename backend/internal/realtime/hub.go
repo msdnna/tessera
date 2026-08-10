@@ -106,9 +106,12 @@ func (h *Hub) Run() {
 				case c.send <- ev:
 				default:
 					// Slow client — drop the event for it rather than block
-					// the whole hub. A persistently slow client gets evicted
-					// by its own write deadline.
-					log.Printf("realtime: dropping event for slow client")
+					// the whole hub. Flag it so the write pump sends a resync
+					// marker (the client reloads instead of silently staying
+					// stale); a persistently slow client is still evicted by its
+					// own write deadline, and refetches on the reconnect.
+					c.needResync.Store(true)
+					log.Printf("realtime: dropping event for slow client; flagged resync")
 				}
 			}
 			h.mu.RUnlock()

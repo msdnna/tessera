@@ -15,11 +15,17 @@ import { wsURL } from '@/utils/serverBase'
 const RECONNECT_BASE = 1000 // ms
 const RECONNECT_MAX = 30000 // ms
 
-export function useRealtime(onEvent) {
+// onResync (optional) is called when the caller should reload its current view
+// from scratch: either the server sent a `resync` marker (it had to drop an event
+// because our buffer overflowed), or we just reconnected after an outage and
+// missed whatever happened while the socket was down. Live deltas alone can't
+// close either gap.
+export function useRealtime(onEvent, onResync) {
   let ws = null
   let retry = null
   let attempts = 0
   let closed = false
+  let everConnected = false
 
   function scheduleReconnect() {
     if (closed) return
@@ -46,10 +52,22 @@ export function useRealtime(onEvent) {
     ws = new WebSocket(wsURL(), ['bearer', token])
     ws.onopen = () => {
       attempts = 0 // healthy connection → reset the backoff
+      // A reconnect (not the first open) means we were offline for a while and
+      // missed events; reload rather than resume mid-stream. The first open is
+      // the initial load, which the caller already did.
+      if (everConnected) onResync?.()
+      everConnected = true
     }
     ws.onmessage = (e) => {
       try {
-        onEvent(JSON.parse(e.data))
+        const msg = JSON.parse(e.data)
+        // The server dropped at least one event for us; reload the view instead
+        // of applying deltas around a hole.
+        if (msg?.type === 'resync') {
+          onResync?.()
+          return
+        }
+        onEvent(msg)
       } catch {
         // ignore malformed frames
       }

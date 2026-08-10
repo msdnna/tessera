@@ -659,14 +659,14 @@ func (h *API) RunNotificationWorker(ctx context.Context) {
 	ticker := time.NewTicker(notifyWorkerTick)
 	defer ticker.Stop()
 	h.tick(jobNotifyDelivery, "рассылка уведомлений")
-	h.drainDeliveries(ctx) // drain the backlog at startup, don't wait a tick
+	h.withAdvisoryLock(ctx, "notify_delivery", func() { h.drainDeliveries(ctx) }) // drain backlog at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobNotifyDelivery, "рассылка уведомлений")
-			h.drainDeliveries(ctx)
+			h.withAdvisoryLock(ctx, "notify_delivery", func() { h.drainDeliveries(ctx) })
 		}
 	}
 }

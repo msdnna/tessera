@@ -168,14 +168,14 @@ func (h *API) RunGitlabWriteBackWorker(ctx context.Context) {
 	ticker := time.NewTicker(writebackWorkerTick)
 	defer ticker.Stop()
 	h.tick(jobGitlabWriteback, "выгрузка изменений в GitLab")
-	h.drainWritebacks(ctx) // drain the backlog at startup, don't wait a tick
+	h.withAdvisoryLock(ctx, "gitlab_writeback", func() { h.drainWritebacks(ctx) }) // drain backlog at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobGitlabWriteback, "выгрузка изменений в GitLab")
-			h.drainWritebacks(ctx)
+			h.withAdvisoryLock(ctx, "gitlab_writeback", func() { h.drainWritebacks(ctx) })
 		}
 	}
 }

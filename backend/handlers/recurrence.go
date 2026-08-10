@@ -170,14 +170,14 @@ func (h *API) RunRecurrenceWorker(ctx context.Context) {
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	h.tick(jobRecurrence, "продвижение повторяющихся задач")
-	h.advanceScheduleDue(ctx) // catch up at startup, don't wait a tick
+	h.withAdvisoryLock(ctx, "recurrence", func() { h.advanceScheduleDue(ctx) }) // catch up at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobRecurrence, "продвижение повторяющихся задач")
-			h.advanceScheduleDue(ctx)
+			h.withAdvisoryLock(ctx, "recurrence", func() { h.advanceScheduleDue(ctx) })
 		}
 	}
 }

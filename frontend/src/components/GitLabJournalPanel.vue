@@ -220,17 +220,21 @@ function runDurationText(run) {
 
 // A background run reports itself over the workspace socket — refresh so the
 // running row flips to its final status without the user reopening the panel.
-useRealtime((ev) => {
-  if (ev.type !== 'integration.sync' || ev.scope !== props.wsId) return
-  // Its actions were only written at the end, so drop the (empty) cached list.
-  const id = ev.data?.run_id
-  if (id && actionsByRun.value[id]) {
-    const next = { ...actionsByRun.value }
-    delete next[id]
-    actionsByRun.value = next
-  }
-  loadRuns(false)
-})
+useRealtime(
+  (ev) => {
+    if (ev.type !== 'integration.sync' || ev.scope !== props.wsId) return
+    // Its actions were only written at the end, so drop the (empty) cached list.
+    const id = ev.data?.run_id
+    if (id && actionsByRun.value[id]) {
+      const next = { ...actionsByRun.value }
+      delete next[id]
+      actionsByRun.value = next
+    }
+    loadRuns(false)
+  },
+  // Reconnect / resync: reload the run list from the top.
+  () => loadRuns(true),
+)
 
 // Push payload, rendered compactly per change kind.
 function pushPayloadText() {

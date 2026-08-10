@@ -1138,7 +1138,7 @@ useRealtime((ev) => {
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
   if (dragging.value || Date.now() < suppressReloadUntil) return
   scheduleReload()
-})
+}, scheduleReload)
 
 // Raise a live activity toast for a task create/move on the currently-open board.
 // The verb for a move is refined by comparing the event's completion state to the

@@ -125,6 +125,25 @@ func TestBroadcastAfterCloseDoesNotBlock(t *testing.T) {
 	}
 }
 
+// When a client's send buffer overflows, the hub must drop the event AND flag
+// the client for resync so it reloads instead of silently going stale.
+func TestHubFlagsResyncOnBufferOverflow(t *testing.T) {
+	h := NewHub()
+	go h.Run()
+
+	scope := uuid.New().String()
+	// A client that never drains: its 32-deep buffer fills, then overflows.
+	c := newTestClient(uuid.New(), scope)
+	h.register <- c
+	waitFor(t, "registration", func() bool { return h.ClientCount() == 1 })
+
+	for i := 0; i < cap(c.send)+5; i++ {
+		h.Broadcast(Event{Scope: scope, Type: "task.updated"})
+	}
+
+	waitFor(t, "resync flag", func() bool { return c.needResync.Load() })
+}
+
 // newTestClient builds a hub-less client with a fixed scope set. The socket is
 // nil: these tests exercise the fan-out decision, not the wire.
 func newTestClient(userID uuid.UUID, scopes ...string) *Client {

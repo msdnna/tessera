@@ -981,14 +981,14 @@ func (h *API) RunSyncWorker(ctx context.Context) {
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	h.tick(jobGitlabSyncCron, "проверка интеграций к синхронизации")
-	h.autoSyncDue(ctx) // catch up at startup, don't wait a tick
+	h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.autoSyncDue(ctx) }) // catch up at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobGitlabSyncCron, "проверка интеграций к синхронизации")
-			h.autoSyncDue(ctx)
+			h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.autoSyncDue(ctx) })
 		}
 	}
 }
