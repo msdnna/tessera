@@ -125,6 +125,13 @@ func (h *Hub) Broadcast(ev Event) {
 	}
 }
 
+// ClientCount returns the number of live sockets, for the /admin/metrics probe.
+func (h *Hub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
+
 // DropUser closes every socket belonging to a user, forcing their clients to
 // reconnect and re-read their workspace set. Membership is snapshotted at
 // connect time, so this is what makes a revoked membership take effect on live

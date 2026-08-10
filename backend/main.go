@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -21,8 +23,32 @@ import (
 	"tessera/internal/realtime"
 )
 
+// setupLogging configures the default slog logger — the one behind fail()/soft()
+// and any structured log — from the environment. LOG_LEVEL (debug|info|warn|
+// error, default info) sets the threshold; LOG_FORMAT=json switches from logfmt
+// text to JSON for a log aggregator. The stdlib log.Printf access/shutdown lines
+// are deliberately left as-is.
+func setupLogging() {
+	level := slog.LevelInfo
+	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+	opts := &slog.HandlerOptions{Level: level}
+	var h slog.Handler = slog.NewTextHandler(os.Stderr, opts)
+	if strings.EqualFold(os.Getenv("LOG_FORMAT"), "json") {
+		h = slog.NewJSONHandler(os.Stderr, opts)
+	}
+	slog.SetDefault(slog.New(h))
+}
+
 func main() {
 	_ = godotenv.Load()
+	setupLogging()
 
 	cfg := config.New()
 

@@ -20,12 +20,6 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-func (h *Hub) clientCount() int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.clients)
-}
-
 // Close is what makes a deploy look like a reconnect rather than a broken
 // socket: Run must exit and every client's send channel must be closed, which
 // is the signal the write pump turns into a normal close frame.
@@ -39,7 +33,7 @@ func TestHubCloseReleasesClients(t *testing.T) {
 
 	c := &Client{hub: h, send: make(chan Event, 1)}
 	h.register <- c
-	waitFor(t, "client registration", func() bool { return h.clientCount() == 1 })
+	waitFor(t, "client registration", func() bool { return h.ClientCount() == 1 })
 
 	h.Close()
 
@@ -56,7 +50,7 @@ func TestHubCloseReleasesClients(t *testing.T) {
 	default:
 		t.Fatal("client send channel was not closed")
 	}
-	if n := h.clientCount(); n != 0 {
+	if n := h.ClientCount(); n != 0 {
 		t.Fatalf("client set not drained: %d remain", n)
 	}
 }

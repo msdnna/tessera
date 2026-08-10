@@ -72,13 +72,15 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	wsHandler := handlers.NewWSHandler(hub, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL)
+	metrics := middleware.NewCollector()
+	rh.WireOps(metrics, appVersion)
 
 	// gin.Default wires gin.Logger, which prints the full request path + query
 	// to stdout — so an OAuth callback's ?code=…&state=… landed in the container
 	// log stream. gin.New with Recovery + AccessLog keeps panic recovery and the
 	// access trace but redacts those secrets (see middleware/accesslog.go).
 	r := gin.New()
-	r.Use(middleware.RequestID(), middleware.AccessLog(), gin.Recovery())
+	r.Use(middleware.RequestID(), middleware.Metrics(metrics), middleware.AccessLog(), gin.Recovery())
 	trusted := cfg.TrustedProxies
 	if len(trusted) == 0 {
 		trusted = []string{"127.0.0.1", "::1"}
@@ -115,6 +117,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	{
 		// Public — no auth required.
 		api.GET("/health", healthHandler)
+		api.GET("/health/ready", rh.ReadyHandler)
 		api.GET("/version", versionHandler.Get)
 		api.POST("/auth/register", authHandler.Register)
 		api.POST("/auth/login", authHandler.Login)
@@ -202,6 +205,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/admin/oauth/gitlab", rh.GetOAuthConfig)
 			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)
 			// Background jobs panel (admin-only): observe/run/cancel background work.
+			protected.GET("/admin/metrics", rh.MetricsHandler)
 			protected.GET("/admin/jobs", rh.ListJobs)
 			protected.GET("/admin/jobs/:key", rh.GetJob)
 			protected.POST("/admin/jobs/:key/run", rh.RunJob)

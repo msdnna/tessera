@@ -38,6 +38,16 @@ type API struct {
 	publicURL string                   // external base URL for links in emails
 	senders   map[string]notify.Sender // notification channel transports, keyed by type
 	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
+	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
+	version   string                   // build version, surfaced by the readiness/metrics probes
+}
+
+// WireOps injects the ops-observability dependencies that live outside NewAPI's
+// core wiring — the HTTP metrics collector and the build version string — so the
+// readiness and /admin/metrics handlers can report them.
+func (h *API) WireOps(m *middleware.Collector, version string) {
+	h.metrics = m
+	h.version = version
 }
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from
