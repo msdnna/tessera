@@ -60,6 +60,7 @@ import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
 import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { filterBoardTasks } from '@/utils/taskFilter'
+import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { storeToRefs } from 'pinia'
@@ -773,6 +774,8 @@ const { dragging, draggingCard, onDragStart, onCardDragStart, onDragEnd } = useB
 const { vis, cardH, regCard, reset: resetCardViewport } = useCardViewport({ frozen: dragging })
 
 // Coalesces the burst of realtime events one action produces into a single reload.
+// Full reload — used for a resync (dropped event / reconnect), where the board has
+// no idea what it missed.
 const RELOAD_DEBOUNCE_MS = 200
 let reloadTimer = null
 function scheduleReload() {
@@ -780,16 +783,62 @@ function scheduleReload() {
   reloadTimer = setTimeout(() => load(props.boardId), RELOAD_DEBOUNCE_MS)
 }
 
+// Partial reloads, one debounce timer per kind: a burst of task events must not
+// drag the columns and the workspace meta along with it. Tasks get a slightly
+// wider window because one user action fans out into several task events
+// (task.updated + task.tagged + task.assigned) that should collapse into one fetch.
+const PARTIAL_DEBOUNCE_MS = { tasks: 400, columns: 200, board: 200, meta: 200 }
+const partialTimers = { tasks: null, columns: null, board: null, meta: null }
+const partialFetch = {
+  tasks: () => fetchTasks(props.boardId),
+  columns: async () => {
+    columns.value = (await boards.columns(props.boardId)).data || []
+  },
+  board: async () => {
+    board.value = (await boards.get(props.boardId)).data
+  },
+  meta: () => loadWorkspaceMeta(),
+}
+function schedulePartial(kind) {
+  clearTimeout(partialTimers[kind])
+  partialTimers[kind] = setTimeout(async () => {
+    try {
+      await partialFetch[kind]()
+    } catch (e) {
+      message.error(e.message)
+    }
+  }, PARTIAL_DEBOUNCE_MS[kind])
+}
+
+// Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
+// milestone server-side, so a huge project never loads all its cards at once.
+// ?archived=1 loads the read-only archive instead (subtasks skipped — they are
+// archived together with their parents). Shared by the full load and the
+// tasks-only realtime refetch, which must scope identically or the archive view
+// would come back to life full of ordinary tasks.
+function taskQuery() {
+  const archived = route.query.archived === '1'
+  const ms = route.query.milestone
+  return { archived, params: archived ? { archived: 1 } : ms ? { milestone: ms } : undefined }
+}
+
+// Fetch just the task lists (2 requests instead of the full load's 10).
+async function fetchTasks(id) {
+  const { archived, params } = taskQuery()
+  const [t, s] = await Promise.all([
+    boards.tasks(id, params),
+    archived ? Promise.resolve({ data: [] }) : boards.subtasks(id),
+  ])
+  allTasks.value = (t.data || []).map(markRaw)
+  const byParent = {}
+  for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(markRaw(sub))
+  subtasksByParent.value = byParent
+}
+
 async function load(id) {
   loading.value = true
   try {
-    // Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
-    // milestone server-side, so a huge project never loads all its cards at once.
-    // ?archived=1 loads the read-only archive instead (subtasks skipped — they are
-    // archived together with their parents).
-    const archived = route.query.archived === '1'
-    const ms = route.query.milestone
-    const params = archived ? { archived: 1 } : ms ? { milestone: ms } : undefined
+    const { archived, params } = taskQuery()
     const [b, c, t, s] = await Promise.all([
       boards.get(id),
       boards.columns(id),
@@ -1156,7 +1205,30 @@ useRealtime((ev) => {
   // Board-activity toast for create/move on THIS board (any actor).
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
   if (dragging.value || Date.now() < suppressReloadUntil) return
-  scheduleReload()
+  // Route the event instead of reloading the whole board for every one of them.
+  const kind = classifyEvent(ev, { boardId: props.boardId })
+  if (kind === 'ignore') return
+  if (kind === 'patch') {
+    // A full task payload can be merged into the card with no request at all —
+    // unless the card has to move or isn't here yet, in which case applyTaskPatch
+    // returns null and we fall back to re-fetching the lists.
+    // The merged row is a fresh plain object; markRaw keeps it consistent with
+    // the rest of the rows (see the shallowRef note above).
+    const patched = applyTaskPatch(allTasks.value, ev.data)
+    if (patched) {
+      allTasks.value = patched.map(markRaw)
+      return
+    }
+    const subs = applySubtaskPatch(subtasksByParent.value, ev.data)
+    if (subs) {
+      for (const arr of Object.values(subs)) arr.forEach(markRaw)
+      subtasksByParent.value = subs
+      return
+    }
+    schedulePartial('tasks')
+    return
+  }
+  schedulePartial(kind)
 }, scheduleReload)
 
 // Raise a live activity toast for a task create/move on the currently-open board.
@@ -1263,6 +1335,7 @@ onBeforeUnmount(() => {
   // Drop any pending debounced reload so it can't fire against a board we've just
   // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
   clearTimeout(reloadTimer)
+  for (const t of Object.values(partialTimers)) clearTimeout(t)
   composerRO?.disconnect()
   onDragEnd()
   boardViewStore.reset()
