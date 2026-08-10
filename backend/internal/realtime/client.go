@@ -3,6 +3,7 @@ package realtime
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -16,18 +17,42 @@ const (
 	pingPeriod = 25 * time.Second
 )
 
-// Client is one WebSocket connection. Clients are currently read-only
+// Client is one authenticated WebSocket connection. Clients are read-only
 // consumers of broadcasts; the read pump exists to process control frames
 // (pong) and detect disconnects.
+//
+// scopes is the set of workspace ids the user belonged to at connect time and
+// is immutable for the life of the connection — Hub.DropUser closes the socket
+// on any membership change so the set is re-read on reconnect rather than
+// mutated under the fan-out loop.
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan Event
+	hub    *Hub
+	conn   *websocket.Conn
+	send   chan Event
+	userID uuid.UUID
+	scopes map[string]struct{}
 }
 
-// NewClient wraps a WebSocket connection as a hub Client.
-func NewClient(hub *Hub, conn *websocket.Conn) *Client {
-	return &Client{hub: hub, conn: conn, send: make(chan Event, 32)}
+// NewClient wraps an authenticated WebSocket connection as a hub Client that
+// receives events for the given workspace scopes only.
+func NewClient(hub *Hub, conn *websocket.Conn, userID uuid.UUID, scopes []string) *Client {
+	set := make(map[string]struct{}, len(scopes))
+	for _, s := range scopes {
+		set[s] = struct{}{}
+	}
+	return &Client{hub: hub, conn: conn, send: make(chan Event, 32), userID: userID, scopes: set}
+}
+
+// canSee reports whether this client may receive an event with the given scope.
+// An empty scope means "no workspace" and is delivered to nobody: every domain
+// event carries its workspace id, so a scopeless event is a bug, not a
+// broadcast-to-all.
+func (c *Client) canSee(scope string) bool {
+	if scope == "" {
+		return false
+	}
+	_, ok := c.scopes[scope]
+	return ok
 }
 
 // Start registers the client and launches its read/write pumps. A connection

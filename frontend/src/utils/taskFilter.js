@@ -9,6 +9,7 @@
 // modal is untouched and always lists every subtask.
 
 import { matchesAuthor } from './boardFilters'
+import { NO_MILESTONE } from './facetKeys'
 
 // Facets that a subtask may "lift" its parent by. `statuses` (the board column)
 // is deliberately excluded: a subtask can live in a different column, and letting
@@ -84,7 +85,7 @@ export function matchesTask(
   if (
     on('milestones') &&
     filters.milestones?.length &&
-    !filters.milestones.includes(t.milestone_id || '__none__')
+    !filters.milestones.includes(t.milestone_id || NO_MILESTONE)
   )
     return false
   if (on('due') && filters.due && !matchesDue(t, filters.due, now)) return false

@@ -11,13 +11,24 @@ import {
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_LABELS } from '@/styles/tokens'
 import { pressMoved } from '@/utils/dnd'
+import { taskBasePatch } from '@/utils/taskPatch'
 
-const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
+// naive's dropdown `icon` option field wants a render fn — exported so callers
+// can build their `extra` items with the same look.
+export const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
+const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
 
-// Reusable right-click menu for a task, shared by the list/calendar views (and
-// usable anywhere a task object is on hand). Callbacks: onOpen(id), onChanged().
-// `columns` (ref/array of {id,name}) adds a "move to column" submenu.
-export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
+// Reusable right-click menu for a task, shared by the board card and the
+// list/calendar/timeline/gantt views (usable anywhere a task object is on hand).
+// Callbacks: onOpen(id), onChanged(). `columns` (ref/array of {id,name}) adds a
+// "move to column" submenu.
+//
+// `extra(target)` returns caller-specific items, inserted after the divider —
+// the board card puts "create subtask" there. `dangerDelete` paints the delete
+// item red (the card does; the other views keep the plain look).
+// `onSelect(key, task)` gets any key the composable doesn't recognise, so a
+// caller's extra items act without re-implementing the menu.
+export function useTaskMenu({ onOpen, onChanged, onSelect, columns, extra, dangerDelete } = {}) {
   const show = ref(false)
   const x = ref(0)
   const y = ref(0)
@@ -58,8 +69,14 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
           ]
         : []),
       { type: 'divider', key: 'd1' },
+      ...(extra?.(t) || []),
       { label: 'В архив', key: 'archive', icon: menuIcon(ArchiveOutline) },
-      { label: 'Удалить', key: 'delete', icon: menuIcon(TrashOutline) },
+      {
+        label: 'Удалить',
+        key: 'delete',
+        icon: dangerDelete ? dangerIcon(TrashOutline) : menuIcon(TrashOutline),
+        ...(dangerDelete ? { props: { style: 'color:#e0533d' } } : {}),
+      },
     ]
   })
 
@@ -71,18 +88,6 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
     y.value = e.clientY
     // Re-open on next tick so the menu repositions if it was already showing.
     requestAnimationFrame(() => (show.value = true))
-  }
-
-  function base(t) {
-    return {
-      title: t.title,
-      description: t.description || '',
-      priority: t.priority || 0,
-      due_date: t.due_date || null,
-      start_date: t.start_date || null,
-      recurrence: t.recurrence || null,
-      completed: !!t.completed_at,
-    }
   }
 
   async function select(key) {
@@ -99,12 +104,16 @@ export function useTaskMenu({ onOpen, onChanged, columns } = {}) {
       return
     }
     try {
+      // taskBasePatch omits the description on purpose — these views never load
+      // it, and sending an empty one would wipe the stored text.
       if (key === 'toggle') {
-        await tasksApi.update(t.id, { ...base(t), completed: !t.completed_at })
+        await tasksApi.update(t.id, { ...taskBasePatch(t), completed: !t.completed_at })
       } else if (key.startsWith('prio:')) {
-        await tasksApi.update(t.id, { ...base(t), priority: Number(key.slice(5)) })
+        await tasksApi.update(t.id, { ...taskBasePatch(t), priority: Number(key.slice(5)) })
       } else if (key.startsWith('col:')) {
         await tasksApi.move(t.id, { column_id: key.slice(4), before_id: null, after_id: null })
+      } else {
+        return onSelect?.(key, t)
       }
       onChanged?.()
     } catch {

@@ -125,6 +125,40 @@ export function renderRich(src, members) {
   return DOMPurify.sanitize(highlightMentions(html, members), SANITIZE_OPTS)
 }
 
+// sanitizeSvgFragment cleans a rendered SVG before it reaches the DOM. Mermaid
+// hands us its diagram as markup, which is the one place displayed content
+// bypasses renderRich() — mermaid runs with securityLevel:'strict', so this is
+// defence in depth rather than an open hole.
+//
+// Three deviations from DOMPurify's defaults, each load-bearing:
+//   • `html: true` + `foreignObject` in ADD_TAGS — mermaid draws node labels as
+//     ordinary HTML inside <foreignObject> (DOMPurify lists it as svgDisallowed),
+//     so without both the labels vanish and diagrams render with no text at all.
+//   • `HTML_INTEGRATION_POINTS` — allowing the <foreignObject> element is not
+//     enough; DOMPurify strips HTML children of an SVG parent unless the parent
+//     is a registered integration point. The option replaces the map wholesale,
+//     hence 'annotation-xml' is repeated to keep the built-in default.
+//   • `style` in ADD_TAGS — mermaid ships the diagram's classes in an inline
+//     <style> block; dropping it leaves an unstyled skeleton.
+//
+// We return a DocumentFragment rather than a string on purpose. DOMPurify keeps
+// foreignObject off by default because SVG/HTML namespace confusion is an mXSS
+// vector, and that class of bypass needs a serialise → re-parse round trip to
+// land. Handing back the already-parsed nodes removes the round trip: the caller
+// appends what DOMPurify inspected, not a re-parse of it. Everything inside the
+// <foreignObject> is still sanitised as HTML — scripts, event handlers and
+// foreign schemes are removed.
+export function sanitizeSvgFragment(svg) {
+  if (!svg) return null
+  return DOMPurify.sanitize(String(svg), {
+    USE_PROFILES: { svg: true, svgFilters: true, html: true },
+    ADD_TAGS: ['style', 'foreignObject'],
+    ADD_ATTR: ['class', 'style'],
+    HTML_INTEGRATION_POINTS: { foreignobject: true, 'annotation-xml': true },
+    RETURN_DOM_FRAGMENT: true,
+  })
+}
+
 // toggleTaskMarker flips the [ ]↔[x] of the index-th GFM task-list item in the
 // source markdown (index = render order, top to bottom). Used by interactive
 // preview checkboxes so ticking one rewrites the stored markdown. Returns the

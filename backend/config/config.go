@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -45,7 +46,36 @@ type Config struct {
 	// nobody reads at second precision (PAT_TOUCH_INTERVAL; 0 disables the
 	// throttle and writes on every request).
 	PATTouchInterval time.Duration
+	// Reverse proxies whose X-Forwarded-For is trusted when deriving the client
+	// IP. This is what the rate limiter keys on, so getting it wrong collapses
+	// every client behind the proxy into a single bucket (or, the other way,
+	// lets a client pick its own bucket). Defaults to loopback — override with
+	// TRUSTED_PROXIES (comma-separated) when the proxy is a separate host.
+	TrustedProxies []string
+	// Throttle the unauthenticated auth routes. On by default; RATE_LIMIT_ENABLED=false
+	// turns it off (single-user installs behind a private network).
+	RateLimitEnabled bool
+	// Request body ceilings, in bytes. MaxBodyBytes is the blanket limit;
+	// uploads and attachments get their own, larger, budgets.
+	MaxBodyBytes       int64
+	MaxUploadBytes     int64
+	MaxAttachmentBytes int64
 }
+
+// Body-size defaults, also used as the fallback when a Config is built
+// programmatically (tests) and leaves the fields zero.
+//
+// These are *transport* ceilings on the whole request, and they sit
+// deliberately above the per-file caps the upload handlers enforce (8 MiB
+// inline media, 25 MiB attachments): a multipart request also carries part
+// headers, boundaries and form fields, so a file right at its cap would
+// otherwise be cut off by the transport before the handler could give its own
+// answer. The slack is framing overhead, not extra payload allowance.
+const (
+	DefaultMaxBodyBytes       int64 = 1 << 20  // 1 MiB — JSON payloads
+	DefaultMaxUploadBytes     int64 = 9 << 20  // 8 MiB media + framing
+	DefaultMaxAttachmentBytes int64 = 26 << 20 // 25 MiB attachment + framing
+)
 
 // New reads configuration from the environment. In production
 // (APP_ENV=production) JWT_SECRET and DATABASE_URL must be explicitly set —
@@ -130,8 +160,13 @@ func New() *Config {
 		CORSOrigin:     corsOrigin,
 		DesktopOrigins: desktopOrigins,
 
-		GracefulTimeout:  getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
-		PATTouchInterval: getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
+		GracefulTimeout:    getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
+		PATTouchInterval:   getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
+		TrustedProxies:     splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
+		RateLimitEnabled:   getEnvBool("RATE_LIMIT_ENABLED", true),
+		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
+		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
+		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),
 	}
 }
 
@@ -167,4 +202,34 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getEnvBool parses a boolean env var, keeping the fallback on anything it
+// can't read — a typo in a security knob must not silently turn it off.
+func getEnvBool(key string, fallback bool) bool {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	b, err := strconv.ParseBool(strings.TrimSpace(v))
+	if err != nil {
+		log.Printf("WARNING: %s=%q is not a boolean — keeping %v", key, v, fallback)
+		return fallback
+	}
+	return b
+}
+
+// getEnvBytes parses a byte count, rejecting non-positive values (a zero limit
+// would reject every request with a body).
+func getEnvBytes(key string, fallback int64) int64 {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil || n <= 0 {
+		log.Printf("WARNING: %s=%q is not a positive byte count — keeping %d", key, v, fallback)
+		return fallback
+	}
+	return n
 }

@@ -114,7 +114,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	user, err := h.q.GetUserByEmail(c, strings.ToLower(req.Email))
-	if err != nil || !auth.CheckPassword(user.PasswordHash, req.Password) {
+	if err != nil {
+		// No such user. The short-circuit below would skip bcrypt entirely, so a
+		// missing-email response arrives in microseconds while a wrong-password
+		// one takes a full bcrypt round — a timing oracle for email enumeration.
+		// Pay the bcrypt cost against a fictional hash regardless; the result is
+		// discarded (there is no account to log into) and the response stays the
+		// same 401 either way.
+		_ = auth.CheckPassword(auth.DummyHash(), req.Password)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		return
+	}
+	if !auth.CheckPassword(user.PasswordHash, req.Password) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}

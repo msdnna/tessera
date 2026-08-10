@@ -1,21 +1,25 @@
 // Package realtime is the WebSocket fan-out layer for live board updates.
 //
-// Phase 0 lays the architecture: a single Hub broadcasts Events to every
-// connected client. Phase 1+ adds JWT auth on connect and per-workspace/board
-// scoping (clients only receive Events whose Scope they're subscribed to).
+// A single Hub owns every connected client and fans Events out to those
+// authorised to see them: the connection is authenticated before the upgrade
+// (see handlers.WSHandler) and each Client carries the set of workspace ids its
+// user is a member of, so an Event is delivered only to clients whose scope set
+// contains Event.Scope.
 package realtime
 
 import (
 	"encoding/json"
 	"log"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
-// Event is a server→client message. Scope lets clients filter to the
-// workspace/board they're viewing (scoping is wired in a later phase). Actor,
-// when set, carries the id of the user who triggered the event so clients can
-// attribute board-activity ("X created …"); it is absent for system/worker
-// actions (GitLab sync, recurrence).
+// Event is a server→client message. Scope is the workspace id the event belongs
+// to and is authoritative for delivery: the hub drops the event for any client
+// not a member of that workspace. Actor, when set, carries the id of the user
+// who triggered the event so clients can attribute board-activity ("X created
+// …"); it is absent for system/worker actions (GitLab sync, recurrence).
 type Event struct {
 	Scope string          `json:"scope"`
 	Type  string          `json:"type"`
@@ -23,12 +27,13 @@ type Event struct {
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 
-// Hub fans out Events to every connected client.
+// Hub fans out Events to the clients authorised to receive them.
 type Hub struct {
 	mu         sync.RWMutex
 	clients    map[*Client]struct{}
 	register   chan *Client
 	unregister chan *Client
+	dropUser   chan uuid.UUID
 	broadcast  chan Event
 	// done is closed by Close to stop Run and release every client. Clients
 	// select on it when handing themselves to Run so a connection racing with
@@ -43,6 +48,7 @@ func NewHub() *Hub {
 		clients:    make(map[*Client]struct{}),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		dropUser:   make(chan uuid.UUID, 8),
 		broadcast:  make(chan Event, 64),
 		done:       make(chan struct{}),
 	}
@@ -81,9 +87,21 @@ func (h *Hub) Run() {
 				close(c.send)
 			}
 			h.mu.Unlock()
+		case uid := <-h.dropUser:
+			h.mu.Lock()
+			for c := range h.clients {
+				if c.userID == uid {
+					delete(h.clients, c)
+					close(c.send)
+				}
+			}
+			h.mu.Unlock()
 		case ev := <-h.broadcast:
 			h.mu.RLock()
 			for c := range h.clients {
+				if !c.canSee(ev.Scope) {
+					continue
+				}
 				select {
 				case c.send <- ev:
 				default:
@@ -98,11 +116,27 @@ func (h *Hub) Run() {
 	}
 }
 
-// Broadcast queues an event for fan-out to all connected clients.
+// Broadcast queues an event for fan-out to the clients scoped to ev.Scope.
 func (h *Hub) Broadcast(ev Event) {
 	select {
 	case h.broadcast <- ev:
 	default:
 		log.Printf("realtime: broadcast buffer full, dropping event %q", ev.Type)
+	}
+}
+
+// DropUser closes every socket belonging to a user, forcing their clients to
+// reconnect and re-read their workspace set. Membership is snapshotted at
+// connect time, so this is what makes a revoked membership take effect on live
+// connections instead of at the next page load. Callers fire it after any
+// membership change (add/remove/role/workspace delete); reconnection is
+// automatic on every client, so a dropped socket is invisible to the user.
+func (h *Hub) DropUser(userID uuid.UUID) {
+	select {
+	case h.dropUser <- userID:
+	default:
+		// Run is busy; the membership change still lands on the next
+		// reconnect rather than blocking the request that triggered it.
+		log.Printf("realtime: drop-user buffer full, skipping drop for %s", userID)
 	}
 }

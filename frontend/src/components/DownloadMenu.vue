@@ -22,7 +22,7 @@ defineProps({
         class="dl-platform dl-platform--link"
         :href="g.variants[0].url"
         download
-        rel="noopener"
+        rel="noopener noreferrer"
       >
         <n-icon :component="g.icon" :size="18" class="dl-platform-icon" />
         <span class="dl-platform-name">{{ g.name }}</span>
@@ -41,7 +41,7 @@ defineProps({
           class="dl-item"
           :href="v.url"
           download
-          rel="noopener"
+          rel="noopener noreferrer"
         >
           <n-icon :component="DownloadOutline" :size="15" class="dl-item-icon" />
           <span class="dl-item-label">{{ v.label }}</span>

@@ -410,7 +410,7 @@ defineExpose({ reload: () => loadRuns() })
           </div>
 
           <div class="j-d-foot">
-            <a v-if="detail.url" class="j-link" :href="detail.url" target="_blank" rel="noopener">
+            <a v-if="detail.url" class="j-link" :href="detail.url" target="_blank" rel="noopener noreferrer">
               <n-icon :component="OpenOutline" /> Открыть в GitLab
             </a>
             <n-button

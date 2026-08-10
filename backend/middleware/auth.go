@@ -75,21 +75,8 @@ func Auth(secret string, q *db.Queries, patTouchInterval time.Duration) gin.Hand
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 			return
 		}
-		tok := strings.TrimPrefix(h, "Bearer ")
-
-		if strings.HasPrefix(tok, auth.PATPrefix) {
-			uid, ok := authenticatePAT(c, q, tok, toucher)
-			if !ok {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-				return
-			}
-			c.Set(ContextUserID, uid)
-			c.Next()
-			return
-		}
-
-		uid, err := auth.ParseAccessToken(secret, tok)
-		if err != nil {
+		uid, ok := ResolveBearer(c, secret, q, strings.TrimPrefix(h, "Bearer "), toucher)
+		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
@@ -98,14 +85,32 @@ func Auth(secret string, q *db.Queries, patTouchInterval time.Duration) gin.Hand
 	}
 }
 
+// ResolveBearer validates a bearer credential — an access JWT or a Personal
+// Access Token — and returns its owner. It is the credential half of Auth,
+// split out so non-HTTP-middleware entry points (the WebSocket upgrade, which
+// must authenticate before hijacking the response) accept exactly the same
+// credentials as every protected route.
+// A nil toucher writes last_used_at on every PAT request (throttle disabled).
+func ResolveBearer(ctx context.Context, secret string, q *db.Queries, tok string, toucher *patToucher) (uuid.UUID, bool) {
+	if strings.HasPrefix(tok, auth.PATPrefix) {
+		return authenticatePAT(ctx, q, tok, toucher)
+	}
+	uid, err := auth.ParseAccessToken(secret, tok)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return uid, true
+}
+
 // authenticatePAT resolves a personal access token to its owner, rejecting
 // revoked or expired tokens. On success it fires a best-effort last-used touch,
-// throttled so a busy client doesn't spend a pool connection per request.
-func authenticatePAT(c *gin.Context, q *db.Queries, tok string, toucher *patToucher) (uuid.UUID, bool) {
+// throttled (when toucher is non-nil) so a busy client doesn't spend a pool
+// connection per request.
+func authenticatePAT(ctx context.Context, q *db.Queries, tok string, toucher *patToucher) (uuid.UUID, bool) {
 	if q == nil {
 		return uuid.Nil, false
 	}
-	pat, err := q.GetPATByHash(c, auth.HashToken(tok))
+	pat, err := q.GetPATByHash(ctx, auth.HashToken(tok))
 	if err != nil {
 		return uuid.Nil, false
 	}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestAccessTokenRoundTrip(t *testing.T) {
@@ -47,6 +48,35 @@ func TestRefreshTokenHashing(t *testing.T) {
 	}
 	if HashRefreshToken(tok) != hash {
 		t.Fatal("HashRefreshToken not deterministic with NewRefreshToken")
+	}
+}
+
+// The anti-enumeration measure in handlers.Login only works if bcrypt against
+// DummyHash costs the same as bcrypt against a stored hash — i.e. same cost
+// factor. A dummy hash at a lower cost would still leave a measurable timing
+// gap between "no such email" and "wrong password".
+func TestDummyHashMatchesRealCost(t *testing.T) {
+	stored, err := HashPassword("correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedCost, err := bcrypt.Cost([]byte(stored))
+	if err != nil {
+		t.Fatalf("cost of a stored hash: %v", err)
+	}
+	dummy := DummyHash()
+	dummyCost, err := bcrypt.Cost([]byte(dummy))
+	if err != nil {
+		t.Fatalf("DummyHash is not a valid bcrypt hash: %v", err)
+	}
+	if dummyCost != storedCost {
+		t.Fatalf("DummyHash cost = %d, want %d (same as stored hashes)", dummyCost, storedCost)
+	}
+	if CheckPassword(dummy, "correct horse battery staple") {
+		t.Fatal("DummyHash must not accept a password anyone might actually use")
+	}
+	if again := DummyHash(); again != dummy {
+		t.Fatal("DummyHash must be stable across calls")
 	}
 }
 
