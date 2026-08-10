@@ -78,23 +78,48 @@ func TestTaskCreateGetUpdate(t *testing.T) {
 		}
 	}
 
-	// Full-replace for the present fields: a title-only PATCH wipes priority/due.
-	// Description is the tri-state exception — omitted, it is PRESERVED (board
-	// cards omit it since the list payload no longer carries it), so it must keep
-	// the prior value rather than blanking.
-	wiped := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "Только название"}), http.StatusOK)
-	if wiped["description"] != "Новое описание" || wiped["priority"] != float64(0) || wiped["due_date"] != nil {
-		t.Fatalf("full-replace expectation changed: %v", wiped)
+	// Tri-state PATCH: an omitted field keeps its stored value. A title-only edit
+	// used to wipe priority and due — the same full-replace rule that let a client
+	// forgetting `completed` silently un-complete a task.
+	kept := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "Только название"}), http.StatusOK)
+	if kept["description"] != "Новое описание" || kept["priority"] != float64(3) ||
+		!parseTS(t, kept["due_date"]).Equal(due2) {
+		t.Fatalf("omitted fields should be preserved: %v", kept)
 	}
 	// Present description (even empty) still replaces — the modal can clear it.
-	cleared := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "x", "description": ""}), http.StatusOK)
+	cleared := c.expect(t, c.patch("/tasks/"+id, map[string]any{"description": ""}), http.StatusOK)
 	if cleared["description"] != "" {
 		t.Fatalf("explicit empty description should clear: %v", cleared)
 	}
+	// Explicit null clears a nullable field; the neighbouring one is untouched.
+	nulled := c.expect(t, c.patch("/tasks/"+id, map[string]any{"due_date": nil}), http.StatusOK)
+	if nulled["due_date"] != nil || nulled["priority"] != float64(3) {
+		t.Fatalf("null due_date should clear only due_date: %v", nulled)
+	}
 
-	// Title is required.
-	if r := c.patch("/tasks/"+id, map[string]any{"description": "без названия"}); r.Status != http.StatusBadRequest {
+	// `completed` is the field the old full-replace semantics endangered: an edit
+	// that never mentions it must not un-complete the task.
+	done := c.expect(t, c.patch("/tasks/"+id, map[string]any{"completed": true}), http.StatusOK)
+	if done["completed_at"] == nil {
+		t.Fatalf("completed:true did not set completed_at: %v", done)
+	}
+	still := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "Переименована"}), http.StatusOK)
+	if still["completed_at"] == nil {
+		t.Fatalf("a title-only edit un-completed the task: %v", still)
+	}
+	// …while an explicit false still un-completes it.
+	reopened := c.expect(t, c.patch("/tasks/"+id, map[string]any{"completed": false}), http.StatusOK)
+	if reopened["completed_at"] != nil {
+		t.Fatalf("completed:false did not clear completed_at: %v", reopened)
+	}
+
+	// Title is no longer required (absent = keep), but an explicit empty one is
+	// still rejected.
+	if r := c.patch("/tasks/"+id, map[string]any{"description": "без названия"}); r.Status != http.StatusOK {
 		t.Fatalf("update without title: %d", r.Status)
+	}
+	if r := c.patch("/tasks/"+id, map[string]any{"title": "   "}); r.Status != http.StatusBadRequest {
+		t.Fatalf("blank title should be rejected: %d", r.Status)
 	}
 }
 
@@ -456,7 +481,8 @@ func TestTaskRecurrence(t *testing.T) {
 		t.Fatalf("invalid rule kept: %v", up["recurrence"])
 	}
 
-	// Full-replace fact: an update omitting recurrence wipes the rule.
+	// Tri-state: omitting recurrence PRESERVES the rule (it used to wipe it),
+	// explicit null is what clears it.
 	c.expect(t, c.patch("/tasks/"+id, map[string]any{
 		"title": "Повторяющаяся", "due_date": due.Format(time.RFC3339),
 		"recurrence": map[string]any{"freq": "daily"},
@@ -464,8 +490,12 @@ func TestTaskRecurrence(t *testing.T) {
 	up = c.expect(t, c.patch("/tasks/"+id, map[string]any{
 		"title": "Повторяющаяся", "due_date": due.Format(time.RFC3339),
 	}), http.StatusOK)
+	if rec, ok = up["recurrence"].(map[string]any); !ok || rec["freq"] != "daily" {
+		t.Fatalf("omitted recurrence should be preserved: %v", up["recurrence"])
+	}
+	up = c.expect(t, c.patch("/tasks/"+id, map[string]any{"recurrence": nil}), http.StatusOK)
 	if up["recurrence"] != nil {
-		t.Fatalf("recurrence survived an omit-update: %v", up["recurrence"])
+		t.Fatalf("explicit null should clear recurrence: %v", up["recurrence"])
 	}
 
 	// Complete-triggered advance: completing the task reschedules it instead —

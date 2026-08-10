@@ -304,35 +304,39 @@ func (h *API) UpdateTask(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title       string           `json:"title" binding:"required"`
-		Description *string          `json:"description"`
-		Priority    int32            `json:"priority"`
-		DueDate     *time.Time       `json:"due_date"`
-		StartDate   *time.Time       `json:"start_date"`
-		Estimate    *float64         `json:"estimate"`
-		Completed   bool             `json:"completed"`
-		Recurrence  *json.RawMessage `json:"recurrence"`
+		Title       optJSON[string]          `json:"title"`
+		Description optJSON[string]          `json:"description"`
+		Priority    optJSON[int32]           `json:"priority"`
+		DueDate     optJSON[time.Time]       `json:"due_date"`
+		StartDate   optJSON[time.Time]       `json:"start_date"`
+		Estimate    optJSON[float64]         `json:"estimate"`
+		Completed   optJSON[bool]            `json:"completed"`
+		Recurrence  optJSON[json.RawMessage] `json:"recurrence"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Full-replace for the fields present in the body — a quick action sets only
-	// what it touches. Description is the one exception: it's tri-state. Board
-	// cards / timeline / gantt no longer receive descriptions (they're stripped
-	// from the list payloads to keep boards small), so those inline edits OMIT
-	// description and it must be preserved, not blanked. Omitted (nil) → keep the
-	// stored text; present (incl. "") → replace, so the modal can still clear it.
+	// Tri-state PATCH: a field the body does not carry is left alone. It used to
+	// be full-replace, and the dangerous field was `completed bool` — a client
+	// that omitted it un-completed the task, which also clears completed_at,
+	// advances recurrence and reopens the linked GitLab issue. Both clients send
+	// whole objects today, so this is backwards compatible; what it buys is that
+	// a *partial* edit (an inline board rename, a future quick action) can no
+	// longer blank a field it never mentioned.
+	//
+	// Title keeps its non-empty check in applyTaskPatch rather than a `required`
+	// binding tag: absent is now legal, empty is still not.
 	updated, err := h.applyTaskPatch(c, t, wsID, taskPatch{
-		Title:       &req.Title,
-		Description: req.Description,
-		Priority:    &req.Priority,
-		DueDate:     setTime(req.DueDate),
-		StartDate:   setTime(req.StartDate),
-		Estimate:    setFloat(req.Estimate),
-		Completed:   &req.Completed,
-		Recurrence:  req.Recurrence, RecurrenceSet: true,
+		Title:       req.Title.ptr(),
+		Description: req.Description.ptr(),
+		Priority:    req.Priority.ptr(),
+		DueDate:     asTime(req.DueDate),
+		StartDate:   asTime(req.StartDate),
+		Estimate:    asFloat(req.Estimate),
+		Completed:   req.Completed.ptr(),
+		Recurrence:  req.Recurrence.ptr(), RecurrenceSet: req.Recurrence.set,
 	})
 	if err != nil {
 		respondOpError(c, err)
