@@ -138,13 +138,20 @@ func (h *API) AcceptInvitation(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "this invitation is for a different email"})
 		return
 	}
-	if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{
-		WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
+	// Transactional: membership and the accepted-mark must move together. Split,
+	// a crash leaves either a membership with a still-live invite, or a burned
+	// invite with no access granted.
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if _, err := q.CreateMembership(c, db.CreateMembershipParams{
+			WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
+		}); err != nil {
+			return err
+		}
+		return q.MarkInvitationAccepted(c, inv.ID)
 	}); err != nil {
 		fail(c)
 		return
 	}
-	_ = h.q.MarkInvitationAccepted(c, inv.ID)
 	// Live sockets snapshot their workspace set at connect; drop this user's so
 	// they reconnect into the workspace they just joined.
 	h.hub.DropUser(user.ID)

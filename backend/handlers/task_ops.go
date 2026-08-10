@@ -455,14 +455,17 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 // applyArchive soft-deletes a task. detach keeps its subtasks on the board
 // (re-parented to null); otherwise they are archived with the parent.
 func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach bool) error {
-	if detach {
-		if err := h.q.DetachChildren(c, &t.ID); err != nil {
-			return err
+	// Transactional: detach-then-archive must be atomic, else a crash leaves the
+	// parent archived with its subtasks still active on the board (or vice versa).
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if detach {
+			if err := q.DetachChildren(c, &t.ID); err != nil {
+				return err
+			}
+			return q.ArchiveTask(c, t.ID)
 		}
-		if err := h.q.ArchiveTask(c, t.ID); err != nil {
-			return err
-		}
-	} else if err := h.q.ArchiveTaskCascade(c, t.ID); err != nil {
+		return q.ArchiveTaskCascade(c, t.ID)
+	}); err != nil {
 		return err
 	}
 	h.logEvent(c, t.ID, "archived", nil)

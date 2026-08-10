@@ -495,15 +495,20 @@ func (h *API) TransferTask(c *gin.Context) {
 		fail(c)
 		return
 	}
-	updated, err := h.q.TransferTask(c, db.TransferTaskParams{
-		ID: id, BoardID: req.BoardID, ColumnID: columnID, Position: positionBetween(&maxPos, nil),
-	})
-	if err != nil {
-		fail(c)
-		return
-	}
-	if err := h.q.MoveSubtasksToBoard(c, db.MoveSubtasksToBoardParams{
-		ParentID: &id, BoardID: req.BoardID, ColumnID: columnID,
+	// Transactional: the task and its subtasks must land on the new board
+	// together — otherwise a crash strands subtasks on the old board.
+	var updated db.Task
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		updated, err = q.TransferTask(c, db.TransferTaskParams{
+			ID: id, BoardID: req.BoardID, ColumnID: columnID, Position: positionBetween(&maxPos, nil),
+		})
+		if err != nil {
+			return err
+		}
+		return q.MoveSubtasksToBoard(c, db.MoveSubtasksToBoardParams{
+			ParentID: &id, BoardID: req.BoardID, ColumnID: columnID,
+		})
 	}); err != nil {
 		fail(c)
 		return

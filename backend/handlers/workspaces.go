@@ -20,13 +20,19 @@ func (h *API) CreateWorkspace(c *gin.Context) {
 		return
 	}
 	uid := middleware.CurrentUser(c)
-	ws, err := h.q.CreateWorkspace(c, db.CreateWorkspaceParams{Name: req.Name, OwnerID: uid})
-	if err != nil {
-		fail(c)
-		return
-	}
-	if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{
-		WorkspaceID: ws.ID, UserID: uid, Role: "owner",
+	// Transactional: a workspace without its owner membership is invisible and
+	// unreachable even to its creator — only removable by hand in the DB.
+	var ws db.Workspace
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		ws, err = q.CreateWorkspace(c, db.CreateWorkspaceParams{Name: req.Name, OwnerID: uid})
+		if err != nil {
+			return err
+		}
+		_, err = q.CreateMembership(c, db.CreateMembershipParams{
+			WorkspaceID: ws.ID, UserID: uid, Role: "owner",
+		})
+		return err
 	}); err != nil {
 		fail(c)
 		return

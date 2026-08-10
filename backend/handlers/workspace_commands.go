@@ -121,20 +121,26 @@ func (h *API) SetWorkspaceCommands(c *gin.Context) {
 		entries = append(entries, entry{key: key, description: desc})
 	}
 
-	if err := h.q.DeleteWorkspaceCommands(c, wsID); err != nil {
+	// Transactional: DELETE-then-UPSERT. A crash between the two would commit the
+	// delete and wipe the workspace's command dictionary.
+	out := make([]db.WorkspaceCommand, 0, len(entries))
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if err := q.DeleteWorkspaceCommands(c, wsID); err != nil {
+			return err
+		}
+		for i, e := range entries {
+			row, err := q.UpsertWorkspaceCommand(c, db.UpsertWorkspaceCommandParams{
+				WorkspaceID: wsID, Key: e.key, Description: e.description, Position: int32(i),
+			})
+			if err != nil {
+				return err
+			}
+			out = append(out, row)
+		}
+		return nil
+	}); err != nil {
 		fail(c)
 		return
-	}
-	out := make([]db.WorkspaceCommand, 0, len(entries))
-	for i, e := range entries {
-		row, err := h.q.UpsertWorkspaceCommand(c, db.UpsertWorkspaceCommandParams{
-			WorkspaceID: wsID, Key: e.key, Description: e.description, Position: int32(i),
-		})
-		if err != nil {
-			fail(c)
-			return
-		}
-		out = append(out, row)
 	}
 	views := commandViews(out)
 	h.broadcast(wsID, "workspace_commands.updated", gin.H{"commands": views})

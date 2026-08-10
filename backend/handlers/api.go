@@ -3,6 +3,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -175,4 +176,21 @@ func notFound(c *gin.Context, err error) bool {
 // fail writes a generic 500.
 func fail(c *gin.Context) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+}
+
+// inTx runs fn inside a database transaction, rolling back if fn returns an
+// error (or panics on the way out) and committing otherwise. It centralises the
+// begin/rollback/commit boilerplate so multi-statement mutations stay
+// all-or-nothing — a partial apply leaves orphans (a workspace with no
+// membership) or drops data (a DELETE that commits before its re-INSERT).
+func (h *API) inTx(ctx context.Context, fn func(q *db.Queries) error) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful Commit
+	if err := fn(h.q.WithTx(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

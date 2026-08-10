@@ -40,37 +40,47 @@ func (h *API) CreateBoard(c *gin.Context) {
 		fail(c)
 		return
 	}
-	b, err := h.q.CreateBoard(c, db.CreateBoardParams{
-		ProjectID: projectID, Name: req.Name, Slug: h.uniqueBoardSlug(c, projectID, req.Name),
-		Position: positionBetween(&maxPos, nil),
-	})
-	if err != nil {
-		fail(c)
-		return
-	}
-
-	// Seed the board with a default set of status columns, remembering the last
-	// one so it can become the board's "done" column.
-	var lastColID *uuid.UUID
-	for i, dc := range defaultColumns {
-		pos := float64(i+1) * positionGap
-		col, err := h.q.CreateColumn(c, db.CreateColumnParams{
-			BoardID: b.ID, Name: dc.name, Color: dc.color, Position: pos,
+	// Transactional: a board without its seeded columns (or without a done
+	// column) can't hold a task — a partial create leaves an unusable board.
+	slug := h.uniqueBoardSlug(c, projectID, req.Name)
+	var b db.Board
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		b, err = q.CreateBoard(c, db.CreateBoardParams{
+			ProjectID: projectID, Name: req.Name, Slug: slug,
+			Position: positionBetween(&maxPos, nil),
 		})
 		if err != nil {
-			fail(c)
-			return
+			return err
 		}
-		id := col.ID
-		lastColID = &id
-	}
-	// The rightmost seeded column ("Готово") closes tasks by default.
-	if lastColID != nil {
-		if updated, derr := h.q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{
-			ID: b.ID, DoneColumnID: lastColID,
-		}); derr == nil {
+		// Seed the board with a default set of status columns, remembering the
+		// last one so it can become the board's "done" column.
+		var lastColID *uuid.UUID
+		for i, dc := range defaultColumns {
+			pos := float64(i+1) * positionGap
+			col, err := q.CreateColumn(c, db.CreateColumnParams{
+				BoardID: b.ID, Name: dc.name, Color: dc.color, Position: pos,
+			})
+			if err != nil {
+				return err
+			}
+			id := col.ID
+			lastColID = &id
+		}
+		// The rightmost seeded column ("Готово") closes tasks by default.
+		if lastColID != nil {
+			updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{
+				ID: b.ID, DoneColumnID: lastColID,
+			})
+			if err != nil {
+				return err
+			}
 			b = updated
 		}
+		return nil
+	}); err != nil {
+		fail(c)
+		return
 	}
 
 	h.broadcast(p.WorkspaceID, "board.created", b)

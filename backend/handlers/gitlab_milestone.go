@@ -86,21 +86,29 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 		return link.MilestoneID, nil
 	case errors.Is(err, pgx.ErrNoRows):
 		st := state
-		m, cerr := h.q.CreateMilestone(ctx, db.CreateMilestoneParams{
-			ProjectID: projectID, Title: issue.MilestoneTitle, Description: "",
-			StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: &st,
-			Slug: h.uniqueMilestoneSlug(ctx, projectID, issue.MilestoneTitle),
-		})
-		if cerr != nil {
-			return uuid.Nil, cerr
+		slug := h.uniqueMilestoneSlug(ctx, projectID, issue.MilestoneTitle)
+		// Transactional: the native milestone and its GitLab link must be created
+		// together — a milestone without its link makes the next sync create a
+		// duplicate instead of recognising the existing one.
+		var mID uuid.UUID
+		if terr := h.inTx(ctx, func(q *db.Queries) error {
+			m, cerr := q.CreateMilestone(ctx, db.CreateMilestoneParams{
+				ProjectID: projectID, Title: issue.MilestoneTitle, Description: "",
+				StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: &st,
+				Slug: slug,
+			})
+			if cerr != nil {
+				return cerr
+			}
+			mID = m.ID
+			return q.CreateGitlabMilestoneLink(ctx, db.CreateGitlabMilestoneLinkParams{
+				MilestoneID: m.ID, IntegrationID: integ.ID, GlGlobalID: issue.MilestoneGID,
+				GlIid: iid, GlNumericID: numeric, GlWebUrl: issue.MilestoneURL, GlState: state, TitleHash: titleHash,
+			})
+		}); terr != nil {
+			return uuid.Nil, terr
 		}
-		if cerr := h.q.CreateGitlabMilestoneLink(ctx, db.CreateGitlabMilestoneLinkParams{
-			MilestoneID: m.ID, IntegrationID: integ.ID, GlGlobalID: issue.MilestoneGID,
-			GlIid: iid, GlNumericID: numeric, GlWebUrl: issue.MilestoneURL, GlState: state, TitleHash: titleHash,
-		}); cerr != nil {
-			return uuid.Nil, cerr
-		}
-		return m.ID, nil
+		return mID, nil
 	default:
 		return uuid.Nil, err
 	}

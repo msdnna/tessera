@@ -100,28 +100,34 @@ func (h *API) SetTagPrefixes(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.q.DeleteTagPrefixesForProject(c, projectID); err != nil {
+	// Transactional: this is DELETE-then-UPSERT. A crash between the two would
+	// otherwise commit the delete and lose every prefix the project had.
+	out := make([]db.TagPrefix, 0, len(req.Prefixes))
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if err := q.DeleteTagPrefixesForProject(c, projectID); err != nil {
+			return err
+		}
+		// Dedup by canonical key (first label wins), skip blanks.
+		seen := make(map[string]bool)
+		for _, p := range req.Prefixes {
+			key := canonPrefix(p.Prefix)
+			label := strings.TrimSpace(p.Label)
+			if key == "" || label == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			row, err := q.UpsertTagPrefix(c, db.UpsertTagPrefixParams{
+				ProjectID: projectID, WorkspaceID: wsID, Prefix: key, Label: label,
+			})
+			if err != nil {
+				return err
+			}
+			out = append(out, row)
+		}
+		return nil
+	}); err != nil {
 		fail(c)
 		return
-	}
-	// Dedup by canonical key (first label wins), skip blanks.
-	seen := make(map[string]bool)
-	out := make([]db.TagPrefix, 0, len(req.Prefixes))
-	for _, p := range req.Prefixes {
-		key := canonPrefix(p.Prefix)
-		label := strings.TrimSpace(p.Label)
-		if key == "" || label == "" || seen[key] {
-			continue
-		}
-		seen[key] = true
-		row, err := h.q.UpsertTagPrefix(c, db.UpsertTagPrefixParams{
-			ProjectID: projectID, WorkspaceID: wsID, Prefix: key, Label: label,
-		})
-		if err != nil {
-			fail(c)
-			return
-		}
-		out = append(out, row)
 	}
 	h.broadcast(wsID, "tag_prefixes.updated", gin.H{"project_id": projectID, "prefixes": out})
 	c.JSON(http.StatusOK, out)
