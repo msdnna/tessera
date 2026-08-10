@@ -297,16 +297,16 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 // already bumped attempts, so w.Attempts is this attempt's number.
 func (h *API) settleWriteback(ctx context.Context, w db.GitlabWriteback, err error) {
 	if err == nil {
-		_ = h.q.MarkWritebackSent(ctx, w.ID)
+		soft(ctx, "MarkWritebackSent", h.q.MarkWritebackSent(ctx, w.ID))
 		return
 	}
 	if isPermanentWriteback(err) || int(w.Attempts) >= maxWritebackAttempts {
-		_ = h.q.MarkWritebackFailed(ctx, db.MarkWritebackFailedParams{ID: w.ID, LastError: truncErr(err)})
+		soft(ctx, "MarkWritebackFailed", h.q.MarkWritebackFailed(ctx, db.MarkWritebackFailedParams{ID: w.ID, LastError: truncErr(err)}))
 		log.Printf("gitlab writeback: %s for task %s gave up after %d attempt(s): %v", w.ChangeKind, w.TaskID, w.Attempts, err)
 		return
 	}
 	next := time.Now().Add(time.Duration(w.Attempts*w.Attempts) * time.Minute) // 1, 4, 9, 16 min
-	_ = h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{ID: w.ID, LastError: truncErr(err), NextAttemptAt: next})
+	soft(ctx, "MarkWritebackRetry", h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{ID: w.ID, LastError: truncErr(err), NextAttemptAt: next}))
 }
 
 // isPermanentWriteback classifies a push error as non-retryable: an explicitly
@@ -719,7 +719,7 @@ func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, pat
 	if gid != "" {
 		if cidStr, _ := payload["comment_id"].(string); cidStr != "" {
 			if cid, perr := uuid.Parse(cidStr); perr == nil {
-				_ = h.q.SetCommentGlNoteID(ctx, db.SetCommentGlNoteIDParams{ID: cid, GlNoteID: &gid})
+				soft(ctx, "SetCommentGlNoteID", h.q.SetCommentGlNoteID(ctx, db.SetCommentGlNoteIDParams{ID: cid, GlNoteID: &gid}))
 			}
 		}
 	}

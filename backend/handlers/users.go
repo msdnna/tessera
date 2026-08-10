@@ -117,7 +117,7 @@ func (h *API) UpdateMyProfile(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, buildUserDTO(c, h.q, u))
@@ -136,7 +136,7 @@ func (h *API) ChangeMyPassword(c *gin.Context) {
 	}
 	u, err := h.q.GetUserByID(c, uid)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !auth.CheckPassword(u.PasswordHash, req.CurrentPassword) {
@@ -145,11 +145,11 @@ func (h *API) ChangeMyPassword(c *gin.Context) {
 	}
 	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if err := h.q.UpdateUserPassword(c, db.UpdateUserPasswordParams{ID: uid, PasswordHash: hash}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -183,7 +183,7 @@ func (h *API) UpdateMyPreferences(c *gin.Context) {
 		Theme: req.Theme, Accent: req.Accent, BoardBackground: req.BoardBackground,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, toPrefsDTO(p))
@@ -204,7 +204,7 @@ func (h *API) UploadMyAvatar(c *gin.Context) {
 	}
 	f, err := file.Open()
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	defer func() { _ = f.Close() }()
@@ -221,7 +221,7 @@ func (h *API) UploadMyAvatar(c *gin.Context) {
 		return
 	}
 	if err := h.q.UpsertUserAvatar(c, db.UpsertUserAvatarParams{UserID: uid, ContentType: contentType, Bytes: data}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"avatar_url": "/api/users/" + uid.String() + "/avatar"})
@@ -230,7 +230,7 @@ func (h *API) UploadMyAvatar(c *gin.Context) {
 // DeleteMyAvatar removes the caller's avatar.
 func (h *API) DeleteMyAvatar(c *gin.Context) {
 	if err := h.q.DeleteUserAvatar(c, middleware.CurrentUser(c)); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -259,7 +259,7 @@ func (h *API) SetUserActive(c *gin.Context) {
 		return
 	}
 	if err := h.q.SetUserActive(c, db.SetUserActiveParams{ID: id, Active: req.Active}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -284,7 +284,7 @@ func (h *API) GetUserAvatar(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Header("Cache-Control", "private, max-age=300")

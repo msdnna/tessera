@@ -23,7 +23,7 @@ func (h *API) ListWorkspaceTasks(c *gin.Context) {
 		IncludeSubtasks: c.Query("include_subtasks") == "1" || c.Query("include_subtasks") == "true",
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if c.Query("assignee") == "me" {
@@ -41,7 +41,7 @@ func (h *API) WorkspaceSummary(c *gin.Context) {
 	}
 	rows, err := h.q.ListWorkspaceTasks(c, db.ListWorkspaceTasksParams{WorkspaceID: wsID})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	me := middleware.CurrentUser(c)

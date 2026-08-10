@@ -54,7 +54,7 @@ func (h *API) CreateInvitation(c *gin.Context) {
 	}
 	raw, hash, err := auth.NewRefreshToken()
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	inviter := middleware.CurrentUser(c)
@@ -63,7 +63,7 @@ func (h *API) CreateInvitation(c *gin.Context) {
 		TokenHash: hash, InvitedBy: &inviter, ExpiresAt: time.Now().Add(invitationTTL),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	link := fmt.Sprintf("%s/invite?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
@@ -85,7 +85,7 @@ func (h *API) ListInvitations(c *gin.Context) {
 	}
 	invs, err := h.q.ListInvitations(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]gin.H, 0, len(invs))
@@ -109,7 +109,7 @@ func (h *API) DeleteInvitation(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteInvitation(c, invID); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -131,7 +131,7 @@ func (h *API) AcceptInvitation(c *gin.Context) {
 	}
 	user, err := h.q.GetUserByID(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !strings.EqualFold(user.Email, inv.Email) {
@@ -149,7 +149,7 @@ func (h *API) AcceptInvitation(c *gin.Context) {
 		}
 		return q.MarkInvitationAccepted(c, inv.ID)
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	// Live sockets snapshot their workspace set at connect; drop this user's so

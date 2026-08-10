@@ -48,14 +48,14 @@ func (h *API) CreateProjectGroup(c *gin.Context) {
 	}
 	maxPos, err := h.q.MaxProjectGroupPosition(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	g, err := h.q.CreateProjectGroup(c, db.CreateProjectGroupParams{
 		WorkspaceID: wsID, ParentID: req.ParentID, Name: req.Name, Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "group.created", g)
@@ -70,7 +70,7 @@ func (h *API) ListProjectGroups(c *gin.Context) {
 	}
 	groups, err := h.q.ListProjectGroups(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, groups)
@@ -97,7 +97,7 @@ func (h *API) UpdateProjectGroup(c *gin.Context) {
 		IconMode: normIconMode(req.IconMode),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(g.WorkspaceID, "group.updated", updated)
@@ -131,7 +131,7 @@ func (h *API) MoveProjectGroup(c *gin.Context) {
 		ID: g.ID, ParentID: req.ParentID, Position: positionBetween(prev, next),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(g.WorkspaceID, "group.moved", updated)
@@ -145,7 +145,7 @@ func (h *API) DeleteProjectGroup(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteProjectGroup(c, g.ID); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(g.WorkspaceID, "group.deleted", gin.H{"id": g.ID})
@@ -185,7 +185,7 @@ func (h *API) CreateProject(c *gin.Context) {
 		}
 		taken, err := h.q.ProjectSlugExists(c, s)
 		if err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 		if taken {
@@ -198,7 +198,7 @@ func (h *API) CreateProject(c *gin.Context) {
 	}
 	maxPos, err := h.q.MaxProjectPosition(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	p, err := h.q.CreateProject(c, db.CreateProjectParams{
@@ -207,7 +207,7 @@ func (h *API) CreateProject(c *gin.Context) {
 		Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "project.created", p)
@@ -222,7 +222,7 @@ func (h *API) ListProjects(c *gin.Context) {
 	}
 	projects, err := h.q.ListProjects(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, projects)
@@ -261,7 +261,7 @@ func (h *API) UpdateProject(c *gin.Context) {
 		TreeMode: normTreeMode(req.TreeMode),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(p.WorkspaceID, "project.updated", updated)
@@ -300,7 +300,7 @@ func (h *API) SetProjectSlug(c *gin.Context) {
 	// workspace the caller can't see — keep the message free of specifics.
 	taken, err := h.q.ProjectSlugExists(c, s)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if taken {
@@ -308,12 +308,12 @@ func (h *API) SetProjectSlug(c *gin.Context) {
 		return
 	}
 	if err := h.q.SetProjectSlug(c, db.SetProjectSlugParams{ID: p.ID, Slug: s}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	updated, err := h.q.GetProject(c, p.ID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(p.WorkspaceID, "project.updated", updated)
@@ -343,7 +343,7 @@ func (h *API) MoveProject(c *gin.Context) {
 		ID: p.ID, GroupID: req.GroupID, Position: positionBetween(prev, next),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(p.WorkspaceID, "project.moved", updated)
@@ -379,13 +379,13 @@ func (h *API) TransferProject(c *gin.Context) {
 	// Position at the end of the target workspace's root.
 	maxPos, err := h.q.MaxProjectPosition(c, req.WorkspaceID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 
 	tx, err := h.pool.Begin(c)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	defer tx.Rollback(c) //nolint:errcheck // no-op after a successful Commit
@@ -395,42 +395,42 @@ func (h *API) TransferProject(c *gin.Context) {
 		ID: p.ID, WorkspaceID: req.WorkspaceID, Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if err := qtx.ReassignProjectTagsWorkspace(c, db.ReassignProjectTagsWorkspaceParams{
 		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if err := qtx.ReassignProjectTagPrefixesWorkspace(c, db.ReassignProjectTagPrefixesWorkspaceParams{
 		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if err := qtx.ReassignProjectNotesWorkspace(c, db.ReassignProjectNotesWorkspaceParams{
 		ProjectID: &p.ID, WorkspaceID: req.WorkspaceID,
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if err := qtx.ReassignProjectGitlabWorkspace(c, db.ReassignProjectGitlabWorkspaceParams{
 		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	stripped, err := qtx.StripNonMemberAssignees(c, db.StripNonMemberAssigneesParams{
 		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if err := tx.Commit(c); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 
@@ -447,7 +447,7 @@ func (h *API) DeleteProject(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteProject(c, p.ID); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(p.WorkspaceID, "project.deleted", gin.H{"id": p.ID})
@@ -466,7 +466,7 @@ func (h *API) loadGroup(c *gin.Context) (db.ProjectGroup, bool) {
 		return db.ProjectGroup{}, false
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.ProjectGroup{}, false
 	}
 	if !h.requireMember(c, g.WorkspaceID) {
@@ -485,7 +485,7 @@ func (h *API) loadProject(c *gin.Context) (db.Project, bool) {
 		return db.Project{}, false
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.Project{}, false
 	}
 	if !h.requireMember(c, p.WorkspaceID) {

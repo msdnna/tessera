@@ -27,7 +27,7 @@ func (h *API) ListTagPrefixes(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -35,7 +35,7 @@ func (h *API) ListTagPrefixes(c *gin.Context) {
 	}
 	rows, err := h.q.ListTagPrefixes(c, projectID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, rows)
@@ -54,7 +54,7 @@ func (h *API) ListWorkspaceTagPrefixes(c *gin.Context) {
 	}
 	rows, err := h.q.ListWorkspaceTagPrefixes(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	seen := make(map[string]bool, len(rows))
@@ -84,7 +84,7 @@ func (h *API) SetTagPrefixes(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -126,7 +126,7 @@ func (h *API) SetTagPrefixes(c *gin.Context) {
 		}
 		return nil
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "tag_prefixes.updated", gin.H{"project_id": projectID, "prefixes": out})

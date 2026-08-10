@@ -38,7 +38,7 @@ func (h *API) CreatePAT(c *gin.Context) {
 
 	token, hash, err := auth.NewPAT()
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	pat, err := h.q.CreatePAT(c, db.CreatePATParams{
@@ -49,7 +49,7 @@ func (h *API) CreatePAT(c *gin.Context) {
 		ExpiresAt: req.ExpiresAt,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{
@@ -67,7 +67,7 @@ func (h *API) CreatePAT(c *gin.Context) {
 func (h *API) ListPATs(c *gin.Context) {
 	rows, err := h.q.ListPATsByUser(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]patDTO, 0, len(rows))
@@ -92,7 +92,7 @@ func (h *API) RevokePAT(c *gin.Context) {
 		ID:     id,
 		UserID: middleware.CurrentUser(c),
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)

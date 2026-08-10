@@ -52,7 +52,7 @@ func (h *API) ListWorkspaceCommands(c *gin.Context) {
 	}
 	rows, err := h.q.ListWorkspaceCommands(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -139,7 +139,7 @@ func (h *API) SetWorkspaceCommands(c *gin.Context) {
 		}
 		return nil
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	views := commandViews(out)

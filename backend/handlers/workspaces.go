@@ -34,7 +34,7 @@ func (h *API) CreateWorkspace(c *gin.Context) {
 		})
 		return err
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, ws)
@@ -44,7 +44,7 @@ func (h *API) CreateWorkspace(c *gin.Context) {
 func (h *API) ListWorkspaces(c *gin.Context) {
 	ws, err := h.q.ListWorkspacesForUser(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, ws)
@@ -64,7 +64,7 @@ func (h *API) GetWorkspace(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, ws)
@@ -91,7 +91,7 @@ func (h *API) UpdateWorkspace(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(id, "workspace.updated", ws)
@@ -109,7 +109,7 @@ func (h *API) DeleteWorkspace(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if ws.OwnerID != middleware.CurrentUser(c) {
@@ -117,7 +117,7 @@ func (h *API) DeleteWorkspace(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteWorkspace(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -134,7 +134,7 @@ func (h *API) ListMembers(c *gin.Context) {
 	}
 	members, err := h.q.ListMembers(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, members)
@@ -178,12 +178,12 @@ func (h *API) AddMember(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	m, err := h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: id, UserID: user.ID, Role: role})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	// Live sockets snapshot their workspace set at connect; drop the new
@@ -222,7 +222,7 @@ func (h *API) UpdateMemberRole(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if userID == ws.OwnerID {
@@ -234,7 +234,7 @@ func (h *API) UpdateMemberRole(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, m)
@@ -259,7 +259,7 @@ func (h *API) RemoveMember(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if userID == ws.OwnerID {
@@ -267,7 +267,7 @@ func (h *API) RemoveMember(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteMembership(c, db.DeleteMembershipParams{WorkspaceID: id, UserID: userID}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	// Cut the removed member's live sockets — otherwise they keep streaming

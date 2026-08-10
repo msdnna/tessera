@@ -41,14 +41,14 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 	}
 	if issue.MilestoneGID == "" {
 		// GitLab removed the milestone — clear the (GitLab-sourced) one on the task.
-		_ = h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: nil})
+		soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: nil}))
 		return
 	}
 	mID, err := h.ensureGitlabMilestone(ctx, integ, projectID, issue)
 	if err != nil {
 		return
 	}
-	_ = h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: &mID})
+	soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: &mID}))
 }
 
 // ensureGitlabMilestone upserts the native milestone + link for a GitLab milestone,
@@ -79,10 +79,10 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 		}); uerr != nil {
 			return uuid.Nil, uerr
 		}
-		_ = h.q.UpdateGitlabMilestoneLink(ctx, db.UpdateGitlabMilestoneLinkParams{
+		soft(ctx, "UpdateGitlabMilestoneLink", h.q.UpdateGitlabMilestoneLink(ctx, db.UpdateGitlabMilestoneLinkParams{
 			MilestoneID: link.MilestoneID, GlIid: iid, GlNumericID: numeric,
 			GlWebUrl: issue.MilestoneURL, GlState: state, TitleHash: titleHash,
-		})
+		}))
 		return link.MilestoneID, nil
 	case errors.Is(err, pgx.ErrNoRows):
 		st := state
@@ -135,7 +135,7 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !integ.Enabled {
@@ -179,7 +179,7 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		GlIid: iid, GlNumericID: created.ID, GlWebUrl: created.WebURL, GlState: state,
 		TitleHash: hashStr(m.Title),
 	}); cerr != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "milestone.updated", gin.H{"id": id})

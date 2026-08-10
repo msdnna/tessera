@@ -37,7 +37,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -67,13 +67,13 @@ func (h *API) CreateTask(c *gin.Context) {
 
 	pos, err := h.nextTaskPosition(c, req.ColumnID, req.ParentID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 
 	num, err := h.q.NextWorkspaceTaskNumber(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 
@@ -93,7 +93,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		Number:      &num,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.logEvent(c, t.ID, "created", nil)
@@ -112,7 +112,7 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -131,7 +131,7 @@ func (h *API) ListBoardTasks(c *gin.Context) {
 	}
 	tasks, err := h.q.ListBoardTasksWithMeta(c, params)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, slimBoardTasks(tasks))
@@ -173,7 +173,7 @@ func (h *API) ListBoardSubtasks(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -181,7 +181,7 @@ func (h *API) ListBoardSubtasks(c *gin.Context) {
 	}
 	subs, err := h.q.ListBoardSubtasksWithMeta(c, boardID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, slimBoardSubtasks(subs))
@@ -226,17 +226,17 @@ func (h *API) GetTask(c *gin.Context) {
 	}
 	tags, err := h.q.ListTaskTags(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	assignees, err := h.q.ListTaskAssignees(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	subtasks, err := h.q.ListSubtasksWithMeta(c, &id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	_ = wsID
@@ -287,7 +287,7 @@ func (h *API) GetTaskByNumber(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, t)
@@ -481,7 +481,7 @@ func (h *API) TransferTask(c *gin.Context) {
 	} else {
 		cols, err := h.q.ListColumns(c, req.BoardID)
 		if err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 		if len(cols) == 0 {
@@ -492,7 +492,7 @@ func (h *API) TransferTask(c *gin.Context) {
 	}
 	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	// Transactional: the task and its subtasks must land on the new board
@@ -510,7 +510,7 @@ func (h *API) TransferTask(c *gin.Context) {
 			ParentID: &id, BoardID: req.BoardID, ColumnID: columnID,
 		})
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcastAs(c, wsID, "task.moved", updated)
@@ -546,7 +546,7 @@ func (h *API) RestoreTask(c *gin.Context) {
 		return
 	}
 	if err := h.q.RestoreTask(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.logEvent(c, id, "restored", nil)
@@ -565,7 +565,7 @@ func (h *API) ListBoardArchived(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -573,7 +573,7 @@ func (h *API) ListBoardArchived(c *gin.Context) {
 	}
 	rows, err := h.q.ListBoardArchivedWithMeta(c, boardID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, slimBoardArchivedTasks(rows))
@@ -592,12 +592,12 @@ func (h *API) DeleteTask(c *gin.Context) {
 	// ?subtasks=detach keeps subtasks (re-parented to null); default cascades.
 	if c.Query("subtasks") == "detach" {
 		if err := h.q.DetachChildren(c, &id); err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 	}
 	if err := h.q.DeleteTask(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "task.deleted", gin.H{"id": id})
@@ -721,7 +721,7 @@ func (h *API) SetTaskEisenhower(c *gin.Context) {
 	}
 	t, err := h.q.SetTaskEisenhower(c, db.SetTaskEisenhowerParams{ID: id, EisenhowerQuadrant: req.Quadrant})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "task.updated", t)
@@ -737,12 +737,12 @@ func (h *API) loadTask(c *gin.Context, id uuid.UUID) (db.Task, uuid.UUID, bool) 
 		return db.Task{}, uuid.Nil, false
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.Task{}, uuid.Nil, false
 	}
 	wsID, err := h.q.WorkspaceIDForBoard(c, t.BoardID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.Task{}, uuid.Nil, false
 	}
 	if !h.requireMember(c, wsID) {

@@ -78,7 +78,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// log stream. gin.New with Recovery + AccessLog keeps panic recovery and the
 	// access trace but redacts those secrets (see middleware/accesslog.go).
 	r := gin.New()
-	r.Use(middleware.AccessLog(), gin.Recovery())
+	r.Use(middleware.RequestID(), middleware.AccessLog(), gin.Recovery())
 	trusted := cfg.TrustedProxies
 	if len(trusted) == 0 {
 		trusted = []string{"127.0.0.1", "::1"}

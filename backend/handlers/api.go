@@ -174,8 +174,34 @@ func notFound(c *gin.Context, err error) bool {
 }
 
 // fail writes a generic 500.
-func fail(c *gin.Context) {
+// fail writes a generic 500 to the client and logs the real cause server-side,
+// tagged with the request's method/path/id so a production log line can be tied
+// back to a user report. The client only ever sees "internal error" — the cause
+// never leaks. err may be nil (a handful of call sites fail without one).
+func fail(c *gin.Context, err error) {
+	slog.Error("request failed",
+		"err", err,
+		"method", c.Request.Method,
+		"path", c.Request.URL.Path,
+		"request_id", middleware.GetRequestID(c),
+	)
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+}
+
+// soft records a best-effort operation's failure without touching the response.
+// Ignoring the result is often deliberate (a due-date already stamped, a log row
+// that didn't write), but staying silent about it makes "why did the sync
+// overwrite this" unanswerable. The op label names the action for the log; a nil
+// error is silent. ctx is a gin.Context or a worker's context.Context.
+func soft(ctx context.Context, op string, err error) {
+	if err == nil {
+		return
+	}
+	slog.Warn("best-effort op failed",
+		"op", op,
+		"err", err,
+		"request_id", middleware.GetRequestID(ctx),
+	)
 }
 
 // inTx runs fn inside a database transaction, rolling back if fn returns an

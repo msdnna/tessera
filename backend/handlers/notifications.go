@@ -124,7 +124,7 @@ func validateTemplate(tmpl string) error {
 func (h *API) ListNotificationChannels(c *gin.Context) {
 	rows, err := h.q.ListNotificationChannels(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]channelView, 0, len(rows))
@@ -166,7 +166,7 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 	}
 	enc, err := h.sealSecret(req.Secret)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	enabled := true
@@ -179,7 +179,7 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 		Config: cfgJSON, SecretEnc: enc, Enabled: enabled, Template: tmpl,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, channelViewOf(row))
@@ -198,7 +198,7 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	var req channelReq
@@ -215,7 +215,7 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 	secEnc := row.SecretEnc
 	if hasSecret(req.Secret) {
 		if secEnc, err = h.sealSecret(req.Secret); err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 	}
@@ -241,7 +241,7 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		Config: cfgJSON, SecretEnc: secEnc, Enabled: enabled, Template: tmpl,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, channelViewOf(updated))
@@ -256,7 +256,7 @@ func (h *API) DeleteNotificationChannel(c *gin.Context) {
 	if err := h.q.DeleteNotificationChannel(c, db.DeleteNotificationChannelParams{
 		ID: id, UserID: middleware.CurrentUser(c),
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -292,7 +292,7 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 			SecretEnc: existing.SecretEnc, Enabled: existing.Enabled, Template: existing.Template,
 		})
 		if uerr != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, channelViewOf(updated))
@@ -302,7 +302,7 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 		UserID: uid, Type: "device", Label: label, Config: cfg, SecretEnc: "", Enabled: true, Template: "",
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, channelViewOf(row))
@@ -321,7 +321,7 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	ch, err := h.channelFromRow(row)
@@ -346,9 +346,9 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
-	_ = h.q.SetNotificationChannelVerified(c, db.SetNotificationChannelVerifiedParams{
+	soft(c, "SetNotificationChannelVerified", h.q.SetNotificationChannelVerified(c, db.SetNotificationChannelVerifiedParams{
 		ID: id, UserID: uid, Verified: true,
-	})
+	}))
 	resp := gin.H{"ok": true}
 	if row.Type == "email" && !h.mailer.Enabled() {
 		resp["warning"] = "SMTP на сервере не настроен — письмо записано в лог, но не отправлено."
@@ -414,7 +414,7 @@ type routeReq struct {
 func (h *API) ListNotificationRoutes(c *gin.Context) {
 	rows, err := h.q.ListNotificationRoutes(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]routeView, 0, len(rows))
@@ -458,7 +458,7 @@ func (h *API) CreateNotificationRoute(c *gin.Context) {
 		ChannelIds: orIDs(req.ChannelIDs), Options: orJSONObj(req.Options), Enabled: enabled,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, routeViewOf(row))
@@ -496,7 +496,7 @@ func (h *API) UpdateNotificationRoute(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, routeViewOf(row))
@@ -511,7 +511,7 @@ func (h *API) DeleteNotificationRoute(c *gin.Context) {
 	if err := h.q.DeleteNotificationRoute(c, db.DeleteNotificationRouteParams{
 		ID: id, UserID: middleware.CurrentUser(c),
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -623,9 +623,9 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 					next = d
 				}
 			}
-			_ = h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
+			soft(ctx, "CreateNotificationDeliveryAt", h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
 				NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next, DigestGroup: group,
-			})
+			}))
 		}
 		return deviceTargets // first matching rule wins
 	}
@@ -703,16 +703,16 @@ func (h *API) drainDeliveries(ctx context.Context) {
 // attempt's number.
 func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err error) {
 	if err == nil {
-		_ = h.q.MarkDeliverySent(ctx, d.ID)
+		soft(ctx, "MarkDeliverySent", h.q.MarkDeliverySent(ctx, d.ID))
 		return
 	}
 	if notify.IsPermanent(err) || int(d.Attempts) >= maxDeliveryAttempts {
-		_ = h.q.MarkDeliveryFailed(ctx, db.MarkDeliveryFailedParams{ID: d.ID, LastError: truncErr(err)})
+		soft(ctx, "MarkDeliveryFailed", h.q.MarkDeliveryFailed(ctx, db.MarkDeliveryFailedParams{ID: d.ID, LastError: truncErr(err)}))
 		log.Printf("notify: delivery %s gave up after %d attempt(s): %v", d.ID, d.Attempts, err)
 		return
 	}
 	next := time.Now().Add(time.Duration(d.Attempts*d.Attempts) * time.Minute) // 1, 4, 9, 16 min
-	_ = h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{ID: d.ID, LastError: truncErr(err), NextAttemptAt: next})
+	soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{ID: d.ID, LastError: truncErr(err), NextAttemptAt: next}))
 }
 
 // deliverGroup renders each notification in a digest group and sends one combined
@@ -980,9 +980,9 @@ func (h *API) scanDueTasks(ctx context.Context) {
 				continue
 			}
 			h.deliverNotification(ctx, uid, wsID, &t.ID, nil, "due_soon", dueText(t))
-			_ = h.q.UpsertDueNotificationState(ctx, db.UpsertDueNotificationStateParams{
+			soft(ctx, "UpsertDueNotificationState", h.q.UpsertDueNotificationState(ctx, db.UpsertDueNotificationStateParams{
 				TaskID: t.ID, UserID: uid, FiredDue: *t.DueDate,
-			})
+			}))
 		}
 	}
 }
@@ -1050,7 +1050,7 @@ func (h *API) scanReminders(ctx context.Context) {
 			}
 			h.deliverNotification(ctx, r.UserID, h.reminderWorkspace(ctx, r), r.TaskID, nil, "reminder", text)
 		}
-		_ = h.q.MarkReminderNotified(ctx, r.ID)
+		soft(ctx, "MarkReminderNotified", h.q.MarkReminderNotified(ctx, r.ID))
 	}
 }
 
@@ -1113,7 +1113,7 @@ func (h *API) GetMyNotificationPrefs(c *gin.Context) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		p = defaultPrefs(uid)
 	} else if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, prefsViewOf(p))
@@ -1143,7 +1143,7 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 		DigestMinutes:     max(0, req.DigestMinutes),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, prefsViewOf(p))
@@ -1178,7 +1178,7 @@ func (h *API) SetTaskDueNotify(c *gin.Context) {
 		ID: id, DueLeadMinutes: req.LeadMinutes, DueRepeatMinutes: req.RepeatMinutes, DueNotifyEnabled: req.Enabled,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, t)

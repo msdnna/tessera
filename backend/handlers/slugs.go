@@ -95,18 +95,18 @@ func (h *API) uniqueNoteSlug(ctx context.Context, wsID uuid.UUID, title string) 
 func (h *API) BackfillSlugs(ctx context.Context) {
 	projects, _ := h.q.ProjectsMissingSlug(ctx)
 	for _, p := range projects {
-		_ = h.q.SetProjectSlug(ctx, db.SetProjectSlugParams{ID: p.ID, Slug: h.uniqueProjectSlug(ctx, p.Name)})
+		soft(ctx, "SetProjectSlug", h.q.SetProjectSlug(ctx, db.SetProjectSlugParams{ID: p.ID, Slug: h.uniqueProjectSlug(ctx, p.Name)}))
 	}
 	boards, _ := h.q.BoardsMissingSlug(ctx)
 	for _, b := range boards {
-		_ = h.q.SetBoardSlug(ctx, db.SetBoardSlugParams{ID: b.ID, Slug: h.uniqueBoardSlug(ctx, b.ProjectID, b.Name)})
+		soft(ctx, "SetBoardSlug", h.q.SetBoardSlug(ctx, db.SetBoardSlugParams{ID: b.ID, Slug: h.uniqueBoardSlug(ctx, b.ProjectID, b.Name)}))
 	}
 	notes, _ := h.q.NotesMissingSlug(ctx)
 	for _, n := range notes {
-		_ = h.q.SetNoteSlug(ctx, db.SetNoteSlugParams{ID: n.ID, Slug: h.uniqueNoteSlug(ctx, n.WorkspaceID, n.Title)})
+		soft(ctx, "SetNoteSlug", h.q.SetNoteSlug(ctx, db.SetNoteSlugParams{ID: n.ID, Slug: h.uniqueNoteSlug(ctx, n.WorkspaceID, n.Title)}))
 	}
 	milestones, _ := h.q.MilestonesMissingSlug(ctx)
 	for _, m := range milestones {
-		_ = h.q.SetMilestoneSlug(ctx, db.SetMilestoneSlugParams{ID: m.ID, Slug: h.uniqueMilestoneSlug(ctx, m.ProjectID, m.Title)})
+		soft(ctx, "SetMilestoneSlug", h.q.SetMilestoneSlug(ctx, db.SetMilestoneSlugParams{ID: m.ID, Slug: h.uniqueMilestoneSlug(ctx, m.ProjectID, m.Title)}))
 	}
 }

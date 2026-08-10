@@ -36,7 +36,7 @@ func (h *API) GetGitlabConnection(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -76,7 +76,7 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 
 	enc, err := h.sealer.Encrypt(req.Token)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	cred, err := h.q.UpsertGitlabCredential(c, db.UpsertGitlabCredentialParams{
@@ -87,7 +87,7 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 		GlUsername: user.Username,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -98,7 +98,7 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 // DisconnectGitlab removes the current user's stored credential.
 func (h *API) DisconnectGitlab(c *gin.Context) {
 	if err := h.q.DeleteGitlabCredential(c, middleware.CurrentUser(c)); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -216,7 +216,7 @@ func (h *API) ListGitlabIntegrations(c *gin.Context) {
 	}
 	rows, err := h.q.ListGitlabIntegrationsByWorkspace(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	views := make([]gitlabIntegrationView, 0, len(rows))
@@ -423,7 +423,7 @@ func (h *API) DeleteGitlabIntegration(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteGitlabIntegration(c, integ.ID); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -449,7 +449,7 @@ func (h *API) integrationInWorkspace(c *gin.Context) (db.GitlabIntegration, uuid
 		return db.GitlabIntegration{}, uuid.Nil, false
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.GitlabIntegration{}, uuid.Nil, false
 	}
 	return integ, wsID, true
@@ -481,7 +481,7 @@ func (h *API) SyncGitlab(c *gin.Context) {
 			return
 		}
 		if err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 	}
@@ -790,7 +790,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 	// an incremental sync only refreshes it once an hour; a full sweep always does.
 	if !incremental || integ.MembersSyncedAt == nil || time.Since(*integ.MembersSyncedAt) >= memberRosterTTL {
 		h.syncProjectMembers(ctx, client, integ)
-		_ = h.q.MarkGitlabMembersSynced(ctx, integ.ID)
+		soft(ctx, "MarkGitlabMembersSynced", h.q.MarkGitlabMembersSynced(ctx, integ.ID))
 	}
 
 	rules := parseRules(integ.LabelRules)
@@ -941,7 +941,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 	h.syncRelations(ctx, integ, client, syncedIIDs, j)
 
 	if incremental {
-		_ = h.q.MarkGitlabSynced(ctx, integ.ID)
+		soft(ctx, "MarkGitlabSynced", h.q.MarkGitlabSynced(ctx, integ.ID))
 	} else {
 		// A full sweep sees every still-existing issue, so a linked task whose issue is
 		// absent was deleted in GitLab → archive it. Guarded on a non-empty fetch so a
@@ -962,7 +962,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		}
 		// A full sweep also advances last_full_synced_at so the auto worker knows when
 		// the next forced full sweep is due.
-		_ = h.q.MarkGitlabFullSynced(ctx, integ.ID)
+		soft(ctx, "MarkGitlabFullSynced", h.q.MarkGitlabFullSynced(ctx, integ.ID))
 	}
 	// One board-level reload signal (no per-task toasts) so open boards refresh once.
 	if created+updated > 0 {
@@ -1164,7 +1164,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
 		}
-		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))})
+		soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))}))
 		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false)
 		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
@@ -1238,26 +1238,26 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
 			return uuid.Nil, false, false
 		}
-		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))})
+		soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))}))
 		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
 		if !link.DueOverridden && !frozen["due"] && dueDate != nil {
-			_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate})
+			soft(ctx, "UpdateTaskDueDate", h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate}))
 			t.DueDate = dueDate
 			dueApplied = true
 		}
 		// Likewise the start date: synced unless GitLab gives none or the user overrode.
 		startApplied := false
 		if !link.StartOverridden && startDate != nil {
-			_ = h.q.UpdateTaskStartDate(ctx, db.UpdateTaskStartDateParams{ID: link.TaskID, StartDate: startDate})
+			soft(ctx, "UpdateTaskStartDate", h.q.UpdateTaskStartDate(ctx, db.UpdateTaskStartDateParams{ID: link.TaskID, StartDate: startDate}))
 			t.StartDate = startDate
 			startApplied = true
 		}
 		// Time estimate (only when the board's unit is time → estimate != nil here):
 		// synced unless the user overrode it.
 		if !link.EstimateOverridden && !frozen["estimate"] && estimate != nil {
-			_ = h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: link.TaskID, Estimate: estimate})
+			soft(ctx, "UpdateTaskEstimate", h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: link.TaskID, Estimate: estimate}))
 			t.Estimate = estimate
 		}
 		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
@@ -1440,13 +1440,13 @@ func (h *API) syncProjectMembers(ctx context.Context, client *gitlab.Client, int
 	}
 	keep := make([]int64, 0, len(members))
 	for _, m := range members {
-		_ = h.q.UpsertGitlabProjectMember(ctx, db.UpsertGitlabProjectMemberParams{
+		soft(ctx, "UpsertGitlabProjectMember", h.q.UpsertGitlabProjectMember(ctx, db.UpsertGitlabProjectMemberParams{
 			IntegrationID: integ.ID, GlUserID: m.ID, GlUsername: m.Username, GlName: m.Name,
 			GlAvatarUrl: h.avatarProxyURL(integ.WorkspaceID, m.AvatarURL), AccessLevel: int32(m.AccessLevel),
-		})
+		}))
 		keep = append(keep, m.ID)
 	}
-	_ = h.q.DeleteStaleGitlabProjectMembers(ctx, db.DeleteStaleGitlabProjectMembersParams{IntegrationID: integ.ID, Column2: keep})
+	soft(ctx, "DeleteStaleGitlabProjectMembers", h.q.DeleteStaleGitlabProjectMembers(ctx, db.DeleteStaleGitlabProjectMembersParams{IntegrationID: integ.ID, Column2: keep}))
 }
 
 // reconcileAssignees rebuilds the GitLab-sourced assignee set: a GitLab assignee
@@ -1462,14 +1462,14 @@ func (h *API) applyClosedPolicy(ctx context.Context, integ db.GitlabIntegration,
 		return
 	}
 	if issue.State == "closed" && issue.MilestoneState == "closed" {
-		_ = h.q.ArchiveTaskIfActive(ctx, taskID)
+		soft(ctx, "ArchiveTaskIfActive", h.q.ArchiveTaskIfActive(ctx, taskID))
 	} else {
-		_ = h.q.RestoreTaskIfArchived(ctx, taskID)
+		soft(ctx, "RestoreTaskIfArchived", h.q.RestoreTaskIfArchived(ctx, taskID))
 	}
 }
 
 func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, people []gitlab.Person) {
-	_ = h.q.DeleteGitlabSourcedAssignees(ctx, taskID) // only the sync-made set is rebuilt
+	soft(ctx, "DeleteGitlabSourcedAssignees", h.q.DeleteGitlabSourcedAssignees(ctx, taskID)) // only the sync-made set is rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))
 	for _, p := range people {
 		// Resolve the GitLab assignee to a Tessera user. Prefer the "Login with
@@ -1481,16 +1481,16 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 			uid, err = h.q.GetUserIDByGitlabUsername(ctx, p.Login)
 		}
 		if err == nil {
-			_ = h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"})
+			soft(ctx, "AddTaskAssigneeSourced", h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"}))
 			tesseraIDs = append(tesseraIDs, uid)
 		} else {
-			_ = h.q.UpsertGitlabSourcedAssignee(ctx, db.UpsertGitlabSourcedAssigneeParams{
+			soft(ctx, "UpsertGitlabSourcedAssignee", h.q.UpsertGitlabSourcedAssignee(ctx, db.UpsertGitlabSourcedAssigneeParams{
 				TaskID: taskID, GlUsername: p.Login, GlName: p.Name,
 				GlAvatarUrl: h.avatarProxyURL(wsID, p.AvatarURL),
-			})
+			}))
 		}
 	}
-	_ = h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs})
+	soft(ctx, "DeleteStaleGitlabAssignees", h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs}))
 }
 
 // syncComments upserts each GitLab note as a comment, idempotent by note id, with
@@ -1723,7 +1723,7 @@ func (h *API) ListGitlabMembers(c *gin.Context) {
 	}
 	rows, err := h.q.ListGitlabProjectMembersByWorkspace(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]gin.H, 0, len(rows))
@@ -1766,7 +1766,7 @@ func (h *API) PinTaskGitlabAssignee(c *gin.Context) {
 	if err := h.q.PinGitlabAssignee(c, db.PinGitlabAssigneeParams{
 		TaskID: id, GlUsername: req.GlUsername, GlName: req.GlName, GlAvatarUrl: req.GlAvatarURL,
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "gl_username": req.GlUsername})
@@ -1790,7 +1790,7 @@ func (h *API) RemoveTaskGitlabAssignee(c *gin.Context) {
 		return
 	}
 	if err := h.q.RemoveGitlabAssignee(c, db.RemoveGitlabAssigneeParams{TaskID: id, GlUsername: username}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "gl_username": username})

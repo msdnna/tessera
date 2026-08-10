@@ -47,7 +47,7 @@ func (h *API) ListAllUsers(c *gin.Context) {
 	}
 	rows, err := h.q.ListUsers(c)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]adminUserView, 0, len(rows))
@@ -87,7 +87,7 @@ func (h *API) SetUserAdmin(c *gin.Context) {
 		return
 	}
 	if err := h.q.SetUserAdmin(c, db.SetUserAdminParams{ID: id, IsAdmin: req.Admin}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -109,18 +109,18 @@ func (h *API) CreateUserResetLink(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	raw, hash, err := auth.NewRefreshToken()
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if _, err := h.q.CreateUserToken(c, db.CreateUserTokenParams{
 		UserID: user.ID, Kind: "reset", TokenHash: hash, ExpiresAt: time.Now().Add(resetTokenTTL),
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	link := fmt.Sprintf("%s/recover?token=%s", strings.TrimRight(h.publicURL, "/"), raw)

@@ -73,11 +73,12 @@ func AccessLog() gin.HandlerFunc {
 		if q := redactedQuery(raw); q != "" {
 			full = path + "?" + q
 		}
-		log.Printf("[GIN] %s | %d | %v | %s | %s %s",
+		log.Printf("[GIN] %s | %d | %v | %s | %s | %s %s",
 			start.Format("2006/01/02 - 15:04:05"),
 			c.Writer.Status(),
 			time.Since(start),
 			c.ClientIP(),
+			GetRequestID(c),
 			c.Request.Method,
 			full,
 		)

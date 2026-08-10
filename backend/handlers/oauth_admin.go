@@ -35,7 +35,7 @@ func (h *API) GetOAuthConfig(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	om := p.OrgMap
@@ -77,7 +77,7 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	if s := strings.TrimSpace(req.ClientSecret); s != "" {
 		enc, err := h.sealer.Encrypt(s)
 		if err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 		secretEnc = enc
@@ -85,7 +85,7 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	if s := strings.TrimSpace(req.ServiceToken); s != "" {
 		enc, err := h.sealer.Encrypt(s)
 		if err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 		serviceEnc = enc
@@ -112,7 +112,7 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		ServiceTokenEnc: serviceEnc,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	om := p.OrgMap

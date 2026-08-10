@@ -19,7 +19,7 @@ func (h *API) CreateTag(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -35,7 +35,7 @@ func (h *API) CreateTag(c *gin.Context) {
 	}
 	tag, err := h.q.CreateTag(c, db.CreateTagParams{WorkspaceID: wsID, ProjectID: projectID, Name: req.Name, Color: req.Color})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "tag.created", tag)
@@ -53,7 +53,7 @@ func (h *API) ListTags(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -61,7 +61,7 @@ func (h *API) ListTags(c *gin.Context) {
 	}
 	tags, err := h.q.ListTags(c, projectID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, tags)
@@ -76,7 +76,7 @@ func (h *API) ListWorkspaceTags(c *gin.Context) {
 	}
 	tags, err := h.q.ListWorkspaceTags(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, tags)
@@ -93,7 +93,7 @@ func (h *API) UpdateTag(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, tag.WorkspaceID) {
@@ -109,7 +109,7 @@ func (h *API) UpdateTag(c *gin.Context) {
 	}
 	updated, err := h.q.UpdateTag(c, db.UpdateTagParams{ID: id, Name: req.Name, Color: req.Color})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(tag.WorkspaceID, "tag.updated", updated)
@@ -127,14 +127,14 @@ func (h *API) DeleteTag(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, tag.WorkspaceID) {
 		return
 	}
 	if err := h.q.DeleteTag(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(tag.WorkspaceID, "tag.deleted", gin.H{"id": id})

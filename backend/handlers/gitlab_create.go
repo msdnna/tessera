@@ -42,7 +42,7 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !integ.Enabled {
@@ -118,7 +118,7 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		GlLastState: state,
 	}); cerr != nil {
 		log.Printf("gitlab create issue: link task %s failed: %v", id, cerr)
-		fail(c)
+		fail(c, cerr)
 		return
 	}
 	// True up the link snapshot (accurate hashes, author name/avatar, state) from the
@@ -230,7 +230,7 @@ func (h *API) ListGitlabIssueTemplates(c *gin.Context) {
 	// board's binding); fall back to the workspace's first binding.
 	rows, err := h.q.ListGitlabIntegrationsByWorkspace(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if len(rows) == 0 {

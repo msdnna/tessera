@@ -35,7 +35,7 @@ func (h *API) CreateNote(c *gin.Context) {
 		Slug:        h.uniqueNoteSlug(c, wsID, req.Title),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "note.created", note)
@@ -50,7 +50,7 @@ func (h *API) ListNotes(c *gin.Context) {
 	}
 	notes, err := h.q.ListNotes(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, notes)
@@ -81,7 +81,7 @@ func (h *API) UpdateNote(c *gin.Context) {
 	}
 	updated, err := h.q.UpdateNote(c, db.UpdateNoteParams{ID: note.ID, Title: req.Title, Body: req.Body})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(note.WorkspaceID, "note.updated", updated)
@@ -95,7 +95,7 @@ func (h *API) DeleteNote(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteNote(c, note.ID); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(note.WorkspaceID, "note.deleted", gin.H{"id": note.ID})
@@ -113,7 +113,7 @@ func (h *API) loadNote(c *gin.Context) (db.Note, bool) {
 		return db.Note{}, false
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.Note{}, false
 	}
 	if !h.requireMember(c, note.WorkspaceID) {
