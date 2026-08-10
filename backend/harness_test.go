@@ -41,10 +41,20 @@ var (
 	testQueries *db.Queries
 	testAPI     *handlers.API // spawn Run*Worker(ctx) again to drain an outbox now (workers drain once at startup)
 	userSeq     atomic.Int64
+
+	// testUploadDir is the harness upload root, so tests can plant files that
+	// predate current validation (e.g. legacy SVGs).
+	testUploadDir string
 )
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
+
+	// Notification webhook channels in these tests deliver to a loopback mock
+	// server — the self-hosted "notifier on the same host" case — so opt into
+	// private targets. The SSRF guard itself is exercised in the notify package
+	// tests, where t.Setenv toggles the flag per case.
+	os.Setenv("NOTIFY_ALLOW_PRIVATE_URLS", "true")
 
 	dbURL := os.Getenv("TEST_DATABASE_URL")
 	if dbURL == "" {
@@ -83,6 +93,7 @@ func TestMain(m *testing.M) {
 		log.Fatalf("harness: %v", err)
 	}
 	defer os.RemoveAll(uploadDir)
+	testUploadDir = uploadDir
 
 	cfg := &config.Config{
 		JWTSecret:     "integration-test-secret-min32chars!!",
@@ -90,6 +101,12 @@ func TestMain(m *testing.M) {
 		EncryptionKey: "integration-test-encryption-key",
 		PublicURL:     "http://tessera.test",
 		CORSOrigin:    "*",
+		// Off for the shared server: every test signs up and logs in from the
+		// same loopback address, so a shared throttle would make unrelated tests
+		// fail each other. The limiter gets its own server in limits_flow_test.go.
+		// Body limits are left zero on purpose — newRouter falls back to the
+		// production ceilings, so the rest of the suite runs against them.
+		RateLimitEnabled: false,
 	}
 	router, rh := newRouter(cfg, testQueries, testPool, hub, mail.New(mail.Config{}))
 	testAPI = rh
@@ -153,6 +170,7 @@ type client struct {
 type resp struct {
 	Status int
 	Body   []byte
+	Header http.Header
 }
 
 func (r resp) mapBody(t *testing.T) map[string]any {
@@ -216,7 +234,7 @@ func doReq(t *testing.T, token, method, path string, body any) resp {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	return resp{Status: res.StatusCode, Body: data}
+	return resp{Status: res.StatusCode, Body: data, Header: res.Header}
 }
 
 func (c *client) do(method, path string, body any) resp {
@@ -354,5 +372,5 @@ func uploadFile(t *testing.T, c *client, path, field, filename string, content [
 	}
 	defer res.Body.Close()
 	data, _ := io.ReadAll(res.Body)
-	return resp{Status: res.StatusCode, Body: data}
+	return resp{Status: res.StatusCode, Body: data, Header: res.Header}
 }

@@ -213,7 +213,14 @@ async function resendVerify() {
         <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" />
         <n-avatar v-else round :size="72" class="ava">{{ initials }}</n-avatar>
         <div class="avatar-actions">
-          <input ref="fileInput" type="file" accept="image/*" hidden @change="onAvatarPicked" />
+          <!-- Matches what the server accepts for avatars (no SVG). -->
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            hidden
+            @change="onAvatarPicked"
+          />
           <n-button size="small" @click="fileInput?.click()">
             <template #icon><n-icon :component="CloudUploadOutline" /></template>
             Загрузить

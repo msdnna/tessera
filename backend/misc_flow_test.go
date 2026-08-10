@@ -21,29 +21,28 @@ func TestHealthAndVersion(t *testing.T) {
 	}
 }
 
-// The /ws endpoint upgrades and registers with the hub; a broadcast triggered
-// by an API write must reach the socket.
+// The /ws endpoint upgrades an authenticated request and registers it with the
+// hub; a broadcast triggered by an API write must reach the socket. Auth and
+// scoping have their own suite in ws_auth_test.go.
 func TestWebSocketConnect(t *testing.T) {
 	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+
 	wsURL := "ws" + strings.TrimPrefix(testServer.URL, "http") + "/api/ws"
-	conn, res, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, res, err := websocket.DefaultDialer.Dial(wsURL,
+		http.Header{"Authorization": []string{"Bearer " + c.token}})
 	if err != nil {
 		t.Fatalf("dial: %v (res=%v)", err, res)
 	}
 	defer conn.Close()
 
-	// Generate some broadcast traffic.
-	c := signup(t)
-	s := mkStack(t, c)
+	// Generate some broadcast traffic in the socket's own workspace.
 	mkTask(t, c, s.Board, s.col(t, 0), "WS ping")
 
-	// The hub may scope events, so just prove the socket stays healthy: read
-	// with a short deadline and accept either a frame or a clean timeout.
-	_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-	_, _, rerr := conn.ReadMessage()
-	if rerr != nil && !strings.Contains(rerr.Error(), "timeout") &&
-		!websocket.IsCloseError(rerr, websocket.CloseNormalClosure) {
-		t.Logf("ws read: %v (acceptable)", rerr)
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, _, rerr := conn.ReadMessage(); rerr != nil {
+		t.Fatalf("no broadcast reached the socket: %v", rerr)
 	}
 	_ = conn.WriteMessage(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))

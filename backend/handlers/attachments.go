@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -24,14 +25,28 @@ const maxAttachmentBytes = 25 << 20
 const maxMediaBytes = 8 << 20
 
 // mediaExts maps allowed image content types to a file extension.
+//
+// SVG is deliberately absent: it is a script-bearing document, and /uploads is
+// served publicly on the app's own origin, so an inline SVG would run with
+// access to the session in localStorage.
 var mediaExts = map[string]string{
-	"image/png":     ".png",
-	"image/jpeg":    ".jpg",
-	"image/gif":     ".gif",
-	"image/webp":    ".webp",
-	"image/svg+xml": ".svg",
-	"image/bmp":     ".bmp",
+	"image/png":  ".png",
+	"image/jpeg": ".jpg",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+	"image/bmp":  ".bmp",
 }
+
+// inlineSafeExts is the set of extensions ServeUpload may hand out with their
+// real content type. Derived from mediaExts, so dropping a type from uploads
+// also stops files of that type already on disk from rendering.
+var inlineSafeExts = func() map[string]bool {
+	m := make(map[string]bool, len(mediaExts))
+	for _, ext := range mediaExts {
+		m[ext] = true
+	}
+	return m
+}()
 
 // mediaNameRe guards the public serve route against path traversal.
 var mediaNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+\.[a-z0-9]+$`)
@@ -49,20 +64,17 @@ func (h *API) UploadMedia(c *gin.Context) {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "изображение больше 8 МБ"})
 		return
 	}
-	ct := fileHeader.Header.Get("Content-Type")
+	// Gate on the bytes, not on the declared Content-Type or the filename —
+	// both are attacker-controlled, so either would let HTML through as .png.
+	// The stored extension is derived from the sniff for the same reason.
+	ct, err := sniffContentType(fileHeader)
+	if err != nil {
+		fail(c)
+		return
+	}
 	ext, ok := mediaExts[ct]
 	if !ok {
-		// Fall back to the filename extension if it's an allowed image type.
-		fe := strings.ToLower(filepath.Ext(fileHeader.Filename))
-		for _, e := range mediaExts {
-			if e == fe {
-				ext, ok = fe, true
-				break
-			}
-		}
-	}
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "поддерживаются только изображения"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "поддерживаются только изображения (PNG, JPEG, GIF, WebP, BMP)"})
 		return
 	}
 
@@ -92,6 +104,17 @@ func (h *API) ServeUpload(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	// This route is public and same-origin, so anything it renders runs with the
+	// app's session. nosniff pins the declared type; the CSP neuters any active
+	// content that still slips through (both are inert for real images).
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+	if !inlineSafeExts[strings.ToLower(filepath.Ext(name))] {
+		// Legacy files from when SVG was accepted: hand them out as opaque
+		// downloads instead of letting the browser execute them.
+		c.Header("Content-Type", "application/octet-stream")
+		c.Header("Content-Disposition", "attachment")
+	}
 	c.File(p)
 }
 
@@ -188,6 +211,9 @@ func (h *API) DownloadAttachment(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", att.Filename))
+	// Attachments are arbitrary user files; without nosniff a browser may still
+	// sniff one into HTML and render it on our origin.
+	c.Header("X-Content-Type-Options", "nosniff")
 	c.File(att.StoragePath)
 }
 
@@ -214,6 +240,22 @@ func (h *API) DeleteAttachment(c *gin.Context) {
 	}
 	_ = os.Remove(att.StoragePath) // best-effort; the row is already gone
 	c.Status(http.StatusNoContent)
+}
+
+// sniffContentType reports the type a browser would infer from an upload's
+// leading bytes, which is what decides whether it renders as active content.
+func sniffContentType(fh *multipart.FileHeader) (string, error) {
+	f, err := fh.Open()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 512)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", err
+	}
+	return http.DetectContentType(buf[:n]), nil
 }
 
 // saveUploaded streams a multipart file to disk.
