@@ -1,5 +1,17 @@
 <script setup>
-import { ref, reactive, computed, toRef, watch, onMounted, onBeforeUnmount, nextTick, h } from 'vue'
+import {
+  ref,
+  shallowRef,
+  markRaw,
+  reactive,
+  computed,
+  toRef,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  nextTick,
+  h,
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import draggable from 'vuedraggable'
 import {
@@ -108,8 +120,13 @@ const tagPrefixNames = boardViewStore.prefixNames
 const fieldVis = boardViewStore.fieldVis
 
 const loading = ref(false)
-const allTasks = ref([])
-const subtasksByParent = ref({})
+// Board rows are replaced wholesale, never patched in place, so deep reactivity here
+// buys nothing and costs a Proxy per row per load (thousands of them on a large
+// board). The rows themselves are markRaw'd on load, which keeps them unproxied
+// inside `lists` too. `lists` stays a plain ref on purpose: vuedraggable binds it
+// via `:list` and mutates the column arrays in place, so those must stay reactive.
+const allTasks = shallowRef([])
+const subtasksByParent = shallowRef({})
 const lists = ref({})
 // Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
 // task has no `created_by`, so matching its author against a Tessera person goes
@@ -785,12 +802,14 @@ async function load(id) {
     // before loadWorkspaceMeta resolves, and a stale projectId from the previous
     // board would scope their tag creation / estimation config to the wrong one.
     boardViewStore.setContext(id, wsStore.currentId, b.data?.project_id || null)
-    allTasks.value = t.data || []
+    allTasks.value = (t.data || []).map(markRaw)
     const byParent = {}
-    for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(sub)
+    for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(markRaw(sub))
     subtasksByParent.value = byParent
     await loadWorkspaceMeta()
-    rebuildLists()
+    // No explicit rebuildLists() here: assigning allTasks already invalidates
+    // filteredTasks, and the watcher below rebuilds once. Calling both made every
+    // load rebuild the whole column map twice.
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -1280,7 +1299,6 @@ async function restoreFromArchive(taskId) {
   try {
     await tasksApi.restore(taskId)
     allTasks.value = allTasks.value.filter((t) => t.id !== taskId)
-    rebuildLists()
     message.success('Задача возвращена из архива')
   } catch (e) {
     message.error(e.message)
