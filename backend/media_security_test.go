@@ -80,6 +80,44 @@ func TestMediaServeHardening(t *testing.T) {
 	if got := res.Header.Get("Content-Disposition"); got != "" {
 		t.Fatalf("Content-Disposition: %q, want images to stay inline", got)
 	}
+	assertPrivateCache(t, res.Header.Get("Cache-Control"))
+}
+
+// #2685: the filename is the only thing guarding an upload, so a shared cache
+// must never keep a copy. Browser caching stays — the name is a UUID.
+func assertPrivateCache(t *testing.T, got string) {
+	t.Helper()
+	if !strings.Contains(got, "private") || strings.Contains(got, "public") {
+		t.Fatalf("Cache-Control: %q, want private", got)
+	}
+	if !strings.Contains(got, "immutable") {
+		t.Fatalf("Cache-Control: %q, want the immutable hint kept", got)
+	}
+}
+
+// The serve route takes a filename straight off the URL, so it has to refuse
+// anything that could climb out of the media directory.
+func TestMediaServeRejectsTraversal(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"..%2f..%2fconfig.yaml",
+		"..%2F..%2Fetc%2Fpasswd",
+		"%2e%2e%2fmedia%2fx.png",
+		"sub%2Fnested.png",
+		"payload.png%00.txt",
+	} {
+		t.Run(name, func(t *testing.T) {
+			res, err := http.Get(testServer.URL + "/api/uploads/" + name)
+			if err != nil {
+				t.Fatalf("public GET: %v", err)
+			}
+			defer res.Body.Close()
+			if res.StatusCode != http.StatusNotFound {
+				t.Fatalf("GET %s: status %d, want 404", name, res.StatusCode)
+			}
+		})
+	}
 }
 
 // SVGs uploaded before the fix are still on disk. They must come back as opaque
@@ -116,6 +154,7 @@ func TestLegacySvgServedInert(t *testing.T) {
 	if got := res.Header.Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options: %q", got)
 	}
+	assertPrivateCache(t, res.Header.Get("Cache-Control"))
 }
 
 // Task attachments accept any file by design; the download route is what keeps

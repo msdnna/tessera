@@ -103,7 +103,10 @@ func (h *API) ServeUpload(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	// private, not public: the name is the only thing guarding the file, so it
+	// must not settle in shared proxy/CDN caches. immutable and the year stay —
+	// the name is a UUID, so the bytes behind it never change.
+	c.Header("Cache-Control", "private, max-age=31536000, immutable")
 	// This route is public and same-origin, so anything it renders runs with the
 	// app's session. nosniff pins the declared type; the CSP neuters any active
 	// content that still slips through (both are inert for real images).
