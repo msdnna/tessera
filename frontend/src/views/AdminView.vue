@@ -90,6 +90,7 @@ const oauth = ref({
   org_map: '{}',
   has_secret: false,
   has_service_token: false,
+  sudo_writeback: false,
 })
 const oauthSaving = ref(false)
 const callbackUrl = computed(() => `${window.location.origin}/api/auth/gitlab/callback`)
@@ -106,6 +107,7 @@ async function loadOAuth() {
       org_map: JSON.stringify(data.org_map ?? {}, null, 2),
       has_secret: data.has_secret === true,
       has_service_token: data.has_service_token === true,
+      sudo_writeback: data.sudo_writeback === true,
     }
   } catch {
     /* first-time config: keep defaults */
@@ -129,11 +131,13 @@ async function saveOAuth() {
       service_token: oauth.value.service_token, // empty keeps the stored one
       enabled: oauth.value.enabled,
       org_map: orgMap,
+      sudo_writeback: oauth.value.sudo_writeback,
     })
     oauth.value.client_secret = ''
     oauth.value.service_token = ''
     oauth.value.has_secret = data.has_secret === true
     oauth.value.has_service_token = data.has_service_token === true
+    oauth.value.sudo_writeback = data.sudo_writeback === true
     message.success('Настройки GitLab OAuth сохранены')
   } catch (e) {
     message.error(e.response?.data?.error || e.message)
@@ -216,6 +220,15 @@ onMounted(() => {
             "
             :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
           />
+          <label>
+            Запись от имени пользователя (Sudo)
+            <span class="oauth-sub">
+              issue и обратная запись — от действующего пользователя; сервисный токен должен
+              быть админским PAT (scope api + sudo). Держите ВЫКЛ, если GitLab или Tessera
+              доступны из внешней сети
+            </span>
+          </label>
+          <div><n-switch v-model:value="oauth.sudo_writeback" /></div>
           <label>Включён вход</label>
           <div><n-switch v-model:value="oauth.enabled" /></div>
           <label>
