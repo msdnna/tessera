@@ -777,11 +777,15 @@ const { vis, cardH, regCard, reset: resetCardViewport } = useCardViewport({ froz
 // Coalesces the burst of realtime events one action produces into a single reload.
 // Full reload — used for a resync (dropped event / reconnect), where the board has
 // no idea what it missed.
+//
+// Всегда `silent`: доска уже на экране, пользователь только что сам её потрогал
+// (перетащил карточку, закрыл модалку). Гасить её на время догрузки — то самое
+// мерцание из #2695, см. комментарий у `load()`.
 const RELOAD_DEBOUNCE_MS = 200
 let reloadTimer = null
 function scheduleReload() {
   clearTimeout(reloadTimer)
-  reloadTimer = setTimeout(() => load(props.boardId), RELOAD_DEBOUNCE_MS)
+  reloadTimer = setTimeout(() => load(props.boardId, { silent: true }), RELOAD_DEBOUNCE_MS)
 }
 
 // Partial reloads, one debounce timer per kind: a burst of task events must not
@@ -836,8 +840,20 @@ async function fetchTasks(id) {
   subtasksByParent.value = byParent
 }
 
-async function load(id) {
-  loading.value = true
+// `silent` — перезагрузить данные, НЕ поднимая `loading`.
+//
+// Задача #2695: `loading` включает `n-spin`, а Naive гасит ВСЁ содержимое своего
+// слота — `.n-spin-content { transition: opacity .3s }` → `opacity: opacityDisabled`
+// (`naive-ui/es/spin/src/styles/index.cssr.mjs`). В слоте у нас лежит вся доска
+// целиком, поэтому каждая фоновая перезагрузка (после drag'а, после правки из
+// модалки) прогоняла страницу через затухание и обратно. Это и есть «мерцание»:
+// оно не в тостах и не в композиторе браузера, а в обычном CSS-переходе opacity
+// у общего предка.
+//
+// Спиннер уместен только там, где показывать нечего — первая загрузка и смена
+// доски. Догрузка уже показанной доски должна быть незаметной.
+async function load(id, { silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const { archived, params } = taskQuery()
     const [b, c, t, s] = await Promise.all([
@@ -863,7 +879,7 @@ async function load(id) {
   } catch (e) {
     message.error(e.message)
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -1812,43 +1828,46 @@ async function restoreFromArchive(taskId) {
         </n-text>
       </div>
     </div>
-
-    <TaskModal
-      :show="showTaskModal"
-      :task-id="selectedTaskId"
-      :board-top-tasks="allTasks"
-      :readonly="archivedMode"
-      @update:show="(v) => v || closeTask()"
-      @changed="onChanged"
-      @open="openTask"
-      @restore="restoreFromArchive"
-    />
-
-    <BoardActivityToasts ref="activityToasts" @open="openTask" />
-
-    <BoardCustomizePanel
-      v-model:show="customizeOpen"
-      v-model:board-name="boardName"
-      v-model:card-size="cardSize"
-      v-model:stack-fields="stackFields"
-      v-model:show-empty="showEmpty"
-      v-model:auto-collapse-empty="autoCollapseEmpty"
-      v-model:subtasks-expanded="subtasksExpanded"
-      v-model:autosave-view="autosaveView"
-      :field-vis="fieldVis"
-      :facet-chips="facetChips"
-      :add-options="addOptions"
-      :current-view-name="currentViewName"
-      :board-icon="board?.icon || ''"
-      :board-color="board?.color || ''"
-      :board-icon-mode="board?.icon_mode || 'badge'"
-      @set-field="setFieldVis"
-      @add-facet="onAddFacet"
-      @remove-chip="removeChip"
-      @chip-click="onChipClick"
-      @update-board="updateBoard"
-    />
   </n-spin>
+
+  <!-- Оверлеи держим ВНЕ <n-spin>: его слот целиком гаснет по opacity на время
+       загрузки (см. `load()`), а модалка, тосты активности и панель настройки —
+       не «содержимое доски», гаснуть вместе с ней они не должны. -->
+  <TaskModal
+    :show="showTaskModal"
+    :task-id="selectedTaskId"
+    :board-top-tasks="allTasks"
+    :readonly="archivedMode"
+    @update:show="(v) => v || closeTask()"
+    @changed="onChanged"
+    @open="openTask"
+    @restore="restoreFromArchive"
+  />
+
+  <BoardActivityToasts ref="activityToasts" @open="openTask" />
+
+  <BoardCustomizePanel
+    v-model:show="customizeOpen"
+    v-model:board-name="boardName"
+    v-model:card-size="cardSize"
+    v-model:stack-fields="stackFields"
+    v-model:show-empty="showEmpty"
+    v-model:auto-collapse-empty="autoCollapseEmpty"
+    v-model:subtasks-expanded="subtasksExpanded"
+    v-model:autosave-view="autosaveView"
+    :field-vis="fieldVis"
+    :facet-chips="facetChips"
+    :add-options="addOptions"
+    :current-view-name="currentViewName"
+    :board-icon="board?.icon || ''"
+    :board-color="board?.color || ''"
+    :board-icon-mode="board?.icon_mode || 'badge'"
+    @set-field="setFieldVis"
+    @add-facet="onAddFacet"
+    @remove-chip="removeChip"
+    @chip-click="onChipClick"
+    @update-board="updateBoard"
+  />
 </template>
 
 <style scoped>
