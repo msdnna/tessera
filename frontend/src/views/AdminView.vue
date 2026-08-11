@@ -216,18 +216,20 @@ onMounted(() => {
             Сервисный токен синка
             <span class="oauth-sub">PAT сервис-аккаунта; синк без личных токенов</span>
           </label>
-          <SecretInput
-            v-model:value="oauth.service_token"
-            v-model:cleared="oauth.clear_service_token"
-            :stored="oauth.has_service_token"
-            size="small"
-            placeholder="glpat-… (scope api)"
-            stored-placeholder="•••••• (сохранён; введите, чтобы заменить)"
-            :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
-          />
-          <span v-if="oauth.clear_service_token" class="oauth-warn">
-            синхронизация GitLab остановится
-          </span>
+          <div class="oauth-token-cell">
+            <SecretInput
+              v-model:value="oauth.service_token"
+              v-model:cleared="oauth.clear_service_token"
+              :stored="oauth.has_service_token"
+              size="small"
+              placeholder="glpat-… (scope api)"
+              stored-placeholder="•••••• (сохранён; введите, чтобы заменить)"
+              :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
+            />
+            <span v-if="oauth.clear_service_token" class="oauth-warn">
+              синхронизация GitLab остановится
+            </span>
+          </div>
           <label>
             Запись от имени пользователя (Sudo)
             <span class="oauth-sub">
@@ -416,9 +418,12 @@ onMounted(() => {
   font-size: 11px;
   opacity: 0.7;
 }
+.oauth-token-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .oauth-warn {
-  grid-column: 2;
-  margin-top: -4px;
   font-size: 12px;
   color: var(--t-danger, #e5484d);
 }

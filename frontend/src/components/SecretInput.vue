@@ -64,7 +64,7 @@ function undo() {
         @mousedown.prevent
         @click="cleared ? undo() : arm()"
       >
-        <n-icon :component="cleared ? ArrowUndoOutline : BackspaceOutline" />
+        <n-icon :size="16" :component="cleared ? ArrowUndoOutline : BackspaceOutline" />
       </span>
     </template>
   </n-input>
@@ -74,6 +74,9 @@ function undo() {
 .secret-eraser {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  height: 16px; /* match the built-in eye so both icons line up */
+  margin-right: 6px; /* gap between the eraser and the eye */
   cursor: pointer;
   color: var(--t-text-3, #999);
   transition: color 0.15s ease;
