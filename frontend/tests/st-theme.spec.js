@@ -4,10 +4,13 @@ import { nextTick } from 'vue'
 
 // Mock the api so persist()'s users.updatePreferences never touches network.
 // vi.mock is hoisted, so the fn must live in vi.hoisted.
-const { updatePreferences } = vi.hoisted(() => ({
+// getAccessToken is how persist() tells "signed in" apart from "anonymous" since
+// #2684 moved the access token out of localStorage into the api module.
+const { updatePreferences, getAccessToken } = vi.hoisted(() => ({
   updatePreferences: vi.fn(() => Promise.resolve()),
+  getAccessToken: vi.fn(() => ''),
 }))
-vi.mock('@/api', () => ({ users: { updatePreferences } }))
+vi.mock('@/api', () => ({ users: { updatePreferences }, getAccessToken }))
 
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { DARK, LIGHT } from '@/styles/tokens'
@@ -16,6 +19,7 @@ describe('theme store', () => {
   beforeEach(() => {
     localStorage.clear()
     updatePreferences.mockClear()
+    getAccessToken.mockReturnValue('')
     setActivePinia(createPinia())
   })
   afterEach(() => localStorage.clear())
@@ -64,7 +68,7 @@ describe('theme store', () => {
     const s = useThemeStore()
     s.setThemeMode('dark')
     expect(updatePreferences).not.toHaveBeenCalled()
-    localStorage.setItem('tessera_token', 'abc')
+    getAccessToken.mockReturnValue('abc')
     s.setThemeMode('light')
     expect(updatePreferences).toHaveBeenCalledTimes(1)
   })

@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
@@ -69,16 +70,18 @@ const routes = [
 
 const router = createRouter({ history: createWebHistory(), routes })
 
+// The guard reads the auth store, not localStorage: since #2684 the access token
+// lives in memory only, so the store is the single source of truth for "signed
+// in". main.js restores the session before installing the router, so the very
+// first navigation already sees the real state.
 router.beforeEach((to) => {
-  const token = localStorage.getItem('tessera_token')
+  const auth = useAuthStore()
   if (to.meta.open) return // email-link landing pages: always accessible
-  if (!to.meta.public && !token) return { path: '/login', query: { next: to.fullPath } }
-  if (to.meta.public && token) return { path: '/' }
+  if (!to.meta.public && !auth.isAuthenticated)
+    return { path: '/login', query: { next: to.fullPath } }
+  if (to.meta.public && auth.isAuthenticated) return { path: '/' }
   // Admin-only routes: bounce non-admins home (the server also enforces this).
-  if (to.meta.admin) {
-    const u = JSON.parse(localStorage.getItem('tessera_user') || 'null')
-    if (!u?.is_admin) return { path: '/' }
-  }
+  if (to.meta.admin && !auth.isAdmin) return { path: '/' }
 })
 
 export default router

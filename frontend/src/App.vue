@@ -3,6 +3,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NConfigProvider, NGlobalStyle, NMessageProvider, ruRU, dateRuRU } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
+import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
 
@@ -13,7 +14,10 @@ const router = useRouter()
 const PRIORITY_GRADS = PRIORITY_COLORS.slice(1)
 
 // When a refresh ultimately fails, the api client clears auth and fires this.
+// The store has to be cleared too, or the route guard still sees a signed-in
+// session and bounces the redirect straight back home.
 function onExpired() {
+  useAuthStore().clearSession()
   router.push('/login')
 }
 onMounted(() => window.addEventListener('auth:expired', onExpired))

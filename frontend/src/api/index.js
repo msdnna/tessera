@@ -1,11 +1,49 @@
 import axios from 'axios'
 import { humanizeError } from '@/utils/errors'
 import { reqStart, reqEnd, setOffline } from '@/composables/useConnection'
-import { apiBaseURL } from '@/utils/serverBase'
+import { apiBaseURL, isTauri } from '@/utils/serverBase'
 
 // Web: apiBaseURL() === '/api' (same-origin). Desktop (Tauri): '<server>/api',
 // where <server> is the login-configured origin. See utils/serverBase.js.
 const api = axios.create({ baseURL: apiBaseURL() })
+
+// #2684 — nothing long-lived is left in localStorage on the web:
+//
+//  - the refresh token lives in an httpOnly cookie the backend sets when we ask
+//    for it with `X-Auth-Mode: cookie` (only possible because the web build is
+//    same-origin with the API);
+//  - the access token lives in this module variable, so it dies with the tab.
+//
+// Desktop (Tauri) talks to the API cross-origin, where a host-only cookie is
+// never sent, so it keeps posting the refresh token in the body and storing it
+// locally. Both keep the access token in memory only.
+let accessToken = ''
+
+export function setAccessToken(token) {
+  accessToken = token || ''
+}
+
+export function getAccessToken() {
+  return accessToken
+}
+
+// cookieAuth is evaluated per call rather than once at import: `isTauri()` reads
+// a global the webview injects, and tests toggle it between cases.
+function cookieAuth() {
+  return !isTauri()
+}
+
+// authModeHeaders opts a request into cookie delivery. Sent on the endpoints
+// that hand out a refresh token (register/login/refresh) and on logout.
+function authModeHeaders() {
+  return cookieAuth() ? { 'X-Auth-Mode': 'cookie' } : {}
+}
+
+// storedRefreshToken is the desktop-only fallback: on web this is always null,
+// because the token is in a cookie we deliberately cannot read.
+function storedRefreshToken() {
+  return cookieAuth() ? null : localStorage.getItem('tessera_refresh_token')
+}
 
 // Attach the access token on every request + track liveness for the connection
 // overlay (start now, paired end in the response/error handlers below). Requests
@@ -13,9 +51,8 @@ const api = axios.create({ baseURL: apiBaseURL() })
 // its own in-modal loader) are excluded from the global slow/offline overlay.
 api.interceptors.request.use((config) => {
   if (!config.skipLoader) reqStart()
-  const token = localStorage.getItem('tessera_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`
   }
   return config
 })
@@ -26,13 +63,23 @@ let refreshInflight = null
 
 async function refreshAccessToken() {
   if (refreshInflight) return refreshInflight
-  const refreshToken = localStorage.getItem('tessera_refresh_token')
-  if (!refreshToken) return null
+  const refreshToken = storedRefreshToken()
+  // On web there is nothing to check up front — whether a session exists is the
+  // cookie's business, and the answer is the response status.
+  if (!cookieAuth() && !refreshToken) return null
   refreshInflight = axios
-    .post(`${apiBaseURL()}/auth/refresh`, { refresh_token: refreshToken })
+    .post(
+      `${apiBaseURL()}/auth/refresh`,
+      refreshToken ? { refresh_token: refreshToken } : {},
+      // Bounded: this call gates the app's first paint on start-up, so a stalled
+      // connection must fail rather than hang on a blank screen.
+      { headers: authModeHeaders(), timeout: 15000 },
+    )
     .then((res) => {
       const data = res.data || {}
-      if (data.access_token) localStorage.setItem('tessera_token', data.access_token)
+      setAccessToken(data.access_token)
+      // Only ever present in body mode (desktop); on web the rotated token went
+      // back into the cookie.
       if (data.refresh_token) localStorage.setItem('tessera_refresh_token', data.refresh_token)
       return data.access_token || null
     })
@@ -41,6 +88,13 @@ async function refreshAccessToken() {
       refreshInflight = null
     })
   return refreshInflight
+}
+
+// restoreSession re-establishes a session on app start-up. The access token died
+// with the previous page load, so the refresh cookie (desktop: the stored token)
+// is the only proof we were signed in. Resolves to the new access token or null.
+export function restoreSession() {
+  return refreshAccessToken()
 }
 
 api.interceptors.response.use(
@@ -69,7 +123,7 @@ api.interceptors.response.use(
       }
     }
     if (isUnauthorized && !isRefreshCall) {
-      localStorage.removeItem('tessera_token')
+      setAccessToken('')
       localStorage.removeItem('tessera_refresh_token')
       localStorage.removeItem('tessera_user')
       window.dispatchEvent(new CustomEvent('auth:expired'))
@@ -116,8 +170,18 @@ function sharedGet(url, config) {
 }
 
 export const auth = {
-  register: (data) => api.post('/auth/register', data),
-  login: (data) => api.post('/auth/login', data),
+  // The auth-mode header on register/login is what makes the backend put the
+  // refresh token in an httpOnly cookie instead of the response body.
+  register: (data) => api.post('/auth/register', data, { headers: authModeHeaders() }),
+  login: (data) => api.post('/auth/login', data, { headers: authModeHeaders() }),
+  // Server-side sign-out: revokes the refresh token (it would otherwise stay
+  // valid for 30 days) and clears the cookie, which JS cannot delete itself.
+  logout: () => {
+    const stored = storedRefreshToken()
+    return api.post('/auth/logout', stored ? { refresh_token: stored } : {}, {
+      headers: authModeHeaders(),
+    })
+  },
   me: () => api.get('/auth/me'),
   // Which external login providers are enabled (for the "Continue with GitLab" button).
   providers: () => api.get('/auth/providers'),

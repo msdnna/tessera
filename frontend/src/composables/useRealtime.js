@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted } from 'vue'
 import { wsURL } from '@/utils/serverBase'
+import { getAccessToken } from '@/api'
 
 // useRealtime opens the /api/ws WebSocket and invokes `onEvent({scope,type,data})`
 // for every server broadcast. Auto-reconnects with exponential backoff (capped,
@@ -40,7 +41,7 @@ export function useRealtime(onEvent, onResync) {
     // Read the token on every (re)connect rather than once: a refresh-on-401
     // may have rotated it since the last attempt, and the reconnect is what
     // picks the new one up.
-    const token = localStorage.getItem('tessera_token')
+    const token = getAccessToken()
     if (!token) {
       // Mid-refresh (or logged out): retry on the same backoff instead of
       // going permanently silent.

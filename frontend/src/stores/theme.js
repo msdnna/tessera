@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { darkTheme } from 'naive-ui'
 import { DARK, LIGHT } from '@/styles/tokens'
-import { users } from '@/api'
+import { users, getAccessToken } from '@/api'
 
 // Multi-color accent schemes. Default = purple.
 export const COLOR_THEMES = [
@@ -245,7 +245,7 @@ export const useThemeStore = defineStore('theme', () => {
     // Keep legacy keys in sync so an older cached client still first-paints right.
     localStorage.setItem('tessera_color', snap.accent)
     localStorage.setItem('tessera_dark', isDark.value ? '1' : '0')
-    if (localStorage.getItem('tessera_token')) {
+    if (getAccessToken()) {
       users.updatePreferences(snap).catch(() => {})
     }
   }
