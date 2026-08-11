@@ -1,9 +1,10 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+import { iconCatalog } from './build/iconCatalog.js'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), iconCatalog()],
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },

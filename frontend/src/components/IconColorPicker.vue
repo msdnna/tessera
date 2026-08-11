@@ -64,7 +64,7 @@ async function openIconSearch() {
   if (allIcons.value.length) return
   iconsLoading.value = true
   try {
-    const mod = await import('@vicons/ionicons5')
+    const mod = await import('virtual:icon-catalog')
     allIcons.value = Object.entries(mod)
       .filter(([name, c]) => name !== 'default' && c)
       .map(([name, comp]) => ({ name, comp }))

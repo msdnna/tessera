@@ -100,6 +100,13 @@ export function hasSubtaskFacets(filters) {
   return SUBTASK_FACETS.some((f) => (f === 'q' ? (filters.q || '').trim() : filters[f]?.length))
 }
 
+// True when any facet at all is active. The board spends most of its life with an
+// empty composer, and in that state every task trivially passes — so the whole
+// per-task predicate pass can be skipped.
+export function hasAnyFacets(filters) {
+  return hasSubtaskFacets(filters) || !!filters.statuses?.length
+}
+
 // Filter a board's tasks and subtasks together.
 //
 // Returns:
@@ -116,6 +123,19 @@ export function filterBoardTasks({
   now,
 }) {
   const clock = now || new Date()
+
+  // Empty composer: everything passes and nothing is narrowed. Shaped exactly like
+  // the general path below (fresh arrays, child lists only for parents that have
+  // children), just without running the predicate over every task and subtask.
+  if (!hasAnyFacets(filters)) {
+    const outSubs = {}
+    for (const t of tasks) {
+      const subs = subtasksByParent[t.id]
+      if (subs?.length) outSubs[t.id] = subs
+    }
+    return { tasks: tasks.slice(), subtasksByParent: outSubs, narrowedParents: new Set() }
+  }
+
   const subFacets = hasSubtaskFacets(filters)
 
   const outTasks = []
