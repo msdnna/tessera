@@ -39,54 +39,35 @@ func (h *API) WorkspaceSummary(c *gin.Context) {
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
-	rows, err := h.q.ListWorkspaceTasks(c, db.ListWorkspaceTasksParams{WorkspaceID: wsID})
+	// Day boundaries stay in Go: a due date is bucketed by its own calendar day, and
+	// pgx hands timestamptz back in time.Local — the same location time.Now() uses —
+	// so "day(due) < today" is exactly "due < today" once both are absolute instants.
+	// Passing the midnights as parameters keeps that equivalence explicit instead of
+	// re-deriving it with date_trunc under the server's session timezone.
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	s, err := h.q.WorkspaceTaskSummary(c, db.WorkspaceTaskSummaryParams{
+		WorkspaceID: wsID,
+		UserID:      middleware.CurrentUser(c),
+		DayStart:    today,
+		NextDay:     today.AddDate(0, 0, 1),
+		WeekEnd:     today.AddDate(0, 0, 7),
+	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	me := middleware.CurrentUser(c)
-
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	weekEnd := today.AddDate(0, 0, 7)
-
-	var total, completed, mine, overdue, dueToday, dueWeek, noStatus int
-	for _, t := range rows {
-		total++
-		if t.CompletedAt != nil {
-			completed++
-		}
-		assignedToMe := containsID(t.AssigneeIds, me)
-		if assignedToMe {
-			mine++
-		}
-		if t.DueDate != nil && t.CompletedAt == nil {
-			d := *t.DueDate
-			day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location())
-			switch {
-			case day.Before(today):
-				overdue++
-			case day.Equal(today):
-				dueToday++
-				dueWeek++
-			case day.Before(weekEnd):
-				dueWeek++
-			}
-		}
-		if len(t.AssigneeIds) == 0 {
-			noStatus++
-		}
-	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"total":      total,
-		"completed":  completed,
-		"active":     total - completed,
-		"assigned":   mine,
-		"overdue":    overdue,
-		"due_today":  dueToday,
-		"due_week":   dueWeek,
-		"unassigned": noStatus,
+		"total":      s.Total,
+		"completed":  s.Completed,
+		"active":     s.Total - s.Completed,
+		"assigned":   s.Assigned,
+		"overdue":    s.Overdue,
+		"due_today":  s.DueToday,
+		"due_week":   s.DueWeek,
+		"unassigned": s.Unassigned,
 	})
 }
 

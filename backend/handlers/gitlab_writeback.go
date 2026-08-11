@@ -508,9 +508,9 @@ func (h *API) performSetState(ctx context.Context, client *gitlab.Client, integ 
 		}
 		closed = task.CompletedAt != nil
 	}
-	event, outcome := "reopen", "issue reopened"
+	event, outcome := "reopen", "issue переоткрыт"
 	if closed {
-		event, outcome = "close", "issue closed"
+		event, outcome = "close", "issue закрыт"
 	}
 	if err := client.UpdateIssueState(ctx, path, iid, event); err != nil {
 		return "", err
@@ -525,7 +525,7 @@ func (h *API) performSetState(ctx context.Context, client *gitlab.Client, integ 
 func (h *API) performSetLabel(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64, act gitlab.BindAction, wb gitlab.Writeback, rules gitlab.Rules) (string, error) {
 	label := strings.TrimSpace(act.Label)
 	if label == "" {
-		return "empty label skipped", nil
+		return "пустая метка пропущена", nil
 	}
 	var remove []string
 	if act.ClearPrefix {
@@ -535,9 +535,9 @@ func (h *API) performSetLabel(ctx context.Context, client *gitlab.Client, integ 
 		return "", err
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
-	out := "label «" + label + "» set"
+	out := "метка «" + label + "» проставлена"
 	if len(remove) > 0 {
-		out += ", removed " + strings.Join(remove, ", ")
+		out += ", снято: " + strings.Join(remove, ", ")
 	}
 	return out, nil
 }
@@ -583,13 +583,13 @@ func (h *API) performReconcileLabels(ctx context.Context, client *gitlab.Client,
 		}
 	}
 	if len(add) == 0 && len(remove) == 0 {
-		return "labels already in sync", nil
+		return "метки уже синхронны", nil
 	}
 	if err := client.SetIssueLabels(ctx, path, iid, add, remove); err != nil {
 		return "", err
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
-	out := "labels reconciled"
+	out := "метки согласованы"
 	if len(add) > 0 {
 		out += " +[" + strings.Join(add, ", ") + "]"
 	}
@@ -632,7 +632,7 @@ func (h *API) performSetAssignees(ctx context.Context, client *gitlab.Client, in
 		return "", err
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
-	return fmt.Sprintf("assignees set (%d)", len(list)), nil
+	return fmt.Sprintf("исполнители проставлены (%d)", len(list)), nil
 }
 
 // performSetEstimate pushes the task estimate as the issue's timeEstimate (minutes;
@@ -654,9 +654,9 @@ func (h *API) performSetEstimate(ctx context.Context, client *gitlab.Client, int
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
 	if minutes <= 0 {
-		return "estimate cleared", nil
+		return "оценка очищена", nil
 	}
-	return fmt.Sprintf("estimate → %dm", minutes), nil
+	return fmt.Sprintf("оценка → %dм", minutes), nil
 }
 
 // performSetDue pushes the task's due date (empty clears it).
@@ -674,9 +674,9 @@ func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
 	if date == "" {
-		return "due date cleared", nil
+		return "срок очищен", nil
 	}
-	return "due date → " + date, nil
+	return "срок → " + date, nil
 }
 
 // performPostComment mirrors a Tessera comment to the issue's notes. The payload's
@@ -691,16 +691,16 @@ func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, pat
 		noteID, ok := parseNoteGID(payload["gl_note_id"])
 		if !ok {
 			// No GitLab note yet (e.g. the create push hasn't run) — nothing to touch.
-			return "no gitlab note, skipped", nil
+			return "нет комментария в GitLab — пропущено", nil
 		}
 		if op == "delete" {
 			if err := client.DeleteIssueNote(ctx, path, iid, noteID); err != nil {
 				return "", err
 			}
-			return "note deleted", nil
+			return "комментарий удалён", nil
 		}
 		if strings.TrimSpace(body) == "" {
-			return "empty comment skipped", nil
+			return "пустой комментарий пропущен", nil
 		}
 		if act.AddMarker {
 			body += tesseraCommentMarker
@@ -708,11 +708,11 @@ func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, pat
 		if err := client.UpdateIssueNote(ctx, path, iid, noteID, body); err != nil {
 			return "", err
 		}
-		return "note edited", nil
+		return "комментарий отредактирован", nil
 	}
 
 	if strings.TrimSpace(body) == "" {
-		return "empty comment skipped", nil
+		return "пустой комментарий пропущен", nil
 	}
 	if act.AddMarker {
 		body += tesseraCommentMarker
@@ -728,7 +728,7 @@ func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, pat
 			}
 		}
 	}
-	return "note posted", nil
+	return "комментарий опубликован", nil
 }
 
 // parseNoteGID extracts the numeric REST note id from a stored GitLab note global id
@@ -760,7 +760,7 @@ func (h *API) performSetMilestone(ctx context.Context, client *gitlab.Client, in
 	if task.MilestoneID != nil {
 		ml, lerr := h.q.GetGitlabMilestoneLink(ctx, *task.MilestoneID)
 		if lerr != nil {
-			return "native milestone, not pushed", nil
+			return "нативный этап — не отправлено", nil
 		}
 		milestoneID = ml.GlNumericID
 	}
@@ -769,9 +769,9 @@ func (h *API) performSetMilestone(ctx context.Context, client *gitlab.Client, in
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
 	if milestoneID == 0 {
-		return "milestone cleared", nil
+		return "этап очищен", nil
 	}
-	return "milestone set", nil
+	return "этап проставлен", nil
 }
 
 // performSetTitleDesc pushes the task title/description to the issue (conflict-checked
@@ -785,7 +785,7 @@ func (h *API) performSetTitleDesc(ctx context.Context, client *gitlab.Client, in
 		return "", err
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
-	return "title/description updated", nil
+	return "заголовок/описание обновлены", nil
 }
 
 // refreshLinkSnapshot re-fetches the one issue we just pushed to and rewrites the
@@ -800,8 +800,8 @@ func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, in
 	issue := issues[0]
 	if _, uerr := h.q.UpdateGitlabLink(ctx, db.UpdateGitlabLinkParams{
 		TaskID: taskID, GlIid: issue.IID, GlWebUrl: issue.WebURL, GlUpdatedAt: issue.UpdatedAt,
-		TitleHash: hashStr(issue.Title), DescHash: hashStr(issue.Description),
-		LabelsHash: hashStr(labelsKey(issue.Labels)),
+		TitleHash: gitlab.HashStr(issue.Title), DescHash: gitlab.HashStr(issue.Description),
+		LabelsHash: gitlab.HashStr(gitlab.LabelsKey(issue.Labels)),
 		GlAuthor:   issue.AuthorLogin, GlAuthorName: issue.AuthorName,
 		GlAuthorAvatarUrl: h.avatarProxyURL(integ.WorkspaceID, issue.AuthorAvatar),
 		GlLastState:       issue.State,

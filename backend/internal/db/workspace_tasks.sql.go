@@ -128,3 +128,81 @@ func (q *Queries) ListWorkspaceTasks(ctx context.Context, arg ListWorkspaceTasks
 	}
 	return items, nil
 }
+
+const workspaceTaskSummary = `-- name: WorkspaceTaskSummary :one
+SELECT
+    count(*) AS total,
+    count(*) FILTER (WHERE t.completed_at IS NOT NULL) AS completed,
+    count(*) FILTER (
+        WHERE EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1)
+    ) AS assigned,
+    count(*) FILTER (
+        WHERE t.completed_at IS NULL AND t.due_date < $2::timestamptz
+    ) AS overdue,
+    count(*) FILTER (
+        WHERE t.completed_at IS NULL
+          AND t.due_date >= $2::timestamptz
+          AND t.due_date < $3::timestamptz
+    ) AS due_today,
+    count(*) FILTER (
+        WHERE t.completed_at IS NULL
+          AND t.due_date >= $2::timestamptz
+          AND t.due_date < $4::timestamptz
+    ) AS due_week,
+    count(*) FILTER (
+        WHERE NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id)
+    ) AS unassigned
+FROM tasks t
+JOIN boards b ON b.id = t.board_id
+JOIN projects p ON p.id = b.project_id
+WHERE p.workspace_id = $5
+    AND t.parent_id IS NULL
+    AND t.archived_at IS NULL
+`
+
+type WorkspaceTaskSummaryParams struct {
+	UserID      uuid.UUID `json:"user_id"`
+	DayStart    time.Time `json:"day_start"`
+	NextDay     time.Time `json:"next_day"`
+	WeekEnd     time.Time `json:"week_end"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+type WorkspaceTaskSummaryRow struct {
+	Total      int64 `json:"total"`
+	Completed  int64 `json:"completed"`
+	Assigned   int64 `json:"assigned"`
+	Overdue    int64 `json:"overdue"`
+	DueToday   int64 `json:"due_today"`
+	DueWeek    int64 `json:"due_week"`
+	Unassigned int64 `json:"unassigned"`
+}
+
+// WorkspaceTaskSummary counts the home-screen headline numbers in a single pass over
+// the workspace's tasks. It replaces loading every task row (t.* + 5 joins + two
+// array_agg) into memory just to derive eight integers.
+//
+// The day boundaries come in as parameters rather than being derived with date_trunc:
+// the caller buckets a due date in Go, and comparing against caller-supplied midnights
+// keeps that bucketing byte-identical (see WorkspaceSummary). board_columns is not
+// joined — tasks.column_id is a NOT NULL FK, so the join never filtered anything.
+func (q *Queries) WorkspaceTaskSummary(ctx context.Context, arg WorkspaceTaskSummaryParams) (WorkspaceTaskSummaryRow, error) {
+	row := q.db.QueryRow(ctx, workspaceTaskSummary,
+		arg.UserID,
+		arg.DayStart,
+		arg.NextDay,
+		arg.WeekEnd,
+		arg.WorkspaceID,
+	)
+	var i WorkspaceTaskSummaryRow
+	err := row.Scan(
+		&i.Total,
+		&i.Completed,
+		&i.Assigned,
+		&i.Overdue,
+		&i.DueToday,
+		&i.DueWeek,
+		&i.Unassigned,
+	)
+	return i, err
+}

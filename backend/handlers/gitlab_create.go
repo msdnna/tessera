@@ -119,8 +119,8 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		TaskID: id, IntegrationID: integ.ID, GlGlobalID: created.GlobalID(),
 		GlIid: created.IID, GlProjectPath: integ.ProjectPath, GlWebUrl: created.WebURL,
 		GlUpdatedAt: nil,
-		TitleHash:   hashStr(task.Title), DescHash: hashStr(description),
-		LabelsHash:  hashStr(strings.Join(labels, "\n")),
+		TitleHash:   gitlab.HashStr(task.Title), DescHash: gitlab.HashStr(description),
+		LabelsHash:  gitlab.HashStr(strings.Join(labels, "\n")),
 		GlAuthor:    authorLogin,
 		GlLastState: state,
 	}); cerr != nil {

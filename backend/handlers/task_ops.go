@@ -93,6 +93,49 @@ func (o optFloat) resolve(cur *float64) *float64 {
 func setFloat(v *float64) optFloat { return optFloat{set: true, v: v} }
 func clearFloat() optFloat         { return optFloat{set: true} }
 
+// optJSON is the wire-side counterpart of optTime/optFloat: a request field that
+// can be absent, null, or a value. The three are only distinguishable at decode
+// time — encoding/json calls UnmarshalJSON for the keys the body actually
+// carries, and for those alone — so a plain *T cannot express it, and a client
+// that omits a field would silently reset it to the zero value.
+type optJSON[T any] struct {
+	set bool
+	v   *T
+}
+
+func (o *optJSON[T]) UnmarshalJSON(b []byte) error {
+	o.set = true
+	if string(b) == "null" {
+		return nil
+	}
+	var v T
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	o.v = &v
+	return nil
+}
+
+// ptr returns the decoded value, or nil when the field was absent or null —
+// which is exactly what taskPatch's plain pointer fields mean.
+func (o optJSON[T]) ptr() *T { return o.v }
+
+// asTime/asFloat carry the absent/null distinction over into the patch's
+// tri-state fields, where a plain pointer would lose it.
+func asTime(o optJSON[time.Time]) optTime {
+	if !o.set {
+		return optTime{}
+	}
+	return optTime{set: true, v: o.v}
+}
+
+func asFloat(o optJSON[float64]) optFloat {
+	if !o.set {
+		return optFloat{}
+	}
+	return optFloat{set: true, v: o.v}
+}
+
 // taskPatch is a partial edit of a task's plain fields. Absent fields keep their
 // current value, which is what a quick action needs — "/priority высокий" must
 // not blank the description on its way through.
