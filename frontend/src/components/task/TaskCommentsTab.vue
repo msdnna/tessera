@@ -473,13 +473,37 @@ async function onCommentCheck(c, i) {
   align-items: flex-start;
   position: sticky;
   bottom: 0;
-  /* No explicit background: inherit the modal's surface so the sticky footer
-     never shows a mismatched strip in dark mode (the modal card already paints
-     --t-surface). Adding it here caused a visible color seam above the form
-     and at the bottom corners. */
+  /* The footer MUST paint its own background: a sticky element does NOT inherit
+     the card's surface, it is simply transparent, and the list scrolls right
+     under it. While the boxed editor was the only opaque child this stayed
+     nearly invisible; any extra transparent row — the command dry-run hint,
+     the offline-retry bar — puts comment text straight through the footer.
+     Paint it with --n-color-modal, NOT --t-surface: a card *inside a modal*
+     is painted by Naive with `background: var(--n-color-modal)` (card cssr,
+     asModal), and our theme overrides only Card.color / Modal.color — the
+     common `modalColor` var stays Naive's default (dark: rgb(44,44,50) vs our
+     --t-surface #1e1e24). That mismatch is exactly the dark-mode seam that got
+     an earlier background attempt reverted. --n-color-modal is set as a custom
+     property on the .n-card root, so it inherits down here and matches the card
+     by construction, in both themes. */
+  background: var(--n-color-modal, var(--t-surface));
   padding-top: 10px;
   margin-top: 4px;
   border-top: 1px solid var(--t-border);
+}
+/* The spacing above the border — .comments' 12px flex gap plus the 4px nudge
+   below — sits OUTSIDE the background box, so the list stayed visible through
+   that band while scrolling (the same bleed-under-the-top-border TaskModal
+   documents). Repaint it, without moving the border: offset by the 1px border
+   so the pseudo covers the gap and not the line itself. */
+.comment-add::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 1px);
+  height: 16px;
+  background: inherit;
 }
 .comment-add > :first-child {
   width: 100%;
