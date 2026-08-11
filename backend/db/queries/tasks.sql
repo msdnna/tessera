@@ -168,11 +168,21 @@ UPDATE tasks SET parent_id = NULL, updated_at = now() WHERE parent_id = $1;
 SELECT coalesce(max(position), 0)::double precision
 FROM tasks WHERE column_id = $1 AND parent_id IS NULL;
 
+-- UpdateTask writes a task's editable fields, optionally under an optimistic
+-- lock: pass expected_updated_at with the updated_at the client read, and the
+-- write only lands if nobody touched the row since — no row comes back
+-- otherwise, so check and write stay in one statement with no gap to race in.
+-- NULL (the default) means no check, which is how every internal caller writes.
+-- The comparison is truncated to milliseconds because clients round-trip the
+-- timestamp through JS Date, which drops the microseconds Postgres stores.
 -- name: UpdateTask :one
 UPDATE tasks
 SET title = $2, description = $3, priority = $4, due_date = $5, completed_at = $6,
     recurrence = $7, start_date = $8, estimate = $9, updated_at = now()
 WHERE id = $1
+  AND (sqlc.narg('expected_updated_at')::timestamptz IS NULL
+       OR date_trunc('milliseconds', updated_at)
+          = date_trunc('milliseconds', sqlc.narg('expected_updated_at')::timestamptz))
 RETURNING *;
 
 -- ReopenSubtasks clears the completion of a recurring task's direct subtasks when

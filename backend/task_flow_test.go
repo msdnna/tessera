@@ -123,6 +123,74 @@ func TestTaskCreateGetUpdate(t *testing.T) {
 	}
 }
 
+// Optimistic locking: an edit that carries the updated_at it was made against
+// is refused with 409 once someone else has written the row, instead of quietly
+// dropping their change.
+func TestTaskOptimisticLock(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	id := mkTask(t, c, s.Board, s.col(t, 0), "Гонка")["id"].(string)
+
+	read := c.expect(t, c.get("/tasks/"+id), http.StatusOK)
+	token := read["updated_at"].(string)
+
+	// The token matches the stored row, so the write lands.
+	first := c.expect(t, c.patch("/tasks/"+id, map[string]any{
+		"title": "Первый выиграл", "updated_at": token,
+	}), http.StatusOK)
+	if first["title"] != "Первый выиграл" {
+		t.Fatalf("fresh token should write: %v", first)
+	}
+
+	// The second client still holds the token from before that write — this is
+	// the lost update the gate exists for.
+	before := len(eventKinds(t, c, id))
+	r := c.patch("/tasks/"+id, map[string]any{"title": "Второй затёр", "updated_at": token})
+	conflict := c.expect(t, r, http.StatusConflict)
+	if conflict["stale"] != true {
+		t.Fatalf("409 body should flag stale: %v", conflict)
+	}
+	// The body carries the current row, which is what a client resolves against.
+	cur, ok := conflict["task"].(map[string]any)
+	if !ok || cur["title"] != "Первый выиграл" {
+		t.Fatalf("409 body should carry the current task: %v", conflict["task"])
+	}
+	if now := c.expect(t, c.get("/tasks/"+id), http.StatusOK); now["title"] != "Первый выиграл" {
+		t.Fatalf("refused write must not land: %v", now["title"])
+	}
+	// A refused write leaves no side effects behind it either.
+	if after := len(eventKinds(t, c, id)); after != before {
+		t.Fatalf("refused write journalled: %d events, want %d", after, before)
+	}
+
+	// Backwards compatibility — the gate is opt-in, and every existing client
+	// (plus every quick action) sends no token at all.
+	if legacy := c.expect(t, c.patch("/tasks/"+id,
+		map[string]any{"title": "Без токена"}), http.StatusOK); legacy["title"] != "Без токена" {
+		t.Fatalf("an edit without a token must keep working: %v", legacy)
+	}
+
+	// A token rounded to milliseconds still matches: JS clients round-trip the
+	// timestamp through Date, which cannot hold the microseconds Postgres does.
+	fresh := c.expect(t, c.get("/tasks/"+id), http.StatusOK)
+	ms := parseTS(t, fresh["updated_at"]).Truncate(time.Millisecond)
+	if trunc := c.expect(t, c.patch("/tasks/"+id, map[string]any{
+		"title": "Из браузера", "updated_at": ms.Format(time.RFC3339Nano),
+	}), http.StatusOK); trunc["title"] != "Из браузера" {
+		t.Fatalf("millisecond-rounded token should match: %v", trunc)
+	}
+
+	// A token for a task that no longer exists is a 404, not a conflict. (The
+	// handler's own gone-branch only fires if the delete lands between the load
+	// and the write; over HTTP the load already answers 404.)
+	gone := c.expect(t, c.get("/tasks/"+id), http.StatusOK)["updated_at"].(string)
+	c.expect(t, c.del("/tasks/"+id), http.StatusNoContent)
+	if r := c.patch("/tasks/"+id, map[string]any{"title": "Призрак", "updated_at": gone}); r.Status != http.StatusNotFound {
+		t.Fatalf("edit of a deleted task: %d", r.Status)
+	}
+}
+
 // The board list omits the (potentially large) description to stay small, but
 // flags has_description so the card can offer a lazy "hover to load" affordance;
 // the full text comes from GET /tasks/:id/description.

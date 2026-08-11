@@ -312,6 +312,11 @@ func (h *API) UpdateTask(c *gin.Context) {
 		Estimate    optJSON[float64]         `json:"estimate"`
 		Completed   optJSON[bool]            `json:"completed"`
 		Recurrence  optJSON[json.RawMessage] `json:"recurrence"`
+		// UpdatedAt opts this edit into the optimistic lock: send back the
+		// updated_at of the task version the edit was made against and the write
+		// is refused with 409 if anyone landed one in between. Omit it and the
+		// endpoint behaves exactly as before (last write wins).
+		UpdatedAt *time.Time `json:"updated_at"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -337,6 +342,7 @@ func (h *API) UpdateTask(c *gin.Context) {
 		Estimate:    asFloat(req.Estimate),
 		Completed:   req.Completed.ptr(),
 		Recurrence:  req.Recurrence.ptr(), RecurrenceSet: req.Recurrence.set,
+		ExpectedUpdatedAt: req.UpdatedAt,
 	})
 	if err != nil {
 		respondOpError(c, err)

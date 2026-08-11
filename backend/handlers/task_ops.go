@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
@@ -44,9 +46,33 @@ func isUserErr(err error) bool {
 	return ok
 }
 
-// respondOpError writes the right status for an op failure: 400 for something
-// the caller can fix, 500 otherwise.
+// staleErr is a lost-update failure: the caller sent the updated_at it had read
+// and the stored row has moved on since, so writing would silently drop whoever
+// wrote first. It carries the current row — the client needs it to show what it
+// is up against and offer a reload or an overwrite.
+type staleErr struct{ current db.Task }
+
+func (e staleErr) Error() string { return "задача изменена другим клиентом" }
+
+// errTaskGone is the other way an optimistic-lock write can miss: the row is
+// not stale, it is gone — deleted between the caller's read and its write.
+var errTaskGone = errors.New("задача удалена")
+
+// respondOpError writes the right status for an op failure: 409 for a lost
+// update, 404 for a target that vanished, 400 for something the caller can fix,
+// 500 otherwise.
 func respondOpError(c *gin.Context, err error) {
+	var stale staleErr
+	if errors.As(err, &stale) {
+		// "stale" rather than an error code: the project has no error-code
+		// convention, and 409 + this flag is enough to branch a client on.
+		c.JSON(http.StatusConflict, gin.H{"error": stale.Error(), "stale": true, "task": stale.current})
+		return
+	}
+	if errors.Is(err, errTaskGone) {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	if isUserErr(err) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -151,6 +177,10 @@ type taskPatch struct {
 	// (re-anchored if the due date moved).
 	Recurrence    *json.RawMessage
 	RecurrenceSet bool
+	// ExpectedUpdatedAt is the optimistic-lock token: the updated_at the caller
+	// read. Nil means no check — quick actions carry no version, and neither do
+	// internal callers, so they keep last-write-wins.
+	ExpectedUpdatedAt *time.Time
 }
 
 // applyTaskPatch writes a partial task edit and fans out everything a task edit
@@ -201,8 +231,24 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 		ID: t.ID, Title: title, Description: description,
 		Priority: priority, DueDate: dueDate, CompletedAt: completedAt,
 		Recurrence: recurrence, StartDate: startDate, Estimate: normalizeEstimate(estimate),
+		ExpectedUpdatedAt: p.ExpectedUpdatedAt,
 	})
 	if err != nil {
+		// Under an optimistic lock, "no rows" is not a storage failure: the
+		// WHERE clause refused the write. Re-read to tell the two reasons apart
+		// — the row moved on (409, hand back the current one) or it is gone
+		// (404). Everything below this point is a side effect (journal,
+		// notifications, writeback, WS), so a refused write leaves none of it.
+		if p.ExpectedUpdatedAt != nil && errors.Is(err, pgx.ErrNoRows) {
+			current, gerr := h.q.GetTask(c, t.ID)
+			if errors.Is(gerr, pgx.ErrNoRows) {
+				return t, errTaskGone
+			}
+			if gerr != nil {
+				return t, gerr
+			}
+			return t, staleErr{current: current}
+		}
 		return t, err
 	}
 
