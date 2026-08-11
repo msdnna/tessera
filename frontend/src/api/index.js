@@ -185,8 +185,11 @@ export const auth = {
   me: () => api.get('/auth/me'),
   // Which external login providers are enabled (for the "Continue with GitLab" button).
   providers: () => api.get('/auth/providers'),
-  // Full-page navigation target that starts the GitLab OAuth redirect flow.
-  gitlabAuthorizeUrl: () => `${apiBaseURL()}/auth/gitlab/authorize`,
+  // Target that starts the GitLab OAuth redirect flow. On web it is a full-page
+  // navigation; native clients pass their `platform` so the callback hands the session
+  // back on the tessera:// deep link instead of the web SPA route (#2696).
+  gitlabAuthorizeUrl: (platform) =>
+    `${apiBaseURL()}/auth/gitlab/authorize${platform ? `?platform=${platform}` : ''}`,
 }
 
 export const accountFlows = {

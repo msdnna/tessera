@@ -18,6 +18,8 @@
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
+    "deep-link:default",
+    "opener:allow-open-url",
     "fs:allow-write-file",
     {
       "identifier": "fs:scope",
