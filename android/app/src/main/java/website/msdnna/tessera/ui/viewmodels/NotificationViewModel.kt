@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Notification
+import website.msdnna.tessera.data.push.PushTokens
 import website.msdnna.tessera.data.realtime.DevicePush
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
@@ -61,7 +62,12 @@ class NotificationViewModel(
             meId = runCatching { AppContainer.prefs.user.first()?.id ?: "" }.getOrDefault("")
             deviceId = runCatching { AppContainer.prefs.ensureDeviceId() }.getOrDefault("")
             if (deviceId.isNotBlank()) {
-                runCatching { repo.registerDevice(deviceId, android.os.Build.MODEL ?: "Android") }
+                // Re-register on every start so a token rotated while the app was
+                // closed reaches the server. Empty on a build without Firebase or
+                // a phone without Play Services — the server keeps its stored one
+                // rather than treating that as "push off".
+                val push = PushTokens.ensureRegistered()
+                runCatching { repo.registerDevice(deviceId, android.os.Build.MODEL ?: "Android", push) }
             }
         }
     }
@@ -114,7 +120,10 @@ class NotificationViewModel(
             val kind = n.get("kind")?.takeUnless { it.isJsonNull }?.asString ?: ""
             val text = n.get("text")?.takeUnless { it.isJsonNull }?.asString ?: ""
             val taskId = n.get("task_id")?.takeUnless { it.isJsonNull }?.asString
-            _devicePush.tryEmit(DevicePush(titleForKind(kind), text, taskId))
+            // Carry the notification id so a push copy of the same notification
+            // redraws this entry instead of stacking a second one.
+            val id = n.get("id")?.takeUnless { it.isJsonNull }?.asString
+            _devicePush.tryEmit(DevicePush(titleForKind(kind), text, taskId, id))
         }
     }
 

@@ -5,6 +5,16 @@ plugins {
     id 'jacoco'
 }
 
+// Background push (FCM) is opt-in per build: the google-services plugin hard-fails
+// the build when its config file is missing, and google-services.json is tied to a
+// specific Firebase project so it stays out of the repo. Without the file the app
+// still builds and runs — device notifications just stay on the live-socket path,
+// which is also what a degoogled phone gets.
+def hasFirebaseConfig = file("google-services.json").exists()
+if (hasFirebaseConfig) {
+    apply plugin: 'com.google.gms.google-services'
+}
+
 def appVersionName = rootProject.file("VERSION").text.trim()
 def (vmaj, vmin, vpatch) = appVersionName.tokenize('.').collect { it.toInteger() }
 def appVersionCode = vmaj * 10000 + vmin * 100 + vpatch
@@ -119,6 +129,12 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.14.0'
 
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
+
+    // Firebase Cloud Messaging — background push while the app is closed. The
+    // library is always linked (so the code compiles either way); it only does
+    // anything once google-services.json supplies a project to talk to.
+    implementation platform('com.google.firebase:firebase-bom:34.17.0')
+    implementation 'com.google.firebase:firebase-messaging'
 
     implementation 'io.coil-kt:coil-compose:2.7.0'
     implementation 'io.coil-kt:coil-svg:2.7.0'

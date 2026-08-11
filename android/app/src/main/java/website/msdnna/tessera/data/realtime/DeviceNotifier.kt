@@ -13,8 +13,11 @@ import website.msdnna.tessera.R
 import website.msdnna.tessera.reminders.ReminderNotifications
 
 /** A notification the server routed to this device's "device" channel — shown as
- *  a system notification while the app is connected. */
-data class DevicePush(val title: String, val body: String, val taskId: String?)
+ *  a system notification. Reaches us over the live socket while the app is open
+ *  and as an FCM push while it's closed; [id] is the notification's server-side
+ *  UUID, which keys the system notification so the two paths collapse into one
+ *  entry instead of showing the same thing twice. */
+data class DevicePush(val title: String, val body: String, val taskId: String?, val id: String? = null)
 
 /** Posts [DevicePush]es as system notifications (the device-channel delivery path
  *  when the app is open). Mirrors the reminder receiver's posting. */
@@ -27,7 +30,10 @@ object DeviceNotifier {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             if (!push.taskId.isNullOrBlank()) putExtra(ReminderNotifications.EXTRA_OPEN_TASK_ID, push.taskId)
         }
-        val id = (push.taskId ?: push.body).hashCode()
+        // Key on the notification's own id so the socket copy and the push copy
+        // of the same notification reuse one system entry (notify() redraws it)
+        // instead of stacking. Fall back to the old key when there's no id.
+        val id = (push.id ?: push.taskId ?: push.body).hashCode()
         val pi = PendingIntent.getActivity(
             context, id, launch,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -50,7 +56,7 @@ object DeviceNotifier {
         if (manager.getNotificationChannel(CHANNEL_ID) != null) return
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Уведомления", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Уведомления о задачах, когда приложение открыто"
+                description = "Уведомления о задачах"
             },
         )
     }
