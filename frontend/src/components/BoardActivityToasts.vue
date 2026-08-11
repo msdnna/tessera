@@ -108,7 +108,12 @@ defineExpose({ push })
   position: fixed;
   left: 16px;
   bottom: 16px;
-  z-index: 2200;
+  /* НЕ выбирать значение в диапазоне 2000-4500: Naive раздаёт z-index оверлеям
+     счётчиком от 2000 с инкрементом на каждый монтируемый поповер/дропдаун/модалку
+     (vdirs/z-index-manager), так что «вроде выше модалки» перестаёт быть правдой
+     после сотни оверлеев за сессию. Выше полосы Naive, но ниже блокирующих
+     оверлеев приложения (лоадер 9000, оверлей связи 9001-9002). */
+  z-index: 8000;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -126,6 +131,14 @@ defineExpose({ push })
   background: var(--t-surface);
   border: 1px solid var(--t-border);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+  /* Слой композитора создаётся один раз и живёт всё время, а не только на время
+     перехода. Иначе Chromium промотирует тост на анимацию opacity (своей и чужой —
+     маска модалки Naive тоже анимирует opacity на весь вьюпорт), выключает на это
+     время субпиксельное сглаживание текста, а в конце уничтожает слой и
+     перерисовывает уже с ним: этот щелчок AA туда-обратно и виден как мерцание.
+     Цена — текст тоста всегда со серым AA; зато одинаково всегда. Тостов максимум
+     CAP = 3, дороговизна will-change тут не проблема. */
+  will-change: transform, opacity;
 }
 .t-ava {
   flex: none;
@@ -216,18 +229,29 @@ defineExpose({ push })
     opacity 0.2s ease,
     transform 0.2s ease;
 }
+/* translate3d, а не translateX: 2d-transform может не удержать слой, и вся правка
+   выше теряет смысл. */
 .toast-enter-from {
   opacity: 0;
-  transform: translateX(-16px);
+  transform: translate3d(-16px, 0, 0);
 }
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(-16px);
+  transform: translate3d(-16px, 0, 0);
+}
+/* transition-group вешает этот класс на оставшиеся тосты, когда из стопки
+   вытесняется самый старый (push() → splice по CAP). Без правила они прыгают. */
+.toast-move {
+  transition: transform 0.2s ease;
 }
 @media (prefers-reduced-motion: reduce) {
   .toast-enter-active,
-  .toast-leave-active {
+  .toast-leave-active,
+  .toast-move {
     transition: none;
+  }
+  .toast {
+    will-change: auto;
   }
 }
 </style>
