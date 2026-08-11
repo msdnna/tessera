@@ -243,6 +243,9 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 		DeviceID string `json:"device_id" binding:"required"`
 		Label    string `json:"label"`
 		Platform string `json:"platform"`
+		// FCMToken is optional: a client without Play Services (or a browser)
+		// registers without one and stays on the live-socket path.
+		FCMToken string `json:"fcm_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -253,9 +256,22 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 	if label == "" {
 		label = "Устройство"
 	}
-	cfg, _ := json.Marshal(map[string]string{"device_id": req.DeviceID, "platform": strings.TrimSpace(req.Platform)})
+	newCfg := map[string]string{"device_id": req.DeviceID, "platform": strings.TrimSpace(req.Platform)}
+	if tok := strings.TrimSpace(req.FCMToken); tok != "" {
+		newCfg["fcm_token"] = tok
+	}
+	cfg, _ := json.Marshal(newCfg)
 
 	if existing, err := h.q.GetDeviceChannel(c, db.GetDeviceChannelParams{UserID: uid, DeviceID: req.DeviceID}); err == nil {
+		// Keep a token we already hold when this call didn't bring one: a
+		// re-registration that couldn't reach Play Services must not silently
+		// switch background push off for the device.
+		if newCfg["fcm_token"] == "" {
+			if prev := channelCfgString(existing, "fcm_token"); prev != "" {
+				newCfg["fcm_token"] = prev
+				cfg, _ = json.Marshal(newCfg)
+			}
+		}
 		// Refresh the platform/config only. Keep the label the user set (clients
 		// auto-register a generated name on every app start; overwriting it here
 		// would wipe a custom rename) — along with enabled + template.

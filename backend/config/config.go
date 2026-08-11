@@ -28,6 +28,12 @@ type Config struct {
 	SMTPPass  string
 	SMTPFrom  string
 	PublicURL string
+	// Path to a Firebase service-account key (JSON) used to send background
+	// push to Android device channels over FCM HTTP v1. Optional and *not*
+	// fail-closed in production: push is a best-effort transport, so a missing
+	// or unreadable key downgrades device channels to the live-WS-only
+	// behaviour they had before instead of keeping the server down.
+	FCMCredentialsFile string
 	// Origin allowed by the CORS middleware. In production defaults to
 	// PublicURL (lock the API to the web app's origin); in dev defaults to "*".
 	// Override explicitly with CORS_ORIGIN.
@@ -165,6 +171,8 @@ func New() *Config {
 		PublicURL:      publicURL,
 		CORSOrigin:     corsOrigin,
 		DesktopOrigins: desktopOrigins,
+
+		FCMCredentialsFile: strings.TrimSpace(os.Getenv("FCM_CREDENTIALS_FILE")),
 
 		GracefulTimeout:    getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
 		PATTouchInterval:   getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),

@@ -40,6 +40,12 @@ services:
       # rebuilds (the default ./uploads is inside the container = wiped on build).
       - UPLOAD_DIR=/data/uploads
       - GITLAB_INSECURE_TLS=${GITLAB_INSECURE_TLS:-false}
+      # Background push (FCM). Empty = off, and device notifications stay on the
+      # live socket. The value is the path *inside the container*; mount the
+      # service-account key there from an untracked docker-compose.override.yml:
+      #   volumes: ["/path/on/host/fcm-service-account.json:/run/secrets/fcm.json:ro"]
+      # and set FCM_CREDENTIALS_FILE=/run/secrets/fcm.json in .env.
+      - FCM_CREDENTIALS_FILE=${FCM_CREDENTIALS_FILE:-}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}

@@ -52,7 +52,7 @@ func (h *API) WireOps(m *middleware.Collector, version string) {
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from
 // the configured encryption key.
-func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, encryptionKey string, mailer mail.Mailer, publicURL string) *API {
+func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, encryptionKey string, mailer mail.Mailer, publicURL, fcmCredentialsFile string) *API {
 	sealer, err := secrets.NewSealer(encryptionKey)
 	if err != nil {
 		// config.New guarantees a non-empty key, so this is unreachable in practice.
@@ -64,7 +64,7 @@ func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, enc
 	jobLog := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{AddSource: true}))
 	return &API{
 		q: q, pool: pool, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:],
-		mailer: mailer, publicURL: publicURL, senders: buildSenders(mailer), jobs: jobs.New(jobLog),
+		mailer: mailer, publicURL: publicURL, senders: buildSenders(mailer, fcmCredentialsFile), jobs: jobs.New(jobLog),
 	}
 }
 

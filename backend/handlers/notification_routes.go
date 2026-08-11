@@ -207,13 +207,21 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 			if !ok || !ch.Enabled {
 				continue
 			}
-			// "device" channels aren't sent to an external service — they flag the
-			// live WS event so the matching client shows a native notification.
-			// Ephemeral, so quiet hours suppress them (can't be deferred).
+			// "device" channels flag the live WS event so an open client shows a
+			// native notification. Ephemeral, so quiet hours suppress them (can't
+			// be deferred). A device that also registered a push token gets an
+			// outbox row on top, which is what reaches it while the app is closed.
 			if ch.Type == "device" {
 				if !inQuiet {
 					if did := deviceIDOf(ch); did != "" {
 						deviceTargets = append(deviceTargets, did)
+					}
+					if _, hasPush := h.senders["device"]; hasPush && channelCfgString(ch, "fcm_token") != "" {
+						// No digest group and no deferral: a push that arrives batched
+						// half an hour late is worse than no push at all.
+						soft(ctx, "CreateNotificationDeliveryAt", h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
+							NotificationID: n.ID, ChannelID: chID, NextAttemptAt: now, DigestGroup: "",
+						}))
 					}
 				}
 				continue
@@ -235,10 +243,13 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 }
 
 // deviceIDOf extracts the stable device id from a device channel's config.
-func deviceIDOf(ch db.NotificationChannel) string {
+func deviceIDOf(ch db.NotificationChannel) string { return channelCfgString(ch, "device_id") }
+
+// channelCfgString reads a string field out of a stored channel's JSONB config.
+func channelCfgString(ch db.NotificationChannel, key string) string {
 	var m map[string]any
 	if json.Unmarshal(ch.Config, &m) == nil {
-		if s, ok := m["device_id"].(string); ok {
+		if s, ok := m[key].(string); ok {
 			return s
 		}
 	}

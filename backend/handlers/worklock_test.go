@@ -46,7 +46,7 @@ func TestWithAdvisoryLockSkipsWhenHeld(t *testing.T) {
 	}
 
 	api := NewAPI(db.New(pool), pool, realtime.NewHub(), t.TempDir(),
-		"integration-test-encryption-key", mail.New(mail.Config{}), "http://test")
+		"integration-test-encryption-key", mail.New(mail.Config{}), "http://test", "")
 
 	const name = "test-worklock-skip"
 	key := advisoryKey(name)

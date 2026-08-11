@@ -52,6 +52,12 @@ android/local.properties
 android/local.env
 *.apk
 
+# Firebase (background push). google-services.json is tied to one Firebase
+# project, and a service-account key is a server credential — neither belongs in
+# the repo. Point the backend at its key with FCM_CREDENTIALS_FILE.
+android/app/google-services.json
+*-service-account*.json
+
 # Local DB/uploads backups (never commit — may hold real user data)
 backup/
 *.tar.zst

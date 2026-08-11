@@ -24,13 +24,31 @@ import (
 // buildSenders wires the channel transports. Email reuses the server's SMTP
 // mailer (the destination is the user's address, the transport is shared), so it
 // needs no per-channel secret; telegram + webhook are self-contained.
-func buildSenders(mailer mail.Mailer) map[string]notify.Sender {
-	return map[string]notify.Sender{
+//
+// "device" is the odd one out: it only gets a sender when an FCM service-account
+// key is configured. Without one the entry is absent, routeNotification enqueues
+// nothing, and device channels behave exactly as they did before background push
+// existed — live over the socket while the app is open.
+func buildSenders(mailer mail.Mailer, fcmCredentialsFile string) map[string]notify.Sender {
+	s := map[string]notify.Sender{
 		"email":    emailSender{mailer: mailer},
 		"telegram": notify.ShoutrrrSender{}, // friendly telegram, built into a shoutrrr URL
 		"webhook":  notify.WebhookSender{},  // flexible raw-JSON POST
 		"shoutrrr": notify.ShoutrrrSender{}, // generic: secret is a full shoutrrr URL
 	}
+	if fcmCredentialsFile == "" {
+		return s
+	}
+	fcm, err := notify.LoadFCMSender(fcmCredentialsFile)
+	if err != nil {
+		// Warn and carry on: an unreadable key must not keep the server down over
+		// a best-effort transport.
+		log.Printf("notify: background push disabled — %v", err)
+		return s
+	}
+	log.Printf("notify: background push enabled (FCM project %s)", fcm.ProjectID)
+	s["device"] = fcm
+	return s
 }
 
 // emailSender delivers via the server mailer (no-op-logs when SMTP is unset).
@@ -211,7 +229,38 @@ func (h *API) deliverOne(ctx context.Context, d db.NotificationDelivery) error {
 		// A broken template can't fix itself between retries.
 		return notify.Permanent(fmt.Errorf("template render: %w", err))
 	}
-	return sender.Send(ctx, ch, notify.Message{Kind: n.Kind, Title: notifyTitle(n.Kind), Body: body, Link: h.publicURL})
+	msg := notify.Message{Kind: n.Kind, Title: notifyTitle(n.Kind), Body: body, Link: h.publicURL, ID: n.ID.String()}
+	if n.TaskID != nil {
+		msg.TaskID = n.TaskID.String()
+	}
+	err = sender.Send(ctx, ch, msg)
+	if errors.Is(err, notify.ErrPushUnregistered) {
+		h.dropPushToken(ctx, row)
+	}
+	return err
+}
+
+// dropPushToken clears a dead FCM token from a device channel's config. The
+// channel itself stays enabled: it still works over the socket, and the client
+// re-registers a fresh token on its next start.
+func (h *API) dropPushToken(ctx context.Context, row db.NotificationChannel) {
+	cfg := map[string]any{}
+	if len(row.Config) > 0 {
+		_ = json.Unmarshal(row.Config, &cfg)
+	}
+	if _, ok := cfg["fcm_token"]; !ok {
+		return
+	}
+	delete(cfg, "fcm_token")
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return
+	}
+	_, uerr := h.q.UpdateNotificationChannel(ctx, db.UpdateNotificationChannelParams{
+		ID: row.ID, UserID: row.UserID, Label: row.Label, Config: raw,
+		SecretEnc: row.SecretEnc, Enabled: row.Enabled, Template: row.Template,
+	})
+	soft(ctx, "UpdateNotificationChannel", uerr)
 }
 
 // renderChannel renders a channel's template (or the built-in default) against
