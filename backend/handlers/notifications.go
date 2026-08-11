@@ -99,6 +99,9 @@ type channelReq struct {
 	Secret   map[string]string `json:"secret"`
 	Template *string           `json:"template"` // nil on update = keep stored
 	Enabled  *bool             `json:"enabled"`
+	// ClearSecret wipes the stored secret blob. An empty Secret map means "keep",
+	// so erasing needs an explicit flag. A supplied Secret in the same request wins.
+	ClearSecret bool `json:"clear_secret"`
 }
 
 // maxTemplateLen caps a channel message template (a generous limit — these are
@@ -212,7 +215,11 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		return
 	}
 	// Re-seal only when a new secret was supplied; otherwise keep the stored one.
+	// An explicit clear_secret wipes it (a supplied secret still wins over the flag).
 	secEnc := row.SecretEnc
+	if req.ClearSecret {
+		secEnc = ""
+	}
 	if hasSecret(req.Secret) {
 		if secEnc, err = h.sealSecret(req.Secret); err != nil {
 			fail(c, err)

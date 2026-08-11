@@ -64,6 +64,11 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		OrgMap        json.RawMessage `json:"org_map"`
 		ServiceToken  string          `json:"service_token"`
 		SudoWriteback bool            `json:"sudo_writeback"`
+		// Explicit erase flags: empty string means "keep as is", so wiping a stored
+		// secret needs its own signal. A non-empty value in the same request wins
+		// over the flag (replace beats erase).
+		ClearClientSecret bool `json:"clear_client_secret"`
+		ClearServiceToken bool `json:"clear_service_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -75,6 +80,12 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	if existing, err := h.q.GetOAuthProvider(c, "gitlab"); err == nil {
 		secretEnc = existing.ClientSecretEnc
 		serviceEnc = existing.ServiceTokenEnc
+	}
+	if req.ClearClientSecret {
+		secretEnc = ""
+	}
+	if req.ClearServiceToken {
+		serviceEnc = ""
 	}
 	if s := strings.TrimSpace(req.ClientSecret); s != "" {
 		enc, err := h.sealer.Encrypt(s)

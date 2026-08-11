@@ -555,6 +555,48 @@ func TestOAuthProvidersAndAdminConfig(t *testing.T) {
 		t.Fatalf("authorize configured: %d %s", status, loc)
 	}
 
+	// Erase flags: an empty value keeps the stored secret, so wiping one needs an
+	// explicit clear_* flag. Seed a service token first (independent field).
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "gl_base_url": "https://gl.example.test",
+		"enabled": true, "service_token": "glpat-svc",
+	}), http.StatusOK)
+	if m["has_secret"] != true || m["has_service_token"] != true {
+		t.Fatalf("seed service token: %v", m)
+	}
+	// A non-empty secret in the same request wins over the clear flag (replace beats erase).
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "gl_base_url": "https://gl.example.test",
+		"enabled": true, "client_secret": "replaced", "clear_client_secret": true,
+	}), http.StatusOK)
+	if m["has_secret"] != true {
+		t.Fatalf("replace must beat clear: %v", m)
+	}
+	// Clear only the client secret; the service token must survive.
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "gl_base_url": "https://gl.example.test",
+		"enabled": true, "clear_client_secret": true,
+	}), http.StatusOK)
+	if m["has_secret"] != false || m["has_service_token"] != true {
+		t.Fatalf("clear client secret only: %v", m)
+	}
+	// Clear the service token too.
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "gl_base_url": "https://gl.example.test",
+		"enabled": true, "clear_service_token": true,
+	}), http.StatusOK)
+	if m["has_service_token"] != false {
+		t.Fatalf("clear service token: %v", m)
+	}
+	// Restore the client secret so the disable-restore step below behaves as before.
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "client_secret": "s3cret-value",
+		"gl_base_url": "https://gl.example.test", "enabled": true, "org_map": map[string]any{},
+	}), http.StatusOK)
+	if m["has_secret"] != true {
+		t.Fatalf("restore secret: %v", m)
+	}
+
 	// Re-save without a secret: the stored one is kept; disable to restore the
 	// unconfigured providers surface for other tests.
 	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
