@@ -172,11 +172,19 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	if !ok {
 		return // mintTokens already wrote a 500
 	}
-	frag := url.Values{"access_token": {access}, "refresh_token": {refresh}}
 	if mobile {
+		// No cookie to set on a custom-scheme handoff — the mobile app stores
+		// the refresh token itself.
+		frag := url.Values{"access_token": {access}, "refresh_token": {refresh}}
 		c.Redirect(http.StatusFound, oauthMobileScheme+"#"+frag.Encode())
 		return
 	}
+	// Web: the refresh token goes into the httpOnly cookie instead of the
+	// fragment. A fragment never reaches the server, but it does stay in browser
+	// history and in window.location, where injected script can read it — which
+	// would defeat the whole point of hiding the token from JavaScript.
+	h.setRefreshCookie(c, refresh)
+	frag := url.Values{"access_token": {access}}
 	c.Redirect(http.StatusFound, base+"/oauth/callback#"+frag.Encode())
 }
 

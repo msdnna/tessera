@@ -4,6 +4,14 @@ import { mount } from '@vue/test-utils'
 
 vi.mock('@/utils/serverBase', () => ({ wsURL: () => 'ws://tessera.test/api/ws' }))
 
+// The access token lives in the api module since #2684 (it used to be read from
+// localStorage here). Mocked so this spec doesn't pull in axios.
+const { getAccessToken, setToken } = vi.hoisted(() => {
+  let token = ''
+  return { getAccessToken: () => token, setToken: (v) => (token = v) }
+})
+vi.mock('@/api', () => ({ getAccessToken }))
+
 import { useRealtime } from '@/composables/useRealtime'
 
 // Records every `new WebSocket(url, protocols)` so the tests can assert what
@@ -46,6 +54,7 @@ describe('useRealtime', () => {
     origWS = globalThis.WebSocket
     globalThis.WebSocket = FakeWebSocket
     localStorage.clear()
+    setToken('')
     vi.useFakeTimers()
   })
   afterEach(() => {
@@ -57,7 +66,7 @@ describe('useRealtime', () => {
   // so the token rides as the second subprotocol. A query param would leak it
   // into the access log.
   it('opens the socket with the bearer subprotocol carrying the token', () => {
-    localStorage.setItem('tessera_token', 'jwt-abc')
+    setToken('jwt-abc')
     const w = mountRealtime()
     expect(opened).toHaveLength(1)
     expect(opened[0].protocols).toEqual(['bearer', 'jwt-abc'])
@@ -76,7 +85,7 @@ describe('useRealtime', () => {
   it('retries after a missing token and picks up the rotated one', () => {
     const w = mountRealtime()
     expect(opened).toHaveLength(0)
-    localStorage.setItem('tessera_token', 'jwt-fresh')
+    setToken('jwt-fresh')
     vi.advanceTimersByTime(60000)
     expect(opened.length).toBeGreaterThan(0)
     expect(opened.at(-1).protocols).toEqual(['bearer', 'jwt-fresh'])
@@ -87,11 +96,11 @@ describe('useRealtime', () => {
   // refresh-on-401 rotates the access token — so the reconnect must use the
   // token as it is *now*, not the one captured at mount.
   it('re-reads the token on reconnect rather than reusing the first one', () => {
-    localStorage.setItem('tessera_token', 'jwt-old')
+    setToken('jwt-old')
     const w = mountRealtime()
     expect(opened[0].protocols).toEqual(['bearer', 'jwt-old'])
 
-    localStorage.setItem('tessera_token', 'jwt-new')
+    setToken('jwt-new')
     opened[0].drop()
     vi.advanceTimersByTime(60000)
 
@@ -103,7 +112,7 @@ describe('useRealtime', () => {
   // A `resync` marker means the server dropped an event for us; the caller must
   // reload its view (onResync), and the marker itself must not reach onEvent.
   it('routes a resync marker to onResync, not onEvent', () => {
-    localStorage.setItem('tessera_token', 'jwt')
+    setToken('jwt')
     const onEvent = vi.fn()
     const onResync = vi.fn()
     const w = mountRealtime(onEvent, onResync)
@@ -119,7 +128,7 @@ describe('useRealtime', () => {
   // A reconnect means we were offline and missed events; reload rather than
   // resume mid-stream. The very first open is the initial load and must not.
   it('calls onResync on reconnect but not on the first open', () => {
-    localStorage.setItem('tessera_token', 'jwt')
+    setToken('jwt')
     const onResync = vi.fn()
     const w = mountRealtime(() => {}, onResync)
 

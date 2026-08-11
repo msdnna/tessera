@@ -42,6 +42,9 @@ const (
 func authRateRules() map[string]middleware.RateRule {
 	credential := middleware.RateRule{Every: 6 * time.Second, Burst: 10, ByEmail: true}
 	token := middleware.RateRule{Every: 6 * time.Second, Burst: 10}
+	// Refresh and logout are keyed by IP only, and a whole office can share one:
+	// the budget has to cover every tab of every user behind that address.
+	rotate := middleware.RateRule{Every: time.Second, Burst: 60}
 	return map[string]middleware.RateRule{
 		"/api/auth/login":           credential,
 		"/api/auth/register":        credential,
@@ -50,7 +53,8 @@ func authRateRules() map[string]middleware.RateRule {
 		// key available.
 		"/api/auth/reset-password": token,
 		"/api/auth/verify-email":   token,
-		"/api/auth/refresh":        {Every: time.Second, Burst: 60},
+		"/api/auth/refresh":        rotate,
+		"/api/auth/logout":         rotate,
 	}
 }
 
@@ -122,6 +126,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		api.POST("/auth/register", authHandler.Register)
 		api.POST("/auth/login", authHandler.Login)
 		api.POST("/auth/refresh", authHandler.Refresh)
+		// Public like refresh: the refresh token (cookie or body) is the auth,
+		// and an expired access token must not prevent signing out.
+		api.POST("/auth/logout", authHandler.Logout)
 		// Token-based account flows (the token IS the auth): email verification +
 		// password reset.
 		api.POST("/auth/verify-email", authHandler.VerifyEmail)

@@ -24,16 +24,19 @@ const routes = [
   { path: '/:pathMatch(.*)*', component: Stub, meta: { open: true } },
 ]
 
-// The guard, copied verbatim from src/router/index.js — kept in sync by test intent.
+// Stand-in for the auth store the real guard reads. Since #2684 the access token
+// lives in memory, so "signed in" is store state, not a localStorage key.
+const session = { token: '', user: null }
+
+// The guard, copied verbatim from src/router/index.js — kept in sync by test
+// intent, with `auth` resolved from the stand-in above instead of useAuthStore().
 function guard(to) {
-  const token = localStorage.getItem('tessera_token')
+  const auth = { isAuthenticated: !!session.token, isAdmin: !!session.user?.is_admin }
   if (to.meta.open) return
-  if (!to.meta.public && !token) return { path: '/login', query: { next: to.fullPath } }
-  if (to.meta.public && token) return { path: '/' }
-  if (to.meta.admin) {
-    const u = JSON.parse(localStorage.getItem('tessera_user') || 'null')
-    if (!u?.is_admin) return { path: '/' }
-  }
+  if (!to.meta.public && !auth.isAuthenticated)
+    return { path: '/login', query: { next: to.fullPath } }
+  if (to.meta.public && auth.isAuthenticated) return { path: '/' }
+  if (to.meta.admin && !auth.isAdmin) return { path: '/' }
 }
 
 function makeRouter() {
@@ -43,7 +46,11 @@ function makeRouter() {
 }
 
 describe('router guard', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    session.token = ''
+    session.user = null
+  })
 
   it('redirects an unauthenticated user from a protected route to /login with next', async () => {
     const r = makeRouter()
@@ -53,14 +60,14 @@ describe('router guard', () => {
   })
 
   it('lets an authenticated user reach a protected route', async () => {
-    localStorage.setItem('tessera_token', 'tok')
+    session.token = 'tok'
     const r = makeRouter()
     await r.push('/notes')
     expect(r.currentRoute.value.path).toBe('/notes')
   })
 
   it('bounces an authenticated user away from a public (login) page to /', async () => {
-    localStorage.setItem('tessera_token', 'tok')
+    session.token = 'tok'
     const r = makeRouter()
     await r.push('/login')
     expect(r.currentRoute.value.path).toBe('/')
@@ -83,16 +90,16 @@ describe('router guard', () => {
   })
 
   it('keeps a non-admin authenticated user off /admin', async () => {
-    localStorage.setItem('tessera_token', 'tok')
-    localStorage.setItem('tessera_user', JSON.stringify({ is_admin: false }))
+    session.token = 'tok'
+    session.user = { is_admin: false }
     const r = makeRouter()
     await r.push('/admin')
     expect(r.currentRoute.value.path).toBe('/')
   })
 
   it('lets an admin reach /admin', async () => {
-    localStorage.setItem('tessera_token', 'tok')
-    localStorage.setItem('tessera_user', JSON.stringify({ is_admin: true }))
+    session.token = 'tok'
+    session.user = { is_admin: true }
     const r = makeRouter()
     await r.push('/admin')
     expect(r.currentRoute.value.path).toBe('/admin')

@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 import axios from 'axios'
-import api, { auth, gitlab, boards } from '@/api'
+import api, { auth, gitlab, boards, setAccessToken, getAccessToken, restoreSession } from '@/api'
 import { connection } from '@/composables/useConnection'
 
 // The api module builds an axios instance with real interceptors (token header,
@@ -27,6 +27,9 @@ function fail(config, status, data) {
 
 beforeEach(() => {
   localStorage.clear()
+  // The access token is module state now (#2684), not localStorage — reset it
+  // between cases or one test's session leaks into the next.
+  setAccessToken('')
   connection.pending = 0
   connection.slow = false
   connection.offline = false
@@ -37,11 +40,13 @@ beforeEach(() => {
 })
 afterEach(() => {
   localStorage.clear()
+  setAccessToken('')
+  delete window.__TAURI_INTERNALS__
 })
 
 describe('api request interceptor', () => {
-  it('attaches the Bearer token from tessera_token', async () => {
-    localStorage.setItem('tessera_token', 'mytoken')
+  it('attaches the in-memory Bearer token', async () => {
+    setAccessToken('mytoken')
     instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, { ok: 1 })))
     const res = await auth.me()
     expect(res.data).toEqual({ ok: 1 })
@@ -52,7 +57,15 @@ describe('api request interceptor', () => {
     expect(sent.baseURL).toBe('/api')
   })
 
-  it('omits Authorization when no token is stored', async () => {
+  it('never persists the access token to localStorage (#2684)', async () => {
+    setAccessToken('mytoken')
+    instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
+    await auth.me()
+    // XSS reads localStorage; it cannot read a module-scoped variable.
+    expect(localStorage.getItem('tessera_token')).toBeNull()
+  })
+
+  it('omits Authorization when there is no token', async () => {
     instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
     await auth.providers()
     const sent = instanceAdapter.mock.calls[0][0]
@@ -142,34 +155,34 @@ describe('api error handling', () => {
 })
 
 describe('refresh-on-401', () => {
-  it('refreshes on 401, stores the new pair, and retries the original request', async () => {
-    localStorage.setItem('tessera_token', 'old')
-    localStorage.setItem('tessera_refresh_token', 'ref1')
+  it('refreshes on 401 with the cookie (no token in the body) and retries', async () => {
+    setAccessToken('old')
     let calls = 0
     instanceAdapter.mockImplementation((config) => {
       calls++
       if (calls === 1) return fail(config, 401, { error: 'unauthorized' })
       return Promise.resolve(ok(config, { retried: true }))
     })
-    globalAdapter.mockImplementation((config) =>
-      Promise.resolve(ok(config, { access_token: 'new', refresh_token: 'ref2' })),
-    )
+    globalAdapter.mockImplementation((config) => Promise.resolve(ok(config, { access_token: 'new' })))
 
     const res = await api.get('/protected')
     expect(res.data).toEqual({ retried: true })
-    expect(localStorage.getItem('tessera_token')).toBe('new')
-    expect(localStorage.getItem('tessera_refresh_token')).toBe('ref2')
+    expect(getAccessToken()).toBe('new')
+    expect(localStorage.getItem('tessera_token')).toBeNull()
     // Retry carried the fresh token.
     const retry = instanceAdapter.mock.calls[1][0]
     expect(retry.headers.Authorization).toBe('Bearer new')
-    // One refresh call to /auth/refresh.
+    // One refresh call to /auth/refresh, in cookie mode with an empty body: the
+    // refresh token rides in the httpOnly cookie the browser attaches itself.
     expect(globalAdapter).toHaveBeenCalledTimes(1)
-    expect(globalAdapter.mock.calls[0][0].url).toContain('/auth/refresh')
+    const sent = globalAdapter.mock.calls[0][0]
+    expect(sent.url).toContain('/auth/refresh')
+    expect(sent.headers['X-Auth-Mode']).toBe('cookie')
+    expect(JSON.parse(sent.data)).toEqual({})
   })
 
   it('coalesces concurrent 401s into a single refresh', async () => {
-    localStorage.setItem('tessera_token', 'old')
-    localStorage.setItem('tessera_refresh_token', 'ref1')
+    setAccessToken('old')
     const seen = {}
     instanceAdapter.mockImplementation((config) => {
       const key = config.url
@@ -194,7 +207,7 @@ describe('refresh-on-401', () => {
   })
 
   it('logs out (clears storage + emits auth:expired) when refresh fails', async () => {
-    localStorage.setItem('tessera_token', 'old')
+    setAccessToken('old')
     localStorage.setItem('tessera_refresh_token', 'ref1')
     localStorage.setItem('tessera_user', '{"id":"u"}')
     instanceAdapter.mockImplementation((config) => fail(config, 401, { error: 'unauthorized' }))
@@ -203,24 +216,9 @@ describe('refresh-on-401', () => {
     window.addEventListener('auth:expired', spy)
 
     await expect(api.get('/protected')).rejects.toThrow()
-    expect(localStorage.getItem('tessera_token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(localStorage.getItem('tessera_refresh_token')).toBeNull()
     expect(localStorage.getItem('tessera_user')).toBeNull()
-    expect(spy).toHaveBeenCalledTimes(1)
-    window.removeEventListener('auth:expired', spy)
-  })
-
-  it('logs out immediately on 401 when there is no refresh token', async () => {
-    localStorage.setItem('tessera_token', 'old')
-    localStorage.setItem('tessera_user', '{"id":"u"}')
-    instanceAdapter.mockImplementation((config) => fail(config, 401, { error: 'unauthorized' }))
-    const spy = vi.fn()
-    window.addEventListener('auth:expired', spy)
-
-    await expect(api.get('/protected')).rejects.toThrow()
-    // No refresh attempted (no refresh token) → no global adapter call.
-    expect(globalAdapter).not.toHaveBeenCalled()
-    expect(localStorage.getItem('tessera_token')).toBeNull()
     expect(spy).toHaveBeenCalledTimes(1)
     window.removeEventListener('auth:expired', spy)
   })
@@ -238,8 +236,7 @@ describe('refresh-on-401', () => {
   })
 
   it('retries a 401 only once (no infinite loop) if the retry also 401s', async () => {
-    localStorage.setItem('tessera_token', 'old')
-    localStorage.setItem('tessera_refresh_token', 'ref1')
+    setAccessToken('old')
     let calls = 0
     instanceAdapter.mockImplementation((config) => {
       calls++
@@ -251,5 +248,79 @@ describe('refresh-on-401', () => {
     await expect(api.get('/protected')).rejects.toThrow()
     // Original + one retry = 2 instance calls, then it gives up.
     expect(calls).toBe(2)
+  })
+})
+
+// #2684. Two delivery modes for the refresh token: the web build is same-origin
+// with the API and gets an httpOnly cookie; the desktop build talks to it
+// cross-origin, where that cookie would never be sent, so it keeps posting the
+// token in the body. Everything below pins which one applies where.
+describe('refresh-token delivery mode', () => {
+  it('asks for cookie delivery on register, login and logout (web)', async () => {
+    instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
+    await auth.register({ email: 'a@b.c', name: 'A', password: 'password-123' })
+    await auth.login({ email: 'a@b.c', password: 'password-123' })
+    await auth.logout()
+    for (const [config] of instanceAdapter.mock.calls) {
+      expect(config.headers['X-Auth-Mode']).toBe('cookie')
+    }
+    // Nothing to send in the body: the cookie is the credential.
+    expect(JSON.parse(instanceAdapter.mock.calls[2][0].data)).toEqual({})
+  })
+
+  it('restoreSession trades the cookie for a fresh access token on start-up', async () => {
+    globalAdapter.mockImplementation((config) => Promise.resolve(ok(config, { access_token: 'boot' })))
+    await expect(restoreSession()).resolves.toBe('boot')
+    expect(getAccessToken()).toBe('boot')
+  })
+
+  it('restoreSession resolves null when there is no session to restore', async () => {
+    globalAdapter.mockImplementation((config) => fail(config, 401, { error: 'invalid refresh token' }))
+    await expect(restoreSession()).resolves.toBeNull()
+    expect(getAccessToken()).toBe('')
+  })
+
+  describe('desktop (Tauri, cross-origin)', () => {
+    beforeEach(() => {
+      // What isTauri() looks for; the webview injects it in the real app.
+      window.__TAURI_INTERNALS__ = {}
+    })
+
+    it('keeps posting the stored refresh token and sends no cookie-mode header', async () => {
+      localStorage.setItem('tessera_refresh_token', 'ref1')
+      setAccessToken('old')
+      let calls = 0
+      instanceAdapter.mockImplementation((config) => {
+        calls++
+        if (calls === 1) return fail(config, 401, { error: 'unauthorized' })
+        return Promise.resolve(ok(config, { retried: true }))
+      })
+      globalAdapter.mockImplementation((config) =>
+        Promise.resolve(ok(config, { access_token: 'new', refresh_token: 'ref2' })),
+      )
+
+      await api.get('/protected')
+      const sent = globalAdapter.mock.calls[0][0]
+      expect(JSON.parse(sent.data)).toEqual({ refresh_token: 'ref1' })
+      expect(sent.headers['X-Auth-Mode']).toBeUndefined()
+      // The rotated token is stored again — desktop has nowhere else to keep it.
+      expect(localStorage.getItem('tessera_refresh_token')).toBe('ref2')
+      expect(getAccessToken()).toBe('new')
+    })
+
+    it('logs out immediately on 401 when no refresh token is stored', async () => {
+      setAccessToken('old')
+      localStorage.setItem('tessera_user', '{"id":"u"}')
+      instanceAdapter.mockImplementation((config) => fail(config, 401, { error: 'unauthorized' }))
+      const spy = vi.fn()
+      window.addEventListener('auth:expired', spy)
+
+      await expect(api.get('/protected')).rejects.toThrow()
+      // Nothing to refresh with → no refresh attempt at all.
+      expect(globalAdapter).not.toHaveBeenCalled()
+      expect(getAccessToken()).toBe('')
+      expect(spy).toHaveBeenCalledTimes(1)
+      window.removeEventListener('auth:expired', spy)
+    })
   })
 })
