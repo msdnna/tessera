@@ -62,6 +62,7 @@ import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { filterBoardTasks } from '@/utils/taskFilter'
 import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
+import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
@@ -1034,18 +1035,11 @@ const colModel = ref([])
 watch(displayColumns, (v) => (colModel.value = [...v]), { immediate: true })
 
 async function onColumnReorder(evt) {
-  if (groupMode.value !== 'status') return
-  const info = evt.moved || evt.added
-  if (!info) return
-  const arr = colModel.value
-  const before = arr[info.newIndex - 1]
-  const after = arr[info.newIndex + 1]
+  const plan = planColumnReorder(evt, colModel.value, groupMode.value)
+  if (!plan) return
   suppress()
   try {
-    await columnsApi.move(info.element.key, {
-      before_id: before ? before.key : null,
-      after_id: after ? after.key : null,
-    })
+    await columnsApi.move(plan.key, { before_id: plan.before_id, after_id: plan.after_id })
     scheduleReload()
   } catch (e) {
     message.error(e.message)
@@ -1053,41 +1047,32 @@ async function onColumnReorder(evt) {
   }
 }
 
-// Drag persistence: status mode = reposition; tag mode = add/remove tag.
+// Drag persistence: the rules (neighbour math, collapsed pin, subtask promotion,
+// single-value milestone, tag add/remove) live in utils/boardDnd; here we only
+// dispatch the resulting intents to the API, in order.
 async function onColChange(evt, dcol) {
   suppress()
   try {
-    if (groupMode.value === 'status') {
-      const info = evt.added || evt.moved
-      if (info) {
-        const arr = lists.value[dcol.key]
-        // Dropping onto a collapsed column: Sortable's newIndex is meaningless
-        // (its items are hidden placeholders behind the drop overlay), so pin the
-        // card to the top — before = nothing, after = the first existing card.
-        const collapsed = evt.added && isColCollapsed(dcol)
-        const before = collapsed ? null : arr[info.newIndex - 1]
-        const after = collapsed ? arr.find((t) => t.id !== info.element.id) : arr[info.newIndex + 1]
-        // A subtask dragged out onto a column becomes top-level again.
-        if (evt.added && info.element.parent_id) {
-          await tasksApi.setParent(info.element.id, null)
-        }
-        await tasksApi.move(info.element.id, {
-          column_id: dcol.key,
-          before_id: before ? before.id : null,
-          after_id: after ? after.id : null,
+    const collapsed = !!evt.added && isColCollapsed(dcol)
+    const intents = planColDrop({
+      groupMode: groupMode.value,
+      evt,
+      dcol,
+      list: lists.value[dcol.key],
+      collapsed,
+    })
+    for (const it of intents) {
+      if (it.op === 'setParent') await tasksApi.setParent(it.id, it.parentId)
+      else if (it.op === 'move')
+        await tasksApi.move(it.id, {
+          column_id: it.columnId,
+          before_id: it.beforeId,
+          after_id: it.afterId,
         })
-      }
-    } else if (groupMode.value === 'milestone') {
-      // Single-value: the destination column's `added` sets/clears it; the source's
-      // `removed` is ignored (the new value overwrites).
-      if (evt.added) {
-        const id = evt.added.element.id
-        if (dcol.milestone) await tasksApi.setMilestone(id, dcol.milestone.id)
-        else await tasksApi.clearMilestone(id)
-      }
-    } else {
-      if (evt.added && dcol.tag) await tasksApi.addTag(evt.added.element.id, dcol.tag.id)
-      if (evt.removed && dcol.tag) await tasksApi.removeTag(evt.removed.element.id, dcol.tag.id)
+      else if (it.op === 'setMilestone') await tasksApi.setMilestone(it.id, it.milestoneId)
+      else if (it.op === 'clearMilestone') await tasksApi.clearMilestone(it.id)
+      else if (it.op === 'addTag') await tasksApi.addTag(it.id, it.tagId)
+      else if (it.op === 'removeTag') await tasksApi.removeTag(it.id, it.tagId)
     }
     scheduleReload()
   } catch (e) {
