@@ -69,12 +69,17 @@ onBeforeUnmount(stopDrag)
 // Live notifications for the bell + native device notifications, addressed to the
 // current user. Not scoped to the current workspace — onEvent filters by user, and
 // device notifications must fire wherever you are.
-useRealtime((ev) => {
-  notes.onEvent(ev, authStore.user?.id)
-  conflicts.onEvent(ev)
-  onProjectGone(ev)
-  onProjectSlugChanged(ev)
-})
+useRealtime(
+  (ev) => {
+    notes.onEvent(ev, authStore.user?.id)
+    conflicts.onEvent(ev)
+    onProjectGone(ev)
+    onProjectSlugChanged(ev)
+  },
+  // Reconnect / resync: rebuild the sidebar tree, which is the layout-level state
+  // that can drift while the socket is down (projects added/removed elsewhere).
+  () => ws.refresh(),
+)
 
 // An admin changing a project's address rewrites the URL of every board under
 // it. Anyone with such a board open is now pointing at an address that no

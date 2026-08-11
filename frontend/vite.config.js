@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { readFileSync } from 'fs'
+import { iconCatalog } from './build/iconCatalog.js'
 
 const webVersion = readFileSync('./VERSION', 'utf-8').trim()
 
@@ -12,7 +13,7 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(webVersion),
   },
-  plugins: [vue()],
+  plugins: [vue(), iconCatalog()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

@@ -28,11 +28,11 @@ class FakeWebSocket {
 }
 
 // Mount a throwaway component so the composable's onMounted/onUnmounted run.
-function mountRealtime(onEvent = () => {}) {
+function mountRealtime(onEvent = () => {}, onResync = () => {}) {
   return mount(
     defineComponent({
       setup() {
-        useRealtime(onEvent)
+        useRealtime(onEvent, onResync)
         return () => null
       },
     }),
@@ -97,6 +97,41 @@ describe('useRealtime', () => {
 
     expect(opened).toHaveLength(2)
     expect(opened[1].protocols).toEqual(['bearer', 'jwt-new'])
+    w.unmount()
+  })
+
+  // A `resync` marker means the server dropped an event for us; the caller must
+  // reload its view (onResync), and the marker itself must not reach onEvent.
+  it('routes a resync marker to onResync, not onEvent', () => {
+    localStorage.setItem('tessera_token', 'jwt')
+    const onEvent = vi.fn()
+    const onResync = vi.fn()
+    const w = mountRealtime(onEvent, onResync)
+
+    opened[0].onopen() // first open — initial load, no resync
+    opened[0].onmessage({ data: JSON.stringify({ type: 'resync' }) })
+
+    expect(onResync).toHaveBeenCalledTimes(1)
+    expect(onEvent).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  // A reconnect means we were offline and missed events; reload rather than
+  // resume mid-stream. The very first open is the initial load and must not.
+  it('calls onResync on reconnect but not on the first open', () => {
+    localStorage.setItem('tessera_token', 'jwt')
+    const onResync = vi.fn()
+    const w = mountRealtime(() => {}, onResync)
+
+    opened[0].onopen()
+    expect(onResync).not.toHaveBeenCalled()
+
+    opened[0].drop()
+    vi.advanceTimersByTime(60000)
+    expect(opened).toHaveLength(2)
+    opened[1].onopen()
+
+    expect(onResync).toHaveBeenCalledTimes(1)
     w.unmount()
   })
 })

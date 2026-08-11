@@ -73,6 +73,7 @@ func envBool(key string, fallback bool) bool {
 type Client struct {
 	baseURL string
 	token   string
+	sudo    string // GitLab username to impersonate on write (REST) calls; "" = none
 	http    *http.Client
 }
 
@@ -89,6 +90,21 @@ func New(baseURL, token string) *Client {
 		// fast via the transport dial/TLS timeouts (3s/4s).
 		http: &http.Client{Timeout: 120 * time.Second, Transport: newTransport()},
 	}
+}
+
+// WithSudo returns a shallow copy of the client that impersonates the given GitLab
+// username on write (REST) requests via the `Sudo` header, so GitLab attributes the
+// action (issue/comment author, etc.) to the real acting user rather than the token
+// owner. Requires the token to be an admin PAT with the `sudo` scope. An empty
+// username yields the same client (no impersonation). Reads (GraphQL, restGet) are
+// never sudo'd — the pull must see the whole project as the service account.
+func (c *Client) WithSudo(username string) *Client {
+	if username == "" {
+		return c
+	}
+	cp := *c
+	cp.sudo = username
+	return &cp
 }
 
 // NewHTTPClient returns a plain HTTP client configured like the GraphQL client
@@ -537,6 +553,9 @@ func (c *Client) restForm(ctx context.Context, method, path string, form url.Val
 	}
 	req.Header.Set("PRIVATE-TOKEN", c.token)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if c.sudo != "" {
+		req.Header.Set("Sudo", c.sudo) // impersonate the acting user (admin token only)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err

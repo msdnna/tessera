@@ -41,14 +41,14 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 	}
 	if issue.MilestoneGID == "" {
 		// GitLab removed the milestone — clear the (GitLab-sourced) one on the task.
-		_ = h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: nil})
+		soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: nil}))
 		return
 	}
 	mID, err := h.ensureGitlabMilestone(ctx, integ, projectID, issue)
 	if err != nil {
 		return
 	}
-	_ = h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: &mID})
+	soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: &mID}))
 }
 
 // ensureGitlabMilestone upserts the native milestone + link for a GitLab milestone,
@@ -79,28 +79,36 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 		}); uerr != nil {
 			return uuid.Nil, uerr
 		}
-		_ = h.q.UpdateGitlabMilestoneLink(ctx, db.UpdateGitlabMilestoneLinkParams{
+		soft(ctx, "UpdateGitlabMilestoneLink", h.q.UpdateGitlabMilestoneLink(ctx, db.UpdateGitlabMilestoneLinkParams{
 			MilestoneID: link.MilestoneID, GlIid: iid, GlNumericID: numeric,
 			GlWebUrl: issue.MilestoneURL, GlState: state, TitleHash: titleHash,
-		})
+		}))
 		return link.MilestoneID, nil
 	case errors.Is(err, pgx.ErrNoRows):
 		st := state
-		m, cerr := h.q.CreateMilestone(ctx, db.CreateMilestoneParams{
-			ProjectID: projectID, Title: issue.MilestoneTitle, Description: "",
-			StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: &st,
-			Slug: h.uniqueMilestoneSlug(ctx, projectID, issue.MilestoneTitle),
-		})
-		if cerr != nil {
-			return uuid.Nil, cerr
+		slug := h.uniqueMilestoneSlug(ctx, projectID, issue.MilestoneTitle)
+		// Transactional: the native milestone and its GitLab link must be created
+		// together — a milestone without its link makes the next sync create a
+		// duplicate instead of recognising the existing one.
+		var mID uuid.UUID
+		if terr := h.inTx(ctx, func(q *db.Queries) error {
+			m, cerr := q.CreateMilestone(ctx, db.CreateMilestoneParams{
+				ProjectID: projectID, Title: issue.MilestoneTitle, Description: "",
+				StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: &st,
+				Slug: slug,
+			})
+			if cerr != nil {
+				return cerr
+			}
+			mID = m.ID
+			return q.CreateGitlabMilestoneLink(ctx, db.CreateGitlabMilestoneLinkParams{
+				MilestoneID: m.ID, IntegrationID: integ.ID, GlGlobalID: issue.MilestoneGID,
+				GlIid: iid, GlNumericID: numeric, GlWebUrl: issue.MilestoneURL, GlState: state, TitleHash: titleHash,
+			})
+		}); terr != nil {
+			return uuid.Nil, terr
 		}
-		if cerr := h.q.CreateGitlabMilestoneLink(ctx, db.CreateGitlabMilestoneLinkParams{
-			MilestoneID: m.ID, IntegrationID: integ.ID, GlGlobalID: issue.MilestoneGID,
-			GlIid: iid, GlNumericID: numeric, GlWebUrl: issue.MilestoneURL, GlState: state, TitleHash: titleHash,
-		}); cerr != nil {
-			return uuid.Nil, cerr
-		}
-		return m.ID, nil
+		return mID, nil
 	default:
 		return uuid.Nil, err
 	}
@@ -127,7 +135,7 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !integ.Enabled {
@@ -138,18 +146,15 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "milestone is already linked to GitLab"})
 		return
 	}
-	// Connection: instance service token first, else the acting user's PAT, else the
-	// binding owner's PAT.
+	// Write connection attributed to the acting user (task #2690): their own PAT, else
+	// the service token with a `Sudo:` header, else the plain service / owner PAT.
 	actor := middleware.CurrentUser(c)
-	baseURL, token, ok := h.effectiveGitlabConn(c, &actor)
-	if !ok {
-		baseURL, token, ok = h.effectiveGitlabConn(c, integ.OwnerUserID)
-	}
+	baseURL, token, sudoUser, ok := h.writeGitlabConn(c, &actor, integ.OwnerUserID)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first, or ask an admin to set a service token"})
 		return
 	}
-	client := gitlab.New(baseURL, token)
+	client := gitlab.New(baseURL, token).WithSudo(sudoUser)
 
 	created, err := client.CreateProjectMilestone(c, integ.ProjectPath, m.Title, m.Description, dateStr(m.StartDate), dateStr(m.DueDate))
 	if err != nil {
@@ -171,7 +176,7 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		GlIid: iid, GlNumericID: created.ID, GlWebUrl: created.WebURL, GlState: state,
 		TitleHash: gitlab.HashStr(m.Title),
 	}); cerr != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "milestone.updated", gin.H{"id": id})

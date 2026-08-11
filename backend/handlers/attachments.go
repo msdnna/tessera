@@ -69,7 +69,7 @@ func (h *API) UploadMedia(c *gin.Context) {
 	// The stored extension is derived from the sniff for the same reason.
 	ct, err := sniffContentType(fileHeader)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	ext, ok := mediaExts[ct]
@@ -80,12 +80,12 @@ func (h *API) UploadMedia(c *gin.Context) {
 
 	dir := filepath.Join(h.uploadDir, "media")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	name := uuid.NewString() + ext
 	if err := saveUploaded(fileHeader, filepath.Join(dir, name)); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"url": "/api/uploads/" + name})
@@ -129,7 +129,7 @@ func (h *API) ListAttachments(c *gin.Context) {
 	}
 	items, err := h.q.ListTaskAttachments(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(items))
@@ -159,13 +159,13 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	// removing a task's files is a single directory.
 	dir := filepath.Join(h.uploadDir, id.String())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	ext := filepath.Ext(fileHeader.Filename)
 	storagePath := filepath.Join(dir, uuid.NewString()+ext)
 	if err := saveUploaded(fileHeader, storagePath); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	})
 	if err != nil {
 		_ = os.Remove(storagePath)
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.logEvent(c, id, "attachment", map[string]any{"filename": att.Filename})
@@ -200,7 +200,7 @@ func (h *API) DownloadAttachment(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if _, _, ok := h.loadTask(c, att.TaskID); !ok {
@@ -228,14 +228,14 @@ func (h *API) DeleteAttachment(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if _, _, ok := h.loadTask(c, att.TaskID); !ok {
 		return
 	}
 	if err := h.q.DeleteAttachment(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	_ = os.Remove(att.StoragePath) // best-effort; the row is already gone

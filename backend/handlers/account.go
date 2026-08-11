@@ -49,7 +49,7 @@ func (h *AuthHandler) acceptPendingInvitations(c *gin.Context, user db.User) {
 		if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{
 			WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
 		}); err == nil {
-			_ = h.q.MarkInvitationAccepted(c, inv.ID)
+			soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
 		}
 	}
 }
@@ -69,10 +69,10 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 	if err := h.q.MarkEmailVerified(c, tok.UserID); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
-	_ = h.q.MarkUserTokenUsed(c, tok.ID)
+	soft(c, "MarkUserTokenUsed", h.q.MarkUserTokenUsed(c, tok.ID))
 	c.Status(http.StatusNoContent)
 }
 
@@ -83,7 +83,7 @@ func (h *AuthHandler) ResendVerification(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
 		return
 	}
-	_ = h.q.DeleteUserTokensOfKind(c, db.DeleteUserTokensOfKindParams{UserID: user.ID, Kind: "verify"})
+	soft(c, "DeleteUserTokensOfKind", h.q.DeleteUserTokensOfKind(c, db.DeleteUserTokensOfKindParams{UserID: user.ID, Kind: "verify"}))
 	h.sendVerification(c, user)
 	c.Status(http.StatusNoContent)
 }
@@ -98,7 +98,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 	if user, err := h.q.GetUserByEmail(c, strings.ToLower(req.Email)); err == nil {
-		_ = h.q.DeleteUserTokensOfKind(c, db.DeleteUserTokensOfKindParams{UserID: user.ID, Kind: "reset"})
+		soft(c, "DeleteUserTokensOfKind", h.q.DeleteUserTokensOfKind(c, db.DeleteUserTokensOfKindParams{UserID: user.ID, Kind: "reset"}))
 		if raw, hash, e := auth.NewRefreshToken(); e == nil {
 			if _, e := h.q.CreateUserToken(c, db.CreateUserTokenParams{
 				UserID: user.ID, Kind: "reset", TokenHash: hash, ExpiresAt: time.Now().Add(resetTokenTTL),
@@ -129,14 +129,14 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	}
 	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if err := h.q.UpdateUserPassword(c, db.UpdateUserPasswordParams{ID: tok.UserID, PasswordHash: hash}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
-	_ = h.q.MarkUserTokenUsed(c, tok.ID)
-	_ = h.q.RevokeAllUserTokens(c, tok.UserID) // log out other sessions
+	soft(c, "MarkUserTokenUsed", h.q.MarkUserTokenUsed(c, tok.ID))
+	soft(c, "RevokeAllUserTokens", h.q.RevokeAllUserTokens(c, tok.UserID)) // log out other sessions
 	c.Status(http.StatusNoContent)
 }

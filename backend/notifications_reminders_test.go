@@ -131,6 +131,40 @@ func TestNotificationChannels(t *testing.T) {
 		t.Fatalf("update without config url: %d\n%s", r.Status, r.Body)
 	}
 
+	// Secret erase: set an auth_header, then clear_secret wipes it (an empty
+	// secret map alone would keep the stored one).
+	up = c.expect(t, c.patch("/notification-channels/"+chID, map[string]any{
+		"config": map[string]any{"url": hook.URL}, "secret": map[string]any{"auth_header": "Bearer sekret"},
+	}), http.StatusOK)
+	if up["has_secret"] != true {
+		t.Fatalf("set auth_header: %v", up)
+	}
+	up = c.expect(t, c.patch("/notification-channels/"+chID, map[string]any{
+		"config": map[string]any{"url": hook.URL}, "clear_secret": true,
+	}), http.StatusOK)
+	if up["has_secret"] != false {
+		t.Fatalf("clear webhook secret: %v", up)
+	}
+
+	// A channel whose secret is required (telegram) rejects clear_secret with 400,
+	// and the stored secret survives.
+	tg := c.expect(t, c.post("/notification-channels", map[string]any{
+		"type": "telegram", "label": "Тг", "config": map[string]any{"chat_id": "42"},
+		"secret": map[string]any{"bot_token": "123:ABC"},
+	}), http.StatusCreated)
+	tgID := tg["id"].(string)
+	if r := c.patch("/notification-channels/"+tgID, map[string]any{
+		"config": map[string]any{"chat_id": "42"}, "clear_secret": true,
+	}); r.Status != http.StatusBadRequest {
+		t.Fatalf("clear required secret must 400: %d\n%s", r.Status, r.Body)
+	}
+	if v := byID(t, c.get("/notification-channels").listBody(t), tgID); v["has_secret"] != true {
+		t.Fatalf("telegram secret must survive rejected clear: %v", v)
+	}
+	if r := c.del("/notification-channels/" + tgID); r.Status != http.StatusNoContent {
+		t.Fatalf("delete telegram channel: %d\n%s", r.Status, r.Body)
+	}
+
 	// Delete.
 	if r := c.del("/notification-channels/" + chID); r.Status != http.StatusNoContent {
 		t.Fatalf("delete channel: %d\n%s", r.Status, r.Body)

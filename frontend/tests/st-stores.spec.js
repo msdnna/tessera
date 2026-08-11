@@ -299,28 +299,63 @@ describe('boardView store', () => {
     expect(s.reloadNonce).toBe(before + 1)
   })
 
-  it('setters normalize null lists/maps to empty', () => {
+  it('refill normalizes a null map to empty and derives the lists from it', () => {
     const s = useBoardViewStore()
-    s.setTags(null)
-    s.setPrefixNames(null)
-    s.setMilestones(null)
+    s.refill(s.tagsMap, null)
+    s.refill(s.prefixNames, null)
+    s.refill(s.milestonesMap, null)
     expect(s.tagsList).toEqual([])
     expect(s.prefixNames).toEqual({})
     expect(s.milestonesList).toEqual([])
-    s.setTags([{ id: 't' }])
+    s.refill(s.tagsMap, { t: { id: 't' } })
     expect(s.tagsList).toHaveLength(1)
   })
 
-  it('reset clears context but leaves layout untouched', () => {
+  it('refill keeps the map identity so holders of the reference see the update', () => {
+    const s = useBoardViewStore()
+    const held = s.tagsMap // what a card binds to
+    s.refill(s.tagsMap, { t: { id: 't' } })
+    expect(held).toBe(s.tagsMap)
+    expect(held.t).toEqual({ id: 't' })
+    s.refill(s.tagsMap, { u: { id: 'u' } })
+    expect(held.t).toBeUndefined()
+    expect(held.u).toEqual({ id: 'u' })
+  })
+
+  it('gitlabMembersList hides GitLab members already mapped to a workspace member', () => {
+    const s = useBoardViewStore()
+    s.refill(s.membersMap, { u1: { user_id: 'u1', name: 'Аня' } })
+    s.refill(s.gitlabMembersMap, {
+      1: { gl_user_id: 1, gl_username: 'anya', tessera_user_id: 'u1' },
+      2: { gl_user_id: 2, gl_username: 'extern', tessera_user_id: null },
+    })
+    expect(s.gitlabMembersList.map((g) => g.gl_username)).toEqual(['extern'])
+  })
+
+  it('reset clears context and card display, but leaves layout untouched', () => {
     const s = useBoardViewStore()
     s.setContext('b1', 'w1', 'p1')
-    s.setTags([{ id: 't' }])
+    s.refill(s.tagsMap, { t: { id: 't' } })
+    s.board = { id: 'b1' }
+    s.columns = [{ id: 'c1' }]
+    s.metaTagPrefixes = new Set(['status'])
+    s.gitlabCanCreate = true
+    s.cardSize = 'large'
+    s.fieldVis.due = false
     s.layout = 'gantt'
     s.archiveOpen = true
     s.reset()
     expect(s.active).toBe(false)
     expect(s.boardId).toBeNull()
+    expect(s.board).toBeNull()
+    expect(s.columns).toEqual([])
     expect(s.tagsList).toEqual([])
+    expect(s.metaTagPrefixes.size).toBe(0)
+    expect(s.gitlabCanCreate).toBe(false)
+    // Card display settings are per-board too — a stale 'large' would leak into
+    // the next board opened before its saved view is restored.
+    expect(s.cardSize).toBe('medium')
+    expect(s.fieldVis.due).toBe(true)
     expect(s.archiveOpen).toBe(false)
     // layout is intentionally not reset.
     expect(s.layout).toBe('gantt')

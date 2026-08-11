@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { filterBoardTasks, matchesDue, matchesTask, hasSubtaskFacets } from '@/utils/taskFilter'
+import {
+  filterBoardTasks,
+  matchesDue,
+  matchesTask,
+  hasSubtaskFacets,
+  hasAnyFacets,
+} from '@/utils/taskFilter'
 
 const NOW = new Date('2026-08-03T12:00:00')
 
@@ -161,6 +167,29 @@ describe('matchesTask / hasSubtaskFacets', () => {
     const flt = f({ statuses: ['c9'], assignees: ['u1'] })
     expect(matchesTask(subMine, flt, { now: NOW })).toBe(false) // колонка не та
     expect(matchesTask(subMine, flt, { facets: ['assignees'], now: NOW })).toBe(true)
+  })
+  it('hasAnyFacets учитывает и колонку, которую подзадача поднять не может', () => {
+    expect(hasAnyFacets(f({}))).toBe(false)
+    expect(hasAnyFacets(f({ statuses: ['c1'] }))).toBe(true)
+    expect(hasAnyFacets(f({ q: '  ' }))).toBe(false)
+    expect(hasAnyFacets(f({ tags: ['tagA'] }))).toBe(true)
+  })
+  it('пустой композер: быстрый путь отдаёт то же, что и общий (#2658)', () => {
+    const r = filterBoardTasks({ ...board, filters: f({}) })
+    expect(r.tasks.map((t) => t.id)).toEqual(['p1'])
+    expect(r.subtasksByParent.p1.map((s) => s.id)).toEqual(['s1', 's2'])
+    expect(r.narrowedParents.size).toBe(0)
+    // Родителей без детей в карте быть не должно — иначе счётчик «N из M» на карточке
+    // увидит пустой список там, где детей просто нет.
+    const lone = { id: 'p2', title: 'Один', number: 20, column_id: 'c1', priority: 0 }
+    const r2 = filterBoardTasks({ tasks: [parent, lone], subtasksByParent: {}, filters: f({}) })
+    expect(r2.tasks.map((t) => t.id)).toEqual(['p1', 'p2'])
+    expect(Object.keys(r2.subtasksByParent)).toEqual([])
+    // И массив задач — свежий, а не та же ссылка, что пришла на вход.
+    const input = [parent, lone]
+    expect(filterBoardTasks({ tasks: input, subtasksByParent: {}, filters: f({}) }).tasks).not.toBe(
+      input,
+    )
   })
   it('без «подзадачных» фасетов проход по детям не нужен', () => {
     expect(hasSubtaskFacets(f({}))).toBe(false)

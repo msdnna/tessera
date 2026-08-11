@@ -45,7 +45,7 @@ func (h *API) ListBoardViews(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -53,7 +53,7 @@ func (h *API) ListBoardViews(c *gin.Context) {
 	}
 	rows, err := h.q.ListBoardViews(c, db.ListBoardViewsParams{BoardID: boardID, UserID: middleware.CurrentUser(c)})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]boardViewView, 0, len(rows))
@@ -75,7 +75,7 @@ func (h *API) SaveBoardView(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -97,7 +97,7 @@ func (h *API) SaveBoardView(c *gin.Context) {
 		BoardID: boardID, UserID: middleware.CurrentUser(c), Name: req.Name, Config: cfg,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, toBoardViewView(v))
@@ -114,7 +114,7 @@ func (h *API) DeleteBoardView(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if v.UserID != middleware.CurrentUser(c) {
@@ -122,7 +122,7 @@ func (h *API) DeleteBoardView(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteBoardView(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)

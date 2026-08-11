@@ -42,7 +42,7 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !integ.Enabled {
@@ -69,18 +69,16 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		description = *req.Description
 	}
 
-	// Connection: instance service token first, else the acting user's PAT, else the
-	// binding owner's PAT.
+	// Write connection attributed to the acting user (task #2690): their own PAT, else
+	// the service token with a `Sudo:` header, else the plain service / owner PAT — so a
+	// new issue's GitLab author is the real user when possible.
 	actor := middleware.CurrentUser(c)
-	baseURL, token, ok := h.effectiveGitlabConn(c, &actor)
-	if !ok {
-		baseURL, token, ok = h.effectiveGitlabConn(c, integ.OwnerUserID)
-	}
+	baseURL, token, sudoUser, ok := h.writeGitlabConn(c, &actor, integ.OwnerUserID)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first, or ask an admin to set a service token"})
 		return
 	}
-	client := gitlab.New(baseURL, token)
+	client := gitlab.New(baseURL, token).WithSudo(sudoUser)
 	// Attribute the issue link to the acting user's GitLab identity when known.
 	authorLogin := h.actorGitlabUsername(c, actor)
 	rules := parseRules(integ.LabelRules)
@@ -99,9 +97,18 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		return
 	}
 
-	// Best-effort follow-up: time estimate is set via its own endpoint (time unit only).
-	if wb.PushEstimate && task.Estimate != nil && *task.Estimate > 0 && h.integrationEstimationUnit(c, integ) == "time" {
+	// Best-effort follow-ups: the create call only carries title/description/labels/
+	// due/assignees, so mirror the rest of the task snapshot onto the new issue via
+	// their own endpoints. Unconditional (like due/assignees) — an explicit "create
+	// issue from task" should reproduce the task's current fields, not wait for a
+	// later incidental write-back.
+	if task.Estimate != nil && *task.Estimate > 0 && h.integrationEstimationUnit(c, integ) == "time" {
 		_ = client.SetIssueTimeEstimate(c, integ.ProjectPath, created.IID, int64(*task.Estimate))
+	}
+	if task.MilestoneID != nil {
+		if ml, mlErr := h.q.GetGitlabMilestoneLink(c, *task.MilestoneID); mlErr == nil && ml.GlNumericID != 0 {
+			_ = client.SetIssueMilestone(c, integ.ProjectPath, created.IID, ml.GlNumericID)
+		}
 	}
 
 	state := created.State
@@ -118,7 +125,7 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		GlLastState: state,
 	}); cerr != nil {
 		log.Printf("gitlab create issue: link task %s failed: %v", id, cerr)
-		fail(c)
+		fail(c, cerr)
 		return
 	}
 	// True up the link snapshot (accurate hashes, author name/avatar, state) from the
@@ -193,8 +200,8 @@ func (h *API) resolveTaskGitlabAssigneeIDs(ctx context.Context, integ db.GitlabI
 	ids := map[int64]bool{}
 	if tas, err := h.q.ListTaskAssignees(ctx, taskID); err == nil {
 		for _, a := range tas {
-			if cred, cerr := h.q.GetGitlabCredential(ctx, a.ID); cerr == nil && cred.GlUserID != 0 {
-				ids[cred.GlUserID] = true
+			if gid, ok := h.assigneeGlUserID(ctx, a.ID); ok {
+				ids[gid] = true
 			}
 		}
 	}
@@ -230,7 +237,7 @@ func (h *API) ListGitlabIssueTemplates(c *gin.Context) {
 	// board's binding); fall back to the workspace's first binding.
 	rows, err := h.q.ListGitlabIntegrationsByWorkspace(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if len(rows) == 0 {

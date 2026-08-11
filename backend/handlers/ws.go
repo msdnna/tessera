@@ -110,7 +110,9 @@ func (h *WSHandler) authenticate(c *gin.Context) (uuid.UUID, bool) {
 	if tok == "" {
 		return uuid.Nil, false
 	}
-	return middleware.ResolveBearer(c, h.secret, h.q, tok)
+	// nil toucher: a WS connection authenticates once, so throttling its
+	// last_used_at write buys nothing.
+	return middleware.ResolveBearer(c, h.secret, h.q, tok, nil)
 }
 
 // subprotocolToken pulls the credential out of a `bearer, <token>` subprotocol

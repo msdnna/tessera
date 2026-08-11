@@ -51,7 +51,7 @@ func respondOpError(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	fail(c)
+	fail(c, err)
 }
 
 // ── task field patch ───────────────────────────────────────────
@@ -215,15 +215,15 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 	}
 	// A manual due-date change on a GitLab-linked task wins over the sync.
 	if !sameTime(t.DueDate, updated.DueDate) {
-		_ = h.q.MarkGitlabDueOverridden(c, t.ID)
+		soft(c, "MarkGitlabDueOverridden", h.q.MarkGitlabDueOverridden(c, t.ID))
 	}
 	// Likewise a manual start-date change wins over the sync.
 	if !sameTime(t.StartDate, updated.StartDate) {
-		_ = h.q.MarkGitlabStartOverridden(c, t.ID)
+		soft(c, "MarkGitlabStartOverridden", h.q.MarkGitlabStartOverridden(c, t.ID))
 	}
 	// A manual estimate change wins over the GitLab timeEstimate pull.
 	if !sameEstimate(t.Estimate, updated.Estimate) {
-		_ = h.q.MarkGitlabEstimateOverridden(c, t.ID)
+		soft(c, "MarkGitlabEstimateOverridden", h.q.MarkGitlabEstimateOverridden(c, t.ID))
 	}
 	changes := h.journalUpdate(c, t, updated)
 	if len(changes) > 0 {
@@ -403,7 +403,7 @@ func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID
 		return err
 	}
 	// A manual milestone change on a GitLab-linked task wins over the sync.
-	_ = h.q.MarkGitlabMilestoneOverridden(c, taskID)
+	soft(c, "MarkGitlabMilestoneOverridden", h.q.MarkGitlabMilestoneOverridden(c, taskID))
 	h.enqueueWriteback(c, taskID, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
 	if t, err := h.q.GetTask(c, taskID); err == nil {
 		h.broadcast(wsID, "task.updated", t)
@@ -498,14 +498,17 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 // applyArchive soft-deletes a task. detach keeps its subtasks on the board
 // (re-parented to null); otherwise they are archived with the parent.
 func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach bool) error {
-	if detach {
-		if err := h.q.DetachChildren(c, &t.ID); err != nil {
-			return err
+	// Transactional: detach-then-archive must be atomic, else a crash leaves the
+	// parent archived with its subtasks still active on the board (or vice versa).
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if detach {
+			if err := q.DetachChildren(c, &t.ID); err != nil {
+				return err
+			}
+			return q.ArchiveTask(c, t.ID)
 		}
-		if err := h.q.ArchiveTask(c, t.ID); err != nil {
-			return err
-		}
-	} else if err := h.q.ArchiveTaskCascade(c, t.ID); err != nil {
+		return q.ArchiveTaskCascade(c, t.ID)
+	}); err != nil {
 		return err
 	}
 	h.logEvent(c, t.ID, "archived", nil)

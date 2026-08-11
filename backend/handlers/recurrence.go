@@ -76,7 +76,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 			}
 		}
 	}
-	_ = h.q.ReopenSubtasks(ctx, &t.ID)
+	soft(ctx, "ReopenSubtasks", h.q.ReopenSubtasks(ctx, &t.ID))
 	h.logEventActor(ctx, t.ID, actorID, "recurred", map[string]any{"due": next})
 	return updated, true
 }
@@ -134,12 +134,12 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	}
 	if tags, terr := h.q.ListTaskTags(ctx, src.ID); terr == nil {
 		for _, tg := range tags {
-			_ = h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: clone.ID, TagID: tg.ID})
+			soft(ctx, "AddTaskTag", h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: clone.ID, TagID: tg.ID}))
 		}
 	}
 	if as, aerr := h.q.ListTaskAssignees(ctx, src.ID); aerr == nil {
 		for _, a := range as {
-			_ = h.q.AddTaskAssignee(ctx, db.AddTaskAssigneeParams{TaskID: clone.ID, UserID: a.ID})
+			soft(ctx, "AddTaskAssignee", h.q.AddTaskAssignee(ctx, db.AddTaskAssigneeParams{TaskID: clone.ID, UserID: a.ID}))
 		}
 	}
 	if subs, serr := h.q.ListSubtasks(ctx, &src.ID); serr == nil {
@@ -170,14 +170,14 @@ func (h *API) RunRecurrenceWorker(ctx context.Context) {
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	h.tick(jobRecurrence, "продвижение повторяющихся задач")
-	h.advanceScheduleDue(ctx) // catch up at startup, don't wait a tick
+	h.withAdvisoryLock(ctx, "recurrence", func() { h.advanceScheduleDue(ctx) }) // catch up at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobRecurrence, "продвижение повторяющихся задач")
-			h.advanceScheduleDue(ctx)
+			h.withAdvisoryLock(ctx, "recurrence", func() { h.advanceScheduleDue(ctx) })
 		}
 	}
 }

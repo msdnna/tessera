@@ -1,0 +1,61 @@
+/* The chart shell itself — the scroll viewport, the axis-wide overlays (today-line,
+   cursor guide) and the empty state. Shared by BoardTimelineView and BoardGanttView,
+   imported into each one's *scoped* style block (see chart-parts.css for the same
+   pattern applied to the row components). */
+
+.tl {
+  padding: 2px 0 40px;
+}
+.tl-scroll {
+  overflow: auto;
+  border: 1px solid var(--t-border);
+  border-radius: 10px;
+  max-height: calc(100vh - 220px);
+}
+.tl-scroll.panning {
+  cursor: grabbing;
+  user-select: none;
+}
+.tl-inner {
+  position: relative;
+}
+/* one continuous today-line spanning every lane + row (a child of .tl-body so it
+   scrolls horizontally with the content; hidden behind the sticky left column) */
+.tl-body {
+  position: relative;
+}
+/* virtualization spacers: reserve the height of the off-screen rows above/below the
+   rendered window so the scrollbar + total height stay correct */
+.tl-vspacer {
+  flex: 0 0 auto;
+}
+.tl-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in srgb, var(--t-primary) 70%, transparent);
+  z-index: 1;
+  pointer-events: none;
+}
+/* neutral pointer cursor-line: a faint grey dashed guide under the bars (z1, like
+   today) so it never obscures them — purely an auxiliary "read the date" aid */
+.tl-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--t-text3) 60%, transparent);
+  z-index: 1;
+  pointer-events: none;
+}
+/* glide the today-line on zoom; never while dragging/zooming (would lag) */
+.tl-inner.animate .tl-today {
+  transition: left 0.18s ease;
+}
+.tl-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--t-text3);
+  font-size: 14px;
+}

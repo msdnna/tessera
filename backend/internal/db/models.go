@@ -197,6 +197,7 @@ type GitlabWriteback struct {
 	Resolution    string     `json:"resolution"`
 	ResolvedBy    *uuid.UUID `json:"resolved_by"`
 	ResolvedAt    *time.Time `json:"resolved_at"`
+	ActorUserID   *uuid.UUID `json:"actor_user_id"`
 }
 
 type Membership struct {
@@ -320,6 +321,7 @@ type OauthProvider struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	ServiceTokenEnc string    `json:"service_token_enc"`
+	SudoWriteback   bool      `json:"sudo_writeback"`
 }
 
 type PersonalAccessToken struct {

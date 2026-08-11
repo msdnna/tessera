@@ -35,6 +35,11 @@ type Hub struct {
 	unregister chan *Client
 	dropUser   chan uuid.UUID
 	broadcast  chan Event
+	// done is closed by Close to stop Run and release every client. Clients
+	// select on it when handing themselves to Run so a connection racing with
+	// shutdown parks nobody on an unread channel.
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 // NewHub returns an initialised Hub ready to Run.
@@ -45,13 +50,32 @@ func NewHub() *Hub {
 		unregister: make(chan *Client),
 		dropUser:   make(chan uuid.UUID, 8),
 		broadcast:  make(chan Event, 64),
+		done:       make(chan struct{}),
 	}
 }
 
-// Run owns the client set; call it once in its own goroutine.
+// Close stops Run and disconnects every client with a normal close frame, so
+// browsers reconnect to the replacement process instead of reporting a broken
+// socket. Safe to call more than once; safe to call without a running Run.
+func (h *Hub) Close() {
+	h.closeOnce.Do(func() { close(h.done) })
+}
+
+// Run owns the client set; call it once in its own goroutine. It returns once
+// Close is called.
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.done:
+			// Closing each send channel makes the write pumps emit a close
+			// frame and exit. Run owns the map, so nothing else closes these.
+			h.mu.Lock()
+			for c := range h.clients {
+				delete(h.clients, c)
+				close(c.send)
+			}
+			h.mu.Unlock()
+			return
 		case c := <-h.register:
 			h.mu.Lock()
 			h.clients[c] = struct{}{}
@@ -82,9 +106,12 @@ func (h *Hub) Run() {
 				case c.send <- ev:
 				default:
 					// Slow client — drop the event for it rather than block
-					// the whole hub. A persistently slow client gets evicted
-					// by its own write deadline.
-					log.Printf("realtime: dropping event for slow client")
+					// the whole hub. Flag it so the write pump sends a resync
+					// marker (the client reloads instead of silently staying
+					// stale); a persistently slow client is still evicted by its
+					// own write deadline, and refetches on the reconnect.
+					c.needResync.Store(true)
+					log.Printf("realtime: dropping event for slow client; flagged resync")
 				}
 			}
 			h.mu.RUnlock()
@@ -99,6 +126,13 @@ func (h *Hub) Broadcast(ev Event) {
 	default:
 		log.Printf("realtime: broadcast buffer full, dropping event %q", ev.Type)
 	}
+}
+
+// ClientCount returns the number of live sockets, for the /admin/metrics probe.
+func (h *Hub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
 }
 
 // DropUser closes every socket belonging to a user, forcing their clients to

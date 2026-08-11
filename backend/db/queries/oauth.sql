@@ -5,8 +5,8 @@ SELECT * FROM oauth_providers WHERE provider = $1;
 
 -- UpsertOAuthProvider stores the admin-configured OAuth app + service token.
 -- name: UpsertOAuthProvider :one
-INSERT INTO oauth_providers (provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, service_token_enc, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+INSERT INTO oauth_providers (provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, service_token_enc, sudo_writeback, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
 ON CONFLICT (provider) DO UPDATE
 SET client_id = EXCLUDED.client_id,
     client_secret_enc = EXCLUDED.client_secret_enc,
@@ -14,6 +14,7 @@ SET client_id = EXCLUDED.client_id,
     enabled = EXCLUDED.enabled,
     org_map = EXCLUDED.org_map,
     service_token_enc = EXCLUDED.service_token_enc,
+    sudo_writeback = EXCLUDED.sudo_writeback,
     updated_at = now()
 RETURNING *;
 
@@ -41,6 +42,12 @@ SELECT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_user
 -- identity (for attributing issues created under a shared service token).
 -- name: GetGitlabUsernameForUser :one
 SELECT provider_username FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1;
+
+-- GetGitlabUserIDForUser returns a user's numeric GitLab user id (stored as text)
+-- from their OAuth identity — the assignee-write-back fallback for OAuth-login users
+-- who have no personal PAT (and thus no gitlab_credentials.gl_user_id).
+-- name: GetGitlabUserIDForUser :one
+SELECT provider_user_id FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1;
 
 -- GetGitlabAvatarForUser returns the (already-proxied) GitLab avatar URL for a
 -- Tessera user, resolved from the synced project-member roster via their GitLab

@@ -22,12 +22,12 @@ func (h *API) Search(c *gin.Context) {
 	}
 	tasks, err := h.q.SearchTasks(c, db.SearchTasksParams{WorkspaceID: wsID, Column2: &q})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	notes, err := h.q.SearchNotes(c, db.SearchNotesParams{WorkspaceID: wsID, Column2: &q})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"tasks": orEmpty(tasks), "notes": orEmpty(notes)})

@@ -23,7 +23,7 @@ func (h *API) ListWorkspaceTasks(c *gin.Context) {
 		IncludeSubtasks: c.Query("include_subtasks") == "1" || c.Query("include_subtasks") == "true",
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if c.Query("assignee") == "me" {
@@ -55,7 +55,7 @@ func (h *API) WorkspaceSummary(c *gin.Context) {
 		WeekEnd:     today.AddDate(0, 0, 7),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 

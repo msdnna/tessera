@@ -92,14 +92,14 @@ func (h *API) RunNotificationWorker(ctx context.Context) {
 	ticker := time.NewTicker(notifyWorkerTick)
 	defer ticker.Stop()
 	h.tick(jobNotifyDelivery, "рассылка уведомлений")
-	h.drainDeliveries(ctx) // drain the backlog at startup, don't wait a tick
+	h.withAdvisoryLock(ctx, "notify_delivery", func() { h.drainDeliveries(ctx) }) // drain backlog at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobNotifyDelivery, "рассылка уведомлений")
-			h.drainDeliveries(ctx)
+			h.withAdvisoryLock(ctx, "notify_delivery", func() { h.drainDeliveries(ctx) })
 		}
 	}
 }
@@ -136,16 +136,16 @@ func (h *API) drainDeliveries(ctx context.Context) {
 // attempt's number.
 func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err error) {
 	if err == nil {
-		_ = h.q.MarkDeliverySent(ctx, d.ID)
+		soft(ctx, "MarkDeliverySent", h.q.MarkDeliverySent(ctx, d.ID))
 		return
 	}
 	if notify.IsPermanent(err) || int(d.Attempts) >= maxDeliveryAttempts {
-		_ = h.q.MarkDeliveryFailed(ctx, db.MarkDeliveryFailedParams{ID: d.ID, LastError: truncErr(err)})
+		soft(ctx, "MarkDeliveryFailed", h.q.MarkDeliveryFailed(ctx, db.MarkDeliveryFailedParams{ID: d.ID, LastError: truncErr(err)}))
 		log.Printf("notify: delivery %s gave up after %d attempt(s): %v", d.ID, d.Attempts, err)
 		return
 	}
 	next := time.Now().Add(time.Duration(d.Attempts*d.Attempts) * time.Minute) // 1, 4, 9, 16 min
-	_ = h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{ID: d.ID, LastError: truncErr(err), NextAttemptAt: next})
+	soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{ID: d.ID, LastError: truncErr(err), NextAttemptAt: next}))
 }
 
 // deliverGroup renders each notification in a digest group and sends one combined

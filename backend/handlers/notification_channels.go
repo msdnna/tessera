@@ -64,6 +64,9 @@ type channelReq struct {
 	Secret   map[string]string `json:"secret"`
 	Template *string           `json:"template"` // nil on update = keep stored
 	Enabled  *bool             `json:"enabled"`
+	// ClearSecret wipes the stored secret blob. An empty Secret map means "keep",
+	// so erasing needs an explicit flag. A supplied Secret in the same request wins.
+	ClearSecret bool `json:"clear_secret"`
 }
 
 // maxTemplateLen caps a channel message template (a generous limit — these are
@@ -89,7 +92,7 @@ func validateTemplate(tmpl string) error {
 func (h *API) ListNotificationChannels(c *gin.Context) {
 	rows, err := h.q.ListNotificationChannels(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]channelView, 0, len(rows))
@@ -131,7 +134,7 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 	}
 	enc, err := h.sealSecret(req.Secret)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	enabled := true
@@ -144,7 +147,7 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 		Config: cfgJSON, SecretEnc: enc, Enabled: enabled, Template: tmpl,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, channelViewOf(row))
@@ -163,7 +166,7 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	var req channelReq
@@ -177,10 +180,14 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		return
 	}
 	// Re-seal only when a new secret was supplied; otherwise keep the stored one.
+	// An explicit clear_secret wipes it (a supplied secret still wins over the flag).
 	secEnc := row.SecretEnc
+	if req.ClearSecret {
+		secEnc = ""
+	}
 	if hasSecret(req.Secret) {
 		if secEnc, err = h.sealSecret(req.Secret); err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 	}
@@ -206,7 +213,7 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		Config: cfgJSON, SecretEnc: secEnc, Enabled: enabled, Template: tmpl,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, channelViewOf(updated))
@@ -221,7 +228,7 @@ func (h *API) DeleteNotificationChannel(c *gin.Context) {
 	if err := h.q.DeleteNotificationChannel(c, db.DeleteNotificationChannelParams{
 		ID: id, UserID: middleware.CurrentUser(c),
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -257,7 +264,7 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 			SecretEnc: existing.SecretEnc, Enabled: existing.Enabled, Template: existing.Template,
 		})
 		if uerr != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, channelViewOf(updated))
@@ -267,7 +274,7 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 		UserID: uid, Type: "device", Label: label, Config: cfg, SecretEnc: "", Enabled: true, Template: "",
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, channelViewOf(row))
@@ -286,7 +293,7 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	ch, err := h.channelFromRow(row)
@@ -311,9 +318,9 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
-	_ = h.q.SetNotificationChannelVerified(c, db.SetNotificationChannelVerifiedParams{
+	soft(c, "SetNotificationChannelVerified", h.q.SetNotificationChannelVerified(c, db.SetNotificationChannelVerifiedParams{
 		ID: id, UserID: uid, Verified: true,
-	})
+	}))
 	resp := gin.H{"ok": true}
 	if row.Type == "email" && !h.mailer.Enabled() {
 		resp["warning"] = "SMTP на сервере не настроен — письмо записано в лог, но не отправлено."

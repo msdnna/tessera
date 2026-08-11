@@ -851,7 +851,7 @@ watch(
                     placeholder="https://gitlab.example.com"
                     :input-props="{ autocomplete: 'off', name: 'gl-base-url' }"
                   />
-                  <n-text depth="3" class="lbl">Токен (PAT, scope read_api)</n-text>
+                  <n-text depth="3" class="lbl">Токен (PAT, scope api)</n-text>
                   <n-input
                     v-model:value="tokenInput"
                     type="password"
@@ -862,6 +862,12 @@ watch(
                     @keyup.enter="connect"
                   />
                 </div>
+                <p class="gl-wb-hint">
+                  <n-text depth="3">
+                    Для записи от вашего имени (создание issue, обратная запись) нужен scope
+                    <b>api</b>. Токена с <b>read_api</b> хватает только для чтения/синхронизации.
+                  </n-text>
+                </p>
                 <div class="gl-actions">
                   <n-button type="primary" size="small" :loading="connecting" @click="connect">
                     Подключить
@@ -870,10 +876,18 @@ watch(
               </template>
             </section>
 
-            <!-- INTEGRATION — available when a personal PAT is connected OR an instance
-           service token is configured (admin). -->
-            <section v-if="gl.connected || serviceConfigured" class="gl-sec">
+            <!-- INTEGRATION — always shown so an admin can view/edit stored bindings even
+           with no credentials configured; a banner warns that sync/write won't run. -->
+            <section class="gl-sec">
               <h4 class="gl-h">Привязки GitLab → доска</h4>
+              <p v-if="!gl.connected && !serviceConfigured" class="gl-warn">
+                <n-icon :component="WarningOutline" />
+                <n-text depth="3">
+                  Нет доступных учётных данных GitLab: синхронизация и обратная запись
+                  работать не будут. Подключите личный токен выше или попросите админа
+                  задать сервисный токен. Сохранённые привязки при этом не теряются.
+                </n-text>
+              </p>
               <p v-if="!isAdmin" class="gl-wb-hint">
                 <n-text depth="3">
                   Изменять привязки может только администратор. Вам доступен просмотр и запуск
@@ -1451,6 +1465,25 @@ watch(
   margin: 8px 0 12px;
   font-size: 12px;
   line-height: 1.4;
+}
+/* No-credentials warning banner atop the integration section. */
+.gl-warn {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 8px 0 12px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  border: 1px solid var(--t-warning, #e0a500);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--t-warning, #e0a500) 10%, transparent);
+}
+.gl-warn .n-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--t-warning, #e0a500);
+  font-size: 15px;
 }
 .lbl {
   font-size: 12px;

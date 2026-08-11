@@ -3,6 +3,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -37,6 +38,16 @@ type API struct {
 	publicURL string                   // external base URL for links in emails
 	senders   map[string]notify.Sender // notification channel transports, keyed by type
 	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
+	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
+	version   string                   // build version, surfaced by the readiness/metrics probes
+}
+
+// WireOps injects the ops-observability dependencies that live outside NewAPI's
+// core wiring — the HTTP metrics collector and the build version string — so the
+// readiness and /admin/metrics handlers can report them.
+func (h *API) WireOps(m *middleware.Collector, version string) {
+	h.metrics = m
+	h.version = version
 }
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from
@@ -173,6 +184,49 @@ func notFound(c *gin.Context, err error) bool {
 }
 
 // fail writes a generic 500.
-func fail(c *gin.Context) {
+// fail writes a generic 500 to the client and logs the real cause server-side,
+// tagged with the request's method/path/id so a production log line can be tied
+// back to a user report. The client only ever sees "internal error" — the cause
+// never leaks. err may be nil (a handful of call sites fail without one).
+func fail(c *gin.Context, err error) {
+	slog.Error("request failed",
+		"err", err,
+		"method", c.Request.Method,
+		"path", c.Request.URL.Path,
+		"request_id", middleware.GetRequestID(c),
+	)
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+}
+
+// soft records a best-effort operation's failure without touching the response.
+// Ignoring the result is often deliberate (a due-date already stamped, a log row
+// that didn't write), but staying silent about it makes "why did the sync
+// overwrite this" unanswerable. The op label names the action for the log; a nil
+// error is silent. ctx is a gin.Context or a worker's context.Context.
+func soft(ctx context.Context, op string, err error) {
+	if err == nil {
+		return
+	}
+	slog.Warn("best-effort op failed",
+		"op", op,
+		"err", err,
+		"request_id", middleware.GetRequestID(ctx),
+	)
+}
+
+// inTx runs fn inside a database transaction, rolling back if fn returns an
+// error (or panics on the way out) and committing otherwise. It centralises the
+// begin/rollback/commit boilerplate so multi-statement mutations stay
+// all-or-nothing — a partial apply leaves orphans (a workspace with no
+// membership) or drops data (a DELETE that commits before its re-INSERT).
+func (h *API) inTx(ctx context.Context, fn func(q *db.Queries) error) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful Commit
+	if err := fn(h.q.WithTx(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

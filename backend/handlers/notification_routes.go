@@ -50,7 +50,7 @@ type routeReq struct {
 func (h *API) ListNotificationRoutes(c *gin.Context) {
 	rows, err := h.q.ListNotificationRoutes(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]routeView, 0, len(rows))
@@ -94,7 +94,7 @@ func (h *API) CreateNotificationRoute(c *gin.Context) {
 		ChannelIds: orIDs(req.ChannelIDs), Options: orJSONObj(req.Options), Enabled: enabled,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, routeViewOf(row))
@@ -132,7 +132,7 @@ func (h *API) UpdateNotificationRoute(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, routeViewOf(row))
@@ -147,7 +147,7 @@ func (h *API) DeleteNotificationRoute(c *gin.Context) {
 	if err := h.q.DeleteNotificationRoute(c, db.DeleteNotificationRouteParams{
 		ID: id, UserID: middleware.CurrentUser(c),
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -225,9 +225,9 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 					next = d
 				}
 			}
-			_ = h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
+			soft(ctx, "CreateNotificationDeliveryAt", h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
 				NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next, DigestGroup: group,
-			})
+			}))
 		}
 		return deviceTargets // first matching rule wins
 	}

@@ -84,17 +84,21 @@ func (h *API) enqueueWriteback(ctx context.Context, taskID, actorID uuid.UUID, k
 	if err != nil {
 		return
 	}
-	// Coalesce a burst of same-kind edits into one pending row (latest wins).
+	// Attribute the row to the acting user so the worker can push under their GitLab
+	// identity (personal PAT, else admin sudo). actorID is never Nil here (guarded above).
+	actor := actorID
+	// Coalesce a burst of same-kind edits into one pending row (latest wins, incl. actor).
 	// Comments are distinct events and must never be merged.
 	if kind != "comment" {
 		if n, cerr := h.q.CoalescePendingWriteback(ctx, db.CoalescePendingWritebackParams{
-			TaskID: taskID, ChangeKind: kind, Payload: raw,
+			TaskID: taskID, ChangeKind: kind, Payload: raw, ActorUserID: &actor,
 		}); cerr == nil && n > 0 {
 			return
 		}
 	}
 	if cerr := h.q.CreateGitlabWriteback(ctx, db.CreateGitlabWritebackParams{
 		TaskID: taskID, IntegrationID: link.IntegrationID, ChangeKind: kind, Payload: raw,
+		ActorUserID: &actor,
 	}); cerr != nil {
 		log.Printf("gitlab writeback: enqueue %s for task %s failed: %v", kind, taskID, cerr)
 	}
@@ -168,14 +172,14 @@ func (h *API) RunGitlabWriteBackWorker(ctx context.Context) {
 	ticker := time.NewTicker(writebackWorkerTick)
 	defer ticker.Stop()
 	h.tick(jobGitlabWriteback, "выгрузка изменений в GitLab")
-	h.drainWritebacks(ctx) // drain the backlog at startup, don't wait a tick
+	h.withAdvisoryLock(ctx, "gitlab_writeback", func() { h.drainWritebacks(ctx) }) // drain backlog at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobGitlabWriteback, "выгрузка изменений в GitLab")
-			h.drainWritebacks(ctx)
+			h.withAdvisoryLock(ctx, "gitlab_writeback", func() { h.drainWritebacks(ctx) })
 		}
 	}
 }
@@ -297,16 +301,16 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 // already bumped attempts, so w.Attempts is this attempt's number.
 func (h *API) settleWriteback(ctx context.Context, w db.GitlabWriteback, err error) {
 	if err == nil {
-		_ = h.q.MarkWritebackSent(ctx, w.ID)
+		soft(ctx, "MarkWritebackSent", h.q.MarkWritebackSent(ctx, w.ID))
 		return
 	}
 	if isPermanentWriteback(err) || int(w.Attempts) >= maxWritebackAttempts {
-		_ = h.q.MarkWritebackFailed(ctx, db.MarkWritebackFailedParams{ID: w.ID, LastError: truncErr(err)})
+		soft(ctx, "MarkWritebackFailed", h.q.MarkWritebackFailed(ctx, db.MarkWritebackFailedParams{ID: w.ID, LastError: truncErr(err)}))
 		log.Printf("gitlab writeback: %s for task %s gave up after %d attempt(s): %v", w.ChangeKind, w.TaskID, w.Attempts, err)
 		return
 	}
 	next := time.Now().Add(time.Duration(w.Attempts*w.Attempts) * time.Minute) // 1, 4, 9, 16 min
-	_ = h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{ID: w.ID, LastError: truncErr(err), NextAttemptAt: next})
+	soft(ctx, "MarkWritebackRetry", h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{ID: w.ID, LastError: truncErr(err), NextAttemptAt: next}))
 }
 
 // isPermanentWriteback classifies a push error as non-retryable: an explicitly
@@ -338,14 +342,15 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
 	}
 	wb := parseWriteback(integ.Writeback)
-	// Resolve the connection the OAuth-era way: instance service token first, else
-	// the integration owner's personal PAT. Using the owner's PAT directly broke
-	// OAuth-only setups (owner has an oauth_identity, no gitlab_credentials row).
-	baseURL, token, ok := h.effectiveGitlabConn(ctx, integ.OwnerUserID)
+	// Resolve the write connection attributed to the acting user (task #2690): the
+	// actor's own PAT, else the service token with a `Sudo:` header (admin sudo), else
+	// the plain service token / owner PAT. The pull stays on the service token — only
+	// writes carry the actor's identity.
+	baseURL, token, sudoUser, ok := h.writeGitlabConn(ctx, w.ActorUserID, integ.OwnerUserID)
 	if !ok {
-		return res, notify.Permanent(errors.New("no GitLab credential available (service token or owner PAT)"))
+		return res, notify.Permanent(errors.New("no GitLab credential available (personal PAT or service token)"))
 	}
-	client := gitlab.New(baseURL, token)
+	client := gitlab.New(baseURL, token).WithSudo(sudoUser)
 	path, iid := link.GlProjectPath, link.GlIid
 	res.wsID = integ.WorkspaceID
 
@@ -601,8 +606,8 @@ func (h *API) performSetAssignees(ctx context.Context, client *gitlab.Client, in
 	ids := map[int64]bool{}
 	if tas, err := h.q.ListTaskAssignees(ctx, taskID); err == nil {
 		for _, a := range tas {
-			if cred, cerr := h.q.GetGitlabCredential(ctx, a.ID); cerr == nil && cred.GlUserID != 0 {
-				ids[cred.GlUserID] = true
+			if gid, ok := h.assigneeGlUserID(ctx, a.ID); ok {
+				ids[gid] = true
 			}
 		}
 	} else {
@@ -719,7 +724,7 @@ func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, pat
 	if gid != "" {
 		if cidStr, _ := payload["comment_id"].(string); cidStr != "" {
 			if cid, perr := uuid.Parse(cidStr); perr == nil {
-				_ = h.q.SetCommentGlNoteID(ctx, db.SetCommentGlNoteIDParams{ID: cid, GlNoteID: &gid})
+				soft(ctx, "SetCommentGlNoteID", h.q.SetCommentGlNoteID(ctx, db.SetCommentGlNoteIDParams{ID: cid, GlNoteID: &gid}))
 			}
 		}
 	}

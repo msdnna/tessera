@@ -34,7 +34,7 @@ func (h *API) GetGitlabConnection(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -74,7 +74,7 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 
 	enc, err := h.sealer.Encrypt(req.Token)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	cred, err := h.q.UpsertGitlabCredential(c, db.UpsertGitlabCredentialParams{
@@ -85,7 +85,7 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 		GlUsername: user.Username,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -96,7 +96,7 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 // DisconnectGitlab removes the current user's stored credential.
 func (h *API) DisconnectGitlab(c *gin.Context) {
 	if err := h.q.DeleteGitlabCredential(c, middleware.CurrentUser(c)); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -169,13 +169,67 @@ func (h *API) effectiveGitlabConn(ctx context.Context, fallbackUserID *uuid.UUID
 		return b, t, true
 	}
 	if fallbackUserID != nil {
-		if cred, err := h.q.GetGitlabCredential(ctx, *fallbackUserID); err == nil {
-			if t, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
-				return cred.BaseUrl, t, true
-			}
+		if b, t, pok := h.personalGitlabConn(ctx, *fallbackUserID); pok {
+			return b, t, true
 		}
 	}
 	return "", "", false
+}
+
+// personalGitlabConn returns a user's own connected PAT (base URL + decrypted
+// token), if any. ok=false means the user has no gitlab_credentials row (e.g. an
+// OAuth-only login) or the token can't be decrypted.
+func (h *API) personalGitlabConn(ctx context.Context, userID uuid.UUID) (baseURL, token string, ok bool) {
+	cred, err := h.q.GetGitlabCredential(ctx, userID)
+	if err != nil {
+		return "", "", false
+	}
+	t, derr := h.sealer.Decrypt(cred.TokenEnc)
+	if derr != nil {
+		return "", "", false
+	}
+	return cred.BaseUrl, t, true
+}
+
+// sudoWritebackEnabled reports whether the admin turned on GitLab sudo impersonation
+// (service token must be an admin PAT with the `sudo` scope). Off by default.
+func (h *API) sudoWritebackEnabled(ctx context.Context) bool {
+	p, err := h.q.GetOAuthProvider(ctx, "gitlab")
+	return err == nil && p.SudoWriteback
+}
+
+// writeGitlabConn resolves the credential for a WRITE operation, attributing it to
+// the acting user where possible (task #2690). Unlike effectiveGitlabConn (read/pull,
+// service-token-first), writes prefer the actor's own identity so the issue/comment
+// author in GitLab is the real user, not the shared service account. Order:
+//
+//  1. actor's personal PAT        — writes as the user (sudoUser="")
+//  2. service token + Sudo:<user> — admin impersonation, when sudo is enabled and the
+//     actor's GitLab username is known
+//  3. service token (plain)       — shared-account fallback (attribution lost)
+//  4. owner's personal PAT        — last resort for legacy service-token-less setups
+//
+// sudoUser != "" tells the caller to wrap the client with Client.WithSudo.
+func (h *API) writeGitlabConn(ctx context.Context, actorID, ownerID *uuid.UUID) (baseURL, token, sudoUser string, ok bool) {
+	if actorID != nil {
+		if b, t, pok := h.personalGitlabConn(ctx, *actorID); pok {
+			return b, t, "", true
+		}
+	}
+	if b, t, sok := h.serviceGitlabConn(ctx); sok {
+		if actorID != nil && h.sudoWritebackEnabled(ctx) {
+			if uname := h.actorGitlabUsername(ctx, *actorID); uname != "" {
+				return b, t, uname, true
+			}
+		}
+		return b, t, "", true
+	}
+	if ownerID != nil {
+		if b, t, pok := h.personalGitlabConn(ctx, *ownerID); pok {
+			return b, t, "", true
+		}
+	}
+	return "", "", "", false
 }
 
 // actorGitlabUsername resolves a Tessera user's GitLab username — from a connected
@@ -189,6 +243,23 @@ func (h *API) actorGitlabUsername(ctx context.Context, userID uuid.UUID) string 
 		return u
 	}
 	return ""
+}
+
+// assigneeGlUserID resolves a Tessera user's numeric GitLab user id for assignee
+// write-back: a connected PAT credential first, else their "Login with GitLab" OAuth
+// identity (provider_user_id). 0/false when the user has no GitLab identity — such an
+// assignee is simply dropped from the pushed set. Without the OAuth fallback,
+// OAuth-login users (no personal PAT) never resolved, so assignee pushes were empty.
+func (h *API) assigneeGlUserID(ctx context.Context, userID uuid.UUID) (int64, bool) {
+	if cred, err := h.q.GetGitlabCredential(ctx, userID); err == nil && cred.GlUserID != 0 {
+		return cred.GlUserID, true
+	}
+	if s, err := h.q.GetGitlabUserIDForUser(ctx, userID); err == nil {
+		if id, perr := strconv.ParseInt(strings.TrimSpace(s), 10, 64); perr == nil && id != 0 {
+			return id, true
+		}
+	}
+	return 0, false
 }
 
 // fullIntegrationView enriches a stored row with the resolved estimation unit and
@@ -214,7 +285,7 @@ func (h *API) ListGitlabIntegrations(c *gin.Context) {
 	}
 	rows, err := h.q.ListGitlabIntegrationsByWorkspace(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	views := make([]gitlabIntegrationView, 0, len(rows))
@@ -421,7 +492,7 @@ func (h *API) DeleteGitlabIntegration(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteGitlabIntegration(c, integ.ID); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -447,7 +518,7 @@ func (h *API) integrationInWorkspace(c *gin.Context) (db.GitlabIntegration, uuid
 		return db.GitlabIntegration{}, uuid.Nil, false
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.GitlabIntegration{}, uuid.Nil, false
 	}
 	return integ, wsID, true
@@ -479,7 +550,7 @@ func (h *API) SyncGitlab(c *gin.Context) {
 			return
 		}
 		if err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 	}
@@ -1047,14 +1118,14 @@ func (h *API) RunSyncWorker(ctx context.Context) {
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	h.tick(jobGitlabSyncCron, "проверка интеграций к синхронизации")
-	h.autoSyncDue(ctx) // catch up at startup, don't wait a tick
+	h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.autoSyncDue(ctx) }) // catch up at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobGitlabSyncCron, "проверка интеграций к синхронизации")
-			h.autoSyncDue(ctx)
+			h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.autoSyncDue(ctx) })
 		}
 	}
 }
@@ -1230,7 +1301,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: link issue !%d failed: %v", issue.IID, cerr)
 			return uuid.Nil, false, false
 		}
-		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))})
+		soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))}))
 		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false)
 		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
@@ -1304,26 +1375,26 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			log.Printf("gitlab sync: update link for issue !%d failed: %v", issue.IID, uerr)
 			return uuid.Nil, false, false
 		}
-		_ = h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))})
+		soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))}))
 		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
 		if !link.DueOverridden && !frozen["due"] && dueDate != nil {
-			_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate})
+			soft(ctx, "UpdateTaskDueDate", h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: link.TaskID, DueDate: dueDate}))
 			t.DueDate = dueDate
 			dueApplied = true
 		}
 		// Likewise the start date: synced unless GitLab gives none or the user overrode.
 		startApplied := false
 		if !link.StartOverridden && startDate != nil {
-			_ = h.q.UpdateTaskStartDate(ctx, db.UpdateTaskStartDateParams{ID: link.TaskID, StartDate: startDate})
+			soft(ctx, "UpdateTaskStartDate", h.q.UpdateTaskStartDate(ctx, db.UpdateTaskStartDateParams{ID: link.TaskID, StartDate: startDate}))
 			t.StartDate = startDate
 			startApplied = true
 		}
 		// Time estimate (only when the board's unit is time → estimate != nil here):
 		// synced unless the user overrode it.
 		if !link.EstimateOverridden && !frozen["estimate"] && estimate != nil {
-			_ = h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: link.TaskID, Estimate: estimate})
+			soft(ctx, "UpdateTaskEstimate", h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: link.TaskID, Estimate: estimate}))
 			t.Estimate = estimate
 		}
 		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
@@ -1506,13 +1577,13 @@ func (h *API) syncProjectMembers(ctx context.Context, client *gitlab.Client, int
 	}
 	keep := make([]int64, 0, len(members))
 	for _, m := range members {
-		_ = h.q.UpsertGitlabProjectMember(ctx, db.UpsertGitlabProjectMemberParams{
+		soft(ctx, "UpsertGitlabProjectMember", h.q.UpsertGitlabProjectMember(ctx, db.UpsertGitlabProjectMemberParams{
 			IntegrationID: integ.ID, GlUserID: m.ID, GlUsername: m.Username, GlName: m.Name,
 			GlAvatarUrl: h.avatarProxyURL(integ.WorkspaceID, m.AvatarURL), AccessLevel: int32(m.AccessLevel),
-		})
+		}))
 		keep = append(keep, m.ID)
 	}
-	_ = h.q.DeleteStaleGitlabProjectMembers(ctx, db.DeleteStaleGitlabProjectMembersParams{IntegrationID: integ.ID, Column2: keep})
+	soft(ctx, "DeleteStaleGitlabProjectMembers", h.q.DeleteStaleGitlabProjectMembers(ctx, db.DeleteStaleGitlabProjectMembersParams{IntegrationID: integ.ID, Column2: keep}))
 }
 
 // reconcileAssignees rebuilds the GitLab-sourced assignee set: a GitLab assignee
@@ -1528,14 +1599,14 @@ func (h *API) applyClosedPolicy(ctx context.Context, integ db.GitlabIntegration,
 		return
 	}
 	if issue.State == "closed" && issue.MilestoneState == "closed" {
-		_ = h.q.ArchiveTaskIfActive(ctx, taskID)
+		soft(ctx, "ArchiveTaskIfActive", h.q.ArchiveTaskIfActive(ctx, taskID))
 	} else {
-		_ = h.q.RestoreTaskIfArchived(ctx, taskID)
+		soft(ctx, "RestoreTaskIfArchived", h.q.RestoreTaskIfArchived(ctx, taskID))
 	}
 }
 
 func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, people []gitlab.Person) {
-	_ = h.q.DeleteGitlabSourcedAssignees(ctx, taskID) // only the sync-made set is rebuilt
+	soft(ctx, "DeleteGitlabSourcedAssignees", h.q.DeleteGitlabSourcedAssignees(ctx, taskID)) // only the sync-made set is rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))
 	for _, p := range people {
 		// Resolve the GitLab assignee to a Tessera user. Prefer the "Login with
@@ -1547,16 +1618,16 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 			uid, err = h.q.GetUserIDByGitlabUsername(ctx, p.Login)
 		}
 		if err == nil {
-			_ = h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"})
+			soft(ctx, "AddTaskAssigneeSourced", h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"}))
 			tesseraIDs = append(tesseraIDs, uid)
 		} else {
-			_ = h.q.UpsertGitlabSourcedAssignee(ctx, db.UpsertGitlabSourcedAssigneeParams{
+			soft(ctx, "UpsertGitlabSourcedAssignee", h.q.UpsertGitlabSourcedAssignee(ctx, db.UpsertGitlabSourcedAssigneeParams{
 				TaskID: taskID, GlUsername: p.Login, GlName: p.Name,
 				GlAvatarUrl: h.avatarProxyURL(wsID, p.AvatarURL),
-			})
+			}))
 		}
 	}
-	_ = h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs})
+	soft(ctx, "DeleteStaleGitlabAssignees", h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs}))
 }
 
 // syncComments upserts each GitLab note as a comment, idempotent by note id, with
@@ -1757,7 +1828,7 @@ func (h *API) ListGitlabMembers(c *gin.Context) {
 	}
 	rows, err := h.q.ListGitlabProjectMembersByWorkspace(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]gin.H, 0, len(rows))
@@ -1800,7 +1871,7 @@ func (h *API) PinTaskGitlabAssignee(c *gin.Context) {
 	if err := h.q.PinGitlabAssignee(c, db.PinGitlabAssigneeParams{
 		TaskID: id, GlUsername: req.GlUsername, GlName: req.GlName, GlAvatarUrl: req.GlAvatarURL,
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "gl_username": req.GlUsername})
@@ -1824,7 +1895,7 @@ func (h *API) RemoveTaskGitlabAssignee(c *gin.Context) {
 		return
 	}
 	if err := h.q.RemoveGitlabAssignee(c, db.RemoveGitlabAssigneeParams{TaskID: id, GlUsername: username}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "task.unassigned", gin.H{"task_id": id, "gl_username": username})

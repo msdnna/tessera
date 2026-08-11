@@ -7,6 +7,7 @@ import { copyText } from '@/utils/clipboard'
 import { useAuthStore } from '@/stores/auth'
 import UserAvatar from '@/components/UserAvatar.vue'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import SecretInput from '@/components/SecretInput.vue'
 
 const auth = useAuthStore()
 const message = useMessage()
@@ -90,6 +91,9 @@ const oauth = ref({
   org_map: '{}',
   has_secret: false,
   has_service_token: false,
+  clear_secret: false,
+  clear_service_token: false,
+  sudo_writeback: false,
 })
 const oauthSaving = ref(false)
 const callbackUrl = computed(() => `${window.location.origin}/api/auth/gitlab/callback`)
@@ -106,6 +110,9 @@ async function loadOAuth() {
       org_map: JSON.stringify(data.org_map ?? {}, null, 2),
       has_secret: data.has_secret === true,
       has_service_token: data.has_service_token === true,
+      clear_secret: false,
+      clear_service_token: false,
+      sudo_writeback: data.sudo_writeback === true,
     }
   } catch {
     /* first-time config: keep defaults */
@@ -127,13 +134,19 @@ async function saveOAuth() {
       client_id: oauth.value.client_id.trim(),
       client_secret: oauth.value.client_secret, // empty keeps the stored one
       service_token: oauth.value.service_token, // empty keeps the stored one
+      clear_client_secret: oauth.value.clear_secret, // explicit erase
+      clear_service_token: oauth.value.clear_service_token,
       enabled: oauth.value.enabled,
       org_map: orgMap,
+      sudo_writeback: oauth.value.sudo_writeback,
     })
     oauth.value.client_secret = ''
     oauth.value.service_token = ''
+    oauth.value.clear_secret = false
+    oauth.value.clear_service_token = false
     oauth.value.has_secret = data.has_secret === true
     oauth.value.has_service_token = data.has_service_token === true
+    oauth.value.sudo_writeback = data.sudo_writeback === true
     message.success('Настройки GitLab OAuth сохранены')
   } catch (e) {
     message.error(e.response?.data?.error || e.message)
@@ -190,32 +203,42 @@ onMounted(() => {
             :input-props="{ autocomplete: 'off', name: 'oauth-client-id' }"
           />
           <label>Secret</label>
-          <n-input
+          <SecretInput
             v-model:value="oauth.client_secret"
-            type="password"
-            show-password-on="click"
+            v-model:cleared="oauth.clear_secret"
+            :stored="oauth.has_secret"
             size="small"
-            :placeholder="
-              oauth.has_secret ? '•••••• (сохранён; введите, чтобы заменить)' : 'client secret'
-            "
+            placeholder="client secret"
+            stored-placeholder="•••••• (сохранён; введите, чтобы заменить)"
             :input-props="{ autocomplete: 'new-password', name: 'oauth-secret' }"
           />
           <label>
             Сервисный токен синка
             <span class="oauth-sub">PAT сервис-аккаунта; синк без личных токенов</span>
           </label>
-          <n-input
-            v-model:value="oauth.service_token"
-            type="password"
-            show-password-on="click"
-            size="small"
-            :placeholder="
-              oauth.has_service_token
-                ? '•••••• (сохранён; введите, чтобы заменить)'
-                : 'glpat-… (scope api)'
-            "
-            :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
-          />
+          <div class="oauth-token-cell">
+            <SecretInput
+              v-model:value="oauth.service_token"
+              v-model:cleared="oauth.clear_service_token"
+              :stored="oauth.has_service_token"
+              size="small"
+              placeholder="glpat-… (scope api)"
+              stored-placeholder="•••••• (сохранён; введите, чтобы заменить)"
+              :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
+            />
+            <span v-if="oauth.clear_service_token" class="oauth-warn">
+              синхронизация GitLab остановится
+            </span>
+          </div>
+          <label>
+            Запись от имени пользователя (Sudo)
+            <span class="oauth-sub">
+              issue и обратная запись — от действующего пользователя; сервисный токен должен
+              быть админским PAT (scope api + sudo). Держите ВЫКЛ, если GitLab или Tessera
+              доступны из внешней сети
+            </span>
+          </label>
+          <div><n-switch v-model:value="oauth.sudo_writeback" /></div>
           <label>Включён вход</label>
           <div><n-switch v-model:value="oauth.enabled" /></div>
           <label>
@@ -394,6 +417,15 @@ onMounted(() => {
   display: block;
   font-size: 11px;
   opacity: 0.7;
+}
+.oauth-token-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.oauth-warn {
+  font-size: 12px;
+  color: var(--t-danger, #e5484d);
 }
 .oauth-mono :deep(textarea) {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

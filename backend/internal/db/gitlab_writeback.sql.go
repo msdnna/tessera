@@ -22,7 +22,7 @@ WHERE id IN (
     LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at
+RETURNING id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at, actor_user_id
 `
 
 // ClaimPendingWritebacks atomically grabs up to $1 due pending rows, marking them
@@ -53,6 +53,7 @@ func (q *Queries) ClaimPendingWritebacks(ctx context.Context, limit int32) ([]Gi
 			&i.Resolution,
 			&i.ResolvedBy,
 			&i.ResolvedAt,
+			&i.ActorUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -66,22 +67,29 @@ func (q *Queries) ClaimPendingWritebacks(ctx context.Context, limit int32) ([]Gi
 
 const coalescePendingWriteback = `-- name: CoalescePendingWriteback :execrows
 UPDATE gitlab_writebacks
-SET payload = $3, next_attempt_at = now(), updated_at = now()
+SET payload = $3, actor_user_id = $4, next_attempt_at = now(), updated_at = now()
 WHERE task_id = $1 AND change_kind = $2 AND status = 'pending'
 `
 
 type CoalescePendingWritebackParams struct {
-	TaskID     uuid.UUID `json:"task_id"`
-	ChangeKind string    `json:"change_kind"`
-	Payload    []byte    `json:"payload"`
+	TaskID      uuid.UUID  `json:"task_id"`
+	ChangeKind  string     `json:"change_kind"`
+	Payload     []byte     `json:"payload"`
+	ActorUserID *uuid.UUID `json:"actor_user_id"`
 }
 
 // CoalescePendingWriteback refreshes an already-pending row for the same task and
 // change_kind (collapsing a burst of edits into one push, latest value wins) and
-// re-arms it for immediate delivery. Returns the rows updated; 0 means the caller
-// should insert a fresh row.
+// re-arms it for immediate delivery. The actor is refreshed too (latest editor wins,
+// so the coalesced push is attributed to whoever made the most recent change).
+// Returns the rows updated; 0 means the caller should insert a fresh row.
 func (q *Queries) CoalescePendingWriteback(ctx context.Context, arg CoalescePendingWritebackParams) (int64, error) {
-	result, err := q.db.Exec(ctx, coalescePendingWriteback, arg.TaskID, arg.ChangeKind, arg.Payload)
+	result, err := q.db.Exec(ctx, coalescePendingWriteback,
+		arg.TaskID,
+		arg.ChangeKind,
+		arg.Payload,
+		arg.ActorUserID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -89,15 +97,16 @@ func (q *Queries) CoalescePendingWriteback(ctx context.Context, arg CoalescePend
 }
 
 const createGitlabWriteback = `-- name: CreateGitlabWriteback :exec
-INSERT INTO gitlab_writebacks (task_id, integration_id, change_kind, payload)
-VALUES ($1, $2, $3, $4)
+INSERT INTO gitlab_writebacks (task_id, integration_id, change_kind, payload, actor_user_id)
+VALUES ($1, $2, $3, $4, $5)
 `
 
 type CreateGitlabWritebackParams struct {
-	TaskID        uuid.UUID `json:"task_id"`
-	IntegrationID uuid.UUID `json:"integration_id"`
-	ChangeKind    string    `json:"change_kind"`
-	Payload       []byte    `json:"payload"`
+	TaskID        uuid.UUID  `json:"task_id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ChangeKind    string     `json:"change_kind"`
+	Payload       []byte     `json:"payload"`
+	ActorUserID   *uuid.UUID `json:"actor_user_id"`
 }
 
 func (q *Queries) CreateGitlabWriteback(ctx context.Context, arg CreateGitlabWritebackParams) error {
@@ -106,6 +115,7 @@ func (q *Queries) CreateGitlabWriteback(ctx context.Context, arg CreateGitlabWri
 		arg.IntegrationID,
 		arg.ChangeKind,
 		arg.Payload,
+		arg.ActorUserID,
 	)
 	return err
 }
@@ -148,7 +158,7 @@ func (q *Queries) GetGitlabIntegrationByID(ctx context.Context, id uuid.UUID) (G
 }
 
 const getGitlabWriteback = `-- name: GetGitlabWriteback :one
-SELECT id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at FROM gitlab_writebacks WHERE id = $1
+SELECT id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at, actor_user_id FROM gitlab_writebacks WHERE id = $1
 `
 
 // GetGitlabWriteback fetches one outbox row by id (for the resolve endpoint).
@@ -171,12 +181,13 @@ func (q *Queries) GetGitlabWriteback(ctx context.Context, id uuid.UUID) (GitlabW
 		&i.Resolution,
 		&i.ResolvedBy,
 		&i.ResolvedAt,
+		&i.ActorUserID,
 	)
 	return i, err
 }
 
 const getOpenConflict = `-- name: GetOpenConflict :one
-SELECT id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at FROM gitlab_writebacks
+SELECT id, task_id, integration_id, change_kind, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at, conflict, resolution, resolved_by, resolved_at, actor_user_id FROM gitlab_writebacks
 WHERE task_id = $1 AND change_kind = $2 AND status = 'conflict'
 `
 
@@ -205,6 +216,7 @@ func (q *Queries) GetOpenConflict(ctx context.Context, arg GetOpenConflictParams
 		&i.Resolution,
 		&i.ResolvedBy,
 		&i.ResolvedAt,
+		&i.ActorUserID,
 	)
 	return i, err
 }
@@ -236,7 +248,7 @@ func (q *Queries) ListOpenConflictKinds(ctx context.Context, taskID uuid.UUID) (
 }
 
 const listOpenConflicts = `-- name: ListOpenConflicts :many
-SELECT w.id, w.task_id, w.integration_id, w.change_kind, w.payload, w.status, w.attempts, w.last_error, w.next_attempt_at, w.created_at, w.updated_at, w.conflict, w.resolution, w.resolved_by, w.resolved_at, t.title AS task_title, t.number AS task_number
+SELECT w.id, w.task_id, w.integration_id, w.change_kind, w.payload, w.status, w.attempts, w.last_error, w.next_attempt_at, w.created_at, w.updated_at, w.conflict, w.resolution, w.resolved_by, w.resolved_at, w.actor_user_id, t.title AS task_title, t.number AS task_number
 FROM gitlab_writebacks w
 JOIN tasks t ON t.id = w.task_id
 WHERE w.integration_id = $1 AND w.status = 'conflict'
@@ -259,6 +271,7 @@ type ListOpenConflictsRow struct {
 	Resolution    string     `json:"resolution"`
 	ResolvedBy    *uuid.UUID `json:"resolved_by"`
 	ResolvedAt    *time.Time `json:"resolved_at"`
+	ActorUserID   *uuid.UUID `json:"actor_user_id"`
 	TaskTitle     string     `json:"task_title"`
 	TaskNumber    *int64     `json:"task_number"`
 }
@@ -290,6 +303,7 @@ func (q *Queries) ListOpenConflicts(ctx context.Context, integrationID uuid.UUID
 			&i.Resolution,
 			&i.ResolvedBy,
 			&i.ResolvedAt,
+			&i.ActorUserID,
 			&i.TaskTitle,
 			&i.TaskNumber,
 		); err != nil {
@@ -304,7 +318,7 @@ func (q *Queries) ListOpenConflicts(ctx context.Context, integrationID uuid.UUID
 }
 
 const listOpenConflictsByWorkspace = `-- name: ListOpenConflictsByWorkspace :many
-SELECT w.id, w.task_id, w.integration_id, w.change_kind, w.payload, w.status, w.attempts, w.last_error, w.next_attempt_at, w.created_at, w.updated_at, w.conflict, w.resolution, w.resolved_by, w.resolved_at, t.title AS task_title, t.number AS task_number
+SELECT w.id, w.task_id, w.integration_id, w.change_kind, w.payload, w.status, w.attempts, w.last_error, w.next_attempt_at, w.created_at, w.updated_at, w.conflict, w.resolution, w.resolved_by, w.resolved_at, w.actor_user_id, t.title AS task_title, t.number AS task_number
 FROM gitlab_writebacks w
 JOIN tasks t ON t.id = w.task_id
 JOIN gitlab_integrations i ON i.id = w.integration_id
@@ -328,6 +342,7 @@ type ListOpenConflictsByWorkspaceRow struct {
 	Resolution    string     `json:"resolution"`
 	ResolvedBy    *uuid.UUID `json:"resolved_by"`
 	ResolvedAt    *time.Time `json:"resolved_at"`
+	ActorUserID   *uuid.UUID `json:"actor_user_id"`
 	TaskTitle     string     `json:"task_title"`
 	TaskNumber    *int64     `json:"task_number"`
 }
@@ -359,6 +374,7 @@ func (q *Queries) ListOpenConflictsByWorkspace(ctx context.Context, workspaceID 
 			&i.Resolution,
 			&i.ResolvedBy,
 			&i.ResolvedAt,
+			&i.ActorUserID,
 			&i.TaskTitle,
 			&i.TaskNumber,
 		); err != nil {

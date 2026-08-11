@@ -136,9 +136,9 @@ func (h *API) scanDueTasks(ctx context.Context) {
 				continue
 			}
 			h.deliverNotification(ctx, uid, wsID, &t.ID, nil, "due_soon", dueText(t))
-			_ = h.q.UpsertDueNotificationState(ctx, db.UpsertDueNotificationStateParams{
+			soft(ctx, "UpsertDueNotificationState", h.q.UpsertDueNotificationState(ctx, db.UpsertDueNotificationStateParams{
 				TaskID: t.ID, UserID: uid, FiredDue: *t.DueDate,
-			})
+			}))
 		}
 	}
 }
@@ -206,7 +206,7 @@ func (h *API) scanReminders(ctx context.Context) {
 			}
 			h.deliverNotification(ctx, r.UserID, h.reminderWorkspace(ctx, r), r.TaskID, nil, "reminder", text)
 		}
-		_ = h.q.MarkReminderNotified(ctx, r.ID)
+		soft(ctx, "MarkReminderNotified", h.q.MarkReminderNotified(ctx, r.ID))
 	}
 }
 

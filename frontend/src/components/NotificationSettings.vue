@@ -21,6 +21,7 @@ import {
 import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
+import SecretInput from '@/components/SecretInput.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
 
@@ -176,6 +177,8 @@ const chForm = reactive({
   secret: {},
   template: '',
   enabled: true,
+  hasSecret: false, // a secret is already stored on the server
+  clearSecret: false, // erase the stored secret on save
 })
 const chSaving = ref(false)
 const chErr = ref('')
@@ -189,6 +192,8 @@ function openChannelNew() {
     secret: {},
     template: '',
     enabled: true,
+    hasSecret: false,
+    clearSecret: false,
   })
   chErr.value = ''
   chModal.value = true
@@ -202,6 +207,8 @@ function openChannelEdit(c) {
     secret: {},
     template: c.template || '',
     enabled: c.enabled,
+    hasSecret: c.has_secret === true,
+    clearSecret: false,
   })
   chErr.value = ''
   chModal.value = true
@@ -215,6 +222,7 @@ async function saveChannel() {
       label: chForm.label,
       config: chForm.config,
       secret: chForm.secret,
+      clear_secret: chForm.clearSecret,
       template: chForm.template,
       enabled: chForm.enabled,
     }
@@ -729,11 +737,12 @@ function wsSummary(r) {
             </label>
             <label class="field">
               <span>Заголовок Authorization (необязательно)</span>
-              <n-input
+              <SecretInput
                 v-model:value="chForm.secret.auth_header"
-                type="password"
-                show-password-on="click"
-                :placeholder="chEditing ? 'оставьте пустым, чтобы не менять' : 'Bearer …'"
+                v-model:cleared="chForm.clearSecret"
+                :stored="chEditing ? chForm.hasSecret : false"
+                placeholder="Bearer …"
+                stored-placeholder="оставьте пустым, чтобы не менять"
               />
             </label>
           </template>

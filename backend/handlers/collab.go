@@ -124,7 +124,7 @@ func (h *API) ListTaskEvents(c *gin.Context) {
 	}
 	events, err := h.q.ListTaskEvents(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]taskEventResp, 0, len(events))
@@ -153,7 +153,7 @@ func (h *API) ListComments(c *gin.Context) {
 	}
 	comments, err := h.q.ListTaskComments(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(comments))
@@ -225,7 +225,7 @@ func (h *API) CreateComment(c *gin.Context) {
 	}
 	cm, err := h.q.CreateComment(c, db.CreateCommentParams{TaskID: id, AuthorID: &uid, Body: body})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.logEvent(c, id, "comment", map[string]any{"comment_id": cm.ID})
@@ -290,7 +290,7 @@ func (h *API) UpdateComment(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if _, _, ok := h.loadTask(c, cm.TaskID); !ok {
@@ -309,7 +309,7 @@ func (h *API) UpdateComment(c *gin.Context) {
 	}
 	updated, err := h.q.UpdateComment(c, db.UpdateCommentParams{ID: id, Body: req.Body})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	// Mirror the edit to the linked GitLab note (only when this comment already has
@@ -333,7 +333,7 @@ func (h *API) DeleteComment(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if _, _, ok := h.loadTask(c, cm.TaskID); !ok {
@@ -350,7 +350,7 @@ func (h *API) DeleteComment(c *gin.Context) {
 			map[string]any{"op": "delete", "comment_id": id.String(), "gl_note_id": *cm.GlNoteID})
 	}
 	if err := h.q.DeleteComment(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -369,7 +369,7 @@ func (h *API) ListRelations(c *gin.Context) {
 	}
 	rels, err := h.q.ListTaskRelations(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(rels))
@@ -404,7 +404,7 @@ func (h *API) AddRelation(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if err := h.applyRelation(c, t, wsID, target, kind); err != nil {
@@ -430,12 +430,12 @@ func (h *API) BoardDependencies(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -443,7 +443,7 @@ func (h *API) BoardDependencies(c *gin.Context) {
 	}
 	rows, err := h.q.ListBoardDependencies(c, b.ID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(rows))
@@ -473,14 +473,14 @@ func (h *API) DeleteRelation(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if _, _, ok := h.loadTask(c, rel.TaskID); !ok {
 		return
 	}
 	if err := h.q.DeleteTaskRelation(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -492,7 +492,7 @@ func (h *API) DeleteRelation(c *gin.Context) {
 func (h *API) ListNotifications(c *gin.Context) {
 	items, err := h.q.ListNotifications(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(items))
@@ -502,7 +502,7 @@ func (h *API) ListNotifications(c *gin.Context) {
 func (h *API) UnreadNotificationCount(c *gin.Context) {
 	n, err := h.q.CountUnreadNotifications(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"count": n})
@@ -517,7 +517,7 @@ func (h *API) MarkNotificationRead(c *gin.Context) {
 	if err := h.q.MarkNotificationRead(c, db.MarkNotificationReadParams{
 		ID: id, UserID: middleware.CurrentUser(c),
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -526,7 +526,7 @@ func (h *API) MarkNotificationRead(c *gin.Context) {
 // MarkAllNotificationsRead marks all of the current user's notifications read.
 func (h *API) MarkAllNotificationsRead(c *gin.Context) {
 	if err := h.q.MarkAllNotificationsRead(c, middleware.CurrentUser(c)); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)

@@ -33,7 +33,7 @@ func (h *API) ListMilestones(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -41,7 +41,7 @@ func (h *API) ListMilestones(c *gin.Context) {
 	}
 	ms, err := h.q.ListMilestones(c, projectID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if ms == nil {
@@ -62,7 +62,7 @@ func (h *API) ListWorkspaceMilestones(c *gin.Context) {
 	}
 	ms, err := h.q.ListWorkspaceMilestones(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if ms == nil {
@@ -82,7 +82,7 @@ func (h *API) CreateMilestone(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -103,7 +103,7 @@ func (h *API) CreateMilestone(c *gin.Context) {
 		Slug: h.uniqueMilestoneSlug(c, projectID, req.Title),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "milestone.created", m)
@@ -118,12 +118,12 @@ func (h *API) milestoneWorkspace(c *gin.Context, id uuid.UUID) (db.Milestone, uu
 		return db.Milestone{}, uuid.Nil, false
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.Milestone{}, uuid.Nil, false
 	}
 	wsID, err := h.q.WorkspaceIDForProject(c, m.ProjectID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.Milestone{}, uuid.Nil, false
 	}
 	if !h.requireMember(c, wsID) {
@@ -157,7 +157,7 @@ func (h *API) UpdateMilestone(c *gin.Context) {
 		StartDate: req.StartDate, DueDate: req.DueDate, State: state,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "milestone.updated", m)
@@ -175,7 +175,7 @@ func (h *API) DeleteMilestone(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteMilestone(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "milestone.deleted", gin.H{"id": id})

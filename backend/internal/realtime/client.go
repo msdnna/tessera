@@ -1,11 +1,16 @@
 package realtime
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
+
+// EventResync tells a client it missed at least one event (its buffer overflowed)
+// and should reload its current view. It carries no data — the client refetches.
+const EventResync = "resync"
 
 const (
 	writeWait = 10 * time.Second
@@ -31,6 +36,11 @@ type Client struct {
 	send   chan Event
 	userID uuid.UUID
 	scopes map[string]struct{}
+	// needResync is set by the hub when it has to drop an event for this client
+	// (send buffer full). The write pump then emits a single resync marker at the
+	// next opportunity, so a recovered-but-still-connected client refills its view
+	// without waiting for a reconnect.
+	needResync atomic.Bool
 }
 
 // NewClient wraps an authenticated WebSocket connection as a hub Client that
@@ -55,16 +65,27 @@ func (c *Client) canSee(scope string) bool {
 	return ok
 }
 
-// Start registers the client and launches its read/write pumps.
+// Start registers the client and launches its read/write pumps. A connection
+// that arrives after the hub has been closed is dropped instead of blocking
+// forever on a channel nobody reads.
 func (c *Client) Start() {
-	c.hub.register <- c
+	select {
+	case c.hub.register <- c:
+	case <-c.hub.done:
+		_ = c.conn.Close()
+		return
+	}
 	go c.writePump()
 	go c.readPump()
 }
 
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		select {
+		case c.hub.unregister <- c:
+		case <-c.hub.done:
+			// Hub is gone; it already closed our send channel.
+		}
 		_ = c.conn.Close()
 	}()
 	c.conn.SetReadLimit(512)
@@ -77,6 +98,22 @@ func (c *Client) readPump() {
 			break
 		}
 	}
+}
+
+// flushResync emits a single resync marker if the hub flagged this client as
+// having missed an event. The flag is cleared only after a successful write, so
+// a write failure (which tears the connection down) leaves it set — harmless,
+// because the client refetches on the reconnect that follows anyway.
+func (c *Client) flushResync() error {
+	if !c.needResync.Load() {
+		return nil
+	}
+	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	if err := c.conn.WriteJSON(Event{Type: EventResync}); err != nil {
+		return err
+	}
+	c.needResync.Store(false)
+	return nil
 }
 
 func (c *Client) writePump() {
@@ -97,7 +134,13 @@ func (c *Client) writePump() {
 			if err := c.conn.WriteJSON(ev); err != nil {
 				return
 			}
+			if err := c.flushResync(); err != nil {
+				return
+			}
 		case <-ticker.C:
+			if err := c.flushResync(); err != nil {
+				return
+			}
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return

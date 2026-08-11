@@ -55,7 +55,7 @@ func (h *API) GetMyNotificationPrefs(c *gin.Context) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		p = defaultPrefs(uid)
 	} else if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, prefsViewOf(p))
@@ -85,7 +85,7 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 		DigestMinutes:     max(0, req.DigestMinutes),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, prefsViewOf(p))
@@ -120,7 +120,7 @@ func (h *API) SetTaskDueNotify(c *gin.Context) {
 		ID: id, DueLeadMinutes: req.LeadMinutes, DueRepeatMinutes: req.RepeatMinutes, DueNotifyEnabled: req.Enabled,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, t)
