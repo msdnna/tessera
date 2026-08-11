@@ -146,18 +146,15 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "milestone is already linked to GitLab"})
 		return
 	}
-	// Connection: instance service token first, else the acting user's PAT, else the
-	// binding owner's PAT.
+	// Write connection attributed to the acting user (task #2690): their own PAT, else
+	// the service token with a `Sudo:` header, else the plain service / owner PAT.
 	actor := middleware.CurrentUser(c)
-	baseURL, token, ok := h.effectiveGitlabConn(c, &actor)
-	if !ok {
-		baseURL, token, ok = h.effectiveGitlabConn(c, integ.OwnerUserID)
-	}
+	baseURL, token, sudoUser, ok := h.writeGitlabConn(c, &actor, integ.OwnerUserID)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first, or ask an admin to set a service token"})
 		return
 	}
-	client := gitlab.New(baseURL, token)
+	client := gitlab.New(baseURL, token).WithSudo(sudoUser)
 
 	created, err := client.CreateProjectMilestone(c, integ.ProjectPath, m.Title, m.Description, dateStr(m.StartDate), dateStr(m.DueDate))
 	if err != nil {

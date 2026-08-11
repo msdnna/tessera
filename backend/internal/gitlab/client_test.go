@@ -14,6 +14,7 @@ type captured struct {
 	method string
 	path   string // EscapedPath (keeps %2F in the project path)
 	token  string
+	sudo   string // the Sudo header (impersonation), "" when absent
 	form   map[string]string
 }
 
@@ -24,6 +25,7 @@ func stubGitLab(t *testing.T, status int, sink *captured) *Client {
 		sink.method = r.Method
 		sink.path = r.URL.EscapedPath()
 		sink.token = r.Header.Get("PRIVATE-TOKEN")
+		sink.sudo = r.Header.Get("Sudo")
 		sink.form = map[string]string{}
 		for k := range r.PostForm {
 			sink.form[k] = r.PostForm.Get(k)
@@ -33,6 +35,44 @@ func stubGitLab(t *testing.T, status int, sink *captured) *Client {
 	}))
 	t.Cleanup(srv.Close)
 	return New(srv.URL, "tok-123")
+}
+
+// A write from a sudo-wrapped client carries the Sudo header (admin impersonation),
+// while a plain client sends none (task #2690).
+func TestWithSudo_WriteHeader(t *testing.T) {
+	var got captured
+	c := stubGitLab(t, http.StatusOK, &got)
+	if err := c.UpdateIssueState(context.Background(), "grp/project", 7, "close"); err != nil {
+		t.Fatalf("plain UpdateIssueState: %v", err)
+	}
+	if got.sudo != "" {
+		t.Errorf("plain client sent Sudo=%q, want none", got.sudo)
+	}
+	if err := c.WithSudo("v.sokolov").UpdateIssueState(context.Background(), "grp/project", 7, "close"); err != nil {
+		t.Fatalf("sudo UpdateIssueState: %v", err)
+	}
+	if got.sudo != "v.sokolov" {
+		t.Errorf("Sudo = %q, want v.sokolov", got.sudo)
+	}
+	// The impersonating token is still the caller's token (the admin PAT).
+	if got.token != "tok-123" {
+		t.Errorf("token = %q, want tok-123", got.token)
+	}
+}
+
+// WithSudo("") is a no-op: it returns the same client and impersonates no one.
+func TestWithSudo_EmptyIsNoop(t *testing.T) {
+	var got captured
+	c := stubGitLab(t, http.StatusOK, &got)
+	if same := c.WithSudo(""); same != c {
+		t.Errorf("WithSudo(\"\") returned a different client")
+	}
+	if _, err := c.WithSudo("").CreateIssueNote(context.Background(), "grp/project", 7, "hi"); err != nil {
+		t.Fatalf("CreateIssueNote: %v", err)
+	}
+	if got.sudo != "" {
+		t.Errorf("Sudo = %q, want none", got.sudo)
+	}
 }
 
 func TestUpdateIssueState(t *testing.T) {

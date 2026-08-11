@@ -27,6 +27,7 @@ type restCall struct {
 	Method string
 	Path   string
 	Form   url.Values
+	Sudo   string // the Sudo header (impersonation), "" when absent
 }
 
 // wbFake fronts a fakeGitlab with mutation capture + failure injection. Its own
@@ -53,7 +54,7 @@ func (w *wbFake) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		form, _ := url.ParseQuery(string(body))
 		w.wmu.Lock()
-		w.calls = append(w.calls, restCall{Method: r.Method, Path: r.URL.Path, Form: form})
+		w.calls = append(w.calls, restCall{Method: r.Method, Path: r.URL.Path, Form: form, Sudo: r.Header.Get("Sudo")})
 		failNow := w.fail > 0
 		if failNow {
 			w.fail--
@@ -298,6 +299,70 @@ func TestGitlabWritebackPushFlow(t *testing.T) {
 	if pushActions != 4 {
 		t.Fatalf("push actions = %d, want 4", pushActions)
 	}
+}
+
+// Sudo impersonation (task #2690): when the admin enables sudo write-back and the
+// acting user has no personal PAT but a known GitLab identity, the async push runs
+// under the service (admin) token with a `Sudo: <username>` header so GitLab
+// attributes the write to the real user. Also asserts the pull never carries Sudo.
+func TestGitlabWritebackSudoImpersonation(t *testing.T) {
+	// Not parallel: it flips the instance-wide OAuth provider (service token + sudo),
+	// which is shared state other GitLab tests read.
+	st := newWritebackStand(t, "gl-sudo-user", "grp-sudo")
+	c, s, w := st.c, st.s, st.w
+
+	// oauth_providers is a global singleton; clear the service token afterwards so it
+	// doesn't leak into the parallel tests (which run after this sequential one).
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(),
+			`UPDATE oauth_providers SET service_token_enc = '', sudo_writeback = false, gl_base_url = '', enabled = false WHERE provider = 'gitlab'`)
+	})
+
+	// Give the acting user a GitLab identity via OAuth (no personal PAT), so their
+	// username resolves for impersonation without short-circuiting to a personal token.
+	if _, err := testPool.Exec(context.Background(),
+		`INSERT INTO oauth_identities (user_id, provider, provider_user_id, provider_username, gl_base_url)
+		 VALUES ($1::uuid, 'gitlab', '90210', 'gl-sudo-user', $2)`, c.UserID, w.outer.URL); err != nil {
+		t.Fatalf("insert oauth identity: %v", err)
+	}
+	// Drop the personal PAT so writeGitlabConn falls through to service-token + sudo.
+	if r := c.del("/gitlab/connection"); r.Status != http.StatusNoContent {
+		t.Fatalf("disconnect PAT: status %d\n%s", r.Status, r.Body)
+	}
+	// Admin: configure the instance service token (the fake) and turn sudo on.
+	c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"gl_base_url": w.outer.URL, "service_token": w.token,
+		"enabled": true, "sudo_writeback": true,
+	}), http.StatusOK)
+
+	st.putBindings(t, []map[string]any{
+		{"enabled": true,
+			"trigger": map[string]any{"type": "column", "column_id": s.col(t, 1), "column_name": "В процессе"},
+			"action":  map[string]any{"type": "set_label", "label": "S: In progress", "clear_prefix": true}},
+	})
+
+	c.expect(t, c.patch("/tasks/"+st.taskID+"/move", map[string]any{"column_id": s.col(t, 1)}), http.StatusOK)
+
+	drainOutboxUntil(t, func() bool { return writebackRows(t, st.taskID)["column"].Status == "sent" })
+
+	puts := w.callsMatching(http.MethodPut, "/issues/1")
+	if len(puts) == 0 {
+		t.Fatalf("no label push captured")
+	}
+	for _, call := range puts {
+		if call.Sudo != "gl-sudo-user" {
+			t.Fatalf("write Sudo header = %q, want gl-sudo-user\ncall: %+v", call.Sudo, call)
+		}
+	}
+	// The pull side (issue fetch, GET/GraphQL) must never impersonate.
+	w.wmu.Lock()
+	for _, call := range w.calls {
+		if call.Method == http.MethodGet && call.Sudo != "" {
+			w.wmu.Unlock()
+			t.Fatalf("read call carried Sudo=%q (pull must not impersonate): %+v", call.Sudo, call)
+		}
+	}
+	w.wmu.Unlock()
 }
 
 // Retry path: the first push gets a 500 → the row is backed off (pending again,

@@ -119,7 +119,7 @@ func (q *Queries) GetOAuthIdentity(ctx context.Context, arg GetOAuthIdentityPara
 
 const getOAuthProvider = `-- name: GetOAuthProvider :one
 
-SELECT provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc FROM oauth_providers WHERE provider = $1
+SELECT provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback FROM oauth_providers WHERE provider = $1
 `
 
 // OAuth provider config + external identities (see migration 0042).
@@ -136,6 +136,7 @@ func (q *Queries) GetOAuthProvider(ctx context.Context, provider string) (OauthP
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ServiceTokenEnc,
+		&i.SudoWriteback,
 	)
 	return i, err
 }
@@ -200,8 +201,8 @@ func (q *Queries) UpsertOAuthIdentity(ctx context.Context, arg UpsertOAuthIdenti
 }
 
 const upsertOAuthProvider = `-- name: UpsertOAuthProvider :one
-INSERT INTO oauth_providers (provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, service_token_enc, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+INSERT INTO oauth_providers (provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, service_token_enc, sudo_writeback, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
 ON CONFLICT (provider) DO UPDATE
 SET client_id = EXCLUDED.client_id,
     client_secret_enc = EXCLUDED.client_secret_enc,
@@ -209,8 +210,9 @@ SET client_id = EXCLUDED.client_id,
     enabled = EXCLUDED.enabled,
     org_map = EXCLUDED.org_map,
     service_token_enc = EXCLUDED.service_token_enc,
+    sudo_writeback = EXCLUDED.sudo_writeback,
     updated_at = now()
-RETURNING provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc
+RETURNING provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback
 `
 
 type UpsertOAuthProviderParams struct {
@@ -221,6 +223,7 @@ type UpsertOAuthProviderParams struct {
 	Enabled         bool   `json:"enabled"`
 	OrgMap          []byte `json:"org_map"`
 	ServiceTokenEnc string `json:"service_token_enc"`
+	SudoWriteback   bool   `json:"sudo_writeback"`
 }
 
 // UpsertOAuthProvider stores the admin-configured OAuth app + service token.
@@ -233,6 +236,7 @@ func (q *Queries) UpsertOAuthProvider(ctx context.Context, arg UpsertOAuthProvid
 		arg.Enabled,
 		arg.OrgMap,
 		arg.ServiceTokenEnc,
+		arg.SudoWriteback,
 	)
 	var i OauthProvider
 	err := row.Scan(
@@ -245,6 +249,7 @@ func (q *Queries) UpsertOAuthProvider(ctx context.Context, arg UpsertOAuthProvid
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ServiceTokenEnc,
+		&i.SudoWriteback,
 	)
 	return i, err
 }

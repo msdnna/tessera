@@ -69,18 +69,16 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		description = *req.Description
 	}
 
-	// Connection: instance service token first, else the acting user's PAT, else the
-	// binding owner's PAT.
+	// Write connection attributed to the acting user (task #2690): their own PAT, else
+	// the service token with a `Sudo:` header, else the plain service / owner PAT — so a
+	// new issue's GitLab author is the real user when possible.
 	actor := middleware.CurrentUser(c)
-	baseURL, token, ok := h.effectiveGitlabConn(c, &actor)
-	if !ok {
-		baseURL, token, ok = h.effectiveGitlabConn(c, integ.OwnerUserID)
-	}
+	baseURL, token, sudoUser, ok := h.writeGitlabConn(c, &actor, integ.OwnerUserID)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "connect a GitLab account first, or ask an admin to set a service token"})
 		return
 	}
-	client := gitlab.New(baseURL, token)
+	client := gitlab.New(baseURL, token).WithSudo(sudoUser)
 	// Attribute the issue link to the acting user's GitLab identity when known.
 	authorLogin := h.actorGitlabUsername(c, actor)
 	rules := parseRules(integ.LabelRules)

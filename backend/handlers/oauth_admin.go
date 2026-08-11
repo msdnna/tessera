@@ -22,6 +22,7 @@ type oauthConfigView struct {
 	OrgMap          json.RawMessage `json:"org_map"`
 	HasSecret       bool            `json:"has_secret"`
 	HasServiceToken bool            `json:"has_service_token"`
+	SudoWriteback   bool            `json:"sudo_writeback"`
 }
 
 // GetOAuthConfig returns the GitLab OAuth app config for the admin panel.
@@ -45,7 +46,7 @@ func (h *API) GetOAuthConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, oauthConfigView{
 		Provider: "gitlab", ClientID: p.ClientID, GlBaseURL: p.GlBaseUrl,
 		Enabled: p.Enabled, OrgMap: om, HasSecret: p.ClientSecretEnc != "",
-		HasServiceToken: p.ServiceTokenEnc != "",
+		HasServiceToken: p.ServiceTokenEnc != "", SudoWriteback: p.SudoWriteback,
 	})
 }
 
@@ -59,9 +60,10 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		ClientID     string          `json:"client_id"`
 		ClientSecret string          `json:"client_secret"`
 		GlBaseURL    string          `json:"gl_base_url"`
-		Enabled      bool            `json:"enabled"`
-		OrgMap       json.RawMessage `json:"org_map"`
-		ServiceToken string          `json:"service_token"`
+		Enabled       bool            `json:"enabled"`
+		OrgMap        json.RawMessage `json:"org_map"`
+		ServiceToken  string          `json:"service_token"`
+		SudoWriteback bool            `json:"sudo_writeback"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -110,6 +112,7 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		Enabled:         req.Enabled,
 		OrgMap:          orgMap,
 		ServiceTokenEnc: serviceEnc,
+		SudoWriteback:   req.SudoWriteback,
 	})
 	if err != nil {
 		fail(c, err)
@@ -122,6 +125,6 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, oauthConfigView{
 		Provider: "gitlab", ClientID: p.ClientID, GlBaseURL: p.GlBaseUrl,
 		Enabled: p.Enabled, OrgMap: om, HasSecret: p.ClientSecretEnc != "",
-		HasServiceToken: p.ServiceTokenEnc != "",
+		HasServiceToken: p.ServiceTokenEnc != "", SudoWriteback: p.SudoWriteback,
 	})
 }

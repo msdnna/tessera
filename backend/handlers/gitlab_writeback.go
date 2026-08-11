@@ -84,17 +84,21 @@ func (h *API) enqueueWriteback(ctx context.Context, taskID, actorID uuid.UUID, k
 	if err != nil {
 		return
 	}
-	// Coalesce a burst of same-kind edits into one pending row (latest wins).
+	// Attribute the row to the acting user so the worker can push under their GitLab
+	// identity (personal PAT, else admin sudo). actorID is never Nil here (guarded above).
+	actor := actorID
+	// Coalesce a burst of same-kind edits into one pending row (latest wins, incl. actor).
 	// Comments are distinct events and must never be merged.
 	if kind != "comment" {
 		if n, cerr := h.q.CoalescePendingWriteback(ctx, db.CoalescePendingWritebackParams{
-			TaskID: taskID, ChangeKind: kind, Payload: raw,
+			TaskID: taskID, ChangeKind: kind, Payload: raw, ActorUserID: &actor,
 		}); cerr == nil && n > 0 {
 			return
 		}
 	}
 	if cerr := h.q.CreateGitlabWriteback(ctx, db.CreateGitlabWritebackParams{
 		TaskID: taskID, IntegrationID: link.IntegrationID, ChangeKind: kind, Payload: raw,
+		ActorUserID: &actor,
 	}); cerr != nil {
 		log.Printf("gitlab writeback: enqueue %s for task %s failed: %v", kind, taskID, cerr)
 	}
@@ -338,14 +342,15 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
 	}
 	wb := parseWriteback(integ.Writeback)
-	// Resolve the connection the OAuth-era way: instance service token first, else
-	// the integration owner's personal PAT. Using the owner's PAT directly broke
-	// OAuth-only setups (owner has an oauth_identity, no gitlab_credentials row).
-	baseURL, token, ok := h.effectiveGitlabConn(ctx, integ.OwnerUserID)
+	// Resolve the write connection attributed to the acting user (task #2690): the
+	// actor's own PAT, else the service token with a `Sudo:` header (admin sudo), else
+	// the plain service token / owner PAT. The pull stays on the service token — only
+	// writes carry the actor's identity.
+	baseURL, token, sudoUser, ok := h.writeGitlabConn(ctx, w.ActorUserID, integ.OwnerUserID)
 	if !ok {
-		return res, notify.Permanent(errors.New("no GitLab credential available (service token or owner PAT)"))
+		return res, notify.Permanent(errors.New("no GitLab credential available (personal PAT or service token)"))
 	}
-	client := gitlab.New(baseURL, token)
+	client := gitlab.New(baseURL, token).WithSudo(sudoUser)
 	path, iid := link.GlProjectPath, link.GlIid
 	res.wsID = integ.WorkspaceID
 

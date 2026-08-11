@@ -171,13 +171,67 @@ func (h *API) effectiveGitlabConn(ctx context.Context, fallbackUserID *uuid.UUID
 		return b, t, true
 	}
 	if fallbackUserID != nil {
-		if cred, err := h.q.GetGitlabCredential(ctx, *fallbackUserID); err == nil {
-			if t, derr := h.sealer.Decrypt(cred.TokenEnc); derr == nil {
-				return cred.BaseUrl, t, true
-			}
+		if b, t, pok := h.personalGitlabConn(ctx, *fallbackUserID); pok {
+			return b, t, true
 		}
 	}
 	return "", "", false
+}
+
+// personalGitlabConn returns a user's own connected PAT (base URL + decrypted
+// token), if any. ok=false means the user has no gitlab_credentials row (e.g. an
+// OAuth-only login) or the token can't be decrypted.
+func (h *API) personalGitlabConn(ctx context.Context, userID uuid.UUID) (baseURL, token string, ok bool) {
+	cred, err := h.q.GetGitlabCredential(ctx, userID)
+	if err != nil {
+		return "", "", false
+	}
+	t, derr := h.sealer.Decrypt(cred.TokenEnc)
+	if derr != nil {
+		return "", "", false
+	}
+	return cred.BaseUrl, t, true
+}
+
+// sudoWritebackEnabled reports whether the admin turned on GitLab sudo impersonation
+// (service token must be an admin PAT with the `sudo` scope). Off by default.
+func (h *API) sudoWritebackEnabled(ctx context.Context) bool {
+	p, err := h.q.GetOAuthProvider(ctx, "gitlab")
+	return err == nil && p.SudoWriteback
+}
+
+// writeGitlabConn resolves the credential for a WRITE operation, attributing it to
+// the acting user where possible (task #2690). Unlike effectiveGitlabConn (read/pull,
+// service-token-first), writes prefer the actor's own identity so the issue/comment
+// author in GitLab is the real user, not the shared service account. Order:
+//
+//  1. actor's personal PAT        — writes as the user (sudoUser="")
+//  2. service token + Sudo:<user> — admin impersonation, when sudo is enabled and the
+//     actor's GitLab username is known
+//  3. service token (plain)       — shared-account fallback (attribution lost)
+//  4. owner's personal PAT        — last resort for legacy service-token-less setups
+//
+// sudoUser != "" tells the caller to wrap the client with Client.WithSudo.
+func (h *API) writeGitlabConn(ctx context.Context, actorID, ownerID *uuid.UUID) (baseURL, token, sudoUser string, ok bool) {
+	if actorID != nil {
+		if b, t, pok := h.personalGitlabConn(ctx, *actorID); pok {
+			return b, t, "", true
+		}
+	}
+	if b, t, sok := h.serviceGitlabConn(ctx); sok {
+		if actorID != nil && h.sudoWritebackEnabled(ctx) {
+			if uname := h.actorGitlabUsername(ctx, *actorID); uname != "" {
+				return b, t, uname, true
+			}
+		}
+		return b, t, "", true
+	}
+	if ownerID != nil {
+		if b, t, pok := h.personalGitlabConn(ctx, *ownerID); pok {
+			return b, t, "", true
+		}
+	}
+	return "", "", "", false
 }
 
 // actorGitlabUsername resolves a Tessera user's GitLab username — from a connected

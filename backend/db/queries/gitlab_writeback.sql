@@ -5,16 +5,17 @@
 SELECT * FROM gitlab_integrations WHERE id = $1;
 
 -- name: CreateGitlabWriteback :exec
-INSERT INTO gitlab_writebacks (task_id, integration_id, change_kind, payload)
-VALUES ($1, $2, $3, $4);
+INSERT INTO gitlab_writebacks (task_id, integration_id, change_kind, payload, actor_user_id)
+VALUES ($1, $2, $3, $4, $5);
 
 -- CoalescePendingWriteback refreshes an already-pending row for the same task and
 -- change_kind (collapsing a burst of edits into one push, latest value wins) and
--- re-arms it for immediate delivery. Returns the rows updated; 0 means the caller
--- should insert a fresh row.
+-- re-arms it for immediate delivery. The actor is refreshed too (latest editor wins,
+-- so the coalesced push is attributed to whoever made the most recent change).
+-- Returns the rows updated; 0 means the caller should insert a fresh row.
 -- name: CoalescePendingWriteback :execrows
 UPDATE gitlab_writebacks
-SET payload = $3, next_attempt_at = now(), updated_at = now()
+SET payload = $3, actor_user_id = $4, next_attempt_at = now(), updated_at = now()
 WHERE task_id = $1 AND change_kind = $2 AND status = 'pending';
 
 -- ClaimPendingWritebacks atomically grabs up to $1 due pending rows, marking them
