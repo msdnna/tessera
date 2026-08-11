@@ -136,6 +136,19 @@ dependencies {
     implementation platform('com.google.firebase:firebase-bom:34.17.0')
     implementation 'com.google.firebase:firebase-messaging'
 
+    constraints {
+        // firebase-messaging drags in play-services-basement, which still declares
+        // androidx.fragment 1.1.0. Nothing here uses Fragment, but merely having a
+        // pre-1.3.0 fragment on the classpath makes lint's
+        // InvalidFragmentVersionForActivityResult fatal — and lintVitalRelease runs
+        // inside assembleRelease, so `make android-release` fails while debug builds
+        // and `make lint-android` stay green. A constraint raises the transitive
+        // version without adding Fragment as a dependency of ours.
+        implementation('androidx.fragment:fragment:1.8.9') {
+            because 'pre-1.3.0 Fragment via play-services-basement breaks lintVitalRelease'
+        }
+    }
+
     implementation 'io.coil-kt:coil-compose:2.7.0'
     implementation 'io.coil-kt:coil-svg:2.7.0'
 
