@@ -184,6 +184,7 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	// history and in window.location, where injected script can read it — which
 	// would defeat the whole point of hiding the token from JavaScript.
 	h.setRefreshCookie(c, refresh)
+	h.setMediaCookie(c, user.ID)
 	frag := url.Values{"access_token": {access}}
 	c.Redirect(http.StatusFound, base+"/oauth/callback#"+frag.Encode())
 }

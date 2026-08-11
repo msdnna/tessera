@@ -85,6 +85,58 @@ func Auth(secret string, q *db.Queries, patTouchInterval time.Duration) gin.Hand
 	}
 }
 
+// MediaCookieName is the httpOnly cookie the web app carries on inline-image
+// requests. Declared here because the middleware reads it and handlers/ writes
+// it; the two names have to agree.
+const MediaCookieName = "tessera_media"
+
+// MediaAuth guards the inline-media route (#2685). An <img> can send neither a
+// bearer header nor a body, so the credentials it accepts are wider than
+// Auth's — and one of them is a cookie:
+//
+//   - the media cookie, minted for the web app alongside its refresh cookie;
+//   - a bearer credential (access JWT or PAT), which is what Android sends: its
+//     WebView bridge fetches our resources through OkHttp, not the webview stack.
+//
+// require=false keeps serving anonymous requests, which is the default and the
+// behaviour every install has today. It exists because the desktop app loads
+// images as ordinary cross-site <img> tags, where a host-only cookie is never
+// attached: flipping the switch on by default would blank out every picture in
+// the Tauri client. Enforcement is therefore opt-in until desktop has an
+// authenticated image path of its own.
+//
+// Identified callers get their user id in the context either way, so the handler
+// can tell the two apart later without re-parsing anything.
+func MediaAuth(secret string, q *db.Queries, require bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if uid, ok := mediaCaller(c, secret, q); ok {
+			c.Set(ContextUserID, uid)
+			c.Next()
+			return
+		}
+		if !require {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+	}
+}
+
+// mediaCaller resolves whoever is asking for the file, if anyone can be named.
+func mediaCaller(c *gin.Context, secret string, q *db.Queries) (uuid.UUID, bool) {
+	if h := c.GetHeader("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		if uid, ok := ResolveBearer(c, secret, q, strings.TrimPrefix(h, "Bearer "), nil); ok {
+			return uid, true
+		}
+	}
+	if ck, err := c.Cookie(MediaCookieName); err == nil && ck != "" {
+		if uid, err := auth.ParseMediaToken(secret, ck); err == nil {
+			return uid, true
+		}
+	}
+	return uuid.Nil, false
+}
+
 // ResolveBearer validates a bearer credential — an access JWT or a Personal
 // Access Token — and returns its owner. It is the credential half of Auth,
 // split out so non-HTTP-middleware entry points (the WebSocket upgrade, which

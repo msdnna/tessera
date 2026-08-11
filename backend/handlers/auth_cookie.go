@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"tessera/internal/auth"
+	"tessera/middleware"
 )
 
 // Refresh-token delivery has two modes, picked by the client:
@@ -29,6 +31,14 @@ const (
 	refreshCookiePath = "/api/auth"
 	authModeHeader    = "X-Auth-Mode"
 	authModeCookie    = "cookie"
+
+	// The media cookie is the browser's credential for inline images (#2685):
+	// an <img> can't carry a bearer header, so without it /api/uploads/… has to
+	// stay open to anyone who has the URL. Scoped to the media routes and
+	// carrying an audience-tagged token, it grants nothing else. The name lives
+	// in middleware/, which is the side that reads it back.
+	mediaCookieName = middleware.MediaCookieName
+	mediaCookiePath = "/api/uploads"
 )
 
 // wantsCookieAuth reports whether the caller asked for cookie delivery.
@@ -63,6 +73,33 @@ func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string) {
 func (h *AuthHandler) clearRefreshCookie(c *gin.Context) {
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(refreshCookieName, "", -1, refreshCookiePath, "", h.cookieSecure(c), true)
+}
+
+// setMediaCookie hands the browser its image credential, minted for the user the
+// session belongs to. Failure is not fatal: media serving falls back to whatever
+// the install's MEDIA_REQUIRE_AUTH says, and refusing the login instead would
+// trade a hardening measure for an outage.
+//
+// SameSite=Lax rather than Strict: the images this cookie unlocks are also
+// opened as plain links (a notification mail, a chat pasting the URL), and Strict
+// would blank those out. Nothing under /api/uploads changes state — the upload
+// route on the same path is POST and still demands a bearer token — so the
+// laxer tier buys the working case without opening a CSRF surface.
+func (h *AuthHandler) setMediaCookie(c *gin.Context, userID uuid.UUID) {
+	tok, err := auth.NewMediaToken(h.secret, userID)
+	if err != nil {
+		return
+	}
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(mediaCookieName, tok, int(auth.MediaTokenTTL.Seconds()),
+		mediaCookiePath, "", h.cookieSecure(c), true)
+}
+
+// clearMediaCookie expires the image credential; attributes mirror the ones it
+// was set with, or the browser keeps the live cookie next to the expired one.
+func (h *AuthHandler) clearMediaCookie(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(mediaCookieName, "", -1, mediaCookiePath, "", h.cookieSecure(c), true)
 }
 
 // refreshTokenFromRequest picks the presented refresh token. The cookie wins over

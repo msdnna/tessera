@@ -55,6 +55,12 @@ type Config struct {
 	// Throttle the unauthenticated auth routes. On by default; RATE_LIMIT_ENABLED=false
 	// turns it off (single-user installs behind a private network).
 	RateLimitEnabled bool
+	// Require a credential (media cookie or bearer token) on /api/uploads/:name.
+	// Off by default: the desktop app loads inline images as ordinary cross-site
+	// <img> tags, which carry no host-only cookie, so an install that has desktop
+	// users would lose every picture. Web and Android work either way — turn
+	// MEDIA_REQUIRE_AUTH=true on to stop serving uploads to anonymous callers.
+	MediaRequireAuth bool
 	// Request body ceilings, in bytes. MaxBodyBytes is the blanket limit;
 	// uploads and attachments get their own, larger, budgets.
 	MaxBodyBytes       int64
@@ -164,6 +170,7 @@ func New() *Config {
 		PATTouchInterval:   getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
 		TrustedProxies:     splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
 		RateLimitEnabled:   getEnvBool("RATE_LIMIT_ENABLED", true),
+		MediaRequireAuth:   getEnvBool("MEDIA_REQUIRE_AUTH", false),
 		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
 		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
 		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),

@@ -16,7 +16,7 @@ func clearEnv(t *testing.T) {
 		"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "ENCRYPTION_KEY", "PUBLIC_URL",
 		"CORS_ORIGIN", "DESKTOP_CORS_ORIGINS", "PORT", "UPLOAD_DIR",
 		"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",
-		"TRUSTED_PROXIES", "RATE_LIMIT_ENABLED",
+		"TRUSTED_PROXIES", "RATE_LIMIT_ENABLED", "MEDIA_REQUIRE_AUTH",
 		"MAX_BODY_BYTES", "MAX_UPLOAD_BYTES", "MAX_ATTACHMENT_BYTES",
 	} {
 		t.Setenv(k, "")
@@ -90,6 +90,20 @@ func TestLimitDefaults(t *testing.T) {
 	}
 	if len(cfg.TrustedProxies) != 2 {
 		t.Errorf("trusted proxies default = %v, want the loopback pair", cfg.TrustedProxies)
+	}
+}
+
+// Media stays open unless an operator says otherwise: the desktop client loads
+// images as cross-site <img> tags that carry no cookie, so a default-on switch
+// would blank them out on upgrade.
+func TestMediaRequireAuthDefaultsOff(t *testing.T) {
+	clearEnv(t)
+	if New().MediaRequireAuth {
+		t.Error("MEDIA_REQUIRE_AUTH defaulted to on")
+	}
+	t.Setenv("MEDIA_REQUIRE_AUTH", "true")
+	if !New().MediaRequireAuth {
+		t.Error("MEDIA_REQUIRE_AUTH=true ignored")
 	}
 }
 

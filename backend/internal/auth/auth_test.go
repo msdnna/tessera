@@ -35,6 +35,42 @@ func TestAccessTokenWrongSecret(t *testing.T) {
 	}
 }
 
+// Media tokens (#2685) are signed with the same key as access tokens and live
+// 30 days, so the two kinds must not be interchangeable in either direction:
+// a leaked image cookie would otherwise be a month-long API session, and an
+// access token would keep working as a media credential past its 15 minutes.
+func TestMediaTokenIsSeparateFromAccessToken(t *testing.T) {
+	secret := "test-secret-at-least-32-characters-long!!"
+	id := uuid.New()
+
+	media, err := NewMediaToken(secret, id)
+	if err != nil {
+		t.Fatalf("NewMediaToken: %v", err)
+	}
+	got, err := ParseMediaToken(secret, media)
+	if err != nil {
+		t.Fatalf("ParseMediaToken: %v", err)
+	}
+	if got != id {
+		t.Fatalf("subject mismatch: got %v want %v", got, id)
+	}
+
+	if _, err := ParseAccessToken(secret, media); err == nil {
+		t.Error("a media token was accepted as an access token")
+	}
+
+	access, err := NewAccessToken(secret, id)
+	if err != nil {
+		t.Fatalf("NewAccessToken: %v", err)
+	}
+	if _, err := ParseMediaToken(secret, access); err == nil {
+		t.Error("an access token was accepted as a media token")
+	}
+	if _, err := ParseMediaToken(secret+"x", media); err == nil {
+		t.Error("a media token verified under the wrong secret")
+	}
+}
+
 func TestRefreshTokenHashing(t *testing.T) {
 	tok, hash, err := NewRefreshToken()
 	if err != nil {

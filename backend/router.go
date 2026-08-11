@@ -145,9 +145,14 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// scopes the socket to the user's workspaces.
 		api.GET("/ws", wsHandler.Connect)
 
-		// Inline images embedded in descriptions/comments are served publicly
-		// (an <img> can't send the bearer header); unguessable by UUID filename.
-		api.GET("/uploads/:name", rh.ServeUpload)
+		// Inline images embedded in descriptions/comments. Outside the protected
+		// group because an <img> can't send the bearer header: MediaAuth accepts
+		// the httpOnly media cookie the web app carries, or a bearer credential
+		// (Android fetches these through OkHttp). With MEDIA_REQUIRE_AUTH off —
+		// the default, for the sake of the desktop client — an unidentified
+		// caller is still served, guarded only by the UUID filename as before.
+		api.GET("/uploads/:name",
+			middleware.MediaAuth(cfg.JWTSecret, queries, cfg.MediaRequireAuth), rh.ServeUpload)
 
 		// Signed proxy for GitLab attachments embedded in synced content
 		// (public — an <img> can't send auth; HMAC-signed so only Tessera

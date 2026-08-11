@@ -6,25 +6,36 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
+	"tessera/internal/auth"
 )
 
 // setCookie runs one of the cookie helpers against a fake request and returns the
 // parsed tessera_refresh cookie.
 func setCookie(t *testing.T, publicURL string, fn func(*AuthHandler, *gin.Context)) *http.Cookie {
 	t.Helper()
+	return setCookieNamed(t, publicURL, refreshCookieName, fn)
+}
+
+// setCookieNamed is setCookie for any of the cookies the auth layer writes.
+func setCookieNamed(t *testing.T, publicURL, name string, fn func(*AuthHandler, *gin.Context)) *http.Cookie {
+	t.Helper()
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/auth/refresh", nil)
-	fn(&AuthHandler{publicURL: publicURL}, c)
+	fn(&AuthHandler{publicURL: publicURL, secret: testSecret}, c)
 
 	for _, ck := range w.Result().Cookies() {
-		if ck.Name == refreshCookieName {
+		if ck.Name == name {
 			return ck
 		}
 	}
-	t.Fatalf("no %s cookie was set (Set-Cookie: %v)", refreshCookieName, w.Header().Values("Set-Cookie"))
+	t.Fatalf("no %s cookie was set (Set-Cookie: %v)", name, w.Header().Values("Set-Cookie"))
 	return nil
 }
+
+const testSecret = "unit-test-secret-min32-characters!!"
 
 // Secure follows the public base URL, not the inbound request: behind nginx the
 // request reaching Go is plain http even when the browser spoke https, so keying
@@ -75,6 +86,52 @@ func TestClearRefreshCookieMatchesAttributes(t *testing.T) {
 	if ck.Path != refreshCookiePath || !ck.HttpOnly || !ck.Secure {
 		t.Errorf("clearing cookie attributes differ from the original: Path=%q HttpOnly=%v Secure=%v",
 			ck.Path, ck.HttpOnly, ck.Secure)
+	}
+}
+
+// The media cookie is the only credential an <img> can carry, so its scope is
+// what keeps it from being a second session token: images only, and unreadable
+// from script. Its value must name the user it was minted for — a cookie that
+// parses as somebody else's would hand out the wrong access.
+func TestMediaCookieScopeAndSubject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	uid := uuid.New()
+
+	ck := setCookieNamed(t, "https://tessera.example", mediaCookieName, func(h *AuthHandler, c *gin.Context) {
+		h.setMediaCookie(c, uid)
+	})
+	if !ck.HttpOnly || !ck.Secure {
+		t.Errorf("attributes: HttpOnly=%v Secure=%v", ck.HttpOnly, ck.Secure)
+	}
+	if ck.Path != mediaCookiePath {
+		t.Errorf("Path = %q, want %q — a wider scope would attach it to every API call", ck.Path, mediaCookiePath)
+	}
+	if ck.SameSite != http.SameSiteLaxMode {
+		t.Errorf("SameSite = %v, want Lax", ck.SameSite)
+	}
+	got, err := auth.ParseMediaToken(testSecret, ck.Value)
+	if err != nil {
+		t.Fatalf("cookie value is not a valid media token: %v", err)
+	}
+	if got != uid {
+		t.Errorf("media token subject = %s, want %s", got, uid)
+	}
+}
+
+// Clearing must mirror the attributes exactly; a path mismatch leaves the live
+// cookie in the jar and the user still able to fetch media after logging out.
+func TestClearMediaCookieMatchesAttributes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	ck := setCookieNamed(t, "https://tessera.example", mediaCookieName, func(h *AuthHandler, c *gin.Context) {
+		h.clearMediaCookie(c)
+	})
+	if ck.Value != "" || ck.MaxAge >= 0 {
+		t.Errorf("clearing cookie: value=%q MaxAge=%d", ck.Value, ck.MaxAge)
+	}
+	if ck.Path != mediaCookiePath || !ck.HttpOnly || !ck.Secure || ck.SameSite != http.SameSiteLaxMode {
+		t.Errorf("clearing cookie attributes differ from the original: Path=%q HttpOnly=%v Secure=%v SameSite=%v",
+			ck.Path, ck.HttpOnly, ck.Secure, ck.SameSite)
 	}
 }
 

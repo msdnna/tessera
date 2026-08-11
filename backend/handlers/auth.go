@@ -205,9 +205,10 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	token, _ := refreshTokenFromRequest(c, req.RefreshToken)
-	// Unconditionally: the caller asked to be logged out, so the cookie goes
+	// Unconditionally: the caller asked to be logged out, so the cookies go
 	// even if the token turns out to be unknown.
 	h.clearRefreshCookie(c)
+	h.clearMediaCookie(c)
 
 	if token != "" {
 		if err := h.q.RevokeRefreshToken(c, auth.HashRefreshToken(token)); err != nil {
@@ -282,6 +283,10 @@ func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool) {
 	if cookieMode {
 		h.setRefreshCookie(c, refresh)
 		res.RefreshToken = "" // omitempty drops it from the body entirely
+		// Same client, same trip: the browser also needs the credential that
+		// <img> requests to /api/uploads can carry (#2685). Reissued on every
+		// refresh, so a long-lived session never outlives its media cookie.
+		h.setMediaCookie(c, user.ID)
 	}
 	c.JSON(http.StatusOK, res)
 }

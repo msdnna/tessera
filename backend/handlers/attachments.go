@@ -91,7 +91,9 @@ func (h *API) UploadMedia(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"url": "/api/uploads/" + name})
 }
 
-// ServeUpload serves an inline image by name (public; see UploadMedia).
+// ServeUpload serves an inline image by name. Who may ask is decided upstream by
+// middleware.MediaAuth (media cookie or bearer token, and — unless
+// MEDIA_REQUIRE_AUTH is on — anyone holding the UUID filename); see UploadMedia.
 func (h *API) ServeUpload(c *gin.Context) {
 	name := filepath.Base(c.Param("name"))
 	if !mediaNameRe.MatchString(name) {
