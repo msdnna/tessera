@@ -606,8 +606,8 @@ func (h *API) performSetAssignees(ctx context.Context, client *gitlab.Client, in
 	ids := map[int64]bool{}
 	if tas, err := h.q.ListTaskAssignees(ctx, taskID); err == nil {
 		for _, a := range tas {
-			if cred, cerr := h.q.GetGitlabCredential(ctx, a.ID); cerr == nil && cred.GlUserID != 0 {
-				ids[cred.GlUserID] = true
+			if gid, ok := h.assigneeGlUserID(ctx, a.ID); ok {
+				ids[gid] = true
 			}
 		}
 	} else {

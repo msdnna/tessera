@@ -247,6 +247,23 @@ func (h *API) actorGitlabUsername(ctx context.Context, userID uuid.UUID) string 
 	return ""
 }
 
+// assigneeGlUserID resolves a Tessera user's numeric GitLab user id for assignee
+// write-back: a connected PAT credential first, else their "Login with GitLab" OAuth
+// identity (provider_user_id). 0/false when the user has no GitLab identity — such an
+// assignee is simply dropped from the pushed set. Without the OAuth fallback,
+// OAuth-login users (no personal PAT) never resolved, so assignee pushes were empty.
+func (h *API) assigneeGlUserID(ctx context.Context, userID uuid.UUID) (int64, bool) {
+	if cred, err := h.q.GetGitlabCredential(ctx, userID); err == nil && cred.GlUserID != 0 {
+		return cred.GlUserID, true
+	}
+	if s, err := h.q.GetGitlabUserIDForUser(ctx, userID); err == nil {
+		if id, perr := strconv.ParseInt(strings.TrimSpace(s), 10, 64); perr == nil && id != 0 {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
 // fullIntegrationView enriches a stored row with the resolved estimation unit and
 // the board's project id.
 func (h *API) fullIntegrationView(c *gin.Context, integ db.GitlabIntegration) gitlabIntegrationView {

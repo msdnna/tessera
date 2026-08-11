@@ -78,6 +78,20 @@ func (q *Queries) GetGitlabAvatarForUser(ctx context.Context, userID uuid.UUID) 
 	return gl_avatar_url, err
 }
 
+const getGitlabUserIDForUser = `-- name: GetGitlabUserIDForUser :one
+SELECT provider_user_id FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1
+`
+
+// GetGitlabUserIDForUser returns a user's numeric GitLab user id (stored as text)
+// from their OAuth identity — the assignee-write-back fallback for OAuth-login users
+// who have no personal PAT (and thus no gitlab_credentials.gl_user_id).
+func (q *Queries) GetGitlabUserIDForUser(ctx context.Context, userID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getGitlabUserIDForUser, userID)
+	var provider_user_id string
+	err := row.Scan(&provider_user_id)
+	return provider_user_id, err
+}
+
 const getGitlabUsernameForUser = `-- name: GetGitlabUsernameForUser :one
 SELECT provider_username FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1
 `

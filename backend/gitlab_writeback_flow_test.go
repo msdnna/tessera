@@ -365,6 +365,53 @@ func TestGitlabWritebackSudoImpersonation(t *testing.T) {
 	w.wmu.Unlock()
 }
 
+// Assignee write-back resolves an OAuth-login user (no personal PAT) via their
+// OAuth identity's numeric GitLab id — regression for "assignees set (0)" where such
+// users were silently dropped (task #2690 /rework).
+func TestGitlabWritebackAssigneeOAuthUser(t *testing.T) {
+	t.Parallel()
+	st := newWritebackStand(t, "gl-asgn-user", "grp-asgn")
+	c, s, w := st.c, st.s, st.w
+
+	// A second user who logged in via GitLab (OAuth identity with a numeric GL id)
+	// and never connected a personal PAT — the case that used to resolve to nobody.
+	c2 := signup(t)
+	if _, err := testPool.Exec(context.Background(),
+		`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'member')`,
+		s.WS, c2.UserID); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+	if _, err := testPool.Exec(context.Background(),
+		`INSERT INTO oauth_identities (user_id, provider, provider_user_id, provider_username, gl_base_url)
+		 VALUES ($1::uuid, 'gitlab', '555', 'gl-asgn-user', $2)`, c2.UserID, w.outer.URL); err != nil {
+		t.Fatalf("insert oauth identity: %v", err)
+	}
+
+	st.putBindings(t, []map[string]any{
+		{"enabled": true,
+			"trigger": map[string]any{"type": "assignees"},
+			"action":  map[string]any{"type": "set_assignees"}},
+	})
+
+	// Assign the OAuth-only user; the write-back uses the admin owner's PAT.
+	if r := c.post("/tasks/"+st.taskID+"/assignees", map[string]any{"user_id": c2.UserID}); r.Status != http.StatusNoContent {
+		t.Fatalf("assign: status %d\n%s", r.Status, r.Body)
+	}
+
+	drainOutboxUntil(t, func() bool { return writebackRows(t, st.taskID)["assignees"].Status == "sent" })
+
+	puts := w.callsMatching(http.MethodPut, "/issues/1")
+	var sawAssignee bool
+	for _, call := range puts {
+		if call.Form.Get("assignee_ids[]") == "555" {
+			sawAssignee = true
+		}
+	}
+	if !sawAssignee {
+		t.Fatalf("assignee push did not carry the OAuth user's GitLab id 555\ncalls: %+v", puts)
+	}
+}
+
 // Retry path: the first push gets a 500 → the row is backed off (pending again,
 // attempts=1, error kept) and the journal records a failed push action; the
 // retry endpoint re-enqueues it and a healthy drain delivers it.

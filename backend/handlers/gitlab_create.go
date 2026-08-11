@@ -97,9 +97,18 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		return
 	}
 
-	// Best-effort follow-up: time estimate is set via its own endpoint (time unit only).
-	if wb.PushEstimate && task.Estimate != nil && *task.Estimate > 0 && h.integrationEstimationUnit(c, integ) == "time" {
+	// Best-effort follow-ups: the create call only carries title/description/labels/
+	// due/assignees, so mirror the rest of the task snapshot onto the new issue via
+	// their own endpoints. Unconditional (like due/assignees) — an explicit "create
+	// issue from task" should reproduce the task's current fields, not wait for a
+	// later incidental write-back.
+	if task.Estimate != nil && *task.Estimate > 0 && h.integrationEstimationUnit(c, integ) == "time" {
 		_ = client.SetIssueTimeEstimate(c, integ.ProjectPath, created.IID, int64(*task.Estimate))
+	}
+	if task.MilestoneID != nil {
+		if ml, mlErr := h.q.GetGitlabMilestoneLink(c, *task.MilestoneID); mlErr == nil && ml.GlNumericID != 0 {
+			_ = client.SetIssueMilestone(c, integ.ProjectPath, created.IID, ml.GlNumericID)
+		}
 	}
 
 	state := created.State
@@ -191,8 +200,8 @@ func (h *API) resolveTaskGitlabAssigneeIDs(ctx context.Context, integ db.GitlabI
 	ids := map[int64]bool{}
 	if tas, err := h.q.ListTaskAssignees(ctx, taskID); err == nil {
 		for _, a := range tas {
-			if cred, cerr := h.q.GetGitlabCredential(ctx, a.ID); cerr == nil && cred.GlUserID != 0 {
-				ids[cred.GlUserID] = true
+			if gid, ok := h.assigneeGlUserID(ctx, a.ID); ok {
+				ids[gid] = true
 			}
 		}
 	}

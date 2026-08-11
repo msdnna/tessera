@@ -43,6 +43,12 @@ SELECT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_user
 -- name: GetGitlabUsernameForUser :one
 SELECT provider_username FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1;
 
+-- GetGitlabUserIDForUser returns a user's numeric GitLab user id (stored as text)
+-- from their OAuth identity — the assignee-write-back fallback for OAuth-login users
+-- who have no personal PAT (and thus no gitlab_credentials.gl_user_id).
+-- name: GetGitlabUserIDForUser :one
+SELECT provider_user_id FROM oauth_identities WHERE provider = 'gitlab' AND user_id = $1 LIMIT 1;
+
 -- GetGitlabAvatarForUser returns the (already-proxied) GitLab avatar URL for a
 -- Tessera user, resolved from the synced project-member roster via their GitLab
 -- identity (OAuth login or connected PAT). Lets an OAuth account show its GitLab
