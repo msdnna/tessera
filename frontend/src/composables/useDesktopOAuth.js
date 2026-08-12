@@ -45,7 +45,10 @@ export async function startDesktopGitlabLogin(authorizeUrl) {
     const { openUrl } = await import('@tauri-apps/plugin-opener')
     await openUrl(authorizeUrl)
     return true
-  } catch {
+  } catch (e) {
+    // Surface the real reason (ACL/scope, missing plugin, no browser) — the caller only
+    // shows a generic message, so without this the cause is invisible at runtime.
+    console.error('tessera: could not open the system browser for GitLab login', e)
     return false
   }
 }
