@@ -27,6 +27,11 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
+# GitLab OAuth (#2696): the login opens in the *system* browser (opener) and the session
+# comes back on the tessera:// custom scheme (deep-link). Doing it inside our own webview
+# is the bug this replaces, and RFC 8252 forbids it besides.
+tauri-plugin-deep-link = "2"
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

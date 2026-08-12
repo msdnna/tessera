@@ -1,11 +1,17 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
 import { LogoGitlab } from '@vicons/ionicons5'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
+import { isTauri } from '@/utils/serverBase'
+import {
+  startDesktopGitlabLogin,
+  OAUTH_DONE_EVENT,
+  OAUTH_WAIT_MS,
+} from '@/composables/useDesktopOAuth'
 
 const email = ref('')
 const password = ref('')
@@ -40,8 +46,49 @@ onMounted(async () => {
   }
 })
 
-function loginWithGitlab() {
-  window.location.href = auth.gitlabAuthorizeUrl()
+// Desktop waits for the browser round-trip; on web the page simply navigates away.
+const glWaiting = ref(false)
+let glTimer = null
+
+function stopWaiting() {
+  glWaiting.value = false
+  clearTimeout(glTimer)
+  glTimer = null
+}
+
+// The handoff itself is handled in App.vue (the OS may deliver it to a fresh process);
+// here we only stop the spinner and surface an error if one came back.
+function onOAuthDone(e) {
+  stopWaiting()
+  const reason = e.detail?.error
+  if (reason) formError.value = OAUTH_ERRORS[reason] || 'Не удалось войти через GitLab.'
+}
+onMounted(() => window.addEventListener(OAUTH_DONE_EVENT, onOAuthDone))
+onUnmounted(() => {
+  window.removeEventListener(OAUTH_DONE_EVENT, onOAuthDone)
+  clearTimeout(glTimer)
+})
+
+async function loginWithGitlab() {
+  formError.value = ''
+  // Web: a top-level navigation, which is what the SameSite=Lax state cookie needs.
+  if (!isTauri()) {
+    window.location.href = auth.gitlabAuthorizeUrl()
+    return
+  }
+  // Desktop: the login must NOT happen inside our own webview (that was the #2696 bug,
+  // and RFC 8252 forbids it anyway) — hand it to the system browser.
+  glWaiting.value = true
+  if (!(await startDesktopGitlabLogin(auth.gitlabAuthorizeUrl('desktop')))) {
+    stopWaiting()
+    formError.value = 'Не удалось открыть браузер для входа через GitLab.'
+    return
+  }
+  glTimer = setTimeout(() => {
+    stopWaiting()
+    formError.value =
+      'Не удалось вернуться в приложение. Проверьте, что ссылки tessera:// открываются в Tessera.'
+  }, OAUTH_WAIT_MS)
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -103,10 +150,13 @@ async function submit() {
     </n-form>
     <template v-if="gitlabEnabled">
       <div class="auth-or"><span>или</span></div>
-      <n-button block class="gl-oauth-btn" @click="loginWithGitlab">
+      <n-button block class="gl-oauth-btn" :loading="glWaiting" @click="loginWithGitlab">
         <template #icon><n-icon :component="LogoGitlab" /></template>
-        Войти через GitLab
+        {{ glWaiting ? 'Ожидаем подтверждения в браузере…' : 'Войти через GitLab' }}
       </n-button>
+      <div v-if="glWaiting" class="auth-foot">
+        <a href="#" @click.prevent="stopWaiting">Отмена</a>
+      </div>
     </template>
     <div class="auth-foot">
       <router-link to="/forgot-password">Забыли пароль?</router-link>

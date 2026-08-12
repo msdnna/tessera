@@ -19,18 +19,43 @@ import (
 
 const oauthStateCookie = "gl_oauth_state"
 
-// oauthMobileScheme is the custom-scheme deep link the Android app registers. When the
-// flow is initiated from the mobile client (?platform=android), the callback hands the
-// session (or error) back through this URI instead of the web SPA route — Chrome Custom
-// Tab redirects to it, MainActivity picks up the fragment. The confidential-app secret
-// never leaves the server, so the mobile client stays a pure public consumer of tokens.
-const oauthMobileScheme = "tessera://oauth/callback"
+// oauthNativeScheme is the custom-scheme deep link the native clients register. When
+// the flow is initiated from one of them (?platform=android|desktop), the callback hands
+// the session (or error) back through this URI instead of the web SPA route — the Chrome
+// Custom Tab / system browser redirects to it, and the app picks up the fragment. The
+// confidential-app secret never leaves the server, so native clients stay pure public
+// consumers of tokens. Android and the desktop shell share one scheme: they never run on
+// the same OS, and a single handoff format keeps the callback branch-free.
+const oauthNativeScheme = "tessera://oauth/callback"
 
-// oauthMobileState marks a `state` value as originating from the mobile client. The
-// marker rides through GitLab and comes back in the callback query, so the callback
-// knows which handoff target to use. It is inside the CSRF-checked state (mirrored in
-// the cookie), so it can't be forged independently of the state itself.
-const oauthMobileState = "m."
+// oauthMobileState / oauthDesktopState mark a `state` value as originating from a native
+// client. The marker rides through GitLab and comes back in the callback query, so the
+// callback knows which handoff target to use. It is inside the CSRF-checked state
+// (mirrored in the cookie), so it can't be forged independently of the state itself. The
+// two platforms share a handoff URI but keep distinct markers so they can diverge later.
+const (
+	oauthMobileState  = "m."
+	oauthDesktopState = "d."
+)
+
+// oauthHandoff decides how a flow hands the session back. On authorize, `platform` is the
+// query parameter and `state` is empty; on callback it is the other way round — the marker
+// travels inside the state. Native clients get the deep link and carry the refresh token
+// themselves; the web SPA gets a same-origin redirect plus the httpOnly refresh cookie.
+func oauthHandoff(platform, state string) (native bool, prefix string) {
+	switch platform {
+	case "android":
+		return true, oauthMobileState
+	case "desktop":
+		return true, oauthDesktopState
+	}
+	for _, p := range []string{oauthMobileState, oauthDesktopState} {
+		if strings.HasPrefix(state, p) {
+			return true, p
+		}
+	}
+	return false, ""
+}
 
 // oauthBaseURL is the externally-reachable origin used to build redirect URIs and
 // the post-login handoff. Prefers the configured PublicURL; falls back to the
@@ -72,11 +97,11 @@ func (h *AuthHandler) Providers(c *gin.Context) {
 // GitlabAuthorize redirects the browser to GitLab's authorization endpoint with a
 // CSRF `state` mirrored in a short-lived cookie.
 func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
-	mobile := c.Query("platform") == "android"
+	native, statePrefix := oauthHandoff(c.Query("platform"), "")
 	p, err := h.q.GetOAuthProvider(c, "gitlab")
 	if err != nil || !p.Enabled || p.ClientID == "" || p.GlBaseUrl == "" {
-		if mobile {
-			c.Redirect(http.StatusFound, oauthMobileScheme+"#"+url.Values{"oauth_error": {"not_configured"}}.Encode())
+		if native {
+			c.Redirect(http.StatusFound, oauthNativeScheme+"#"+url.Values{"oauth_error": {"not_configured"}}.Encode())
 			return
 		}
 		c.Redirect(http.StatusFound, h.oauthBaseURL(c)+"/login?oauth_error=not_configured")
@@ -87,10 +112,7 @@ func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
-	state := hex.EncodeToString(buf)
-	if mobile {
-		state = oauthMobileState + state
-	}
+	state := statePrefix + hex.EncodeToString(buf)
 	secure := strings.HasPrefix(h.oauthBaseURL(c), "https")
 	// SameSite=Lax so the cookie survives GitLab's top-level GET redirect back.
 	c.SetSameSite(http.SameSiteLaxMode)
@@ -111,13 +133,13 @@ func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
 // session back to the SPA via the URL fragment (never logged/sent to the server).
 func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	base := h.oauthBaseURL(c)
-	// The mobile marker lives inside the state value, which is echoed back untouched by
+	// The native marker lives inside the state value, which is echoed back untouched by
 	// GitLab — safe to read here for choosing the handoff target even before the CSRF
 	// check (a forged prefix only changes where an *error* is delivered).
-	mobile := strings.HasPrefix(c.Query("state"), oauthMobileState)
+	native, _ := oauthHandoff("", c.Query("state"))
 	redirectErr := func(reason string) {
-		if mobile {
-			c.Redirect(http.StatusFound, oauthMobileScheme+"#"+url.Values{"oauth_error": {reason}}.Encode())
+		if native {
+			c.Redirect(http.StatusFound, oauthNativeScheme+"#"+url.Values{"oauth_error": {reason}}.Encode())
 			return
 		}
 		c.Redirect(http.StatusFound, base+"/login?oauth_error="+url.QueryEscape(reason))
@@ -172,11 +194,13 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	if !ok {
 		return // mintTokens already wrote a 500
 	}
-	if mobile {
-		// No cookie to set on a custom-scheme handoff — the mobile app stores
-		// the refresh token itself.
+	if native {
+		// No cookie to set on a custom-scheme handoff — the native client stores
+		// the refresh token itself. Desktop is cross-origin against the API
+		// (frontend/src/utils/serverBase.js), so a host-only cookie would never
+		// reach it either way.
 		frag := url.Values{"access_token": {access}, "refresh_token": {refresh}}
-		c.Redirect(http.StatusFound, oauthMobileScheme+"#"+frag.Encode())
+		c.Redirect(http.StatusFound, oauthNativeScheme+"#"+frag.Encode())
 		return
 	}
 	// Web: the refresh token goes into the httpOnly cookie instead of the

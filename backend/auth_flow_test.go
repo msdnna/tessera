@@ -2,6 +2,8 @@ package main
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -90,4 +92,77 @@ func TestFixtureStack(t *testing.T) {
 	if task["title"] != "Первая задача" {
 		t.Fatalf("task create: %v", task)
 	}
+}
+
+// #2696: the desktop (Tauri) client starts the GitLab flow with ?platform=desktop and
+// must be handed back through the custom scheme, never through the web SPA — its webview
+// cannot receive tokens on the server origin, and the refresh cookie is host-only so it
+// would never reach a cross-origin desktop client either.
+//
+// The assertion is on the *target*, not on a particular error: oauth_providers is a
+// global singleton other tests toggle, so "not configured" isn't stable under -parallel.
+// Both admissible outcomes are checked, and both fail loudly if desktop falls back to the
+// web branch.
+func TestGitlabAuthorizeNativeHandoff(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		platform    string
+		wantMarker  string // expected state prefix when the provider IS configured
+		wantsNative bool
+	}{
+		{"desktop", "d.", true},
+		{"android", "m.", true},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		t.Run("platform="+tc.platform, func(t *testing.T) {
+			t.Parallel()
+			q := ""
+			if tc.platform != "" {
+				q = "?platform=" + tc.platform
+			}
+			loc := redirectLocation(t, "/auth/gitlab/authorize"+q)
+
+			if !tc.wantsNative {
+				if strings.HasPrefix(loc, "tessera://") {
+					t.Fatalf("web flow was handed off to the native scheme: %s", loc)
+				}
+				return
+			}
+			// Provider disabled → error comes back on the deep link, not on /login.
+			if strings.HasPrefix(loc, "tessera://oauth/callback#") {
+				if strings.Contains(loc, "/login") {
+					t.Fatalf("native error redirect points at the web login page: %s", loc)
+				}
+				return
+			}
+			// Provider enabled → off to GitLab, with the platform marker inside `state`.
+			u, err := url.Parse(loc)
+			if err != nil {
+				t.Fatalf("parse redirect %q: %v", loc, err)
+			}
+			if state := u.Query().Get("state"); !strings.HasPrefix(state, tc.wantMarker) {
+				t.Fatalf("state %q lacks the %q marker (redirect: %s)", state, tc.wantMarker, loc)
+			}
+		})
+	}
+}
+
+// redirectLocation issues a GET that is NOT followed and returns the Location header.
+// The default client would try to dial tessera:// and fail.
+func redirectLocation(t *testing.T, path string) string {
+	t.Helper()
+	cl := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	res, err := cl.Get(testServer.URL + "/api" + path)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusFound {
+		t.Fatalf("GET %s: status %d, want 302", path, res.StatusCode)
+	}
+	return res.Header.Get("Location")
 }
