@@ -22,6 +22,7 @@ type oauthConfigView struct {
 	OrgMap          json.RawMessage `json:"org_map"`
 	HasSecret       bool            `json:"has_secret"`
 	HasServiceToken bool            `json:"has_service_token"`
+	SudoWriteback   bool            `json:"sudo_writeback"`
 }
 
 // GetOAuthConfig returns the GitLab OAuth app config for the admin panel.
@@ -35,7 +36,7 @@ func (h *API) GetOAuthConfig(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	om := p.OrgMap
@@ -45,7 +46,7 @@ func (h *API) GetOAuthConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, oauthConfigView{
 		Provider: "gitlab", ClientID: p.ClientID, GlBaseURL: p.GlBaseUrl,
 		Enabled: p.Enabled, OrgMap: om, HasSecret: p.ClientSecretEnc != "",
-		HasServiceToken: p.ServiceTokenEnc != "",
+		HasServiceToken: p.ServiceTokenEnc != "", SudoWriteback: p.SudoWriteback,
 	})
 }
 
@@ -59,9 +60,15 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		ClientID     string          `json:"client_id"`
 		ClientSecret string          `json:"client_secret"`
 		GlBaseURL    string          `json:"gl_base_url"`
-		Enabled      bool            `json:"enabled"`
-		OrgMap       json.RawMessage `json:"org_map"`
-		ServiceToken string          `json:"service_token"`
+		Enabled       bool            `json:"enabled"`
+		OrgMap        json.RawMessage `json:"org_map"`
+		ServiceToken  string          `json:"service_token"`
+		SudoWriteback bool            `json:"sudo_writeback"`
+		// Explicit erase flags: empty string means "keep as is", so wiping a stored
+		// secret needs its own signal. A non-empty value in the same request wins
+		// over the flag (replace beats erase).
+		ClearClientSecret bool `json:"clear_client_secret"`
+		ClearServiceToken bool `json:"clear_service_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -74,10 +81,16 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		secretEnc = existing.ClientSecretEnc
 		serviceEnc = existing.ServiceTokenEnc
 	}
+	if req.ClearClientSecret {
+		secretEnc = ""
+	}
+	if req.ClearServiceToken {
+		serviceEnc = ""
+	}
 	if s := strings.TrimSpace(req.ClientSecret); s != "" {
 		enc, err := h.sealer.Encrypt(s)
 		if err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 		secretEnc = enc
@@ -85,7 +98,7 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	if s := strings.TrimSpace(req.ServiceToken); s != "" {
 		enc, err := h.sealer.Encrypt(s)
 		if err != nil {
-			fail(c)
+			fail(c, err)
 			return
 		}
 		serviceEnc = enc
@@ -110,9 +123,10 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		Enabled:         req.Enabled,
 		OrgMap:          orgMap,
 		ServiceTokenEnc: serviceEnc,
+		SudoWriteback:   req.SudoWriteback,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	om := p.OrgMap
@@ -122,6 +136,6 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, oauthConfigView{
 		Provider: "gitlab", ClientID: p.ClientID, GlBaseURL: p.GlBaseUrl,
 		Enabled: p.Enabled, OrgMap: om, HasSecret: p.ClientSecretEnc != "",
-		HasServiceToken: p.ServiceTokenEnc != "",
+		HasServiceToken: p.ServiceTokenEnc != "", SudoWriteback: p.SudoWriteback,
 	})
 }

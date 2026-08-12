@@ -283,7 +283,7 @@ func (h *API) ListGitlabConflicts(c *gin.Context) {
 	}
 	rows, err := h.q.ListOpenConflictsByWorkspace(c, wsID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	out := make([]conflictDTO, 0, len(rows))
@@ -331,7 +331,7 @@ func (h *API) ResolveGitlabConflict(c *gin.Context) {
 		if notFound(c, err) {
 			return
 		}
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if w.Status != "conflict" || w.TaskID != taskID {
@@ -340,7 +340,7 @@ func (h *API) ResolveGitlabConflict(c *gin.Context) {
 	}
 	integ, err := h.q.GetGitlabIntegrationByID(c, w.IntegrationID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, integ.WorkspaceID) {
@@ -349,7 +349,7 @@ func (h *API) ResolveGitlabConflict(c *gin.Context) {
 	uid := middleware.CurrentUser(c)
 	link, err := h.q.GetGitlabLinkByTask(c, taskID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	snap, _ := snapshotPresence(link.GlSnapshot)
@@ -361,21 +361,21 @@ func (h *API) ResolveGitlabConflict(c *gin.Context) {
 			h.applyConflictValue(c, taskID, f.Field, f.Theirs)
 			setSnapshotField(&snap, f.Field, f.Theirs)
 		}
-		_ = h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)})
-		_ = h.q.ResolveConflictSettled(c, db.ResolveConflictSettledParams{ID: w.ID, Resolution: "theirs", ResolvedBy: &uid})
+		soft(c, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
+		soft(c, "ResolveConflictSettled", h.q.ResolveConflictSettled(c, db.ResolveConflictSettledParams{ID: w.ID, Resolution: "theirs", ResolvedBy: &uid}))
 	case "ours":
 		for _, f := range cd.Fields {
 			setSnapshotField(&snap, f.Field, f.Theirs) // acknowledge GitLab's value as baseline
 		}
-		_ = h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)})
-		_ = h.q.ReArmConflict(c, db.ReArmConflictParams{ID: w.ID, Resolution: "ours", ResolvedBy: &uid})
+		soft(c, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
+		soft(c, "ReArmConflict", h.q.ReArmConflict(c, db.ReArmConflictParams{ID: w.ID, Resolution: "ours", ResolvedBy: &uid}))
 	case "manual":
 		for _, f := range cd.Fields {
 			h.applyConflictValue(c, taskID, f.Field, req.Value[f.Field])
 			setSnapshotField(&snap, f.Field, f.Theirs)
 		}
-		_ = h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)})
-		_ = h.q.ReArmConflict(c, db.ReArmConflictParams{ID: w.ID, Resolution: "manual", ResolvedBy: &uid})
+		soft(c, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
+		soft(c, "ReArmConflict", h.q.ReArmConflict(c, db.ReArmConflictParams{ID: w.ID, Resolution: "manual", ResolvedBy: &uid}))
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "resolution must be ours|theirs|manual"})
 		return
@@ -402,7 +402,7 @@ func (h *API) applyConflictValue(ctx context.Context, taskID uuid.UUID, field, v
 				due = &t
 			}
 		}
-		_ = h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: taskID, DueDate: due})
+		soft(ctx, "UpdateTaskDueDate", h.q.UpdateTaskDueDate(ctx, db.UpdateTaskDueDateParams{ID: taskID, DueDate: due}))
 	case "estimate":
 		var est *float64
 		if value != "" {
@@ -410,14 +410,14 @@ func (h *API) applyConflictValue(ctx context.Context, taskID uuid.UUID, field, v
 				est = &n
 			}
 		}
-		_ = h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: taskID, Estimate: est})
+		soft(ctx, "UpdateTaskEstimate", h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: taskID, Estimate: est}))
 	case "title":
-		_ = h.q.SetTaskTitle(ctx, db.SetTaskTitleParams{ID: taskID, Title: value})
+		soft(ctx, "SetTaskTitle", h.q.SetTaskTitle(ctx, db.SetTaskTitleParams{ID: taskID, Title: value}))
 	case "description":
-		_ = h.q.SetTaskDescription(ctx, db.SetTaskDescriptionParams{ID: taskID, Description: value})
+		soft(ctx, "SetTaskDescription", h.q.SetTaskDescription(ctx, db.SetTaskDescriptionParams{ID: taskID, Description: value}))
 	case "priority":
 		if n, err := strconv.ParseInt(value, 10, 32); err == nil {
-			_ = h.q.SetTaskPriority(ctx, db.SetTaskPriorityParams{ID: taskID, Priority: int32(n)})
+			soft(ctx, "SetTaskPriority", h.q.SetTaskPriority(ctx, db.SetTaskPriorityParams{ID: taskID, Priority: int32(n)}))
 		}
 	case "state":
 		h.applyTaskState(ctx, taskID, value)
@@ -455,7 +455,7 @@ func (h *API) applyTaskState(ctx context.Context, taskID uuid.UUID, state string
 			}
 		}
 	}
-	_ = h.q.SetTaskColumnCompleted(ctx, db.SetTaskColumnCompletedParams{ID: taskID, ColumnID: col, CompletedAt: completed})
+	soft(ctx, "SetTaskColumnCompleted", h.q.SetTaskColumnCompleted(ctx, db.SetTaskColumnCompletedParams{ID: taskID, ColumnID: col, CompletedAt: completed}))
 }
 
 // setSnapshotField writes a resolved string back into the typed snapshot.

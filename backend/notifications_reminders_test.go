@@ -11,6 +11,57 @@ import (
 	"time"
 )
 
+// TestRegisterDeviceChannelPushToken covers device registration around the FCM
+// token: it round-trips into the channel config, a re-registration that carries
+// no token keeps the stored one (a client that couldn't reach Play Services must
+// not silently disable background push), and a rotated token replaces it.
+func TestRegisterDeviceChannelPushToken(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+
+	cfgOf := func(t *testing.T, v map[string]any) map[string]any {
+		t.Helper()
+		cfg, ok := v["config"].(map[string]any)
+		if !ok {
+			t.Fatalf("channel has no config object: %v", v)
+		}
+		return cfg
+	}
+
+	// First registration with a push token.
+	ch := c.expect(t, c.post("/notification-devices", map[string]any{
+		"device_id": "dev-1", "label": "Пиксель", "platform": "android", "fcm_token": "tok-1",
+	}), http.StatusCreated)
+	if cfg := cfgOf(t, ch); cfg["fcm_token"] != "tok-1" || cfg["device_id"] != "dev-1" {
+		t.Fatalf("register with token: %v", cfg)
+	}
+
+	// Re-registration without a token (no Play Services this start) keeps it.
+	ch = c.expect(t, c.post("/notification-devices", map[string]any{
+		"device_id": "dev-1", "platform": "android",
+	}), http.StatusOK)
+	if cfg := cfgOf(t, ch); cfg["fcm_token"] != "tok-1" {
+		t.Fatalf("re-register without token must keep it: %v", cfg)
+	}
+
+	// A rotated token overwrites the stored one.
+	ch = c.expect(t, c.post("/notification-devices", map[string]any{
+		"device_id": "dev-1", "platform": "android", "fcm_token": "tok-2",
+	}), http.StatusOK)
+	if cfg := cfgOf(t, ch); cfg["fcm_token"] != "tok-2" {
+		t.Fatalf("rotated token: %v", cfg)
+	}
+
+	// A device that never had a token (browser/desktop) stores none — the sender
+	// treats an empty token as permanently undeliverable.
+	web := c.expect(t, c.post("/notification-devices", map[string]any{
+		"device_id": "dev-web", "platform": "web",
+	}), http.StatusCreated)
+	if _, ok := cfgOf(t, web)["fcm_token"]; ok {
+		t.Fatalf("web device should carry no fcm_token: %v", web)
+	}
+}
+
 // In-app notifications: an assignment and a comment produce feed entries for the
 // affected users; read / read-all maintain the unread count.
 func TestNotificationsFeed(t *testing.T) {
@@ -129,6 +180,40 @@ func TestNotificationChannels(t *testing.T) {
 	}
 	if r := c.patch("/notification-channels/"+chID, map[string]any{"label": "x"}); r.Status != http.StatusBadRequest {
 		t.Fatalf("update without config url: %d\n%s", r.Status, r.Body)
+	}
+
+	// Secret erase: set an auth_header, then clear_secret wipes it (an empty
+	// secret map alone would keep the stored one).
+	up = c.expect(t, c.patch("/notification-channels/"+chID, map[string]any{
+		"config": map[string]any{"url": hook.URL}, "secret": map[string]any{"auth_header": "Bearer sekret"},
+	}), http.StatusOK)
+	if up["has_secret"] != true {
+		t.Fatalf("set auth_header: %v", up)
+	}
+	up = c.expect(t, c.patch("/notification-channels/"+chID, map[string]any{
+		"config": map[string]any{"url": hook.URL}, "clear_secret": true,
+	}), http.StatusOK)
+	if up["has_secret"] != false {
+		t.Fatalf("clear webhook secret: %v", up)
+	}
+
+	// A channel whose secret is required (telegram) rejects clear_secret with 400,
+	// and the stored secret survives.
+	tg := c.expect(t, c.post("/notification-channels", map[string]any{
+		"type": "telegram", "label": "Тг", "config": map[string]any{"chat_id": "42"},
+		"secret": map[string]any{"bot_token": "123:ABC"},
+	}), http.StatusCreated)
+	tgID := tg["id"].(string)
+	if r := c.patch("/notification-channels/"+tgID, map[string]any{
+		"config": map[string]any{"chat_id": "42"}, "clear_secret": true,
+	}); r.Status != http.StatusBadRequest {
+		t.Fatalf("clear required secret must 400: %d\n%s", r.Status, r.Body)
+	}
+	if v := byID(t, c.get("/notification-channels").listBody(t), tgID); v["has_secret"] != true {
+		t.Fatalf("telegram secret must survive rejected clear: %v", v)
+	}
+	if r := c.del("/notification-channels/" + tgID); r.Status != http.StatusNoContent {
+		t.Fatalf("delete telegram channel: %d\n%s", r.Status, r.Body)
 	}
 
 	// Delete.

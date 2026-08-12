@@ -426,6 +426,14 @@ body {
 }
 .page-leave-active {
   transition: opacity 0.13s ease;
+  /* Out of flow so the entering page fills the slot immediately instead of
+     stacking below the fading one. We no longer use mode="out-in" here — it
+     stalled and blanked the content when leaving heavy views (#2708). The
+     positioning context is the padded scroll container (see AppLayout
+     .page-slot); inset = the content padding (--page-pad) so the fading page
+     keeps its margins instead of snapping to the edges mid-animation. */
+  position: absolute;
+  inset: var(--page-pad, 0);
 }
 .page-enter-from {
   opacity: 0;

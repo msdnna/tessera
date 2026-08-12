@@ -1,6 +1,17 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
-import { NInput, NButton, NSelect, NSwitch, NIcon, NModal, NCard, NTag, NSpin } from 'naive-ui'
+import {
+  NInput,
+  NButton,
+  NSelect,
+  NSwitch,
+  NIcon,
+  NModal,
+  NCard,
+  NTag,
+  NSpin,
+  NPopconfirm,
+} from 'naive-ui'
 import {
   MailOutline,
   PaperPlaneOutline,
@@ -21,6 +32,7 @@ import {
 import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
+import SecretInput from '@/components/SecretInput.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
 
@@ -157,9 +169,21 @@ onMounted(() => {
   load()
 })
 
+function channelTitle(c) {
+  return c.label || TYPE_META[c.type]?.label || c.type
+}
 function channelName(id) {
   const c = channels.value.find((x) => x.id === id)
-  return c ? c.label || TYPE_META[c.type]?.label || c.type : '—'
+  return c ? channelTitle(c) : '—'
+}
+// `notification_routes.channel_ids` is a plain uuid[] with no FK, and the backend
+// doesn't scrub it on channel delete — so warn up front instead of silently
+// leaving routes pointing at a dead channel (they'd render as «—»).
+function usedInRoutesHint(c) {
+  const n = routes.value.filter((r) => (r.channel_ids || []).includes(c.id)).length
+  if (!n) return ''
+  const word = n === 1 ? 'правиле' : 'правилах'
+  return ` Он используется в ${n} ${word} — они перестанут доставлять в этот канал.`
 }
 // This browser's own device channel (for the «это устройство» badge + permission).
 function isThisDevice(c) {
@@ -176,6 +200,8 @@ const chForm = reactive({
   secret: {},
   template: '',
   enabled: true,
+  hasSecret: false, // a secret is already stored on the server
+  clearSecret: false, // erase the stored secret on save
 })
 const chSaving = ref(false)
 const chErr = ref('')
@@ -189,6 +215,8 @@ function openChannelNew() {
     secret: {},
     template: '',
     enabled: true,
+    hasSecret: false,
+    clearSecret: false,
   })
   chErr.value = ''
   chModal.value = true
@@ -202,6 +230,8 @@ function openChannelEdit(c) {
     secret: {},
     template: c.template || '',
     enabled: c.enabled,
+    hasSecret: c.has_secret === true,
+    clearSecret: false,
   })
   chErr.value = ''
   chModal.value = true
@@ -215,6 +245,7 @@ async function saveChannel() {
       label: chForm.label,
       config: chForm.config,
       secret: chForm.secret,
+      clear_secret: chForm.clearSecret,
       template: chForm.template,
       enabled: chForm.enabled,
     }
@@ -229,7 +260,6 @@ async function saveChannel() {
   }
 }
 async function removeChannel(c) {
-  if (!confirm(`Удалить канал «${c.label || TYPE_META[c.type]?.label || c.type}»?`)) return
   await chApi.remove(c.id)
   await load()
 }
@@ -411,7 +441,6 @@ async function saveRoute() {
   }
 }
 async function removeRoute(r) {
-  if (!confirm('Удалить правило маршрутизации?')) return
   await rtApi.remove(r.id)
   await load()
 }
@@ -512,9 +541,18 @@ function wsSummary(r) {
             <n-button size="tiny" quaternary @click="openChannelEdit(c)">
               <template #icon><n-icon :component="CreateOutline" /></template>
             </n-button>
-            <n-button size="tiny" quaternary @click="removeChannel(c)">
-              <template #icon><n-icon :component="TrashOutline" /></template>
-            </n-button>
+            <n-popconfirm
+              :positive-button-props="{ type: 'error' }"
+              positive-text="Удалить"
+              @positive-click="removeChannel(c)"
+            >
+              <template #trigger>
+                <n-button size="tiny" quaternary>
+                  <template #icon><n-icon :component="TrashOutline" /></template>
+                </n-button>
+              </template>
+              Удалить канал «{{ channelTitle(c) }}»?{{ usedInRoutesHint(c) }}
+            </n-popconfirm>
           </div>
         </div>
       </div>
@@ -556,9 +594,18 @@ function wsSummary(r) {
             <n-button size="tiny" quaternary @click="openRouteEdit(r)">
               <template #icon><n-icon :component="CreateOutline" /></template>
             </n-button>
-            <n-button size="tiny" quaternary @click="removeRoute(r)">
-              <template #icon><n-icon :component="TrashOutline" /></template>
-            </n-button>
+            <n-popconfirm
+              :positive-button-props="{ type: 'error' }"
+              positive-text="Удалить"
+              @positive-click="removeRoute(r)"
+            >
+              <template #trigger>
+                <n-button size="tiny" quaternary>
+                  <template #icon><n-icon :component="TrashOutline" /></template>
+                </n-button>
+              </template>
+              Удалить правило маршрутизации?
+            </n-popconfirm>
           </div>
         </div>
       </div>
@@ -729,11 +776,12 @@ function wsSummary(r) {
             </label>
             <label class="field">
               <span>Заголовок Authorization (необязательно)</span>
-              <n-input
+              <SecretInput
                 v-model:value="chForm.secret.auth_header"
-                type="password"
-                show-password-on="click"
-                :placeholder="chEditing ? 'оставьте пустым, чтобы не менять' : 'Bearer …'"
+                v-model:cleared="chForm.clearSecret"
+                :stored="chEditing ? chForm.hasSecret : false"
+                placeholder="Bearer …"
+                stored-placeholder="оставьте пустым, чтобы не менять"
               />
             </label>
           </template>

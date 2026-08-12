@@ -17,7 +17,7 @@ import "github.com/google/uuid"
 // derived from a persisted notification; keep it small — adding a dimension here
 // (priority, has_due, …) means teaching Matcher and the UI about it too.
 type Event struct {
-	Kind        string    // assigned | comment | mention | due_soon | …
+	Kind        string // assigned | comment | mention | due_soon | …
 	WorkspaceID uuid.UUID
 }
 
@@ -85,4 +85,10 @@ type Message struct {
 	Title string
 	Body  string
 	Link  string // optional deep link to the originating task
+	// ID and TaskID identify the originating notification. Text transports
+	// ignore them; the push sender carries them in the payload so the client can
+	// deep-link into the task and collapse a push that duplicates a message the
+	// open app already received over the socket.
+	ID     string
+	TaskID string
 }

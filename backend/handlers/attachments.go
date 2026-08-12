@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -24,14 +25,28 @@ const maxAttachmentBytes = 25 << 20
 const maxMediaBytes = 8 << 20
 
 // mediaExts maps allowed image content types to a file extension.
+//
+// SVG is deliberately absent: it is a script-bearing document, and /uploads is
+// served publicly on the app's own origin, so an inline SVG would run with
+// access to the session in localStorage.
 var mediaExts = map[string]string{
-	"image/png":     ".png",
-	"image/jpeg":    ".jpg",
-	"image/gif":     ".gif",
-	"image/webp":    ".webp",
-	"image/svg+xml": ".svg",
-	"image/bmp":     ".bmp",
+	"image/png":  ".png",
+	"image/jpeg": ".jpg",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+	"image/bmp":  ".bmp",
 }
+
+// inlineSafeExts is the set of extensions ServeUpload may hand out with their
+// real content type. Derived from mediaExts, so dropping a type from uploads
+// also stops files of that type already on disk from rendering.
+var inlineSafeExts = func() map[string]bool {
+	m := make(map[string]bool, len(mediaExts))
+	for _, ext := range mediaExts {
+		m[ext] = true
+	}
+	return m
+}()
 
 // mediaNameRe guards the public serve route against path traversal.
 var mediaNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+\.[a-z0-9]+$`)
@@ -49,37 +64,36 @@ func (h *API) UploadMedia(c *gin.Context) {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "изображение больше 8 МБ"})
 		return
 	}
-	ct := fileHeader.Header.Get("Content-Type")
+	// Gate on the bytes, not on the declared Content-Type or the filename —
+	// both are attacker-controlled, so either would let HTML through as .png.
+	// The stored extension is derived from the sniff for the same reason.
+	ct, err := sniffContentType(fileHeader)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	ext, ok := mediaExts[ct]
 	if !ok {
-		// Fall back to the filename extension if it's an allowed image type.
-		fe := strings.ToLower(filepath.Ext(fileHeader.Filename))
-		for _, e := range mediaExts {
-			if e == fe {
-				ext, ok = fe, true
-				break
-			}
-		}
-	}
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "поддерживаются только изображения"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "поддерживаются только изображения (PNG, JPEG, GIF, WebP, BMP)"})
 		return
 	}
 
 	dir := filepath.Join(h.uploadDir, "media")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	name := uuid.NewString() + ext
 	if err := saveUploaded(fileHeader, filepath.Join(dir, name)); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"url": "/api/uploads/" + name})
 }
 
-// ServeUpload serves an inline image by name (public; see UploadMedia).
+// ServeUpload serves an inline image by name. Who may ask is decided upstream by
+// middleware.MediaAuth (media cookie or bearer token, and — unless
+// MEDIA_REQUIRE_AUTH is on — anyone holding the UUID filename); see UploadMedia.
 func (h *API) ServeUpload(c *gin.Context) {
 	name := filepath.Base(c.Param("name"))
 	if !mediaNameRe.MatchString(name) {
@@ -91,7 +105,21 @@ func (h *API) ServeUpload(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	// private, not public: the name is the only thing guarding the file, so it
+	// must not settle in shared proxy/CDN caches. immutable and the year stay —
+	// the name is a UUID, so the bytes behind it never change.
+	c.Header("Cache-Control", "private, max-age=31536000, immutable")
+	// This route is public and same-origin, so anything it renders runs with the
+	// app's session. nosniff pins the declared type; the CSP neuters any active
+	// content that still slips through (both are inert for real images).
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+	if !inlineSafeExts[strings.ToLower(filepath.Ext(name))] {
+		// Legacy files from when SVG was accepted: hand them out as opaque
+		// downloads instead of letting the browser execute them.
+		c.Header("Content-Type", "application/octet-stream")
+		c.Header("Content-Disposition", "attachment")
+	}
 	c.File(p)
 }
 
@@ -106,7 +134,7 @@ func (h *API) ListAttachments(c *gin.Context) {
 	}
 	items, err := h.q.ListTaskAttachments(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(items))
@@ -136,13 +164,13 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	// removing a task's files is a single directory.
 	dir := filepath.Join(h.uploadDir, id.String())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	ext := filepath.Ext(fileHeader.Filename)
 	storagePath := filepath.Join(dir, uuid.NewString()+ext)
 	if err := saveUploaded(fileHeader, storagePath); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 
@@ -157,7 +185,7 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	})
 	if err != nil {
 		_ = os.Remove(storagePath)
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.logEvent(c, id, "attachment", map[string]any{"filename": att.Filename})
@@ -177,7 +205,7 @@ func (h *API) DownloadAttachment(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if _, _, ok := h.loadTask(c, att.TaskID); !ok {
@@ -188,6 +216,9 @@ func (h *API) DownloadAttachment(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", att.Filename))
+	// Attachments are arbitrary user files; without nosniff a browser may still
+	// sniff one into HTML and render it on our origin.
+	c.Header("X-Content-Type-Options", "nosniff")
 	c.File(att.StoragePath)
 }
 
@@ -202,18 +233,34 @@ func (h *API) DeleteAttachment(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if _, _, ok := h.loadTask(c, att.TaskID); !ok {
 		return
 	}
 	if err := h.q.DeleteAttachment(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	_ = os.Remove(att.StoragePath) // best-effort; the row is already gone
 	c.Status(http.StatusNoContent)
+}
+
+// sniffContentType reports the type a browser would infer from an upload's
+// leading bytes, which is what decides whether it renders as active content.
+func sniffContentType(fh *multipart.FileHeader) (string, error) {
+	f, err := fh.Open()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 512)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", err
+	}
+	return http.DetectContentType(buf[:n]), nil
 }
 
 // saveUploaded streams a multipart file to disk.

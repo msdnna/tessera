@@ -261,15 +261,23 @@ func (q *Queries) ListBoardArchivedWithMeta(ctx context.Context, boardID uuid.UU
 const listBoardSubtasksWithMeta = `-- name: ListBoardSubtasksWithMeta :many
 SELECT
     t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
-    COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
-    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
-    COALESCE(array_agg(DISTINCT ga.gl_username) FILTER (WHERE ga.gl_username IS NOT NULL), '{}')::text[] AS gitlab_assignee_logins
+    tg.tag_ids,
+    asg.assignee_ids,
+    ga.gitlab_assignee_logins
 FROM tasks t
-LEFT JOIN task_tags tt ON tt.task_id = t.id
-LEFT JOIN task_assignees ta ON ta.task_id = t.id
-LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
+LEFT JOIN LATERAL (
+    SELECT COALESCE(array_agg(DISTINCT tt.tag_id), '{}')::uuid[] AS tag_ids
+    FROM task_tags tt WHERE tt.task_id = t.id
+) tg ON true
+LEFT JOIN LATERAL (
+    SELECT COALESCE(array_agg(DISTINCT ta.user_id), '{}')::uuid[] AS assignee_ids
+    FROM task_assignees ta WHERE ta.task_id = t.id
+) asg ON true
+LEFT JOIN LATERAL (
+    SELECT COALESCE(array_agg(DISTINCT tga.gl_username), '{}')::text[] AS gitlab_assignee_logins
+    FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
+) ga ON true
 WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
-GROUP BY t.id
 ORDER BY t.position
 `
 
@@ -306,6 +314,9 @@ type ListBoardSubtasksWithMetaRow struct {
 // with tag/assignee ids, so the kanban can render them under their parents.
 // gitlab_assignee_logins mirrors the top-level query so the composer's
 // "gl:<login>" assignee filter matches subtasks too.
+//
+// LATERAL for the same reason as ListBoardTasksWithMeta: this fires on the same
+// board render, so joining the three M:N sets multiplied rows here too.
 func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UUID) ([]ListBoardSubtasksWithMetaRow, error) {
 	rows, err := q.db.Query(ctx, listBoardSubtasksWithMeta, boardID)
 	if err != nil {
@@ -356,19 +367,30 @@ func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UU
 const listBoardTasksWithMeta = `-- name: ListBoardTasksWithMeta :many
 SELECT
     t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
-    COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
-    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
-    COALESCE(array_agg(DISTINCT ga.gl_name) FILTER (WHERE ga.gl_name IS NOT NULL), '{}')::text[] AS gitlab_assignees,
-    COALESCE(array_agg(DISTINCT ga.gl_username) FILTER (WHERE ga.gl_username IS NOT NULL), '{}')::text[] AS gitlab_assignee_logins,
+    tg.tag_ids,
+    asg.assignee_ids,
+    ga.gitlab_assignees,
+    ga.gitlab_assignee_logins,
     gl.gl_iid AS gitlab_iid,
     gl.gl_web_url AS gitlab_url,
     gl.gl_author AS gitlab_author,
     gl.gl_author_name AS gitlab_author_name,
     gl.gl_author_avatar_url AS gitlab_author_avatar_url
 FROM tasks t
-LEFT JOIN task_tags tt ON tt.task_id = t.id
-LEFT JOIN task_assignees ta ON ta.task_id = t.id
-LEFT JOIN task_gitlab_assignees ga ON ga.task_id = t.id
+LEFT JOIN LATERAL (
+    SELECT COALESCE(array_agg(DISTINCT tt.tag_id), '{}')::uuid[] AS tag_ids
+    FROM task_tags tt WHERE tt.task_id = t.id
+) tg ON true
+LEFT JOIN LATERAL (
+    SELECT COALESCE(array_agg(DISTINCT ta.user_id), '{}')::uuid[] AS assignee_ids
+    FROM task_assignees ta WHERE ta.task_id = t.id
+) asg ON true
+LEFT JOIN LATERAL (
+    SELECT
+        COALESCE(array_agg(DISTINCT tga.gl_name), '{}')::text[] AS gitlab_assignees,
+        COALESCE(array_agg(DISTINCT tga.gl_username), '{}')::text[] AS gitlab_assignee_logins
+    FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
+) ga ON true
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1 AND t.parent_id IS NULL
   -- Active board (archived_at IS NULL) or the read-only archive view (IS NOT NULL).
@@ -378,7 +400,6 @@ WHERE t.board_id = $1 AND t.parent_id IS NULL
     OR ($3::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
     OR ($4::uuid IS NOT NULL AND t.milestone_id = $4) -- one milestone
   )
-GROUP BY t.id, gl.gl_iid, gl.gl_web_url, gl.gl_author, gl.gl_author_name, gl.gl_author_avatar_url
 ORDER BY CASE WHEN $2::boolean THEN t.archived_at END DESC NULLS LAST, t.position
 `
 
@@ -427,6 +448,15 @@ type ListBoardTasksWithMetaRow struct {
 // ListBoardTasksWithMeta returns top-level board tasks with their tag and
 // assignee ids aggregated, so the kanban can render chips and group by tag
 // without an extra round-trip per card.
+//
+// The three M:N sets are gathered in LATERAL subqueries rather than joined. Joining
+// them produced a row per *combination* — a task with 4 tags, 3 assignees and 2 GitLab
+// assignees expanded to 24 rows, 23 of which array_agg(DISTINCT …) threw away — and
+// this is the board's hot query. Each LATERAL is an index scan on the table's
+// (task_id, …) primary key, and the output is one row per task. gitlab_links stays a
+// plain LEFT JOIN: task_id is its primary key, so it is 1:1 and never multiplied rows.
+// DISTINCT is kept inside the aggregates so the arrays are ordered and deduplicated
+// exactly as before (gl_name and gl_username are each sorted on their own value).
 // Newest-archived first in the archive; board position otherwise.
 func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasksWithMetaParams) ([]ListBoardTasksWithMetaRow, error) {
 	rows, err := q.db.Query(ctx, listBoardTasksWithMeta,
@@ -1091,21 +1121,32 @@ UPDATE tasks
 SET title = $2, description = $3, priority = $4, due_date = $5, completed_at = $6,
     recurrence = $7, start_date = $8, estimate = $9, updated_at = now()
 WHERE id = $1
+  AND ($10::timestamptz IS NULL
+       OR date_trunc('milliseconds', updated_at)
+          = date_trunc('milliseconds', $10::timestamptz))
 RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
 `
 
 type UpdateTaskParams struct {
-	ID          uuid.UUID        `json:"id"`
-	Title       string           `json:"title"`
-	Description string           `json:"description"`
-	Priority    int32            `json:"priority"`
-	DueDate     *time.Time       `json:"due_date"`
-	CompletedAt *time.Time       `json:"completed_at"`
-	Recurrence  *json.RawMessage `json:"recurrence"`
-	StartDate   *time.Time       `json:"start_date"`
-	Estimate    *float64         `json:"estimate"`
+	ID                uuid.UUID        `json:"id"`
+	Title             string           `json:"title"`
+	Description       string           `json:"description"`
+	Priority          int32            `json:"priority"`
+	DueDate           *time.Time       `json:"due_date"`
+	CompletedAt       *time.Time       `json:"completed_at"`
+	Recurrence        *json.RawMessage `json:"recurrence"`
+	StartDate         *time.Time       `json:"start_date"`
+	Estimate          *float64         `json:"estimate"`
+	ExpectedUpdatedAt *time.Time       `json:"expected_updated_at"`
 }
 
+// UpdateTask writes a task's editable fields, optionally under an optimistic
+// lock: pass expected_updated_at with the updated_at the client read, and the
+// write only lands if nobody touched the row since — no row comes back
+// otherwise, so check and write stay in one statement with no gap to race in.
+// NULL (the default) means no check, which is how every internal caller writes.
+// The comparison is truncated to milliseconds because clients round-trip the
+// timestamp through JS Date, which drops the microseconds Postgres stores.
 func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error) {
 	row := q.db.QueryRow(ctx, updateTask,
 		arg.ID,
@@ -1117,6 +1158,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		arg.Recurrence,
 		arg.StartDate,
 		arg.Estimate,
+		arg.ExpectedUpdatedAt,
 	)
 	var i Task
 	err := row.Scan(

@@ -101,7 +101,7 @@ func (h *API) SetWorkspaceEstimation(c *gin.Context) {
 	}
 	ws, err := h.q.SetWorkspaceEstimation(c, db.SetWorkspaceEstimationParams{ID: id, Estimation: canon})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(id, "workspace.estimation", gin.H{"workspace_id": id, "estimation": canon})
@@ -120,7 +120,7 @@ func (h *API) SetProjectEstimation(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -136,7 +136,7 @@ func (h *API) SetProjectEstimation(c *gin.Context) {
 	}
 	p, err := h.q.SetProjectEstimation(c, db.SetProjectEstimationParams{ID: projectID, Estimation: canon})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "project.estimation", gin.H{"project_id": projectID, "estimation": canon})

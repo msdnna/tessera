@@ -32,7 +32,7 @@ func (h *API) CreateReminder(c *gin.Context) {
 		Message:  req.Message,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, r)
@@ -42,7 +42,7 @@ func (h *API) CreateReminder(c *gin.Context) {
 func (h *API) ListReminders(c *gin.Context) {
 	rs, err := h.q.ListReminders(c, middleware.CurrentUser(c))
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, rs)
@@ -67,7 +67,7 @@ func (h *API) UpdateReminder(c *gin.Context) {
 		ID: r.ID, RemindAt: req.RemindAt, Message: req.Message, Done: req.Done,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, updated)
@@ -80,7 +80,7 @@ func (h *API) DeleteReminder(c *gin.Context) {
 		return
 	}
 	if err := h.q.DeleteReminder(c, r.ID); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -96,7 +96,7 @@ func (h *API) loadReminder(c *gin.Context) (db.Reminder, bool) {
 		return db.Reminder{}, false
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return db.Reminder{}, false
 	}
 	if r.UserID != middleware.CurrentUser(c) {

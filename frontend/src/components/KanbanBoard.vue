@@ -1,5 +1,17 @@
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, h } from 'vue'
+import {
+  ref,
+  shallowRef,
+  markRaw,
+  reactive,
+  computed,
+  toRef,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  nextTick,
+  h,
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import draggable from 'vuedraggable'
 import {
@@ -25,15 +37,7 @@ import {
   SettingsOutline,
   RibbonOutline,
   ArchiveOutline,
-  AlbumsOutline,
-  SwapVerticalOutline,
-  FlagOutline,
-  PersonOutline,
-  PricetagOutline,
-  ListOutline,
-  CalendarOutline,
   GitBranchOutline,
-  CreateOutline,
 } from '@vicons/ionicons5'
 import {
   boards,
@@ -44,22 +48,21 @@ import {
   gitlab as gitlabApi,
 } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useBoardViewStore } from '@/stores/boardView'
+import { useBoardViewStore, defaultFieldVis } from '@/stores/boardView'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useRealtime } from '@/composables/useRealtime'
 import { useResponsive } from '@/composables/useResponsive'
-import { PRIORITY_LABELS } from '@/styles/tokens'
-import {
-  tagNamespace,
-  prefixLabel,
-  tagParts,
-  buildTagGroups,
-  metaPrefixesFromRules,
-} from '@/utils/tagGroups'
+import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
+import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
+import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
+import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
+import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { filterBoardTasks } from '@/utils/taskFilter'
-import { boardGitlabAuthors } from '@/utils/boardFilters'
+import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardEvents'
+import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
+import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
@@ -92,57 +95,41 @@ const route = useRoute()
 const router = useRouter()
 const { isMobile } = useResponsive()
 
+// Board context lives in the store (single owner): cards and the task modal read
+// it from there instead of taking it as props. These bindings keep the local
+// names — the maps are the store's reactive objects, written in place by
+// loadBoardMeta; the refs are the store's own, so assignment writes through.
+const {
+  board,
+  columns,
+  metaTagPrefixes,
+  tagsList,
+  membersList,
+  milestonesList,
+  gitlabMembersList,
+  gitlabCanCreate,
+  gitlabFetchTemplates,
+  gitlabIntegrationId,
+  cardSize,
+  stackFields,
+  showEmpty,
+} = storeToRefs(boardViewStore)
+const tagsMap = boardViewStore.tagsMap
+const membersMap = boardViewStore.membersMap
+const gitlabMembersMap = boardViewStore.gitlabMembersMap
+const milestonesMap = boardViewStore.milestonesMap
+const tagPrefixNames = boardViewStore.prefixNames
+const fieldVis = boardViewStore.fieldVis
+
 const loading = ref(false)
-const board = ref(null)
-const columns = ref([])
-const allTasks = ref([])
-const subtasksByParent = ref({})
+// Board rows are replaced wholesale, never patched in place, so deep reactivity here
+// buys nothing and costs a Proxy per row per load (thousands of them on a large
+// board). The rows themselves are markRaw'd on load, which keeps them unproxied
+// inside `lists` too. `lists` stays a plain ref on purpose: vuedraggable binds it
+// via `:list` and mutates the column arrays in place, so those must stay reactive.
+const allTasks = shallowRef([])
+const subtasksByParent = shallowRef({})
 const lists = ref({})
-// ── card-list virtualization (IntersectionObserver windowing) ──────────────
-// Every column item keeps its wrapper <div> so vuedraggable's child count,
-// indices, drop targets and the before/after math in onColChange stay identical
-// (DnD untouched). Cards more than ~800px outside the viewport collapse to a
-// cheap placeholder of their last-measured height; only near-viewport cards
-// mount the heavy TaskCard. Visibility is driven by each card's *real* viewport
-// position (one IO, root = viewport), so there's no model-vs-DOM divergence to
-// thrash the scrollbar and the bottom is always reachable. Parity with Android's
-// LazyColumn. Measuring before collapsing keeps placeholder height exact → no
-// jump. IO swaps are frozen during a drag so SortableJS sees a stable DOM.
-const VCARD_EST = 190 // placeholder px until a card has been measured
-// Keyed by "columnKey::taskId", NOT taskId alone: under tag grouping one task can
-// appear in several columns at once, and a bare-id key would make those instances
-// share visibility/height — collapsing/leaking cards across columns while scrolling.
-const vis = reactive({}) // card key → in/near viewport (undefined = not yet known)
-const cardH = reactive({}) // card key → last measured px (from the rendered card)
-const cardKey = (dcol, el) => `${dcol.key}::${el.id}`
-let cardIO = null // toggles visibility by real viewport position
-let cardRO = null // measures rendered cards (settles after content layout)
-const tagsMap = reactive({})
-const membersMap = reactive({})
-// GitLab project members (assignable on integration boards even without a Tessera
-// account), keyed by gl_user_id; empty for non-integration boards.
-const gitlabMembersMap = reactive({})
-// True when this board is the workspace's GitLab integration board and the
-// integration allows creating issues from tasks (writeback.push_create) — gates the
-// "Создать issue в GitLab" action in the task modal.
-const gitlabCanCreate = ref(false)
-const gitlabFetchTemplates = ref(false)
-const gitlabIntegrationId = ref(null)
-// Canonical tag prefixes governed by non-"tag" GitLab rules (status/priority/…),
-// hidden from tag pickers. Rebuilt per board in loadBoardMeta.
-const metaTagPrefixes = ref(new Set())
-const tagsList = computed(() => Object.values(tagsMap))
-const membersList = computed(() => Object.values(membersMap))
-// Project milestones («Этап»), keyed by id; cards/modal resolve a task's milestone_id.
-const milestonesMap = reactive({})
-const milestonesList = computed(() => Object.values(milestonesMap))
-// GitLab roster minus members that already map to a Tessera user in this workspace
-// (they appear in the Tessera member list instead — avoids showing one person twice).
-const gitlabMembersList = computed(() =>
-  Object.values(gitlabMembersMap).filter(
-    (g) => !(g.tessera_user_id && membersMap[g.tessera_user_id]),
-  ),
-)
 // Tessera user id → their GitLab login, for the reverse direction: a GitLab-synced
 // task has no `created_by`, so matching its author against a Tessera person goes
 // through this map (see utils/boardFilters matchesAuthor).
@@ -168,24 +155,10 @@ const autoSort = ref(false)
 // manually expanded (an explicit `false` wins over autoCollapseEmpty).
 const colCollapse = reactive({})
 const autoCollapseEmpty = ref(false)
-const cardSize = ref('medium') // 'compact' | 'medium' | 'large'
-const stackFields = ref(false) // pills stacked vertically vs. horizontal wrap
-const showEmpty = ref(true) // render empty (unset) placeholder pills
+// cardSize / stackFields / showEmpty / fieldVis are owned by the store (cards read
+// them from there) but remain part of this board's saved view — snapshotToolbar and
+// loadCustomize below read and write them exactly as before.
 const autosaveView = ref(false) // auto re-save the loaded named view on change
-function defaultFieldVis() {
-  return {
-    priority: true,
-    due: true,
-    assignee: true,
-    tags: true,
-    estimate: true,
-    milestone: true,
-    description: true,
-    number: true,
-    gitlab: true,
-  }
-}
-const fieldVis = reactive(defaultFieldVis())
 const customizeOpen = ref(false)
 // Board-name mirror for the customize panel's rename input (kept in sync with the
 // loaded board; committed via boards.update on blur/enter).
@@ -270,43 +243,16 @@ function recomputeComposerFit() {
 }
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
-// Friendly display names for tag prefixes (canonical prefix → label), loaded
-// per-project. Falls back to the raw prefix where no name is configured.
-const tagPrefixNames = reactive({})
+// Friendly display names for tag prefixes (canonical prefix → label, owned by the
+// store) are loaded per-project. Falls back to the raw prefix where no name is
+// configured.
 
-// Detected namespaces from the project tags, for the prefix picker. Labels use
-// the configured friendly name (else the raw prefix), sorted alphabetically.
-const tagPrefixOptions = computed(() => {
-  const set = new Set()
-  for (const t of tagsList.value) {
-    const ns = tagNamespace(t.name)
-    if (ns) set.add(ns)
-  }
-  return [
-    { label: 'Все теги', value: '' },
-    ...[...set]
-      .map((p) => ({ label: prefixLabel(p, tagPrefixNames), value: p }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
-  ]
-})
 // Tags that become columns in tag-grouping mode (filtered by the chosen prefix).
 const groupTags = computed(() =>
   tagPrefix.value
     ? tagsList.value.filter((t) => (t.name || '').startsWith(tagPrefix.value))
     : tagsList.value,
 )
-// Multi-level sort: an ordered list of { field, dir }. Empty = manual order.
-const sortLevels = ref([])
-const filters = reactive({
-  priorities: [],
-  assignees: [],
-  authors: [],
-  tags: [],
-  statuses: [],
-  milestones: [],
-  due: '',
-  q: '',
-})
 
 // Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
 // create, no inline edits) with a Restore action. Reuses all board filters/grouping.
@@ -334,351 +280,47 @@ function clearMilestoneScope() {
   delete q.milestone
   router.replace({ query: q })
 }
-const sortFieldOptions = [
-  { label: 'Приоритет', value: 'priority' },
-  { label: 'Срок', value: 'due' },
-  { label: 'Этап', value: 'milestone' },
-  { label: 'Статус', value: 'status' },
-  { label: 'Название', value: 'title' },
-  { label: 'Номер', value: 'number' },
-]
-// Milestone sort order: by the milestone's due date (none last), then its title.
-const milestoneSortKey = (t) => {
-  const m = t.milestone_id ? milestonesMap[t.milestone_id] : null
-  if (!m) return { d: Number.POSITIVE_INFINITY, s: '' }
-  return { d: m.due_date ? Date.parse(m.due_date) : Number.POSITIVE_INFINITY, s: m.title || '' }
-}
-// Status sort/filter is offered only on the timeline for now (the board already
-// groups by status into columns, so sorting/filtering by it there is redundant).
-const sortFieldsForMenu = computed(() =>
-  timelineLike.value ? sortFieldOptions : sortFieldOptions.filter((o) => o.value !== 'status'),
-)
-// column id → position, for the status sort.
-const colPos = computed(() => {
-  const m = {}
-  columns.value.forEach((c) => (m[c.id] = c.position))
-  return m
+// ── composer facets: filters, multi-level sort, chips and the add menu ──
+// The facet layer (filter state + the menus and chips over it) lives in
+// `useBoardFacets`; grouping stays here because it builds the board's columns.
+// The sprint scope lives in the URL, so the composable takes it as a value plus a
+// clear-callback rather than reaching for the router itself.
+const {
+  filters,
+  sortLevels,
+  sortFieldLabel,
+  cmpLevel,
+  resetFilters,
+  facetChips,
+  filterChips,
+  groupChip,
+  addOptions,
+  onAddFacet,
+  removeChip,
+  onChipClick,
+  toggleSortDir,
+  removeSort,
+  hasClearableFacets,
+  clearAll,
+} = useBoardFacets({
+  groupMode,
+  tagPrefix,
+  timelineLike,
+  columns,
+  allTasks,
+  tagsList,
+  membersList,
+  milestonesList,
+  gitlabMembersList,
+  tagsMap,
+  membersMap,
+  milestonesMap,
+  tagPrefixNames,
+  glLoginByUserId,
+  milestoneScope,
+  clearMilestoneScope,
 })
-// One sort level's comparison (direction applied; due-less tasks always last).
-function cmpLevel(a, b, { field, dir }) {
-  const d = dir === 'desc' ? -1 : 1
-  if (field === 'status')
-    return d * ((colPos.value[a.column_id] ?? 0) - (colPos.value[b.column_id] ?? 0))
-  if (field === 'due') {
-    const av = a.due_date ? Date.parse(a.due_date) : null
-    const bv = b.due_date ? Date.parse(b.due_date) : null
-    if (av === null && bv === null) return 0
-    if (av === null) return 1
-    if (bv === null) return -1
-    return d * (av - bv)
-  }
-  if (field === 'priority') return d * ((a.priority || 0) - (b.priority || 0))
-  if (field === 'milestone') {
-    const ka = milestoneSortKey(a)
-    const kb = milestoneSortKey(b)
-    if (ka.d !== kb.d) return d * (ka.d - kb.d)
-    return d * ka.s.localeCompare(kb.s, 'ru')
-  }
-  if (field === 'title') return d * String(a.title || '').localeCompare(String(b.title || ''), 'ru')
-  if (field === 'number') return d * ((a.number || 0) - (b.number || 0))
-  return 0
-}
-const dueOptions = [
-  { label: 'Все', value: '' },
-  { label: 'Просроченные', value: 'overdue' },
-  { label: 'Сегодня', value: 'today' },
-  { label: 'Ближайшая неделя', value: 'week' },
-  { label: 'Со сроком', value: 'has' },
-  { label: 'Без срока', value: 'none' },
-]
-const priorityFilterOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
-// Assignee filter menu — carries avatar hints so `renderAddLabel` can draw the
-// user's face (Tessera by `avatarUserId`, GitLab by `avatarSrc`), like the on-card
-// assignee picker. GitLab-only assignees sit under an inline «GitLab» group; their
-// filter value is prefixed `gl:` so it matches against gitlab_assignee_logins.
-const memberFilterMenu = computed(() => {
-  const tessera = membersList.value.map((m) => ({
-    label: m.name,
-    key: `fa.${m.user_id}`,
-    avatarUserId: m.user_id,
-  }))
-  const gl = gitlabMembersList.value.map((g) => ({
-    label: g.gl_name || g.gl_username,
-    key: `fa.gl:${g.gl_username}`,
-    avatarSrc: g.gl_avatar_url,
-  }))
-  if (!gl.length) return tessera
-  return [...tessera, { type: 'group', label: 'GitLab', key: 'fag', children: gl }]
-})
-// Author filter menu — same shape as the assignee one (avatar hints, `gl:`-prefixed
-// GitLab values, `fc.` = creator keys), plus the GitLab authors actually seen on the
-// board: an issue can be opened by someone outside the project's member roster.
-// Logins already represented by a Tessera row (linked accounts) are skipped so one
-// person never shows up twice.
-const authorFilterMenu = computed(() => {
-  const tessera = membersList.value.map((m) => ({
-    label: m.name,
-    key: `fc.${m.user_id}`,
-    avatarUserId: m.user_id,
-  }))
-  const seen = new Set(Object.values(glLoginByUserId.value))
-  const gl = []
-  const pushGl = (username, name, avatar) => {
-    if (!username || seen.has(username)) return
-    seen.add(username)
-    gl.push({ label: name || username, key: `fc.gl:${username}`, avatarSrc: avatar })
-  }
-  gitlabMembersList.value.forEach((g) => pushGl(g.gl_username, g.gl_name, g.gl_avatar_url))
-  boardGitlabAuthors(allTasks.value).forEach((a) =>
-    pushGl(a.gl_username, a.gl_name, a.gl_avatar_url),
-  )
-  if (!gl.length) return tessera
-  return [...tessera, { type: 'group', label: 'GitLab', key: 'fcg', children: gl }]
-})
-// Tag filter menu, grouped by prefix (friendly names). Naive `type:'group'`
-// renders inline section headers — works on desktop and the mobile drill alike.
-// A single prefix-less bucket stays flat (no redundant header).
-const tagFilterMenu = computed(() => {
-  const groups = buildTagGroups(tagsList.value, tagPrefixNames)
-  // Inside a group the header already names the scope, so entries show the bare
-  // value; a flat (single-bucket) menu spells the scope out instead.
-  const flatLabel = (t) => {
-    const p = tagParts(t.name, tagPrefixNames)
-    return p.hasScope ? `${p.scope}: ${p.label}` : p.label
-  }
-  if (groups.length <= 1) {
-    return (groups[0]?.tags || []).map((t) => ({ label: flatLabel(t), key: `ft.${t.id}` }))
-  }
-  return groups.map((g) => ({
-    type: 'group',
-    label: g.label,
-    key: `ftg.${g.key}`,
-    children: g.tags.map((t) => ({
-      label: tagParts(t.name, tagPrefixNames).label,
-      key: `ft.${t.id}`,
-    })),
-  }))
-})
-// Status filter = which board columns to show (timeline-only facet).
-const statusFilterOptions = computed(() =>
-  columns.value.map((c) => ({ label: c.name, value: c.id })),
-)
-// Milestone filter menu (+ an explicit "Без этапа" bucket).
-const milestoneFilterMenu = computed(() => [
-  ...milestonesList.value.map((m) => ({ label: m.title, key: `fm.${m.id}` })),
-  { label: 'Без этапа', key: 'fm.__none__' },
-])
-const activeFilterCount = computed(
-  () =>
-    filters.priorities.length +
-    filters.assignees.length +
-    filters.authors.length +
-    filters.tags.length +
-    filters.statuses.length +
-    filters.milestones.length +
-    (filters.due ? 1 : 0) +
-    (filters.q.trim() ? 1 : 0),
-)
-function resetFilters() {
-  filters.priorities = []
-  filters.assignees = []
-  filters.authors = []
-  filters.tags = []
-  filters.statuses = []
-  filters.milestones = []
-  filters.due = ''
-  filters.q = ''
-}
 
-// ── composer bar: grouping + sort + filters as removable chips ──
-// All facets render as chips over the existing state; an "add" dropdown mutates
-// the same refs. The search box lives in the bar too (filters.q).
-// Per-kind icon shown on composer chips in place of the text prefix
-// («Группировка:», «Сорт:», «Приоритет:» …). The customize panel still uses
-// the full `label` (with prefix) since it renders chips as plain text.
-const CHIP_ICONS = {
-  group: AlbumsOutline,
-  sort: SwapVerticalOutline,
-  priority: FlagOutline,
-  assignee: PersonOutline,
-  author: CreateOutline,
-  tag: PricetagOutline,
-  status: ListOutline,
-  milestone: RibbonOutline,
-  due: CalendarOutline,
-}
-function sortFieldLabel(field) {
-  return sortFieldOptions.find((o) => o.value === field)?.label || field
-}
-const facetChips = computed(() => {
-  const out = []
-  const g = groupModeLabel.value
-  out.push({ kind: 'group', icon: CHIP_ICONS.group, text: g, label: `Группировка: ${g}` })
-  sortLevels.value.forEach((l, i) => {
-    const f = sortFieldLabel(l.field)
-    const arrow = l.dir === 'desc' ? '↓' : '↑'
-    out.push({
-      kind: 'sort',
-      i,
-      icon: CHIP_ICONS.sort,
-      text: `${f} ${arrow}`,
-      label: `Сорт: ${f} ${arrow}`,
-    })
-  })
-  filters.priorities.forEach((p) => {
-    const t = PRIORITY_LABELS[p]
-    out.push({
-      kind: 'priority',
-      value: p,
-      icon: CHIP_ICONS.priority,
-      text: t,
-      label: `Приоритет: ${t}`,
-    })
-  })
-  filters.assignees.forEach((a) => {
-    let name
-    if (typeof a === 'string' && a.startsWith('gl:')) {
-      const u = a.slice(3)
-      const g2 = gitlabMembersList.value.find((x) => x.gl_username === u)
-      name = (g2 && (g2.gl_name || g2.gl_username)) || u
-    } else {
-      name = membersMap[a]?.name || '—'
-    }
-    out.push({
-      kind: 'assignee',
-      value: a,
-      icon: CHIP_ICONS.assignee,
-      text: name,
-      label: `Исполнитель: ${name}`,
-    })
-  })
-  filters.authors.forEach((a) => {
-    let name
-    if (typeof a === 'string' && a.startsWith('gl:')) {
-      const u = a.slice(3)
-      const g2 = gitlabMembersList.value.find((x) => x.gl_username === u)
-      // Board-only authors aren't in the member roster — fall back to the name the
-      // synced task carries.
-      const b = g2 ? null : boardGitlabAuthors(allTasks.value).find((x) => x.gl_username === u)
-      name = (g2 && (g2.gl_name || g2.gl_username)) || b?.gl_name || u
-    } else {
-      name = membersMap[a]?.name || '—'
-    }
-    out.push({
-      kind: 'author',
-      value: a,
-      icon: CHIP_ICONS.author,
-      text: name,
-      label: `Автор: ${name}`,
-    })
-  })
-  filters.tags.forEach((t) => {
-    const nm = tagsMap[t]?.name || '—'
-    out.push({ kind: 'tag', value: t, icon: CHIP_ICONS.tag, text: nm, label: `Тег: ${nm}` })
-  })
-  filters.statuses.forEach((s) => {
-    const nm = columns.value.find((c) => c.id === s)?.name || '—'
-    out.push({
-      kind: 'status',
-      value: s,
-      icon: CHIP_ICONS.status,
-      text: nm,
-      label: `Статус: ${nm}`,
-    })
-  })
-  filters.milestones.forEach((m) => {
-    const nm = m === '__none__' ? 'без этапа' : milestonesMap[m]?.title || '—'
-    out.push({
-      kind: 'milestone',
-      value: m,
-      icon: CHIP_ICONS.milestone,
-      text: nm,
-      label: `Этап: ${nm}`,
-    })
-  })
-  if (filters.due) {
-    const nm = dueOptions.find((o) => o.value === filters.due)?.label || filters.due
-    out.push({ kind: 'due', icon: CHIP_ICONS.due, text: nm, label: `Срок: ${nm}` })
-  }
-  return out
-})
-// Composer renders group + sort separately (sort chips are drag-reorderable), so
-// the flat chip loop covers only the filter facets.
-const filterChips = computed(() =>
-  facetChips.value.filter((c) => c.kind !== 'group' && c.kind !== 'sort'),
-)
-const groupChip = computed(() => facetChips.value.find((c) => c.kind === 'group'))
-// Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
-const groupModeLabel = computed(() => {
-  if (groupMode.value === 'assignee') return 'Исполнитель'
-  if (groupMode.value === 'none') return 'Без группировки'
-  if (groupMode.value === 'milestone') return 'Этап'
-  if (groupMode.value === 'tag')
-    return `Тег${tagPrefix.value ? ` · ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
-  return 'Статус'
-})
-const addOptions = computed(() => {
-  const grouping = [
-    { label: 'По статусам', key: 'g.status' },
-    { label: 'По тегам (все)', key: 'g.tag' },
-    ...tagPrefixOptions.value
-      .filter((o) => o.value)
-      .map((o) => ({
-        label: `По тегам · ${o.label}`,
-        key: `g.tagp.${encodeURIComponent(o.value)}`,
-      })),
-    { label: 'По этапам', key: 'g.milestone' },
-  ]
-  // Timeline swimlanes can also be per-assignee or ungrouped.
-  if (timelineLike.value) {
-    grouping.push(
-      { label: 'По исполнителю', key: 'g.assignee' },
-      { label: 'Без группировки', key: 'g.none' },
-    )
-  }
-  const opts = [
-    { label: 'Группировка', key: 'group', children: grouping },
-    {
-      label: 'Сортировка',
-      key: 'sort',
-      children: sortFieldsForMenu.value.map((o) => ({ label: o.label, key: `s.${o.value}` })),
-    },
-    {
-      label: 'Фильтр: приоритет',
-      key: 'fp',
-      children: priorityFilterOptions.map((o) => ({ label: o.label, key: `fp.${o.value}` })),
-    },
-    {
-      label: 'Фильтр: исполнитель',
-      key: 'fa',
-      children: memberFilterMenu.value,
-    },
-    {
-      label: 'Фильтр: автор',
-      key: 'fc',
-      children: authorFilterMenu.value,
-    },
-    { label: 'Фильтр: тег', key: 'ft', children: tagFilterMenu.value },
-    { label: 'Фильтр: этап', key: 'fm', children: milestoneFilterMenu.value },
-    {
-      label: 'Фильтр: срок',
-      key: 'fd',
-      children: dueOptions
-        .filter((o) => o.value)
-        .map((o) => ({ label: o.label, key: `fd.${o.value}` })),
-    },
-  ]
-  // Status (column) filter — timeline only, so the user can hide e.g. the «done»
-  // column's completed cards that otherwise crowd the chart.
-  if (timelineLike.value) {
-    opts.splice(2, 0, {
-      label: 'Фильтр: статус',
-      key: 'fs',
-      children: statusFilterOptions.value.map((o) => ({ label: o.label, key: `fs.${o.value}` })),
-    })
-  }
-  return opts
-})
 // Mobile: the "+" menu drills into one sub-list at a time (with a «Назад») rather
 // than fanning out side submenus that run off a narrow screen.
 const addShow = ref(false)
@@ -757,91 +399,8 @@ function onAddShow(v) {
   addShow.value = v
   if (!v) addLevel.value = null // reset drill state when the menu actually closes
 }
-function onAddFacet(key) {
-  if (key === 'g.status') {
-    groupMode.value = 'status'
-    tagPrefix.value = ''
-  } else if (key === 'g.tag') {
-    groupMode.value = 'tag'
-    tagPrefix.value = ''
-  } else if (key.startsWith('g.tagp.')) {
-    groupMode.value = 'tag'
-    tagPrefix.value = decodeURIComponent(key.slice('g.tagp.'.length))
-  } else if (key === 'g.milestone') {
-    groupMode.value = 'milestone'
-    tagPrefix.value = ''
-  } else if (key === 'g.assignee') {
-    groupMode.value = 'assignee'
-    tagPrefix.value = ''
-  } else if (key === 'g.none') {
-    groupMode.value = 'none'
-    tagPrefix.value = ''
-  } else if (key.startsWith('s.')) {
-    const f = key.slice(2)
-    if (!sortLevels.value.some((l) => l.field === f))
-      sortLevels.value.push({ field: f, dir: 'asc' })
-  } else if (key.startsWith('fp.')) {
-    const v = Number(key.slice(3))
-    if (!filters.priorities.includes(v)) filters.priorities.push(v)
-  } else if (key.startsWith('fa.')) {
-    const v = key.slice(3)
-    if (!filters.assignees.includes(v)) filters.assignees.push(v)
-  } else if (key.startsWith('fc.')) {
-    const v = key.slice(3)
-    if (!filters.authors.includes(v)) filters.authors.push(v)
-  } else if (key.startsWith('ft.')) {
-    const v = key.slice(3)
-    if (!filters.tags.includes(v)) filters.tags.push(v)
-  } else if (key.startsWith('fs.')) {
-    const v = key.slice(3)
-    if (!filters.statuses.includes(v)) filters.statuses.push(v)
-  } else if (key.startsWith('fm.')) {
-    const v = key.slice(3)
-    if (!filters.milestones.includes(v)) filters.milestones.push(v)
-    // Building a custom multi-sprint filter supersedes the tree's single-sprint
-    // scope — drop it so the full board loads and the client filter applies.
-    if (route.query.milestone) clearMilestoneScope()
-  } else if (key.startsWith('fd.')) {
-    filters.due = key.slice(3)
-  }
-}
-function removeChip(c) {
-  if (c.kind === 'sort') sortLevels.value.splice(c.i, 1)
-  else if (c.kind === 'priority')
-    filters.priorities = filters.priorities.filter((x) => x !== c.value)
-  else if (c.kind === 'assignee') filters.assignees = filters.assignees.filter((x) => x !== c.value)
-  else if (c.kind === 'author') filters.authors = filters.authors.filter((x) => x !== c.value)
-  else if (c.kind === 'tag') filters.tags = filters.tags.filter((x) => x !== c.value)
-  else if (c.kind === 'status') filters.statuses = filters.statuses.filter((x) => x !== c.value)
-  else if (c.kind === 'milestone')
-    filters.milestones = filters.milestones.filter((x) => x !== c.value)
-  else if (c.kind === 'due') filters.due = ''
-}
-function onChipClick(c) {
-  if (c.kind === 'group') {
-    groupMode.value = groupMode.value === 'status' ? 'tag' : 'status'
-  } else if (c.kind === 'sort') {
-    const l = sortLevels.value[c.i]
-    l.dir = l.dir === 'desc' ? 'asc' : 'desc'
-  }
-}
-// Sort chips are drag-reorderable, so operate on the level object (not a stale
-// facetChips index): toggling direction / removing find it in the live array.
-function toggleSortDir(l) {
-  l.dir = l.dir === 'desc' ? 'asc' : 'desc'
-}
-function removeSort(l) {
-  sortLevels.value = sortLevels.value.filter((x) => x !== l)
-}
 function toggleSubtasksExpanded() {
   subtasksExpanded.value = !subtasksExpanded.value
-}
-const hasClearableFacets = computed(
-  () => sortLevels.value.length > 0 || activeFilterCount.value > 0,
-)
-function clearAll() {
-  resetFilters()
-  sortLevels.value = []
 }
 
 // "Авто" dependency-graph ordering — Gantt only. Active only while the composer
@@ -869,15 +428,9 @@ function toggleAuto() {
 }
 
 // ── per-board, per-layout toolbar state (localStorage, per device) ──
-// Group/sort/filter state is kept independently per layout: switching board↔
-// timeline swaps the live refs in and out of `toolbarByLayout`, so each layout
-// remembers its own grouping/sort/filters (a status filter set on the timeline
-// doesn't leak into the board, where that facet isn't even offered).
-const viewKey = computed(() => `tessera_view_${props.boardId}`)
-let restoring = false
-let swapping = false
-const toolbarByLayout = {}
-
+// Only the *shape* of that state lives here (what a toolbar snapshot holds and how
+// it is applied); the storage key, the per-layout slots, the debounced write and the
+// restoring/swapping mutex live in `useBoardViewConfig`.
 function defaultToolbar(forLayout) {
   return {
     groupMode: forLayout === 'timeline' || forLayout === 'gantt' ? 'assignee' : 'status',
@@ -885,16 +438,7 @@ function defaultToolbar(forLayout) {
     sortLevels: [],
     subtasksExpanded: false,
     autoSort: false,
-    filters: {
-      priorities: [],
-      assignees: [],
-      authors: [],
-      tags: [],
-      statuses: [],
-      milestones: [],
-      due: '',
-      q: '',
-    },
+    filters: emptyFilters(),
     colCollapse: {},
     autoCollapseEmpty: false,
     cardSize: 'medium',
@@ -911,16 +455,7 @@ function snapshotToolbar() {
     sortLevels: sortLevels.value.map((l) => ({ ...l })),
     subtasksExpanded: subtasksExpanded.value,
     autoSort: autoSort.value,
-    filters: {
-      priorities: [...filters.priorities],
-      assignees: [...filters.assignees],
-      authors: [...filters.authors],
-      tags: [...filters.tags],
-      statuses: [...filters.statuses],
-      milestones: [...filters.milestones],
-      due: filters.due,
-      q: filters.q,
-    },
+    filters: cloneFilters(filters),
     colCollapse: { ...colCollapse },
     autoCollapseEmpty: autoCollapseEmpty.value,
     cardSize: cardSize.value,
@@ -936,20 +471,7 @@ function loadToolbar(s) {
   sortLevels.value = (s.sortLevels || []).map((l) => ({ ...l }))
   subtasksExpanded.value = !!s.subtasksExpanded
   autoSort.value = !!s.autoSort
-  Object.assign(
-    filters,
-    {
-      priorities: [],
-      assignees: [],
-      authors: [],
-      tags: [],
-      statuses: [],
-      milestones: [],
-      due: '',
-      q: '',
-    },
-    s.filters || {},
-  )
+  Object.assign(filters, cloneFilters(s.filters))
   loadCustomize(s)
 }
 // Restore the customize-view state (collapse + card/field settings). Split out so
@@ -966,91 +488,39 @@ function loadCustomize(s) {
   autosaveView.value = !!s.autosaveView
 }
 
-function writeView() {
-  if (restoring) return
-  try {
-    toolbarByLayout[layout.value] = snapshotToolbar()
-    localStorage.setItem(
-      viewKey.value,
-      JSON.stringify({ layout: layout.value, toolbars: toolbarByLayout }),
-    )
-  } catch {
-    /* storage full / disabled — non-fatal */
+// Rebuild a pre-per-layout blob into a toolbar snapshot. Built on top of the
+// defaults so every key the old blob predates (milestones, autoSort, colCollapse,
+// cardSize, fieldVis, …) is present rather than left to loadToolbar's own
+// defaulting to paper over.
+function migrateToolbar(v, forLayout) {
+  return {
+    ...defaultToolbar(forLayout),
+    groupMode: v.groupMode || defaultToolbar(forLayout).groupMode,
+    tagPrefix: v.tagPrefix || '',
+    sortLevels: Array.isArray(v.sortLevels)
+      ? v.sortLevels
+      : v.sortBy && v.sortBy !== 'position'
+        ? [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
+        : [],
+    subtasksExpanded: !!v.subtasksExpanded,
+    filters: cloneFilters(v.filters),
   }
 }
-// The view watcher fires on every search keystroke; a synchronous localStorage
-// write per keystroke is a visible input-lag source on mid hardware. Debounce so
-// we persist once the user pauses, and flush on unmount so nothing is lost.
-let persistTimer = null
-function persistView() {
-  if (restoring || swapping) return
-  if (persistTimer) clearTimeout(persistTimer)
-  persistTimer = setTimeout(() => {
-    persistTimer = null
-    writeView()
-  }, 300)
-}
-onBeforeUnmount(() => {
-  if (persistTimer) {
-    clearTimeout(persistTimer)
-    persistTimer = null
-    writeView()
-  }
+
+const {
+  restoreView,
+  persistView,
+  isGuarded: viewLoadInFlight,
+  guard: withViewLoad,
+} = useBoardViewConfig({
+  boardId: toRef(props, 'boardId'),
+  layout,
+  defaults: defaultToolbar,
+  snapshot: snapshotToolbar,
+  load: loadToolbar,
+  migrate: migrateToolbar,
 })
-function restoreView() {
-  restoring = true
-  try {
-    const raw = localStorage.getItem(viewKey.value)
-    if (raw) {
-      const v = JSON.parse(raw)
-      if (v.toolbars) {
-        Object.assign(toolbarByLayout, v.toolbars)
-        if (v.layout) layout.value = v.layout
-      } else {
-        // Migrate the old single-config format into the current layout's slot.
-        if (v.layout) layout.value = v.layout
-        toolbarByLayout[layout.value] = {
-          groupMode: v.groupMode || defaultToolbar(layout.value).groupMode,
-          tagPrefix: v.tagPrefix || '',
-          sortLevels: Array.isArray(v.sortLevels)
-            ? v.sortLevels
-            : v.sortBy && v.sortBy !== 'position'
-              ? [{ field: v.sortBy, dir: v.sortDir || 'asc' }]
-              : [],
-          subtasksExpanded: !!v.subtasksExpanded,
-          filters: {
-            priorities: [],
-            assignees: [],
-            authors: [],
-            tags: [],
-            statuses: [],
-            due: '',
-            q: '',
-            ...(v.filters || {}),
-          },
-        }
-      }
-      loadToolbar(toolbarByLayout[layout.value] || defaultToolbar(layout.value))
-    } else {
-      loadToolbar(defaultToolbar(layout.value))
-    }
-  } catch {
-    loadToolbar(defaultToolbar(layout.value))
-  } finally {
-    nextTick(() => (restoring = false))
-  }
-}
-// Swap the toolbar state when the layout changes (each layout keeps its own).
-watch(layout, (newL, oldL) => {
-  if (restoring || newL === oldL) return
-  swapping = true
-  toolbarByLayout[oldL] = snapshotToolbar()
-  loadToolbar(toolbarByLayout[newL] || defaultToolbar(newL))
-  nextTick(() => {
-    swapping = false
-    persistView()
-  })
-})
+
 watch(
   [
     groupMode,
@@ -1072,8 +542,6 @@ watch(
 )
 // Re-measure the composer fit when the chip set changes (add/remove a filter,
 // sort, group, scope, or the subtasks toggle); resize is handled by the observer.
-// Declared here (not next to facetChips) so its eager source read doesn't hit the
-// still-uninitialised groupModeLabel that facetChips depends on.
 watch([facetChips, archivedMode, milestoneScope, subtasksExpanded], () =>
   nextTick(recomputeComposerFit),
 )
@@ -1106,7 +574,7 @@ function currentViewConfig() {
     tagPrefix: tagPrefix.value,
     sortLevels: sortLevels.value,
     subtasksExpanded: subtasksExpanded.value,
-    filters: { ...filters },
+    filters: cloneFilters(filters),
     colCollapse: { ...colCollapse },
     autoCollapseEmpty: autoCollapseEmpty.value,
     cardSize: cardSize.value,
@@ -1126,20 +594,7 @@ function applyViewConfig(c) {
     sortLevels.value = [{ field: c.sortBy, dir: c.sortDir || 'asc' }]
   else sortLevels.value = []
   subtasksExpanded.value = !!c.subtasksExpanded
-  Object.assign(
-    filters,
-    {
-      priorities: [],
-      assignees: [],
-      authors: [],
-      tags: [],
-      statuses: [],
-      milestones: [],
-      due: '',
-      q: '',
-    },
-    c.filters || {},
-  )
+  Object.assign(filters, cloneFilters(c.filters))
   loadCustomize(c)
 }
 async function saveView() {
@@ -1157,15 +612,10 @@ async function saveView() {
   }
 }
 function applyView(v) {
-  // Guard the layout-swap watcher: applyViewConfig sets layout AND the toolbar
-  // fields itself, so the swap must not also fire and clobber them.
-  restoring = true
-  applyViewConfig(v.config)
-  currentViewName.value = v.name
-  showLoadView.value = false
-  nextTick(() => {
-    restoring = false
-    persistView()
+  withViewLoad(() => {
+    applyViewConfig(v.config)
+    currentViewName.value = v.name
+    showLoadView.value = false
   })
 }
 async function deleteView(v) {
@@ -1180,6 +630,7 @@ async function deleteView(v) {
 // Autosave: when enabled and a named view is loaded, re-save it (debounced,
 // silent) as the toolbar/customize state changes. Guarded by restoring/swapping
 // like persistView so applying a view doesn't immediately re-save it.
+const AUTOSAVE_MS = 700 // longer than VIEW_PERSIST_MS: this one costs a request
 let autosaveTimer = null
 async function autosaveCurrent() {
   const name = currentViewName.value.trim()
@@ -1193,12 +644,12 @@ async function autosaveCurrent() {
 watch(
   () => (autosaveView.value && currentViewName.value ? JSON.stringify(currentViewConfig()) : ''),
   (sig) => {
-    if (!sig || restoring || swapping) return
+    if (!sig || viewLoadInFlight()) return
     if (autosaveTimer) clearTimeout(autosaveTimer)
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null
       autosaveCurrent()
-    }, 700)
+    }, AUTOSAVE_MS)
   },
 )
 
@@ -1303,125 +754,108 @@ function closeTask() {
   }
 }
 
-const dragging = ref(false) // any drag (column OR card): autoscroll, reload guard, reveal
-// Card-only drag: gates the per-card subtask nest dropzone hint. A column drag must
-// NOT flip this, otherwise every childless card flashes a dashed drop hint.
-const draggingCard = ref(false)
+// How long our own mutations keep realtime-driven reloads muted: long enough to
+// cover the round-trip plus the echo of our own broadcast, short enough that a
+// concurrent edit by someone else still lands promptly.
+const SUPPRESS_RELOAD_MS = 1500
 let suppressReloadUntil = 0
 function suppress() {
-  suppressReloadUntil = Date.now() + 1500
+  suppressReloadUntil = Date.now() + SUPPRESS_RELOAD_MS
 }
 
-// ── custom edge auto-scroll during drag ──
-// Sortable's built-in auto-scroll doesn't reliably scroll a nested horizontal
-// container on touch. Rather than chase flaky move events, we read the position
-// of Sortable's own drag image (`.sortable-fallback` on touch, `.sortable-drag`
-// on desktop) each animation frame, with a dragover fallback for desktop.
-const EDGE = 72 // px from a board edge that triggers scrolling
-const STEP_COOLDOWN = 600 // ms between one-column steps while held at the edge
-let edgeRAF = null
-let pointerX = null // last desktop dragover X (touch uses the drag image)
-let lastStep = 0
-function onDragOver(e) {
-  pointerX = e.clientX
-}
-function dragX() {
-  // Touch: the moving clone follows the finger. (On desktop `.sortable-drag` is
-  // the static original, so there we fall back to the dragover X instead.)
-  const clone = document.querySelector('.sortable-fallback')
-  if (clone) {
-    const r = clone.getBoundingClientRect()
-    return r.left + r.width / 2
-  }
-  return pointerX
-}
-let scrollIdx = null // tracked target column index (avoids reading mid-animation scrollLeft)
-// Scroll exactly one column in `dir` (-1 left / +1 right), snapping to its start.
-function stepColumn(dir) {
-  const el = boardScroll.value
-  if (!el) return
-  const stride = colWidth.value + GAP
-  const maxIdx = Math.round((el.scrollWidth - el.clientWidth) / stride)
-  if (scrollIdx == null) scrollIdx = Math.round(el.scrollLeft / stride)
-  scrollIdx = Math.max(0, Math.min(maxIdx, scrollIdx + dir))
-  el.scrollTo({ left: scrollIdx * stride, behavior: 'smooth' })
-}
-function autoScrollTick() {
-  const el = boardScroll.value
-  const px = dragX()
-  if (dragging.value && el && px != null) {
-    const rect = el.getBoundingClientRect()
-    let dir = 0
-    if (px < rect.left + EDGE) dir = -1
-    else if (px > rect.right - EDGE) dir = 1
-    if (dir !== 0) {
-      // One column per entry, then one more every cooldown if held at the edge.
-      const now = performance.now()
-      if (now - lastStep > STEP_COOLDOWN) {
-        stepColumn(dir)
-        lastStep = now
-      }
-    } else {
-      // Centre: re-sync the target to where we actually are so the next step
-      // moves exactly one column (no skipping from a mid-animation read).
-      lastStep = 0
-      scrollIdx = Math.round(el.scrollLeft / (colWidth.value + GAP))
-    }
-  }
-  edgeRAF = requestAnimationFrame(autoScrollTick)
-}
-// Card drag adds the nest-hint flag on top of the shared drag setup; column drag
-// calls onDragStart directly and leaves draggingCard false.
-function onCardDragStart() {
-  draggingCard.value = true
-  onDragStart()
-}
-function onDragStart() {
-  dragging.value = true
-  pointerX = null
-  scrollIdx = null
-  lastStep = 0
-  // Mobile uses scroll-snap (x mandatory) + smooth scrolling, which both revert
-  // our per-frame scrollLeft nudges — disable them for the duration of the drag.
-  const el = boardScroll.value
-  if (el) {
-    el.style.scrollSnapType = 'none'
-    el.style.scrollBehavior = 'auto'
-  }
-  window.addEventListener('dragover', onDragOver, { passive: true })
-  if (!edgeRAF) edgeRAF = requestAnimationFrame(autoScrollTick)
-}
-function onDragEnd() {
-  dragging.value = false
-  draggingCard.value = false
-  pointerX = null
-  const el = boardScroll.value
-  if (el) {
-    el.style.scrollSnapType = ''
-    el.style.scrollBehavior = ''
-  }
-  window.removeEventListener('dragover', onDragOver)
-  if (edgeRAF) {
-    cancelAnimationFrame(edgeRAF)
-    edgeRAF = null
-  }
-}
+// Edge auto-scroll + the shared drag flags live in `useBoardDragScroll`; the board
+// only supplies the scrolling element and the column stride.
+const { dragging, draggingCard, onDragStart, onCardDragStart, onDragEnd } = useBoardDragScroll({
+  scrollEl: boardScroll,
+  colWidth,
+  gap: GAP,
+})
+// Card-list windowing. Frozen while a drag is in flight so SortableJS sees a
+// stable DOM, hence the dependency on `dragging` above.
+const { vis, cardH, regCard, reset: resetCardViewport } = useCardViewport({ frozen: dragging })
+
+// Coalesces the burst of realtime events one action produces into a single reload.
+// Full reload — used for a resync (dropped event / reconnect), where the board has
+// no idea what it missed.
+//
+// Всегда `silent`: доска уже на экране, пользователь только что сам её потрогал
+// (перетащил карточку, закрыл модалку). Гасить её на время догрузки — то самое
+// мерцание из #2695, см. комментарий у `load()`.
+const RELOAD_DEBOUNCE_MS = 200
 let reloadTimer = null
 function scheduleReload() {
   clearTimeout(reloadTimer)
-  reloadTimer = setTimeout(() => load(props.boardId), 200)
+  reloadTimer = setTimeout(() => load(props.boardId, { silent: true }), RELOAD_DEBOUNCE_MS)
 }
 
-async function load(id) {
-  loading.value = true
+// Partial reloads, one debounce timer per kind: a burst of task events must not
+// drag the columns and the workspace meta along with it. Tasks get a slightly
+// wider window because one user action fans out into several task events
+// (task.updated + task.tagged + task.assigned) that should collapse into one fetch.
+const PARTIAL_DEBOUNCE_MS = { tasks: 400, columns: 200, board: 200, meta: 200 }
+const partialTimers = { tasks: null, columns: null, board: null, meta: null }
+const partialFetch = {
+  tasks: () => fetchTasks(props.boardId),
+  columns: async () => {
+    columns.value = (await boards.columns(props.boardId)).data || []
+  },
+  board: async () => {
+    board.value = (await boards.get(props.boardId)).data
+  },
+  meta: () => loadWorkspaceMeta(),
+}
+function schedulePartial(kind) {
+  clearTimeout(partialTimers[kind])
+  partialTimers[kind] = setTimeout(async () => {
+    try {
+      await partialFetch[kind]()
+    } catch (e) {
+      message.error(e.message)
+    }
+  }, PARTIAL_DEBOUNCE_MS[kind])
+}
+
+// Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
+// milestone server-side, so a huge project never loads all its cards at once.
+// ?archived=1 loads the read-only archive instead (subtasks skipped — they are
+// archived together with their parents). Shared by the full load and the
+// tasks-only realtime refetch, which must scope identically or the archive view
+// would come back to life full of ordinary tasks.
+function taskQuery() {
+  const archived = route.query.archived === '1'
+  const ms = route.query.milestone
+  return { archived, params: archived ? { archived: 1 } : ms ? { milestone: ms } : undefined }
+}
+
+// Fetch just the task lists (2 requests instead of the full load's 10).
+async function fetchTasks(id) {
+  const { archived, params } = taskQuery()
+  const [t, s] = await Promise.all([
+    boards.tasks(id, params),
+    archived ? Promise.resolve({ data: [] }) : boards.subtasks(id),
+  ])
+  allTasks.value = (t.data || []).map(markRaw)
+  const byParent = {}
+  for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(markRaw(sub))
+  subtasksByParent.value = byParent
+}
+
+// `silent` — перезагрузить данные, НЕ поднимая `loading`.
+//
+// Задача #2695: `loading` включает `n-spin`, а Naive гасит ВСЁ содержимое своего
+// слота — `.n-spin-content { transition: opacity .3s }` → `opacity: opacityDisabled`
+// (`naive-ui/es/spin/src/styles/index.cssr.mjs`). В слоте у нас лежит вся доска
+// целиком, поэтому каждая фоновая перезагрузка (после drag'а, после правки из
+// модалки) прогоняла страницу через затухание и обратно. Это и есть «мерцание»:
+// оно не в тостах и не в композиторе браузера, а в обычном CSS-переходе opacity
+// у общего предка.
+//
+// Спиннер уместен только там, где показывать нечего — первая загрузка и смена
+// доски. Догрузка уже показанной доски должна быть незаметной.
+async function load(id, { silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
-    // Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
-    // milestone server-side, so a huge project never loads all its cards at once.
-    // ?archived=1 loads the read-only archive instead (subtasks skipped — they are
-    // archived together with their parents).
-    const archived = route.query.archived === '1'
-    const ms = route.query.milestone
-    const params = archived ? { archived: 1 } : ms ? { milestone: ms } : undefined
+    const { archived, params } = taskQuery()
     const [b, c, t, s] = await Promise.all([
       boards.get(id),
       boards.columns(id),
@@ -1430,16 +864,22 @@ async function load(id) {
     ])
     board.value = b.data
     columns.value = c.data || []
-    allTasks.value = t.data || []
+    // Publish the identity as soon as the board itself is known: cards render
+    // before loadWorkspaceMeta resolves, and a stale projectId from the previous
+    // board would scope their tag creation / estimation config to the wrong one.
+    boardViewStore.setContext(id, wsStore.currentId, b.data?.project_id || null)
+    allTasks.value = (t.data || []).map(markRaw)
     const byParent = {}
-    for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(sub)
+    for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(markRaw(sub))
     subtasksByParent.value = byParent
     await loadWorkspaceMeta()
-    rebuildLists()
+    // No explicit rebuildLists() here: assigning allTasks already invalidates
+    // filteredTasks, and the watcher below rebuilds once. Calling both made every
+    // load rebuild the whole column map twice.
   } catch (e) {
     message.error(e.message)
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -1456,14 +896,13 @@ async function loadWorkspaceMeta() {
     gitlabApi.listIntegrations(wsId).catch(() => ({ data: { integrations: [] } })),
     projectsApi.milestones(projectId).catch(() => ({ data: [] })),
   ])
-  for (const k of Object.keys(tagsMap)) delete tagsMap[k]
-  for (const t of tg.data || []) tagsMap[t.id] = t
-  for (const k of Object.keys(milestonesMap)) delete milestonesMap[k]
-  for (const m of ms.data || []) milestonesMap[m.id] = m
-  for (const k of Object.keys(membersMap)) delete membersMap[k]
-  for (const m of mem.data || []) membersMap[m.user_id] = m
-  for (const k of Object.keys(gitlabMembersMap)) delete gitlabMembersMap[k]
-  for (const g of glMem.data || []) gitlabMembersMap[g.gl_user_id] = g
+  boardViewStore.refill(tagsMap, Object.fromEntries((tg.data || []).map((t) => [t.id, t])))
+  boardViewStore.refill(milestonesMap, Object.fromEntries((ms.data || []).map((m) => [m.id, m])))
+  boardViewStore.refill(membersMap, Object.fromEntries((mem.data || []).map((m) => [m.user_id, m])))
+  boardViewStore.refill(
+    gitlabMembersMap,
+    Object.fromEntries((glMem.data || []).map((g) => [g.gl_user_id, g])),
+  )
   // Issue-creation is offered only on the binding that targets THIS board.
   const gi = (glInt.data?.integrations || []).find((b) => b.board_id === props.boardId) || {}
   gitlabIntegrationId.value = gi.id || null
@@ -1477,12 +916,10 @@ async function loadWorkspaceMeta() {
     for (const p of metaPrefixesFromRules(bi.label_rules)) mp.add(p)
   }
   metaTagPrefixes.value = mp
-  for (const k of Object.keys(tagPrefixNames)) delete tagPrefixNames[k]
-  for (const p of pfx.data || []) tagPrefixNames[p.prefix] = p.label
-  // Mirror tags + prefix names + context to the store so the header Теги manager works.
-  boardViewStore.setTags(tagsList.value)
-  boardViewStore.setPrefixNames({ ...tagPrefixNames })
-  boardViewStore.setMilestones(milestonesList.value)
+  boardViewStore.refill(
+    tagPrefixNames,
+    Object.fromEntries((pfx.data || []).map((p) => [p.prefix, p.label])),
+  )
   boardViewStore.setContext(props.boardId, wsId, projectId)
 }
 
@@ -1609,32 +1046,16 @@ function rebuildLists() {
 }
 watch([filteredTasks, groupMode, tagPrefix, milestonesList], rebuildLists)
 
-// Observe each card wrapper (stable per task id via item-key) once. Off-screen
-// cards collapse to a placeholder; near-viewport cards mount the real TaskCard.
-function regCard(el, id) {
-  if (!el || !cardIO) return
-  el.dataset.cardId = id
-  cardIO.observe(el)
-  cardRO.observe(el)
-}
-
 // Mutable mirror of displayColumns for column drag-reorder (status mode only).
 const colModel = ref([])
 watch(displayColumns, (v) => (colModel.value = [...v]), { immediate: true })
 
 async function onColumnReorder(evt) {
-  if (groupMode.value !== 'status') return
-  const info = evt.moved || evt.added
-  if (!info) return
-  const arr = colModel.value
-  const before = arr[info.newIndex - 1]
-  const after = arr[info.newIndex + 1]
+  const plan = planColumnReorder(evt, colModel.value, groupMode.value)
+  if (!plan) return
   suppress()
   try {
-    await columnsApi.move(info.element.key, {
-      before_id: before ? before.key : null,
-      after_id: after ? after.key : null,
-    })
+    await columnsApi.move(plan.key, { before_id: plan.before_id, after_id: plan.after_id })
     scheduleReload()
   } catch (e) {
     message.error(e.message)
@@ -1642,41 +1063,32 @@ async function onColumnReorder(evt) {
   }
 }
 
-// Drag persistence: status mode = reposition; tag mode = add/remove tag.
+// Drag persistence: the rules (neighbour math, collapsed pin, subtask promotion,
+// single-value milestone, tag add/remove) live in utils/boardDnd; here we only
+// dispatch the resulting intents to the API, in order.
 async function onColChange(evt, dcol) {
   suppress()
   try {
-    if (groupMode.value === 'status') {
-      const info = evt.added || evt.moved
-      if (info) {
-        const arr = lists.value[dcol.key]
-        // Dropping onto a collapsed column: Sortable's newIndex is meaningless
-        // (its items are hidden placeholders behind the drop overlay), so pin the
-        // card to the top — before = nothing, after = the first existing card.
-        const collapsed = evt.added && isColCollapsed(dcol)
-        const before = collapsed ? null : arr[info.newIndex - 1]
-        const after = collapsed ? arr.find((t) => t.id !== info.element.id) : arr[info.newIndex + 1]
-        // A subtask dragged out onto a column becomes top-level again.
-        if (evt.added && info.element.parent_id) {
-          await tasksApi.setParent(info.element.id, null)
-        }
-        await tasksApi.move(info.element.id, {
-          column_id: dcol.key,
-          before_id: before ? before.id : null,
-          after_id: after ? after.id : null,
+    const collapsed = !!evt.added && isColCollapsed(dcol)
+    const intents = planColDrop({
+      groupMode: groupMode.value,
+      evt,
+      dcol,
+      list: lists.value[dcol.key],
+      collapsed,
+    })
+    for (const it of intents) {
+      if (it.op === 'setParent') await tasksApi.setParent(it.id, it.parentId)
+      else if (it.op === 'move')
+        await tasksApi.move(it.id, {
+          column_id: it.columnId,
+          before_id: it.beforeId,
+          after_id: it.afterId,
         })
-      }
-    } else if (groupMode.value === 'milestone') {
-      // Single-value: the destination column's `added` sets/clears it; the source's
-      // `removed` is ignored (the new value overwrites).
-      if (evt.added) {
-        const id = evt.added.element.id
-        if (dcol.milestone) await tasksApi.setMilestone(id, dcol.milestone.id)
-        else await tasksApi.clearMilestone(id)
-      }
-    } else {
-      if (evt.added && dcol.tag) await tasksApi.addTag(evt.added.element.id, dcol.tag.id)
-      if (evt.removed && dcol.tag) await tasksApi.removeTag(evt.removed.element.id, dcol.tag.id)
+      else if (it.op === 'setMilestone') await tasksApi.setMilestone(it.id, it.milestoneId)
+      else if (it.op === 'clearMilestone') await tasksApi.clearMilestone(it.id)
+      else if (it.op === 'addTag') await tasksApi.addTag(it.id, it.tagId)
+      else if (it.op === 'removeTag') await tasksApi.removeTag(it.id, it.tagId)
     }
     scheduleReload()
   } catch (e) {
@@ -1794,8 +1206,31 @@ useRealtime((ev) => {
   // Board-activity toast for create/move on THIS board (any actor).
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
   if (dragging.value || Date.now() < suppressReloadUntil) return
-  scheduleReload()
-})
+  // Route the event instead of reloading the whole board for every one of them.
+  const kind = classifyEvent(ev, { boardId: props.boardId })
+  if (kind === 'ignore') return
+  if (kind === 'patch') {
+    // A full task payload can be merged into the card with no request at all —
+    // unless the card has to move or isn't here yet, in which case applyTaskPatch
+    // returns null and we fall back to re-fetching the lists.
+    // The merged row is a fresh plain object; markRaw keeps it consistent with
+    // the rest of the rows (see the shallowRef note above).
+    const patched = applyTaskPatch(allTasks.value, ev.data)
+    if (patched) {
+      allTasks.value = patched.map(markRaw)
+      return
+    }
+    const subs = applySubtaskPatch(subtasksByParent.value, ev.data)
+    if (subs) {
+      for (const arr of Object.values(subs)) arr.forEach(markRaw)
+      subtasksByParent.value = subs
+      return
+    }
+    schedulePartial('tasks')
+    return
+  }
+  schedulePartial(kind)
+}, scheduleReload)
 
 // Raise a live activity toast for a task create/move on the currently-open board.
 // The verb for a move is refined by comparing the event's completion state to the
@@ -1833,9 +1268,7 @@ async function reloadMilestones() {
   if (!projectId) return
   try {
     const { data } = await projectsApi.milestones(projectId)
-    for (const k of Object.keys(milestonesMap)) delete milestonesMap[k]
-    for (const m of data || []) milestonesMap[m.id] = m
-    boardViewStore.setMilestones(milestonesList.value)
+    boardViewStore.refill(milestonesMap, Object.fromEntries((data || []).map((m) => [m.id, m])))
   } catch {
     /* keep the current list on error */
   }
@@ -1883,46 +1316,12 @@ async function applyTaskQuery() {
   }
 }
 
-// Deep-link from the «Этапы» screen: ?milestone=<id> filters the board to exactly
-// that milestone (a removable chip), then the param is stripped so the URL stays
-// clean. It *replaces* the milestone facet (rather than appending) so re-entering
-// from the screen for a different milestone doesn't accumulate the previous one
-// that the saved view had persisted.
-// Sprint scope is now driven by a persistent ?milestone=<slug|uuid|backlog> param
-// (server-side scoped in load(), node-highlighted in the sidebar). Nothing to do
-// here — kept as a no-op so existing call sites stay valid.
-function applyMilestoneQuery() {}
-
 onMounted(async () => {
   ro = new ResizeObserver(() => measure())
   if (boardScroll.value) {
     ro.observe(boardScroll.value)
     measure()
   }
-  // Card-list windowing: reveal cards within 800px of the viewport; collapse the
-  // rest. Frozen mid-drag so SortableJS sees a stable DOM.
-  cardIO = new IntersectionObserver(
-    (entries) => {
-      if (dragging.value) return
-      for (const en of entries) {
-        const id = en.target.dataset.cardId
-        if (id) vis[id] = en.isIntersecting
-      }
-    },
-    { rootMargin: '800px 0px' },
-  )
-  // Measure rendered cards (re-fires as TaskCard content settles, unlike a
-  // one-shot read), so a collapsed card's placeholder gets its exact height.
-  // Skip wrappers showing a placeholder to avoid feeding back a stale height.
-  cardRO = new ResizeObserver((entries) => {
-    for (const en of entries) {
-      const el = en.target
-      const id = el.dataset.cardId
-      if (!id || el.firstElementChild?.classList.contains('card-ph')) continue
-      const h = Math.round(en.contentRect.height)
-      if (h > 0 && cardH[id] !== h) cardH[id] = h
-    }
-  })
   // Re-measure the composer fit on bar resize (window / sidebar toggle).
   composerRO = new ResizeObserver(recomputeComposerFit)
   if (subbarEl.value) composerRO.observe(subbarEl.value)
@@ -1931,15 +1330,13 @@ onMounted(async () => {
   await load(props.boardId)
   loadViews()
   applyTaskQuery()
-  applyMilestoneQuery()
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
-  cardIO?.disconnect()
-  cardRO?.disconnect()
   // Drop any pending debounced reload so it can't fire against a board we've just
   // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
   clearTimeout(reloadTimer)
+  for (const t of Object.values(partialTimers)) clearTimeout(t)
   composerRO?.disconnect()
   onDragEnd()
   boardViewStore.reset()
@@ -1948,15 +1345,11 @@ watch(
   () => props.boardId,
   async (id) => {
     if (!id) return
-    // Drop the previous board's windowing state so its measured heights /
-    // visibility don't bleed in (re-seeded fresh by the IO/RO on render).
-    for (const k of Object.keys(vis)) delete vis[k]
-    for (const k of Object.keys(cardH)) delete cardH[k]
+    resetCardViewport()
     restoreView()
     await load(id)
     loadViews()
     applyTaskQuery()
-    applyMilestoneQuery()
   },
 )
 watch(
@@ -1980,7 +1373,6 @@ async function restoreFromArchive(taskId) {
   try {
     await tasksApi.restore(taskId)
     allTasks.value = allTasks.value.filter((t) => t.id !== taskId)
-    rebuildLists()
     message.success('Задача возвращена из архива')
   } catch (e) {
     message.error(e.message)
@@ -2281,14 +1673,6 @@ async function restoreFromArchive(taskId) {
         :subtasks-by-parent="sortedSubtasksByParent"
         :subtasks-total-by-parent="subtasksByParent"
         :subtasks-expanded="subtasksExpanded"
-        :columns="columns"
-        :tags-map="tagsMap"
-        :members-map="membersMap"
-        :tags="tagsList"
-        :tag-prefix-names="tagPrefixNames"
-        :members="membersList"
-        :ws-id="wsStore.currentId"
-        :project-id="board?.project_id"
         @open="openTask"
         @changed="onChanged"
         @create="createInQuadrant"
@@ -2368,11 +1752,15 @@ async function restoreFromArchive(taskId) {
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element, index }">
-                  <div :ref="(el) => regCard(el, cardKey(dcol, element))" class="card-wrap">
+                  <div :ref="(el) => regCard(el, cardKey(dcol.key, element.id))" class="card-wrap">
                     <div
-                      v-if="colCollapsedNow(dcol) || !(vis[cardKey(dcol, element)] ?? index < 12)"
+                      v-if="
+                        colCollapsedNow(dcol) || !(vis[cardKey(dcol.key, element.id)] ?? index < 12)
+                      "
                       class="card-ph"
-                      :style="{ height: (cardH[cardKey(dcol, element)] || VCARD_EST) + 'px' }"
+                      :style="{
+                        height: (cardH[cardKey(dcol.key, element.id)] || VCARD_EST) + 'px',
+                      }"
                     />
                     <TaskCard
                       v-else
@@ -2381,21 +1769,6 @@ async function restoreFromArchive(taskId) {
                       :subtasks-total="(subtasksByParent[element.id] || []).length"
                       :subtasks-expanded="subtasksExpanded"
                       :dragging="draggingCard"
-                      :columns="columns"
-                      :tags-map="tagsMap"
-                      :members-map="membersMap"
-                      :tags="tagsList"
-                      :tag-prefix-names="tagPrefixNames"
-                      :meta-tag-prefixes="metaTagPrefixes"
-                      :members="membersList"
-                      :gitlab-members="gitlabMembersList"
-                      :milestones-map="milestonesMap"
-                      :ws-id="wsStore.currentId"
-                      :project-id="board?.project_id"
-                      :field-vis="fieldVis"
-                      :show-empty="showEmpty"
-                      :stack-fields="stackFields"
-                      :card-size="cardSize"
                       :readonly="archivedMode"
                       @open="openTask"
                       @changed="onChanged"
@@ -2455,56 +1828,46 @@ async function restoreFromArchive(taskId) {
         </n-text>
       </div>
     </div>
-
-    <TaskModal
-      :show="showTaskModal"
-      :task-id="selectedTaskId"
-      :ws-id="wsStore.currentId"
-      :project-id="board?.project_id"
-      :board="board"
-      :board-columns="columns"
-      :board-top-tasks="allTasks"
-      :tags="tagsList"
-      :tag-prefix-names="tagPrefixNames"
-      :meta-tag-prefixes="metaTagPrefixes"
-      :members="membersList"
-      :gitlab-members="gitlabMembersList"
-      :milestones="milestonesList"
-      :gitlab-can-create="gitlabCanCreate"
-      :gitlab-fetch-templates="gitlabFetchTemplates"
-      :gitlab-integration-id="gitlabIntegrationId"
-      :readonly="archivedMode"
-      @update:show="(v) => v || closeTask()"
-      @changed="onChanged"
-      @open="openTask"
-      @restore="restoreFromArchive"
-    />
-
-    <BoardActivityToasts ref="activityToasts" @open="openTask" />
-
-    <BoardCustomizePanel
-      v-model:show="customizeOpen"
-      v-model:board-name="boardName"
-      v-model:card-size="cardSize"
-      v-model:stack-fields="stackFields"
-      v-model:show-empty="showEmpty"
-      v-model:auto-collapse-empty="autoCollapseEmpty"
-      v-model:subtasks-expanded="subtasksExpanded"
-      v-model:autosave-view="autosaveView"
-      :field-vis="fieldVis"
-      :facet-chips="facetChips"
-      :add-options="addOptions"
-      :current-view-name="currentViewName"
-      :board-icon="board?.icon || ''"
-      :board-color="board?.color || ''"
-      :board-icon-mode="board?.icon_mode || 'badge'"
-      @set-field="setFieldVis"
-      @add-facet="onAddFacet"
-      @remove-chip="removeChip"
-      @chip-click="onChipClick"
-      @update-board="updateBoard"
-    />
   </n-spin>
+
+  <!-- Оверлеи держим ВНЕ <n-spin>: его слот целиком гаснет по opacity на время
+       загрузки (см. `load()`), а модалка, тосты активности и панель настройки —
+       не «содержимое доски», гаснуть вместе с ней они не должны. -->
+  <TaskModal
+    :show="showTaskModal"
+    :task-id="selectedTaskId"
+    :board-top-tasks="allTasks"
+    :readonly="archivedMode"
+    @update:show="(v) => v || closeTask()"
+    @changed="onChanged"
+    @open="openTask"
+    @restore="restoreFromArchive"
+  />
+
+  <BoardActivityToasts ref="activityToasts" @open="openTask" />
+
+  <BoardCustomizePanel
+    v-model:show="customizeOpen"
+    v-model:board-name="boardName"
+    v-model:card-size="cardSize"
+    v-model:stack-fields="stackFields"
+    v-model:show-empty="showEmpty"
+    v-model:auto-collapse-empty="autoCollapseEmpty"
+    v-model:subtasks-expanded="subtasksExpanded"
+    v-model:autosave-view="autosaveView"
+    :field-vis="fieldVis"
+    :facet-chips="facetChips"
+    :add-options="addOptions"
+    :current-view-name="currentViewName"
+    :board-icon="board?.icon || ''"
+    :board-color="board?.color || ''"
+    :board-icon-mode="board?.icon_mode || 'badge'"
+    @set-field="setFieldVis"
+    @add-facet="onAddFacet"
+    @remove-chip="removeChip"
+    @chip-click="onChipClick"
+    @update-board="updateBoard"
+  />
 </template>
 
 <style scoped>

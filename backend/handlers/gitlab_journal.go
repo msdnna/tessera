@@ -224,7 +224,7 @@ func (h *API) ListGitlabSyncRuns(c *gin.Context) {
 	}
 	runs, err := h.q.ListGitlabSyncRunsByWorkspace(c, db.ListGitlabSyncRunsByWorkspaceParams{WorkspaceID: wsID, Limit: limit})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if runs == nil {
@@ -259,7 +259,7 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 		if notFound(c, err) {
 			return
 		}
-		fail(c)
+		fail(c, err)
 		return
 	}
 	limit := int32(journalPageSize)
@@ -279,7 +279,7 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 		RunID: runID, AfterSeq: afterSeq, LimitN: limit,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if rows == nil {
@@ -313,7 +313,7 @@ func (h *API) GetGitlabSyncActionDetail(c *gin.Context) {
 		if notFound(c, err) {
 			return
 		}
-		fail(c)
+		fail(c, err)
 		return
 	}
 	raw := json.RawMessage(detail)
@@ -339,7 +339,7 @@ func (h *API) RetryGitlabWriteback(c *gin.Context) {
 		if notFound(c, err) {
 			return
 		}
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if action.Direction != "push" || action.Status != "fail" {
@@ -362,7 +362,7 @@ func (h *API) RetryGitlabWriteback(c *gin.Context) {
 	if err := h.q.CreateGitlabWriteback(c, db.CreateGitlabWritebackParams{
 		TaskID: *action.TaskID, IntegrationID: action.RunIntegrationID, ChangeKind: detail.ChangeKind, Payload: payload,
 	}); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "queued"})

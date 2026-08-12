@@ -35,6 +35,28 @@ func TestDeviceIDOf(t *testing.T) {
 	}
 }
 
+// channelCfgString is what gates background push (an absent fcm_token means the
+// device stays on the live-socket path), so a non-string or missing value must
+// read as empty rather than panicking or coercing.
+func TestChannelCfgString(t *testing.T) {
+	cases := []struct {
+		cfg  string
+		want string
+	}{
+		{`{"device_id":"abc","fcm_token":"tok-1"}`, "tok-1"},
+		{`{"device_id":"abc"}`, ""},
+		{`{"fcm_token":null}`, ""},
+		{`{"fcm_token":42}`, ""}, // wrong type — not a usable token
+		{`{}`, ""},
+		{`broken`, ""},
+	}
+	for _, tc := range cases {
+		if got := channelCfgString(db.NotificationChannel{Config: []byte(tc.cfg)}, "fcm_token"); got != tc.want {
+			t.Fatalf("channelCfgString(%s) = %q, want %q", tc.cfg, got, tc.want)
+		}
+	}
+}
+
 func TestQuietWindow(t *testing.T) {
 	at := func(h, m int) time.Time { return time.Date(2026, 6, 16, h, m, 0, 0, time.UTC) }
 

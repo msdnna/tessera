@@ -9,6 +9,7 @@
 // modal is untouched and always lists every subtask.
 
 import { matchesAuthor } from './boardFilters'
+import { NO_MILESTONE } from './facetKeys'
 
 // Facets that a subtask may "lift" its parent by. `statuses` (the board column)
 // is deliberately excluded: a subtask can live in a different column, and letting
@@ -84,7 +85,7 @@ export function matchesTask(
   if (
     on('milestones') &&
     filters.milestones?.length &&
-    !filters.milestones.includes(t.milestone_id || '__none__')
+    !filters.milestones.includes(t.milestone_id || NO_MILESTONE)
   )
     return false
   if (on('due') && filters.due && !matchesDue(t, filters.due, now)) return false
@@ -97,6 +98,13 @@ export function matchesTask(
 // no such facet the subtask pass is a no-op and we can skip it entirely.
 export function hasSubtaskFacets(filters) {
   return SUBTASK_FACETS.some((f) => (f === 'q' ? (filters.q || '').trim() : filters[f]?.length))
+}
+
+// True when any facet at all is active. The board spends most of its life with an
+// empty composer, and in that state every task trivially passes — so the whole
+// per-task predicate pass can be skipped.
+export function hasAnyFacets(filters) {
+  return hasSubtaskFacets(filters) || !!filters.statuses?.length
 }
 
 // Filter a board's tasks and subtasks together.
@@ -115,6 +123,19 @@ export function filterBoardTasks({
   now,
 }) {
   const clock = now || new Date()
+
+  // Empty composer: everything passes and nothing is narrowed. Shaped exactly like
+  // the general path below (fresh arrays, child lists only for parents that have
+  // children), just without running the predicate over every task and subtask.
+  if (!hasAnyFacets(filters)) {
+    const outSubs = {}
+    for (const t of tasks) {
+      const subs = subtasksByParent[t.id]
+      if (subs?.length) outSubs[t.id] = subs
+    }
+    return { tasks: tasks.slice(), subtasksByParent: outSubs, narrowedParents: new Set() }
+  }
+
   const subFacets = hasSubtaskFacets(filters)
 
   const outTasks = []

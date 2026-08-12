@@ -78,23 +78,116 @@ func TestTaskCreateGetUpdate(t *testing.T) {
 		}
 	}
 
-	// Full-replace for the present fields: a title-only PATCH wipes priority/due.
-	// Description is the tri-state exception — omitted, it is PRESERVED (board
-	// cards omit it since the list payload no longer carries it), so it must keep
-	// the prior value rather than blanking.
-	wiped := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "Только название"}), http.StatusOK)
-	if wiped["description"] != "Новое описание" || wiped["priority"] != float64(0) || wiped["due_date"] != nil {
-		t.Fatalf("full-replace expectation changed: %v", wiped)
+	// Tri-state PATCH: an omitted field keeps its stored value. A title-only edit
+	// used to wipe priority and due — the same full-replace rule that let a client
+	// forgetting `completed` silently un-complete a task.
+	kept := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "Только название"}), http.StatusOK)
+	if kept["description"] != "Новое описание" || kept["priority"] != float64(3) ||
+		!parseTS(t, kept["due_date"]).Equal(due2) {
+		t.Fatalf("omitted fields should be preserved: %v", kept)
 	}
 	// Present description (even empty) still replaces — the modal can clear it.
-	cleared := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "x", "description": ""}), http.StatusOK)
+	cleared := c.expect(t, c.patch("/tasks/"+id, map[string]any{"description": ""}), http.StatusOK)
 	if cleared["description"] != "" {
 		t.Fatalf("explicit empty description should clear: %v", cleared)
 	}
+	// Explicit null clears a nullable field; the neighbouring one is untouched.
+	nulled := c.expect(t, c.patch("/tasks/"+id, map[string]any{"due_date": nil}), http.StatusOK)
+	if nulled["due_date"] != nil || nulled["priority"] != float64(3) {
+		t.Fatalf("null due_date should clear only due_date: %v", nulled)
+	}
 
-	// Title is required.
-	if r := c.patch("/tasks/"+id, map[string]any{"description": "без названия"}); r.Status != http.StatusBadRequest {
+	// `completed` is the field the old full-replace semantics endangered: an edit
+	// that never mentions it must not un-complete the task.
+	done := c.expect(t, c.patch("/tasks/"+id, map[string]any{"completed": true}), http.StatusOK)
+	if done["completed_at"] == nil {
+		t.Fatalf("completed:true did not set completed_at: %v", done)
+	}
+	still := c.expect(t, c.patch("/tasks/"+id, map[string]any{"title": "Переименована"}), http.StatusOK)
+	if still["completed_at"] == nil {
+		t.Fatalf("a title-only edit un-completed the task: %v", still)
+	}
+	// …while an explicit false still un-completes it.
+	reopened := c.expect(t, c.patch("/tasks/"+id, map[string]any{"completed": false}), http.StatusOK)
+	if reopened["completed_at"] != nil {
+		t.Fatalf("completed:false did not clear completed_at: %v", reopened)
+	}
+
+	// Title is no longer required (absent = keep), but an explicit empty one is
+	// still rejected.
+	if r := c.patch("/tasks/"+id, map[string]any{"description": "без названия"}); r.Status != http.StatusOK {
 		t.Fatalf("update without title: %d", r.Status)
+	}
+	if r := c.patch("/tasks/"+id, map[string]any{"title": "   "}); r.Status != http.StatusBadRequest {
+		t.Fatalf("blank title should be rejected: %d", r.Status)
+	}
+}
+
+// Optimistic locking: an edit that carries the updated_at it was made against
+// is refused with 409 once someone else has written the row, instead of quietly
+// dropping their change.
+func TestTaskOptimisticLock(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	id := mkTask(t, c, s.Board, s.col(t, 0), "Гонка")["id"].(string)
+
+	read := c.expect(t, c.get("/tasks/"+id), http.StatusOK)
+	token := read["updated_at"].(string)
+
+	// The token matches the stored row, so the write lands.
+	first := c.expect(t, c.patch("/tasks/"+id, map[string]any{
+		"title": "Первый выиграл", "updated_at": token,
+	}), http.StatusOK)
+	if first["title"] != "Первый выиграл" {
+		t.Fatalf("fresh token should write: %v", first)
+	}
+
+	// The second client still holds the token from before that write — this is
+	// the lost update the gate exists for.
+	before := len(eventKinds(t, c, id))
+	r := c.patch("/tasks/"+id, map[string]any{"title": "Второй затёр", "updated_at": token})
+	conflict := c.expect(t, r, http.StatusConflict)
+	if conflict["stale"] != true {
+		t.Fatalf("409 body should flag stale: %v", conflict)
+	}
+	// The body carries the current row, which is what a client resolves against.
+	cur, ok := conflict["task"].(map[string]any)
+	if !ok || cur["title"] != "Первый выиграл" {
+		t.Fatalf("409 body should carry the current task: %v", conflict["task"])
+	}
+	if now := c.expect(t, c.get("/tasks/"+id), http.StatusOK); now["title"] != "Первый выиграл" {
+		t.Fatalf("refused write must not land: %v", now["title"])
+	}
+	// A refused write leaves no side effects behind it either.
+	if after := len(eventKinds(t, c, id)); after != before {
+		t.Fatalf("refused write journalled: %d events, want %d", after, before)
+	}
+
+	// Backwards compatibility — the gate is opt-in, and every existing client
+	// (plus every quick action) sends no token at all.
+	if legacy := c.expect(t, c.patch("/tasks/"+id,
+		map[string]any{"title": "Без токена"}), http.StatusOK); legacy["title"] != "Без токена" {
+		t.Fatalf("an edit without a token must keep working: %v", legacy)
+	}
+
+	// A token rounded to milliseconds still matches: JS clients round-trip the
+	// timestamp through Date, which cannot hold the microseconds Postgres does.
+	fresh := c.expect(t, c.get("/tasks/"+id), http.StatusOK)
+	ms := parseTS(t, fresh["updated_at"]).Truncate(time.Millisecond)
+	if trunc := c.expect(t, c.patch("/tasks/"+id, map[string]any{
+		"title": "Из браузера", "updated_at": ms.Format(time.RFC3339Nano),
+	}), http.StatusOK); trunc["title"] != "Из браузера" {
+		t.Fatalf("millisecond-rounded token should match: %v", trunc)
+	}
+
+	// A token for a task that no longer exists is a 404, not a conflict. (The
+	// handler's own gone-branch only fires if the delete lands between the load
+	// and the write; over HTTP the load already answers 404.)
+	gone := c.expect(t, c.get("/tasks/"+id), http.StatusOK)["updated_at"].(string)
+	c.expect(t, c.del("/tasks/"+id), http.StatusNoContent)
+	if r := c.patch("/tasks/"+id, map[string]any{"title": "Призрак", "updated_at": gone}); r.Status != http.StatusNotFound {
+		t.Fatalf("edit of a deleted task: %d", r.Status)
 	}
 }
 
@@ -136,6 +229,79 @@ func TestBoardListOmitsDescription(t *testing.T) {
 	if got["description"] != "# Длинный markdown" {
 		t.Fatalf("description endpoint: %v", got)
 	}
+}
+
+// A task carrying several tags AND several assignees at once is the case the
+// board queries used to fan out on: joining both M:N tables produced a row per
+// *combination* (3 tags × 2 assignees = 6 rows), collapsed again by array_agg.
+// The LATERAL rewrite emits one row per task, so this pins down both halves of
+// the contract — exactly one row per task, and the full sets in each array.
+func TestBoardListAggregatesMultiValuedMeta(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	mate := signup(t)
+	s := mkStack(t, c)
+	c.expect(t, c.post("/workspaces/"+s.WS+"/members", map[string]any{"email": mate.Email}), http.StatusCreated)
+
+	tagIDs := map[string]bool{}
+	for _, name := range []string{"альфа", "бета", "гамма"} {
+		tag := c.expect(t, c.post("/projects/"+s.Project+"/tags", map[string]any{"name": name}), http.StatusCreated)
+		tagIDs[tag["id"].(string)] = true
+	}
+	wantAssignees := map[string]bool{c.UserID: true, mate.UserID: true}
+
+	parent := mkTask(t, c, s.Board, s.col(t, 0), "Родитель")["id"].(string)
+	child := mkTask(t, c, s.Board, s.col(t, 0), "Подзадача")["id"].(string)
+	c.expect(t, c.patch("/tasks/"+child+"/parent", map[string]any{"parent_id": parent}), http.StatusOK)
+
+	// Same multi-valued meta on both, so the top-level and subtask queries are
+	// each exercised with more than one row to aggregate.
+	for _, id := range []string{parent, child} {
+		for tagID := range tagIDs {
+			c.expect(t, c.post("/tasks/"+id+"/tags", map[string]any{"tag_id": tagID}), http.StatusNoContent)
+		}
+		for userID := range wantAssignees {
+			if r := c.post("/tasks/"+id+"/assignees", map[string]any{"user_id": userID}); r.Status != http.StatusNoContent {
+				t.Fatalf("add assignee %s to %s: %d\n%s", userID, id, r.Status, r.Body)
+			}
+		}
+	}
+
+	check := func(what, path, wantID string) {
+		t.Helper()
+		var seen int
+		for _, row := range c.get(path).listBody(t) {
+			if row["id"] != wantID {
+				continue
+			}
+			seen++
+			gotTags, _ := row["tag_ids"].([]any)
+			if len(gotTags) != len(tagIDs) {
+				t.Fatalf("%s tag_ids = %v, want %d ids", what, row["tag_ids"], len(tagIDs))
+			}
+			for _, v := range gotTags {
+				if !tagIDs[v.(string)] {
+					t.Fatalf("%s unexpected tag id %v", what, v)
+				}
+			}
+			gotAs, _ := row["assignee_ids"].([]any)
+			if len(gotAs) != len(wantAssignees) {
+				t.Fatalf("%s assignee_ids = %v, want %d ids", what, row["assignee_ids"], len(wantAssignees))
+			}
+			for _, v := range gotAs {
+				if !wantAssignees[v.(string)] {
+					t.Fatalf("%s unexpected assignee id %v", what, v)
+				}
+			}
+		}
+		// GROUP BY used to collapse the fanned-out rows; a LATERAL that lost its
+		// aggregate would leak them into the response instead, so pin the count.
+		if seen != 1 {
+			t.Fatalf("%s appeared %d times in the listing, want exactly 1", what, seen)
+		}
+	}
+	check("top-level task", "/boards/"+s.Board+"/tasks", parent)
+	check("subtask", "/boards/"+s.Board+"/subtasks", child)
 }
 
 // Kanban move: to another column, and between two neighbours (midpoint position).
@@ -383,7 +549,8 @@ func TestTaskRecurrence(t *testing.T) {
 		t.Fatalf("invalid rule kept: %v", up["recurrence"])
 	}
 
-	// Full-replace fact: an update omitting recurrence wipes the rule.
+	// Tri-state: omitting recurrence PRESERVES the rule (it used to wipe it),
+	// explicit null is what clears it.
 	c.expect(t, c.patch("/tasks/"+id, map[string]any{
 		"title": "Повторяющаяся", "due_date": due.Format(time.RFC3339),
 		"recurrence": map[string]any{"freq": "daily"},
@@ -391,8 +558,12 @@ func TestTaskRecurrence(t *testing.T) {
 	up = c.expect(t, c.patch("/tasks/"+id, map[string]any{
 		"title": "Повторяющаяся", "due_date": due.Format(time.RFC3339),
 	}), http.StatusOK)
+	if rec, ok = up["recurrence"].(map[string]any); !ok || rec["freq"] != "daily" {
+		t.Fatalf("omitted recurrence should be preserved: %v", up["recurrence"])
+	}
+	up = c.expect(t, c.patch("/tasks/"+id, map[string]any{"recurrence": nil}), http.StatusOK)
 	if up["recurrence"] != nil {
-		t.Fatalf("recurrence survived an omit-update: %v", up["recurrence"])
+		t.Fatalf("explicit null should clear recurrence: %v", up["recurrence"])
 	}
 
 	// Complete-triggered advance: completing the task reschedules it instead —

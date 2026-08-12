@@ -379,4 +379,36 @@ describe('useTaskMenu', () => {
       after_id: null,
     })
   })
+
+  // The menu acts on tasks that came from a board/list payload, and those are
+  // stripped of their description (backend task_list_dto.go). The update body is
+  // full-replace with description as the one tri-state field: sending an empty
+  // one would wipe the stored text, so it must be absent entirely.
+  it('never sends a description with an inline update', async () => {
+    const { open, select } = useTaskMenu({})
+    open({ clientX: 0, clientY: 0 }, { id: 't7', title: 'Без описания' })
+    await select('toggle')
+    await select('prio:3')
+    for (const [, body] of tasksApi.update.mock.calls) {
+      expect(body).not.toHaveProperty('description')
+    }
+  })
+
+  it('splices caller items in and routes their keys to onSelect', async () => {
+    const onSelect = vi.fn()
+    const { options, open, select } = useTaskMenu({
+      onSelect,
+      extra: (t) => (t.id === 'main' ? [{ label: 'Создать подзадачу', key: 'subtask' }] : []),
+    })
+    open({ clientX: 0, clientY: 0 }, { id: 'main' })
+    expect(options.value.map((o) => o.key)).toContain('subtask')
+    await select('subtask')
+    expect(onSelect).toHaveBeenCalledWith('subtask', expect.objectContaining({ id: 'main' }))
+    // An unknown key must not fall through to an api call.
+    expect(tasksApi.update).not.toHaveBeenCalled()
+
+    // A child row gets no "create subtask" item.
+    open({ clientX: 0, clientY: 0 }, { id: 'child' })
+    expect(options.value.map((o) => o.key)).not.toContain('subtask')
+  })
 })

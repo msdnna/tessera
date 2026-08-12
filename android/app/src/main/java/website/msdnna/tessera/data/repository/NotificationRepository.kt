@@ -13,7 +13,10 @@ class NotificationRepository {
     suspend fun markRead(id: String) = api.markNotificationRead(id)
     suspend fun markAllRead() = api.markAllNotificationsRead()
 
-    /** Registers this device as a routable "device" channel (idempotent). */
-    suspend fun registerDevice(deviceId: String, label: String) =
-        api.registerDevice(RegisterDeviceRequest(deviceId, label, "android"))
+    /** Registers this device as a routable "device" channel (idempotent).
+     *  [fcmToken] is what makes background push reach it while the app is closed;
+     *  blank means "no push here" and leaves any token the server already holds
+     *  alone (this call also runs on starts where Play Services is unreachable). */
+    suspend fun registerDevice(deviceId: String, label: String, fcmToken: String = "") =
+        api.registerDevice(RegisterDeviceRequest(deviceId, label, "android", fcmToken))
 }

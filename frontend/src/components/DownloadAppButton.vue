@@ -79,7 +79,7 @@ const primary = computed(() => {
       class="dl-split-main"
       :href="primary.url"
       download
-      rel="noopener"
+      rel="noopener noreferrer"
       :title="`Загрузить для ${detectedGroup.name}`"
     >
       <n-icon :component="detectedGroup.icon" :size="18" />

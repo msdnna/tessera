@@ -9,11 +9,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/containrrr/shoutrrr"
+
+	"tessera/internal/netguard"
 )
 
 // Sender delivers one rendered message to one channel of a given type. A send
@@ -39,9 +42,36 @@ func IsPermanent(err error) bool {
 	return errors.As(err, &p)
 }
 
-// defaultClient is the shared HTTP client for outbound channel calls: a tight
-// timeout so a slow endpoint can't wedge the delivery worker.
-var defaultClient = &http.Client{Timeout: 15 * time.Second}
+// defaultClient is the shared HTTP client for outbound webhook deliveries: a
+// tight timeout so a slow endpoint can't wedge the delivery worker, and a
+// guarded dialer so a workspace member can't point a webhook at the internal
+// network (SSRF). NOTIFY_ALLOW_PRIVATE_URLS=true opts back in to private
+// targets (e.g. ntfy/gotify on the same host).
+var defaultClient = newWebhookClient()
+
+// newWebhookClient builds an HTTP client whose dial is SSRF-guarded per the
+// notify private-URL policy. The policy is resolved per-dial (not captured when
+// the client is built), so NOTIFY_ALLOW_PRIVATE_URLS takes effect on the next
+// connection — matching the per-call ValidateURL below, which reads it live.
+func newWebhookClient() *http.Client {
+	return &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: &http.Transport{DialContext: netguard.DialerFunc(notifyAllowPrivateURLs).DialContext},
+	}
+}
+
+// notifyAllowPrivateURLs reports whether webhook deliveries may target
+// loopback/private addresses. Defaults to false: a webhook URL is arbitrary
+// workspace-member input, so the safe default forbids the internal network. A
+// typo or unparseable value keeps the safe default rather than flipping it.
+func notifyAllowPrivateURLs() bool {
+	v := strings.TrimSpace(os.Getenv("NOTIFY_ALLOW_PRIVATE_URLS"))
+	if v == "" {
+		return false
+	}
+	b, _ := strconv.ParseBool(v)
+	return b
+}
 
 // ── shoutrrr (telegram + the long tail) ────────────────────
 
@@ -100,6 +130,13 @@ func (s WebhookSender) Send(ctx context.Context, ch Channel, msg Message) error 
 	target := ch.configString("url")
 	if target == "" {
 		return Permanent(errors.New("webhook channel needs a url"))
+	}
+	// Reject a non-http(s) / userinfo / (by default) private-target URL as a
+	// permanent error, so a misconfigured channel fails fast instead of
+	// retrying forever. The client's guarded dialer is the backstop for a
+	// hostname that resolves to a private address (DNS-rebinding).
+	if _, err := netguard.ValidateURL(target, notifyAllowPrivateURLs()); err != nil {
+		return Permanent(fmt.Errorf("webhook url: %w", err))
 	}
 	method := strings.ToUpper(ch.configString("method"))
 	if method == "" {

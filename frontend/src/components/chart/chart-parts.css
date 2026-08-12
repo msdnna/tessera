@@ -1,0 +1,84 @@
+/* Rules shared by the chart row parts (ChartLaneHeader, ChartTaskRow). Imported
+   into each component's *scoped* style block, so the selectors stay scoped per
+   component — this file exists to keep the copies from drifting, not to add globals.
+
+   `.chart-part` is the opt-in root class every part carries; the view's chart-level
+   state (tier / collapsed / animate) rides down as classes on that root, because a
+   parent's scoped `.tl-inner.weeks .tl-track` can no longer reach into a child. */
+
+/* sticky left column (task title / lane name) */
+.tl-left {
+  box-sizing: border-box;
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--t-surface);
+  border-right: 1px solid var(--t-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--t-border) 60%, transparent);
+  padding: 0 12px;
+  height: 36px;
+  cursor: pointer;
+  /* collapsible: clip content as the column shrinks; the toggle is instant
+     (animating width across every sticky row thrashed layout) */
+  overflow: hidden;
+}
+.tl-left:hover {
+  background: var(--t-hover);
+}
+/* collapsed: zero the padding + right border so the column reaches a TRUE 0 width
+   (box-sizing:border-box otherwise floors it at padding+border ≈ 25px, leaving a
+   residual sliver and — in the Gantt — shoving the arrow overlay out of alignment) */
+.chart-part.collapsed .tl-left {
+  padding-left: 0;
+  padding-right: 0;
+  border-right-width: 0;
+}
+
+/* the axis-side track a row's bars sit on */
+.tl-track {
+  box-sizing: border-box;
+  position: relative;
+  flex: 0 0 auto;
+  height: 36px;
+  border-bottom: 1px solid color-mix(in srgb, var(--t-border) 60%, transparent);
+  /* faint day gridlines (period follows the current zoom via --tl-day-w) */
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(var(--tl-day-w, 34px) - 1px),
+    color-mix(in srgb, var(--t-border) 45%, transparent) calc(var(--tl-day-w, 34px) - 1px),
+    color-mix(in srgb, var(--t-border) 45%, transparent) var(--tl-day-w, 34px)
+  );
+}
+/* weeks tier: gridlines every week (daily lines would be too dense) */
+.chart-part.weeks .tl-track {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(var(--tl-week-w) - 1px),
+    color-mix(in srgb, var(--t-border) 45%, transparent) calc(var(--tl-week-w) - 1px),
+    color-mix(in srgb, var(--t-border) 45%, transparent) var(--tl-week-w)
+  );
+}
+/* hours tier: faint hour-step minor lines under the stronger day lines */
+.chart-part.hours .tl-track {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--tl-sub-w) - 1px),
+      color-mix(in srgb, var(--t-border) 22%, transparent) calc(var(--tl-sub-w) - 1px),
+      color-mix(in srgb, var(--t-border) 22%, transparent) var(--tl-sub-w)
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--tl-day-w) - 1px),
+      color-mix(in srgb, var(--t-border) 55%, transparent) calc(var(--tl-day-w) - 1px),
+      color-mix(in srgb, var(--t-border) 55%, transparent) var(--tl-day-w)
+    );
+}

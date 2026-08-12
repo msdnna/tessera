@@ -3,8 +3,10 @@ import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NConfigProvider, NGlobalStyle, NMessageProvider, ruRU, dateRuRU } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
+import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
+import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
 
 const theme = useThemeStore()
 const router = useRouter()
@@ -13,11 +15,42 @@ const router = useRouter()
 const PRIORITY_GRADS = PRIORITY_COLORS.slice(1)
 
 // When a refresh ultimately fails, the api client clears auth and fires this.
+// The store has to be cleared too, or the route guard still sees a signed-in
+// session and bounces the redirect straight back home.
 function onExpired() {
+  useAuthStore().clearSession()
   router.push('/login')
 }
 onMounted(() => window.addEventListener('auth:expired', onExpired))
 onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
+
+// Desktop GitLab login (#2696): the tessera:// handoff is caught here rather than in
+// LoginView, because on Linux/Windows the OS delivers it through a *second* process
+// launch — by the time it lands the visible screen can be anything, including the
+// loader before the router settles. LoginView only needs to know the wait is over,
+// which it learns from OAUTH_DONE_EVENT.
+let unlistenOAuth = null
+async function onDesktopOAuth({ access, refresh, error }) {
+  let reason = error
+  if (!reason) {
+    try {
+      await useAuthStore().loginWithTokens(access, refresh)
+      window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: null } }))
+      router.replace('/')
+      return
+    } catch {
+      reason = 'userinfo_failed'
+    }
+  }
+  window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: reason } }))
+  if (!useAuthStore().isAuthenticated) {
+    router.replace({ path: '/login', query: { oauth_error: reason } })
+  }
+}
+onMounted(async () => {
+  unlistenOAuth = await listenDesktopOAuth(onDesktopOAuth)
+})
+onUnmounted(() => unlistenOAuth?.())
 </script>
 
 <template>

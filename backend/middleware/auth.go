@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,32 +18,65 @@ import (
 // ContextUserID is the gin context key holding the authenticated user's uuid.
 const ContextUserID = "user_id"
 
+// patToucher throttles last_used_at writes. Without it every PAT request spawns
+// a goroutine that takes a pool connection for a single UPDATE — a batching
+// client (MCP, CI) drains the pool with writes nobody reads at second precision.
+type patToucher struct {
+	mu       sync.Mutex
+	last     map[uuid.UUID]time.Time
+	interval time.Duration
+	now      func() time.Time // injectable for tests
+}
+
+func newPATToucher(interval time.Duration) *patToucher {
+	return &patToucher{last: make(map[uuid.UUID]time.Time), interval: interval, now: time.Now}
+}
+
+// shouldTouch reports whether this token's last_used_at is stale enough to be
+// written, recording the write when it says yes.
+func (p *patToucher) shouldTouch(id uuid.UUID) bool {
+	if p == nil || p.interval <= 0 {
+		return true // throttle disabled — preserve the write-every-request behaviour
+	}
+	now := p.now()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if seen, ok := p.last[id]; ok && now.Sub(seen) < p.interval {
+		return false
+	}
+	// Evict tokens untouched for well over a window, so the map can't grow into
+	// a leak of its own on an install that mints many short-lived tokens.
+	if len(p.last) > patTouchEvictAt {
+		for k, seen := range p.last {
+			if now.Sub(seen) > 2*p.interval {
+				delete(p.last, k)
+			}
+		}
+	}
+	p.last[id] = now
+	return true
+}
+
+// patTouchEvictAt is the map size past which shouldTouch sweeps stale entries.
+const patTouchEvictAt = 1024
+
 // Auth validates the Bearer credential and stores the user id in the context.
 // It accepts two credential kinds transparently on every protected route:
 //   - a short-lived access JWT (browser/app sessions), or
 //   - a Personal Access Token (tsra_… prefix) for headless clients (MCP, CI).
-func Auth(secret string, q *db.Queries) gin.HandlerFunc {
+//
+// patTouchInterval bounds how often a PAT's last_used_at is rewritten; 0 writes
+// on every request.
+func Auth(secret string, q *db.Queries, patTouchInterval time.Duration) gin.HandlerFunc {
+	toucher := newPATToucher(patTouchInterval)
 	return func(c *gin.Context) {
 		h := c.GetHeader("Authorization")
 		if !strings.HasPrefix(h, "Bearer ") {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 			return
 		}
-		tok := strings.TrimPrefix(h, "Bearer ")
-
-		if strings.HasPrefix(tok, auth.PATPrefix) {
-			uid, ok := authenticatePAT(c, q, tok)
-			if !ok {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-				return
-			}
-			c.Set(ContextUserID, uid)
-			c.Next()
-			return
-		}
-
-		uid, err := auth.ParseAccessToken(secret, tok)
-		if err != nil {
+		uid, ok := ResolveBearer(c, secret, q, strings.TrimPrefix(h, "Bearer "), toucher)
+		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
@@ -51,13 +85,84 @@ func Auth(secret string, q *db.Queries) gin.HandlerFunc {
 	}
 }
 
+// MediaCookieName is the httpOnly cookie the web app carries on inline-image
+// requests. Declared here because the middleware reads it and handlers/ writes
+// it; the two names have to agree.
+const MediaCookieName = "tessera_media"
+
+// MediaAuth guards the inline-media route (#2685). An <img> can send neither a
+// bearer header nor a body, so the credentials it accepts are wider than
+// Auth's — and one of them is a cookie:
+//
+//   - the media cookie, minted for the web app alongside its refresh cookie;
+//   - a bearer credential (access JWT or PAT), which is what Android sends: its
+//     WebView bridge fetches our resources through OkHttp, not the webview stack.
+//
+// require=false keeps serving anonymous requests, which is the default and the
+// behaviour every install has today. It exists because the desktop app loads
+// images as ordinary cross-site <img> tags, where a host-only cookie is never
+// attached: flipping the switch on by default would blank out every picture in
+// the Tauri client. Enforcement is therefore opt-in until desktop has an
+// authenticated image path of its own.
+//
+// Identified callers get their user id in the context either way, so the handler
+// can tell the two apart later without re-parsing anything.
+func MediaAuth(secret string, q *db.Queries, require bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if uid, ok := mediaCaller(c, secret, q); ok {
+			c.Set(ContextUserID, uid)
+			c.Next()
+			return
+		}
+		if !require {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+	}
+}
+
+// mediaCaller resolves whoever is asking for the file, if anyone can be named.
+func mediaCaller(c *gin.Context, secret string, q *db.Queries) (uuid.UUID, bool) {
+	if h := c.GetHeader("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		if uid, ok := ResolveBearer(c, secret, q, strings.TrimPrefix(h, "Bearer "), nil); ok {
+			return uid, true
+		}
+	}
+	if ck, err := c.Cookie(MediaCookieName); err == nil && ck != "" {
+		if uid, err := auth.ParseMediaToken(secret, ck); err == nil {
+			return uid, true
+		}
+	}
+	return uuid.Nil, false
+}
+
+// ResolveBearer validates a bearer credential — an access JWT or a Personal
+// Access Token — and returns its owner. It is the credential half of Auth,
+// split out so non-HTTP-middleware entry points (the WebSocket upgrade, which
+// must authenticate before hijacking the response) accept exactly the same
+// credentials as every protected route.
+// A nil toucher writes last_used_at on every PAT request (throttle disabled).
+func ResolveBearer(ctx context.Context, secret string, q *db.Queries, tok string, toucher *patToucher) (uuid.UUID, bool) {
+	if strings.HasPrefix(tok, auth.PATPrefix) {
+		return authenticatePAT(ctx, q, tok, toucher)
+	}
+	uid, err := auth.ParseAccessToken(secret, tok)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return uid, true
+}
+
 // authenticatePAT resolves a personal access token to its owner, rejecting
-// revoked or expired tokens. On success it fires a best-effort last-used touch.
-func authenticatePAT(c *gin.Context, q *db.Queries, tok string) (uuid.UUID, bool) {
+// revoked or expired tokens. On success it fires a best-effort last-used touch,
+// throttled (when toucher is non-nil) so a busy client doesn't spend a pool
+// connection per request.
+func authenticatePAT(ctx context.Context, q *db.Queries, tok string, toucher *patToucher) (uuid.UUID, bool) {
 	if q == nil {
 		return uuid.Nil, false
 	}
-	pat, err := q.GetPATByHash(c, auth.HashToken(tok))
+	pat, err := q.GetPATByHash(ctx, auth.HashToken(tok))
 	if err != nil {
 		return uuid.Nil, false
 	}
@@ -66,11 +171,13 @@ func authenticatePAT(c *gin.Context, q *db.Queries, tok string) (uuid.UUID, bool
 	}
 	// Best-effort, non-blocking: record usage on a detached context so it
 	// survives past the request lifecycle without delaying the response.
-	go func(id uuid.UUID) {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = q.TouchPATLastUsed(ctx, id)
-	}(pat.ID)
+	if toucher.shouldTouch(pat.ID) {
+		go func(id uuid.UUID) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_ = q.TouchPATLastUsed(ctx, id)
+		}(pat.ID)
+	}
 	return pat.UserID, true
 }
 

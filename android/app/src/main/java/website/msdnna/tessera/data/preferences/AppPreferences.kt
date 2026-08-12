@@ -53,6 +53,11 @@ class AppPreferences(private val context: Context) {
         val LAST_DEST = stringPreferencesKey("last_dest")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val RECENT_ASSIGNEES = stringPreferencesKey("recent_assignees")
+
+        // Last FCM registration token seen for this install (background push).
+        // Empty on a build without Firebase config or a phone without Play
+        // Services — the device then lives on the live-socket path only.
+        val FCM_TOKEN = stringPreferencesKey("fcm_token")
     }
 
     /** Stable id for the notification "device" channel so this device is routable and
@@ -82,6 +87,13 @@ class AppPreferences(private val context: Context) {
             null
         }
         return androidId?.takeIf { it.isNotBlank() && it != "9774d56d682e549c" }
+    }
+
+    /** The FCM token last registered with the backend (blank = no background push). */
+    val fcmToken: Flow<String> = context.dataStore.data.map { it[Keys.FCM_TOKEN] ?: "" }
+
+    suspend fun setFcmToken(token: String) {
+        context.dataStore.edit { it[Keys.FCM_TOKEN] = token }
     }
 
     /** User-set server override; falls back to the build's default base URL. */

@@ -150,6 +150,15 @@ bump-desktop: ## Bump desktop version (BUMP=patch|minor|major)
 bump-mcp: ## Bump MCP server version (BUMP=patch|minor|major)
 	@./tools/bump-version.sh mcp $(or $(BUMP),patch)
 
+# ── Changelog fragments (feature branch → develop) ─────────
+.PHONY: changelog-add
+changelog-add: ## Scaffold a changelog fragment (COMP=backend TASK=2620 [SLUG=ws-auth] [BUMP=minor])
+	@./tools/changelog-add.sh $(COMP) $(TASK) $(SLUG) $(BUMP)
+
+.PHONY: changelog-release
+changelog-release: ## Assemble fragments + bump versions on develop (ONLY=backend,frontend DRY=1)
+	@python3 tools/changelog-release.py $(if $(DRY),--dry-run,) $(if $(ONLY),--only $(ONLY),)
+
 # ── Android ────────────────────────────────────────────────
 ANDROID_DIR := android
 

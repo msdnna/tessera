@@ -10,13 +10,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"tessera/internal/netguard"
 )
 
 // newTransport builds the HTTP transport shared by the GraphQL and asset clients.
@@ -26,8 +27,16 @@ import (
 // connection pool fills with stalled asset/avatar fetches and starves real API
 // calls, freezing the UI behind the "connecting…" overlay.
 func newTransport() *http.Transport {
+	// The dialer is SSRF-guarded: a GitLab base URL pointing at the internal
+	// network is refused at connect time — and the check runs post-DNS, so
+	// DNS-rebinding and redirects to a private host are covered too. Private
+	// targets are allowed by default: a self-hosted GitLab on a LAN or behind a
+	// tunnel is the normal deployment, and forbidding it would break live
+	// instances. GITLAB_ALLOW_PRIVATE_URLS=false restricts it to public hosts.
+	dialer := netguard.Dialer(allowPrivateURLs())
+	dialer.Timeout = 3 * time.Second
 	tr := &http.Transport{
-		DialContext:         (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
+		DialContext:         dialer.DialContext,
 		TLSHandshakeTimeout: 4 * time.Second,
 	}
 	if strings.EqualFold(os.Getenv("GITLAB_INSECURE_TLS"), "true") {
@@ -36,10 +45,35 @@ func newTransport() *http.Transport {
 	return tr
 }
 
+// allowPrivateURLs reports whether outbound GitLab calls may target
+// loopback/private addresses. Defaults to true (see newTransport); a typo or
+// unparseable value keeps the default rather than silently flipping it.
+func allowPrivateURLs() bool { return envBool("GITLAB_ALLOW_PRIVATE_URLS", true) }
+
+// AllowPrivateURLs is the exported resolution of GITLAB_ALLOW_PRIVATE_URLS so a
+// caller that validates a GitLab URL up front (ConnectGitlab) applies the same
+// policy the transport will enforce at dial time.
+func AllowPrivateURLs() bool { return allowPrivateURLs() }
+
+// envBool reads a boolean env var with a fallback, tolerating junk (a typo in a
+// security knob must not silently flip it to its unsafe value).
+func envBool(key string, fallback bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
+}
+
 // Client talks to <baseURL>/api/graphql with a personal access token.
 type Client struct {
 	baseURL string
 	token   string
+	sudo    string // GitLab username to impersonate on write (REST) calls; "" = none
 	http    *http.Client
 }
 
@@ -56,6 +90,21 @@ func New(baseURL, token string) *Client {
 		// fast via the transport dial/TLS timeouts (3s/4s).
 		http: &http.Client{Timeout: 120 * time.Second, Transport: newTransport()},
 	}
+}
+
+// WithSudo returns a shallow copy of the client that impersonates the given GitLab
+// username on write (REST) requests via the `Sudo` header, so GitLab attributes the
+// action (issue/comment author, etc.) to the real acting user rather than the token
+// owner. Requires the token to be an admin PAT with the `sudo` scope. An empty
+// username yields the same client (no impersonation). Reads (GraphQL, restGet) are
+// never sudo'd — the pull must see the whole project as the service account.
+func (c *Client) WithSudo(username string) *Client {
+	if username == "" {
+		return c
+	}
+	cp := *c
+	cp.sudo = username
+	return &cp
 }
 
 // NewHTTPClient returns a plain HTTP client configured like the GraphQL client
@@ -504,6 +553,9 @@ func (c *Client) restForm(ctx context.Context, method, path string, form url.Val
 	}
 	req.Header.Set("PRIVATE-TOKEN", c.token)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if c.sudo != "" {
+		req.Header.Set("Sudo", c.sudo) // impersonate the acting user (admin token only)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err

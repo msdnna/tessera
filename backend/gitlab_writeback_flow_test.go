@@ -27,6 +27,7 @@ type restCall struct {
 	Method string
 	Path   string
 	Form   url.Values
+	Sudo   string // the Sudo header (impersonation), "" when absent
 }
 
 // wbFake fronts a fakeGitlab with mutation capture + failure injection. Its own
@@ -53,7 +54,7 @@ func (w *wbFake) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		form, _ := url.ParseQuery(string(body))
 		w.wmu.Lock()
-		w.calls = append(w.calls, restCall{Method: r.Method, Path: r.URL.Path, Form: form})
+		w.calls = append(w.calls, restCall{Method: r.Method, Path: r.URL.Path, Form: form, Sudo: r.Header.Get("Sudo")})
 		failNow := w.fail > 0
 		if failNow {
 			w.fail--
@@ -300,6 +301,117 @@ func TestGitlabWritebackPushFlow(t *testing.T) {
 	}
 }
 
+// Sudo impersonation (task #2690): when the admin enables sudo write-back and the
+// acting user has no personal PAT but a known GitLab identity, the async push runs
+// under the service (admin) token with a `Sudo: <username>` header so GitLab
+// attributes the write to the real user. Also asserts the pull never carries Sudo.
+func TestGitlabWritebackSudoImpersonation(t *testing.T) {
+	// Not parallel: it flips the instance-wide OAuth provider (service token + sudo),
+	// which is shared state other GitLab tests read.
+	st := newWritebackStand(t, "gl-sudo-user", "grp-sudo")
+	c, s, w := st.c, st.s, st.w
+
+	// oauth_providers is a global singleton; clear the service token afterwards so it
+	// doesn't leak into the parallel tests (which run after this sequential one).
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(),
+			`UPDATE oauth_providers SET service_token_enc = '', sudo_writeback = false, gl_base_url = '', enabled = false WHERE provider = 'gitlab'`)
+	})
+
+	// Give the acting user a GitLab identity via OAuth (no personal PAT), so their
+	// username resolves for impersonation without short-circuiting to a personal token.
+	if _, err := testPool.Exec(context.Background(),
+		`INSERT INTO oauth_identities (user_id, provider, provider_user_id, provider_username, gl_base_url)
+		 VALUES ($1::uuid, 'gitlab', '90210', 'gl-sudo-user', $2)`, c.UserID, w.outer.URL); err != nil {
+		t.Fatalf("insert oauth identity: %v", err)
+	}
+	// Drop the personal PAT so writeGitlabConn falls through to service-token + sudo.
+	if r := c.del("/gitlab/connection"); r.Status != http.StatusNoContent {
+		t.Fatalf("disconnect PAT: status %d\n%s", r.Status, r.Body)
+	}
+	// Admin: configure the instance service token (the fake) and turn sudo on.
+	c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"gl_base_url": w.outer.URL, "service_token": w.token,
+		"enabled": true, "sudo_writeback": true,
+	}), http.StatusOK)
+
+	st.putBindings(t, []map[string]any{
+		{"enabled": true,
+			"trigger": map[string]any{"type": "column", "column_id": s.col(t, 1), "column_name": "В процессе"},
+			"action":  map[string]any{"type": "set_label", "label": "S: In progress", "clear_prefix": true}},
+	})
+
+	c.expect(t, c.patch("/tasks/"+st.taskID+"/move", map[string]any{"column_id": s.col(t, 1)}), http.StatusOK)
+
+	drainOutboxUntil(t, func() bool { return writebackRows(t, st.taskID)["column"].Status == "sent" })
+
+	puts := w.callsMatching(http.MethodPut, "/issues/1")
+	if len(puts) == 0 {
+		t.Fatalf("no label push captured")
+	}
+	for _, call := range puts {
+		if call.Sudo != "gl-sudo-user" {
+			t.Fatalf("write Sudo header = %q, want gl-sudo-user\ncall: %+v", call.Sudo, call)
+		}
+	}
+	// The pull side (issue fetch, GET/GraphQL) must never impersonate.
+	w.wmu.Lock()
+	for _, call := range w.calls {
+		if call.Method == http.MethodGet && call.Sudo != "" {
+			w.wmu.Unlock()
+			t.Fatalf("read call carried Sudo=%q (pull must not impersonate): %+v", call.Sudo, call)
+		}
+	}
+	w.wmu.Unlock()
+}
+
+// Assignee write-back resolves an OAuth-login user (no personal PAT) via their
+// OAuth identity's numeric GitLab id — regression for "assignees set (0)" where such
+// users were silently dropped (task #2690 /rework).
+func TestGitlabWritebackAssigneeOAuthUser(t *testing.T) {
+	t.Parallel()
+	st := newWritebackStand(t, "gl-asgn-user", "grp-asgn")
+	c, s, w := st.c, st.s, st.w
+
+	// A second user who logged in via GitLab (OAuth identity with a numeric GL id)
+	// and never connected a personal PAT — the case that used to resolve to nobody.
+	c2 := signup(t)
+	if _, err := testPool.Exec(context.Background(),
+		`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'member')`,
+		s.WS, c2.UserID); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+	if _, err := testPool.Exec(context.Background(),
+		`INSERT INTO oauth_identities (user_id, provider, provider_user_id, provider_username, gl_base_url)
+		 VALUES ($1::uuid, 'gitlab', '555', 'gl-asgn-user', $2)`, c2.UserID, w.outer.URL); err != nil {
+		t.Fatalf("insert oauth identity: %v", err)
+	}
+
+	st.putBindings(t, []map[string]any{
+		{"enabled": true,
+			"trigger": map[string]any{"type": "assignees"},
+			"action":  map[string]any{"type": "set_assignees"}},
+	})
+
+	// Assign the OAuth-only user; the write-back uses the admin owner's PAT.
+	if r := c.post("/tasks/"+st.taskID+"/assignees", map[string]any{"user_id": c2.UserID}); r.Status != http.StatusNoContent {
+		t.Fatalf("assign: status %d\n%s", r.Status, r.Body)
+	}
+
+	drainOutboxUntil(t, func() bool { return writebackRows(t, st.taskID)["assignees"].Status == "sent" })
+
+	puts := w.callsMatching(http.MethodPut, "/issues/1")
+	var sawAssignee bool
+	for _, call := range puts {
+		if call.Form.Get("assignee_ids[]") == "555" {
+			sawAssignee = true
+		}
+	}
+	if !sawAssignee {
+		t.Fatalf("assignee push did not carry the OAuth user's GitLab id 555\ncalls: %+v", puts)
+	}
+}
+
 // Retry path: the first push gets a 500 → the row is backed off (pending again,
 // attempts=1, error kept) and the journal records a failed push action; the
 // retry endpoint re-enqueues it and a healthy drain delivers it.
@@ -441,6 +553,48 @@ func TestOAuthProvidersAndAdminConfig(t *testing.T) {
 	if status != http.StatusFound || !strings.HasPrefix(loc, "https://gl.example.test/oauth/authorize?") ||
 		!strings.Contains(loc, "client_id=test-client") {
 		t.Fatalf("authorize configured: %d %s", status, loc)
+	}
+
+	// Erase flags: an empty value keeps the stored secret, so wiping one needs an
+	// explicit clear_* flag. Seed a service token first (independent field).
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "gl_base_url": "https://gl.example.test",
+		"enabled": true, "service_token": "glpat-svc",
+	}), http.StatusOK)
+	if m["has_secret"] != true || m["has_service_token"] != true {
+		t.Fatalf("seed service token: %v", m)
+	}
+	// A non-empty secret in the same request wins over the clear flag (replace beats erase).
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "gl_base_url": "https://gl.example.test",
+		"enabled": true, "client_secret": "replaced", "clear_client_secret": true,
+	}), http.StatusOK)
+	if m["has_secret"] != true {
+		t.Fatalf("replace must beat clear: %v", m)
+	}
+	// Clear only the client secret; the service token must survive.
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "gl_base_url": "https://gl.example.test",
+		"enabled": true, "clear_client_secret": true,
+	}), http.StatusOK)
+	if m["has_secret"] != false || m["has_service_token"] != true {
+		t.Fatalf("clear client secret only: %v", m)
+	}
+	// Clear the service token too.
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "gl_base_url": "https://gl.example.test",
+		"enabled": true, "clear_service_token": true,
+	}), http.StatusOK)
+	if m["has_service_token"] != false {
+		t.Fatalf("clear service token: %v", m)
+	}
+	// Restore the client secret so the disable-restore step below behaves as before.
+	m = c.expect(t, c.put("/admin/oauth/gitlab", map[string]any{
+		"client_id": "test-client", "client_secret": "s3cret-value",
+		"gl_base_url": "https://gl.example.test", "enabled": true, "org_map": map[string]any{},
+	}), http.StatusOK)
+	if m["has_secret"] != true {
+		t.Fatalf("restore secret: %v", m)
 	}
 
 	// Re-save without a secret: the stored one is kept; disable to restore the

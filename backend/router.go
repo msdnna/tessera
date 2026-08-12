@@ -5,6 +5,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -18,35 +19,116 @@ import (
 	"tessera/middleware"
 )
 
+// Routes that carry a body budget of their own. Named as constants because the
+// limits table below and the route registration further down are two places
+// that must agree: a typo here would silently downgrade attachment uploads to
+// the blanket 1 MiB, and nothing but a 413 in production would say so.
+// TestBodyLimitRoutesExist checks every one of these against the built router.
+const (
+	routeWS          = "/api/ws"
+	routeUploads     = "/api/uploads"
+	routeAvatar      = "/api/users/me/avatar"
+	routeAttachments = "/api/tasks/:id/attachments"
+)
+
+// authRateRules throttles the unauthenticated auth surface — the routes where a
+// cheap anonymous request costs the server a bcrypt round, an outgoing email or
+// a database write, and where an unthrottled attacker gets free credential
+// stuffing. Sustained budgets: 10/min for the credential routes, 60/min for
+// refresh (a busy client legitimately rotates far more often than it logs in).
+//
+// The credential routes are also keyed by email, so spreading the attempts
+// across addresses still can't exceed the budget for one account.
+func authRateRules() map[string]middleware.RateRule {
+	credential := middleware.RateRule{Every: 6 * time.Second, Burst: 10, ByEmail: true}
+	token := middleware.RateRule{Every: 6 * time.Second, Burst: 10}
+	// Refresh and logout are keyed by IP only, and a whole office can share one:
+	// the budget has to cover every tab of every user behind that address.
+	rotate := middleware.RateRule{Every: time.Second, Burst: 60}
+	return map[string]middleware.RateRule{
+		"/api/auth/login":           credential,
+		"/api/auth/register":        credential,
+		"/api/auth/forgot-password": credential,
+		// No email in the body — these carry an opaque token, so IP is the only
+		// key available.
+		"/api/auth/reset-password": token,
+		"/api/auth/verify-email":   token,
+		"/api/auth/refresh":        rotate,
+		"/api/auth/logout":         rotate,
+	}
+}
+
+// orDefault falls back when a limit is unset, so a Config built as a literal
+// (tests, embedding) still gets the production ceilings instead of a zero that
+// would reject every request with a body.
+func orDefault(v, def int64) int64 {
+	if v <= 0 {
+		return def
+	}
+	return v
+}
+
 // newRouter wires every route of the API onto a fresh gin engine and returns
 // it together with the resource-handler layer (main() reuses the latter for
 // the background workers and slug backfill).
 func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, mailer mail.Mailer) (*gin.Engine, *handlers.API) {
 	versionHandler := handlers.NewVersionHandler(appVersion)
-	wsHandler := handlers.NewWSHandler(hub)
+	wsHandler := handlers.NewWSHandler(hub, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
-	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL)
+	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL, cfg.FCMCredentialsFile)
+	metrics := middleware.NewCollector()
+	rh.WireOps(metrics, appVersion)
 
-	r := gin.Default()
-	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+	// gin.Default wires gin.Logger, which prints the full request path + query
+	// to stdout — so an OAuth callback's ?code=…&state=… landed in the container
+	// log stream. gin.New with Recovery + AccessLog keeps panic recovery and the
+	// access trace but redacts those secrets (see middleware/accesslog.go).
+	r := gin.New()
+	r.Use(middleware.RequestID(), middleware.Metrics(metrics), middleware.AccessLog(), gin.Recovery())
+	trusted := cfg.TrustedProxies
+	if len(trusted) == 0 {
+		trusted = []string{"127.0.0.1", "::1"}
+	}
+	if err := r.SetTrustedProxies(trusted); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)
 	}
+	// gin buffers a multipart upload in memory up to this and spills the rest to
+	// disk. The stock 32 MiB is a per-request memory bill nobody asked for —
+	// a handful of concurrent uploads would outweigh the whole process.
+	r.MaxMultipartMemory = orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes)
 	// Compress JSON responses. The big list/journal payloads are highly
 	// repetitive text and shrink ~10x, which is the difference between a snappy
 	// board and a multi-second wait on a constrained link (the org install sits
 	// behind a proxy that doesn't compress /api). The WebSocket endpoint is
 	// excluded — its response is hijacked for the upgrade and must not be wrapped.
-	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/api/ws"})))
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{routeWS})))
 	r.Use(middleware.CORS(cfg.CORSOrigin, cfg.DesktopOrigins...))
+
+	// Cap request bodies before anything reads one. Ordering matters twice over:
+	// this must precede the rate limiter (whose by-email keying reads the body,
+	// and is only bounded because of this), and both must precede the handlers.
+	r.Use(middleware.BodyLimit(orDefault(cfg.MaxBodyBytes, config.DefaultMaxBodyBytes), map[string]int64{
+		routeAttachments: orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		routeUploads:     orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeWS:          middleware.NoBodyLimit,
+	}))
+	if cfg.RateLimitEnabled {
+		r.Use(middleware.RateLimit(authRateRules()))
+	}
 
 	api := r.Group("/api")
 	{
 		// Public — no auth required.
 		api.GET("/health", healthHandler)
+		api.GET("/health/ready", rh.ReadyHandler)
 		api.GET("/version", versionHandler.Get)
 		api.POST("/auth/register", authHandler.Register)
 		api.POST("/auth/login", authHandler.Login)
 		api.POST("/auth/refresh", authHandler.Refresh)
+		// Public like refresh: the refresh token (cookie or body) is the auth,
+		// and an expired access token must not prevent signing out.
+		api.POST("/auth/logout", authHandler.Logout)
 		// Token-based account flows (the token IS the auth): email verification +
 		// password reset.
 		api.POST("/auth/verify-email", authHandler.VerifyEmail)
@@ -57,12 +139,20 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		api.GET("/auth/gitlab/authorize", authHandler.GitlabAuthorize)
 		api.GET("/auth/gitlab/callback", authHandler.GitlabCallback)
 
-		// Live updates. Per-workspace scoping + WS auth land in a later phase.
+		// Live updates. Not in the protected group because the browser
+		// WebSocket API can't send an Authorization header — the handler does
+		// its own bearer check (header or subprotocol) before upgrading, and
+		// scopes the socket to the user's workspaces.
 		api.GET("/ws", wsHandler.Connect)
 
-		// Inline images embedded in descriptions/comments are served publicly
-		// (an <img> can't send the bearer header); unguessable by UUID filename.
-		api.GET("/uploads/:name", rh.ServeUpload)
+		// Inline images embedded in descriptions/comments. Outside the protected
+		// group because an <img> can't send the bearer header: MediaAuth accepts
+		// the httpOnly media cookie the web app carries, or a bearer credential
+		// (Android fetches these through OkHttp). With MEDIA_REQUIRE_AUTH off —
+		// the default, for the sake of the desktop client — an unidentified
+		// caller is still served, guarded only by the UUID filename as before.
+		api.GET("/uploads/:name",
+			middleware.MediaAuth(cfg.JWTSecret, queries, cfg.MediaRequireAuth), rh.ServeUpload)
 
 		// Signed proxy for GitLab attachments embedded in synced content
 		// (public — an <img> can't send auth; HMAC-signed so only Tessera
@@ -76,7 +166,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 		// Protected — require a valid access token.
 		protected := api.Group("/")
-		protected.Use(middleware.Auth(cfg.JWTSecret, queries))
+		protected.Use(middleware.Auth(cfg.JWTSecret, queries, cfg.PATTouchInterval))
 		{
 			protected.GET("/auth/me", authHandler.Me)
 			protected.POST("/auth/resend-verification", authHandler.ResendVerification)
@@ -127,6 +217,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/admin/oauth/gitlab", rh.GetOAuthConfig)
 			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)
 			// Background jobs panel (admin-only): observe/run/cancel background work.
+			protected.GET("/admin/metrics", rh.MetricsHandler)
 			protected.GET("/admin/jobs", rh.ListJobs)
 			protected.GET("/admin/jobs/:key", rh.GetJob)
 			protected.POST("/admin/jobs/:key/run", rh.RunJob)

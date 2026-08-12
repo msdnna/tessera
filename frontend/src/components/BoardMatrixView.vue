@@ -12,15 +12,6 @@ const props = defineProps({
   subtasksByParent: { type: Object, default: () => ({}) },
   // Unfiltered child lists — only to tell a card how many subtasks the filter hid.
   subtasksTotalByParent: { type: Object, default: () => ({}) },
-  // Real board status columns — passed straight through to TaskCard.
-  columns: { type: Array, default: () => [] },
-  tagsMap: { type: Object, default: () => ({}) },
-  membersMap: { type: Object, default: () => ({}) },
-  tags: { type: Array, default: () => [] },
-  tagPrefixNames: { type: Object, default: () => ({}) },
-  members: { type: Array, default: () => [] },
-  wsId: { type: String, default: '' },
-  projectId: { type: String, default: '' },
   subtasksExpanded: { type: Boolean, default: false },
   // A task is "urgent" when its due date falls within this many days (or is
   // overdue). Default = roughly the current week.
@@ -177,14 +168,6 @@ function submitAdd(qi) {
               :subtasks-total="(subtasksTotalByParent[element.id] || []).length"
               :subtasks-expanded="subtasksExpanded"
               :dragging="dragging"
-              :columns="columns"
-              :tags-map="tagsMap"
-              :members-map="membersMap"
-              :tags="tags"
-              :tag-prefix-names="tagPrefixNames"
-              :members="members"
-              :ws-id="wsId"
-              :project-id="projectId"
               @open="$emit('open', $event)"
               @changed="$emit('changed')"
             />

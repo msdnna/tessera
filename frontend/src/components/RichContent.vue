@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, nextTick } from 'vue'
-import { renderRich } from '@/utils/markdown'
+import { renderRich, sanitizeSvgFragment } from '@/utils/markdown'
 import { useThemeStore } from '@/stores/theme'
 
 // Renders Markdown (via renderRich → sanitised HTML) and then asynchronously
@@ -98,7 +98,11 @@ async function renderMermaid() {
       if (mine !== seq) return
       const wrap = document.createElement('div')
       wrap.className = 'mermaid-diagram'
-      wrap.innerHTML = svg
+      // Mermaid's output is markup, so it goes through the same sanitiser as the
+      // surrounding Markdown before touching the DOM. It comes back as nodes, not
+      // a string, so the vetted tree is what gets mounted (see sanitizeSvgFragment).
+      const frag = sanitizeSvgFragment(svg)
+      if (frag) wrap.append(frag)
       pre.replaceWith(wrap)
     } catch {
       pre.classList.add('mermaid-error')

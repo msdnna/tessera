@@ -8,7 +8,13 @@ const apiMock = vi.hoisted(() => ({
     login: vi.fn(),
     register: vi.fn(),
     me: vi.fn(),
+    logout: vi.fn(() => Promise.resolve()),
   },
+  // #2684: the access token lives in the api module, not localStorage, and the
+  // session is restored from the refresh cookie on start-up.
+  setAccessToken: vi.fn(),
+  getAccessToken: vi.fn(() => ''),
+  restoreSession: vi.fn(() => Promise.resolve(null)),
   users: { updatePreferences: vi.fn(() => Promise.resolve()) },
   workspaces: {
     list: vi.fn(),
@@ -72,7 +78,11 @@ describe('auth store', () => {
     expect(s.token).toBe('tok')
     expect(s.isAuthenticated).toBe(true)
     expect(s.isAdmin).toBe(true)
-    expect(localStorage.getItem('tessera_token')).toBe('tok')
+    // The access token goes to the api layer's memory, never to localStorage.
+    expect(apiMock.setAccessToken).toHaveBeenCalledWith('tok')
+    expect(localStorage.getItem('tessera_token')).toBeNull()
+    // A refresh token in the body means body mode (desktop) — store it. On web
+    // the backend omits it and it ends up in the httpOnly cookie instead.
     expect(localStorage.getItem('tessera_refresh_token')).toBe('ref')
     expect(JSON.parse(localStorage.getItem('tessera_user')).id).toBe('u1')
     expect(theme.activeTheme.key).toBe('blue')
@@ -99,15 +109,27 @@ describe('auth store', () => {
     expect(s.user.id).toBe('r1')
   })
 
-  it('logout clears token/user and resets theme', () => {
+  it('logout revokes server-side and clears local state synchronously', () => {
     const s = useAuthStore()
     s.setAuth({ access_token: 't', refresh_token: 'r', user: { id: 'x' } })
     s.logout()
+    // Without the server call the refresh token would stay valid for 30 days.
+    expect(apiMock.auth.logout).toHaveBeenCalled()
+    // Cleared before the first await: the sidebar navigates without awaiting,
+    // and a still-authenticated store would bounce it back off /login.
     expect(s.token).toBe('')
     expect(s.user).toBeNull()
     expect(s.isAuthenticated).toBe(false)
-    expect(localStorage.getItem('tessera_token')).toBeNull()
+    expect(localStorage.getItem('tessera_refresh_token')).toBeNull()
     expect(localStorage.getItem('tessera_user')).toBeNull()
+  })
+
+  it('logout still clears the session when the server call fails', async () => {
+    apiMock.auth.logout.mockRejectedValueOnce(new Error('offline'))
+    const s = useAuthStore()
+    s.setAuth({ access_token: 't', user: { id: 'x' } })
+    await s.logout()
+    expect(s.isAuthenticated).toBe(false)
   })
 
   it('setUser refreshes the cached user', () => {
@@ -124,7 +146,8 @@ describe('auth store', () => {
     const s = useAuthStore()
     const theme = useThemeStore()
     await s.loginWithTokens('acc', 'rfr')
-    expect(localStorage.getItem('tessera_token')).toBe('acc')
+    expect(s.token).toBe('acc')
+    expect(localStorage.getItem('tessera_token')).toBeNull()
     expect(localStorage.getItem('tessera_refresh_token')).toBe('rfr')
     expect(apiMock.auth.me).toHaveBeenCalled()
     expect(s.user.id).toBe('oa')
@@ -138,22 +161,53 @@ describe('auth store', () => {
   })
 
   it('verify refreshes the cached user on success', async () => {
-    localStorage.setItem('tessera_token', 'tok')
-    setActivePinia(createPinia())
     apiMock.auth.me.mockResolvedValue({ data: { user: { id: 'v1' } } })
     const s = useAuthStore()
+    s.setAuth({ access_token: 'tok' })
     await s.verify()
     expect(s.user.id).toBe('v1')
   })
 
   it('verify logs out on a rejected /auth/me', async () => {
-    localStorage.setItem('tessera_token', 'tok')
-    setActivePinia(createPinia())
     apiMock.auth.me.mockRejectedValue(new Error('401'))
     const s = useAuthStore()
+    s.setAuth({ access_token: 'tok' })
     await s.verify()
     expect(s.token).toBe('')
-    expect(localStorage.getItem('tessera_token')).toBeNull()
+    expect(s.user).toBeNull()
+  })
+
+  // #2684: with the access token held in memory, a reload starts signed out —
+  // bootstrap() is what turns the refresh cookie back into a live session, and
+  // main.js awaits it before the router (and its guard) exist.
+  describe('bootstrap', () => {
+    it('restores the session and reloads the profile', async () => {
+      localStorage.setItem('tessera_user', '{"id":"u1"}')
+      apiMock.restoreSession.mockResolvedValueOnce('fresh')
+      apiMock.auth.me.mockResolvedValue({ data: { user: { id: 'u1', is_admin: true } } })
+      const s = useAuthStore()
+      await s.bootstrap()
+      expect(s.token).toBe('fresh')
+      expect(s.isAuthenticated).toBe(true)
+      expect(s.isAdmin).toBe(true)
+    })
+
+    it('does nothing for a visitor who was never signed in here', async () => {
+      const s = useAuthStore()
+      await s.bootstrap()
+      // No cached user → no pointless refresh call (and no 401) on the login page.
+      expect(apiMock.restoreSession).not.toHaveBeenCalled()
+      expect(s.isAuthenticated).toBe(false)
+    })
+
+    it('clears the stale cache when the refresh cookie is gone', async () => {
+      localStorage.setItem('tessera_user', '{"id":"u1"}')
+      apiMock.restoreSession.mockResolvedValueOnce(null)
+      const s = useAuthStore()
+      await s.bootstrap()
+      expect(s.isAuthenticated).toBe(false)
+      expect(localStorage.getItem('tessera_user')).toBeNull()
+    })
   })
 })
 
@@ -299,28 +353,63 @@ describe('boardView store', () => {
     expect(s.reloadNonce).toBe(before + 1)
   })
 
-  it('setters normalize null lists/maps to empty', () => {
+  it('refill normalizes a null map to empty and derives the lists from it', () => {
     const s = useBoardViewStore()
-    s.setTags(null)
-    s.setPrefixNames(null)
-    s.setMilestones(null)
+    s.refill(s.tagsMap, null)
+    s.refill(s.prefixNames, null)
+    s.refill(s.milestonesMap, null)
     expect(s.tagsList).toEqual([])
     expect(s.prefixNames).toEqual({})
     expect(s.milestonesList).toEqual([])
-    s.setTags([{ id: 't' }])
+    s.refill(s.tagsMap, { t: { id: 't' } })
     expect(s.tagsList).toHaveLength(1)
   })
 
-  it('reset clears context but leaves layout untouched', () => {
+  it('refill keeps the map identity so holders of the reference see the update', () => {
+    const s = useBoardViewStore()
+    const held = s.tagsMap // what a card binds to
+    s.refill(s.tagsMap, { t: { id: 't' } })
+    expect(held).toBe(s.tagsMap)
+    expect(held.t).toEqual({ id: 't' })
+    s.refill(s.tagsMap, { u: { id: 'u' } })
+    expect(held.t).toBeUndefined()
+    expect(held.u).toEqual({ id: 'u' })
+  })
+
+  it('gitlabMembersList hides GitLab members already mapped to a workspace member', () => {
+    const s = useBoardViewStore()
+    s.refill(s.membersMap, { u1: { user_id: 'u1', name: 'Аня' } })
+    s.refill(s.gitlabMembersMap, {
+      1: { gl_user_id: 1, gl_username: 'anya', tessera_user_id: 'u1' },
+      2: { gl_user_id: 2, gl_username: 'extern', tessera_user_id: null },
+    })
+    expect(s.gitlabMembersList.map((g) => g.gl_username)).toEqual(['extern'])
+  })
+
+  it('reset clears context and card display, but leaves layout untouched', () => {
     const s = useBoardViewStore()
     s.setContext('b1', 'w1', 'p1')
-    s.setTags([{ id: 't' }])
+    s.refill(s.tagsMap, { t: { id: 't' } })
+    s.board = { id: 'b1' }
+    s.columns = [{ id: 'c1' }]
+    s.metaTagPrefixes = new Set(['status'])
+    s.gitlabCanCreate = true
+    s.cardSize = 'large'
+    s.fieldVis.due = false
     s.layout = 'gantt'
     s.archiveOpen = true
     s.reset()
     expect(s.active).toBe(false)
     expect(s.boardId).toBeNull()
+    expect(s.board).toBeNull()
+    expect(s.columns).toEqual([])
     expect(s.tagsList).toEqual([])
+    expect(s.metaTagPrefixes.size).toBe(0)
+    expect(s.gitlabCanCreate).toBe(false)
+    // Card display settings are per-board too — a stale 'large' would leak into
+    // the next board opened before its saved view is restored.
+    expect(s.cardSize).toBe('medium')
+    expect(s.fieldVis.due).toBe(true)
     expect(s.archiveOpen).toBe(false)
     // layout is intentionally not reset.
     expect(s.layout).toBe('gantt')

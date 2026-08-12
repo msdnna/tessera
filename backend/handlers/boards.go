@@ -22,7 +22,7 @@ func (h *API) CreateBoard(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, p.WorkspaceID) {
@@ -37,40 +37,50 @@ func (h *API) CreateBoard(c *gin.Context) {
 	}
 	maxPos, err := h.q.MaxBoardPosition(c, projectID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
-	b, err := h.q.CreateBoard(c, db.CreateBoardParams{
-		ProjectID: projectID, Name: req.Name, Slug: h.uniqueBoardSlug(c, projectID, req.Name),
-		Position: positionBetween(&maxPos, nil),
-	})
-	if err != nil {
-		fail(c)
-		return
-	}
-
-	// Seed the board with a default set of status columns, remembering the last
-	// one so it can become the board's "done" column.
-	var lastColID *uuid.UUID
-	for i, dc := range defaultColumns {
-		pos := float64(i+1) * positionGap
-		col, err := h.q.CreateColumn(c, db.CreateColumnParams{
-			BoardID: b.ID, Name: dc.name, Color: dc.color, Position: pos,
+	// Transactional: a board without its seeded columns (or without a done
+	// column) can't hold a task — a partial create leaves an unusable board.
+	slug := h.uniqueBoardSlug(c, projectID, req.Name)
+	var b db.Board
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		b, err = q.CreateBoard(c, db.CreateBoardParams{
+			ProjectID: projectID, Name: req.Name, Slug: slug,
+			Position: positionBetween(&maxPos, nil),
 		})
 		if err != nil {
-			fail(c)
-			return
+			return err
 		}
-		id := col.ID
-		lastColID = &id
-	}
-	// The rightmost seeded column ("Готово") closes tasks by default.
-	if lastColID != nil {
-		if updated, derr := h.q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{
-			ID: b.ID, DoneColumnID: lastColID,
-		}); derr == nil {
+		// Seed the board with a default set of status columns, remembering the
+		// last one so it can become the board's "done" column.
+		var lastColID *uuid.UUID
+		for i, dc := range defaultColumns {
+			pos := float64(i+1) * positionGap
+			col, err := q.CreateColumn(c, db.CreateColumnParams{
+				BoardID: b.ID, Name: dc.name, Color: dc.color, Position: pos,
+			})
+			if err != nil {
+				return err
+			}
+			id := col.ID
+			lastColID = &id
+		}
+		// The rightmost seeded column ("Готово") closes tasks by default.
+		if lastColID != nil {
+			updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{
+				ID: b.ID, DoneColumnID: lastColID,
+			})
+			if err != nil {
+				return err
+			}
 			b = updated
 		}
+		return nil
+	}); err != nil {
+		fail(c, err)
+		return
 	}
 
 	h.broadcast(p.WorkspaceID, "board.created", b)
@@ -107,7 +117,7 @@ func (h *API) ListBoards(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, p.WorkspaceID) {
@@ -115,7 +125,7 @@ func (h *API) ListBoards(c *gin.Context) {
 	}
 	boards, err := h.q.ListBoards(c, projectID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, boards)
@@ -129,7 +139,7 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, proj.WorkspaceID) {
@@ -140,7 +150,7 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, b)
@@ -161,12 +171,12 @@ func (h *API) GetBoard(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -186,7 +196,7 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -194,7 +204,7 @@ func (h *API) UpdateBoard(c *gin.Context) {
 	}
 	b, err := h.q.GetBoard(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	var req struct {
@@ -223,7 +233,7 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		ID: id, Name: req.Name, Position: b.Position, Icon: icon, Color: color, IconMode: iconMode,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "board.updated", updated)
@@ -241,14 +251,14 @@ func (h *API) DeleteBoard(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
 		return
 	}
 	if err := h.q.DeleteBoard(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "board.deleted", gin.H{"id": id})
@@ -267,7 +277,7 @@ func (h *API) SetDoneColumn(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -290,7 +300,7 @@ func (h *API) SetDoneColumn(c *gin.Context) {
 	}
 	updated, err := h.q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: id, DoneColumnID: req.ColumnID})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "board.updated", updated)
@@ -310,7 +320,7 @@ func (h *API) CreateColumn(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -326,14 +336,14 @@ func (h *API) CreateColumn(c *gin.Context) {
 	}
 	maxPos, err := h.q.MaxColumnPosition(c, boardID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	col, err := h.q.CreateColumn(c, db.CreateColumnParams{
 		BoardID: boardID, Name: req.Name, Color: req.Color, Position: positionBetween(&maxPos, nil),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "column.created", col)
@@ -351,7 +361,7 @@ func (h *API) ListColumns(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -359,7 +369,7 @@ func (h *API) ListColumns(c *gin.Context) {
 	}
 	cols, err := h.q.ListColumns(c, boardID)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, cols)
@@ -376,7 +386,7 @@ func (h *API) UpdateColumn(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -384,7 +394,7 @@ func (h *API) UpdateColumn(c *gin.Context) {
 	}
 	col, err := h.q.GetColumn(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	var req struct {
@@ -399,7 +409,7 @@ func (h *API) UpdateColumn(c *gin.Context) {
 		ID: id, Name: req.Name, Color: req.Color, Position: col.Position,
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "column.updated", updated)
@@ -418,7 +428,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
@@ -426,7 +436,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 	}
 	col, err := h.q.GetColumn(c, id)
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	var req struct {
@@ -445,7 +455,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 		ID: id, Name: col.Name, Color: col.Color, Position: positionBetween(prev, next),
 	})
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "column.moved", updated)
@@ -463,14 +473,14 @@ func (h *API) DeleteColumn(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	if !h.requireMember(c, wsID) {
 		return
 	}
 	if err := h.q.DeleteColumn(c, id); err != nil {
-		fail(c)
+		fail(c, err)
 		return
 	}
 	h.broadcast(wsID, "column.deleted", gin.H{"id": id})

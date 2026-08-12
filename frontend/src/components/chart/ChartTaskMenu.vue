@@ -1,0 +1,61 @@
+<script setup>
+import { NDropdown, NPopconfirm } from 'naive-ui'
+
+// The chart's right-click menu and its two confirmations. Presentational only: the
+// useTaskMenu state stays owned by the view, which feeds it in and applies every
+// close back — a child must not write through its props.
+defineProps({
+  show: { type: Boolean, default: false },
+  x: { type: Number, default: 0 },
+  y: { type: Number, default: 0 },
+  options: { type: Array, default: () => [] },
+  deleteShow: { type: Boolean, default: false },
+  archiveShow: { type: Boolean, default: false },
+})
+defineEmits([
+  'select',
+  'close',
+  'update:deleteShow',
+  'delete-confirm',
+  'update:archiveShow',
+  'archive-confirm',
+])
+</script>
+
+<template>
+  <n-dropdown
+    trigger="manual"
+    placement="bottom-start"
+    :show="show"
+    :x="x"
+    :y="y"
+    :options="options"
+    @select="$emit('select', $event)"
+    @clickoutside="$emit('close')"
+  />
+  <n-popconfirm
+    :show="deleteShow"
+    :x="x"
+    :y="y"
+    :positive-button-props="{ type: 'error' }"
+    positive-text="Удалить"
+    @update:show="$emit('update:deleteShow', $event)"
+    @positive-click="$emit('delete-confirm')"
+    @clickoutside="$emit('update:deleteShow', false)"
+  >
+    <template #trigger><span /></template>
+    Удалить безвозвратно? Это действие необратимо.
+  </n-popconfirm>
+  <n-popconfirm
+    :show="archiveShow"
+    :x="x"
+    :y="y"
+    positive-text="В архив"
+    @update:show="$emit('update:archiveShow', $event)"
+    @positive-click="$emit('archive-confirm')"
+    @clickoutside="$emit('update:archiveShow', false)"
+  >
+    <template #trigger><span /></template>
+    Перенести задачу в архив?
+  </n-popconfirm>
+</template>

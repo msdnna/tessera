@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
@@ -44,14 +46,38 @@ func isUserErr(err error) bool {
 	return ok
 }
 
-// respondOpError writes the right status for an op failure: 400 for something
-// the caller can fix, 500 otherwise.
+// staleErr is a lost-update failure: the caller sent the updated_at it had read
+// and the stored row has moved on since, so writing would silently drop whoever
+// wrote first. It carries the current row — the client needs it to show what it
+// is up against and offer a reload or an overwrite.
+type staleErr struct{ current db.Task }
+
+func (e staleErr) Error() string { return "задача изменена другим клиентом" }
+
+// errTaskGone is the other way an optimistic-lock write can miss: the row is
+// not stale, it is gone — deleted between the caller's read and its write.
+var errTaskGone = errors.New("задача удалена")
+
+// respondOpError writes the right status for an op failure: 409 for a lost
+// update, 404 for a target that vanished, 400 for something the caller can fix,
+// 500 otherwise.
 func respondOpError(c *gin.Context, err error) {
+	var stale staleErr
+	if errors.As(err, &stale) {
+		// "stale" rather than an error code: the project has no error-code
+		// convention, and 409 + this flag is enough to branch a client on.
+		c.JSON(http.StatusConflict, gin.H{"error": stale.Error(), "stale": true, "task": stale.current})
+		return
+	}
+	if errors.Is(err, errTaskGone) {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	if isUserErr(err) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	fail(c)
+	fail(c, err)
 }
 
 // ── task field patch ───────────────────────────────────────────
@@ -93,6 +119,49 @@ func (o optFloat) resolve(cur *float64) *float64 {
 func setFloat(v *float64) optFloat { return optFloat{set: true, v: v} }
 func clearFloat() optFloat         { return optFloat{set: true} }
 
+// optJSON is the wire-side counterpart of optTime/optFloat: a request field that
+// can be absent, null, or a value. The three are only distinguishable at decode
+// time — encoding/json calls UnmarshalJSON for the keys the body actually
+// carries, and for those alone — so a plain *T cannot express it, and a client
+// that omits a field would silently reset it to the zero value.
+type optJSON[T any] struct {
+	set bool
+	v   *T
+}
+
+func (o *optJSON[T]) UnmarshalJSON(b []byte) error {
+	o.set = true
+	if string(b) == "null" {
+		return nil
+	}
+	var v T
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	o.v = &v
+	return nil
+}
+
+// ptr returns the decoded value, or nil when the field was absent or null —
+// which is exactly what taskPatch's plain pointer fields mean.
+func (o optJSON[T]) ptr() *T { return o.v }
+
+// asTime/asFloat carry the absent/null distinction over into the patch's
+// tri-state fields, where a plain pointer would lose it.
+func asTime(o optJSON[time.Time]) optTime {
+	if !o.set {
+		return optTime{}
+	}
+	return optTime{set: true, v: o.v}
+}
+
+func asFloat(o optJSON[float64]) optFloat {
+	if !o.set {
+		return optFloat{}
+	}
+	return optFloat{set: true, v: o.v}
+}
+
 // taskPatch is a partial edit of a task's plain fields. Absent fields keep their
 // current value, which is what a quick action needs — "/priority высокий" must
 // not blank the description on its way through.
@@ -108,6 +177,10 @@ type taskPatch struct {
 	// (re-anchored if the due date moved).
 	Recurrence    *json.RawMessage
 	RecurrenceSet bool
+	// ExpectedUpdatedAt is the optimistic-lock token: the updated_at the caller
+	// read. Nil means no check — quick actions carry no version, and neither do
+	// internal callers, so they keep last-write-wins.
+	ExpectedUpdatedAt *time.Time
 }
 
 // applyTaskPatch writes a partial task edit and fans out everything a task edit
@@ -158,8 +231,24 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 		ID: t.ID, Title: title, Description: description,
 		Priority: priority, DueDate: dueDate, CompletedAt: completedAt,
 		Recurrence: recurrence, StartDate: startDate, Estimate: normalizeEstimate(estimate),
+		ExpectedUpdatedAt: p.ExpectedUpdatedAt,
 	})
 	if err != nil {
+		// Under an optimistic lock, "no rows" is not a storage failure: the
+		// WHERE clause refused the write. Re-read to tell the two reasons apart
+		// — the row moved on (409, hand back the current one) or it is gone
+		// (404). Everything below this point is a side effect (journal,
+		// notifications, writeback, WS), so a refused write leaves none of it.
+		if p.ExpectedUpdatedAt != nil && errors.Is(err, pgx.ErrNoRows) {
+			current, gerr := h.q.GetTask(c, t.ID)
+			if errors.Is(gerr, pgx.ErrNoRows) {
+				return t, errTaskGone
+			}
+			if gerr != nil {
+				return t, gerr
+			}
+			return t, staleErr{current: current}
+		}
 		return t, err
 	}
 
@@ -172,15 +261,15 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 	}
 	// A manual due-date change on a GitLab-linked task wins over the sync.
 	if !sameTime(t.DueDate, updated.DueDate) {
-		_ = h.q.MarkGitlabDueOverridden(c, t.ID)
+		soft(c, "MarkGitlabDueOverridden", h.q.MarkGitlabDueOverridden(c, t.ID))
 	}
 	// Likewise a manual start-date change wins over the sync.
 	if !sameTime(t.StartDate, updated.StartDate) {
-		_ = h.q.MarkGitlabStartOverridden(c, t.ID)
+		soft(c, "MarkGitlabStartOverridden", h.q.MarkGitlabStartOverridden(c, t.ID))
 	}
 	// A manual estimate change wins over the GitLab timeEstimate pull.
 	if !sameEstimate(t.Estimate, updated.Estimate) {
-		_ = h.q.MarkGitlabEstimateOverridden(c, t.ID)
+		soft(c, "MarkGitlabEstimateOverridden", h.q.MarkGitlabEstimateOverridden(c, t.ID))
 	}
 	changes := h.journalUpdate(c, t, updated)
 	if len(changes) > 0 {
@@ -360,7 +449,7 @@ func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID
 		return err
 	}
 	// A manual milestone change on a GitLab-linked task wins over the sync.
-	_ = h.q.MarkGitlabMilestoneOverridden(c, taskID)
+	soft(c, "MarkGitlabMilestoneOverridden", h.q.MarkGitlabMilestoneOverridden(c, taskID))
 	h.enqueueWriteback(c, taskID, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
 	if t, err := h.q.GetTask(c, taskID); err == nil {
 		h.broadcast(wsID, "task.updated", t)
@@ -455,14 +544,17 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 // applyArchive soft-deletes a task. detach keeps its subtasks on the board
 // (re-parented to null); otherwise they are archived with the parent.
 func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach bool) error {
-	if detach {
-		if err := h.q.DetachChildren(c, &t.ID); err != nil {
-			return err
+	// Transactional: detach-then-archive must be atomic, else a crash leaves the
+	// parent archived with its subtasks still active on the board (or vice versa).
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if detach {
+			if err := q.DetachChildren(c, &t.ID); err != nil {
+				return err
+			}
+			return q.ArchiveTask(c, t.ID)
 		}
-		if err := h.q.ArchiveTask(c, t.ID); err != nil {
-			return err
-		}
-	} else if err := h.q.ArchiveTaskCascade(c, t.ID); err != nil {
+		return q.ArchiveTaskCascade(c, t.ID)
+	}); err != nil {
 		return err
 	}
 	h.logEvent(c, t.ID, "archived", nil)

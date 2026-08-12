@@ -23,13 +23,15 @@
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
+    "@tauri-apps/plugin-deep-link": "^2.4.9",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@vicons/ionicons5": "^0.13.0",
-    "axios": "^1.16.0",
+    "axios": "^1.19.0",
     "dompurify": "^3.4.7",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.4",
@@ -53,7 +55,7 @@
     "jsdom": "^30.0.1",
     "prettier": "^3.8.3",
     "vite": "^8.0.12",
-    "vitest": "^4.1.8",
+    "vitest": "^4.1.10",
     "vue-eslint-parser": "^10.4.0"
   }
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -351,6 +352,45 @@ func TestWorkspaceSearch(t *testing.T) {
 	res = c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="), http.StatusOK)
 	if len(res["tasks"].([]any)) != 0 || len(res["notes"].([]any)) != 0 {
 		t.Fatalf("empty query: %v", res)
+	}
+}
+
+// Search matches a case-insensitive substring anywhere in the searched columns,
+// including a hit that exists only in a task description or a note body. This
+// pins the semantics the trigram indexes (migration 0052) must preserve: they
+// speed up the same leading-wildcard ILIKE, they do not narrow it into a
+// word-prefix or whole-word match the way an FTS rewrite would.
+func TestWorkspaceSearchMatchesSubstringAndBodies(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+
+	// Mixed case on the way in, lower case on the way out — the marker sits in
+	// the middle of a longer word, so a prefix-only match would miss it.
+	marker := "SrchDeep" + s.WS[:8]
+	query := strings.ToLower(marker)
+
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Задача без маркера в заголовке")
+	c.expect(t, c.patch("/tasks/"+task["id"].(string),
+		map[string]any{"description": "префикс" + marker + "суффикс"}), http.StatusOK)
+	c.expect(t, c.post("/workspaces/"+s.WS+"/notes",
+		map[string]any{"title": "Заметка без маркера", "body": "префикс" + marker + "суффикс"}),
+		http.StatusCreated)
+
+	res := c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="+query), http.StatusOK)
+	tasks, _ := res["tasks"].([]any)
+	notes, _ := res["notes"].([]any)
+	if len(tasks) != 1 || len(notes) != 1 {
+		t.Fatalf("substring search hits: tasks=%d notes=%d\n%v", len(tasks), len(notes), res)
+	}
+	if tasks[0].(map[string]any)["id"] != task["id"] {
+		t.Fatalf("substring search task id mismatch: %v", tasks[0])
+	}
+
+	// A marker that exists nowhere returns both sets empty, not everything.
+	res = c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="+query+"zzz"), http.StatusOK)
+	if len(res["tasks"].([]any)) != 0 || len(res["notes"].([]any)) != 0 {
+		t.Fatalf("no-hit query: %v", res)
 	}
 }
 

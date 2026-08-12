@@ -38,8 +38,10 @@ func NewAuthHandler(q *db.Queries, secret, encryptionKey string, mailer mail.Mai
 }
 
 type authResponse struct {
-	AccessToken  string   `json:"access_token"`
-	RefreshToken string   `json:"refresh_token"`
+	AccessToken string `json:"access_token"`
+	// Omitted in cookie mode: there the token goes into an httpOnly cookie and
+	// must never reach the page's JavaScript. See handlers/auth_cookie.go.
+	RefreshToken string   `json:"refresh_token,omitempty"`
 	User         userDTO  `json:"user"`
 	Preferences  prefsDTO `json:"preferences"`
 }
@@ -114,7 +116,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	user, err := h.q.GetUserByEmail(c, strings.ToLower(req.Email))
-	if err != nil || !auth.CheckPassword(user.PasswordHash, req.Password) {
+	if err != nil {
+		// No such user. The short-circuit below would skip bcrypt entirely, so a
+		// missing-email response arrives in microseconds while a wrong-password
+		// one takes a full bcrypt round — a timing oracle for email enumeration.
+		// Pay the bcrypt cost against a fictional hash regardless; the result is
+		// discarded (there is no account to log into) and the response stays the
+		// same 401 either way.
+		_ = auth.CheckPassword(auth.DummyHash(), req.Password)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		return
+	}
+	if !auth.CheckPassword(user.PasswordHash, req.Password) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
@@ -127,24 +140,42 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 // Refresh rotates a refresh token: the presented one is revoked and a fresh
-// access + refresh pair is issued.
+// access + refresh pair is issued. The token comes from the httpOnly cookie when
+// there is one, otherwise from the request body (Android, desktop, scripts).
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req struct {
-		RefreshToken string `json:"refresh_token" binding:"required"`
+		// Not `binding:"required"`: a cookie-mode client posts an empty body,
+		// its token travelling in the cookie instead.
+		RefreshToken string `json:"refresh_token"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	// A malformed or absent body is not an error by itself — it only leaves us
+	// without a token, which the check below answers with a 401.
+	_ = c.ShouldBindJSON(&req)
 
-	hash := auth.HashRefreshToken(req.RefreshToken)
-	rt, err := h.q.GetRefreshToken(c, hash)
-	if err != nil {
+	token, fromCookie := refreshTokenFromRequest(c, req.RefreshToken)
+	if token == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
 		return
 	}
+	// A cookie the server won't accept can't be deleted by the SPA (that is the
+	// point of httpOnly), so every rejection below has to clear it — otherwise
+	// the browser keeps presenting a dead token on every attempt and the user
+	// can never get back to a clean login.
+	reject := func(status int, msg string) {
+		if fromCookie {
+			h.clearRefreshCookie(c)
+		}
+		c.JSON(status, gin.H{"error": msg})
+	}
+
+	hash := auth.HashRefreshToken(token)
+	rt, err := h.q.GetRefreshToken(c, hash)
+	if err != nil {
+		reject(http.StatusUnauthorized, "invalid refresh token")
+		return
+	}
 	if rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "refresh token expired or revoked"})
+		reject(http.StatusUnauthorized, "refresh token expired or revoked")
 		return
 	}
 
@@ -154,11 +185,41 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	}
 	user, err := h.q.GetUserByID(c, rt.UserID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+		reject(http.StatusUnauthorized, "user not found")
 		return
 	}
 
-	h.issue(c, user)
+	// Rotation stays in the channel it arrived on: a cookie-mode client gets the
+	// new token back as a cookie even if it forgot the header.
+	h.issueMode(c, user, fromCookie || wantsCookieAuth(c))
+}
+
+// Logout revokes the presented refresh token and clears the cookie. Without it a
+// cookie-mode session could not be ended at all — JavaScript cannot delete an
+// httpOnly cookie — and, before this endpoint existed, "logging out" left the
+// refresh row usable for its full 30-day lifetime.
+func (h *AuthHandler) Logout(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	token, _ := refreshTokenFromRequest(c, req.RefreshToken)
+	// Unconditionally: the caller asked to be logged out, so the cookies go
+	// even if the token turns out to be unknown.
+	h.clearRefreshCookie(c)
+	h.clearMediaCookie(c)
+
+	if token != "" {
+		if err := h.q.RevokeRefreshToken(c, auth.HashRefreshToken(token)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+	}
+	// Idempotent by design: an unknown, expired or already-revoked token is
+	// still a successful logout. Answering 404 would only tell an attacker
+	// which stolen tokens are live.
+	c.Status(http.StatusNoContent)
 }
 
 // Me returns the authenticated user's profile.
@@ -199,16 +260,33 @@ func (h *AuthHandler) mintTokens(c *gin.Context, user db.User) (access, refresh 
 	return access, refresh, true
 }
 
-// issue mints an access + refresh pair and returns them with the user profile.
+// issue mints an access + refresh pair and returns them with the user profile,
+// honouring the delivery mode the client asked for.
 func (h *AuthHandler) issue(c *gin.Context, user db.User) {
+	h.issueMode(c, user, wantsCookieAuth(c))
+}
+
+// issueMode is issue() with the delivery mode decided by the caller — Refresh
+// needs it, because a token that arrived in a cookie goes back in a cookie
+// regardless of headers.
+func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool) {
 	access, refresh, ok := h.mintTokens(c, user)
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, authResponse{
+	res := authResponse{
 		AccessToken:  access,
 		RefreshToken: refresh,
 		User:         buildUserDTO(c, h.q, user),
 		Preferences:  loadPrefsDTO(c, h.q, user.ID),
-	})
+	}
+	if cookieMode {
+		h.setRefreshCookie(c, refresh)
+		res.RefreshToken = "" // omitempty drops it from the body entirely
+		// Same client, same trip: the browser also needs the credential that
+		// <img> requests to /api/uploads can carry (#2685). Reissued on every
+		// refresh, so a long-lived session never outlives its media cookie.
+		h.setMediaCookie(c, user.ID)
+	}
+	c.JSON(http.StatusOK, res)
 }

@@ -35,8 +35,6 @@ import {
   RepeatOutline,
   AttachOutline,
   TrashOutline,
-  DownloadOutline,
-  CloseOutline,
   TimerOutline,
   RibbonOutline,
   ChatbubbleEllipsesOutline,
@@ -55,19 +53,13 @@ import {
   ChevronForwardOutline,
   ChevronBackOutline,
 } from '@vicons/ionicons5'
-import {
-  tasks as tasksApi,
-  boards as boardsApi,
-  workspaces as wsApi,
-  projects as projApi,
-  gitlab as glApi,
-} from '@/api'
+import { tasks as tasksApi, boards as boardsApi, projects as projApi, gitlab as glApi } from '@/api'
+import { storeToRefs } from 'pinia'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useAuthStore } from '@/stores/auth'
+import { useBoardViewStore } from '@/stores/boardView'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
-import { sourceMeta, isExternalSource } from '@/utils/sources'
 import { milestoneRange } from '@/utils/milestones'
 import {
   sortedColumns,
@@ -77,12 +69,8 @@ import {
   siblingNeighbors,
   columnTail,
 } from '@/utils/status'
-import { toggleTaskMarker } from '@/utils/markdown'
-import { hasCommandLine } from '@/utils/commands'
-import { isTauri } from '@/utils/serverBase'
 import { taskLink } from '@/utils/taskLink'
 import { copyText } from '@/utils/clipboard'
-import { scrollParent } from '@/utils/dom'
 import { useResponsive } from '@/composables/useResponsive'
 import {
   formatEstimate,
@@ -99,48 +87,56 @@ import { useTagFit } from '@/composables/useTagFit'
 import DueEditor from './DueEditor.vue'
 import MarkdownEditor from './MarkdownEditor.vue'
 import RichContent from './RichContent.vue'
-import TaskMiniCard from './TaskMiniCard.vue'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
-import EmptyState from './EmptyState.vue'
+import TaskCommentsTab from './task/TaskCommentsTab.vue'
+import TaskSubtasksTab from './task/TaskSubtasksTab.vue'
+import TaskRelationsTab from './task/TaskRelationsTab.vue'
+import TaskFilesTab from './task/TaskFilesTab.vue'
+import TaskHistoryTab from './task/TaskHistoryTab.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
   taskId: { type: String, default: null },
-  wsId: { type: String, default: null },
-  projectId: { type: String, default: null },
-  tags: { type: Array, default: () => [] },
-  tagPrefixNames: { type: Object, default: () => ({}) },
-  // Canonical tag prefixes governed by status/priority/meta GitLab rules — hidden
-  // from the tag picker so they can't be toggled out of sync with the mapped field.
-  metaTagPrefixes: { type: Set, default: () => new Set() },
-  members: { type: Array, default: () => [] },
-  gitlabMembers: { type: Array, default: () => [] },
-  milestones: { type: Array, default: () => [] },
-  gitlabCanCreate: { type: Boolean, default: false },
-  gitlabFetchTemplates: { type: Boolean, default: false },
-  gitlabIntegrationId: { type: String, default: null },
   // Archive view: the task is shown read-only (no edits/comments); the footer
   // offers Restore instead of Save/Archive/Delete.
   readonly: { type: Boolean, default: false },
-  // Board context, passed from the kanban so the modal doesn't re-fetch the
-  // board + its (already-in-memory) tasks + columns on every open. Used only when
-  // the opened task belongs to this board; a deep-link / cross-board open falls
-  // back to fetching. board: the board object; boardColumns / boardTopTasks: the
-  // parent's live columns and top-level task list.
-  board: { type: Object, default: null },
-  boardColumns: { type: Array, default: () => [] },
+  // The kanban's live top-level task list, so the parent picker doesn't re-fetch
+  // what is already in memory. Stays a prop: it's the board's *task* state, which
+  // the board owns, not shared board context.
   boardTopTasks: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:show', 'changed', 'open', 'restore'])
+
+// Board context (workspace/project, tags, members, milestones, the board itself
+// with its columns, and the GitLab integration flags) comes from the board store
+// instead of thirteen props threaded through the kanban. Bound to the names the
+// rest of this component and its template already use. `board`/`boardColumns` are
+// used only when the opened task belongs to the open board; a deep-link or
+// cross-board open still falls back to fetching.
+const bv = useBoardViewStore()
+const {
+  board,
+  columns: boardColumns,
+  metaTagPrefixes,
+  tagsList: tags,
+  membersList: members,
+  milestonesList: milestones,
+  gitlabMembersList: gitlabMembers,
+  gitlabCanCreate,
+  gitlabFetchTemplates,
+  gitlabIntegrationId,
+} = storeToRefs(bv)
+const tagPrefixNames = bv.prefixNames
+const wsId = computed(() => bv.wsId)
+const projectId = computed(() => bv.projectId)
 
 const store = useWorkspacesStore()
 const theme = useThemeStore()
 const { formatDue } = useDateLocale()
 // Tag colour clamped for legible text on the active theme.
 const tagText = (c) => readableHue(c, theme.isDark)
-const auth = useAuthStore()
 const router = useRouter()
 const message = useMessage()
 const loading = ref(false)
@@ -189,7 +185,7 @@ function toggleRightPane() {
   // The composer's textarea can't measure its height while the panel is collapsed
   // (0-width) — recompute it once the panel is visible again, or it stays at
   // whatever it last measured.
-  if (!rightHidden.value) nextTick(() => commentEditor.value?.autoGrow?.())
+  if (!rightHidden.value) nextTick(() => commentsTab.value?.autoGrow?.())
 }
 
 // grid-template-columns for .form (ignored in the stacked flex layout). The 14px
@@ -226,50 +222,14 @@ function endSplitDrag() {
   }
 }
 
-// Members offered for @-mentions in comments. Tessera members insert their display
-// name; GitLab-only users (no Tessera account) insert their `@username` so GitLab
-// resolves the mention on writeback. `label` is the inserted text, `display` the row.
-const mentionItems = computed(() => {
-  const tessera = (props.members || []).map((m) => ({
-    id: m.user_id,
-    label: m.name,
-    display: m.name,
-    avatarUserId: m.user_id,
-  }))
-  const gl = (props.gitlabMembers || [])
-    .filter((g) => !(g.tessera_user_id && membersById.value[g.tessera_user_id]))
-    .map((g) => ({
-      id: null,
-      label: g.gl_username,
-      display: g.gl_name || g.gl_username,
-      avatarSrc: g.gl_avatar_url,
-      gitlab: true,
-    }))
-  return [...tessera, ...gl]
-})
-
-// Lookup maps for subtask hover cards (built from the tags/members props).
-const tagsById = computed(() => Object.fromEntries((props.tags || []).map((t) => [t.id, t])))
-const membersById = computed(() =>
-  Object.fromEntries((props.members || []).map((m) => [m.user_id, m])),
-)
-
 const comments = ref([])
-const commentsPane = ref(null) // the .comments container (narrow-layout scroll fallback)
-const commentsListEl = ref(null) // the .c-list — the internal scroller in wide layout
 // Gates the enter fade to genuinely-new comments: false during a task's initial
 // population (the whole thread shouldn't fade in on open), flipped true once loaded.
+// Owned here because only this component knows when a population is a load and when
+// it is a user posting; the tab just renders it.
 const commentsHydrated = ref(false)
+const commentsTab = ref(null)
 const detailTabs = ref(null)
-const newComment = ref('')
-const commentEditor = ref(null)
-const editingCommentId = ref(null)
-const editingCommentBody = ref('')
-// True while a comment POST is in flight (spinner on the send button, guards
-// double-submit); retryInfo holds { attempt, max } while waiting to retry an
-// offline send, else null.
-const posting = ref(false)
-const retryInfo = ref(null)
 
 // ── «Поделиться»: copy a shareable link to this task ──
 // The link (/board/<id>?task=<n>) self-canonicalizes to slugs, so it is correct
@@ -290,112 +250,22 @@ async function shareTask() {
   shareTimer = setTimeout(() => (shared.value = false), 1600)
 }
 
-// ── quick actions ──
-// The command registry is workspace-wide (loaded once by the store); the popup
-// is only offered where commands actually run — the new-comment composer.
-// Editing an existing comment and the description do not execute them.
-const commandItems = computed(() => store.commands || [])
-const cmdPreview = ref([]) // [{ key, summary, error }] from the dry-run
-const cmdCustom = ref([]) // custom keys seen in the draft — kept as plain text
-let cmdTimer = null
-// Dry-run the draft against the backend's parser (debounced) instead of
-// re-implementing it here: the hint can never disagree with what will happen.
-watch(newComment, (body) => {
-  clearTimeout(cmdTimer)
-  if (!hasCommandLine(body)) {
-    cmdPreview.value = []
-    cmdCustom.value = []
-    return
-  }
-  cmdTimer = setTimeout(async () => {
-    try {
-      const res = await tasksApi.previewCommands(props.taskId, body)
-      cmdPreview.value = res.data?.commands || []
-      cmdCustom.value = res.data?.custom || []
-    } catch {
-      cmdPreview.value = []
-      cmdCustom.value = []
-    }
-  }, 400)
-})
+// Per-task transient UI that this component owns (the share confirmation).
 watch(
   () => props.taskId,
   () => {
-    clearTimeout(cmdTimer)
-    cmdPreview.value = []
-    cmdCustom.value = []
-    // Reset per-task transient UI (share confirmation, a pending offline retry).
     shared.value = false
     clearTimeout(shareTimer)
-    cancelRetry()
   },
 )
 onBeforeUnmount(() => {
-  clearTimeout(cmdTimer)
   clearTimeout(shareTimer)
-  cancelRetry()
 })
 
 const relations = ref([])
-const relNumber = ref(null)
-const relKind = ref('relates')
-const relKindOptions = [
-  { label: 'связана с', value: 'relates' },
-  { label: 'блокирует', value: 'blocks' },
-  { label: 'заблокирована', value: 'blocked_by' },
-  { label: 'дублирует', value: 'duplicates' },
-]
-// Cross-board task autocomplete for linking relations.
-const relPickerOpen = ref(false)
-const relTasks = ref([]) // workspace tasks, lazily loaded
-async function ensureRelTasks() {
-  if (relTasks.value.length || !props.wsId) return
-  try {
-    // include_subtasks so subtasks can be linked (e.g. blocking deps between subtasks).
-    const res = await wsApi.tasks(props.wsId, { include_subtasks: 1 })
-    relTasks.value = res.data || []
-  } catch {
-    /* non-fatal — manual number entry still works */
-  }
-}
-function openRelPicker() {
-  relPickerOpen.value = true
-  ensureRelTasks()
-}
-// Filter by typed number/title, drop the current task and numberless ones,
-// then group by project → board so long lists stay navigable.
-const relGroups = computed(() => {
-  const q = String(relNumber.value || '')
-    .trim()
-    .toLowerCase()
-  const out = []
-  const index = {}
-  for (const t of relTasks.value) {
-    if (t.id === props.taskId || t.number == null) continue
-    if (q && !(`#${t.number}`.includes(q) || t.title.toLowerCase().includes(q))) continue
-    const pk = t.project_name || '—'
-    const bk = t.board_name || '—'
-    const key = `${pk} / ${bk}`
-    if (!index[key]) {
-      index[key] = { project: pk, board: bk, tasks: [] }
-      out.push(index[key])
-    }
-    index[key].tasks.push(t)
-  }
-  return out.slice(0, 50)
-})
-async function chooseRelTask(t) {
-  relNumber.value = t.number
-  relPickerOpen.value = false
-  await addRelation()
-}
 
 const attachments = ref([])
-const fileInput = ref(null)
-const uploading = ref(false)
-
 const events = ref([])
-const meId = computed(() => auth.user?.id)
 
 // The tab counters load async (comments/relations/files fetched after the modal
 // opens). Naive measures the active-tab underline before the badge exists, so it
@@ -425,7 +295,6 @@ const doneColumnId = ref(null) // boards.done_column_id — target of the «clos
 const completed = ref(false)
 const selectedTags = ref([])
 const selectedAssignees = ref([])
-const newSubtask = ref('')
 const newTagName = ref('')
 
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
@@ -433,7 +302,7 @@ const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value })
 // ── estimation ──────────────────────────────────────────────
 // Effective unit config for this task's project (project override → workspace
 // default → built-in). boardInfo.projectId is the reliable source once loaded.
-const estCfg = computed(() => store.estimationFor(props.projectId || boardInfo.value?.projectId))
+const estCfg = computed(() => store.estimationFor(projectId.value || boardInfo.value?.projectId))
 // Compact estimate ("8н") — used to prefill the free-text editor, which parses
 // that same syntax.
 const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
@@ -467,12 +336,12 @@ function onEstShow(shown) {
 }
 
 const tagObjs = computed(() =>
-  selectedTags.value.map((id) => props.tags.find((t) => t.id === id)).filter(Boolean),
+  selectedTags.value.map((id) => tags.value.find((t) => t.id === id)).filter(Boolean),
 )
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
 // renders flat without a header.
 const tagPickerGroups = computed(() =>
-  buildTagGroups(props.tags, props.tagPrefixNames, props.metaTagPrefixes),
+  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
 )
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 
@@ -483,7 +352,7 @@ const tagsValEl = ref(null)
 const tagsMeasureEl = ref(null)
 const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, tagObjs, { gap: 5 })
 const assigneeObjs = computed(() =>
-  selectedAssignees.value.map((id) => props.members.find((m) => m.user_id === id)).filter(Boolean),
+  selectedAssignees.value.map((id) => members.value.find((m) => m.user_id === id)).filter(Boolean),
 )
 // External GitLab assignees (display-only) from the task detail.
 const glAssignees = computed(() => task.value?.gitlab_assignees || [])
@@ -501,7 +370,7 @@ const author = computed(() => {
     }
   }
   if (t.created_by) {
-    const m = membersById.value[t.created_by]
+    const m = bv.membersMap[t.created_by]
     if (m) return { name: m.name, id: t.created_by }
   }
   return null
@@ -544,10 +413,6 @@ const breadcrumb = computed(() => {
   return parts
 })
 
-function subDue(d) {
-  return formatDue(d)
-}
-
 async function loadDetail() {
   if (!props.taskId) return
   loading.value = true
@@ -570,11 +435,11 @@ async function loadDetail() {
     // it instead of re-fetching the board + its full task/column lists on every
     // open (the tasks list is the same payload the board just loaded). Only a
     // deep-link or a cross-board open (task not on this board) falls back to GETs.
-    const ctx = props.board && props.board.id === t.board_id ? props.board : null
+    const ctx = board.value && board.value.id === t.board_id ? board.value : null
     if (ctx) {
       boardInfo.value = { name: ctx.name, projectId: ctx.project_id }
       parentCandidates.value = (props.boardTopTasks || []).filter((x) => x.id !== t.id)
-      columns.value = (props.boardColumns || []).map((c) => ({
+      columns.value = (boardColumns.value || []).map((c) => ({
         id: c.id,
         name: c.name,
         color: c.color,
@@ -651,7 +516,7 @@ async function loadExtras() {
   // On open, land on the newest comment — but only in the wide layout, where the
   // right column scrolls on its own. In the stacked layout the whole modal scrolls,
   // and jumping to the bottom would skip past the title and description.
-  if (scrollOnOpen && wide.value) scrollCommentsToBottom()
+  if (scrollOnOpen && wide.value) commentsTab.value?.scrollToBottom()
   scrollOnOpen = false
   // Enable the enter fade only after this population has rendered.
   nextTick(() => (commentsHydrated.value = true))
@@ -708,8 +573,8 @@ const newMilestoneTitle = ref('')
 // Locally-created milestones shown immediately, before the board reloads its meta.
 const extraMilestones = ref([])
 const milestoneOptions = computed(() => {
-  const seen = new Set(props.milestones.map((m) => m.id))
-  return [...props.milestones, ...extraMilestones.value.filter((m) => !seen.has(m.id))]
+  const seen = new Set(milestones.value.map((m) => m.id))
+  return [...milestones.value, ...extraMilestones.value.filter((m) => !seen.has(m.id))]
 })
 const taskMilestone = computed(() =>
   task.value?.milestone_id
@@ -728,9 +593,9 @@ async function setMilestone(milestoneId) {
 }
 async function createMilestone() {
   const title = newMilestoneTitle.value.trim()
-  if (!title || !props.projectId) return
+  if (!title || !projectId.value) return
   try {
-    const { data } = await projApi.createMilestone(props.projectId, { title })
+    const { data } = await projApi.createMilestone(projectId.value, { title })
     extraMilestones.value.push(data)
     newMilestoneTitle.value = ''
     await setMilestone(data.id)
@@ -819,23 +684,6 @@ async function closeTask() {
   setCompleted(true)
 }
 
-const columnOf = (t) => columnById(columns.value, t?.column_id)
-
-// Same move for a subtask row, without opening it.
-async function moveSubtask(sub, columnId) {
-  if (props.readonly || !sub || columnId === sub.column_id) return
-  try {
-    await tasksApi.move(sub.id, {
-      column_id: columnId,
-      ...siblingNeighbors(task.value?.subtasks || [], sub.id),
-    })
-    await loadDetail()
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-
 // ── Create a GitLab issue from this task ──
 // Offered (button under «Родитель») only on the integration board when push_create
 // is on and the task isn't already linked. The issue is built from the task's own
@@ -850,9 +698,9 @@ const glTemplateOptions = computed(() =>
 async function loadGlTemplates() {
   glTemplates.value = []
   glTemplate.value = null
-  if (!props.gitlabFetchTemplates || !props.wsId) return
+  if (!gitlabFetchTemplates.value || !wsId.value) return
   try {
-    const res = await glApi.issueTemplates(props.wsId, props.gitlabIntegrationId)
+    const res = await glApi.issueTemplates(wsId.value, gitlabIntegrationId.value)
     glTemplates.value = res.data || []
   } catch {
     glTemplates.value = []
@@ -981,7 +829,7 @@ async function createTag() {
   if (!n) return
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
   try {
-    const res = await projApi.createTag(props.projectId, {
+    const res = await projApi.createTag(projectId.value, {
       name: n,
       color: palette[Math.floor(Math.random() * palette.length)],
     })
@@ -1031,244 +879,11 @@ async function toggleGlAssignee(m) {
   }
 }
 
-async function addSubtask() {
-  const t = newSubtask.value.trim()
-  if (!t || !task.value) return
-  try {
-    await boardsApi.createTask(task.value.board_id, {
-      column_id: task.value.column_id,
-      parent_id: task.value.id,
-      title: t,
-    })
-    newSubtask.value = ''
-    await loadDetail()
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-async function toggleSubtask(sub) {
-  try {
-    await tasksApi.update(sub.id, {
-      title: sub.title,
-      description: sub.description || '',
-      priority: sub.priority || 0,
-      due_date: sub.due_date || null,
-      start_date: sub.start_date || null,
-      recurrence: sub.recurrence || null,
-      completed: !sub.completed_at,
-    })
-    await loadDetail()
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-
 // ── rich description ──
 async function saveDesc() {
   await applyMeta()
 }
 
-// ── comments ──
-function fmtWhen(d) {
-  return new Date(d).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-// Scroll the comments to the bottom (the newest message) so a freshly-sent comment
-// isn't hidden behind the composer and a re-opened task lands on the latest activity.
-// Pins to the bottom across several frames until the height stops changing — late
-// reflow (web-font swap, async markdown/avatars) otherwise strands a long thread
-// mid-way. Instant, not smooth: a smooth animation races that same reflow and stops
-// short. The scroller is .c-list in the wide layout, the modal body in the stacked
-// one (resolved via scrollParent; null → nothing scrolls, no-op).
-async function scrollCommentsToBottom() {
-  await nextTick()
-  const list = commentsListEl.value
-  const sp = list && list.scrollHeight > list.clientHeight ? list : scrollParent(commentsPane.value)
-  if (!sp) return
-  let last = -1
-  let stable = 0
-  let frames = 0
-  const pin = () => {
-    sp.scrollTop = sp.scrollHeight
-    if (sp.scrollHeight === last) stable += 1
-    else stable = 0
-    last = sp.scrollHeight
-    // Stop once the height has held for a few frames, or after a hard cap (~0.5s).
-    if (stable < 3 && ++frames < 30) requestAnimationFrame(pin)
-  }
-  pin()
-}
-
-// ── offline retry for a comment POST ──
-// A network error (server unreachable — err.offline) is retried a few times with
-// a growing backoff; an HTTP error is not (the server answered — resending won't
-// help). The draft is preserved throughout, and a banner under the composer shows
-// progress with a Cancel that aborts the wait.
-const RETRY_BACKOFFS = [2000, 5000, 10000]
-let retryTimer = null
-let retryResolve = null
-// Wait `ms`, resolving true on timeout or false if cancelRetry() fires first.
-function waitOrCancel(ms) {
-  return new Promise((resolve) => {
-    retryResolve = resolve
-    retryTimer = setTimeout(() => {
-      retryTimer = null
-      retryResolve = null
-      resolve(true)
-    }, ms)
-  })
-}
-function cancelRetry() {
-  if (retryTimer) {
-    clearTimeout(retryTimer)
-    retryTimer = null
-  }
-  if (retryResolve) {
-    const r = retryResolve
-    retryResolve = null
-    r(false)
-  }
-  retryInfo.value = null
-}
-
-async function postComment() {
-  const body = newComment.value.trim()
-  if (!body || posting.value) return
-  const mentions = commentEditor.value?.getMentions?.() || []
-  posting.value = true
-  try {
-    // attempt 0 is the initial send; 1..N are retries, each preceded by its backoff.
-    for (let attempt = 0; attempt <= RETRY_BACKOFFS.length; attempt++) {
-      try {
-        const res = await tasksApi.addComment(props.taskId, body, mentions)
-        retryInfo.value = null
-        newComment.value = ''
-        commentEditor.value?.clear?.()
-        cmdPreview.value = []
-        const c = await tasksApi.comments(props.taskId)
-        comments.value = c.data || []
-        // Quick actions changed the task itself (assignees, column, dates…), and a
-        // command-only comment produces no comment row at all — reload the detail so
-        // the modal shows the result rather than the pre-command state.
-        const summary = res.data?.command_summary
-        if (summary?.applied?.length || summary?.errors?.length) {
-          await loadDetail()
-          reportCommands(summary)
-        }
-        emit('changed')
-        scrollCommentsToBottom()
-        return
-      } catch (e) {
-        // Only "server unreachable" is worth retrying; an HTTP error (4xx/5xx) is
-        // the server rejecting the comment — resending won't change that.
-        const backoff = RETRY_BACKOFFS[attempt]
-        if (!e.offline || backoff == null) {
-          retryInfo.value = null
-          message.error(e.offline ? 'Сервер недоступен — комментарий не отправлен' : e.message)
-          return
-        }
-        retryInfo.value = { attempt: attempt + 1, max: RETRY_BACKOFFS.length }
-        if (!(await waitOrCancel(backoff))) return // cancelled by the user
-      }
-    }
-  } finally {
-    posting.value = false
-    retryInfo.value = null
-  }
-}
-
-// Report what the backend actually did — intent and result can differ (a
-// recurring task bounces straight out of the done column), so we echo its text.
-function reportCommands(summary) {
-  const applied = (summary.applied || []).map((o) => o.summary || `/${o.key}`)
-  if (applied.length) message.success(`Применено: ${applied.join('; ')}`)
-  for (const err of summary.errors || []) {
-    message.warning(`/${err.key}: ${err.error}`)
-  }
-}
-function startEditComment(c) {
-  editingCommentId.value = c.id
-  editingCommentBody.value = c.body
-}
-async function saveComment() {
-  if (props.readonly) return
-  const body = editingCommentBody.value.trim()
-  if (!body) return
-  try {
-    await tasksApi.updateComment(editingCommentId.value, body)
-    editingCommentId.value = null
-    const c = await tasksApi.comments(props.taskId)
-    comments.value = c.data || []
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-async function deleteComment(id) {
-  try {
-    await tasksApi.removeComment(id)
-    comments.value = comments.value.filter((x) => x.id !== id)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-// Toggle a task checkbox inside a rendered (own) comment → rewrite its markdown
-// and persist. Optimistic; reverts on failure.
-async function onCommentCheck(c, i) {
-  const prev = c.body
-  const next = toggleTaskMarker(prev, i)
-  if (next === prev) return
-  c.body = next
-  try {
-    await tasksApi.updateComment(c.id, next)
-  } catch (e) {
-    c.body = prev
-    message.error(e.message)
-  }
-}
-
-// ── relations (by #N) ──
-function relKindLabel(k) {
-  return relKindOptions.find((o) => o.value === k)?.label || k
-}
-// Badge meta for a relation owned by an integration; null for hand-made ones (no
-// badge at all — "Tessera" on every row would be noise).
-function relSource(r) {
-  return isExternalSource(r.source) ? sourceMeta(r.source) : null
-}
-// Deleting an integration-owned relation only holds until the next sync re-projects
-// it, so the confirm says so instead of promising a permanent removal.
-function relDeleteHint(r) {
-  const src = relSource(r)
-  return src ? `Эта связь вернётся при следующем синке ${src.label}. Удалить?` : 'Убрать связь?'
-}
-async function addRelation() {
-  const n = Number(relNumber.value)
-  if (!n) return
-  try {
-    await tasksApi.addRelation(props.taskId, n, relKind.value)
-    relNumber.value = null
-    relPickerOpen.value = false
-    const r = await tasksApi.relations(props.taskId)
-    relations.value = r.data || []
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-async function removeRelation(id) {
-  try {
-    await tasksApi.removeRelation(id)
-    relations.value = relations.value.filter((x) => x.id !== id)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
 function openRelated(rel) {
   if (rel.related_board_id) {
     close()
@@ -1276,107 +891,12 @@ function openRelated(rel) {
   }
 }
 
-// ── attachments ──
-function fmtSize(bytes) {
-  if (bytes < 1024) return `${bytes} Б`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
-}
-function pickFile() {
-  fileInput.value?.click?.()
-}
-async function onFileChosen(ev) {
-  const file = ev.target.files?.[0]
-  if (!file) return
-  uploading.value = true
-  try {
-    const fd = new FormData()
-    fd.append('file', file)
-    await tasksApi.uploadAttachment(props.taskId, fd)
-    const a = await tasksApi.attachments(props.taskId)
-    attachments.value = a.data || []
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
-  } finally {
-    uploading.value = false
-    ev.target.value = ''
-  }
-}
-async function downloadAttachment(att) {
-  try {
-    const res = await tasksApi.downloadAttachment(att.id)
-    // Desktop: a real "Save as…" dialog + write to disk (the webview can't drive
-    // an <a download> file save). Web keeps the anchor-download path.
-    if (isTauri()) {
-      const { save } = await import('@tauri-apps/plugin-dialog')
-      const { writeFile } = await import('@tauri-apps/plugin-fs')
-      const path = await save({ defaultPath: att.filename })
-      if (!path) return
-      await writeFile(path, new Uint8Array(await res.data.arrayBuffer()))
-      message.success('Файл сохранён')
-      return
-    }
-    const url = URL.createObjectURL(res.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = att.filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-async function deleteAttachment(id) {
-  try {
-    await tasksApi.removeAttachment(id)
-    attachments.value = attachments.value.filter((x) => x.id !== id)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-
-// ── journal ──
-function eventText(e) {
-  const d = e.data || {}
-  switch (e.kind) {
-    case 'created':
-      return 'создал(а) задачу'
-    case 'renamed':
-      return `переименовал(а) → «${d.to ?? ''}»`
-    case 'description':
-      return 'изменил(а) описание'
-    case 'priority':
-      return `изменил(а) приоритет → ${PRIORITY_LABELS[d.to] ?? d.to}`
-    case 'due':
-      return d.set ? 'установил(а) срок' : 'убрал(а) срок'
-    case 'completed':
-      return 'отметил(а) выполненной'
-    case 'reopened':
-      return 'вернул(а) в работу'
-    case 'recurred':
-      return 'перенёс(ла) повтор задачи'
-    case 'moved':
-      return `переместил(а)${d.to ? ` → «${d.to}»` : ''}`
-    case 'assigned':
-      return 'назначил(а) исполнителя'
-    case 'unassigned':
-      return 'снял(а) исполнителя'
-    case 'archived':
-      return 'отправил(а) в архив'
-    case 'restored':
-      return 'восстановил(а) из архива'
-    case 'comment':
-      return 'оставил(а) комментарий'
-    case 'relation':
-      return `добавил(а) связь с #${d.related ?? ''}`
-    case 'attachment':
-      return `прикрепил(а) файл${d.filename ? ` «${d.filename}»` : ''}`
-    default:
-      return e.kind
-  }
+// Adding, completing or moving a subtask changes the parent task itself (its
+// subtask list, its rollups), so the tab reports the mutation and the reload
+// stays here — it is the modal that owns the task detail.
+async function onSubtaskChanged() {
+  await loadDetail()
+  emit('changed')
 }
 </script>
 
@@ -1461,7 +981,7 @@ function eventText(e) {
                 class="gl-num"
                 :href="task.gitlab.web_url"
                 target="_blank"
-                rel="noopener"
+                rel="noopener noreferrer"
                 :title="`Открыть issue !${task.gitlab.iid} в GitLab`"
               >
                 (<n-icon :component="LogoGitlab" :size="12" /> !{{ task.gitlab.iid }})
@@ -1917,7 +1437,7 @@ function eventText(e) {
               </div>
 
               <!-- create GitLab issue from this task -->
-              <div v-if="task && !task.gitlab && props.gitlabCanCreate" class="prow">
+              <div v-if="task && !task.gitlab && gitlabCanCreate" class="prow">
                 <span class="plabel"><n-icon :component="LogoGitlab" :size="15" /> GitLab</span>
                 <button class="val" :disabled="glCreating" @click="createGlIssue">
                   <span class="muted">{{ glCreating ? 'Создание…' : 'Создать issue' }}</span>
@@ -1930,7 +1450,7 @@ function eventText(e) {
                 <span class="slabel">Описание</span>
                 <div class="desc-head-r">
                   <n-select
-                    v-if="task && !task.gitlab && props.gitlabFetchTemplates && glTemplates.length"
+                    v-if="task && !task.gitlab && gitlabFetchTemplates && glTemplates.length"
                     v-model:value="glTemplate"
                     :options="glTemplateOptions"
                     size="small"
@@ -2028,124 +1548,15 @@ function eventText(e) {
                     />
                   </span>
                 </template>
-                <div ref="commentsPane" class="comments">
-                  <div ref="commentsListEl" class="c-list">
-                    <!-- display:contents wrapper (.c-items) so the comment rows stay
-                         direct flex children of .c-list; only newly-posted comments
-                         fade in (no `appear`, so the initial list doesn't animate). -->
-                    <TransitionGroup
-                      :name="commentsHydrated ? 'c-fade' : ''"
-                      tag="div"
-                      class="c-items"
-                    >
-                      <div v-for="c in comments" :key="c.id" class="comment">
-                        <UserAvatar
-                          class="c-ava"
-                          :user-id="c.author_id || ''"
-                          :src="c.gl_author_avatar_url"
-                          :name="c.author_name || c.gl_author_name || '?'"
-                        />
-                        <div class="c-body">
-                          <div class="c-head">
-                            <span class="c-author">{{
-                              c.author_name || c.gl_author_name || 'Кто-то'
-                            }}</span>
-                            <span v-if="!c.author_name && c.gl_author_name" class="c-gl"
-                              >· GitLab</span
-                            >
-                            <span class="c-when">{{ fmtWhen(c.created_at) }}</span>
-                            <span v-if="c.author_id === meId" class="c-acts">
-                              <button class="c-act" title="Изменить" @click="startEditComment(c)">
-                                ✎
-                              </button>
-                              <n-popconfirm
-                                :positive-button-props="{ type: 'error' }"
-                                positive-text="Удалить"
-                                @positive-click="deleteComment(c.id)"
-                              >
-                                <template #trigger>
-                                  <button class="c-act" title="Удалить">✕</button>
-                                </template>
-                                Удалить комментарий?
-                              </n-popconfirm>
-                            </span>
-                          </div>
-                          <template v-if="editingCommentId === c.id">
-                            <MarkdownEditor
-                              v-model="editingCommentBody"
-                              variant="boxed"
-                              :mention-items="mentionItems"
-                              :min-rows="2"
-                              placeholder="Комментарий…"
-                              @submit="saveComment"
-                            />
-                            <n-space :size="6" style="margin-top: 6px">
-                              <n-button size="tiny" type="primary" @click="saveComment"
-                                >Сохранить</n-button
-                              >
-                              <n-button size="tiny" @click="editingCommentId = null"
-                                >Отмена</n-button
-                              >
-                            </n-space>
-                          </template>
-                          <RichContent
-                            v-else
-                            class="c-text"
-                            :source="c.body"
-                            :members="mentionItems"
-                            :interactive="c.author_id === meId"
-                            @toggle="onCommentCheck(c, $event)"
-                          />
-                        </div>
-                      </div>
-                    </TransitionGroup>
-                    <EmptyState
-                      v-if="!comments.length"
-                      class="c-empty"
-                      size="small"
-                      :icon="ChatbubbleEllipsesOutline"
-                      text="Комментариев пока нет"
-                    />
-                  </div>
-                  <div v-if="!readonly" class="comment-add">
-                    <MarkdownEditor
-                      ref="commentEditor"
-                      v-model="newComment"
-                      variant="boxed"
-                      send
-                      :sending="posting"
-                      :mention-items="mentionItems"
-                      :command-items="commandItems"
-                      :min-rows="3"
-                      placeholder="Написать комментарий… (@ — упоминание, / — команда, Ctrl+Enter — отправить)"
-                      @submit="postComment"
-                    />
-                    <!-- Offline-retry banner: shown while waiting to resend after a
-                         network failure; the draft stays put, Cancel aborts. -->
-                    <Transition name="tm-share">
-                      <div v-if="retryInfo" class="retry-bar">
-                        <TesseraSpinner :size="14" />
-                        <span
-                          >Нет связи — повтор попытки ({{ retryInfo.attempt }}/{{
-                            retryInfo.max
-                          }})…</span
-                        >
-                        <button class="retry-cancel" @click="cancelRetry">Отмена</button>
-                      </div>
-                    </Transition>
-                    <!-- Dry-run hint: what the built-in commands in the draft will
-                         do. Custom keys are listed apart — they stay in the text. -->
-                    <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
-                      <span v-for="(c, i) in cmdPreview" :key="`${c.key}-${i}`" class="cmd-chip">
-                        <code>/{{ c.key }}</code>
-                        <span :class="{ err: c.error }">{{ c.error || c.summary }}</span>
-                      </span>
-                      <span v-if="cmdCustom.length" class="cmd-note">
-                        {{ cmdCustom.map((k) => `/${k}`).join(', ') }} — останется текстом
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                <TaskCommentsTab
+                  ref="commentsTab"
+                  v-model:comments="comments"
+                  :task-id="taskId"
+                  :readonly="readonly"
+                  :hydrated="commentsHydrated"
+                  @changed="emit('changed')"
+                  @reload-detail="loadDetail"
+                />
               </n-tab-pane>
 
               <n-tab-pane name="subtasks">
@@ -2162,82 +1573,13 @@ function eventText(e) {
                     />
                   </span>
                 </template>
-                <div class="subtasks">
-                  <n-popover
-                    v-for="sub in task?.subtasks || []"
-                    :key="sub.id"
-                    trigger="hover"
-                    placement="right"
-                    :delay="250"
-                  >
-                    <template #trigger>
-                      <div
-                        class="subrow"
-                        :class="{ done: sub.completed_at }"
-                        @click="emit('open', sub.id)"
-                      >
-                        <span class="check" @click.stop="toggleSubtask(sub)">
-                          <n-icon
-                            :component="sub.completed_at ? CheckmarkCircle : EllipseOutline"
-                            :size="17"
-                          />
-                        </span>
-                        <span
-                          v-if="sub.priority"
-                          class="pr-dot"
-                          :style="{ background: PRIORITY_COLORS[sub.priority] }"
-                        />
-                        <span class="sub-title">{{ sub.title }}</span>
-                        <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
-                        <!-- status of the subtask, changeable without opening it -->
-                        <n-popover
-                          v-if="!readonly && sortedCols.length"
-                          trigger="click"
-                          placement="bottom-end"
-                        >
-                          <template #trigger>
-                            <span class="col-chip mini" @click.stop>
-                              <span class="col-dot" :style="{ background: columnOf(sub)?.color }" />
-                              <span>{{ columnOf(sub)?.name || '—' }}</span>
-                            </span>
-                          </template>
-                          <div class="menu pmenu" @click.stop>
-                            <div
-                              v-for="c in sortedCols"
-                              :key="c.id"
-                              class="menu-item col-item"
-                              :class="{ cur: c.id === sub.column_id }"
-                              @click="moveSubtask(sub, c.id)"
-                            >
-                              <span class="col-dot" :style="{ background: c.color }" />
-                              <span>{{ c.name }}</span>
-                            </div>
-                          </div>
-                        </n-popover>
-                      </div>
-                    </template>
-                    <TaskMiniCard
-                      :task="sub"
-                      :tags-map="tagsById"
-                      :members-map="membersById"
-                      :tag-prefix-names="tagPrefixNames"
-                      :column="columnOf(sub)"
-                    />
-                  </n-popover>
-                  <EmptyState
-                    v-if="!(task?.subtasks || []).length"
-                    size="small"
-                    :icon="GitBranchOutline"
-                    text="Подзадач пока нет"
-                  />
-                  <n-input
-                    v-model:value="newSubtask"
-                    size="small"
-                    class="plain"
-                    placeholder="+ подзадача (Enter)"
-                    @keyup.enter="addSubtask"
-                  />
-                </div>
+                <TaskSubtasksTab
+                  :task="task"
+                  :columns="columns"
+                  :readonly="readonly"
+                  @open="emit('open', $event)"
+                  @changed="onSubtaskChanged"
+                />
               </n-tab-pane>
 
               <n-tab-pane name="relations">
@@ -2254,90 +1596,13 @@ function eventText(e) {
                     />
                   </span>
                 </template>
-                <div class="relations">
-                  <div v-for="r in relations" :key="r.id" class="relrow">
-                    <span class="rel-kind">{{ relKindLabel(r.kind) }}</span>
-                    <span v-if="relSource(r)" class="rel-src" :title="relSource(r).label">
-                      <n-icon v-if="relSource(r).icon" :component="relSource(r).icon" :size="12" />
-                      {{ relSource(r).label }}
-                    </span>
-                    <button
-                      class="rel-link"
-                      :class="{ done: r.related_completed_at }"
-                      @click="openRelated(r)"
-                    >
-                      <span class="rel-num">#{{ r.related_number }}</span>
-                      <span class="rel-title">{{ r.related_title }}</span>
-                    </button>
-                    <n-popconfirm
-                      :positive-button-props="{ type: 'error' }"
-                      positive-text="Удалить"
-                      @positive-click="removeRelation(r.id)"
-                    >
-                      <template #trigger>
-                        <button class="c-act" title="Убрать связь">
-                          <n-icon :component="CloseOutline" />
-                        </button>
-                      </template>
-                      {{ relDeleteHint(r) }}
-                    </n-popconfirm>
-                  </div>
-                  <EmptyState
-                    v-if="!relations.length"
-                    size="small"
-                    :icon="GitMergeOutline"
-                    text="Связей пока нет"
-                  />
-                  <div class="rel-add">
-                    <n-select
-                      v-model:value="relKind"
-                      :options="relKindOptions"
-                      size="small"
-                      style="width: 150px"
-                    />
-                    <n-popover
-                      trigger="manual"
-                      :show="relPickerOpen"
-                      placement="bottom-start"
-                      :width="320"
-                      @clickoutside="relPickerOpen = false"
-                    >
-                      <template #trigger>
-                        <n-input
-                          v-model:value="relNumber"
-                          size="small"
-                          placeholder="№ или название"
-                          style="width: 240px"
-                          @focus="openRelPicker"
-                          @keyup.enter="addRelation"
-                        >
-                          <template #prefix>#</template>
-                        </n-input>
-                      </template>
-                      <div class="rel-picker">
-                        <div v-if="!relGroups.length" class="empty-hint">Ничего не найдено</div>
-                        <div
-                          v-for="g in relGroups"
-                          :key="g.project + '/' + g.board"
-                          class="rp-group"
-                        >
-                          <div class="rp-head">{{ g.project }} · {{ g.board }}</div>
-                          <button
-                            v-for="t in g.tasks"
-                            :key="t.id"
-                            type="button"
-                            class="rp-item"
-                            @click="chooseRelTask(t)"
-                          >
-                            <span class="rp-num">#{{ t.number }}</span>
-                            <span class="rp-title">{{ t.title }}</span>
-                          </button>
-                        </div>
-                      </div>
-                    </n-popover>
-                    <n-button size="small" class="rel-go" @click="addRelation">Связать</n-button>
-                  </div>
-                </div>
+                <TaskRelationsTab
+                  v-model:relations="relations"
+                  :task-id="taskId"
+                  :ws-id="wsId"
+                  @changed="emit('changed')"
+                  @open-related="openRelated"
+                />
               </n-tab-pane>
 
               <n-tab-pane name="files">
@@ -2354,39 +1619,11 @@ function eventText(e) {
                     />
                   </span>
                 </template>
-                <div class="files">
-                  <div v-for="a in attachments" :key="a.id" class="filerow">
-                    <n-icon :component="AttachOutline" class="f-ico" />
-                    <button class="f-name" @click="downloadAttachment(a)">{{ a.filename }}</button>
-                    <span class="f-size">{{ fmtSize(a.size) }}</span>
-                    <button class="c-act" title="Скачать" @click="downloadAttachment(a)">
-                      <n-icon :component="DownloadOutline" />
-                    </button>
-                    <n-popconfirm
-                      :positive-button-props="{ type: 'error' }"
-                      positive-text="Удалить"
-                      @positive-click="deleteAttachment(a.id)"
-                    >
-                      <template #trigger>
-                        <button class="c-act" title="Удалить">
-                          <n-icon :component="TrashOutline" />
-                        </button>
-                      </template>
-                      Удалить файл «{{ a.filename }}»?
-                    </n-popconfirm>
-                  </div>
-                  <EmptyState
-                    v-if="!attachments.length"
-                    size="small"
-                    :icon="AttachOutline"
-                    text="Файлов пока нет"
-                  />
-                  <input ref="fileInput" type="file" hidden @change="onFileChosen" />
-                  <n-button size="small" :loading="uploading" @click="pickFile">
-                    <template #icon><n-icon :component="AttachOutline" /></template>
-                    Прикрепить файл
-                  </n-button>
-                </div>
+                <TaskFilesTab
+                  v-model:attachments="attachments"
+                  :task-id="taskId"
+                  @changed="emit('changed')"
+                />
               </n-tab-pane>
 
               <n-tab-pane name="history">
@@ -2397,21 +1634,7 @@ function eventText(e) {
                     История
                   </span>
                 </template>
-                <div class="history">
-                  <div v-for="e in events" :key="e.id" class="histrow">
-                    <UserAvatar class="h-ava" :user-id="e.actor_id" :name="e.actor_name" />
-                    <span class="h-text">
-                      <b>{{ e.actor_name || 'Кто-то' }}</b> {{ eventText(e) }}
-                    </span>
-                    <span class="h-when">{{ fmtWhen(e.created_at) }}</span>
-                  </div>
-                  <EmptyState
-                    v-if="!events.length"
-                    size="small"
-                    :icon="TimeOutline"
-                    text="История пуста"
-                  />
-                </div>
+                <TaskHistoryTab :events="events" />
               </n-tab-pane>
             </n-tabs>
           </div>
@@ -2474,6 +1697,8 @@ function eventText(e) {
 </template>
 
 <style scoped>
+@import './task/tab-shared.css';
+
 .tm-card {
   width: 640px;
   max-width: 94vw;
@@ -2719,27 +1944,6 @@ function eventText(e) {
     transition: none;
   }
 }
-/* Offline-retry banner under the composer — neutral, informational. */
-.retry-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.retry-cancel {
-  margin-left: auto;
-  border: none;
-  background: none;
-  color: var(--t-primary);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 2px 4px;
-}
-.retry-cancel:hover {
-  text-decoration: underline;
-}
 .desc-head {
   display: flex;
   align-items: center;
@@ -2959,100 +2163,14 @@ function eventText(e) {
   font-size: 12px;
   color: var(--t-text3);
 }
-.subrow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: var(--t-surface-alt);
-  margin-bottom: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.subrow:hover {
-  background: var(--t-hover);
-}
-.subrow .check {
-  display: inline-flex;
-  color: var(--t-text3);
-  cursor: pointer;
-}
-.subrow.done .check {
-  color: var(--t-primary);
-}
-.subrow.done .sub-title {
-  text-decoration: line-through;
-  opacity: 0.6;
-}
-.pr-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: none;
-}
-.sub-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sub-due {
-  font-size: 11px;
-  color: var(--t-text3);
-}
-.pmenu {
-  max-height: 240px;
-  overflow-y: auto;
-}
 /* ── status row: [● column ▾] [▸ shift] [✓ close] ──
-   Deliberately neutral (flat surface + the column's own colour as a dot); the
-   accent gradient stays reserved for tags/priority/avatars. */
+   The chip and its popover menu are shared with the subtasks tab — see
+   task/tab-shared.css, imported at the top of this block. */
 .status-row {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-.col-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  max-width: 190px;
-  border: 1px solid var(--t-border);
-  background: var(--t-surface-alt);
-}
-.col-chip > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.col-chip[disabled] {
-  opacity: 0.6;
-  cursor: default;
-}
-.col-chip.mini {
-  max-width: 120px;
-  min-height: 20px;
-  padding: 1px 7px;
-  border-radius: 5px;
-  font-size: 11px;
-  color: var(--t-text3);
-  cursor: pointer;
-}
-.col-chip.mini:hover {
-  background: var(--t-hover);
-}
-.col-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--t-text3);
-}
-.col-item.cur {
-  background: var(--t-hover);
 }
 .st-btn {
   display: inline-flex;
@@ -3079,24 +2197,6 @@ function eventText(e) {
 .small {
   font-size: 12px;
   padding: 4px;
-}
-.menu {
-  min-width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 6px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.menu-item:hover {
-  background: var(--t-hover);
 }
 .menu-sep {
   font-size: 10px;
@@ -3361,347 +2461,5 @@ function eventText(e) {
 .detail-tabs :deep(.n-tabs-tab:not(.n-tabs-tab--active) .n-badge-sup) {
   background: var(--t-text3);
   opacity: 0.55;
-}
-
-/* comments */
-.comments {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 100%;
-}
-/* Comments list grows so the empty state can sit centred and the composer
-   (below) sinks to the bottom of the pane. */
-.c-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex: 1 1 auto;
-  /* When a comment is appended while scrolled to the bottom, the browser's scroll
-     anchoring tries to keep an upper element fixed and nudges scrollTop — which read
-     as a "bounce" (the top comment briefly slid under the pinned tabs). We pin to the
-     bottom ourselves, so let the anchor go. */
-  overflow-anchor: none;
-}
-.c-empty {
-  margin: auto 0;
-}
-/* Wrapper generates no box — comment rows stay direct flex children of .c-list. */
-.c-items {
-  display: contents;
-}
-/* Newly-posted comments ease in — opacity only. A translate would shift layout mid-
-   scroll and fight the bottom-pin (the "bounce" where the top row clipped under the
-   tabs), so the motion is a pure fade. */
-.c-fade-enter-active {
-  transition: opacity 0.25s ease;
-}
-.c-fade-enter-from {
-  opacity: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .c-fade-enter-active {
-    transition: none;
-  }
-}
-.comment {
-  display: flex;
-  gap: 10px;
-}
-.c-ava,
-.h-ava {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--t-accent-grad);
-  color: var(--t-on-primary);
-  font-size: 11px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.c-body {
-  flex: 1;
-  min-width: 0;
-}
-.c-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-.c-author {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--t-text1);
-}
-.c-gl {
-  font-size: 11px;
-  color: var(--t-text3);
-}
-.c-when {
-  font-size: 11px;
-  color: var(--t-text3);
-}
-.c-acts {
-  margin-left: auto;
-  display: inline-flex;
-  gap: 4px;
-}
-.c-act {
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: var(--t-text3);
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-}
-.c-act:hover {
-  color: var(--t-text1);
-}
-.c-text {
-  font-size: 13px;
-}
-/* Composer pinned to the bottom of the comments pane (sticks while scrolling). */
-.comment-add {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-  position: sticky;
-  bottom: 0;
-  /* No explicit background: inherit the modal's surface so the sticky footer
-     never shows a mismatched strip in dark mode (the modal card already paints
-     --t-surface). Adding it here caused a visible color seam above the form
-     and at the bottom corners. */
-  padding-top: 10px;
-  margin-top: 4px;
-  border-top: 1px solid var(--t-border);
-}
-.comment-add > :first-child {
-  width: 100%;
-}
-.empty-hint {
-  font-size: 13px;
-  color: var(--t-text3);
-  padding: 4px 0 8px;
-}
-/* Command dry-run hint under the composer — flat and neutral: it states a fact,
-   it is not an action. */
-.cmd-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  width: 100%;
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.cmd-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.cmd-chip code {
-  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
-  color: var(--t-text2);
-}
-.cmd-chip .err {
-  color: var(--t-error, #e5484d);
-}
-.cmd-note {
-  font-style: italic;
-}
-
-/* relations */
-.relations {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.relrow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.rel-kind {
-  font-size: 12px;
-  color: var(--t-text3);
-  width: 96px;
-  flex: none;
-}
-/* Source badge: deliberately flat neutral grey — it marks provenance, not an accent,
-   so it must not compete with the accent-gradient chips elsewhere in the modal. */
-.rel-src {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex: none;
-  padding: 0 6px;
-  height: 18px;
-  border: 1px solid var(--t-border);
-  border-radius: 9px;
-  background: var(--t-surface-alt);
-  color: var(--t-text3);
-  font-size: 11px;
-  line-height: 1;
-}
-.rel-link {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  padding: 4px 6px;
-  border-radius: 6px;
-  color: var(--t-text1);
-  font-size: 13px;
-}
-.rel-link:hover {
-  background: var(--t-hover);
-}
-.rel-link.done .rel-title {
-  text-decoration: line-through;
-  opacity: 0.6;
-}
-.rel-num {
-  color: var(--t-text3);
-  font-variant-numeric: tabular-nums;
-  flex: none;
-}
-.rel-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rel-add {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 8px;
-}
-.rel-go {
-  margin-left: auto;
-}
-.rel-picker {
-  max-height: 300px;
-  overflow-y: auto;
-}
-.rp-group {
-  margin-bottom: 8px;
-}
-.rp-head {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--t-text3);
-  padding: 2px 4px;
-  position: sticky;
-  top: 0;
-  background: var(--t-surface);
-}
-.rp-item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  padding: 6px 8px;
-  cursor: pointer;
-}
-.rp-item:hover {
-  background: var(--t-hover);
-}
-.rp-num {
-  flex: none;
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.rp-title {
-  color: var(--t-text1);
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.subtasks {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* files */
-.files {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.filerow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.f-ico {
-  color: var(--t-text3);
-  flex: none;
-}
-.f-name {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  color: var(--t-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.f-size {
-  font-size: 11px;
-  color: var(--t-text3);
-  flex: none;
-}
-
-/* history */
-.history {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 280px;
-  overflow-y: auto;
-}
-.histrow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.h-ava {
-  width: 24px;
-  height: 24px;
-  font-size: 10px;
-}
-.h-text {
-  flex: 1;
-  color: var(--t-text2);
-}
-.h-text b {
-  color: var(--t-text1);
-}
-.h-when {
-  font-size: 11px;
-  color: var(--t-text3);
-  flex: none;
 }
 </style>

@@ -47,6 +47,9 @@ data class RegisterDeviceRequest(
     @SerializedName("device_id") val deviceId: String,
     @SerializedName("label") val label: String,
     @SerializedName("platform") val platform: String,
+    // Optional: the FCM registration token for background push. Omitted (blank)
+    // when this build/device has none — the server then keeps whatever it holds.
+    @SerializedName("fcm_token") val fcmToken: String = "",
 )
 
 /** A routing rule's match condition (empty = matches anything). */
