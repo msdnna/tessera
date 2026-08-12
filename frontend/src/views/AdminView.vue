@@ -233,9 +233,9 @@ onMounted(() => {
           <label>
             Запись от имени пользователя (Sudo)
             <span class="oauth-sub">
-              issue и обратная запись — от действующего пользователя; сервисный токен должен
-              быть админским PAT (scope api + sudo). Держите ВЫКЛ, если GitLab или Tessera
-              доступны из внешней сети
+              issue и обратная запись — от действующего пользователя; сервисный токен должен быть
+              админским PAT (scope api + sudo). Держите ВЫКЛ, если GitLab или Tessera доступны из
+              внешней сети
             </span>
           </label>
           <div><n-switch v-model:value="oauth.sudo_writeback" /></div>

@@ -53,9 +53,7 @@ export function planColDrop({ groupMode, evt, dcol, list = [], collapsed = false
     const info = evt.added || evt.moved
     if (!info) return intents
     const before = collapsed ? null : list[info.newIndex - 1]
-    const after = collapsed
-      ? list.find((t) => t.id !== info.element.id)
-      : list[info.newIndex + 1]
+    const after = collapsed ? list.find((t) => t.id !== info.element.id) : list[info.newIndex + 1]
     // A subtask dragged out onto a column becomes top-level again — before moving.
     if (evt.added && info.element.parent_id) {
       intents.push({ op: 'setParent', id: info.element.id, parentId: null })
@@ -74,7 +72,8 @@ export function planColDrop({ groupMode, evt, dcol, list = [], collapsed = false
       else intents.push({ op: 'clearMilestone', id })
     }
   } else {
-    if (evt.added && dcol.tag) intents.push({ op: 'addTag', id: evt.added.element.id, tagId: dcol.tag.id })
+    if (evt.added && dcol.tag)
+      intents.push({ op: 'addTag', id: evt.added.element.id, tagId: dcol.tag.id })
     if (evt.removed && dcol.tag)
       intents.push({ op: 'removeTag', id: evt.removed.element.id, tagId: dcol.tag.id })
   }

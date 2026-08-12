@@ -136,8 +136,9 @@ describe('mergeTaskRow', () => {
     const out = mergeTaskRow(row(), full({ description: 'много markdown' }))
     expect('description' in out).toBe(false)
     expect(out.has_description).toBe(true)
-    expect(mergeTaskRow(row({ has_description: true }), full({ description: '' })).has_description)
-      .toBe(false)
+    expect(
+      mergeTaskRow(row({ has_description: true }), full({ description: '' })).has_description,
+    ).toBe(false)
   })
 
   it('merge, а не replace: агрегаты строки доски переживают патч', () => {
@@ -190,8 +191,8 @@ describe('applySubtaskPatch', () => {
     expect(applySubtaskPatch(byParent(), full({ id: 's1', parent_id: null }))).toBe(null)
     expect(applySubtaskPatch(byParent(), full({ id: 's1', parent_id: 'p9' }))).toBe(null)
     expect(applySubtaskPatch(byParent(), full({ id: 'нет', parent_id: 'p1' }))).toBe(null)
-    expect(
-      applySubtaskPatch(byParent(), full({ id: 's1', parent_id: 'p1', position: 999 })),
-    ).toBe(null)
+    expect(applySubtaskPatch(byParent(), full({ id: 's1', parent_id: 'p1', position: 999 }))).toBe(
+      null,
+    )
   })
 })

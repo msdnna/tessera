@@ -163,7 +163,9 @@ describe('refresh-on-401', () => {
       if (calls === 1) return fail(config, 401, { error: 'unauthorized' })
       return Promise.resolve(ok(config, { retried: true }))
     })
-    globalAdapter.mockImplementation((config) => Promise.resolve(ok(config, { access_token: 'new' })))
+    globalAdapter.mockImplementation((config) =>
+      Promise.resolve(ok(config, { access_token: 'new' })),
+    )
 
     const res = await api.get('/protected')
     expect(res.data).toEqual({ retried: true })
@@ -269,13 +271,17 @@ describe('refresh-token delivery mode', () => {
   })
 
   it('restoreSession trades the cookie for a fresh access token on start-up', async () => {
-    globalAdapter.mockImplementation((config) => Promise.resolve(ok(config, { access_token: 'boot' })))
+    globalAdapter.mockImplementation((config) =>
+      Promise.resolve(ok(config, { access_token: 'boot' })),
+    )
     await expect(restoreSession()).resolves.toBe('boot')
     expect(getAccessToken()).toBe('boot')
   })
 
   it('restoreSession resolves null when there is no session to restore', async () => {
-    globalAdapter.mockImplementation((config) => fail(config, 401, { error: 'invalid refresh token' }))
+    globalAdapter.mockImplementation((config) =>
+      fail(config, 401, { error: 'invalid refresh token' }),
+    )
     await expect(restoreSession()).resolves.toBeNull()
     expect(getAccessToken()).toBe('')
   })

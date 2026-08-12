@@ -22,10 +22,12 @@ describe('planColumnReorder', () => {
   })
 
   it('leaves before null at the left edge and after null at the right edge', () => {
-    expect(planColumnReorder({ moved: { element: { key: 'x' }, newIndex: 0 } }, model, 'status'))
-      .toMatchObject({ before_id: null, after_id: 'b' })
-    expect(planColumnReorder({ moved: { element: { key: 'x' }, newIndex: 2 } }, model, 'status'))
-      .toMatchObject({ before_id: 'b', after_id: null })
+    expect(
+      planColumnReorder({ moved: { element: { key: 'x' }, newIndex: 0 } }, model, 'status'),
+    ).toMatchObject({ before_id: null, after_id: 'b' })
+    expect(
+      planColumnReorder({ moved: { element: { key: 'x' }, newIndex: 2 } }, model, 'status'),
+    ).toMatchObject({ before_id: 'b', after_id: null })
   })
 
   it('also accepts an `added` payload', () => {
@@ -40,7 +42,9 @@ describe('planColumnReorder', () => {
   })
 
   it('does nothing when there is no moved/added payload', () => {
-    expect(planColumnReorder({ removed: { element: { key: 'c' }, newIndex: 0 } }, model, 'status')).toBeNull()
+    expect(
+      planColumnReorder({ removed: { element: { key: 'c' }, newIndex: 0 } }, model, 'status'),
+    ).toBeNull()
     expect(planColumnReorder({}, model, 'status')).toBeNull()
   })
 })
@@ -59,9 +63,9 @@ describe('planColDrop — status mode', () => {
     // newIndex is meaningless here; the dropped card itself may appear in the list.
     const withSelf = [{ id: 'tX' }, { id: 't1' }, { id: 't2' }]
     const evt = { added: { element: { id: 'tX' }, newIndex: 5 } }
-    expect(planColDrop({ groupMode: 'status', evt, dcol: col(), list: withSelf, collapsed: true })).toEqual([
-      { op: 'move', id: 'tX', columnId: 'colX', beforeId: null, afterId: 't1' },
-    ])
+    expect(
+      planColDrop({ groupMode: 'status', evt, dcol: col(), list: withSelf, collapsed: true }),
+    ).toEqual([{ op: 'move', id: 'tX', columnId: 'colX', beforeId: null, afterId: 't1' }])
   })
 
   it('promotes a dragged-out subtask to top-level before moving it', () => {
@@ -83,7 +87,9 @@ describe('planColDrop — status mode', () => {
   })
 
   it('is a no-op when the event carries no added/moved payload', () => {
-    expect(planColDrop({ groupMode: 'status', evt: { removed: {} }, dcol: col(), list })).toEqual([])
+    expect(planColDrop({ groupMode: 'status', evt: { removed: {} }, dcol: col(), list })).toEqual(
+      [],
+    )
   })
 })
 
@@ -105,7 +111,9 @@ describe('planColDrop — milestone mode (single-value)', () => {
 
   it('ignores the source column `removed` (the new value overwrites)', () => {
     const evt = { removed: { element: { id: 't1' } } }
-    expect(planColDrop({ groupMode: 'milestone', evt, dcol: col({ milestone: { id: 'm9' } }) })).toEqual([])
+    expect(
+      planColDrop({ groupMode: 'milestone', evt, dcol: col({ milestone: { id: 'm9' } }) }),
+    ).toEqual([])
   })
 })
 

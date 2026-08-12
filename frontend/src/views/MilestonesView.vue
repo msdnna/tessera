@@ -165,7 +165,13 @@ onMounted(load)
               <span class="ms-name">{{ m.title }}</span>
               <n-tooltip v-if="isLinked(m)">
                 <template #trigger>
-                  <a class="ms-gl" :href="m.gl_url" target="_blank" rel="noopener noreferrer" @click.stop>
+                  <a
+                    class="ms-gl"
+                    :href="m.gl_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    @click.stop
+                  >
                     <n-icon :component="LogoGitlab" />
                   </a>
                 </template>
