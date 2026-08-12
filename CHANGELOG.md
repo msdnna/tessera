@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), versions per ser
 
 ## frontend
 
+### [0.162.0] — 2026-08-12
+- **feat(web): вход через GitLab на desktop — системный браузер вместо вебвью (#2696).**
+  Раньше `loginWithGitlab()` делал `window.location.href` и уводил само Tauri-вебвью на
+  origin сервера: приложение уходило со своего фронта, и вернуться в него колбэку было
+  некуда. Под `isTauri()` авторизация теперь открывается в системном браузере (там уже
+  есть сессия GitLab и менеджер паролей — этого же требует RFC 8252), а сессия приезжает
+  обратно deep link'ом `tessera://oauth/callback`. Веб-ветка не изменилась: там
+  `window.location.href` — правильное поведение, ему нужен top-level переход ради
+  `SameSite=Lax` куки состояния.
+  Разбор ссылки — в новом `composables/useDesktopOAuth.js` (`useDesktopDeepLink.js` не
+  трогали: он про клик по уведомлению, имя обманчивое). Слушатель висит на `App.vue`, а не
+  на экране логина: на Linux/Windows ссылку доставляет второй запуск процесса, и к моменту
+  доставки видимый экран может быть любым. Кнопка входа показывает ожидание с отменой и
+  через две минуты объясняет, что вернуться в приложение не удалось, вместо вечного
+  спиннера.
+
 ### [0.161.1] — 2026-08-12
 - **fix(web): подтверждение удаления канала и правила уведомлений — поповером (#2693).**
   Последние два нативных `window.confirm` в проекте заменены на `n-popconfirm`
@@ -3267,6 +3283,17 @@ User-management phase U1b (web) — consumes backend 0.30.0.
 
 ## backend
 
+### [0.97.0] — 2026-08-12
+- **feat(api): OAuth-хендофф для desktop-клиента (#2696).**
+  `GET /auth/gitlab/authorize` принимает `platform=desktop` наряду с `platform=android`:
+  колбэк отдаёт сессию на `tessera://oauth/callback#access_token=…&refresh_token=…`, а не
+  на веб-страницу SPA. Desktop ходит в API кросс-ориджин, поэтому httpOnly-кука с
+  refresh-токеном до него не доезжает — ему нужен тот же путь, что и Android.
+  Ветка выдачи токенов не раздвоена: платформа размечается маркером внутри
+  CSRF-проверяемого `state` (`d.` для desktop, `m.` для Android), решение вынесено в
+  чистую функцию `oauthHandoff`. Старый маркер `m.` продолжает распознаваться — иначе
+  Android-сессия, стартовавшая на предыдущем бинаре, вернулась бы на веб-страницу.
+
 ### [0.96.0] — 2026-08-12
 - **feat(notify): фоновый push на устройства через FCM (#2597).**
   Device-канал раньше был чисто эфемерным: сервер лишь помечал живое WS-событие, и
@@ -5035,3 +5062,21 @@ User-management phase U1a (backend). All additive (migration 0014).
 - WebSocket fan-out hub (`internal/realtime`) for live board updates.
 - golang-migrate setup with embedded SQL migrations + `cmd/migrate` CLI.
 - CORS middleware, config with fail-closed prod gates, Docker build.
+
+## desktop
+
+### [0.3.0] — 2026-08-12
+- **feat(desktop): регистрация схемы `tessera://` и открытие ссылок в системном браузере (#2696).**
+  Подключены `tauri-plugin-deep-link` и `tauri-plugin-opener`, схема `tessera` объявлена в
+  `tauri.conf.json`, в capabilities добавлены `deep-link:default`, `opener:allow-open-url`
+  и `opener:allow-default-urls` (без них вызовы плагинов упираются в ACL Tauri v2, а не в
+  «плагин не найден»). `allow-open-url` включает лишь команду без scope — открытие
+  `https://`-ссылки GitLab режется `ForbiddenUrl`, пока scope не разрешён через
+  `allow-default-urls`.
+  На Linux/Windows ОС доставляет deep link **вторым запуском процесса**, поэтому argv
+  пробрасывается в `deep_link().handle_cli_arguments()` из колбэка `single-instance` —
+  сам плагин на single-instance не подписывается, и без этого вход работал бы только при
+  закрытом приложении. `single-instance` остаётся первым зарегистрированным плагином.
+  В `setup` дополнительно вызывается `register_all()`: инсталляторы (`.deb`/`.rpm`/NSIS)
+  прописывают схему сами, но AppImage ничего не ставит, а `tauri dev` не проходит через
+  инсталлятор. Регистрация best-effort — ошибка логируется, а не роняет приложение.
