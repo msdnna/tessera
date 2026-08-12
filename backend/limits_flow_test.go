@@ -125,16 +125,33 @@ func TestRateLimitOnAuthRoutes(t *testing.T) {
 		return res.StatusCode, res.Header.Get("Retry-After")
 	}
 
-	// The credential rule allows a burst of 10. Every attempt here is a failed
-	// login, which is exactly the traffic the limit exists to stop.
-	for i := 1; i <= 10; i++ {
-		if code, _ := login("victim@example.test"); code != http.StatusUnauthorized {
-			t.Fatalf("attempt %d: status %d, want 401 (still inside the burst)", i, code)
+	// The credential rule allows a burst of 10 failed logins, then refuses. We
+	// fire past the burst and assert the throttle engages with a 429 carrying a
+	// Retry-After.
+	//
+	// We deliberately do NOT pin the 429 to exactly the 11th attempt: each login
+	// is a real round trip through Postgres, and on a loaded CI box the burst can
+	// span more than one 6s refill interval, handing the bucket a fresh token
+	// mid-run (so a request that a fast machine refuses with 429 comes back 401).
+	// The exact burst-then-refill arithmetic is pinned deterministically, on an
+	// injected clock, by middleware.TestRateStoreBurstThenRefill; here we only
+	// prove the limiter is wired onto the auth surface. A failed login nets ~0.85
+	// tokens spent after refill, so a 429 is reached far inside this bound for any
+	// sane per-request latency.
+	var retryAfter string
+	throttled := false
+	for i := 1; i <= 30; i++ {
+		code, ra := login("victim@example.test")
+		if code == http.StatusTooManyRequests {
+			retryAfter, throttled = ra, true
+			break
+		}
+		if code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: status %d, want 401 or 429", i, code)
 		}
 	}
-	code, retryAfter := login("victim@example.test")
-	if code != http.StatusTooManyRequests {
-		t.Fatalf("attempt 11: status %d, want 429", code)
+	if !throttled {
+		t.Fatal("credential route never returned 429 despite exceeding the burst")
 	}
 	if retryAfter == "" {
 		t.Error("429 came back without a Retry-After header")
