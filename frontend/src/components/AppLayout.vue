@@ -195,9 +195,18 @@ watch(
         <n-layout-header bordered>
           <Topbar :show-tools="collapsed || narrow" />
         </n-layout-header>
-        <n-layout-content content-style="padding: 16px" style="height: calc(100vh - 53px)">
+        <n-layout-content
+          class="page-slot page-slot--desktop"
+          content-style="padding: 16px"
+          style="height: calc(100vh - 53px)"
+        >
           <router-view v-slot="{ Component }">
-            <transition name="page" mode="out-in">
+            <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
+                 a multi-root component) stalls the out-in enter and blanks the
+                 content until reload (#2708). The leaving page is taken out of
+                 flow (position:absolute, see .page-leave-active) so the incoming
+                 page doesn't jump while the old one fades. -->
+            <transition name="page">
               <component :is="Component" />
             </transition>
           </router-view>
@@ -210,9 +219,14 @@ watch(
       <n-layout-header bordered>
         <Topbar :mobile="true" @menu="drawerOpen = true" />
       </n-layout-header>
-      <n-layout-content content-style="padding: 12px" style="height: calc(100vh - 53px)">
+      <n-layout-content
+        class="page-slot page-slot--mobile"
+        content-style="padding: 12px"
+        style="height: calc(100vh - 53px)"
+      >
         <router-view v-slot="{ Component }">
-          <transition name="page" mode="out-in">
+          <!-- see the desktop branch: no out-in, leaving page goes absolute (#2708) -->
+          <transition name="page">
             <component :is="Component" />
           </transition>
         </router-view>
@@ -239,6 +253,21 @@ watch(
 /* Single transition-trackable root; the inner n-layouts own the 100vh height. */
 .app-shell {
   height: 100vh;
+}
+/* Positioning context for the page transition: the leaving route view is pulled
+   out of flow (.page-leave-active in main.css) so the incoming view fills the
+   space immediately instead of stacking below the fading one. Scoped to the
+   scroll container Naive renders inside n-layout-content. --page-pad mirrors the
+   content padding so the absolutely-positioned leaving view keeps its inset while
+   it fades (inset:0 would let it snap to the edges — the padding «blink» in #2708). */
+.page-slot :deep(.n-layout-scroll-container) {
+  position: relative;
+}
+.page-slot--desktop :deep(.n-layout-scroll-container) {
+  --page-pad: 16px;
+}
+.page-slot--mobile :deep(.n-layout-scroll-container) {
+  --page-pad: 12px;
 }
 /* Drag handle sitting in the gutter between the sidebar and the content. */
 .sider-resizer {

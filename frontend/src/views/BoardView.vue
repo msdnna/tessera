@@ -38,5 +38,17 @@ watch(() => route.params, resolve, { immediate: true, deep: true })
 </script>
 
 <template>
-  <KanbanBoard v-if="boardId" :key="boardId" :board-id="boardId" />
+  <!-- Single element root: KanbanBoard is a multi-root component and the `v-if`
+       collapses to a comment while resolving, so without this wrapper the view is
+       a non-element root of the page <transition> (a stream of Vue warnings). The
+       wrapper gives the transition one stable element to track. -->
+  <div class="board-view">
+    <KanbanBoard v-if="boardId" :key="boardId" :board-id="boardId" />
+  </div>
 </template>
+
+<style scoped>
+.board-view {
+  height: 100%;
+}
+</style>
