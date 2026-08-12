@@ -136,7 +136,11 @@ func TestClientFlushesResyncMarker(t *testing.T) {
 	if second.Type != EventResync {
 		t.Fatalf("second frame = %q, want the resync marker", second.Type)
 	}
-	if c.needResync.Load() {
-		t.Fatal("resync flag not cleared after a successful write")
-	}
+	// The flag is cleared right after the resync frame is written (client.go
+	// flushResync), so reading that frame off the wire does not guarantee the
+	// server goroutine has reached the Store(false) yet — poll instead of racing
+	// the single check.
+	waitFor(t, "resync flag cleared after a successful write", func() bool {
+		return !c.needResync.Load()
+	})
 }
