@@ -115,6 +115,8 @@ make dev             # Postgres в Docker + backend на :8090 (host)
 make migrate         # применить миграции (host → localhost:5432)
 make up / down / logs
 make lint / test     # агрегаты; есть lint-backend/-frontend/-android, test-*
+make test-e2e-backend       # чёрный ящик: настоящие бинари + одноразовая БД (build-tag e2e)
+make test-e2e-backend-docker # то же + сборка и старт образа (минуты)
 make version         # версии всех компонентов
 make bump-api  BUMP=minor   # + bump-web / bump-android
 ```
@@ -126,7 +128,10 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
 - **БД:** боевая `tessera` (контейнер `tessera-postgres`, том `tessera_postgres_data`,
   tessera/tessera, :5432) — **НИКОГДА не TRUNCATE/DROP/`down -v`**. E2e — только против
   `tessera_test`. После новой миграции прогонять migrate И на `tessera`, И на `tessera_test`
-  (аддитивны → безопасно). См. скилл **tessera-e2e**.
+  (аддитивны → безопасно). См. скилл **tessera-e2e**. Автоматический e2e
+  (`backend/e2e/`, `make test-e2e-backend`) создаёт **свою** одноразовую БД
+  `tessera_e2e_<runId>` рядом и дропает её в конце — он делает `migrate down`,
+  которому нельзя на общей `tessera_test`.
 - **Порты:** dev backend :8090 (budget держит :8080), Vite :5174, docker-фронт :8083.
   Для throwaway-e2e бери порт **8092+** (на :8090 может висеть зомби со старым кодом).
 - **E2e-скрипты:** `bash <<'SCRIPT'` (дефолтный zsh ломается на uuid в арифметике);

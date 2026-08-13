@@ -1,5 +1,12 @@
 version: "2"
 
+run:
+  # The black-box e2e suite (e2e/, #2709) sits behind this build tag. Without it
+  # listed here golangci-lint skips the package silently — it would never be
+  # linted at all.
+  build-tags:
+    - e2e
+
 linters:
   default: standard
   enable:

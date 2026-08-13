@@ -113,6 +113,63 @@ jobs:
           path: _badges/backend.json
           retention-days: 1
 
+  # Black-box e2e (#2709): builds the real binaries and runs them as
+  # subprocesses against a throwaway database — main(), the production config
+  # guards, migration rollback, SIGTERM draining, real sockets. A job of its own
+  # rather than a step inside Backend, so lint/unit feedback stays fast and a
+  # failure here reads as its own line.
+  backend-e2e:
+    name: Backend e2e
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tessera
+          POSTGRES_PASSWORD: tessera
+          POSTGRES_DB: tessera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tessera -d tessera_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      # The suite creates (and drops) its own database next to this one; the
+      # migration test rolls the schema back, so it must not share.
+      TEST_DATABASE_URL: postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same toolchain-resolution dance as the Backend job: setup-go ignores the
+      # `toolchain` directive, and the suite shells out to build with it.
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      # Failures carry the subprocess's own stderr in the test output, so there
+      # is nothing separate to upload as an artifact.
+      - name: End-to-end suite
+        run: make test-e2e-backend GO=go
+
+      # The image tier is the expensive one (a docker build from scratch), and
+      # what it guards — a broken Dockerfile — only matters at release time. Push
+      # to a shared branch, not every PR.
+      - name: Image tier (docker build + boot)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          cd backend && E2E_GO=go E2E_DOCKER=1 go test -tags=e2e -count=1 \
+            -timeout 30m -run TestDockerImageBootsAndServes ./e2e/...
+
   web:
     name: Web
     needs: changes

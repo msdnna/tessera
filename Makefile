@@ -71,6 +71,16 @@ test-backend-cover: ## Backend tests with coverage (backend/coverage.out + cover
 	cd backend && $(GO) tool cover -html=coverage.out -o cover.html
 	@echo "Coverage report: backend/cover.html"
 
+.PHONY: test-e2e-backend
+test-e2e-backend: ## Black-box e2e: real binaries as subprocesses on a throwaway DB (needs Postgres)
+	@# Build-tagged, so it is not part of test-backend. E2E_GO hands the suite the
+	@# pinned toolchain — it shells out to build the binaries it then runs.
+	cd backend && E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/...
+
+.PHONY: test-e2e-backend-docker
+test-e2e-backend-docker: ## E2e including the image tier (docker build + run; several minutes)
+	cd backend && E2E_GO=$(GO) E2E_DOCKER=1 $(GO) test -tags=e2e -count=1 -timeout 30m -v ./e2e/...
+
 .PHONY: lint-frontend
 lint-frontend: ## Lint + format-check frontend
 	cd frontend && corepack yarn lint && corepack yarn format:check

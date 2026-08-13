@@ -61,6 +61,15 @@ services:
       - tessera-network
     volumes:
       - uploads_data:/data/uploads
+    # Liveness for the API itself — postgres had a healthcheck and the service in
+    # front of it did not, so `docker compose ps` called a wedged backend "up".
+    # wget is busybox's, already in the alpine runtime stage.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   frontend:
     build:
