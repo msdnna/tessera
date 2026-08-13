@@ -1482,6 +1482,7 @@ async function restoreFromArchive(taskId) {
             ref="searchEl"
             v-model="filters.q"
             class="composer-search"
+            data-testid="board-search"
             placeholder="Поиск по названию…"
           />
           <button
@@ -1698,6 +1699,9 @@ async function restoreFromArchive(taskId) {
           <template #item="{ element: dcol }">
             <div
               class="col"
+              data-testid="column"
+              :data-column-key="dcol.key"
+              :data-column-name="dcol.name"
               :class="{ collapsed: colCollapsedNow(dcol) }"
               :style="{
                 '--col-accent': dcol.color || 'var(--t-primary)',
@@ -1779,7 +1783,11 @@ async function restoreFromArchive(taskId) {
               </draggable>
 
               <template v-if="!archivedMode">
-                <div v-if="addingInColumn === dcol.key" class="add-task-input">
+                <div
+                  v-if="addingInColumn === dcol.key"
+                  class="add-task-input"
+                  data-testid="add-task-input"
+                >
                   <n-input
                     :ref="(el) => (taskInput = el)"
                     v-model:value="newTaskTitle"
@@ -1792,7 +1800,14 @@ async function restoreFromArchive(taskId) {
                     @blur="submitAddTask(dcol)"
                   />
                 </div>
-                <n-button v-else text size="tiny" class="add-btn" @click="startAddTask(dcol)">
+                <n-button
+                  v-else
+                  text
+                  size="tiny"
+                  class="add-btn"
+                  data-testid="add-task-button"
+                  @click="startAddTask(dcol)"
+                >
                   ＋ Создать задачу
                 </n-button>
               </template>

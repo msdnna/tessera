@@ -24,6 +24,19 @@ export default [
     languageOptions: { globals: { ...globals.node } },
   },
   {
+    // Playwright e2e: these run in Node (fs, process, fetch), not the browser.
+    // `page.evaluate` callbacks execute in the page, so browser globals stay in
+    // scope too — hence both sets.
+    files: ['e2e/**/*.js', 'playwright.config.js'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: {
+      // Playwright derives fixture dependencies from the destructuring pattern
+      // and refuses a plain parameter, so a dependency-free fixture has to be
+      // declared as `async ({}, use)`.
+      'no-empty-pattern': 'off',
+    },
+  },
+  {
     // Vitest test files.
     files: ['tests/**/*.js'],
     languageOptions: {

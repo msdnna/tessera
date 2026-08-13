@@ -66,14 +66,24 @@ async function submit() {
         :validation-status="errors.name ? 'error' : undefined"
         :feedback="errors.name"
       >
-        <n-input v-model:value="name" placeholder="Ваше имя" @input="errors.name = ''" />
+        <n-input
+          v-model:value="name"
+          placeholder="Ваше имя"
+          data-testid="register-name"
+          @input="errors.name = ''"
+        />
       </n-form-item>
       <n-form-item
         label="Email"
         :validation-status="errors.email ? 'error' : undefined"
         :feedback="errors.email"
       >
-        <n-input v-model:value="email" placeholder="you@example.com" @input="errors.email = ''" />
+        <n-input
+          v-model:value="email"
+          placeholder="you@example.com"
+          data-testid="register-email"
+          @input="errors.email = ''"
+        />
       </n-form-item>
       <n-form-item
         label="Пароль"
@@ -85,11 +95,20 @@ async function submit() {
           type="password"
           show-password-on="click"
           placeholder="минимум 8 символов"
+          data-testid="register-password"
           @input="errors.password = ''"
           @keyup.enter="submit"
         />
       </n-form-item>
-      <n-button type="primary" block :loading="loading" @click="submit">Создать аккаунт</n-button>
+      <n-button
+        type="primary"
+        block
+        data-testid="register-submit"
+        :loading="loading"
+        @click="submit"
+      >
+        Создать аккаунт
+      </n-button>
     </n-form>
     <template v-if="gitlabEnabled">
       <div class="auth-or"><span>или</span></div>

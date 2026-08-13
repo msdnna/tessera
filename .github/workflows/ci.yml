@@ -219,6 +219,80 @@ jobs:
           path: _badges/web.json
           retention-days: 1
 
+  web-e2e:
+    name: Web e2e
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    # A separate job, not a step inside `web`: the browser suite must not delay
+    # the fast lint/unit feedback, and a flake should read as its own red line.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tessera
+          POSTGRES_PASSWORD: tessera
+          POSTGRES_DB: tessera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tessera -d tessera_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same toolchain dance as the backend job: setup-go ignores `toolchain`.
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      - name: Start backend on :8092 (tessera_test)
+        run: make e2e-backend-up GO=go
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install
+        working-directory: frontend
+        run: corepack yarn install --immutable
+
+      # Only chromium, and only in CI: the dev box already has the matching
+      # browser cached and its network can't reach the CDN (see the task).
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: corepack yarn playwright install --with-deps chromium
+
+      - name: Run e2e (Playwright against the built bundle)
+        run: make test-e2e-frontend
+
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
+
+      - name: Backend log
+        if: ${{ failure() }}
+        run: tail -200 /tmp/tessera-e2e-backend.log || true
+
   android:
     name: Android
     needs: changes

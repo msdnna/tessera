@@ -185,6 +185,8 @@ async function submitAddSub() {
   <div class="tw">
     <div
       class="card"
+      data-testid="task-card"
+      :data-task-id="task.id"
       :class="{
         done,
         nested,

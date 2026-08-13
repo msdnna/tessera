@@ -94,6 +94,35 @@ test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.h
 	cd frontend && corepack yarn test:coverage
 	@echo "Coverage report: frontend/coverage/index.html"
 
+# ── Web e2e (Playwright) ───────────────────────────────────
+# The browser suite needs a real backend. It is NOT started by Playwright:
+# the backend needs migrations applied to tessera_test, which is the DB's
+# business, not the test runner's. Bring it up once, then re-run the suite as
+# often as you like. Port 8092 — :8090 may hold a zombie with older code.
+E2E_PORT ?= 8092
+E2E_DB_URL ?= postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+
+.PHONY: e2e-backend-up
+e2e-backend-up: ## Start a throwaway backend on :8092 against tessera_test (for web e2e)
+	cd backend && DATABASE_URL="$(E2E_DB_URL)" $(GO) run ./cmd/migrate
+	cd backend && $(GO) build -o /tmp/tessera-e2e-bin .
+	@PORT=$(E2E_PORT) UPLOAD_DIR=/tmp/tessera-e2e-uploads JWT_SECRET=e2e \
+		DATABASE_URL="$(E2E_DB_URL)" \
+		nohup /tmp/tessera-e2e-bin > /tmp/tessera-e2e-backend.log 2>&1 & \
+		for i in $$(seq 1 40); do sleep 0.5; \
+			curl -sf http://localhost:$(E2E_PORT)/api/health > /dev/null && \
+			echo "e2e backend up on :$(E2E_PORT) (log: /tmp/tessera-e2e-backend.log)" && exit 0; \
+		done; echo "e2e backend did not come up; see /tmp/tessera-e2e-backend.log" >&2; exit 1
+
+.PHONY: e2e-backend-down
+e2e-backend-down: ## Stop the throwaway e2e backend
+	@fuser -k $(E2E_PORT)/tcp 2>/dev/null || true
+	@echo "e2e backend on :$(E2E_PORT) stopped"
+
+.PHONY: test-e2e-frontend
+test-e2e-frontend: ## Run the Playwright web e2e suite (needs `make e2e-backend-up`)
+	cd frontend && corepack yarn build && corepack yarn e2e
+
 .PHONY: build-mcp
 build-mcp: ## Build the Tessera MCP server binary (mcp/tessera-mcp)
 	cd mcp && $(GO) build -ldflags "-X main.version=$$(cat VERSION)" -o tessera-mcp .

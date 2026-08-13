@@ -902,7 +902,7 @@ async function onSubtaskChanged() {
 
 <template>
   <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <n-card class="tm-card" role="dialog" :bordered="false">
+    <n-card class="tm-card" role="dialog" data-testid="task-modal" :bordered="false">
       <n-spin :show="loading" :rotate="false">
         <template #icon><TesseraSpinner /></template>
         <div ref="formEl" class="form" :style="{ '--tm-cols': splitCols }">

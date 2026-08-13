@@ -2,3 +2,8 @@ dist/
 node_modules/
 .yarn/
 coverage/
+# Playwright artifacts and the per-run seed (generated, not source)
+test-results/
+playwright-report/
+blob-report/
+e2e/.auth/

@@ -170,7 +170,7 @@ async function deleteWorkspace() {
 </script>
 
 <template>
-  <div class="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
+  <div class="sidebar" data-testid="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
     <div class="brand">
       <!-- Expanded: wordmark sized so its text stays no taller than the tool icons
            to its right. Collapsed rail: the mark, a touch larger. -->

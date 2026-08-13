@@ -136,6 +136,11 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
   Для throwaway-e2e бери порт **8092+** (на :8090 может висеть зомби со старым кодом).
 - **E2e-скрипты:** `bash <<'SCRIPT'` (дефолтный zsh ломается на uuid в арифметике);
   JSON парсить `python3`, не jq-бинарём.
+- **Web e2e (Playwright, #2710):** `make e2e-backend-up` (бэкенд :8092 против `tessera_test`)
+  → `make test-e2e-frontend` (сборка + прогон против `vite preview` :4174) →
+  `make e2e-backend-down`. Спеки в `frontend/e2e/`, **не** в `frontend/tests/` (там vitest).
+  `@playwright/test` пинуется **ровно 1.62.0** под уже скачанный chromium в
+  `~/.cache/ms-playwright`; `playwright install` локально не запускать — CDN недоступен.
 
 ## Дизайн-язык (важно — легко нарушить)
 
