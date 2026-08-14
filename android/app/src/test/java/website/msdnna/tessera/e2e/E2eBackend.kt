@@ -21,6 +21,7 @@ import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
+import website.msdnna.tessera.data.model.UpdateTaskRequest
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
 
@@ -151,6 +152,32 @@ object E2eBackend {
             fixture.account.accessToken,
         )
 
+    /** Adds a column from the outside — the realtime counterpart of the app's own
+     *  end-of-board tile. */
+    fun createColumn(fixture: Fixture, name: String): BoardColumn =
+        post("boards/${fixture.board.id}/columns", NameRequest(name), fixture.account.accessToken)
+
+    /** Renames a task from the outside. The endpoint is a full replace (title is
+     *  mandatory), so the rest of the task is carried over from its current state
+     *  rather than silently reset to defaults. */
+    fun renameTask(fixture: Fixture, taskId: String, title: String): Task {
+        val current = task(fixture, taskId)
+        return patch(
+            "tasks/$taskId",
+            UpdateTaskRequest(
+                title = title,
+                description = current.description,
+                priority = current.priority,
+                dueDate = current.dueDate,
+                startDate = current.startDate,
+                estimate = current.estimate,
+                completed = current.isCompleted,
+                recurrence = current.recurrence,
+            ),
+            fixture.account.accessToken,
+        )
+    }
+
     // ── reading state back ─────────────────────────────────────────────────
     //
     // A spec that drives the UI has to confirm the write reached Postgres, not
@@ -182,6 +209,15 @@ object E2eBackend {
             .url(apiUrl + path)
             .post(gson.toJson(body).toRequestBody(json))
             .apply { if (!token.isNullOrBlank()) header("Authorization", "Bearer $token") }
+            .build()
+        return execute(req, path)
+    }
+
+    private inline fun <reified T> patch(path: String, body: Any, token: String): T {
+        val req = Request.Builder()
+            .url(apiUrl + path)
+            .patch(gson.toJson(body).toRequestBody(json))
+            .header("Authorization", "Bearer $token")
             .build()
         return execute(req, path)
     }
