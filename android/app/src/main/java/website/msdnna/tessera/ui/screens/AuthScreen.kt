@@ -62,6 +62,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -77,6 +78,7 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.repository.ProfileRepository
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.MtLogo
 import website.msdnna.tessera.ui.components.TCard
@@ -176,6 +178,7 @@ fun AuthScreen(
                 IonIconButton(
                     Ion.SETTINGS,
                     onClick = { showServer = !showServer },
+                    modifier = Modifier.testTag(TestTags.AUTH_SERVER_TOGGLE),
                     boxSize = 40.dp,
                     tint = Color.White,
                 )
@@ -196,6 +199,7 @@ fun AuthScreen(
                                 placeholder = "https://tessera.msdnna.website",
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                fieldTag = TestTags.AUTH_SERVER_FIELD,
                             )
                             Text(
                                 "Применяется сразу. Пусто — сервер по умолчанию.",
@@ -234,6 +238,7 @@ fun AuthScreen(
                 onValueChange = { email = it },
                 label = "Email",
                 placeholder = "you@example.com",
+                tag = TestTags.AUTH_EMAIL,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             )
             if (register) {
@@ -243,6 +248,7 @@ fun AuthScreen(
                     onValueChange = { name = it },
                     label = "Имя",
                     placeholder = "Как вас зовут",
+                    tag = TestTags.AUTH_NAME,
                 )
             }
             Spacer(Modifier.height(14.dp))
@@ -251,6 +257,7 @@ fun AuthScreen(
                 onValueChange = { password = it },
                 label = "Пароль",
                 placeholder = "••••••••",
+                tag = TestTags.AUTH_PASSWORD,
                 isPassword = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
@@ -262,7 +269,7 @@ fun AuthScreen(
                     color = Color(0xFFFFD9D2),
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag(TestTags.AUTH_ERROR),
                 )
             }
 
@@ -302,6 +309,7 @@ fun AuthScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .testTag(TestTags.AUTH_TOGGLE_MODE)
                     .clickableNoRipple {
                         register = !register
                         vm.clearError()
@@ -391,6 +399,7 @@ private fun AuthField(
     onValueChange: (String) -> Unit,
     label: String,
     placeholder: String,
+    tag: String,
     isPassword: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
 ) {
@@ -422,6 +431,7 @@ private fun AuthField(
                 keyboardOptions = keyboardOptions,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .testTag(tag)
                     .heightIn(min = 48.dp)
                     .background(Color.White.copy(alpha = 0.14f), RoundedCornerShape(RadiusMd))
                     .border(1.dp, border, RoundedCornerShape(RadiusMd))
@@ -477,6 +487,7 @@ private fun AuthSubmit(text: String, loading: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
+            .testTag(TestTags.AUTH_SUBMIT)
             .background(Color.White, RoundedCornerShape(RadiusMd))
             .clickableNoRipple(enabled = !loading, onClick = onClick)
             .heightIn(min = 48.dp)

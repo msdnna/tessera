@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +53,7 @@ import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.realtime.DeviceNotifier
 import website.msdnna.tessera.data.repository.BoardRepository
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.Sidebar
 import website.msdnna.tessera.ui.components.TDropdown
@@ -329,7 +331,7 @@ fun MainScreen(
             }
         },
     ) {
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().testTag(TestTags.MAIN_SHELL)) {
             Column(
                 Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),
             ) {

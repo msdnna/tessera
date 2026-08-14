@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -117,6 +118,9 @@ fun TTextField(
     singleLine: Boolean = true,
     isPassword: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    /** e2e anchor placed on the input itself — `modifier` lands on the labelled
+     *  column, which carries no text-input semantics to drive from a spec. */
+    fieldTag: String? = null,
 ) {
     val c = Tessera.colors
     val interaction = remember { MutableInteractionSource() }
@@ -146,6 +150,7 @@ fun TTextField(
                 keyboardOptions = keyboardOptions,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(if (fieldTag != null) Modifier.testTag(fieldTag) else Modifier)
                     .clip(RoundedCornerShape(RadiusMd))
                     .background(c.surface)
                     .border(1.dp, borderColor, RoundedCornerShape(RadiusMd))
