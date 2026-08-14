@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.screens.BoardScreen
 import website.msdnna.tessera.ui.theme.Tessera
@@ -35,4 +37,19 @@ fun ComposeContentTestRule.setBoardContent(fixture: E2eBackend.Fixture) {
         }
     }
     awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+}
+
+/**
+ * Mounts the board and opens [taskId] the way a user does — by tapping its card.
+ *
+ * Waiting on the title field rather than on the modal root is deliberate: the
+ * modal composes immediately but shows a loader until
+ * [website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel] has fetched the task,
+ * so a spec that only waited for the root would start typing into a screen that is
+ * about to be replaced by the loaded one.
+ */
+fun ComposeContentTestRule.openTaskModal(fixture: E2eBackend.Fixture, taskId: String) {
+    setBoardContent(fixture)
+    onNodeWithTag(TestTags.taskCard(taskId)).performClick()
+    awaitTag(TestTags.TASK_TITLE)
 }

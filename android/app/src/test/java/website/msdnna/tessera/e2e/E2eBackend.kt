@@ -11,6 +11,7 @@ import org.junit.Assume
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
@@ -19,6 +20,7 @@ import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.Task
+import website.msdnna.tessera.data.model.TaskDetail
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
 
@@ -164,6 +166,15 @@ object E2eBackend {
     fun columns(fixture: Fixture): List<BoardColumn> =
         getList("boards/${fixture.board.id}/columns", fixture.account.accessToken)
 
+    /** One task's full detail — the modal's own read, so a spec checks the same
+     *  fields the screen edits (description, priority, column). */
+    fun task(fixture: Fixture, taskId: String): TaskDetail =
+        get("tasks/$taskId", fixture.account.accessToken)
+
+    /** Comments on a task, as the server has them. */
+    fun comments(fixture: Fixture, taskId: String): List<Comment> =
+        getList("tasks/$taskId/comments", fixture.account.accessToken)
+
     // ── plumbing ───────────────────────────────────────────────────────────
 
     private inline fun <reified T> post(path: String, body: Any, token: String? = null): T {
@@ -171,6 +182,14 @@ object E2eBackend {
             .url(apiUrl + path)
             .post(gson.toJson(body).toRequestBody(json))
             .apply { if (!token.isNullOrBlank()) header("Authorization", "Bearer $token") }
+            .build()
+        return execute(req, path)
+    }
+
+    private inline fun <reified T> get(path: String, token: String): T {
+        val req = Request.Builder()
+            .url(apiUrl + path)
+            .header("Authorization", "Bearer $token")
             .build()
         return execute(req, path)
     }

@@ -57,4 +57,35 @@ object TestTags {
 
     /** The inline field the tile above reveals. */
     const val BOARD_COLUMN_INPUT = "board-column-input"
+
+    // ── task modal ─────────────────────────────────────────────────────────
+
+    /** Root of the open task modal — present exactly while a task is open. */
+    const val TASK_MODAL = "task-modal"
+
+    const val TASK_TITLE = "task-title"
+
+    /** The description editor's text area (absent while it shows the preview tab). */
+    const val TASK_DESCRIPTION = "task-description"
+
+    /** Footer button that commits title + description. */
+    const val TASK_SAVE = "task-save"
+
+    /** The column chip in the status row, and one row per column in its picker.
+     *  Only the status row is anchored: the same chip renders for every subtask
+     *  ([website.msdnna.tessera.ui.screens] `ColumnChipPicker(mini = true)`), and
+     *  tagging it there would put several nodes under one tag on any task that
+     *  has subtasks. */
+    const val TASK_STATUS = "task-status"
+
+    fun taskStatusOption(columnId: String) = "task-status-option:$columnId"
+
+    /** The priority chip and its picker rows, keyed by level (0 = none). */
+    const val TASK_PRIORITY = "task-priority"
+
+    fun taskPriorityOption(level: Int) = "task-priority-option:$level"
+
+    /** Composer at the foot of the Комментарии tab, and its send button. */
+    const val TASK_COMMENT_INPUT = "task-comment-input"
+    const val TASK_COMMENT_SUBMIT = "task-comment-submit"
 }
