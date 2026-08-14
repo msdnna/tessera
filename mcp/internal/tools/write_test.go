@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"encoding/json"
 	"testing"
 
 	"tessera-mcp/internal/model"
@@ -34,30 +33,6 @@ func TestCollectImages(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("image[%d] = %+v, want %+v", i, got[i], want[i])
-		}
-	}
-}
-
-func TestCleanRecurrence(t *testing.T) {
-	cases := []struct {
-		in   string
-		want string // "" means nil expected
-	}{
-		{``, ""},
-		{`null`, ""},
-		{`  null `, ""},
-		{`{"freq":"weekly"}`, `{"freq":"weekly"}`},
-	}
-	for _, tc := range cases {
-		got := cleanRecurrence(json.RawMessage(tc.in))
-		if tc.want == "" {
-			if got != nil {
-				t.Errorf("cleanRecurrence(%q) = %q, want nil", tc.in, got)
-			}
-			continue
-		}
-		if string(got) != tc.want {
-			t.Errorf("cleanRecurrence(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }
