@@ -240,6 +240,20 @@ test-android: ## Run Android unit tests
 test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e-backend-up`)
 	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests 'website.msdnna.tessera.e2e.*'
 
+# The instrumented smoke tier: needs a connected device or a running emulator,
+# and reaches the throwaway backend through the emulator's 10.0.2.2 host alias
+# (so `make e2e-backend-up` still runs on the host, exactly as for the JVM tier).
+.PHONY: test-android-instrumented
+test-android-instrumented: ## Android smoke tier on a device/emulator (needs `make e2e-backend-up`)
+	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest
+
+# Compiles the instrumented tier without running it — the only check available on
+# a host with no emulator, and worth having: an androidTest source set that never
+# builds is not caught by lint or by the unit run.
+.PHONY: build-android-instrumented
+build-android-instrumented: ## Compile the instrumented smoke tier (no device needed)
+	@$(ANDROID_GRADLE) :app:assembleDebugAndroidTest
+
 .PHONY: test-android-cover
 test-android-cover: ## Android unit tests + JaCoCo coverage report
 	@$(ANDROID_GRADLE) :app:jacocoTestReport

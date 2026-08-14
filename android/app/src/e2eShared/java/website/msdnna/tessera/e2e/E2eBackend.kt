@@ -1,5 +1,6 @@
 package website.msdnna.tessera.e2e
 
+import android.os.Build
 import com.google.gson.Gson
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -39,11 +40,29 @@ import website.msdnna.tessera.data.model.Workspace
  * collide and `tessera_test` needs no cleanup between them.
  */
 object E2eBackend {
-    /** Overridable for CI (`-Dtessera.e2e.url=…`); defaults to the local throwaway server. */
+    /** Overridable for CI (`-Dtessera.e2e.url=…`); defaults per tier, see [defaultUrl]. */
     val serverUrl: String =
         System.getProperty("tessera.e2e.url")
             ?: System.getenv("TESSERA_E2E_URL")
-            ?: "http://localhost:8092"
+            ?: defaultUrl()
+
+    /**
+     * Where the throwaway backend lives, as seen from the tier that is running.
+     *
+     * The JVM tier is a host process, so the server is plain `localhost`. The
+     * instrumented tier runs *inside* the device, where `localhost` is the device
+     * itself and the host is reachable through the emulator's `10.0.2.2` alias
+     * (already the project's dev-backend address, `android/ARCHITECTURE.md:52`).
+     * Getting this wrong is not loud — an unreachable address makes
+     * [requireBackend] skip the suite, which reads as green — so the JVM tier
+     * asserts its own resolution in `HarnessE2eTest`.
+     */
+    private fun defaultUrl(): String =
+        if (Build.FINGERPRINT == ROBOLECTRIC_FINGERPRINT) "http://localhost:8092" else "http://10.0.2.2:8092"
+
+    /** Robolectric's own value for [Build.FINGERPRINT] — how the harness tells the
+     *  host JVM apart from a real device without a compile-time flag. */
+    private const val ROBOLECTRIC_FINGERPRINT = "robolectric"
 
     val apiUrl: String = serverUrl.trimEnd('/') + "/api/"
 

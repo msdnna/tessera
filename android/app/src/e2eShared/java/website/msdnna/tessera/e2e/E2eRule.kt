@@ -16,12 +16,12 @@ import website.msdnna.tessera.data.preferences.dataStore
  * pointed at :8092, DataStore wiped, and (by default) a freshly seeded
  * workspace with the account already logged in.
  *
- * The reset is not optional bookkeeping. [AppContainer], [RetrofitClient] and
- * the `preferencesDataStore` delegate are all singletons living in Robolectric's
- * sandbox classloader, which is shared across test classes — without an explicit
- * wipe the second test inherits the first one's session and "logged in" would
- * pass in a spec that never logged in. Hence the reset runs both before and
- * after each test.
+ * The reset is not optional bookkeeping. [AppContainer], [RetrofitClient] and the
+ * `preferencesDataStore` delegate are all singletons, and both tiers share their
+ * host across test classes — Robolectric's sandbox classloader on the JVM, the app
+ * process on a device. Without an explicit wipe the second test inherits the first
+ * one's session and "logged in" would pass in a spec that never logged in. Hence
+ * the reset runs both before and after each test.
  */
 class E2eRule(
     private val seed: Boolean = true,

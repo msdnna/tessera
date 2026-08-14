@@ -141,6 +141,17 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
   `make e2e-backend-down`. Спеки в `frontend/e2e/`, **не** в `frontend/tests/` (там vitest).
   `@playwright/test` пинуется **ровно 1.62.0** под уже скачанный chromium в
   `~/.cache/ms-playwright`; `playwright install` локально не запускать — CDN недоступен.
+- **Android e2e (#2711) — два яруса, харнесс общий** (`android/app/src/e2eShared`, он же
+  в `src/test` и в `src/androidTest`). Ярус A: Compose UI Test под **Robolectric** против
+  того же бэкенда на :8092 — `make e2e-backend-up` → `make test-e2e-android`. Спеки в
+  `app/src/test/java/.../e2e/`, из `make test-android` отфильтрованы (`-Pe2e`). Ярус B:
+  инструментальные smoke-тесты (`app/src/androidTest/.../smoke/`) — `make test-android-instrumented`,
+  нужен девайс/эмулятор; без него компиляцию проверяет `make build-android-instrumented`.
+  Адрес бэкенда `E2eBackend` выбирает сам: Robolectric → `localhost`, устройство → `10.0.2.2`.
+  Якоря — `Modifier.testTag` из реестра `ui/TestTags.kt`, **не** тексты (локализованы и
+  переписываются). Новый Kotlin-сорс-сет надо руками добавлять в `ktlintSources`/`detekt.source`
+  **и** регистрировать через `sourceSets { ….kotlin.srcDir(…) }` — `java.srcDirs` Kotlin
+  больше не компилирует, каталог молча выпадает из сборки.
 
 ## Дизайн-язык (важно — легко нарушить)
 
