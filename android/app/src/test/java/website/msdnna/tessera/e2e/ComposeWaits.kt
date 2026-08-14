@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import website.msdnna.tessera.ui.TestTags
 
 /** How long a spec waits on a screen that is round-tripping to the backend. */
 private const val AWAIT_TIMEOUT_MS = 20_000L
@@ -35,6 +36,28 @@ fun ComposeContentTestRule.awaitTag(tag: String, timeoutMillis: Long = AWAIT_TIM
 @OptIn(ExperimentalTestApi::class)
 fun ComposeContentTestRule.awaitTextIn(tag: String, text: String, timeoutMillis: Long = AWAIT_TIMEOUT_MS) {
     waitUntilExactlyOneExists(hasAnyAncestor(hasTestTag(tag)) and hasText(text), timeoutMillis)
+}
+
+/** Waits for [tag] to leave the tree — the counterpart of [awaitTag] for a node
+ *  whose disappearance is the observable effect (an overlay, a loader). */
+@OptIn(ExperimentalTestApi::class)
+fun ComposeContentTestRule.awaitNoTag(tag: String, timeoutMillis: Long = AWAIT_TIMEOUT_MS) {
+    waitUntilDoesNotExist(hasTestTag(tag), timeoutMillis)
+}
+
+/**
+ * Waits for the card [taskId] to be rendered *inside* the lane [laneId].
+ *
+ * Grouping specs live or die on this distinction: a plain `awaitTag(taskCard(id))`
+ * is satisfied by the card sitting in any lane at all, so it would pass on a board
+ * where the grouping switched on but dropped every card into the catch-all.
+ */
+@OptIn(ExperimentalTestApi::class)
+fun ComposeContentTestRule.awaitCardInLane(laneId: String, taskId: String, timeoutMillis: Long = AWAIT_TIMEOUT_MS) {
+    waitUntilExactlyOneExists(
+        hasAnyAncestor(hasTestTag(TestTags.boardColumn(laneId))) and hasTestTag(TestTags.taskCard(taskId)),
+        timeoutMillis,
+    )
 }
 
 /**

@@ -8,17 +8,20 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assume
+import website.msdnna.tessera.data.model.AddTagRequest
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
+import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.RegisterRequest
+import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
 import website.msdnna.tessera.data.model.UpdateTaskRequest
@@ -156,6 +159,30 @@ object E2eBackend {
      *  end-of-board tile. */
     fun createColumn(fixture: Fixture, name: String): BoardColumn =
         post("boards/${fixture.board.id}/columns", NameRequest(name), fixture.account.accessToken)
+
+    /** Creates a project tag. Tags are what the board's killer feature groups by,
+     *  and a namespaced name («app::android») is what turns into a prefix lane. */
+    fun createTag(fixture: Fixture, name: String, color: String = "#7c5cff"): Tag =
+        post(
+            "projects/${fixture.project.id}/tags",
+            CreateTagRequest(name = name, color = color),
+            fixture.account.accessToken,
+        )
+
+    /** Puts a tag on a task. The endpoint answers 204, so this reads no body —
+     *  going through [post] would fail on parsing the empty response. */
+    fun addTaskTag(fixture: Fixture, taskId: String, tagId: String) {
+        val req = Request.Builder()
+            .url(apiUrl + "tasks/$taskId/tags")
+            .post(gson.toJson(AddTagRequest(tagId)).toRequestBody(json))
+            .header("Authorization", "Bearer ${fixture.account.accessToken}")
+            .build()
+        http.newCall(req).execute().use { resp ->
+            check(resp.isSuccessful) {
+                "e2e seed tag $tagId on task $taskId failed: HTTP ${resp.code} ${resp.body.string()}"
+            }
+        }
+    }
 
     /** Renames a task from the outside. The endpoint is a full replace (title is
      *  mandatory), so the rest of the task is carried over from its current state

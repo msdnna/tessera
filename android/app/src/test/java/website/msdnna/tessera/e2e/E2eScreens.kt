@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import website.msdnna.tessera.ui.TestTags
@@ -52,4 +53,27 @@ fun ComposeContentTestRule.openTaskModal(fixture: E2eBackend.Fixture, taskId: St
     setBoardContent(fixture)
     onNodeWithTag(TestTags.taskCard(taskId)).performClick()
     awaitTag(TestTags.TASK_TITLE)
+}
+
+/**
+ * Switches the board's grouping through the composer's chip menu — the way a
+ * user does it, rather than by calling `BoardViewModel.setGrouping` directly.
+ *
+ * The bar starts collapsed, and while it is, a transparent overlay swallows every
+ * tap and only expands it (`BoardComposerBar`) — so the first tap on the chip
+ * would silently expand the bar instead of opening the menu. Expanding is
+ * therefore an explicit first step, conditional because the bar stays expanded
+ * after a pick and a spec may switch grouping twice.
+ *
+ * The menu row lives in a [androidx.compose.ui.window.Popup] composed only while
+ * the menu is open, hence the wait between the two taps.
+ */
+fun ComposeContentTestRule.selectGrouping(optionTag: String) {
+    if (onAllNodesWithTag(TestTags.BOARD_COMPOSER_EXPAND).fetchSemanticsNodes().isNotEmpty()) {
+        onNodeWithTag(TestTags.BOARD_COMPOSER_EXPAND).performClick()
+        awaitNoTag(TestTags.BOARD_COMPOSER_EXPAND)
+    }
+    onNodeWithTag(TestTags.BOARD_GROUP).performClick()
+    awaitTag(optionTag)
+    onNodeWithTag(optionTag).performClick()
 }

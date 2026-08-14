@@ -55,6 +55,28 @@ object TestTags {
     /** Tile at the right end of the status lanes that starts a new column. */
     const val BOARD_ADD_COLUMN = "board-add-column"
 
+    // ── grouping (the killer feature: lanes = tags) ─────────────────────────
+
+    /** The transparent overlay over a *collapsed* composer bar, which turns a tap
+     *  anywhere on it into «expand me» ([website.msdnna.tessera.ui.screens]
+     *  `BoardComposerBar`). It exists exactly while the bar is collapsed, so a spec
+     *  can both tell the state apart and take the same route a user takes: the chips
+     *  below only answer taps once it is gone. */
+    const val BOARD_COMPOSER_EXPAND = "board-composer-expand"
+
+    /** The always-present grouping chip in the composer bar; opens the mode menu. */
+    const val BOARD_GROUP = "board-group"
+
+    /** Rows of that menu. Only the two always-present modes get a fixed tag —
+     *  «По этапам» / «По исполнителю» appear conditionally and belong to specs
+     *  that seed the condition. */
+    const val BOARD_GROUP_STATUS = "board-group-status"
+    const val BOARD_GROUP_TAGS = "board-group-tags"
+
+    /** One row per tag namespace present on the board, keyed by the canonical
+     *  prefix («S: ») rather than its friendly label, which the project renames. */
+    fun boardGroupTagPrefix(prefix: String) = "board-group-tag-prefix:$prefix"
+
     /** The inline field the tile above reveals. */
     const val BOARD_COLUMN_INPUT = "board-column-input"
 
