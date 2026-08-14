@@ -40,6 +40,23 @@ import website.msdnna.tessera.data.model.Workspace
  * collide and `tessera_test` needs no cleanup between them.
  */
 object E2eBackend {
+    /**
+     * Whether the suite is running on a real device/emulator rather than on the
+     * host JVM under Robolectric.
+     *
+     * The two tiers share this harness, and a few things genuinely differ between
+     * them — where the backend lives ([defaultUrl]) and whether waiting in
+     * wall-clock time means anything (`ComposeDrag.holdPastLongPress`).
+     * Robolectric's own [Build.FINGERPRINT] tells them apart without a
+     * compile-time flag or a second copy of the harness.
+     *
+     * **Declared first on purpose:** an object initialises its properties in
+     * source order, so a [serverUrl] resolved above this line would read a
+     * still-false `onDevice` and send the instrumented tier at `localhost` —
+     * where nothing answers, which skips the suite and reads as green.
+     */
+    val onDevice: Boolean = Build.FINGERPRINT != ROBOLECTRIC_FINGERPRINT
+
     /** Overridable for CI (`-Dtessera.e2e.url=…`); defaults per tier, see [defaultUrl]. */
     val serverUrl: String =
         System.getProperty("tessera.e2e.url")
@@ -58,10 +75,9 @@ object E2eBackend {
      * asserts its own resolution in `HarnessE2eTest`.
      */
     private fun defaultUrl(): String =
-        if (Build.FINGERPRINT == ROBOLECTRIC_FINGERPRINT) "http://localhost:8092" else "http://10.0.2.2:8092"
+        if (onDevice) "http://10.0.2.2:8092" else "http://localhost:8092"
 
-    /** Robolectric's own value for [Build.FINGERPRINT] — how the harness tells the
-     *  host JVM apart from a real device without a compile-time flag. */
+    /** Robolectric's own value for [Build.FINGERPRINT]. */
     private const val ROBOLECTRIC_FINGERPRINT = "robolectric"
 
     val apiUrl: String = serverUrl.trimEnd('/') + "/api/"

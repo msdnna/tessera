@@ -1,7 +1,6 @@
 package website.msdnna.tessera.smoke
 
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
@@ -10,11 +9,9 @@ import org.junit.rules.RuleChain
 import website.msdnna.tessera.e2e.E2eBackend
 import website.msdnna.tessera.e2e.E2eRule
 import website.msdnna.tessera.e2e.awaitServer
-import website.msdnna.tessera.e2e.collapseShift
+import website.msdnna.tessera.e2e.columnEndTarget
 import website.msdnna.tessera.e2e.dragCardTo
 import website.msdnna.tessera.e2e.setBoardContent
-import website.msdnna.tessera.e2e.windowRect
-import website.msdnna.tessera.ui.TestTags
 
 /**
  * A card dragged with a real finger on a real touch screen.
@@ -39,15 +36,8 @@ class DragDropSmokeTest {
         compose.setBoardContent(e2e.fixture)
         assertThat(serverOrder()).containsExactly("smoke-drag-a", "smoke-drag-b").inOrder()
 
-        // Aimed at the column's footer tile: past every card, but still inside the
-        // column body a drop resolves against. The correction is for the dragged
-        // card collapsing to zero height while in flight, which pulls everything
-        // below it up — without it the finger lands under the column entirely.
         val ids = serverIds()
-        val footer = compose.windowRect(TestTags.columnAddTask(e2e.fixture.firstColumn.id))
-        val column = compose.windowRect(TestTags.boardColumn(e2e.fixture.firstColumn.id))
-        val target = Offset(column.center.x, footer.center.y - compose.collapseShift(ids[0]))
-        compose.dragCardTo(ids[0], target)
+        compose.dragCardTo(ids[0], compose.columnEndTarget(e2e.fixture.firstColumn.id))
 
         // The board never reorders locally — it asks the backend and redraws from
         // the answer (`DND_ARCHITECTURE.md` §1), so the server is the only place

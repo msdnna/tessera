@@ -45,16 +45,12 @@ class DragDropE2eTest {
         compose.setBoardContent(e2e.fixture)
         assertThat(serverOrder()).containsExactly("drag-a", "drag-b", "drag-c").inOrder()
 
-        // Aimed at the column's own footer tile — past every card, but still inside
-        // the column body that a drop is resolved against. Anywhere higher is a
-        // false target: the 8dp gaps between cards are too thin to hit reliably,
-        // and a point that misses one lands on a card body, which the board reads
-        // as nesting rather than as reordering.
+        // Released past the column's footer, in the empty column body: anywhere
+        // higher is a false target — the 8dp gaps between cards are too thin to
+        // hit reliably, and a point that misses one lands on a card body, which
+        // the board reads as nesting rather than as reordering.
         val ids = serverIds()
-        val lastCard = compose.windowRect(TestTags.taskCard(ids[2]))
-        val footer = compose.windowRect(TestTags.columnAddTask(e2e.fixture.firstColumn.id))
-        val target = Offset(lastCard.center.x, footer.center.y - compose.collapseShift(ids[0]))
-        compose.dragCardTo(ids[0], target)
+        compose.dragCardTo(ids[0], compose.columnEndTarget(e2e.fixture.firstColumn.id))
 
         compose.awaitServer("drag-a to be reordered to the end") {
             serverOrder().takeIf { it.last() == "drag-a" }
