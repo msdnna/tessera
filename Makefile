@@ -229,6 +229,10 @@ format-android: ## Auto-format Kotlin sources via ktlint
 test-android: ## Run Android unit tests
 	@$(ANDROID_GRADLE) :app:testDebugUnitTest
 
+.PHONY: test-e2e-android
+test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e-backend-up`)
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests 'website.msdnna.tessera.e2e.*'
+
 .PHONY: test-android-cover
 test-android-cover: ## Android unit tests + JaCoCo coverage report
 	@$(ANDROID_GRADLE) :app:jacocoTestReport

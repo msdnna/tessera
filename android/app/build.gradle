@@ -44,8 +44,14 @@ android {
     testOptions {
         unitTests {
             includeAndroidResources = true
-            all {
+            all { t ->
                 jvmArgs '--add-opens=java.base/java.lang=ALL-UNNAMED'
+                // The e2e tier needs a live backend on :8092, so it stays out of
+                // the plain unit run (`make test-android`) and is opted into with
+                // -Pe2e (`make test-e2e-android`).
+                if (!project.hasProperty('e2e')) {
+                    t.filter { excludeTestsMatching 'website.msdnna.tessera.e2e.*' }
+                }
                 jacoco {
                     includeNoLocationClasses = true
                     excludes = ['jdk.internal.*']
