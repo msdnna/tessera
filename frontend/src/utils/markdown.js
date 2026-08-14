@@ -104,9 +104,11 @@ function escapeRe(s) {
 // highlighted via a generic fallback token. Operates on rendered HTML and only
 // at text boundaries to avoid touching tags/attributes.
 function highlightMentions(html, members) {
-  const alts = (members || [])
-    .map((m) => m.label)
-    .filter(Boolean)
+  // Both `label` (what the composer inserts today — a GitLab login) and
+  // `display` (the member's name): comments written before mentions switched to
+  // logins still hold "@Евгений Полянский", and matching only the label would
+  // leave them highlighting just the first word via the generic token below.
+  const alts = [...new Set((members || []).flatMap((m) => [m.label, m.display]).filter(Boolean))]
     .sort((a, b) => b.length - a.length)
     .map(escapeRe)
   // Generic handle: a letter/digit then word chars, dots or hyphens.

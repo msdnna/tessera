@@ -47,7 +47,17 @@ SELECT role FROM memberships WHERE workspace_id = $1 AND user_id = $2;
 SELECT * FROM memberships WHERE workspace_id = $1 AND user_id = $2;
 
 -- name: ListMembers :many
-SELECT m.user_id, m.role, u.email, u.name
+-- gl_username is the member's GitLab login, so @-mentions can insert `@login`
+-- instead of a display name (a name with spaces resolves to nothing once the
+-- comment is pushed to GitLab). Scalar subquery rather than a LEFT JOIN:
+-- oauth_identities is unique by (provider, provider_user_id), not by user_id, so
+-- a user linked to two GitLab instances would otherwise be listed twice.
+SELECT m.user_id, m.role, u.email, u.name,
+  COALESCE((
+    SELECT oi.provider_username FROM oauth_identities oi
+    WHERE oi.user_id = u.id AND oi.provider = 'gitlab'
+    ORDER BY oi.created_at, oi.id LIMIT 1
+  ), '')::text AS gl_username
 FROM memberships m
 JOIN users u ON u.id = m.user_id
 WHERE m.workspace_id = $1

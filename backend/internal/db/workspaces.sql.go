@@ -146,7 +146,12 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 }
 
 const listMembers = `-- name: ListMembers :many
-SELECT m.user_id, m.role, u.email, u.name
+SELECT m.user_id, m.role, u.email, u.name,
+  COALESCE((
+    SELECT oi.provider_username FROM oauth_identities oi
+    WHERE oi.user_id = u.id AND oi.provider = 'gitlab'
+    ORDER BY oi.created_at, oi.id LIMIT 1
+  ), '')::text AS gl_username
 FROM memberships m
 JOIN users u ON u.id = m.user_id
 WHERE m.workspace_id = $1
@@ -154,12 +159,18 @@ ORDER BY u.name
 `
 
 type ListMembersRow struct {
-	UserID uuid.UUID `json:"user_id"`
-	Role   string    `json:"role"`
-	Email  string    `json:"email"`
-	Name   string    `json:"name"`
+	UserID     uuid.UUID `json:"user_id"`
+	Role       string    `json:"role"`
+	Email      string    `json:"email"`
+	Name       string    `json:"name"`
+	GlUsername string    `json:"gl_username"`
 }
 
+// gl_username is the member's GitLab login, so @-mentions can insert `@login`
+// instead of a display name (a name with spaces resolves to nothing once the
+// comment is pushed to GitLab). Scalar subquery rather than a LEFT JOIN:
+// oauth_identities is unique by (provider, provider_user_id), not by user_id, so
+// a user linked to two GitLab instances would otherwise be listed twice.
 func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]ListMembersRow, error) {
 	rows, err := q.db.Query(ctx, listMembers, workspaceID)
 	if err != nil {
@@ -174,6 +185,7 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 			&i.Role,
 			&i.Email,
 			&i.Name,
+			&i.GlUsername,
 		); err != nil {
 			return nil, err
 		}

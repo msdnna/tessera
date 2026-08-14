@@ -58,6 +58,25 @@ describe('renderRich', () => {
     expect(html).toContain('<span class="mention">@v.sokolov</span>')
   })
 
+  it('highlights a mention written as the login', () => {
+    const html = renderRich('hi @e.polyansky', [{ label: 'e.polyansky', display: 'Ann Lee' }])
+    expect(html).toContain('<span class="mention">@e.polyansky</span>')
+  })
+
+  it('still highlights the full name in comments written before the login switch', () => {
+    // label is the login now, but the stored comment holds the old display name.
+    const html = renderRich('hi @Ann Lee', [{ label: 'e.polyansky', display: 'Ann Lee' }])
+    expect(html).toContain('<span class="mention">@Ann Lee</span>')
+  })
+
+  it('prefers the longer name when one is a prefix of another', () => {
+    const html = renderRich('hi @Ann Lee Smith', [
+      { label: 'a.lee', display: 'Ann Lee' },
+      { label: 'a.lee.smith', display: 'Ann Lee Smith' },
+    ])
+    expect(html).toContain('<span class="mention">@Ann Lee Smith</span>')
+  })
+
   it('returns "" for empty input', () => {
     expect(renderRich('')).toBe('')
     expect(renderRich(null)).toBe('')
