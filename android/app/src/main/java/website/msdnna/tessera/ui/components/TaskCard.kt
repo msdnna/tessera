@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -60,6 +61,7 @@ import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.PriorityLabels
@@ -104,6 +106,13 @@ fun TaskCard(
     nestSlot: Pair<String?, String?>? = null,
     conflictTaskIds: Set<String> = emptySet(),
     onOpenConflict: ((Task) -> Unit)? = null,
+    /** Marks this as the card the user can actually touch, so it carries an e2e
+     *  anchor ([TestTags.taskCard]) — and, by staying `false` by default, keeps
+     *  the drag ghosts and preview clones (which render the *same* task) out of
+     *  the tag namespace. Two nodes under one tag would break every board spec
+     *  the moment a drag started, so the opt-in is the point. Propagates to this
+     *  card's subtasks, which are equally real. */
+    anchored: Boolean = false,
 ) {
     val c = Tessera.colors
     // Keep ALL subtasks composed during a drag (removing the dragged one would
@@ -132,6 +141,11 @@ fun TaskCard(
         // can tuck under it.
         Column(
             Modifier.fillMaxWidth()
+                // On the card BODY, not on the outer column: the body is the node
+                // that carries the tap-to-open click, and it excludes the subtask
+                // cascade below — a tag on the outer node would centre a spec's
+                // tap somewhere in the children.
+                .then(if (anchored) Modifier.testTag(TestTags.taskCard(task.id)) else Modifier)
                 .zIndex((subtasks.size + 1).toFloat())
                 .softShadow(shape)
                 .clip(shape)
@@ -217,6 +231,7 @@ fun TaskCard(
                         onDropTask = onDropChild,
                         conflictTaskIds = conflictTaskIds,
                         onOpenConflict = onOpenConflict,
+                        anchored = anchored,
                         modifier = Modifier.animatePlacement().zIndex((subtasks.size - i).toFloat()).overlapTop(RadiusLg * 2)
                             .subtaskDrag(childDrag, onDropChild, sub),
                     )

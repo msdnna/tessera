@@ -149,6 +149,21 @@ object E2eBackend {
             fixture.account.accessToken,
         )
 
+    // ── reading state back ─────────────────────────────────────────────────
+    //
+    // A spec that drives the UI has to confirm the write reached Postgres, not
+    // just that the screen redrew: an optimistic update paints a card that a
+    // failed request never persisted, and a UI-only assertion would pass. These
+    // read the server's own view of the board.
+
+    /** Top-level cards on the seeded board, as the server has them. */
+    fun tasks(fixture: Fixture): List<Task> =
+        getList("boards/${fixture.board.id}/tasks", fixture.account.accessToken)
+
+    /** Columns on the seeded board, as the server has them. */
+    fun columns(fixture: Fixture): List<BoardColumn> =
+        getList("boards/${fixture.board.id}/columns", fixture.account.accessToken)
+
     // ── plumbing ───────────────────────────────────────────────────────────
 
     private inline fun <reified T> post(path: String, body: Any, token: String? = null): T {

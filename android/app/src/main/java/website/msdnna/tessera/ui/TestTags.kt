@@ -31,4 +31,30 @@ object TestTags {
 
     /** Present exactly when the session gate has let us past the auth screen. */
     const val MAIN_SHELL = "main-shell"
+
+    // ── board ──────────────────────────────────────────────────────────────
+    //
+    // Board anchors are per-entity: the id comes from the seeded fixture, so a
+    // spec asserts «this column / this card», not «the third one from the left».
+    // An index-based anchor would keep passing after a sorting regression.
+
+    /** The kanban lane for a column (or a tag/milestone lane), expanded or collapsed. */
+    fun boardColumn(id: String) = "board-column:$id"
+
+    /** Reveals the inline «new card» field at the foot of a column. */
+    fun columnAddTask(id: String) = "column-add-task:$id"
+
+    /** That inline field itself, once revealed. */
+    fun columnTaskInput(id: String) = "column-task-input:$id"
+
+    /** A task card as rendered on the board. Drag ghosts deliberately carry no
+     *  tag (see [website.msdnna.tessera.ui.components.TaskCard]'s `anchored`),
+     *  so this stays unique while a card or column is being dragged. */
+    fun taskCard(id: String) = "task-card:$id"
+
+    /** Tile at the right end of the status lanes that starts a new column. */
+    const val BOARD_ADD_COLUMN = "board-add-column"
+
+    /** The inline field the tile above reveals. */
+    const val BOARD_COLUMN_INPUT = "board-column-input"
 }

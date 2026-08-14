@@ -1,5 +1,6 @@
 package website.msdnna.tessera.e2e
 
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -19,4 +20,30 @@ private const val AWAIT_TIMEOUT_MS = 20_000L
 @OptIn(ExperimentalTestApi::class)
 fun ComposeContentTestRule.awaitTag(tag: String, timeoutMillis: Long = AWAIT_TIMEOUT_MS) {
     waitUntilExactlyOneExists(hasTestTag(tag), timeoutMillis)
+}
+
+/**
+ * Polls the backend until [read] returns non-null, then hands the value back.
+ *
+ * A UI action that writes is only half-done when the frame renders: the request
+ * is still in flight. Polling the server for the row — rather than sleeping, or
+ * trusting the screen — is what makes the assertion about persistence. [what]
+ * lands in the timeout message, so a failure says which write never arrived
+ * instead of just "condition never became true".
+ */
+fun <T> ComposeContentTestRule.awaitServer(
+    what: String,
+    timeoutMillis: Long = AWAIT_TIMEOUT_MS,
+    read: () -> T?,
+): T {
+    var value: T? = null
+    try {
+        waitUntil(timeoutMillis) {
+            value = read()
+            value != null
+        }
+    } catch (e: ComposeTimeoutException) {
+        throw AssertionError("timed out after ${timeoutMillis}ms waiting for $what", e)
+    }
+    return value ?: error("waited for $what and got nothing")
 }
