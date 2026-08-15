@@ -5,8 +5,10 @@ import { NAlert, NButton, NIcon, NInput, NPopconfirm, NSpin, NText, useMessage }
 import {
   AddOutline,
   ArrowBackOutline,
+  BookmarkOutline,
   ChatbubbleEllipsesOutline,
   DocumentsOutline,
+  GridOutline,
   TimeOutline,
 } from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
@@ -14,6 +16,9 @@ import EmptyState from '@/components/EmptyState.vue'
 import DocEditor from '@/components/documents/DocEditor.vue'
 import DocComments from '@/components/documents/DocComments.vue'
 import DocHistory from '@/components/documents/DocHistory.vue'
+import DocTemplates from '@/components/documents/DocTemplates.vue'
+import { fileToTemplate } from '@/utils/docImport'
+import { builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useDocAutosave } from '@/composables/useDocAutosave'
 import { useDocComments } from '@/composables/useDocComments'
@@ -301,6 +306,100 @@ async function create() {
   }
 }
 
+// Template gallery (#2734). Saved templates come from the workspace; the
+// built-in starters are frontend constants and are appended, so an empty
+// gallery still has something to start from.
+const templatesOpen = ref(false)
+const savedTemplates = ref([])
+const tplLoading = ref(false)
+const tplBusy = ref('')
+const tplError = ref('')
+
+const galleryCards = computed(() => [...savedTemplates.value, ...builtinCards()])
+
+async function openTemplates() {
+  templatesOpen.value = true
+  tplError.value = ''
+  if (!wsStore.currentId) return
+  tplLoading.value = true
+  try {
+    const res = await docsApi.templates(wsStore.currentId)
+    savedTemplates.value = res.data || []
+  } catch (e) {
+    tplError.value = e.message
+  } finally {
+    tplLoading.value = false
+  }
+}
+
+// Creating from a template goes through the normal create endpoint with
+// template_id, so slug, position and authorship stay on the one path that owns
+// them. A built-in has no row to point at, so its body is written straight
+// after the create — the document is empty for exactly that one call, which is
+// also why the version journal records no "empty" baseline for it.
+async function useTemplate(card) {
+  if (!wsStore.currentId || tplBusy.value) return
+  tplBusy.value = card.id
+  tplError.value = ''
+  try {
+    const res = await docsApi.create(wsStore.currentId, {
+      title: card.title,
+      icon: card.icon || '',
+      parent_id: parentId.value,
+      template_id: card.builtin ? undefined : card.id,
+    })
+    let doc = res.data
+    if (card.builtin) {
+      const content = builtinContent(card.key)
+      if (content) {
+        const saved = await docsApi.updateContent(doc.id, content, doc.updated_at)
+        doc = saved.data
+      }
+    }
+    templatesOpen.value = false
+    await loadList()
+    await open(doc)
+  } catch (e) {
+    tplError.value = e.message
+  } finally {
+    tplBusy.value = ''
+  }
+}
+
+// Saving the open document as a template sends only its id: copying the body
+// through the browser would let a stale editor state become the template, and
+// the server already has the saved document.
+async function saveAsTemplate() {
+  if (!selected.value?.id) return
+  try {
+    await flushSave()
+    await docsApi.createTemplate(wsStore.currentId, { document_id: selected.value.id })
+    message.success('Шаблон сохранён')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function uploadTemplate(file) {
+  tplError.value = ''
+  try {
+    const draft = await fileToTemplate(file)
+    await docsApi.createTemplate(wsStore.currentId, draft)
+    await openTemplates()
+  } catch (e) {
+    tplError.value = e.message
+  }
+}
+
+async function removeTemplate(card) {
+  try {
+    await docsApi.removeTemplate(card.id)
+    savedTemplates.value = savedTemplates.value.filter((t) => t.id !== card.id)
+  } catch (e) {
+    tplError.value = e.message
+  }
+}
+
 async function createNested() {
   if (!selected.value?.id) return
   const parent = selected.value
@@ -494,6 +593,10 @@ watch(
             <n-button text size="small" @click="crumbTo(i)">{{ c.title }}</n-button>
           </template>
         </div>
+        <n-button size="small" data-testid="doc-templates" @click="openTemplates">
+          <template #icon><n-icon :component="GridOutline" /></template>
+          Из шаблона
+        </n-button>
         <n-button type="primary" size="small" @click="create">
           <template #icon><n-icon :component="AddOutline" /></template>
           Новый документ
@@ -558,6 +661,15 @@ watch(
             @click="toggleHistory"
           >
             <template #icon><n-icon :component="TimeOutline" /></template>
+          </n-button>
+          <n-button
+            quaternary
+            size="tiny"
+            title="Сохранить как шаблон"
+            data-testid="doc-save-template"
+            @click="saveAsTemplate"
+          >
+            <template #icon><n-icon :component="BookmarkOutline" /></template>
           </n-button>
           <n-text v-if="saving" depth="3">Сохранение…</n-text>
           <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
@@ -660,6 +772,19 @@ watch(
         </div>
       </template>
     </template>
+
+    <!-- Outside the grid/editor branches: the gallery is reachable from the
+         grid, but "сохранить как шаблон" refreshes it from the editor too. -->
+    <doc-templates
+      v-model:show="templatesOpen"
+      :templates="galleryCards"
+      :loading="tplLoading"
+      :busy="tplBusy"
+      :error="tplError"
+      @use="useTemplate"
+      @upload="uploadTemplate"
+      @remove="removeTemplate"
+    />
   </div>
 </template>
 

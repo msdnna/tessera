@@ -383,6 +383,16 @@ export const documents = {
   snapshot: (id, label) => api.post(`/documents/${id}/versions`, { label }),
   version: (versionId) => api.get(`/document-versions/${versionId}`),
   restoreVersion: (versionId) => api.post(`/document-versions/${versionId}/restore`),
+  // Template gallery (#2734). Like the version journal, the list carries
+  // previews rather than bodies: the gallery renders every template at once and
+  // a body is fetched only when one is previewed. Creating a document *from* a
+  // template is `create(wsId, { template_id })` above — there is no separate
+  // endpoint for it, so slug, position and authorship stay on one path.
+  templates: (wsId) => api.get(`/workspaces/${wsId}/document-templates`),
+  createTemplate: (wsId, data) => api.post(`/workspaces/${wsId}/document-templates`, data),
+  template: (id) => api.get(`/document-templates/${id}`),
+  updateTemplate: (id, data) => api.patch(`/document-templates/${id}`, data),
+  removeTemplate: (id) => api.delete(`/document-templates/${id}`),
 }
 
 export const reminders = {
