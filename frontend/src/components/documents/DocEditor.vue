@@ -391,16 +391,23 @@ defineExpose({ editor })
 .slash-item.on {
   background: var(--t-hover);
 }
+/* The label is what the user is reading; the hint gives way first, so
+   "Маркированный список" stays whole instead of losing its ending to a
+   nowrap hint that never shrinks. */
 .slash-label {
-  flex: 1;
+  flex: 1 0 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .slash-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--t-text3);
   font-size: 11px;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* ProseMirror renders plain DOM, so naive-ui's themeOverrides never reach it —
