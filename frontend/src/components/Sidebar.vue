@@ -17,6 +17,7 @@ import {
 import {
   HomeOutline,
   DocumentTextOutline,
+  DocumentsOutline,
   AlarmOutline,
   RibbonOutline,
   AddOutline,
@@ -239,6 +240,15 @@ async function deleteWorkspace() {
           </router-link>
         </template>
         Заметки
+      </n-tooltip>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <router-link to="/documents" class="nav-link">
+            <n-icon :component="DocumentsOutline" :size="18" />
+            <span v-if="!collapsed">Документы</span>
+          </router-link>
+        </template>
+        Документы
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>

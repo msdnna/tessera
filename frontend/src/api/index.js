@@ -344,6 +344,22 @@ export const notes = {
   remove: (id) => api.delete(`/notes/${id}`),
 }
 
+export const documents = {
+  list: (wsId, projectId) =>
+    api.get(
+      `/workspaces/${wsId}/documents`,
+      projectId ? { params: { project_id: projectId } } : {},
+    ),
+  create: (wsId, data) => api.post(`/workspaces/${wsId}/documents`, data),
+  get: (id) => api.get(`/documents/${id}`),
+  // Resolves a workspace-scoped slug. The response carries workspace_id so a
+  // deep link can point the app at the right workspace before mounting.
+  bySlug: (wsId, slug) => api.get(`/workspaces/${wsId}/documents/by-slug/${slug}`),
+  update: (id, data) => api.patch(`/documents/${id}`, data),
+  remove: (id, recursive = false) =>
+    api.delete(`/documents/${id}${recursive ? '?recursive=true' : ''}`),
+}
+
 export const reminders = {
   list: () => api.get('/reminders'),
   create: (data) => api.post('/reminders', data),

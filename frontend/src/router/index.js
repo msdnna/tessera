@@ -49,6 +49,10 @@ const routes = [
       // and canonicalizes the URL to /project/<slug>/board/<slug>.
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },
       { path: 'notes', component: () => import('@/views/NotesView.vue') },
+      // Lazy on purpose: D2 brings ProseMirror in here, and the board must not
+      // carry its weight.
+      { path: 'documents', component: () => import('@/views/DocumentsView.vue') },
+      { path: 'documents/:slug', component: () => import('@/views/DocumentsView.vue') },
       { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
       { path: 'milestones', component: () => import('@/views/MilestonesView.vue') },
       { path: 'settings', component: () => import('@/views/SettingsView.vue') },
