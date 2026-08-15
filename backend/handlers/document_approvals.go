@@ -164,41 +164,49 @@ func (h *API) CreateDocumentApproval(c *gin.Context) {
 	if title != "" {
 		label = fmt.Sprintf("На согласование: %s", title)
 	}
-	version, err := h.q.CreateDocumentVersion(c, db.CreateDocumentVersionParams{
-		DocumentID: doc.ID,
-		AuthorID:   &uid,
-		Title:      doc.Title,
-		Content:    doc.Content,
-		Preview:    doc.Preview,
-		Label:      truncateRunes(label, maxDocVersionLabel),
-		Manual:     true,
-	})
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	approval, err := h.q.CreateDocumentApproval(c, db.CreateDocumentApprovalParams{
-		DocumentID: doc.ID,
-		VersionID:  version.ID,
-		Title:      title,
-		Mode:       mode,
-		CreatedBy:  &uid,
-	})
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	for i, a := range approvers {
-		approver := a
-		if _, err := h.q.CreateDocumentApprovalStep(c, db.CreateDocumentApprovalStepParams{
-			ApprovalID:   approval.ID,
-			ApproverID:   &approver,
-			ApproverName: names[i],
-			Position:     int32(i),
-		}); err != nil {
-			fail(c, err)
-			return
+	// Snapshot, route and steps are written together. A failure partway through
+	// would leave a route short of an approver, and in sequential mode such a
+	// route stalls forever: the missing step is the one everyone behind it waits
+	// on, and there is no endpoint that adds one to a route already raised.
+	var approval db.DocumentApproval
+	if err := h.inTx(c, func(q *db.Queries) error {
+		version, err := q.CreateDocumentVersion(c, db.CreateDocumentVersionParams{
+			DocumentID: doc.ID,
+			AuthorID:   &uid,
+			Title:      doc.Title,
+			Content:    doc.Content,
+			Preview:    doc.Preview,
+			Label:      truncateRunes(label, maxDocVersionLabel),
+			Manual:     true,
+		})
+		if err != nil {
+			return err
 		}
+		approval, err = q.CreateDocumentApproval(c, db.CreateDocumentApprovalParams{
+			DocumentID: doc.ID,
+			VersionID:  version.ID,
+			Title:      title,
+			Mode:       mode,
+			CreatedBy:  &uid,
+		})
+		if err != nil {
+			return err
+		}
+		for i, a := range approvers {
+			approver := a
+			if _, err := q.CreateDocumentApprovalStep(c, db.CreateDocumentApprovalStepParams{
+				ApprovalID:   approval.ID,
+				ApproverID:   &approver,
+				ApproverName: names[i],
+				Position:     int32(i),
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		fail(c, err)
+		return
 	}
 	h.notifyDocLinks(doc.ID)
 	c.JSON(http.StatusCreated, approval)
