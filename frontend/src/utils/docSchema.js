@@ -6,6 +6,7 @@ import { Color, FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-s
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Placeholder } from '@tiptap/extensions'
 import { BlockId } from './docExtensions/blockId'
+import { BlockLocks } from './docExtensions/blockLocks'
 import { BlockMove } from './docExtensions/blockMove'
 import { BlockStyle, STYLED_TYPES } from './docExtensions/blockStyle'
 import { ImageDrop } from './docExtensions/imageDrop'
@@ -128,6 +129,7 @@ export function docExtensions(opts = {}) {
     BlockId,
     BlockStyle,
     BlockMove,
+    BlockLocks.configure({ onBlocked: opts.onBlocked || (() => {}) }),
     ImageDrop.configure({ upload: opts.uploadImage || null, onError: opts.onUploadError || null }),
     SlashMenu.configure({ onExternal: opts.onSlashExternal || null }),
     Placeholder.configure({ placeholder: opts.placeholder || 'Начните писать…' }),

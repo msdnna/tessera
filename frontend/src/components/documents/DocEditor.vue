@@ -12,6 +12,7 @@ import {
   topLevelBlocks,
 } from '@/utils/docExtensions/dragHandle'
 import { slashState } from '@/utils/docExtensions/slashMenu'
+import { applyBlockLocks, blockIdAtSelection } from '@/utils/docExtensions/blockLocks'
 import DocToolbar from './DocToolbar.vue'
 
 const props = defineProps({
@@ -21,8 +22,12 @@ const props = defineProps({
   // Uploads a File and resolves to the URL to embed. Injected rather than
   // imported so the editor stays free of API knowledge (and testable offline).
   uploadImage: { type: Function, default: null },
+  // Blocks other people are editing right now: [{block_id, name, user_id}].
+  // The editor paints them and refuses input inside them (#2729); it does not
+  // know where the list comes from.
+  locks: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['update:modelValue', 'change', 'blur'])
+const emit = defineEmits(['update:modelValue', 'change', 'blur', 'block-focus', 'blocked'])
 
 const message = useMessage()
 const editor = shallowRef(null)
@@ -52,6 +57,7 @@ function build() {
       // The "Изображение" entry of the slash menu opens the picker below; the
       // menu itself has no business knowing about file inputs.
       onSlashExternal: () => pickImage(),
+      onBlocked: (held) => emit('blocked', held),
     }),
     onUpdate: ({ editor: e, transaction }) => {
       // The BlockId extension stamps missing ids on load. That is bookkeeping,
@@ -63,12 +69,49 @@ function build() {
       emit('update:modelValue', json)
       emit('change', json)
     },
-    onTransaction: ({ editor: e }) => syncSlash(e),
-    onBlur: () => emit('blur'),
+    onTransaction: ({ editor: e }) => {
+      syncSlash(e)
+      reportBlock(e)
+    },
+    onBlur: () => {
+      // The parent gives the block back on blur, so forget which one we claimed —
+      // otherwise coming back to the same block would look like "no change" and
+      // never re-claim it.
+      lastBlockId = ''
+      emit('blur')
+    },
   })
 }
 
 build()
+
+// The block the caret is in, reported on change so the parent can claim it.
+// Emitting only on change keeps a lock refresh from being sent on every
+// keystroke — the claim itself is a heartbeat, not a per-edit message.
+let lastBlockId = ''
+function reportBlock(e) {
+  // Only a *focused* editor claims anything. Without this the initial
+  // setContent transaction claims the first block of every document the moment
+  // it is opened, so a reader with the tab parked on a page would hold its first
+  // paragraph against everyone else for as long as the tab lived — the client
+  // keeps refreshing the lock, so the TTL never collects it either.
+  if (!e.isFocused) {
+    lastBlockId = ''
+    return
+  }
+  const id = blockIdAtSelection(e.state)
+  if (id === lastBlockId) return
+  lastBlockId = id
+  emit('block-focus', id)
+}
+
+// Locks arrive from outside (the document socket) and are pushed into the
+// plugin, which owns the decorations and the input guard.
+watch(
+  () => props.locks,
+  (next) => applyBlockLocks(editor.value?.view, next),
+  { deep: true },
+)
 
 // The slash menu lives in the plugin; this mirrors it into Vue state and puts
 // the popup under the "/" the user typed.
@@ -484,6 +527,36 @@ defineExpose({ editor })
   outline-offset: 2px;
   border-radius: 4px;
 }
+/* A block someone else is editing (задача 2729 — written without the hash on
+   purpose: the theming guard in cx-doc-editor.spec.js reads a #NNNN in this
+   block as a literal colour). The cue is a left border plus a
+   floating name — not a background fill, which would fight the accent gradient
+   and make the text harder to read while you are still allowed to read it.
+   Colours come from --t-* only: ProseMirror renders plain DOM, so naive-ui's
+   themeOverrides never reach it, and a literal here would survive the light
+   theme and break in the dark one. */
+.doc-content :deep(.ProseMirror .doc-block-locked) {
+  position: relative;
+  border-left: 2px solid var(--t-primary);
+  margin-left: -10px;
+  padding-left: 8px;
+  border-radius: 2px;
+}
+.doc-content :deep(.ProseMirror .doc-block-locked::after) {
+  content: attr(data-locked-by);
+  position: absolute;
+  top: -8px;
+  right: 0;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--t-primary);
+  color: var(--t-on-primary);
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* Placeholder shown while a dropped image uploads (imageDrop.js). */
 .doc-content :deep(.doc-upload-placeholder) {
   display: inline-block;

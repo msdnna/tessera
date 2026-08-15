@@ -8,6 +8,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import DocEditor from '@/components/documents/DocEditor.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useDocAutosave } from '@/composables/useDocAutosave'
+import { useDocPresence } from '@/composables/useDocPresence'
 import { toDocJSON } from '@/utils/docSchema'
 
 const message = useMessage()
@@ -56,6 +57,40 @@ const {
   return res.data
 })
 
+// Presence and per-block locks for the open document (#2729). A separate socket
+// from the app-wide realtime one: that hub is workspace-scoped and read-only.
+const {
+  viewers,
+  foreignLocks,
+  userId: myUserId,
+  open: openRoom,
+  close: closeRoom,
+  acquire: claimBlock,
+  release: releaseBlock,
+} = useDocPresence()
+
+// Other people in this document. The server already collapses one person's tabs
+// into a single viewer, and our own id comes from the socket's welcome frame —
+// no auth store needed to know who "me" is here.
+const others = computed(() => viewers.value.filter((v) => v.user_id !== myUserId.value))
+
+function initials(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return '?'
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase()
+}
+
+// Refusing a keystroke silently reads as a broken editor, so say who has the
+// block. Throttled by naive-ui itself (identical messages stack), and the
+// message is the only feedback there is — the caret simply stops responding.
+let blockedAt = 0
+function onBlocked(held) {
+  const now = Date.now()
+  if (now - blockedAt < 2000) return
+  blockedAt = now
+  message.warning(`Блок редактирует ${held?.name || 'другой участник'}`)
+}
+
 function applyPreview(id, data) {
   const row = list.value.find((d) => d.id === id)
   if (!row || !data) return
@@ -88,6 +123,7 @@ async function open(doc) {
     content.value = toDocJSON(res.data.content)
     version.value = res.data.updated_at
     resolveConflict(res.data.updated_at)
+    openRoom(res.data.id)
     const param = res.data.slug || res.data.id
     if (param && route.params.slug !== param) router.replace(`/documents/${param}`)
   } catch (e) {
@@ -99,6 +135,9 @@ async function open(doc) {
 
 async function backToGrid() {
   await flushSave()
+  // Leaving the document frees whatever block we held right away, instead of
+  // making everyone else wait out the lock TTL.
+  closeRoom()
   selected.value = null
   content.value = null
   if (route.params.slug) router.replace('/documents')
@@ -140,6 +179,7 @@ async function resolveSlug(slug) {
       title.value = res.data.title || ''
       content.value = toDocJSON(res.data.content)
       version.value = res.data.updated_at
+      openRoom(res.data.id)
       return true
     } catch {
       // 404 in this workspace — try the next one.
@@ -199,6 +239,7 @@ async function remove() {
   try {
     await docsApi.remove(selected.value.id, childCount.value > 0)
     cancelSave()
+    closeRoom()
     selected.value = null
     content.value = null
     router.replace('/documents')
@@ -218,6 +259,13 @@ async function uploadImage(file) {
 function onEditorChange(json) {
   content.value = json
   scheduleSave(json)
+}
+
+// Leaving the editor gives the block back: someone whose caret is parked in a
+// paragraph in an unfocused tab is not editing it.
+function onEditorBlur() {
+  releaseBlock()
+  flushSave()
 }
 
 // The tab closing mid-debounce is the one case a promise cannot save: the
@@ -242,6 +290,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
   flushSave()
+  closeRoom()
 })
 
 onBeforeRouteLeave(async () => {
@@ -252,6 +301,7 @@ watch(
   () => wsStore.currentId,
   () => {
     cancelSave()
+    closeRoom()
     selected.value = null
     content.value = null
     trail.value = []
@@ -307,6 +357,19 @@ watch(
           К списку
         </n-button>
         <span class="status">
+          <!-- Who else has this document open (#2729). Someone editing a block
+               carries the accent ring; a reader is flat. -->
+          <span v-if="others.length" class="viewers">
+            <span
+              v-for="v in others"
+              :key="v.user_id"
+              class="viewer"
+              :class="{ editing: v.blocks.length }"
+              :title="v.blocks.length ? `${v.name} — редактирует` : `${v.name} — смотрит`"
+            >
+              {{ initials(v.name) }}
+            </span>
+          </span>
           <n-text v-if="saving" depth="3">Сохранение…</n-text>
           <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
           <n-text v-else depth="3">Все изменения сохранены</n-text>
@@ -327,9 +390,12 @@ watch(
         <doc-editor
           :model-value="content"
           :upload-image="uploadImage"
+          :locks="foreignLocks"
           class="editor"
           @change="onEditorChange"
-          @blur="flushSave()"
+          @block-focus="claimBlock"
+          @blocked="onBlocked"
+          @blur="onEditorBlur"
         />
         <div v-if="children.length" class="nested">
           <n-text depth="3">Вложенные документы</n-text>
@@ -397,7 +463,41 @@ watch(
   color: var(--t-text3);
 }
 .status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
+}
+/* Presence avatars. Initials rather than photos: the roster is a live hint at
+   the edge of the header, and loading an avatar per viewer would be a request
+   burst every time someone opens the document. */
+.viewers {
+  display: flex;
+  align-items: center;
+}
+.viewer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: -6px;
+  border: 1px solid var(--t-surface);
+  border-radius: 50%;
+  background: var(--t-surface-alt);
+  color: var(--t-text2);
+  font-size: 10px;
+  font-weight: 600;
+}
+.viewer:first-child {
+  margin-left: 0;
+}
+/* Actively editing — the accent gradient, as everywhere else a non-neutral
+   element appears. */
+.viewer.editing {
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  border-color: transparent;
 }
 .grid {
   display: grid;
