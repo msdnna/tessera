@@ -130,7 +130,7 @@ func conflictCheckedKind(kind string) bool {
 // resolve GitLab attachment links in the issue body to the same proxy URLs Tessera
 // stores, so a description comparison doesn't false-conflict on link rewriting.
 // rules map the issue's labels to a priority level for the priority triple.
-func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task db.Task, wsID uuid.UUID, rules gitlab.Rules) []conflictField {
+func (h *API) conflictTriples(ctx context.Context, kind string, raw []byte, issue gitlab.Issue, task db.Task, wsID uuid.UUID, rules gitlab.Rules) []conflictField {
 	snap, present := snapshotPresence(raw)
 	switch kind {
 	case "due":
@@ -165,7 +165,7 @@ func (h *API) conflictTriples(kind string, raw []byte, issue gitlab.Issue, task 
 	case "title_desc":
 		_, titleOK := present["title"]
 		_, descOK := present["description"]
-		theirsDesc := h.rewriteAssets(issue.Description, wsID)
+		theirsDesc := h.rewriteAssets(ctx, issue.Description, wsID)
 		return []conflictField{
 			{Field: "title", Base: snap.Title, Ours: task.Title, Theirs: issue.Title, basePresent: titleOK},
 			{Field: "description", Base: snap.Description, Ours: task.Description, Theirs: theirsDesc, basePresent: descOK},
@@ -212,7 +212,7 @@ func (h *API) evalWritebackConflict(ctx context.Context, w db.GitlabWriteback, l
 	if err != nil {
 		return conflictProceed, nil, err // transient: retry
 	}
-	triples := h.conflictTriples(w.ChangeKind, link.GlSnapshot, issue, task, wsID, rules)
+	triples := h.conflictTriples(ctx, w.ChangeKind, link.GlSnapshot, issue, task, wsID, rules)
 	if len(triples) == 0 {
 		return conflictProceed, nil, nil
 	}

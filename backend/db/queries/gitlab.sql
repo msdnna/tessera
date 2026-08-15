@@ -282,3 +282,29 @@ VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7)
 ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
 DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now()
 RETURNING (xmax = 0) AS inserted;
+
+-- ── mirrored assets (Tessera upload → GitLab upload store) ──
+-- The map is read in both directions: outbound to skip re-uploading an asset that is
+-- already in the project's store, inbound (rewriteAssets) to turn our own mirrored
+-- URL back into the Tessera one, so a description round-trips byte-for-byte and
+-- title_desc conflict detection doesn't see a permanent divergence. See migration 0054.
+
+-- name: GetGitlabUpload :one
+SELECT * FROM gitlab_uploads
+WHERE integration_id = $1 AND source_key = $2;
+
+-- name: UpsertGitlabUpload :one
+INSERT INTO gitlab_uploads (integration_id, source_key, gl_url, gl_markdown)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (integration_id, source_key) DO UPDATE
+SET gl_url = EXCLUDED.gl_url, gl_markdown = EXCLUDED.gl_markdown
+RETURNING *;
+
+-- GetGitlabUploadSourceByURL resolves a GitLab upload URL back to the Tessera source
+-- it was mirrored from, scoped to the workspace (rewriteAssets knows the workspace,
+-- not which of its bindings performed the upload).
+-- name: GetGitlabUploadSourceByURL :one
+SELECT u.source_key FROM gitlab_uploads u
+JOIN gitlab_integrations i ON i.id = u.integration_id
+WHERE i.workspace_id = $1 AND u.gl_url = $2
+LIMIT 1;

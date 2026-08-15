@@ -1266,7 +1266,7 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 // and ok=false on a per-issue failure (logged, caller continues).
 func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate, startDate *time.Time, estimate *float64, actorID uuid.UUID, colName string, j *syncJournal) (uuid.UUID, bool, bool) {
 	// Resolve GitLab-relative attachment links to signed proxy URLs.
-	issue.Description = h.rewriteAssets(issue.Description, wsID)
+	issue.Description = h.rewriteAssets(ctx, issue.Description, wsID)
 	// Synced labels become tags scoped to the integration board's project.
 	projectID, perr := h.q.ProjectIDForBoard(ctx, boardID)
 	if perr != nil {
@@ -1647,7 +1647,7 @@ func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []
 		}); cerr == nil {
 			continue // claimed our own pushed comment — nothing to insert
 		}
-		body := h.rewriteAssets(n.Body, wsID)
+		body := h.rewriteAssets(ctx, n.Body, wsID)
 		inserted, err := h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
 			TaskID: taskID, Body: body, GlNoteID: &noteID,
 			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name,
@@ -1769,6 +1769,12 @@ type gitlabLinkView struct {
 	AuthorName      string `json:"author_name"`
 	AuthorAvatarURL string `json:"author_avatar_url"`
 	ProjectPath     string `json:"project_path"`
+
+	// Attachments reports what mirroring the task's assets into GitLab did
+	// (task #2713). Set only on the create-issue response — uploading bytes makes
+	// that call noticeably slower, so the UI reports the outcome instead of
+	// finishing silently. Omitted everywhere else.
+	Attachments *assetStats `json:"attachments,omitempty"`
 }
 
 // gitlabLinkForTask returns the GitLab link view for a task, or nil when the

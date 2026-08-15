@@ -181,6 +181,14 @@ type GitlabSyncRun struct {
 	Mode          string     `json:"mode"`
 }
 
+type GitlabUpload struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	SourceKey     string    `json:"source_key"`
+	GlUrl         string    `json:"gl_url"`
+	GlMarkdown    string    `json:"gl_markdown"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type GitlabWriteback struct {
 	ID            uuid.UUID  `json:"id"`
 	TaskID        uuid.UUID  `json:"task_id"`

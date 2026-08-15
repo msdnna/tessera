@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -807,6 +809,69 @@ func (c *Client) CreateIssue(ctx context.Context, projectPath, title, descriptio
 		return CreatedIssue{}, uerr
 	}
 	return CreatedIssue{ID: resp.ID, IID: resp.IID, WebURL: resp.WebURL, State: resp.State}, nil
+}
+
+// Upload is the result of mirroring a file into a project's upload store.
+// URL is project-relative ("/uploads/<secret>/<name>") — the form GitLab renders
+// inside that project's issues and notes.
+type Upload struct {
+	Alt      string `json:"alt"`
+	URL      string `json:"url"`
+	FullPath string `json:"full_path"`
+	Markdown string `json:"markdown"`
+}
+
+// UploadFile posts a file to the project's upload store (POST /projects/:id/uploads)
+// and returns the URL GitLab serves it by, so a Tessera-hosted asset referenced in a
+// pushed description/note resolves for GitLab readers instead of 404ing against
+// GitLab's own origin.
+//
+// The body is streamed through an io.Pipe rather than buffered: an attachment may be
+// up to 25 MiB and the write-back worker can run several pushes at once.
+func (c *Client) UploadFile(ctx context.Context, projectPath, filename string, r io.Reader) (Upload, error) {
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		part, err := mw.CreateFormFile("file", filepath.Base(filename))
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		if _, err := io.Copy(part, r); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.CloseWithError(mw.Close())
+	}()
+	defer func() { _ = pr.Close() }()
+
+	endpoint := c.baseURL + "/api/v4/projects/" + projectPathEsc(projectPath) + "/uploads"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, pr)
+	if err != nil {
+		return Upload{}, err
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if c.sudo != "" {
+		req.Header.Set("Sudo", c.sudo)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return Upload{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return Upload{}, &APIError{Status: resp.StatusCode, Body: string(body)}
+	}
+	var up Upload
+	if uerr := json.Unmarshal(body, &up); uerr != nil {
+		return Upload{}, uerr
+	}
+	if up.URL == "" {
+		return Upload{}, fmt.Errorf("gitlab: upload response carried no url")
+	}
+	return up, nil
 }
 
 // IssueTemplate is a repo issue template (.gitlab/issue_templates/<Name>.md).
