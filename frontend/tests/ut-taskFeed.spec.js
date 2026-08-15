@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtWhen, eventText } from '@/utils/taskFeed'
+import { fmtWhen, eventText, groupThreads } from '@/utils/taskFeed'
 
 // The journal wording used to live inside TaskModal, where it could only be checked
 // by reading it. It is user-facing text on every task, so pin it down.
@@ -47,5 +47,44 @@ describe('taskFeed.eventText', () => {
 describe('taskFeed.fmtWhen', () => {
   it('formats a timestamp as day, short month, hh:mm', () => {
     expect(fmtWhen('2026-03-07T09:05:00Z')).toMatch(/^\d{2} .+, \d{2}:\d{2}$/)
+  })
+})
+
+// The API returns a flat array (Android and the MCP server read it that way);
+// the tree is assembled on the client, so that assembly is what needs pinning.
+describe('taskFeed.groupThreads', () => {
+  it('hangs replies off their root and keeps roots in order', () => {
+    const threads = groupThreads([
+      { id: 'a', parent_id: null },
+      { id: 'a1', parent_id: 'a' },
+      { id: 'a2', parent_id: 'a' },
+      { id: 'b', parent_id: null },
+    ])
+    expect(threads.map((t) => t.root.id)).toEqual(['a', 'b'])
+    expect(threads[0].replies.map((r) => r.id)).toEqual(['a1', 'a2'])
+    expect(threads[1].replies).toEqual([])
+  })
+
+  it('promotes an orphaned reply to a root instead of dropping it', () => {
+    // The parent was deleted (or filtered out): losing the text entirely is
+    // worse than showing it unindented.
+    const threads = groupThreads([
+      { id: 'a', parent_id: null },
+      { id: 'x', parent_id: 'gone' },
+    ])
+    expect(threads.map((t) => t.root.id)).toEqual(['a', 'x'])
+  })
+
+  it('keeps a reply visible when it precedes its root in the list', () => {
+    const threads = groupThreads([
+      { id: 'a1', parent_id: 'a' },
+      { id: 'a', parent_id: null },
+    ])
+    expect(threads.map((t) => t.root.id)).toEqual(['a1', 'a'])
+  })
+
+  it('handles an empty or missing list', () => {
+    expect(groupThreads([])).toEqual([])
+    expect(groupThreads(undefined)).toEqual([])
   })
 })
