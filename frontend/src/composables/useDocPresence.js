@@ -38,6 +38,8 @@ export function useDocPresence() {
   // so a refusal can be shown without waiting for the next snapshot.
   const held = ref('')
   const denied = shallowRef(null)
+  // Bumped when the server says this document's comment threads changed (#2730).
+  const commentsNudge = ref(0)
 
   let ws = null
   let docId = ''
@@ -126,6 +128,13 @@ export function useDocPresence() {
       locks.value = msg.locks || []
       return
     }
+    if (msg.type === 'comments') {
+      // A payload-free nudge: someone's annotation changed. The counter is what
+      // the panel watches — it refetches rather than being handed a delta, so a
+      // nudge lost to a reconnect costs one stale panel, not a phantom thread.
+      commentsNudge.value += 1
+      return
+    }
     if (msg.type === 'denied') {
       // We lost the race for this block. Drop the claim so the editor stops
       // trying to refresh a lock it does not have.
@@ -209,6 +218,7 @@ export function useDocPresence() {
     userId,
     held,
     denied,
+    commentsNudge,
     open,
     close,
     acquire,

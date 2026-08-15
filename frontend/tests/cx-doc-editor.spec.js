@@ -23,6 +23,7 @@ const root = process.cwd()
 const DOC_FILES = [
   'src/components/documents/DocEditor.vue',
   'src/components/documents/DocToolbar.vue',
+  'src/components/documents/DocComments.vue',
   'src/views/DocumentsView.vue',
 ]
 

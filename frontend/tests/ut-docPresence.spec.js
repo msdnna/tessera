@@ -204,6 +204,24 @@ describe('useDocPresence', () => {
     expect(p.foreignLocks.value).toEqual([])
   })
 
+  it('counts comment nudges instead of trying to carry the change', () => {
+    // The frame has no payload on purpose (#2730): the panel refetches, so a
+    // nudge lost to a reconnect costs one stale panel and never a phantom thread.
+    const p = useDocPresence()
+    p.open('doc-1')
+    const sock = FakeSocket.last
+    sock.opened()
+    sock.serverSends(welcome)
+    expect(p.commentsNudge.value).toBe(0)
+
+    sock.serverSends({ type: 'comments' })
+    sock.serverSends({ type: 'comments' })
+    expect(p.commentsNudge.value).toBe(2)
+    // A nudge is not presence: it must not clear the roster or the locks.
+    expect(p.connId.value).toBe('conn-me')
+    p.close()
+  })
+
   it('ignores malformed frames', () => {
     const p = useDocPresence()
     p.open('doc-1')

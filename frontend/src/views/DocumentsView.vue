@@ -2,12 +2,19 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { NAlert, NButton, NIcon, NInput, NPopconfirm, NSpin, NText, useMessage } from 'naive-ui'
-import { AddOutline, ArrowBackOutline, DocumentsOutline } from '@vicons/ionicons5'
+import {
+  AddOutline,
+  ArrowBackOutline,
+  ChatbubbleEllipsesOutline,
+  DocumentsOutline,
+} from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import DocEditor from '@/components/documents/DocEditor.vue'
+import DocComments from '@/components/documents/DocComments.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useDocAutosave } from '@/composables/useDocAutosave'
+import { useDocComments } from '@/composables/useDocComments'
 import { useDocPresence } from '@/composables/useDocPresence'
 import { toDocJSON } from '@/utils/docSchema'
 
@@ -63,11 +70,24 @@ const {
   viewers,
   foreignLocks,
   userId: myUserId,
+  commentsNudge,
   open: openRoom,
   close: closeRoom,
   acquire: claimBlock,
   release: releaseBlock,
 } = useDocPresence()
+
+// Block-anchored annotations (#2730). They live beside the document rather than
+// inside it: nothing here writes to the content, so a remark can be made on a
+// block someone else is editing, and an imported document is annotatable as soon
+// as it has block ids.
+const comments = useDocComments()
+const commentsOpen = ref(true)
+
+// A colleague's comment arrives as a payload-free nudge on the document socket;
+// the panel refetches instead of being handed a delta, so a nudge lost to a
+// reconnect costs one stale panel and nothing more.
+watch(commentsNudge, () => comments.load())
 
 // Other people in this document. The server already collapses one person's tabs
 // into a single viewer, and our own id comes from the socket's welcome frame —
@@ -124,6 +144,7 @@ async function open(doc) {
     version.value = res.data.updated_at
     resolveConflict(res.data.updated_at)
     openRoom(res.data.id)
+    await comments.open(res.data.id, content.value)
     const param = res.data.slug || res.data.id
     if (param && route.params.slug !== param) router.replace(`/documents/${param}`)
   } catch (e) {
@@ -138,6 +159,7 @@ async function backToGrid() {
   // Leaving the document frees whatever block we held right away, instead of
   // making everyone else wait out the lock TTL.
   closeRoom()
+  comments.close()
   selected.value = null
   content.value = null
   if (route.params.slug) router.replace('/documents')
@@ -180,6 +202,7 @@ async function resolveSlug(slug) {
       content.value = toDocJSON(res.data.content)
       version.value = res.data.updated_at
       openRoom(res.data.id)
+      await comments.open(res.data.id, content.value)
       return true
     } catch {
       // 404 in this workspace — try the next one.
@@ -240,6 +263,7 @@ async function remove() {
     await docsApi.remove(selected.value.id, childCount.value > 0)
     cancelSave()
     closeRoom()
+    comments.close()
     selected.value = null
     content.value = null
     router.replace('/documents')
@@ -258,7 +282,77 @@ async function uploadImage(file) {
 
 function onEditorChange(json) {
   content.value = json
+  // The panel matches anchors against the live tree, so a thread whose block was
+  // just deleted moves to "Блок удалён" straight away instead of after a reload.
+  comments.setDoc(json)
   scheduleSave(json)
+}
+
+// The block the next comment will be filed against, together with the quote the
+// editor captured for it. Kept here rather than in the composable: it is the
+// state of a half-written remark, and it dies with the panel, not with the
+// document.
+const pendingBlockId = ref('')
+const pendingQuote = ref('')
+
+// The gutter's "обсудить блок" button. It only arms the draft box — a remark
+// needs its text before it can be filed, and filing an empty one to be edited
+// later is how a review fills up with placeholder threads.
+function onAnnotate({ blockId, quote }) {
+  commentsOpen.value = true
+  pendingBlockId.value = blockId
+  pendingQuote.value = quote
+  comments.activeBlockId.value = blockId
+}
+
+function clearAnchor() {
+  pendingBlockId.value = ''
+  pendingQuote.value = ''
+}
+
+async function onCommentAdd(body) {
+  try {
+    await comments.add({
+      blockId: pendingBlockId.value,
+      body,
+      quote: pendingQuote.value,
+    })
+    clearAnchor()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onCommentReply({ id, body }) {
+  try {
+    await comments.reply(id, body)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onCommentEdit({ id, body }) {
+  try {
+    await comments.edit(id, body)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onCommentResolve({ id, resolved }) {
+  try {
+    await comments.resolve(id, resolved)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onCommentRemove(id) {
+  try {
+    await comments.remove(id)
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 
 // Leaving the editor gives the block back: someone whose caret is parked in a
@@ -370,6 +464,15 @@ watch(
               {{ initials(v.name) }}
             </span>
           </span>
+          <n-button
+            quaternary
+            size="tiny"
+            :title="commentsOpen ? 'Скрыть обсуждение' : 'Показать обсуждение'"
+            @click="commentsOpen = !commentsOpen"
+          >
+            <template #icon><n-icon :component="ChatbubbleEllipsesOutline" /></template>
+            {{ comments.openCount.value || '' }}
+          </n-button>
           <n-text v-if="saving" depth="3">Сохранение…</n-text>
           <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
           <n-text v-else depth="3">Все изменения сохранены</n-text>
@@ -387,16 +490,37 @@ watch(
       <n-spin v-if="loading" size="small" />
       <template v-else>
         <n-input v-model:value="title" placeholder="Заголовок" class="title" @blur="rename" />
-        <doc-editor
-          :model-value="content"
-          :upload-image="uploadImage"
-          :locks="foreignLocks"
-          class="editor"
-          @change="onEditorChange"
-          @block-focus="claimBlock"
-          @blocked="onBlocked"
-          @blur="onEditorBlur"
-        />
+        <div class="work">
+          <doc-editor
+            :model-value="content"
+            :upload-image="uploadImage"
+            :locks="foreignLocks"
+            :comments="comments.openCounts.value"
+            class="editor"
+            @change="onEditorChange"
+            @block-focus="claimBlock"
+            @blocked="onBlocked"
+            @blur="onEditorBlur"
+            @annotate="onAnnotate"
+            @select-comments="comments.activeBlockId.value = $event"
+          />
+          <doc-comments
+            v-if="commentsOpen"
+            :groups="comments.groups.value"
+            :active-block-id="comments.activeBlockId.value"
+            :user-id="myUserId"
+            :loading="comments.loading.value"
+            :pending-quote="pendingQuote"
+            :pending-block="!!pendingBlockId"
+            @add="onCommentAdd"
+            @reply="onCommentReply"
+            @edit="onCommentEdit"
+            @resolve="onCommentResolve"
+            @remove="onCommentRemove"
+            @clear-anchor="clearAnchor"
+            @select="comments.activeBlockId.value = $event"
+          />
+        </div>
         <div v-if="children.length" class="nested">
           <n-text depth="3">Вложенные документы</n-text>
           <div class="grid small">
@@ -567,9 +691,25 @@ watch(
   font-size: 18px;
   font-weight: 600;
 }
-.editor {
+/* Editor and annotation panel share the working area; the panel is fixed-width
+   so the text column does not reflow every time a thread is opened. */
+.work {
+  display: flex;
+  gap: 12px;
   flex: 1;
   min-height: 0;
+}
+.editor {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+/* On a narrow screen the panel goes under the editor instead of squeezing the
+   text into a column nobody can read. */
+@media (max-width: 900px) {
+  .work {
+    flex-direction: column;
+  }
 }
 .conflict {
   flex: none;

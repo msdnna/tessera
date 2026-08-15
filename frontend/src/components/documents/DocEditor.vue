@@ -2,7 +2,13 @@
 import { onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { EditorContent, Editor } from '@tiptap/vue-3'
 import { NButton, NIcon, NInput, useMessage } from 'naive-ui'
-import { AddOutline, CheckmarkOutline, CloseOutline, ReorderTwoOutline } from '@vicons/ionicons5'
+import {
+  AddOutline,
+  ChatbubbleEllipsesOutline,
+  CheckmarkOutline,
+  CloseOutline,
+  ReorderTwoOutline,
+} from '@vicons/ionicons5'
 import { docExtensions, toDocJSON } from '@/utils/docSchema'
 import { BLOCK_ID_META, ensureBlockIds } from '@/utils/docExtensions/blockId'
 import {
@@ -13,6 +19,8 @@ import {
 } from '@/utils/docExtensions/dragHandle'
 import { slashState } from '@/utils/docExtensions/slashMenu'
 import { applyBlockLocks, blockIdAtSelection } from '@/utils/docExtensions/blockLocks'
+import { applyBlockComments } from '@/utils/docExtensions/blockComments'
+import { quoteFromBlock } from '@/utils/docComments'
 import DocToolbar from './DocToolbar.vue'
 
 const props = defineProps({
@@ -26,8 +34,19 @@ const props = defineProps({
   // The editor paints them and refuses input inside them (#2729); it does not
   // know where the list comes from.
   locks: { type: Array, default: () => [] },
+  // Open discussions per block: [{block_id, count}] (#2730). Painted in the
+  // margin; the threads themselves live in the panel next door.
+  comments: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['update:modelValue', 'change', 'blur', 'block-focus', 'blocked'])
+const emit = defineEmits([
+  'update:modelValue',
+  'change',
+  'blur',
+  'block-focus',
+  'blocked',
+  'annotate',
+  'select-comments',
+])
 
 const message = useMessage()
 const editor = shallowRef(null)
@@ -58,6 +77,7 @@ function build() {
       // menu itself has no business knowing about file inputs.
       onSlashExternal: () => pickImage(),
       onBlocked: (held) => emit('blocked', held),
+      onSelectComments: (blockId) => emit('select-comments', blockId),
     }),
     onUpdate: ({ editor: e, transaction }) => {
       // The BlockId extension stamps missing ids on load. That is bookkeeping,
@@ -111,6 +131,14 @@ watch(
   () => props.locks,
   (next) => applyBlockLocks(editor.value?.view, next),
   { deep: true },
+)
+
+// Same channel for the comment markers: the plugin owns the decorations, the
+// panel owns the threads, and neither knows about the other.
+watch(
+  () => props.comments,
+  (next) => applyBlockComments(editor.value?.view, next),
+  { deep: true, immediate: true },
 )
 
 // The slash menu lives in the plugin; this mirrors it into Vue state and puts
@@ -241,6 +269,22 @@ function insertBelow() {
     .run()
 }
 
+// Starts a discussion about the block under the handle (#2730).
+//
+// The quote is taken here, from the text as it stands right now, because that is
+// the only moment it is certainly the text the remark is about — the block goes
+// on being edited afterwards, and the annotation itself writes nothing into the
+// document.
+function annotateBlock() {
+  const view = editor.value?.view
+  if (!view) return
+  const node = view.state.doc.nodeAt(handle.pos)
+  if (!node) return
+  const blockId = node.attrs?.id || ''
+  if (!blockId) return
+  emit('annotate', { blockId, quote: quoteFromBlock(node.toJSON()) })
+}
+
 // The content box scrolls under a gutter that does not, so both anchors go
 // stale the moment it moves.
 function onScroll() {
@@ -292,6 +336,14 @@ defineExpose({ editor })
           @mousedown.prevent="insertBelow"
         >
           <n-icon :component="AddOutline" :size="14" />
+        </button>
+        <button
+          type="button"
+          class="gutter-btn"
+          title="Обсудить блок"
+          @mousedown.prevent="annotateBlock"
+        >
+          <n-icon :component="ChatbubbleEllipsesOutline" :size="13" />
         </button>
         <button
           type="button"
@@ -359,8 +411,10 @@ defineExpose({ editor })
   flex: 1;
   overflow-y: auto;
   /* Left padding is the gutter's lane: without it the handle overlaps the first
-     characters of every line. */
-  padding: 12px 2px 12px 34px;
+     characters of every line. Three buttons wide since задача 2730 added the
+     "обсудить блок" one (no hash on purpose — the theming guard in
+     cx-doc-editor.spec.js reads a #NNNN in this block as a literal colour). */
+  padding: 12px 2px 12px 52px;
   min-height: 0;
 }
 .hidden-file {
@@ -554,6 +608,33 @@ defineExpose({ editor })
   font-size: 10px;
   line-height: 16px;
   white-space: nowrap;
+  pointer-events: none;
+}
+
+/* A block with an open discussion (задача 2730 — the hash is left off on
+   purpose: the theming guard in cx-doc-editor.spec.js reads a #NNNN in this
+   block as a literal colour). A dotted underline plus a count in the margin,
+   not a fill: the annotation must stay legible as text, and a highlighted
+   background would collide with the lock cue on a block that has both.
+   Colours are --t-* only — ProseMirror renders plain DOM, so naive-ui's
+   themeOverrides never reach here. */
+.doc-content :deep(.ProseMirror .doc-block-commented) {
+  position: relative;
+  border-bottom: 1px dashed var(--t-primary);
+}
+.doc-content :deep(.ProseMirror .doc-block-commented::before) {
+  content: attr(data-comment-count);
+  position: absolute;
+  left: -18px;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
   pointer-events: none;
 }
 

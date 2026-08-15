@@ -366,6 +366,16 @@ export const documents = {
   uploadAsset: (id, formData) => api.post(`/documents/${id}/assets`, formData),
   remove: (id, recursive = false) =>
     api.delete(`/documents/${id}${recursive ? '?recursive=true' : ''}`),
+  // Block-anchored annotations (#2730). Roots and replies come back in one list
+  // and are threaded on the client — it groups them by block to place them next
+  // to the text anyway. skipLoader: the panel refetches on a socket nudge, and a
+  // colleague resolving a thread must not flash the global progress bar.
+  comments: (id) => api.get(`/documents/${id}/comments`, { skipLoader: true }),
+  addComment: (id, data) => api.post(`/documents/${id}/comments`, data),
+  updateComment: (commentId, body) => api.patch(`/document-comments/${commentId}`, { body }),
+  resolveComment: (commentId, resolved = true) =>
+    api.patch(`/document-comments/${commentId}/resolve`, { resolved }),
+  removeComment: (commentId) => api.delete(`/document-comments/${commentId}`),
 }
 
 export const reminders = {

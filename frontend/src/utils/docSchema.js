@@ -6,6 +6,7 @@ import { Color, FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-s
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Placeholder } from '@tiptap/extensions'
 import { BlockId } from './docExtensions/blockId'
+import { BlockComments } from './docExtensions/blockComments'
 import { BlockLocks } from './docExtensions/blockLocks'
 import { BlockMove } from './docExtensions/blockMove'
 import { BlockStyle, STYLED_TYPES } from './docExtensions/blockStyle'
@@ -102,6 +103,9 @@ export const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
  * @param {Function} [opts.onUploadError] reports a failed upload to the user
  * @param {Function} [opts.onSlashExternal] runs a slash item handled outside
  *   the editor (currently only the image picker)
+ * @param {Function} [opts.onBlocked] reports an edit refused by a block lock
+ * @param {Function} [opts.onSelectComments] a discussed block was clicked, so
+ *   the panel can bring its thread into view
  * @returns {Array} TipTap extensions
  */
 export function docExtensions(opts = {}) {
@@ -130,6 +134,7 @@ export function docExtensions(opts = {}) {
     BlockStyle,
     BlockMove,
     BlockLocks.configure({ onBlocked: opts.onBlocked || (() => {}) }),
+    BlockComments.configure({ onSelect: opts.onSelectComments || (() => {}) }),
     ImageDrop.configure({ upload: opts.uploadImage || null, onError: opts.onUploadError || null }),
     SlashMenu.configure({ onExternal: opts.onSlashExternal || null }),
     Placeholder.configure({ placeholder: opts.placeholder || 'Начните писать…' }),
