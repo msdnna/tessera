@@ -47,6 +47,42 @@ export const ALLOWED_NODES = [
 
 export const ALLOWED_MARKS = ['bold', 'italic', 'strike', 'underline', 'code', 'link', 'textStyle']
 
+// Attribute names the extensions above can put on a node or a mark. This list
+// exists because the node/mark parity check was not enough: the server rejects
+// unknown *attributes* too, and two of them ('align' on table cells, 'type' on
+// ordered lists) are added by TipTap itself rather than by anything in this
+// file. A document containing a table then failed to save with a 400, and
+// nothing on either side noticed until an e2e run typed "/таблица" (#2728).
+// ut-docSchema.spec.js derives the real set from the loaded extensions and
+// compares it to this list, so the next such attribute cannot arrive silently.
+export const ALLOWED_ATTRS = [
+  'align',
+  'alt',
+  'checked',
+  'class',
+  'color',
+  'colspan',
+  'colwidth',
+  'fontFamily',
+  'fontSize',
+  'height',
+  'href',
+  'id',
+  'indent',
+  'language',
+  'level',
+  'lineHeight',
+  'rel',
+  'rowspan',
+  'src',
+  'start',
+  'target',
+  'textAlign',
+  'title',
+  'type',
+  'width',
+]
+
 export const FONT_FAMILIES = [
   { label: 'По умолчанию', value: '' },
   { label: 'Системный', value: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' },

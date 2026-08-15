@@ -17,6 +17,11 @@ func TestValidateDocContent(t *testing.T) {
 		{"empty doc", `{"type":"doc","content":[]}`, false},
 		{"paragraph with marks", `{"type":"doc","content":[{"type":"paragraph","attrs":{"id":"b1","textAlign":"center"},"content":[{"type":"text","text":"привет","marks":[{"type":"bold"}]}]}]}`, false},
 		{"table", `{"type":"doc","content":[{"type":"table","content":[{"type":"tableRow","content":[{"type":"tableCell","content":[{"type":"paragraph"}]}]}]}]}`, false},
+		// Verbatim from the browser: this is what insertTable() actually sends,
+		// down to the attributes TipTap adds on its own. The hand-written case
+		// above passed while this one returned 400 (#2728).
+		{"table as the editor emits it", `{"type":"doc","content":[{"type":"table","attrs":{"id":"da9b"},"content":[{"type":"tableRow","content":[{"type":"tableHeader","attrs":{"colspan":1,"rowspan":1,"colwidth":null,"align":null},"content":[{"type":"paragraph","attrs":{"textAlign":null,"id":"35a8","lineHeight":null,"indent":null}}]}]}]}]}`, false},
+		{"ordered list as the editor emits it", `{"type":"doc","content":[{"type":"orderedList","attrs":{"start":1,"type":null,"id":"b1"},"content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"раз"}]}]}]}]}`, false},
 		{"relative link", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"x","marks":[{"type":"link","attrs":{"href":"/documents/x"}}]}]}]}`, false},
 		{"not a doc", `{"type":"paragraph"}`, true},
 		{"unknown node", `{"type":"doc","content":[{"type":"iframe"}]}`, true},
@@ -108,4 +113,9 @@ func TestDocumentSchemaMatchesFrontend(t *testing.T) {
 	}
 	check("ALLOWED_NODES", allowedDocNodes)
 	check("ALLOWED_MARKS", allowedDocMarks)
+	// Attributes are the half that broke (#2728): the frontend list is derived
+	// from the loaded extensions by ut-docSchema.spec.js, so comparing against
+	// it here is what keeps a TipTap-supplied attribute from reaching the server
+	// as a 400 on the user's first table.
+	check("ALLOWED_ATTRS", allowedDocAttrs)
 }

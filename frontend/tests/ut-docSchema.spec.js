@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { getSchema } from '@tiptap/core'
 import {
+  ALLOWED_ATTRS,
   ALLOWED_MARKS,
   ALLOWED_NODES,
   EMPTY_DOC,
@@ -24,6 +25,19 @@ describe('document schema', () => {
 
   it('declares exactly the marks the extensions provide', () => {
     expect(Object.keys(schema.marks).sort()).toEqual([...ALLOWED_MARKS].sort())
+  })
+
+  // The node and mark checks above did not catch the case that actually broke:
+  // TipTap puts 'align' on table cells and 'type' on ordered lists by itself, so
+  // neither name appears anywhere in docSchema.js, and the server rejected every
+  // document containing a table (#2728). Deriving the set from the schema is the
+  // only version of this check that cannot drift.
+  it('declares exactly the attributes the extensions provide', () => {
+    const attrs = new Set()
+    for (const type of [...Object.values(schema.nodes), ...Object.values(schema.marks)]) {
+      Object.keys(type.spec.attrs || {}).forEach((a) => attrs.add(a))
+    }
+    expect([...attrs].sort()).toEqual([...ALLOWED_ATTRS].sort())
   })
 
   it('drops a node type that is not in the schema when parsing', () => {

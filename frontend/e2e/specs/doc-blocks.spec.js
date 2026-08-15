@@ -69,10 +69,18 @@ test('документ: абзац переезжает с клавиатуры 
   await page.keyboard.press('Enter')
   await editor.pressSequentially('второй')
 
-  // Back into the first paragraph, then move it down past the second.
+  // Both moves are driven from where the caret already is, and the second one
+  // starts from the selection the first move left behind. That is deliberate:
+  // an arrow key moves the caret natively and ProseMirror only learns about it
+  // from the asynchronous selectionchange, so a chord sent microseconds later
+  // (which only a test can do) reads the previous block index and the move
+  // looks like it did nothing.
   const saved = waitForSave(page)
-  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('Alt+Shift+ArrowUp')
+  await expect(editor.locator('p')).toHaveText(['второй', 'первый'])
   await page.keyboard.press('Alt+Shift+ArrowDown')
+  await expect(editor.locator('p')).toHaveText(['первый', 'второй'])
+  await page.keyboard.press('Alt+Shift+ArrowUp')
   await expect(editor.locator('p')).toHaveText(['второй', 'первый'])
   expect((await saved).status()).toBe(200)
 

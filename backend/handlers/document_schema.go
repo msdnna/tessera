@@ -48,9 +48,18 @@ var allowedDocMarks = map[string]bool{
 // per-type: the precision gained by splitting it does not buy a security
 // property (the type is already checked), and a per-type table drifts silently
 // every time an extension gains an option.
+//
+// This list was written by reading the extensions, and that is exactly how it
+// went wrong: "align" and "type" are added by TipTap itself, so no editor code
+// mentions them, and every document containing a table was rejected with a 400
+// the moment a user inserted one (#2728). It is now derived from the schema on
+// the frontend (docSchema.js ALLOWED_ATTRS) and compared here by
+// TestDocumentSchemaMatchesFrontend.
 var allowedDocAttrs = map[string]bool{
 	"id":         true, // BlockId — the anchor D4 locks and D5 annotates
 	"level":      true,
+	"align":      true, // TipTap puts this on table cells, not us — see below
+	"type":       true, // ...and this on ordered lists
 	"textAlign":  true,
 	"lineHeight": true,
 	"indent":     true,
