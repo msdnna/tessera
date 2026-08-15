@@ -1,0 +1,108 @@
+<script setup>
+// Distraction-free editing for a long description or comment: the same
+// MarkdownEditor, given the whole window, on top of the task modal.
+//
+// The text itself stays in the caller's `v-model` — the modal edits through it
+// rather than keeping a copy. A copy would have to be merged back on close, and
+// the description saves on blur/persist, so any divergence would read as lost
+// text. Loaded lazily by MarkdownEditor (they reference each other).
+import { NModal, NIcon } from 'naive-ui'
+import { CloseOutline } from '@vicons/ionicons5'
+import MarkdownEditor from './MarkdownEditor.vue'
+
+defineProps({
+  show: { type: Boolean, default: false },
+  modelValue: { type: String, default: '' },
+  title: { type: String, default: 'Описание' },
+  placeholder: { type: String, default: 'Напишите что-нибудь…' },
+  mentionItems: { type: Array, default: () => [] },
+  commandItems: { type: Array, default: () => [] },
+  attachTaskId: { type: String, default: null },
+})
+const emit = defineEmits(['update:show', 'update:modelValue', 'attachments-changed', 'persist'])
+
+function close() {
+  emit('update:show', false)
+  // The caller persists on blur; leaving the modal is that moment for it.
+  emit('persist')
+}
+</script>
+
+<template>
+  <n-modal
+    :show="show"
+    class="mdfs-modal"
+    @update:show="$event ? emit('update:show', true) : close()"
+  >
+    <div class="mdfs">
+      <div class="mdfs-head">
+        <span class="mdfs-title">{{ title }}</span>
+        <button type="button" class="mdfs-close" title="Закрыть (Esc)" @click="close">
+          <n-icon :component="CloseOutline" :size="18" />
+        </button>
+      </div>
+      <div class="mdfs-body">
+        <MarkdownEditor
+          :model-value="modelValue"
+          :placeholder="placeholder"
+          :mention-items="mentionItems"
+          :command-items="commandItems"
+          :attach-task-id="attachTaskId"
+          :min-rows="20"
+          :expandable="false"
+          @update:model-value="emit('update:modelValue', $event)"
+          @attachments-changed="emit('attachments-changed')"
+          @persist="emit('persist')"
+        />
+      </div>
+    </div>
+  </n-modal>
+</template>
+
+<style scoped>
+.mdfs {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 94vw);
+  height: min(880px, 90vh);
+  background: var(--t-surface);
+  border: 1px solid var(--t-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.mdfs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--t-border);
+}
+.mdfs-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text2);
+}
+.mdfs-close {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--t-text2);
+  border-radius: 6px;
+  padding: 4px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.mdfs-close:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.mdfs-body {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px 20px;
+}
+</style>

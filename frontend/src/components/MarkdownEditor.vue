@@ -1,5 +1,13 @@
 <script setup>
-import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+import {
+  ref,
+  computed,
+  nextTick,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  defineAsyncComponent,
+} from 'vue'
 import { NIcon, useMessage } from 'naive-ui'
 import {
   LinkOutline,
@@ -8,9 +16,22 @@ import {
   EyeOutline,
   CreateOutline,
   SendOutline,
+  ListOutline,
+  CheckboxOutline,
+  ChevronDownOutline,
+  AttachOutline,
+  ExpandOutline,
 } from '@vicons/ionicons5'
-import { uploads as uploadsApi } from '@/api'
+import { uploads as uploadsApi, tasks as tasksApi } from '@/api'
 import { toggleTaskMarker } from '@/utils/markdown'
+import {
+  WRAP_PAIRS,
+  INDENT,
+  wrapSelection,
+  indentLines,
+  outdentLines,
+  orderedListPrefix,
+} from '@/utils/mdEdit'
 import { detectSlashQuery, matchCommands, commandInsertText } from '@/utils/commands'
 import { isTauri } from '@/utils/serverBase'
 import { scrollParent } from '@/utils/dom'
@@ -45,8 +66,21 @@ const props = defineProps({
   // actions elsewhere (e.g. the description's header) via the exposed methods +
   // `update:mode` — see TaskModal's .desc-head.
   toolbar: { type: Boolean, default: true },
+  // Task whose «Файлы» tab receives non-image drops, and whose files the paperclip
+  // lists for linking. Null → both are off and drops behave as they always did.
+  attachTaskId: { type: String, default: null },
+  // Offer the fullscreen editor. False inside the fullscreen modal itself, which
+  // hosts this very component (the button there would just reopen it).
+  expandable: { type: Boolean, default: true },
 })
-const emit = defineEmits(['update:modelValue', 'submit', 'blur', 'persist', 'update:mode'])
+const emit = defineEmits([
+  'update:modelValue',
+  'submit',
+  'blur',
+  'persist',
+  'update:mode',
+  'attachments-changed',
+])
 
 const message = useMessage()
 const boxed = computed(() => props.variant === 'boxed')
@@ -107,40 +141,72 @@ function onToggleCheck(i) {
 }
 
 // ── markdown formatting (applied to the textarea selection) ──
+// replaceRange swaps [s,e) for `text` and leaves the selection at [selS,selE).
+// It goes through execCommand('insertText') where the browser supports it so the
+// edit joins the textarea's native undo stack: writing the whole value back
+// through v-model (the fallback path) makes Ctrl+Z skip straight past the edit
+// instead of undoing it, which is especially wrong for wrap-on-typing — the user
+// expects the character they just typed to come back off. The fallback still runs
+// under WebKitGTK/Tauri and in jsdom, where execCommand is missing.
+function replaceRange(s, e, text, selS, selE) {
+  const el = ta.value
+  if (!el) return
+  el.focus()
+  el.setSelectionRange(s, e)
+  let native = false
+  try {
+    native =
+      typeof document.execCommand === 'function' && document.execCommand('insertText', false, text)
+  } catch {
+    /* some webviews throw instead of returning false — take the fallback */
+  }
+  // The native path fires `input`, so onInput already pushed the new value out.
+  if (!native) setValue(el.value.slice(0, s) + text + el.value.slice(e))
+  nextTick(() => {
+    el.focus()
+    el.setSelectionRange(selS, selE)
+  })
+}
+// applyEdit takes a whole-value result from utils/mdEdit and narrows it to the
+// shortest changed span, so the undo step covers the edit and not the document.
+function applyEdit(r) {
+  const el = ta.value
+  if (!el || !r) return
+  const old = el.value
+  let s = 0
+  while (s < old.length && s < r.value.length && old[s] === r.value[s]) s++
+  let oldEnd = old.length
+  let newEnd = r.value.length
+  while (oldEnd > s && newEnd > s && old[oldEnd - 1] === r.value[newEnd - 1]) {
+    oldEnd--
+    newEnd--
+  }
+  replaceRange(s, oldEnd, r.value.slice(s, newEnd), r.start, r.end)
+}
 function applyAround(before, after = before) {
   const el = ta.value
   if (!el) return
   const { selectionStart: s, selectionEnd: e } = el
-  const val = props.modelValue
-  const next = val.slice(0, s) + before + val.slice(s, e) + after + val.slice(e)
-  setValue(next)
-  nextTick(() => {
-    el.focus()
-    el.selectionStart = s + before.length
-    el.selectionEnd = e + before.length
-    refreshBubble()
-  })
+  replaceRange(s, e, before + el.value.slice(s, e) + after, s + before.length, e + before.length)
+  nextTick(refreshBubble)
 }
+// `prefix` is a literal or a (line, index) => string — the latter numbers the
+// lines of an ordered list.
 function applyLinePrefix(prefix) {
   const el = ta.value
   if (!el) return
   const { selectionStart: s, selectionEnd: e } = el
-  const val = props.modelValue
+  const val = el.value
   const lineStart = val.lastIndexOf('\n', s - 1) + 1
   let lineEnd = val.indexOf('\n', e)
   if (lineEnd === -1) lineEnd = val.length
   const prefixed = val
     .slice(lineStart, lineEnd)
     .split('\n')
-    .map((l) => prefix + l)
+    .map((l, i) => (typeof prefix === 'function' ? prefix(l, i) : prefix) + l)
     .join('\n')
-  setValue(val.slice(0, lineStart) + prefixed + val.slice(lineEnd))
-  nextTick(() => {
-    el.focus()
-    el.selectionStart = lineStart
-    el.selectionEnd = lineStart + prefixed.length
-    refreshBubble()
-  })
+  replaceRange(lineStart, lineEnd, prefixed, lineStart, lineStart + prefixed.length)
+  nextTick(refreshBubble)
 }
 // Link: no prompt — insert a markdown link skeleton starting at https:// and
 // drop the caret right after it so the user just keeps typing the address.
@@ -148,32 +214,32 @@ function insertLink() {
   const el = ta.value
   if (!el) return
   const { selectionStart: s, selectionEnd: e } = el
-  const val = props.modelValue
-  const text = val.slice(s, e) || 'текст'
+  const text = el.value.slice(s, e) || 'текст'
   const href = 'https://'
-  const md = `[${text}](${href})`
-  setValue(val.slice(0, s) + md + val.slice(e))
   const caret = s + 1 + text.length + 2 + href.length // after "https://"
-  nextTick(() => {
-    el.focus()
-    el.selectionStart = el.selectionEnd = caret
-    hideBubble()
-  })
+  replaceRange(s, e, `[${text}](${href})`, caret, caret)
+  nextTick(hideBubble)
+}
+// Blank lines around the body are load-bearing: without them `marked` keeps the
+// contents of <details> as raw HTML and the markdown inside never renders.
+function insertSpoiler() {
+  const el = ta.value
+  const sel = el ? el.value.slice(el.selectionStart, el.selectionEnd) : ''
+  insertAtCaret(
+    `\n<details><summary>Подробнее</summary>\n\n${sel || 'Скрытый текст'}\n\n</details>\n`,
+  )
 }
 
 // ── insert at caret (images, snippets) ──
 function insertAtCaret(text) {
   const el = ta.value
-  const val = props.modelValue
-  const s = el ? el.selectionStart : val.length
-  const e = el ? el.selectionEnd : val.length
-  setValue(val.slice(0, s) + text + val.slice(e))
+  if (!el) {
+    setValue(props.modelValue + text)
+    return
+  }
+  const { selectionStart: s, selectionEnd: e } = el
   const caret = s + text.length
-  nextTick(() => {
-    if (!el) return
-    el.focus()
-    el.selectionStart = el.selectionEnd = caret
-  })
+  replaceRange(s, e, text, caret, caret)
 }
 
 // ── image upload (button / paste / drop) ──
@@ -239,28 +305,94 @@ async function onPaste(e) {
     }
   }
 }
+// ── task attachments (non-image drops + the paperclip picker) ──
+// Images stay on the public media route so they render inline; anything else goes
+// to the task's attachments and is linked, because only the attachment route can
+// serve an arbitrary file back (see utils/download.js for why it's not a plain link).
+const dragging = ref(false)
+const attaching = ref(false)
+const attachList = ref([])
+const attachOpen = ref(false)
+const canAttach = computed(() => !!props.attachTaskId)
+
+async function uploadAttachment(file) {
+  attaching.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await tasksApi.uploadAttachment(props.attachTaskId, fd)
+    const att = res.data
+    if (att?.id) insertAtCaret(`[${att.filename || file.name}](/api/attachments/${att.id}/download)`)
+    attachList.value = []
+    emit('attachments-changed')
+  } catch (err) {
+    message.error(err.message || 'Не удалось загрузить файл')
+  } finally {
+    attaching.value = false
+  }
+}
+async function openAttachPicker() {
+  if (!canAttach.value) return
+  attachOpen.value = !attachOpen.value
+  if (!attachOpen.value) return
+  try {
+    const res = await tasksApi.attachments(props.attachTaskId)
+    attachList.value = res.data || []
+  } catch (err) {
+    message.error(err.message || 'Не удалось загрузить список файлов')
+    attachOpen.value = false
+  }
+}
+function linkAttachment(att) {
+  attachOpen.value = false
+  insertAtCaret(`[${att.filename}](/api/attachments/${att.id}/download)`)
+}
+
+function onDragOver() {
+  dragging.value = true
+}
+function onDragLeave() {
+  dragging.value = false
+}
 function onDrop(e) {
+  dragging.value = false
   const files = e.dataTransfer && e.dataTransfer.files
-  const img = files && [...files].find((f) => f.type.startsWith('image/'))
+  if (!files || !files.length) return
+  const list = [...files]
+  const img = list.find((f) => f.type.startsWith('image/'))
   if (img) {
     e.preventDefault()
     uploadImage(img)
+    return
+  }
+  if (canAttach.value) {
+    e.preventDefault()
+    uploadAttachment(list[0])
   }
 }
 function insertMermaid() {
   insertAtCaret('\n```mermaid\nflowchart TD\n  A[Старт] --> B[Готово]\n```\n')
 }
 
-const tools = [
+// Inline marks only — these are what the selection bubble offers. The bubble
+// floats over the text the user is reading, so it has to stay short.
+const inlineTools = [
   { t: 'B', cls: 'b', title: 'Жирный', fn: () => applyAround('**') },
   { t: 'I', cls: 'i', title: 'Курсив', fn: () => applyAround('*') },
   { t: 'S', cls: 's', title: 'Зачёркнутый', fn: () => applyAround('~~') },
   { t: '</>', title: 'Код', fn: () => applyAround('`') },
-  { t: 'H', title: 'Заголовок', fn: () => applyLinePrefix('## ') },
-  { t: '•', title: 'Список', fn: () => applyLinePrefix('- ') },
-  { t: '❝', title: 'Цитата', fn: () => applyLinePrefix('> ') },
   { icon: LinkOutline, title: 'Ссылка', fn: insertLink },
 ]
+// Block-level actions rewrite whole lines; they live in the persistent toolbar.
+const blockTools = [
+  { t: 'H', title: 'Заголовок', fn: () => applyLinePrefix('## ') },
+  { t: '•', title: 'Маркированный список', fn: () => applyLinePrefix('- ') },
+  { icon: ListOutline, title: 'Нумерованный список', fn: () => applyLinePrefix(orderedListPrefix) },
+  { icon: CheckboxOutline, title: 'Чекбокс', fn: () => applyLinePrefix('- [ ] ') },
+  { t: '❝', title: 'Цитата', fn: () => applyLinePrefix('> ') },
+  { icon: ChevronDownOutline, title: 'Спойлер', fn: insertSpoiler },
+]
+const tools = [...inlineTools, ...blockTools]
 
 // ── selection bubble toolbar ──
 const bubble = ref(null) // { top, left } in viewport coords, or null
@@ -436,8 +568,14 @@ function pickSuggest(item) {
   })
 }
 
+// Tab indents rather than moving focus — but that turns the field into a keyboard
+// trap, and the description editor sits inside a modal whose buttons then become
+// unreachable. Esc releases the capture (the next Tab leaves), typing takes it back.
+const tabTraps = ref(true)
+
 function onInput(e) {
   setValue(e.target.value)
+  tabTraps.value = true
   autoGrow()
   detectSuggest()
   hideBubble()
@@ -472,7 +610,41 @@ function onKeydown(e) {
     e.preventDefault()
     if (props.sending) return
     emit('submit')
+    return
   }
+  const el = ta.value
+  if (!el || e.ctrlKey || e.metaKey || e.altKey) return
+  const { selectionStart: s, selectionEnd: end } = el
+  // Typing a bracket/quote over a selection wraps it instead of replacing it.
+  // IME composition is skipped — swallowing those keys breaks composed input.
+  if (!e.isComposing && e.key.length === 1 && WRAP_PAIRS[e.key] !== undefined && s !== end) {
+    e.preventDefault()
+    applyEdit(wrapSelection(el.value, s, end, e.key))
+    return
+  }
+  if (e.key === 'Tab' && tabTraps.value) {
+    e.preventDefault()
+    if (e.shiftKey) applyEdit(outdentLines(el.value, s, end))
+    else if (s === end) insertAtCaret(INDENT)
+    else applyEdit(indentLines(el.value, s, end))
+    return
+  }
+  // First Esc gives Tab back to the browser; the second one propagates and lets
+  // the surrounding modal close as usual.
+  if (e.key === 'Escape' && tabTraps.value) {
+    tabTraps.value = false
+    e.stopPropagation()
+  }
+}
+
+// Lazy + async so the two components can reference each other (the modal hosts a
+// MarkdownEditor of its own) without a circular import at module-eval time.
+const MarkdownFullscreenModal = defineAsyncComponent(
+  () => import('./MarkdownFullscreenModal.vue'),
+)
+const fullscreen = ref(false)
+function openFullscreen() {
+  fullscreen.value = true
 }
 
 function getMentions() {
@@ -489,7 +661,16 @@ function clear() {
 function focus() {
   ta.value?.focus()
 }
-defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, autoGrow })
+defineExpose({
+  getMentions,
+  clear,
+  focus,
+  pickImage,
+  insertMermaid,
+  toggleMode,
+  autoGrow,
+  openFullscreen,
+})
 </script>
 
 <template>
@@ -540,7 +721,7 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, 
 
     <div class="md2-body">
       <Transition name="md2-fade" mode="out-in" @after-enter="autoGrow">
-        <div v-if="mode === 'write'" key="write" class="md2-write">
+        <div v-if="mode === 'write'" key="write" class="md2-write" :class="{ dragging }">
           <textarea
             ref="ta"
             :value="modelValue"
@@ -554,14 +735,15 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, 
             @scroll="onTaScroll"
             @blur="onBlur"
             @paste="onPaste"
-            @dragover.prevent
+            @dragover.prevent="onDragOver"
+            @dragleave="onDragLeave"
             @drop="onDrop"
           />
 
           <Transition name="bubble">
             <div v-if="bubble" class="md2-bubble" :style="bubble">
               <button
-                v-for="b in tools"
+                v-for="b in inlineTools"
                 :key="b.title"
                 type="button"
                 :class="b.cls"
@@ -637,10 +819,65 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, 
           :source="modelValue"
           :members="mentionItems"
           interactive
+          task-refs
           empty="Нечего показать"
           @toggle="onToggleCheck"
         />
       </Transition>
+
+      <!-- Default variant: a formatting bar under the text. The selection bubble
+           only carries inline marks, and the header row (when it is rendered at
+           all — TaskModal hosts it in .desc-head) only carries insert/preview, so
+           lists, checkboxes and spoilers need a home of their own. -->
+      <div v-if="!boxed && mode === 'write'" class="md2-toolbar md2-format">
+        <button
+          v-for="b in tools"
+          :key="b.title"
+          type="button"
+          class="md2-tbtn"
+          :class="b.cls"
+          :title="b.title"
+          @mousedown.prevent="b.fn"
+        >
+          <n-icon v-if="b.icon" :component="b.icon" :size="15" />
+          <template v-else>{{ b.t }}</template>
+        </button>
+        <span v-if="canAttach || expandable" class="md2-tsep" />
+        <button
+          v-if="canAttach"
+          type="button"
+          class="md2-tbtn"
+          :class="{ busy: attaching }"
+          title="Приложить файл к задаче и вставить ссылку"
+          @mousedown.prevent="openAttachPicker"
+        >
+          <n-icon :component="AttachOutline" :size="16" />
+        </button>
+        <button
+          v-if="expandable"
+          type="button"
+          class="md2-tbtn"
+          title="Открыть на весь экран"
+          @mousedown.prevent="openFullscreen"
+        >
+          <n-icon :component="ExpandOutline" :size="15" />
+        </button>
+      </div>
+
+      <!-- Files already on the task: picking one links it into the text. Rendered
+           in flow (not a floating popup) so it can't be clipped by the modal. -->
+      <ul v-if="attachOpen" class="md2-attach">
+        <li v-if="!attachList.length" class="md2-attach-empty">В задаче ещё нет файлов</li>
+        <li
+          v-for="a in attachList"
+          :key="a.id"
+          class="md2-attach-item"
+          @mousedown.prevent="linkAttachment(a)"
+        >
+          <n-icon :component="AttachOutline" :size="14" />
+          <span class="md2-attach-name">{{ a.filename }}</span>
+        </li>
+      </ul>
 
       <!-- Boxed variant: persistent toolbar under the text (formatting is still also
          available via the selection bubble). mousedown.prevent keeps the caret /
@@ -677,8 +914,27 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, 
           >
             <n-icon :component="GitNetworkOutline" :size="16" />
           </button>
+          <button
+            v-if="canAttach"
+            type="button"
+            class="md2-tbtn"
+            :class="{ busy: attaching }"
+            title="Приложить файл к задаче и вставить ссылку"
+            @mousedown.prevent="openAttachPicker"
+          >
+            <n-icon :component="AttachOutline" :size="16" />
+          </button>
         </template>
         <span class="md2-spacer" />
+        <button
+          v-if="expandable"
+          type="button"
+          class="md2-tbtn"
+          title="Открыть на весь экран"
+          @mousedown.prevent="openFullscreen"
+        >
+          <n-icon :component="ExpandOutline" :size="15" />
+        </button>
         <button
           type="button"
           class="md2-tbtn"
@@ -701,6 +957,21 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, 
         </button>
       </div>
     </div>
+
+    <!-- Fullscreen editing shares this component's v-model, so there is no second
+         copy of the text to merge back on close. -->
+    <MarkdownFullscreenModal
+      v-if="expandable && fullscreen"
+      v-model:show="fullscreen"
+      :model-value="modelValue"
+      :placeholder="placeholder"
+      :mention-items="mentionItems"
+      :command-items="commandItems"
+      :attach-task-id="attachTaskId"
+      @update:model-value="setValue"
+      @attachments-changed="emit('attachments-changed')"
+      @persist="emit('persist')"
+    />
   </div>
 </template>
 
@@ -979,6 +1250,56 @@ defineExpose({ getMentions, clear, focus, pickImage, insertMermaid, toggleMode, 
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--t-border);
+}
+/* Seamless variant: the editor has no box, so the bar wraps rather than forcing
+   a horizontal scroll in the narrow description column. */
+.md2-format {
+  flex-wrap: wrap;
+}
+/* Drop target feedback: without it a dragged file gives no hint that the editor
+   will take it (the textarea has no box of its own to change). */
+.md2-write.dragging::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px dashed var(--t-primary);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--t-primary) 6%, transparent);
+  pointer-events: none;
+}
+/* Task files, listed for linking into the text. */
+.md2-attach {
+  margin: 6px 0 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--t-input-bg);
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+}
+.md2-attach-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--t-text1);
+  cursor: pointer;
+}
+.md2-attach-item:hover {
+  background: var(--t-hover);
+}
+.md2-attach-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.md2-attach-empty {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--t-text3);
 }
 .md2-tbtn {
   display: inline-flex;
