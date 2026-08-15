@@ -364,6 +364,16 @@ export const documents = {
   updateContent: (id, content, updatedAt) =>
     api.patch(`/documents/${id}/content`, { content, updated_at: updatedAt }, { skipLoader: true }),
   uploadAsset: (id, formData) => api.post(`/documents/${id}/assets`, formData),
+  // Office import/export via the LibreOffice sidecar (#2733). The status call
+  // is what lets the UI hide the import button on an install without one,
+  // rather than offering an action that fails after the file picker.
+  // skipLoader: it runs on entering the section, not on a user action.
+  converterStatus: () => api.get('/document-converter', { skipLoader: true }),
+  importFile: (wsId, formData) => api.post(`/workspaces/${wsId}/documents/import`, formData),
+  // responseType blob: the response is a file, and letting axios parse a PDF as
+  // text corrupts it in a way that only shows up when the download is opened.
+  exportFile: (id, format) =>
+    api.get(`/documents/${id}/export?format=${format}`, { responseType: 'blob' }),
   remove: (id, recursive = false) =>
     api.delete(`/documents/${id}${recursive ? '?recursive=true' : ''}`),
   // Block-anchored annotations (#2730). Roots and replies come back in one list

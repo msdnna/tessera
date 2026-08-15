@@ -1,13 +1,25 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { NAlert, NButton, NIcon, NInput, NPopconfirm, NSpin, NText, useMessage } from 'naive-ui'
+import {
+  NAlert,
+  NButton,
+  NDropdown,
+  NIcon,
+  NInput,
+  NPopconfirm,
+  NSpin,
+  NText,
+  useMessage,
+} from 'naive-ui'
 import {
   AddOutline,
   ArrowBackOutline,
   BookmarkOutline,
   ChatbubbleEllipsesOutline,
+  CloudUploadOutline,
   DocumentsOutline,
+  DownloadOutline,
   GridOutline,
   LinkOutline,
   TimeOutline,
@@ -20,6 +32,14 @@ import DocHistory from '@/components/documents/DocHistory.vue'
 import DocLinks from '@/components/documents/DocLinks.vue'
 import DocTemplates from '@/components/documents/DocTemplates.vue'
 import { fileToTemplate } from '@/utils/docImport'
+import {
+  EXPORT_LABELS,
+  downloadBlob,
+  exportFileName,
+  importAccept,
+  importOfficeFile,
+  isOfficeFile,
+} from '@/utils/docOffice'
 import { builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useDocAutosave } from '@/composables/useDocAutosave'
@@ -394,6 +414,122 @@ async function create() {
   }
 }
 
+// Office import/export (#2733). The sidecar is optional, so the section asks
+// once whether it is deployed and hides the office half of the picker when it
+// is not — offering an action that fails after the file dialog is worse than
+// not offering it.
+const converter = ref({ available: false, export_formats: ['html'] })
+const importInput = ref(null)
+const importing = ref(false)
+const exporting = ref('')
+
+async function loadConverter() {
+  try {
+    const res = await docsApi.converterStatus()
+    converter.value = res.data || { available: false }
+  } catch {
+    // A failure here must not break the section: it only decides whether one
+    // button is shown.
+    converter.value = { available: false }
+  }
+}
+
+// html is always offered — it is rendered by the backend itself and needs no
+// sidecar, so the cheapest export never depends on the heaviest dependency.
+const exportOptions = computed(() => {
+  const formats = converter.value.export_formats?.length ? converter.value.export_formats : ['html']
+  return formats.map((f) => ({ key: f, label: EXPORT_LABELS[f] || f.toUpperCase() }))
+})
+
+const importHint = computed(() =>
+  converter.value.available
+    ? 'Импортировать документ (docx, odt, rtf, md, json)'
+    : `Импортировать документ (md, json)\u2009— ${converter.value.reason || 'конвертация офисных форматов недоступна'}`,
+)
+
+function pickImport() {
+  importInput.value?.click()
+}
+
+async function onImportPicked(e) {
+  const file = e.target.files?.[0]
+  // Cleared before anything can fail, so picking the same file twice in a row
+  // still fires a change event.
+  e.target.value = ''
+  if (!file || !wsStore.currentId) return
+  importing.value = true
+  try {
+    const doc = isOfficeFile(file.name) ? await importOffice(file) : await importLocal(file)
+    await loadList()
+    await open(doc)
+  } catch (err) {
+    message.error(err.message)
+  } finally {
+    importing.value = false
+  }
+}
+
+async function importOffice(file) {
+  if (!converter.value.available) {
+    throw new Error(converter.value.reason || 'Конвертация офисных форматов недоступна')
+  }
+  const { document: doc, imagesDropped } = await importOfficeFile(
+    docsApi,
+    wsStore.currentId,
+    file,
+    { parentId: parentId.value },
+  )
+  // Dropped pictures are said out loud. A document that quietly lost half its
+  // figures looks like a successful import until somebody scrolls.
+  if (imagesDropped) {
+    message.warning(`Документ импортирован, изображений пропущено: ${imagesDropped}`)
+  } else {
+    message.success('Документ импортирован')
+  }
+  return doc
+}
+
+// .md and .json are parsed in the browser (D9) and therefore work on an install
+// with no converter at all — the same picker covers both paths.
+async function importLocal(file) {
+  const draft = await fileToTemplate(file)
+  const res = await docsApi.create(wsStore.currentId, {
+    title: draft.title || 'Импортированный документ',
+    icon: draft.icon || '',
+    parent_id: parentId.value,
+  })
+  await docsApi.updateContent(res.data.id, draft.content, res.data.updated_at)
+  message.success('Документ импортирован')
+  return res.data
+}
+
+async function exportAs(format) {
+  if (!selected.value?.id) return
+  exporting.value = format
+  try {
+    // The open editor may hold edits the debounce has not sent yet, and the
+    // export is rendered from what the server has — without this flush a user
+    // would export the document as it was a second ago.
+    await flushSave()
+    const res = await docsApi.exportFile(selected.value.id, format)
+    downloadBlob(res.data, exportFileName(selected.value.title, format))
+  } catch (err) {
+    message.error(exportError(err))
+  } finally {
+    exporting.value = ''
+  }
+}
+
+// An export failure arrives as a Blob, not as JSON, because responseType is
+// blob for the whole request — so the interceptor's message is not usable and
+// the reason has to be read back out of the body.
+function exportError(err) {
+  const status = err?.response?.status
+  if (status === 503) return 'Сервис конвертации документов недоступен'
+  if (status === 422) return 'Не удалось преобразовать документ'
+  return err?.message || 'Не удалось выгрузить документ'
+}
+
 // Template gallery (#2734). Saved templates come from the workspace; the
 // built-in starters are frontend constants and are appended, so an empty
 // gallery still has something to start from.
@@ -639,6 +775,7 @@ function onBeforeUnload(e) {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  loadConverter()
   await loadList()
   if (route.params.slug) {
     const ok = await resolveSlug(route.params.slug)
@@ -683,6 +820,23 @@ watch(
             <n-button text size="small" @click="crumbTo(i)">{{ c.title }}</n-button>
           </template>
         </div>
+        <n-button
+          size="small"
+          data-testid="doc-import"
+          :loading="importing"
+          :title="importHint"
+          @click="pickImport"
+        >
+          <template #icon><n-icon :component="CloudUploadOutline" /></template>
+          Импорт
+        </n-button>
+        <input
+          ref="importInput"
+          type="file"
+          class="hidden-file"
+          :accept="importAccept()"
+          @change="onImportPicked"
+        />
         <n-button size="small" data-testid="doc-templates" @click="openTemplates">
           <template #icon><n-icon :component="GridOutline" /></template>
           Из шаблона
@@ -770,6 +924,17 @@ watch(
           >
             <template #icon><n-icon :component="BookmarkOutline" /></template>
           </n-button>
+          <n-dropdown trigger="click" :options="exportOptions" @select="exportAs">
+            <n-button
+              quaternary
+              size="tiny"
+              title="Выгрузить документ"
+              data-testid="doc-export"
+              :loading="!!exporting"
+            >
+              <template #icon><n-icon :component="DownloadOutline" /></template>
+            </n-button>
+          </n-dropdown>
           <n-text v-if="saving" depth="3">Сохранение…</n-text>
           <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
           <n-text v-else depth="3">Все изменения сохранены</n-text>
@@ -907,6 +1072,12 @@ watch(
 </template>
 
 <style scoped>
+/* The picker is driven by the Импорт button; a visible file input would sit in
+   the header with a browser-styled label nothing else on this screen matches. */
+.hidden-file {
+  display: none;
+}
+
 .docs {
   display: flex;
   flex-direction: column;
