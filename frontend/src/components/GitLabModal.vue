@@ -115,6 +115,10 @@ const lastSynced = ref(null)
 const wbEnabled = ref(false) // master toggle for the whole binding table
 const wbCreate = ref(false) // allow creating GitLab issues from tasks (independent of write-back)
 const wbFetchTemplates = ref(false) // offer repo issue templates when creating
+// Mirror Tessera-hosted attachments into GitLab's upload store on push (#2713).
+// Defaults to ON — an integration saved before this flag existed has no key, and
+// the backend reads that as enabled (dead links in issues are a bug, not a taste).
+const wbAttachments = ref(true)
 // bindings is the customizable trigger→action table (replaces the fixed toggles).
 // Each entry: { enabled, trigger:{type,column_id,column_name,priority,completed,date_kind},
 //               action:{type,label,clear_prefix,state,date_kind,add_marker} }
@@ -401,6 +405,7 @@ async function applyBinding(data) {
     wbEnabled.value = wb.enabled === true
     wbCreate.value = wb.push_create === true
     wbFetchTemplates.value = wb.fetch_templates === true
+    wbAttachments.value = wb.push_attachments !== false
     estimationUnit.value = data.estimation_unit || 'time'
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
@@ -651,6 +656,7 @@ async function save() {
         enabled: wbEnabled.value,
         push_create: wbCreate.value,
         fetch_templates: wbCreate.value && wbFetchTemplates.value,
+        push_attachments: wbAttachments.value,
         // The binding table fully replaces the legacy toggles; a non-empty set makes
         // the backend ignore them entirely.
         bindings: wbEnabled.value ? bindings.value.map(serializeBinding) : [],
@@ -1001,6 +1007,9 @@ watch(
                   <n-text depth="3" class="lbl">Получение issue-templates из проекта</n-text>
                   <div><n-switch v-model:value="wbFetchTemplates" size="small" /></div>
                 </template>
+
+                <n-text depth="3" class="lbl">Загружать вложения в GitLab</n-text>
+                <div><n-switch v-model:value="wbAttachments" size="small" /></div>
               </div>
               <p class="gl-wb-hint">
                 <n-text depth="3">
@@ -1010,7 +1019,12 @@ watch(
                   Работает независимо от обратной записи изменений ниже. «Получение issue-templates»
                   подтягивает шаблоны
                   <code>.gitlab/issue_templates/*.md</code> — их можно выбрать над редактором
-                  описания перед созданием.
+                  описания перед созданием. «Загружать вложения» копирует картинки из описания и
+                  комментариев, а также файлы задачи, в хранилище проекта GitLab — иначе ссылки на
+                  них в issue остаются битыми (GitLab резолвит их от своего адреса). Выключите, если
+                  не хотите дублировать бинарники в GitLab: ссылки тогда заменяются пометкой.
+                  Удаление файла в Tessera копию в GitLab не убирает — штатного API удаления
+                  загрузок нет.
                 </n-text>
               </p>
               <!-- Uniform "configure" buttons: each opens the right pane in its mode. The
