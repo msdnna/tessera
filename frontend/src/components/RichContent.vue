@@ -1,7 +1,12 @@
 <script setup>
 import { ref, watch, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import { useMessage } from 'naive-ui'
 import { renderRich, sanitizeSvgFragment } from '@/utils/markdown'
 import { useThemeStore } from '@/stores/theme'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { tasks as tasksApi } from '@/api'
+import { saveAttachment, attachmentIdFromHref } from '@/utils/download'
 
 // Renders Markdown (via renderRich → sanitised HTML) and then asynchronously
 // turns ```mermaid fenced blocks into SVG diagrams. Mermaid is loaded lazily
@@ -13,17 +18,23 @@ const props = defineProps({
   // When true, GFM task-list checkboxes become clickable; clicking emits `toggle`
   // with the checkbox index so the parent can rewrite the stored markdown.
   interactive: { type: Boolean, default: false },
+  // Opt-in: render "#123" as a link to that task. Off on board cards, where the
+  // link would swallow clicks meant for the card and get in the way of dragging.
+  taskRefs: { type: Boolean, default: false },
 })
 const emit = defineEmits(['toggle'])
 
 const theme = useThemeStore()
+const ws = useWorkspacesStore()
+const router = useRouter()
+const message = useMessage()
 const root = ref(null)
 const html = ref('')
 let mermaidMod = null
 let seq = 0 // guards against out-of-order async renders
 
 function build() {
-  let out = renderRich(props.source, props.members)
+  let out = renderRich(props.source, props.members, { taskRefs: props.taskRefs })
   // Interactive: drop the `disabled` marked stamps on task checkboxes so they
   // can receive clicks (the markdown rewrite is the source of truth, not the DOM).
   if (props.interactive && out) {
@@ -48,11 +59,63 @@ function queueToggle(box) {
     emit('toggle', i)
   }
 }
-// Delegate clicks: the checkbox itself (native toggle animates) OR the item's
-// text (manually flip the box so it animates too), then toggle the markdown.
+// A "#123" chip is resolved on click rather than at render time — a description
+// can mention many tasks, and most are never clicked. Resolutions are cached for
+// the session because the same chip gets clicked repeatedly.
+const refCache = new Map()
+async function openTaskRef(el) {
+  const number = Number(el.dataset.taskRef)
+  const wsId = ws.currentId
+  if (!number || !wsId) return
+  const key = `${wsId}:${number}`
+  try {
+    if (!refCache.has(key)) {
+      const res = await tasksApi.taskByNumber(wsId, number)
+      refCache.set(key, res.data || null)
+    }
+    const task = refCache.get(key)
+    // No board means the task exists but isn't on one — there is nowhere to go.
+    if (!task?.board_id) {
+      message.warning(`Задача #${number} не найдена`)
+      return
+    }
+    router.push(`/board/${task.board_id}?task=${number}`)
+  } catch {
+    refCache.set(key, null)
+    message.warning(`Задача #${number} не найдена`)
+  }
+}
+
+// Attachment links can't be followed: the download route is behind auth and the
+// token never leaves memory, so the click is turned into an api request.
+async function downloadLink(id, filename) {
+  try {
+    if ((await saveAttachment(id, filename)) === 'saved') message.success('Файл сохранён')
+  } catch (e) {
+    message.error(e.message || 'Не удалось скачать файл')
+  }
+}
+
+// Delegate clicks: task-ref chips and attachment links first (they work whether
+// or not the content is interactive), then the checkbox itself (native toggle
+// animates) OR the item's text (manually flip the box so it animates too).
 function onClick(e) {
+  const target = e.target
+  const chip = target?.closest?.('[data-task-ref]')
+  if (chip) {
+    e.preventDefault()
+    openTaskRef(chip)
+    return
+  }
+  const link = target?.closest?.('a[href]')
+  const attId = link && attachmentIdFromHref(link.getAttribute('href'))
+  if (attId) {
+    e.preventDefault()
+    downloadLink(attId, link.textContent.trim() || 'file')
+    return
+  }
   if (!props.interactive) return
-  const t = e.target
+  const t = target
   if (t && t.tagName === 'INPUT' && t.type === 'checkbox') {
     queueToggle(t) // let the native toggle proceed (no preventDefault) so it animates
     return
