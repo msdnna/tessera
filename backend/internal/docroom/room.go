@@ -53,7 +53,8 @@ const (
 // Message types on the wire. Server→client: welcome (once, on join), state
 // (whole-room snapshot), denied (answer to a lock request that lost), comments
 // (something changed in this document's threads — refetch them), content (the
-// body was replaced under the readers' feet — reload it).
+// body was replaced under the readers' feet — reload it), links (its task links
+// or approval protocols changed).
 // Client→server: lock, unlock.
 const (
 	TypeWelcome  = "welcome"
@@ -65,8 +66,12 @@ const (
 	// version (#2731). It carries no payload: everyone refetches, which is also
 	// what makes a nudge lost to a reconnect cost nothing but a stale tab.
 	TypeContent = "content"
-	TypeLock    = "lock"
-	TypeUnlock  = "unlock"
+	// TypeLinks is sent when the document's task links or approval protocols
+	// changed (#2732). Payload-free like the others: the panel refetches, which
+	// is what keeps a nudge lost to a reconnect from turning into a phantom row.
+	TypeLinks  = "links"
+	TypeLock   = "lock"
+	TypeUnlock = "unlock"
 )
 
 // Participant is one open socket on one document. The same user may have two

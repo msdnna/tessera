@@ -426,6 +426,20 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/document-templates/:id", rh.UpdateDocumentTemplate)
 			protected.DELETE("/document-templates/:id", rh.DeleteDocumentTemplate)
 
+			// Task links and approval protocols (#2732). The link list is read
+			// from both ends — a document shows its tasks, a task shows its
+			// documents — so both directions get a route; the link itself is
+			// addressed by its own id, like everything else above.
+			protected.GET("/documents/:id/tasks", rh.ListDocumentTaskLinks)
+			protected.POST("/documents/:id/tasks", rh.CreateDocumentTaskLink)
+			protected.DELETE("/document-task-links/:id", rh.DeleteDocumentTaskLink)
+			protected.GET("/tasks/:id/documents", rh.ListTaskDocumentLinks)
+
+			protected.GET("/documents/:id/approvals", rh.ListDocumentApprovals)
+			protected.POST("/documents/:id/approvals", rh.CreateDocumentApproval)
+			protected.POST("/document-approvals/:id/decide", rh.DecideDocumentApproval)
+			protected.POST("/document-approvals/:id/cancel", rh.CancelDocumentApproval)
+
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)
