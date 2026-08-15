@@ -252,6 +252,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/notes", rh.CreateNote)
 			protected.GET("/workspaces/:id/notes", rh.ListNotes)
 
+			// Documents (workspace-scoped, nested via parent_id).
+			protected.POST("/workspaces/:id/documents", rh.CreateDocument)
+			protected.GET("/workspaces/:id/documents", rh.ListDocuments)
+			protected.GET("/workspaces/:id/documents/by-slug/:slug", rh.ResolveDocumentBySlug)
+
 			protected.PATCH("/groups/:id", rh.UpdateProjectGroup)
 			protected.PATCH("/groups/:id/move", rh.MoveProjectGroup)
 			protected.DELETE("/groups/:id", rh.DeleteProjectGroup)
@@ -363,6 +368,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/notes/:id", rh.GetNote)
 			protected.PATCH("/notes/:id", rh.UpdateNote)
 			protected.DELETE("/notes/:id", rh.DeleteNote)
+
+			protected.GET("/documents/:id", rh.GetDocument)
+			protected.PATCH("/documents/:id", rh.UpdateDocument)
+			protected.DELETE("/documents/:id", rh.DeleteDocument)
 
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).
