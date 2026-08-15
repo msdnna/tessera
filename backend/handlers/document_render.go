@@ -134,6 +134,8 @@ func renderDocNode(b *strings.Builder, n docNode, resolveImage func(string) stri
 		b.WriteString("<br>")
 	case "image":
 		renderDocImage(b, n, resolveImage)
+	case "pdfEmbed":
+		renderDocPdf(b, n)
 	case "table":
 		wrap(b, "table", n, resolveImage)
 	case "tableRow":
@@ -286,6 +288,29 @@ func renderDocImage(b *strings.Builder, n docNode, resolveImage func(string) str
 		}
 	}
 	b.WriteString(">\n")
+}
+
+// renderDocPdf writes the export stand-in for an embedded PDF.
+//
+// The pages themselves cannot come along: the sidecar builds a .docx or a .pdf
+// out of this HTML, and there is no markup that says "splice another PDF in
+// here". Dropping the node silently is the failure mode TestRenderDocHTMLCoversSchema
+// exists to prevent, so the export carries a visible line with the file name and
+// a link to it instead — a reader of the exported file can still get to it.
+func renderDocPdf(b *strings.Builder, n docNode) {
+	name, _ := n.Attrs["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		name = "документ.pdf"
+	}
+	src, _ := n.Attrs["src"].(string)
+	label := "PDF: " + html.EscapeString(name)
+	b.WriteString(`<p class="doc-pdf">`)
+	if src != "" {
+		b.WriteString(`<a href="` + html.EscapeString(src) + `">` + label + `</a>`)
+	} else {
+		b.WriteString(label)
+	}
+	b.WriteString("</p>\n")
 }
 
 // attrInt reads a numeric attribute. ProseMirror JSON decodes numbers as

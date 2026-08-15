@@ -406,6 +406,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/documents/:id", rh.UpdateDocument)
 			protected.PATCH("/documents/:id/content", rh.UpdateDocumentContent)
 			protected.POST("/documents/:id/assets", rh.UploadDocumentAsset)
+			protected.POST("/documents/:id/pdf", rh.UploadDocumentPdf)
 			// Office import/export through the LibreOffice sidecar (#2733). The
 			// status route is cheap on purpose: the client asks it once and hides
 			// the import button on an install with no converter, instead of

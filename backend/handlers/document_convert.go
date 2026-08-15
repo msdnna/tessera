@@ -93,24 +93,31 @@ var dataImageRe = regexp.MustCompile(`(?i)(<img\b[^>]*?\bsrc=")data:([a-z0-9.+/-
 // import button would be offered on every install and fail only after the user
 // picked a file, which is the worst moment to learn the feature is not deployed.
 func (h *API) ConverterStatus(c *gin.Context) {
+	// native_formats is reported in every branch: PDF import needs no sidecar,
+	// so a client that hides the import button on `available:false` would hide a
+	// feature that works. It is a list rather than a flag because the set of
+	// formats we handle ourselves is the kind of thing that grows.
 	if !h.converter.Enabled() {
 		c.JSON(http.StatusOK, gin.H{
-			"available": false,
-			"reason":    "конвертация документов не настроена (CONVERTER_URL)",
+			"available":      false,
+			"reason":         "конвертация документов не настроена (CONVERTER_URL)",
+			"native_formats": docNativeImportExts,
 		})
 		return
 	}
 	info, err := h.converter.Health(c)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
-			"available": false,
-			"reason":    "сервис конвертации недоступен",
+			"available":      false,
+			"reason":         "сервис конвертации недоступен",
+			"native_formats": docNativeImportExts,
 		})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"available":      true,
 		"import_formats": sortedKeys(docImportExts),
+		"native_formats": docNativeImportExts,
 		"export_formats": exportFormatsFor(info),
 	})
 }
@@ -124,10 +131,6 @@ func (h *API) ImportDocument(c *gin.Context) {
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
-	if !h.converter.Enabled() {
-		converterUnavailable(c, converter.ErrDisabled)
-		return
-	}
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "файл не передан"})
@@ -139,9 +142,22 @@ func (h *API) ImportDocument(c *gin.Context) {
 	}
 	name := filepath.Base(fileHeader.Filename)
 	ext := strings.ToLower(filepath.Ext(name))
+
+	// PDF branches off before the converter gate on purpose: it is stored, not
+	// converted, so it is the one import that keeps working on an install with
+	// no sidecar deployed. Gating it behind CONVERTER_URL would make the
+	// cheapest path depend on the heaviest dependency.
+	if ext == ".pdf" {
+		h.importPdfDocument(c, wsID, fileHeader, name)
+		return
+	}
+	if !h.converter.Enabled() {
+		converterUnavailable(c, converter.ErrDisabled)
+		return
+	}
 	if !docImportExts[ext] {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "поддерживаются " + strings.Join(sortedKeys(docImportExts), ", "),
+			"error": "поддерживаются " + strings.Join(append(sortedKeys(docImportExts), ".pdf"), ", "),
 		})
 		return
 	}
@@ -157,15 +173,43 @@ func (h *API) ImportDocument(c *gin.Context) {
 		return
 	}
 
+	doc, ok := h.createImportedDocument(c, wsID, name)
+	if !ok {
+		return
+	}
+
+	body, dropped := h.storeImportedImages(doc, string(html))
+	h.broadcast(wsID, "document.created", documentMeta(doc))
+	// The body comes back as HTML rather than as blocks: the client parses it
+	// with the editor's schema and saves it through the ordinary content
+	// endpoint, so an import is validated by exactly the same code as typing.
+	c.JSON(http.StatusCreated, gin.H{
+		"document":         viewDocument(doc),
+		"html":             body,
+		"images_dropped":   dropped,
+		"source_file_name": name,
+	})
+}
+
+// createImportedDocument makes the empty document an import will fill in, doing
+// the parts of it the server owns: placement (parent, project, position), the
+// unique slug and the title derived from the file name.
+//
+// Shared by the two import paths — the converted one above and the PDF one in
+// document_pdf.go — because "where does an imported document land" is a rule
+// about the section, not about the format that happened to arrive.
+//
+// Reports false having already answered the request.
+func (h *API) createImportedDocument(c *gin.Context, wsID uuid.UUID, fileName string) (db.Document, bool) {
 	var parentID *uuid.UUID
 	if raw := c.PostForm("parent_id"); raw != "" {
 		id, err := uuid.Parse(raw)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "malformed parent_id"})
-			return
+			return db.Document{}, false
 		}
 		if !h.parentInWorkspace(c, id, wsID) {
-			return
+			return db.Document{}, false
 		}
 		parentID = &id
 	}
@@ -174,12 +218,12 @@ func (h *API) ImportDocument(c *gin.Context) {
 		id, err := uuid.Parse(raw)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "malformed project_id"})
-			return
+			return db.Document{}, false
 		}
 		projectID = &id
 	}
 
-	title := strings.TrimSuffix(name, filepath.Ext(name))
+	title := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 	if strings.TrimSpace(title) == "" {
 		title = "Импортированный документ"
 	}
@@ -198,20 +242,9 @@ func (h *API) ImportDocument(c *gin.Context) {
 	})
 	if err != nil {
 		fail(c, err)
-		return
+		return db.Document{}, false
 	}
-
-	body, dropped := h.storeImportedImages(doc, string(html))
-	h.broadcast(wsID, "document.created", documentMeta(doc))
-	// The body comes back as HTML rather than as blocks: the client parses it
-	// with the editor's schema and saves it through the ordinary content
-	// endpoint, so an import is validated by exactly the same code as typing.
-	c.JSON(http.StatusCreated, gin.H{
-		"document":         viewDocument(doc),
-		"html":             body,
-		"images_dropped":   dropped,
-		"source_file_name": name,
-	})
+	return doc, true
 }
 
 // ExportDocument renders a document and hands back a file.

@@ -32,6 +32,11 @@ var allowedDocNodes = map[string]bool{
 	"tableRow":       true,
 	"tableHeader":    true,
 	"tableCell":      true,
+	// A PDF is the one format of item 1 of #2718 that is read rather than
+	// converted: LibreOffice turns a PDF into a page of positioned text boxes,
+	// which is worse than useless as a block tree. So it stays a file and the
+	// document holds a reference to it — one atom block rendered by pdf.js.
+	"pdfEmbed": true,
 }
 
 var allowedDocMarks = map[string]bool{
@@ -81,6 +86,8 @@ var allowedDocAttrs = map[string]bool{
 	"color":      true,
 	"fontFamily": true,
 	"fontSize":   true,
+	"name":       true, // pdfEmbed — the original file name, shown in its header
+	"size":       true, // pdfEmbed — byte size, shown before the file is fetched
 }
 
 const (

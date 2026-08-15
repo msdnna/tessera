@@ -44,6 +44,10 @@ var nodeRendering = map[string]struct {
 	"tableRow":       {docNode{Type: "tableRow"}, "<tr></tr>"},
 	"tableHeader":    {docNode{Type: "tableHeader", Content: []docNode{txt("H")}}, "<th>H</th>"},
 	"tableCell":      {docNode{Type: "tableCell", Attrs: map[string]any{"colspan": float64(2)}}, `<td colspan="2">`},
+	"pdfEmbed": {
+		docNode{Type: "pdfEmbed", Attrs: map[string]any{"src": "/api/documents/asset?doc=1", "name": "смета.pdf"}},
+		`<a href="/api/documents/asset?doc=1">PDF: смета.pdf</a>`,
+	},
 }
 
 // TestRenderDocHTMLCoversSchema is the guard on the one thing this design
