@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"tessera/internal/db"
+	"tessera/internal/docroom"
 	"tessera/internal/jobs"
 	"tessera/internal/mail"
 	"tessera/internal/notify"
@@ -38,6 +39,7 @@ type API struct {
 	publicURL string                   // external base URL for links in emails
 	senders   map[string]notify.Sender // notification channel transports, keyed by type
 	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
+	docRooms  *docroom.Rooms           // per-document presence/locks (nil until WireDocRooms)
 	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
 	version   string                   // build version, surfaced by the readiness/metrics probes
 }
@@ -48,6 +50,20 @@ type API struct {
 func (h *API) WireOps(m *middleware.Collector, version string) {
 	h.metrics = m
 	h.version = version
+}
+
+// WireDocRooms injects the per-document presence/lock registry (#2729). The
+// resource layer needs it for one thing only — emptying a room when its document
+// is deleted — while the socket itself lives on WSHandler.
+func (h *API) WireDocRooms(rooms *docroom.Rooms) { h.docRooms = rooms }
+
+// CloseDocRooms stops the lock sweeper and disconnects everyone still in a
+// document, so a restart doesn't leave clients holding locks against a process
+// that no longer exists.
+func (h *API) CloseDocRooms() {
+	if h.docRooms != nil {
+		h.docRooms.Close()
+	}
 }
 
 // NewAPI wires the shared handler dependencies, building the secret sealer from

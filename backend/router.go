@@ -14,6 +14,7 @@ import (
 	"tessera/config"
 	"tessera/handlers"
 	"tessera/internal/db"
+	"tessera/internal/docroom"
 	"tessera/internal/mail"
 	"tessera/internal/realtime"
 	"tessera/middleware"
@@ -73,9 +74,15 @@ func orDefault(v, def int64) int64 {
 // the background workers and slug backfill).
 func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, mailer mail.Mailer) (*gin.Engine, *handlers.API) {
 	versionHandler := handlers.NewVersionHandler(appVersion)
-	wsHandler := handlers.NewWSHandler(hub, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
+	// Per-document presence and block locks (#2729). The registry is created here
+	// rather than in main() so the four tests that boot newRouter() get a working
+	// document socket too; its sweeper goroutine ends when rh.CloseDocRooms does.
+	rooms := docroom.New()
+	go rooms.Run()
+	wsHandler := handlers.NewWSHandler(hub, rooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL, cfg.FCMCredentialsFile)
+	rh.WireDocRooms(rooms)
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 
@@ -144,6 +151,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// its own bearer check (header or subprotocol) before upgrading, and
 		// scopes the socket to the user's workspaces.
 		api.GET("/ws", wsHandler.Connect)
+
+		// Per-document presence and block locks. Outside the protected group for
+		// the same reason as /ws (no Authorization header from a browser socket);
+		// the handler authenticates and checks workspace membership against the
+		// document *before* upgrading.
+		api.GET("/documents/:id/ws", wsHandler.ConnectDocument)
 
 		// Inline images embedded in descriptions/comments. Outside the protected
 		// group because an <img> can't send the bearer header: MediaAuth accepts

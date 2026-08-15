@@ -210,12 +210,55 @@ func (h *API) DeleteDocument(c *gin.Context) {
 		})
 		return
 	}
+	// Collect the subtree *before* deleting it: afterwards the rows are gone and
+	// there is nothing left to walk, while a nested document's participants would
+	// go on typing into a row that no longer exists (#2729).
+	doomed := h.documentSubtreeIDs(c, doc)
 	if err := h.q.DeleteDocumentSubtree(c, doc.ID); err != nil {
 		fail(c, err)
 		return
 	}
+	if h.docRooms != nil {
+		for _, id := range doomed {
+			h.docRooms.Drop(id)
+		}
+	}
 	h.broadcast(doc.WorkspaceID, "document.deleted", gin.H{"id": doc.ID})
 	c.Status(http.StatusNoContent)
+}
+
+// documentSubtreeIDs returns the document and every document nested below it.
+//
+// The delete itself uses a recursive CTE; this walks the workspace's flat list
+// in Go instead, because the ids are wanted for the live rooms (#2729) rather
+// than for the statement, and a second SQL round trip on a rare, already
+// multi-query path buys nothing. A read error degrades to "just this document":
+// the delete must not fail because a socket bookkeeping list came up short.
+func (h *API) documentSubtreeIDs(c *gin.Context, doc db.Document) []uuid.UUID {
+	ids := []uuid.UUID{doc.ID}
+	docs, err := h.q.ListDocuments(c, doc.WorkspaceID)
+	if err != nil {
+		return ids
+	}
+	// Breadth-first over the parent links; the tree is a tree (reparentAllowed
+	// rejects cycles), so this terminates.
+	for frontier := ids; len(frontier) > 0; {
+		var next []uuid.UUID
+		for i := range docs {
+			if docs[i].ParentID == nil {
+				continue
+			}
+			for _, parent := range frontier {
+				if *docs[i].ParentID == parent {
+					next = append(next, docs[i].ID)
+					break
+				}
+			}
+		}
+		ids = append(ids, next...)
+		frontier = next
+	}
+	return ids
 }
 
 // loadDocument fetches a document (path param :id) and authorizes via its
