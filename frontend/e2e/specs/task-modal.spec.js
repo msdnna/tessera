@@ -76,11 +76,17 @@ test('задача открывается панелью справа, доск�
   await page.getByTestId('task-layout-trigger').click()
   await page.getByTestId('task-layout-sidebar').click()
 
-  // Pinned to the right edge of the viewport.
+  // Pinned to the right edge of the viewport. Measured with a retrying poll, not a
+  // bare boundingBox(): switching the mask off re-runs the modal's enter transition,
+  // and a single read lands mid-scale on a card that hasn't settled yet.
   await expect(modal).toHaveClass(/tm-sidebar/)
-  const box = await modal.boundingBox()
   const width = page.viewportSize().width
-  expect(Math.abs(box.x + box.width - width)).toBeLessThan(2)
+  await expect
+    .poll(async () => {
+      const box = await modal.boundingBox()
+      return Math.abs(box.x + box.width - width)
+    })
+    .toBeLessThan(2)
 
   // The board underneath is still interactive: this click opens the other task
   // rather than being eaten by a mask or dismissing the panel.
