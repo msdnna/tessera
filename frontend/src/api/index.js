@@ -376,6 +376,13 @@ export const documents = {
   resolveComment: (commentId, resolved = true) =>
     api.patch(`/document-comments/${commentId}/resolve`, { resolved }),
   removeComment: (commentId) => api.delete(`/document-comments/${commentId}`),
+  // Version journal (#2731). The list carries no bodies — a document is up to a
+  // megabyte of JSON and the panel shows fifty entries — so a version is fetched
+  // whole only when it is previewed or compared.
+  versions: (id) => api.get(`/documents/${id}/versions`, { skipLoader: true }),
+  snapshot: (id, label) => api.post(`/documents/${id}/versions`, { label }),
+  version: (versionId) => api.get(`/document-versions/${versionId}`),
+  restoreVersion: (versionId) => api.post(`/document-versions/${versionId}/restore`),
 }
 
 export const reminders = {

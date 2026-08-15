@@ -40,6 +40,9 @@ export function useDocPresence() {
   const denied = shallowRef(null)
   // Bumped when the server says this document's comment threads changed (#2730).
   const commentsNudge = ref(0)
+  // Bumped when the body was replaced from outside the room — today only a
+  // rollback to an earlier version (#2731).
+  const contentNudge = ref(0)
 
   let ws = null
   let docId = ''
@@ -135,6 +138,13 @@ export function useDocPresence() {
       commentsNudge.value += 1
       return
     }
+    if (msg.type === 'content') {
+      // Someone rolled the document back. Same payload-free shape as the
+      // comments nudge: the view reloads the body rather than being handed one,
+      // so a nudge lost to a reconnect leaves a stale tab, not a wrong document.
+      contentNudge.value += 1
+      return
+    }
     if (msg.type === 'denied') {
       // We lost the race for this block. Drop the claim so the editor stops
       // trying to refresh a lock it does not have.
@@ -219,6 +229,7 @@ export function useDocPresence() {
     held,
     denied,
     commentsNudge,
+    contentNudge,
     open,
     close,
     acquire,

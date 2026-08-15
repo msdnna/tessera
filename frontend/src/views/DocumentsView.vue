@@ -7,15 +7,18 @@ import {
   ArrowBackOutline,
   ChatbubbleEllipsesOutline,
   DocumentsOutline,
+  TimeOutline,
 } from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import DocEditor from '@/components/documents/DocEditor.vue'
 import DocComments from '@/components/documents/DocComments.vue'
+import DocHistory from '@/components/documents/DocHistory.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useDocAutosave } from '@/composables/useDocAutosave'
 import { useDocComments } from '@/composables/useDocComments'
 import { useDocPresence } from '@/composables/useDocPresence'
+import { useDocVersions } from '@/composables/useDocVersions'
 import { toDocJSON } from '@/utils/docSchema'
 
 const message = useMessage()
@@ -71,6 +74,7 @@ const {
   foreignLocks,
   userId: myUserId,
   commentsNudge,
+  contentNudge,
   open: openRoom,
   close: closeRoom,
   acquire: claimBlock,
@@ -88,6 +92,26 @@ const commentsOpen = ref(true)
 // the panel refetches instead of being handed a delta, so a nudge lost to a
 // reconnect costs one stale panel and nothing more.
 watch(commentsNudge, () => comments.load())
+
+// Version journal, snapshots and rollback (#2731).
+const versions = useDocVersions()
+const historyOpen = ref(false)
+
+// A rollback replaces the body under everyone reading it. Reloading is not
+// optional here: the editor is holding both the old tree and the old updated_at,
+// so the next keystroke would either resurrect the reverted text or collide with
+// the restore. An unsaved local edit is flushed first — it becomes the version
+// the rollback pushed aside, which is exactly where it belongs.
+// The nudge also comes back to whoever pressed "восстановить"; that client has
+// already reloaded, so it skips the round trip and the announcement rather than
+// telling the user about their own click.
+let restoredAt = 0
+watch(contentNudge, async () => {
+  if (!selected.value?.id || Date.now() - restoredAt < 3000) return
+  await flushSave()
+  await reload()
+  message.info('Документ восстановлен из истории')
+})
 
 // Other people in this document. The server already collapses one person's tabs
 // into a single viewer, and our own id comes from the socket's welcome frame —
@@ -145,6 +169,10 @@ async function open(doc) {
     resolveConflict(res.data.updated_at)
     openRoom(res.data.id)
     await comments.open(res.data.id, content.value)
+    // The journal is loaded only while the panel is open: it is a side question
+    // about the document, and every opened document paying for it would make the
+    // section slower for the readers who never ask it.
+    if (historyOpen.value) await versions.open(res.data.id)
     const param = res.data.slug || res.data.id
     if (param && route.params.slug !== param) router.replace(`/documents/${param}`)
   } catch (e) {
@@ -160,9 +188,50 @@ async function backToGrid() {
   // making everyone else wait out the lock TTL.
   closeRoom()
   comments.close()
+  versions.close()
   selected.value = null
   content.value = null
   if (route.params.slug) router.replace('/documents')
+}
+
+// The history panel loads lazily: opening it is the moment the journal is
+// wanted, and a document read without it never fetches one.
+async function toggleHistory() {
+  historyOpen.value = !historyOpen.value
+  if (historyOpen.value && selected.value?.id) await versions.open(selected.value.id)
+  else if (!historyOpen.value) versions.close()
+}
+
+async function onSnapshot(label) {
+  try {
+    await versions.snapshot(label)
+    message.success('Версия сохранена')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onRestore(versionId) {
+  if (!selected.value?.id) return
+  try {
+    // Anything still in the debounce is written first, so the rollback pushes a
+    // complete state into the journal rather than one that lost the last
+    // sentence the user typed.
+    await flushSave()
+    restoredAt = Date.now()
+    const doc = await versions.restore(versionId)
+    if (doc) {
+      selected.value = doc
+      content.value = toDocJSON(doc.content)
+      version.value = doc.updated_at
+      resolveConflict(doc.updated_at)
+      comments.setDoc(content.value)
+      applyPreview(doc.id, doc)
+    }
+    message.success('Документ восстановлен')
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 
 // Drill into a container from the editor: the trail lets the grid show its
@@ -182,6 +251,7 @@ async function reload() {
   resolveConflict(null)
   await open(doc)
   await loadList()
+  if (historyOpen.value) await versions.load()
 }
 
 // Resolves the :slug deep link. Slugs are unique per workspace, not globally,
@@ -264,6 +334,7 @@ async function remove() {
     cancelSave()
     closeRoom()
     comments.close()
+    versions.close()
     selected.value = null
     content.value = null
     router.replace('/documents')
@@ -396,6 +467,7 @@ watch(
   () => {
     cancelSave()
     closeRoom()
+    versions.close()
     selected.value = null
     content.value = null
     trail.value = []
@@ -473,6 +545,14 @@ watch(
             <template #icon><n-icon :component="ChatbubbleEllipsesOutline" /></template>
             {{ comments.openCount.value || '' }}
           </n-button>
+          <n-button
+            quaternary
+            size="tiny"
+            :title="historyOpen ? 'Скрыть историю' : 'История версий'"
+            @click="toggleHistory"
+          >
+            <template #icon><n-icon :component="TimeOutline" /></template>
+          </n-button>
           <n-text v-if="saving" depth="3">Сохранение…</n-text>
           <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
           <n-text v-else depth="3">Все изменения сохранены</n-text>
@@ -519,6 +599,21 @@ watch(
             @remove="onCommentRemove"
             @clear-anchor="clearAnchor"
             @select="comments.activeBlockId.value = $event"
+          />
+          <doc-history
+            v-if="historyOpen"
+            :versions="versions.versions.value"
+            :selected-id="versions.selectedId.value"
+            :baseline="versions.baseline.value"
+            :rows="versions.rows.value"
+            :summary="versions.summary.value"
+            :ready="versions.ready.value"
+            :loading="versions.loading.value"
+            :error="versions.error.value"
+            @select="versions.select"
+            @snapshot="onSnapshot"
+            @restore="onRestore"
+            @close="toggleHistory"
           />
         </div>
         <div v-if="children.length" class="nested">
