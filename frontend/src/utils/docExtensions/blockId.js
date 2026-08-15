@@ -14,6 +14,9 @@ export const ID_BEARING_TYPES = [
   'horizontalRule',
   'image',
   'table',
+  // An embedded PDF is a block like any other: it takes a lock (D4), carries an
+  // annotation (D5) and is addressable by a link (#2733).
+  'pdfEmbed',
 ]
 
 // newBlockId is short and collision-safe enough for identifiers scoped to one

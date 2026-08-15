@@ -11,6 +11,7 @@ import { BlockLocks } from './docExtensions/blockLocks'
 import { BlockMove } from './docExtensions/blockMove'
 import { BlockStyle, STYLED_TYPES } from './docExtensions/blockStyle'
 import { ImageDrop } from './docExtensions/imageDrop'
+import { PdfEmbed } from './docExtensions/pdfEmbed'
 import { SlashMenu } from './docExtensions/slashMenu'
 
 // The document is stored as the ProseMirror JSON tree the editor produces
@@ -45,6 +46,9 @@ export const ALLOWED_NODES = [
   'tableRow',
   'tableHeader',
   'tableCell',
+  // A PDF stays a file and is read in place (#2733) — see docPdf.js for why it
+  // is not converted into blocks like every other imported format.
+  'pdfEmbed',
 ]
 
 export const ALLOWED_MARKS = ['bold', 'italic', 'strike', 'underline', 'code', 'link', 'textStyle']
@@ -74,8 +78,10 @@ export const ALLOWED_ATTRS = [
   'language',
   'level',
   'lineHeight',
+  'name',
   'rel',
   'rowspan',
+  'size',
   'src',
   'start',
   'target',
@@ -125,6 +131,7 @@ export function docExtensions(opts = {}) {
     TableHeader,
     TableCell,
     Image.configure({ inline: false, allowBase64: false }),
+    PdfEmbed,
     TextStyle,
     FontFamily,
     FontSize,

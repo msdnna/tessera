@@ -21,6 +21,7 @@ import { slashState } from '@/utils/docExtensions/slashMenu'
 import { applyBlockLocks, blockIdAtSelection } from '@/utils/docExtensions/blockLocks'
 import { applyBlockComments } from '@/utils/docExtensions/blockComments'
 import { quoteFromBlock } from '@/utils/docComments'
+import { MAX_PDF_BYTES } from '@/utils/docPdf'
 import DocToolbar from './DocToolbar.vue'
 
 const props = defineProps({
@@ -30,6 +31,9 @@ const props = defineProps({
   // Uploads a File and resolves to the URL to embed. Injected rather than
   // imported so the editor stays free of API knowledge (and testable offline).
   uploadImage: { type: Function, default: null },
+  // Uploads a PDF and resolves to {src, name, size}. Absent on a read-only
+  // surface, in which case the slash entry simply does nothing.
+  uploadPdf: { type: Function, default: null },
   // Blocks other people are editing right now: [{block_id, name, user_id}].
   // The editor paints them and refuses input inside them (#2729); it does not
   // know where the list comes from.
@@ -52,6 +56,7 @@ const message = useMessage()
 const editor = shallowRef(null)
 const surface = ref(null)
 const fileInput = ref(null)
+const pdfInput = ref(null)
 const linkOpen = ref(false)
 const linkValue = ref('')
 const uploading = ref(false)
@@ -75,7 +80,9 @@ function build() {
       onUploadError: (err) => message.error(err?.message || 'Не удалось загрузить изображение'),
       // The "Изображение" entry of the slash menu opens the picker below; the
       // menu itself has no business knowing about file inputs.
-      onSlashExternal: () => pickImage(),
+      // The menu hands back the item it chose; which picker opens is this
+      // component's business, since the file inputs live here.
+      onSlashExternal: (item) => (item?.key === 'pdf' ? pickPdf() : pickImage()),
       onBlocked: (held) => emit('blocked', held),
       onSelectComments: (blockId) => emit('select-comments', blockId),
     }),
@@ -188,6 +195,29 @@ onBeforeUnmount(() => {
 
 function pickImage() {
   fileInput.value?.click?.()
+}
+
+function pickPdf() {
+  pdfInput.value?.click?.()
+}
+
+async function onPdfFile(e) {
+  const file = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (!file || !props.uploadPdf) return
+  if (file.size > MAX_PDF_BYTES) {
+    message.error('Файл больше 20 МБ')
+    return
+  }
+  uploading.value = true
+  try {
+    const pdf = await props.uploadPdf(file)
+    if (pdf?.src) editor.value?.chain().focus().insertPdf(pdf).run()
+  } catch (err) {
+    message.error(err.message || 'Не удалось загрузить PDF')
+  } finally {
+    uploading.value = false
+  }
 }
 
 async function onFile(e) {
@@ -382,6 +412,13 @@ defineExpose({ editor })
       </div>
     </div>
     <input ref="fileInput" type="file" accept="image/*" class="hidden-file" @change="onFile" />
+    <input
+      ref="pdfInput"
+      type="file"
+      accept="application/pdf,.pdf"
+      class="hidden-file"
+      @change="onPdfFile"
+    />
   </div>
 </template>
 

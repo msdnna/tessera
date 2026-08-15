@@ -364,6 +364,9 @@ export const documents = {
   updateContent: (id, content, updatedAt) =>
     api.patch(`/documents/${id}/content`, { content, updated_at: updatedAt }, { skipLoader: true }),
   uploadAsset: (id, formData) => api.post(`/documents/${id}/assets`, formData),
+  // Separate from uploadAsset because the asset route is images-only by
+  // contract — widening it would quietly let every paste handler take PDFs.
+  uploadPdf: (id, formData) => api.post(`/documents/${id}/pdf`, formData),
   // Office import/export via the LibreOffice sidecar (#2733). The status call
   // is what lets the UI hide the import button on an install without one,
   // rather than offering an action that fails after the file picker.

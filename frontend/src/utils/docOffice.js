@@ -1,4 +1,5 @@
 import { htmlToDoc } from './docImport'
+import { PDF_EXTENSION, isPdfFile, pdfDocument } from './docPdf'
 
 // Office import/export (#2733). The conversion itself happens in a LibreOffice
 // sidecar the backend talks to; this module owns the two halves that belong in
@@ -30,23 +31,39 @@ export const EXPORT_LABELS = {
 }
 
 /**
- * Whether a picked file is one the converter route takes.
+ * Whether a picked file goes to the server's import route.
+ *
+ * PDF is included even though it never reaches the converter: it travels the
+ * same endpoint and comes back as a stored file rather than as HTML (see
+ * docPdf.js). Keeping it in this predicate is what makes one picker and one
+ * upload path cover every server-side import.
+ *
  * @param {string} name file name
  * @returns {boolean}
  */
 export function isOfficeFile(name) {
   const n = String(name || '').toLowerCase()
-  return OFFICE_EXTENSIONS.some((ext) => n.endsWith(ext))
+  return isPdfFile(n) || OFFICE_EXTENSIONS.some((ext) => n.endsWith(ext))
 }
 
 /**
- * The `accept` attribute for the import file input: office formats plus the two
- * the browser handles on its own (D9), so one picker covers every import.
+ * True when the file needs the sidecar. PDF and the browser-side formats do
+ * not, so the import button stays usable on an install without one.
+ * @param {string} name file name
+ */
+export function needsConverter(name) {
+  return isOfficeFile(name) && !isPdfFile(name)
+}
+
+/**
+ * The `accept` attribute for the import file input: office formats, PDF, and
+ * the two the browser handles on its own (D9), so one picker covers every
+ * import.
  * @param {string[]} [extra]
  * @returns {string}
  */
 export function importAccept(extra = ['.md', '.markdown', '.json']) {
-  return [...OFFICE_EXTENSIONS, ...extra].join(',')
+  return [...OFFICE_EXTENSIONS, PDF_EXTENSION, ...extra].join(',')
 }
 
 /**
@@ -85,7 +102,9 @@ export async function importOfficeFile(api, wsId, file, opts = {}) {
   const doc = res.data?.document
   if (!doc?.id) throw new Error('Сервер не вернул документ')
 
-  const content = htmlToDoc(res.data.html || '')
+  // A PDF comes back as a stored file rather than as HTML — there is nothing to
+  // parse, and the body is the single block that points at it.
+  const content = res.data?.pdf ? pdfDocument(res.data.pdf) : htmlToDoc(res.data.html || '')
   const saved = await api.updateContent(doc.id, content, doc.updated_at)
   return {
     document: saved?.data?.updated_at ? { ...doc, updated_at: saved.data.updated_at } : doc,

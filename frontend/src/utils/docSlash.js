@@ -2,6 +2,7 @@ import {
   ChatboxOutline,
   CheckboxOutline,
   CodeSlashOutline,
+  DocumentTextOutline,
   GridOutline,
   ImageOutline,
   ListOutline,
@@ -123,6 +124,16 @@ export const SLASH_ITEMS = [
     // the typed "/…" and hands off.
     external: true,
     keywords: ['изображение', 'картинка', 'фото', 'image', 'picture', 'img'],
+  },
+  {
+    key: 'pdf',
+    label: 'PDF',
+    hint: 'Вставить файл для чтения',
+    icon: DocumentTextOutline,
+    // Also external: a PDF is uploaded, not typed, so the menu hands off to the
+    // picker in DocEditor exactly as the image entry does.
+    external: true,
+    keywords: ['pdf', 'пдф', 'файл', 'документ', 'скан'],
   },
 ]
 

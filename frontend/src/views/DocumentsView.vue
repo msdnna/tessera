@@ -38,6 +38,7 @@ import {
   exportFileName,
   importAccept,
   importOfficeFile,
+  needsConverter,
   isOfficeFile,
 } from '@/utils/docOffice'
 import { builtinCards, builtinContent } from '@/utils/docTemplates'
@@ -441,10 +442,13 @@ const exportOptions = computed(() => {
   return formats.map((f) => ({ key: f, label: EXPORT_LABELS[f] || f.toUpperCase() }))
 })
 
+// PDF is listed in both branches on purpose: it is stored rather than converted
+// (#2733), so it is importable with no sidecar deployed. Leaving it out of the
+// unavailable-hint would hide a feature that works.
 const importHint = computed(() =>
   converter.value.available
-    ? 'Импортировать документ (docx, odt, rtf, md, json)'
-    : `Импортировать документ (md, json)\u2009— ${converter.value.reason || 'конвертация офисных форматов недоступна'}`,
+    ? 'Импортировать документ (docx, odt, rtf, pdf, md, json)'
+    : `Импортировать документ (pdf, md, json)\u2009— ${converter.value.reason || 'конвертация офисных форматов недоступна'}`,
 )
 
 function pickImport() {
@@ -470,7 +474,7 @@ async function onImportPicked(e) {
 }
 
 async function importOffice(file) {
-  if (!converter.value.available) {
+  if (needsConverter(file.name) && !converter.value.available) {
     throw new Error(converter.value.reason || 'Конвертация офисных форматов недоступна')
   }
   const { document: doc, imagesDropped } = await importOfficeFile(
@@ -679,6 +683,15 @@ async function uploadImage(file) {
   fd.append('file', file)
   const res = await docsApi.uploadAsset(selected.value.id, fd)
   return res.data?.url || ''
+}
+
+// A PDF dropped into an open page, as opposed to imported as a document of its
+// own. Needs no sidecar either — the file is stored, not converted (#2733).
+async function uploadPdf(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await docsApi.uploadPdf(selected.value.id, fd)
+  return res.data || null
 }
 
 function onEditorChange(json) {
@@ -956,6 +969,7 @@ watch(
           <doc-editor
             :model-value="content"
             :upload-image="uploadImage"
+            :upload-pdf="uploadPdf"
             :locks="foreignLocks"
             :comments="comments.openCounts.value"
             class="editor"
