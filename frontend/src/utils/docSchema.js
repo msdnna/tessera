@@ -6,7 +6,10 @@ import { Color, FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-s
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Placeholder } from '@tiptap/extensions'
 import { BlockId } from './docExtensions/blockId'
+import { BlockMove } from './docExtensions/blockMove'
 import { BlockStyle, STYLED_TYPES } from './docExtensions/blockStyle'
+import { ImageDrop } from './docExtensions/imageDrop'
+import { SlashMenu } from './docExtensions/slashMenu'
 
 // The document is stored as the ProseMirror JSON tree the editor produces
 // (documents.content, jsonb — chosen in D1). That makes the schema itself the
@@ -58,6 +61,10 @@ export const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
  *
  * @param {object} [opts]
  * @param {string} [opts.placeholder] placeholder for the empty document
+ * @param {Function} [opts.uploadImage] uploads a File, resolves to its URL
+ * @param {Function} [opts.onUploadError] reports a failed upload to the user
+ * @param {Function} [opts.onSlashExternal] runs a slash item handled outside
+ *   the editor (currently only the image picker)
  * @returns {Array} TipTap extensions
  */
 export function docExtensions(opts = {}) {
@@ -84,6 +91,9 @@ export function docExtensions(opts = {}) {
     TextAlign.configure({ types: STYLED_TYPES }),
     BlockId,
     BlockStyle,
+    BlockMove,
+    ImageDrop.configure({ upload: opts.uploadImage || null, onError: opts.onUploadError || null }),
+    SlashMenu.configure({ onExternal: opts.onSlashExternal || null }),
     Placeholder.configure({ placeholder: opts.placeholder || 'Начните писать…' }),
   ]
 }

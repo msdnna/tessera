@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { docExtensions } from '@/utils/docSchema'
 import { ensureBlockIds } from '@/utils/docExtensions/blockId'
 import { MAX_INDENT } from '@/utils/docExtensions/blockStyle'
+import { blockAtClientY, topLevelBlocks } from '@/utils/docExtensions/dragHandle'
+import { imageFilesFrom, uploadImagesAt } from '@/utils/docExtensions/imageDrop'
 
 // Mirrors DocEditor: content is stamped before it reaches the editor.
 function makeEditor(...texts) {
@@ -18,6 +20,19 @@ function makeEditor(...texts) {
 
 function paragraphs(editor) {
   return editor.getJSON().content || []
+}
+
+function texts(editor) {
+  return paragraphs(editor).map((n) => n.content?.[0]?.text ?? n.type)
+}
+
+// jsdom gives every element a zero rect, so the geometry has to be supplied.
+function fakeBlocks(...ranges) {
+  return ranges.map(([top, bottom], index) => ({
+    index,
+    pos: index,
+    dom: { getBoundingClientRect: () => ({ top, bottom }) },
+  }))
 }
 
 describe('BlockId', () => {
@@ -116,5 +131,132 @@ describe('BlockStyle', () => {
     for (let i = 0; i < MAX_INDENT; i++) editor.commands.indent()
     expect(paragraphs(editor)[0].attrs.indent).toBe(MAX_INDENT)
     expect(editor.commands.indent()).toBe(false)
+  })
+})
+
+describe('BlockMove', () => {
+  let editor
+
+  beforeEach(() => {
+    editor = makeEditor('раз', 'два', 'три')
+  })
+
+  afterEach(() => editor.destroy())
+
+  it('moves the block holding the cursor down and back up', () => {
+    editor.commands.setTextSelection(2) // inside "раз"
+    expect(editor.commands.moveBlockDown()).toBe(true)
+    expect(texts(editor)).toEqual(['два', 'раз', 'три'])
+    expect(editor.commands.moveBlockUp()).toBe(true)
+    expect(texts(editor)).toEqual(['раз', 'два', 'три'])
+  })
+
+  // The command leaves the moved block selected, which is what lets the user
+  // hold Alt+Shift+Down and walk a paragraph to the bottom.
+  it('keeps addressing the same block across repeated moves', () => {
+    editor.commands.setTextSelection(2)
+    editor.commands.moveBlockDown()
+    editor.commands.moveBlockDown()
+    expect(texts(editor)).toEqual(['два', 'три', 'раз'])
+  })
+
+  // A no-op at the edge must report false, or the drag handle and the shortcut
+  // look like they did something.
+  it('refuses to move past either end', () => {
+    editor.commands.setTextSelection(2)
+    expect(editor.commands.moveBlockUp()).toBe(false)
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1)
+    expect(editor.commands.moveBlockDown()).toBe(false)
+    expect(texts(editor)).toEqual(['раз', 'два', 'три'])
+  })
+
+  it('moves a block to an arbitrary index, as a drop does', () => {
+    expect(editor.commands.moveBlockTo(2, 0)).toBe(true)
+    expect(texts(editor)).toEqual(['три', 'раз', 'два'])
+    expect(editor.commands.moveBlockTo(0, 5)).toBe(false)
+  })
+})
+
+describe('drag handle geometry', () => {
+  it('lists every top-level block with its position', () => {
+    const editor = makeEditor('раз', 'два')
+    const blocks = topLevelBlocks(editor.view)
+    expect(blocks.map((b) => b.index)).toEqual([0, 1])
+    expect(blocks[0].pos).toBe(0)
+    expect(blocks[1].pos).toBe(editor.state.doc.child(0).nodeSize)
+    editor.destroy()
+  })
+
+  it('picks the block the pointer is inside', () => {
+    const blocks = fakeBlocks([0, 20], [30, 50])
+    expect(blockAtClientY(blocks, 10).index).toBe(0)
+    expect(blockAtClientY(blocks, 40).index).toBe(1)
+  })
+
+  // The gap between two paragraphs is still "on" the nearer one — otherwise the
+  // handle flickers off every time the pointer crosses a margin.
+  it('snaps to the nearest block within the tolerance', () => {
+    const blocks = fakeBlocks([0, 20], [30, 50])
+    expect(blockAtClientY(blocks, 26).index).toBe(1)
+    expect(blockAtClientY(blocks, 22).index).toBe(0)
+  })
+
+  it('addresses nothing far below the last block', () => {
+    expect(blockAtClientY(fakeBlocks([0, 20]), 400)).toBeNull()
+    expect(blockAtClientY([], 10)).toBeNull()
+  })
+})
+
+describe('ImageDrop', () => {
+  const png = () => new File(['x'], 'кот.png', { type: 'image/png' })
+
+  it('keeps only image files', () => {
+    const files = [png(), new File(['x'], 'a.txt', { type: 'text/plain' })]
+    expect(imageFilesFrom(files).map((f) => f.name)).toEqual(['кот.png'])
+    expect(imageFilesFrom(null)).toEqual([])
+  })
+
+  it('inserts the uploaded image at the drop position', async () => {
+    const editor = makeEditor('раз')
+    await uploadImagesAt(editor.view, [png()], 0, { upload: async () => '/api/assets/1.png' })
+    const [first] = paragraphs(editor)
+    expect(first.type).toBe('image')
+    expect(first.attrs.src).toBe('/api/assets/1.png')
+    expect(first.attrs.alt).toBe('кот.png')
+    editor.destroy()
+  })
+
+  // The whole point of the placeholder decoration: it rides along with the
+  // document, so edits made while the upload is in flight do not misplace the
+  // image. A remembered offset would drop it into the newly typed paragraph.
+  it('lands where it was dropped even when the document shifts mid-upload', async () => {
+    const editor = makeEditor('раз')
+    let finish
+    const pending = uploadImagesAt(editor.view, [png()], editor.state.doc.content.size, {
+      upload: () => new Promise((resolve) => (finish = resolve)),
+    })
+    editor.commands.insertContentAt(0, {
+      type: 'paragraph',
+      content: [{ type: 'text', text: 'новый' }],
+    })
+    finish('/api/assets/2.png')
+    await pending
+    expect(texts(editor)).toEqual(['новый', 'раз', 'image'])
+    editor.destroy()
+  })
+
+  it('reports a failed upload and leaves no placeholder behind', async () => {
+    const editor = makeEditor('раз')
+    const onError = vi.fn()
+    await uploadImagesAt(editor.view, [png()], 0, {
+      upload: async () => {
+        throw new Error('нет сети')
+      },
+      onError,
+    })
+    expect(onError).toHaveBeenCalledOnce()
+    expect(texts(editor)).toEqual(['раз'])
+    expect(editor.view.dom.querySelector('.doc-upload-placeholder')).toBeNull()
+    editor.destroy()
   })
 })
