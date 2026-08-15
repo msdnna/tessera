@@ -4,8 +4,8 @@ import { test, expect, column, cardsIn, openBoard } from '../fixtures.js'
 // the DnD and realtime specs share the seeded board, and deleting a column out
 // from under them would fail them for the wrong reason.
 test('создание колонки и задачи, переименование и удаление колонки', async ({ page, backend }) => {
-  const { ws, board } = await backend.freshBoard('crud')
-  await openBoard(page, board.id, ws.id)
+  const { board } = await backend.freshBoard('crud')
+  await openBoard(page, board.id)
 
   const before = await page.getByTestId('column').count()
 
@@ -47,6 +47,6 @@ test('задача, созданная по API, видна на доске по
   const title = `Из API ${Date.now().toString(36)}`
   await backend.createTask(seed.columns[0].id, title)
 
-  await openBoard(page, seed.boardId, seed.workspaceId)
+  await openBoard(page, seed.boardId)
   await expect(cardsIn(page, seed.columns[0].name).filter({ hasText: title })).toBeVisible()
 })

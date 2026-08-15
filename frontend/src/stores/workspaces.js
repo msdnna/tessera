@@ -45,15 +45,32 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     await loadWorkspaces()
   }
 
+  // Two switches can be in flight at once: on startup AppLayout selects the
+  // remembered workspace while a deep-linked board selects its own (#2721). The
+  // sequence token makes the later call win the tree — otherwise groups/projects
+  // land in network-response order and the stale one can overwrite the current.
+  let selectSeq = 0
+
   async function selectWorkspace(id) {
+    const seq = ++selectSeq
     currentId.value = id
     localStorage.setItem('tessera_ws', id)
     boardsByProject.value = {}
     const [g, p] = await Promise.all([wsApi.groups(id), wsApi.projects(id)])
+    if (seq !== selectSeq) return // superseded by a later switch — leave its tree alone
     groups.value = g.data || []
     projects.value = p.data || []
     await loadCommands(id)
     await prefetchExpandedBoards()
+  }
+
+  // Point the app at `id` unless it is already there. A deep link resolves a
+  // board that may live outside the remembered workspace, and every scope
+  // decision (realtime filter, members, tags) reads currentId — so it has to
+  // follow the board. Idempotent: re-resolving the same board is a no-op.
+  async function ensureWorkspace(id) {
+    if (!id || id === currentId.value) return
+    await selectWorkspace(id)
   }
 
   // Load the command registry. Best-effort: a failure must not break the board,
@@ -165,6 +182,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     upsertBoard,
     loadWorkspaces,
     selectWorkspace,
+    ensureWorkspace,
     removeWorkspace,
     refresh,
     loadBoards,

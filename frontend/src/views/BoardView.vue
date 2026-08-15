@@ -2,10 +2,12 @@
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { boards as boardsApi, projects as projectsApi } from '@/api'
+import { useWorkspacesStore } from '@/stores/workspaces'
 import KanbanBoard from '@/components/KanbanBoard.vue'
 
 const route = useRoute()
 const router = useRouter()
+const wsStore = useWorkspacesStore()
 
 // Boards live at /project/<projectSlug>/board/<boardSlug>. This view resolves the
 // slug pair (or a legacy /board/<id> UUID/slug) to the board's UUID — which
@@ -25,6 +27,11 @@ async function resolve() {
       boardId.value = null
       return
     }
+    // Before boardId: assigning it mounts KanbanBoard, which reads currentId
+    // straight away for its realtime scope filter and for the workspace members
+    // it loads. Switching after would still render the board with the wrong
+    // workspace's context (#2721).
+    await wsStore.ensureWorkspace(board.workspace_id)
     boardId.value = board.id
     const pslug = projectSlug || (await projectsApi.get(board.project_id)).data.slug
     const target = `/project/${pslug}/board/${board.slug}`

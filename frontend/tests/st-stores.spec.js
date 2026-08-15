@@ -278,6 +278,52 @@ describe('workspaces store', () => {
     expect(s.commands.map((c) => c.key)).toEqual(['close', 'hold'])
   })
 
+  // #2721: a deep-linked board has to drag the app into its own workspace, or
+  // the realtime scope filter drops all of its events.
+  it('ensureWorkspace switches to a foreign workspace and persists it', async () => {
+    const s = useWorkspacesStore()
+    s.currentId = 'w1'
+    await s.ensureWorkspace('w2')
+    expect(s.currentId).toBe('w2')
+    expect(localStorage.getItem('tessera_ws')).toBe('w2')
+  })
+
+  it('ensureWorkspace on the current workspace does not refetch the tree', async () => {
+    const s = useWorkspacesStore()
+    s.currentId = 'w1'
+    await s.ensureWorkspace('w1')
+    expect(apiMock.workspaces.groups).not.toHaveBeenCalled()
+  })
+
+  it('ensureWorkspace ignores an empty id', async () => {
+    const s = useWorkspacesStore()
+    s.currentId = 'w1'
+    await s.ensureWorkspace(undefined)
+    expect(s.currentId).toBe('w1')
+    expect(apiMock.workspaces.groups).not.toHaveBeenCalled()
+  })
+
+  // The startup race: AppLayout selects the remembered workspace while a deep
+  // link selects the board's own. Responses can land in either order, so the
+  // later switch has to win the tree regardless.
+  it('a superseded selectWorkspace does not overwrite the later one’s tree', async () => {
+    const s = useWorkspacesStore()
+    let releaseStale
+    const stale = new Promise((resolve) => {
+      releaseStale = () => resolve({ data: [{ id: 'p-stale', position: 0 }] })
+    })
+    apiMock.workspaces.projects.mockReturnValueOnce(stale)
+    apiMock.workspaces.projects.mockResolvedValueOnce({ data: [{ id: 'p-fresh', position: 0 }] })
+
+    const first = s.selectWorkspace('w-stale')
+    await s.selectWorkspace('w-fresh')
+    releaseStale()
+    await first
+
+    expect(s.currentId).toBe('w-fresh')
+    expect(s.projects.map((p) => p.id)).toEqual(['p-fresh'])
+  })
+
   it('removeWorkspace deletes then reloads and re-picks', async () => {
     apiMock.workspaces.list.mockResolvedValue({ data: [{ id: 'w2' }] })
     const s = useWorkspacesStore()
