@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"tessera/internal/converter"
 	"tessera/internal/db"
 	"tessera/internal/docroom"
 	"tessera/internal/jobs"
@@ -41,6 +42,7 @@ type API struct {
 	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
 	docRooms  *docroom.Rooms           // per-document presence/locks (nil until WireDocRooms)
 	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
+	converter *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
 	version   string                   // build version, surfaced by the readiness/metrics probes
 }
 
@@ -51,6 +53,14 @@ func (h *API) WireOps(m *middleware.Collector, version string) {
 	h.metrics = m
 	h.version = version
 }
+
+// WireConverter injects the document conversion sidecar client (#2733).
+//
+// Wired separately rather than added to NewAPI's parameter list for the same
+// reason as WireOps: the converter is optional infrastructure, and threading an
+// optional dependency through a constructor every caller must satisfy is how
+// that signature grew to eight positional arguments in the first place.
+func (h *API) WireConverter(c *converter.Client) { h.converter = c }
 
 // WireDocRooms injects the per-document presence/lock registry (#2729). The
 // resource layer needs it for one thing only — emptying a room when its document

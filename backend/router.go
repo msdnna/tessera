@@ -13,6 +13,7 @@ import (
 
 	"tessera/config"
 	"tessera/handlers"
+	"tessera/internal/converter"
 	"tessera/internal/db"
 	"tessera/internal/docroom"
 	"tessera/internal/mail"
@@ -30,6 +31,13 @@ const (
 	routeUploads     = "/api/uploads"
 	routeAvatar      = "/api/users/me/avatar"
 	routeAttachments = "/api/tasks/:id/attachments"
+	// Document images and imported office files. Both were missing here, which
+	// left them on the blanket 1 MiB JSON budget: a document image is allowed to
+	// be 8 MiB by the handler (maxMediaBytes) and an import 20 MiB, so anything
+	// larger than a megabyte was refused by the transport with a 413 the handler
+	// never got to explain. Found while adding the import route (#2733).
+	routeDocAssets = "/api/documents/:id/assets"
+	routeDocImport = "/api/workspaces/:id/documents/import"
 )
 
 // authRateRules throttles the unauthenticated auth surface — the routes where a
@@ -83,6 +91,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL, cfg.FCMCredentialsFile)
 	rh.WireDocRooms(rooms)
+	// Document import/export sidecar (#2733). converter.New tolerates an empty
+	// URL and reports itself disabled, so nothing here has to branch on whether
+	// the operator deployed LibreOffice.
+	rh.WireConverter(converter.New(cfg.ConverterURL))
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 
@@ -118,6 +130,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		routeAttachments: orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
 		routeUploads:     orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
 		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
 		routeWS:          middleware.NoBodyLimit,
 	}))
 	if cfg.RateLimitEnabled {
@@ -392,6 +406,19 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/documents/:id", rh.UpdateDocument)
 			protected.PATCH("/documents/:id/content", rh.UpdateDocumentContent)
 			protected.POST("/documents/:id/assets", rh.UploadDocumentAsset)
+			// Office import/export through the LibreOffice sidecar (#2733). The
+			// status route is cheap on purpose: the client asks it once and hides
+			// the import button on an install with no converter, instead of
+			// offering an action that fails after the file picker.
+			//
+			// It sits on its own prefix rather than at /documents/converter for
+			// the same reason the comment and version routes do — and here it is
+			// not only style: a static segment next to /documents/:id is exactly
+			// the shape gin's tree refuses, so the tidy-looking URL would have
+			// panicked the router at boot.
+			protected.GET("/document-converter", rh.ConverterStatus)
+			protected.POST("/workspaces/:id/documents/import", rh.ImportDocument)
+			protected.GET("/documents/:id/export", rh.ExportDocument)
 			protected.DELETE("/documents/:id", rh.DeleteDocument)
 
 			// Block-anchored annotations and their threads (#2730). The thread
