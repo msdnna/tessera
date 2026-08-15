@@ -52,3 +52,46 @@ test('модалка закрывается по Escape', async ({ page, backend
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('task-modal')).toHaveCount(0)
 })
+
+// #2716 — the side-panel layout. The point of the panel (as opposed to the modal)
+// is that the board keeps working next to it, so the load-bearing assertion is not
+// "the card moved right" but "clicking a board card behind it still works and the
+// panel doesn't slam shut". That's what a mask would break.
+test('задача открывается панелью справа, доска под ней остаётся живой', async ({
+  page,
+  backend,
+}) => {
+  const { ws, board, columns } = await backend.freshBoard('modal-layout')
+  const stamp = Date.now().toString(36)
+  const first = `Первая ${stamp}`
+  const second = `Вторая ${stamp}`
+  await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title: first })
+  await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title: second })
+
+  await openBoard(page, board.id, ws.id)
+  await cardsIn(page, columns[0].name).filter({ hasText: first }).click()
+
+  const modal = page.getByTestId('task-modal')
+  await expect(modal).toBeVisible()
+  await page.getByTestId('task-layout-trigger').click()
+  await page.getByTestId('task-layout-sidebar').click()
+
+  // Pinned to the right edge of the viewport.
+  await expect(modal).toHaveClass(/tm-sidebar/)
+  const box = await modal.boundingBox()
+  const width = page.viewportSize().width
+  expect(Math.abs(box.x + box.width - width)).toBeLessThan(2)
+
+  // The board underneath is still interactive: this click opens the other task
+  // rather than being eaten by a mask or dismissing the panel.
+  await cardsIn(page, columns[0].name).filter({ hasText: second }).click()
+  await expect(modal).toBeVisible()
+  await expect(modal.locator('.title-input input')).toHaveValue(second)
+  await expect(modal).toHaveClass(/tm-sidebar/)
+
+  // The choice is device-level and survives a reload.
+  await page.reload()
+  await expect(page.getByTestId('column').first()).toBeVisible()
+  await cardsIn(page, columns[0].name).filter({ hasText: first }).click()
+  await expect(page.getByTestId('task-modal')).toHaveClass(/tm-sidebar/)
+})

@@ -71,6 +71,7 @@ import {
 } from '@/utils/status'
 import { taskLink } from '@/utils/taskLink'
 import { copyText } from '@/utils/clipboard'
+import { effectiveTaskLayout, loadTaskLayout, saveTaskLayout } from '@/utils/taskLayout'
 import { useResponsive } from '@/composables/useResponsive'
 import {
   formatEstimate,
@@ -91,6 +92,7 @@ import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import TaskCommentsTab from './task/TaskCommentsTab.vue'
+import TaskLayoutSwitch from './TaskLayoutSwitch.vue'
 import TaskSubtasksTab from './task/TaskSubtasksTab.vue'
 import TaskRelationsTab from './task/TaskRelationsTab.vue'
 import TaskFilesTab from './task/TaskFilesTab.vue'
@@ -172,7 +174,24 @@ function loadSplitRatio() {
 // the comments in the main flow — hiding it would hide the conversation — so the
 // button is gated on `wide` and the state is a no-op there. ──
 const { isMobile: narrow } = useResponsive(1099)
-const wide = computed(() => !narrow.value)
+
+// ── where to show the task: centred modal (default), fullscreen, or a right-hand
+// side panel that leaves the board underneath usable (#2716). All three are the
+// same n-modal with a different card class and three props — swapping the wrapper
+// for an n-drawer would tear down the subtree and lose the active tab, the comment
+// draft and the unsaved description on every switch. ──
+const savedLayout = ref(loadTaskLayout())
+const layout = computed(() => effectiveTaskLayout(savedLayout.value, narrow.value))
+function setLayout(v) {
+  savedLayout.value = v
+  saveTaskLayout(v)
+}
+
+// `wide` means "there is room for two columns", not "the window is wide": the
+// sidebar layout keeps a wide window but gives the card ~560px, where both the
+// hide-panel button and the divider drag are meaningless (and the drag would
+// "revive" a column that can't fit).
+const wide = computed(() => !narrow.value && layout.value !== 'sidebar')
 const PANE_KEY = 'tessera_task_pane'
 const rightHidden = ref(localStorage.getItem(PANE_KEY) === 'hidden')
 function toggleRightPane() {
@@ -901,8 +920,25 @@ async function onSubtaskChanged() {
 </script>
 
 <template>
-  <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <n-card class="tm-card" role="dialog" data-testid="task-modal" :bordered="false">
+  <!-- One wrapper for all three layouts. With show-mask=false Naive puts
+       pointer-events:none on the container and :all on the card, and only closes on
+       a click that lands in the container — so in the sidebar layout the board
+       underneath stays fully live (cards clickable, drag-n-drop working) and a
+       stray click on it doesn't slam the panel shut. -->
+  <n-modal
+    :show="show"
+    :show-mask="layout !== 'sidebar'"
+    :block-scroll="layout !== 'sidebar'"
+    :trap-focus="layout !== 'sidebar'"
+    @update:show="emit('update:show', $event)"
+  >
+    <n-card
+      class="tm-card"
+      :class="{ 'tm-fullscreen': layout === 'fullscreen', 'tm-sidebar': layout === 'sidebar' }"
+      role="dialog"
+      data-testid="task-modal"
+      :bordered="false"
+    >
       <n-spin :show="loading" :rotate="false">
         <template #icon><TesseraSpinner /></template>
         <div ref="formEl" class="form" :style="{ '--tm-cols': splitCols }">
@@ -962,6 +998,10 @@ async function onSubtaskChanged() {
                   <n-icon v-else key="share" :component="ShareSocialOutline" :size="15" />
                 </Transition>
               </button>
+              <!-- Where to show the task; reads "where → what's inside", so it sits
+                   before the hide-panel button. Only offered when the choice can
+                   mean something (see effectiveTaskLayout). -->
+              <TaskLayoutSwitch v-if="!narrow" :value="layout" @update:value="setLayout" />
               <!-- Wide layout only: hide/show the right column (tabs). -->
               <button
                 v-if="wide"
@@ -1703,6 +1743,27 @@ async function onSubtaskChanged() {
   width: 640px;
   max-width: 94vw;
 }
+/* Edge-to-edge. The column height budget follows the taller card. */
+.tm-card.tm-fullscreen {
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  border-radius: 0;
+  --tm-body-max: calc(100vh - 210px);
+}
+/* Right-hand panel: pinned to the edge, board visible (and usable) beside it. The
+   shadow is load-bearing — without a mask the panel would otherwise bleed into the
+   board behind it. */
+.tm-card.tm-sidebar {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(560px, 100vw);
+  max-width: none;
+  height: 100vh;
+  border-radius: 12px 0 0 12px;
+  box-shadow: -8px 0 24px rgb(0 0 0 / 0.18);
+  --tm-body-max: calc(100vh - 210px);
+}
 .form {
   display: flex;
   flex-direction: column;
@@ -1730,11 +1791,15 @@ async function onSubtaskChanged() {
 .tm-divider:hover .tm-divider-grip {
   background: var(--t-primary);
 }
+/* Two columns are gated on the CARD being wide, not the window: the sidebar layout
+   keeps a wide window but hands the card ~560px, where a two-column grid can't fit.
+   Excluding it here leaves the panel on the already-debugged stacked layout, so no
+   separate narrow-panel styling is needed. */
 @media (min-width: 1100px) {
-  .tm-card {
+  .tm-card:not(.tm-sidebar):not(.tm-fullscreen) {
     width: min(1240px, 96vw);
   }
-  .form {
+  .tm-card:not(.tm-sidebar) .form {
     display: grid;
     /* left | divider track | right — overridable via the --tm-cols var that the
        draggable divider writes (persisted in localStorage). The transition
@@ -1745,27 +1810,27 @@ async function onSubtaskChanged() {
   }
   /* Right column collapsed to a 0fr track: fade it out and stop it catching
      clicks while it shrinks. */
-  .tm-col-right {
+  .tm-card:not(.tm-sidebar) .tm-col-right {
     transition: opacity 0.12s ease;
   }
-  .tm-col-right.tm-col-hidden {
+  .tm-card:not(.tm-sidebar) .tm-col-right.tm-col-hidden {
     opacity: 0;
     overflow: hidden;
     pointer-events: none;
   }
   /* Head + title span all three tracks. */
-  .modal-head,
-  .title-input {
+  .tm-card:not(.tm-sidebar) .modal-head,
+  .tm-card:not(.tm-sidebar) .title-input {
     grid-column: 1 / -1;
   }
-  .tm-col-left {
+  .tm-card:not(.tm-sidebar) .tm-col-left {
     grid-column: 1;
     display: flex;
     flex-direction: column;
     gap: 16px;
     min-width: 0;
   }
-  .tm-divider {
+  .tm-card:not(.tm-sidebar) .tm-divider {
     grid-column: 2;
     display: flex;
     align-items: center;
@@ -1778,31 +1843,31 @@ async function onSubtaskChanged() {
      the tab strip stays pinned while the active pane scrolls inside it (so
      scrolling comments never carry the tabs off-screen). The footer lives in the
      card's #footer slot so it stays pinned full-width. */
-  .tm-col-right {
+  .tm-card:not(.tm-sidebar) .tm-col-right {
     grid-column: 3;
     min-width: 0;
-    max-height: calc(90vh - 210px);
+    max-height: var(--tm-body-max, calc(90vh - 210px));
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
-  .tm-col-left {
-    max-height: calc(90vh - 210px);
+  .tm-card:not(.tm-sidebar) .tm-col-left {
+    max-height: var(--tm-body-max, calc(90vh - 210px));
     overflow-y: auto;
   }
   /* The tabs fill the right column; the nav is pinned (flex:none), the active pane
      takes the rest and scrolls. */
-  .tm-col-right .detail-tabs {
+  .tm-card:not(.tm-sidebar) .tm-col-right .detail-tabs {
     margin: 0;
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
-  .detail-tabs :deep(.n-tabs-nav) {
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tabs-nav) {
     flex: none;
   }
-  .detail-tabs :deep(.n-tab-pane) {
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane) {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -1812,56 +1877,62 @@ async function onSubtaskChanged() {
   /* Comments tab: the list scrolls internally, the composer is a pinned footer that
      sits OUTSIDE the scroll area — so scrolling content can't bleed under its top
      border (which the previous position:sticky composer did). */
-  .tm-col-right .comments {
+  .tm-card:not(.tm-sidebar) .tm-col-right .comments {
     flex: 1;
     min-height: 0;
   }
-  .tm-col-right .c-list {
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list {
     overflow-y: auto;
   }
-  .tm-col-right .comment-add {
+  .tm-card:not(.tm-sidebar) .tm-col-right .comment-add {
     position: static;
   }
   /* Idle: reserved gutter, transparent thumb; reveal on hover/focus — one skin for
      all three scrollers (left column, the active tab pane, the comment list). */
-  .tm-col-left,
-  .detail-tabs :deep(.n-tab-pane),
-  .tm-col-right .c-list {
+  .tm-card:not(.tm-sidebar) .tm-col-left,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane),
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list {
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
     transition: scrollbar-color 0.15s ease;
   }
-  .tm-col-left:hover,
-  .tm-col-left:focus-within,
-  .detail-tabs :deep(.n-tab-pane):hover,
-  .detail-tabs :deep(.n-tab-pane):focus-within,
-  .tm-col-right .c-list:hover,
-  .tm-col-right .c-list:focus-within {
+  .tm-card:not(.tm-sidebar) .tm-col-left:hover,
+  .tm-card:not(.tm-sidebar) .tm-col-left:focus-within,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):hover,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):focus-within,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:hover,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:focus-within {
     scrollbar-color: var(--t-border) transparent;
   }
-  .tm-col-left::-webkit-scrollbar,
-  .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar,
-  .tm-col-right .c-list::-webkit-scrollbar {
+  .tm-card:not(.tm-sidebar) .tm-col-left::-webkit-scrollbar,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list::-webkit-scrollbar {
     width: 10px;
   }
-  .tm-col-left::-webkit-scrollbar-thumb,
-  .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar-thumb,
-  .tm-col-right .c-list::-webkit-scrollbar-thumb {
+  .tm-card:not(.tm-sidebar) .tm-col-left::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list::-webkit-scrollbar-thumb {
     border-radius: 5px;
     border: 3px solid transparent;
     background: transparent;
     background-clip: padding-box;
   }
-  .tm-col-left:hover::-webkit-scrollbar-thumb,
-  .tm-col-left:focus-within::-webkit-scrollbar-thumb,
-  .detail-tabs :deep(.n-tab-pane):hover::-webkit-scrollbar-thumb,
-  .detail-tabs :deep(.n-tab-pane):focus-within::-webkit-scrollbar-thumb,
-  .tm-col-right .c-list:hover::-webkit-scrollbar-thumb,
-  .tm-col-right .c-list:focus-within::-webkit-scrollbar-thumb {
+  .tm-card:not(.tm-sidebar) .tm-col-left:hover::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .tm-col-left:focus-within::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):hover::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):focus-within::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:hover::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:focus-within::-webkit-scrollbar-thumb {
     background: var(--t-border);
     background-clip: padding-box;
   }
+}
+/* Sidebar keeps the stacked flow, but the card is a fixed-height panel — the body
+   has to scroll inside it, or the footer would be pushed off-screen. */
+.tm-card.tm-sidebar :deep(.n-card__content) {
+  max-height: var(--tm-body-max);
+  overflow-y: auto;
 }
 .title-input :deep(input) {
   font-size: 18px;
