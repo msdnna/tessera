@@ -356,6 +356,14 @@ export const documents = {
   // deep link can point the app at the right workspace before mounting.
   bySlug: (wsId, slug) => api.get(`/workspaces/${wsId}/documents/by-slug/${slug}`),
   update: (id, data) => api.patch(`/documents/${id}`, data),
+  // Content has its own endpoint: the metadata PATCH above is what realtime and
+  // the list are built around, and both deliberately exclude content (D1). It
+  // carries the updated_at the client last saw — the server answers 409 when
+  // that no longer matches, rather than silently overwriting someone's edit.
+  // skipLoader: autosave fires while typing and must not flash the global bar.
+  updateContent: (id, content, updatedAt) =>
+    api.patch(`/documents/${id}/content`, { content, updated_at: updatedAt }, { skipLoader: true }),
+  uploadAsset: (id, formData) => api.post(`/documents/${id}/assets`, formData),
   remove: (id, recursive = false) =>
     api.delete(`/documents/${id}${recursive ? '?recursive=true' : ''}`),
 }
