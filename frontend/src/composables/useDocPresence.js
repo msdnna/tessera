@@ -43,6 +43,8 @@ export function useDocPresence() {
   // Bumped when the body was replaced from outside the room — today only a
   // rollback to an earlier version (#2731).
   const contentNudge = ref(0)
+  // Bumped when this document's task links or approval protocols changed (#2732).
+  const linksNudge = ref(0)
 
   let ws = null
   let docId = ''
@@ -145,6 +147,13 @@ export function useDocPresence() {
       contentNudge.value += 1
       return
     }
+    if (msg.type === 'links') {
+      // A task was linked or a signature landed (#2732). Payload-free like the
+      // other two: an approval route is a row plus its steps, and handing the
+      // panel a delta of that would mean maintaining the server's join twice.
+      linksNudge.value += 1
+      return
+    }
     if (msg.type === 'denied') {
       // We lost the race for this block. Drop the claim so the editor stops
       // trying to refresh a lock it does not have.
@@ -230,6 +239,7 @@ export function useDocPresence() {
     denied,
     commentsNudge,
     contentNudge,
+    linksNudge,
     open,
     close,
     acquire,

@@ -52,6 +52,8 @@ import {
   ShareSocialOutline,
   ChevronForwardOutline,
   ChevronBackOutline,
+  DocumentTextOutline,
+  DocumentText,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, projects as projApi, gitlab as glApi } from '@/api'
 import { storeToRefs } from 'pinia'
@@ -94,6 +96,7 @@ import TaskCommentsTab from './task/TaskCommentsTab.vue'
 import TaskSubtasksTab from './task/TaskSubtasksTab.vue'
 import TaskRelationsTab from './task/TaskRelationsTab.vue'
 import TaskFilesTab from './task/TaskFilesTab.vue'
+import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
 import TaskHistoryTab from './task/TaskHistoryTab.vue'
 
 const props = defineProps({
@@ -266,6 +269,9 @@ const relations = ref([])
 
 const attachments = ref([])
 const events = ref([])
+// Documents that link to this task (#2732) — the other end of the link the
+// documents panel creates.
+const docLinks = ref([])
 
 // The tab counters load async (comments/relations/files fetched after the modal
 // opens). Naive measures the active-tab underline before the badge exists, so it
@@ -277,6 +283,7 @@ watch(
     comments.value.length,
     relations.value.length,
     attachments.value.length,
+    docLinks.value.length,
     task.value?.subtasks?.length,
   ],
   () => nextTick(() => detailTabs.value?.syncBarPosition?.()),
@@ -503,16 +510,18 @@ async function loadExtras() {
   const id = props.taskId
   // Populate the thread without the enter fade (only later, user-posted comments fade).
   commentsHydrated.value = false
-  const [c, r, a, e] = await Promise.allSettled([
+  const [c, r, a, e, d] = await Promise.allSettled([
     tasksApi.comments(id),
     tasksApi.relations(id),
     tasksApi.attachments(id),
     tasksApi.events(id),
+    tasksApi.documents(id),
   ])
   comments.value = c.status === 'fulfilled' ? c.value.data || [] : []
   relations.value = r.status === 'fulfilled' ? r.value.data || [] : []
   attachments.value = a.status === 'fulfilled' ? a.value.data || [] : []
   events.value = e.status === 'fulfilled' ? e.value.data || [] : []
+  docLinks.value = d.status === 'fulfilled' ? d.value.data || [] : []
   // On open, land on the newest comment — but only in the wide layout, where the
   // right column scrolls on its own. In the stacked layout the whole modal scrolls,
   // and jumping to the bottom would skip past the title and description.
@@ -889,6 +898,15 @@ function openRelated(rel) {
     close()
     router.push(`/board/${rel.related_board_id}?task=${rel.related_task_id}`)
   }
+}
+
+// Opening a linked document leaves the board, so the modal closes first. The
+// slug is preferred over the id for the same reason the documents section
+// prefers it: it is the shareable form of the address.
+function openDocument(link) {
+  if (!link?.document_id) return
+  close()
+  router.push(`/documents/${link.document_slug || link.document_id}`)
 }
 
 // Adding, completing or moving a subtask changes the parent task itself (its
@@ -1624,6 +1642,27 @@ async function onSubtaskChanged() {
                   :task-id="taskId"
                   @changed="emit('changed')"
                 />
+              </n-tab-pane>
+
+              <n-tab-pane name="documents">
+                <template #tab>
+                  <span class="tab-lbl">
+                    <n-icon
+                      :component="DocumentTextOutline"
+                      :size="15"
+                      class="tab-ico tab-ico--out"
+                    />
+                    <n-icon :component="DocumentText" :size="15" class="tab-ico tab-ico--fill" />
+                    Документы
+                    <n-badge
+                      v-if="docLinks.length"
+                      :value="docLinks.length"
+                      :max="99"
+                      class="tab-badge"
+                    />
+                  </span>
+                </template>
+                <TaskDocumentsTab v-model:links="docLinks" @open-document="openDocument" />
               </n-tab-pane>
 
               <n-tab-pane name="history">

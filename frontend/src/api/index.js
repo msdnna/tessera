@@ -393,6 +393,16 @@ export const documents = {
   template: (id) => api.get(`/document-templates/${id}`),
   updateTemplate: (id, data) => api.patch(`/document-templates/${id}`, data),
   removeTemplate: (id) => api.delete(`/document-templates/${id}`),
+  // Task links and approval protocols (#2732). Both lists refetch on the same
+  // socket nudge, so both skip the loader: a colleague signing a route must not
+  // flash the global progress bar for everyone reading the document.
+  links: (id) => api.get(`/documents/${id}/tasks`, { skipLoader: true }),
+  linkTask: (id, data) => api.post(`/documents/${id}/tasks`, data),
+  unlinkTask: (linkId) => api.delete(`/document-task-links/${linkId}`),
+  approvals: (id) => api.get(`/documents/${id}/approvals`, { skipLoader: true }),
+  createApproval: (id, data) => api.post(`/documents/${id}/approvals`, data),
+  decideApproval: (approvalId, data) => api.post(`/document-approvals/${approvalId}/decide`, data),
+  cancelApproval: (approvalId) => api.post(`/document-approvals/${approvalId}/cancel`),
 }
 
 export const reminders = {
@@ -449,6 +459,10 @@ export const tasks = {
   relations: (id) => api.get(`/tasks/${id}/relations`),
   addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),
   removeRelation: (relationId) => api.delete(`/relations/${relationId}`),
+  // The document side of the same link table (#2732). Unlinking is done through
+  // `documents.unlinkTask` — one link row, one endpoint, whichever end you are
+  // looking at it from.
+  documents: (id) => api.get(`/tasks/${id}/documents`),
   attachments: (id) => api.get(`/tasks/${id}/attachments`),
   // Attachment up/download can be large and slow — keep them off the global bar
   // (their call sites show local progress); a blocking overlay here froze the

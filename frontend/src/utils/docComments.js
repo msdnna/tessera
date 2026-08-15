@@ -27,6 +27,33 @@ export function blockIdsIn(json) {
 }
 
 /**
+ * Finds the block node carrying an id.
+ *
+ * The counterpart to blockIdsIn: anchoring something *new* to a block needs the
+ * node itself, not just proof that it is still there — a task link records the
+ * clause it hangs on so it can still say which one once that clause is rewritten
+ * (#2732).
+ *
+ * @param {object} json ProseMirror document JSON
+ * @param {string} blockId the anchor to look for
+ * @returns {object|null} the node, or null when the block is gone
+ */
+export function blockNodeById(json, blockId) {
+  if (!blockId) return null
+  let found = null
+  const walk = (node) => {
+    if (found || !node || typeof node !== 'object') return
+    if (node.attrs?.id === blockId) {
+      found = node
+      return
+    }
+    if (Array.isArray(node.content)) node.content.forEach(walk)
+  }
+  walk(json)
+  return found
+}
+
+/**
  * Groups a flat comment list into threads.
  *
  * A thread is a root plus its replies, oldest first. Replies whose root is

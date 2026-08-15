@@ -24,6 +24,7 @@ const DOC_FILES = [
   'src/components/documents/DocEditor.vue',
   'src/components/documents/DocToolbar.vue',
   'src/components/documents/DocComments.vue',
+  'src/components/documents/DocLinks.vue',
   'src/components/documents/DocTemplates.vue',
   'src/views/DocumentsView.vue',
 ]

@@ -9,6 +9,7 @@ import {
   ChatbubbleEllipsesOutline,
   DocumentsOutline,
   GridOutline,
+  LinkOutline,
   TimeOutline,
 } from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
@@ -16,15 +17,18 @@ import EmptyState from '@/components/EmptyState.vue'
 import DocEditor from '@/components/documents/DocEditor.vue'
 import DocComments from '@/components/documents/DocComments.vue'
 import DocHistory from '@/components/documents/DocHistory.vue'
+import DocLinks from '@/components/documents/DocLinks.vue'
 import DocTemplates from '@/components/documents/DocTemplates.vue'
 import { fileToTemplate } from '@/utils/docImport'
 import { builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useDocAutosave } from '@/composables/useDocAutosave'
 import { useDocComments } from '@/composables/useDocComments'
+import { useDocLinks } from '@/composables/useDocLinks'
 import { useDocPresence } from '@/composables/useDocPresence'
 import { useDocVersions } from '@/composables/useDocVersions'
 import { toDocJSON } from '@/utils/docSchema'
+import { blockNodeById, quoteFromBlock } from '@/utils/docComments'
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
@@ -86,6 +90,7 @@ const {
   userId: myUserId,
   commentsNudge,
   contentNudge,
+  linksNudge,
   open: openRoom,
   close: closeRoom,
   acquire: claimBlock,
@@ -107,6 +112,14 @@ watch(commentsNudge, () => comments.load())
 // Version journal, snapshots and rollback (#2731).
 const versions = useDocVersions()
 const historyOpen = ref(false)
+
+// Task links and approval protocols (#2732). Loaded lazily like the journal: a
+// document is read far more often than it is linked or signed, and every reader
+// paying two requests for a panel they never open would make the section slower
+// for the common case.
+const links = useDocLinks()
+const linksOpen = ref(false)
+watch(linksNudge, () => links.load())
 
 // A rollback replaces the body under everyone reading it. Reloading is not
 // optional here: the editor is holding both the old tree and the old updated_at,
@@ -184,6 +197,7 @@ async function open(doc) {
     // about the document, and every opened document paying for it would make the
     // section slower for the readers who never ask it.
     if (historyOpen.value) await versions.open(res.data.id)
+    if (linksOpen.value) await links.open(res.data.id)
     const param = res.data.slug || res.data.id
     if (param && route.params.slug !== param) router.replace(`/documents/${param}`)
   } catch (e) {
@@ -200,6 +214,7 @@ async function backToGrid() {
   closeRoom()
   comments.close()
   versions.close()
+  links.close()
   selected.value = null
   content.value = null
   if (route.params.slug) router.replace('/documents')
@@ -211,6 +226,78 @@ async function toggleHistory() {
   historyOpen.value = !historyOpen.value
   if (historyOpen.value && selected.value?.id) await versions.open(selected.value.id)
   else if (!historyOpen.value) versions.close()
+}
+
+// Same lazy rule for links and protocols.
+async function toggleLinks() {
+  linksOpen.value = !linksOpen.value
+  if (linksOpen.value && selected.value?.id) await links.open(selected.value.id)
+  else if (!linksOpen.value) links.close()
+}
+
+// The block a new link would be pinned to. It follows the annotation panel's
+// selection rather than carrying a second one: "выбранный блок" has to mean the
+// same thing in both panels, or the link lands on a paragraph the user is not
+// looking at. No selection links the document as a whole, which is the common case.
+const linkAnchorId = computed(() => comments.activeBlockId.value || '')
+const linkAnchorQuote = computed(() => {
+  const node = blockNodeById(content.value, linkAnchorId.value)
+  return node ? quoteFromBlock(node) : ''
+})
+
+async function onLink(payload) {
+  try {
+    await links.link(payload)
+    message.success(payload.blockId ? 'Блок связан с задачей' : 'Задача связана')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onUnlink(linkId) {
+  try {
+    await links.unlink(linkId)
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onRaiseApproval(payload) {
+  try {
+    await links.raise(payload)
+    // Raising a route pins a manual snapshot, so an open journal is now a
+    // version behind — same reasoning as the autosave path above.
+    if (historyOpen.value) await versions.load()
+    message.success('Документ отправлен на согласование')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onDecide({ id, decision, comment }) {
+  try {
+    await links.decide(id, { decision, comment })
+    message.success(decision === 'approved' ? 'Подписано' : 'Отклонено')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function onCancelApproval(id) {
+  try {
+    await links.cancel(id)
+    message.info('Маршрут отозван')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+// Opening the task leaves the documents section entirely, so unsaved text is
+// flushed first — the board route unmounts this view and the debounce with it.
+async function onOpenTask(link) {
+  if (!link?.task_board_id) return
+  await flushSave()
+  router.push(`/board/${link.task_board_id}?task=${link.task_id}`)
 }
 
 async function onSnapshot(label) {
@@ -263,6 +350,7 @@ async function reload() {
   await open(doc)
   await loadList()
   if (historyOpen.value) await versions.load()
+  if (linksOpen.value) await links.load()
 }
 
 // Resolves the :slug deep link. Slugs are unique per workspace, not globally,
@@ -440,6 +528,7 @@ async function remove() {
     closeRoom()
     comments.close()
     versions.close()
+    links.close()
     selected.value = null
     content.value = null
     router.replace('/documents')
@@ -573,6 +662,7 @@ watch(
     cancelSave()
     closeRoom()
     versions.close()
+    links.close()
     selected.value = null
     content.value = null
     trail.value = []
@@ -665,6 +755,15 @@ watch(
           <n-button
             quaternary
             size="tiny"
+            :title="linksOpen ? 'Скрыть связи' : 'Связи и согласование'"
+            data-testid="doc-links-toggle"
+            @click="toggleLinks"
+          >
+            <template #icon><n-icon :component="LinkOutline" /></template>
+          </n-button>
+          <n-button
+            quaternary
+            size="tiny"
             title="Сохранить как шаблон"
             data-testid="doc-save-template"
             @click="saveAsTemplate"
@@ -732,6 +831,25 @@ watch(
             @snapshot="onSnapshot"
             @restore="onRestore"
             @close="toggleHistory"
+          />
+          <doc-links
+            v-if="linksOpen"
+            :links="links.links.value"
+            :approvals="links.approvals.value"
+            :user-id="myUserId"
+            :ws-id="wsStore.currentId"
+            :can-raise="links.canRaise.value"
+            :loading="links.loading.value"
+            :error="links.error.value"
+            :anchor-block-id="linkAnchorId"
+            :anchor-quote="linkAnchorQuote"
+            @link="onLink"
+            @unlink="onUnlink"
+            @raise="onRaiseApproval"
+            @decide="onDecide"
+            @cancel="onCancelApproval"
+            @open-task="onOpenTask"
+            @close="toggleLinks"
           />
         </div>
         <div v-if="children.length" class="nested">
