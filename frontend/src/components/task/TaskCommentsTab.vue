@@ -21,6 +21,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { fmtWhen } from '@/utils/taskFeed'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
+import { buildMentionItems } from '@/utils/mentions'
 import { scrollParent } from '@/utils/dom'
 import MarkdownEditor from '../MarkdownEditor.vue'
 import RichContent from '../RichContent.vue'
@@ -54,26 +55,9 @@ const editingCommentBody = ref('')
 const posting = ref(false)
 const retryInfo = ref(null)
 
-// Members offered for @-mentions. Tessera members insert their display name;
-// GitLab-only users (no Tessera account) insert their `@username` so GitLab resolves
-// the mention on writeback. `label` is the inserted text, `display` the row. The
-// store's gitlabMembersList already drops GitLab users mapped to a Tessera member,
-// so nobody shows up twice.
-const mentionItems = computed(() => [
-  ...bv.membersList.map((m) => ({
-    id: m.user_id,
-    label: m.name,
-    display: m.name,
-    avatarUserId: m.user_id,
-  })),
-  ...bv.gitlabMembersList.map((g) => ({
-    id: null,
-    label: g.gl_username,
-    display: g.gl_name || g.gl_username,
-    avatarSrc: g.gl_avatar_url,
-    gitlab: true,
-  })),
-])
+// Members offered for @-mentions — and, via the same rows, resolved by the hover
+// cards. Shared with the description so both render mentions off one shape.
+const mentionItems = computed(() => buildMentionItems(bv.membersList, bv.gitlabMembersList))
 
 // ── quick actions ──
 // The command registry is workspace-wide (loaded once by the store); the popup
@@ -323,6 +307,7 @@ async function onCommentCheck(c, i) {
               class="c-text"
               :source="c.body"
               :members="mentionItems"
+              mention-cards
               :interactive="c.author_id === meId"
               @toggle="onCommentCheck(c, $event)"
             />
