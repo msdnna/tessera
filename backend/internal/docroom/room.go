@@ -51,14 +51,16 @@ const (
 )
 
 // Message types on the wire. Server→client: welcome (once, on join), state
-// (whole-room snapshot), denied (answer to a lock request that lost).
+// (whole-room snapshot), denied (answer to a lock request that lost), comments
+// (something changed in this document's threads — refetch them).
 // Client→server: lock, unlock.
 const (
-	TypeWelcome = "welcome"
-	TypeState   = "state"
-	TypeDenied  = "denied"
-	TypeLock    = "lock"
-	TypeUnlock  = "unlock"
+	TypeWelcome  = "welcome"
+	TypeState    = "state"
+	TypeDenied   = "denied"
+	TypeComments = "comments"
+	TypeLock     = "lock"
+	TypeUnlock   = "unlock"
 )
 
 // Participant is one open socket on one document. The same user may have two
@@ -334,6 +336,20 @@ func (r *Room) broadcastLocked(_ time.Time) {
 	}
 }
 
+// notify sends a payload-free frame of the given type to everyone in the room.
+// Used for "something changed, go and read it" nudges (#2730) — the room itself
+// holds no such state, so there is nothing to put in the frame.
+func (r *Room) notify(msgType string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	frame := encode(struct {
+		Type string `json:"type"`
+	}{msgType})
+	for p := range r.members {
+		p.deliver(frame)
+	}
+}
+
 // Size reports the number of open sockets on this document.
 func (r *Room) Size() int {
 	r.mu.Lock()
@@ -416,6 +432,20 @@ func (rs *Rooms) Drop(docID uuid.UUID) {
 		p.Close()
 	}
 	room.mu.Unlock()
+}
+
+// Notify tells everyone currently in a document's room that something they are
+// looking at changed outside the socket (its comment threads, #2730). A document
+// nobody has open has no room, and the call is then a no-op — which is correct:
+// the next reader loads the current state over HTTP anyway.
+func (rs *Rooms) Notify(docID uuid.UUID, msgType string) {
+	rs.mu.Lock()
+	room, ok := rs.rooms[docID]
+	rs.mu.Unlock()
+	if !ok {
+		return
+	}
+	room.notify(msgType)
 }
 
 // Run expires abandoned locks until Close. Call it once, in its own goroutine.

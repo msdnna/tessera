@@ -61,6 +61,20 @@ type Document struct {
 	Preview     string     `json:"preview"`
 }
 
+type DocumentComment struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	BlockID    string     `json:"block_id"`
+	ParentID   *uuid.UUID `json:"parent_id"`
+	AuthorID   *uuid.UUID `json:"author_id"`
+	Body       string     `json:"body"`
+	Quote      string     `json:"quote"`
+	ResolvedAt *time.Time `json:"resolved_at"`
+	ResolvedBy *uuid.UUID `json:"resolved_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
 type DueNotificationState struct {
 	TaskID      uuid.UUID `json:"task_id"`
 	UserID      uuid.UUID `json:"user_id"`

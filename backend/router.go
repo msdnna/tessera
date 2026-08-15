@@ -394,6 +394,17 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/documents/:id/assets", rh.UploadDocumentAsset)
 			protected.DELETE("/documents/:id", rh.DeleteDocument)
 
+			// Block-anchored annotations and their threads (#2730). The thread
+			// endpoints sit on their own prefix rather than under the document:
+			// a comment is addressed by its own id once created, and nesting the
+			// route would make the document id in it decorative — and, worse,
+			// something a client could get wrong while the handler trusted it.
+			protected.GET("/documents/:id/comments", rh.ListDocumentComments)
+			protected.POST("/documents/:id/comments", rh.CreateDocumentComment)
+			protected.PATCH("/document-comments/:id", rh.UpdateDocumentComment)
+			protected.PATCH("/document-comments/:id/resolve", rh.ResolveDocumentComment)
+			protected.DELETE("/document-comments/:id", rh.DeleteDocumentComment)
+
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)

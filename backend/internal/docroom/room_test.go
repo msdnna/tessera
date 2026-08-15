@@ -309,3 +309,35 @@ func TestSlowParticipantIsEvictedNotSilentlySkipped(t *testing.T) {
 		t.Logf("room size after eviction = %d", room.Size())
 	}
 }
+
+// TestNotifyReachesRoomOnly is the comment nudge (#2730): everyone with the
+// document open is told to refetch, and nobody else is bothered. A room that no
+// longer exists must not be recreated by the nudge — an entry per document ever
+// commented on is exactly the leak Rooms is built to avoid.
+func TestNotifyReachesRoomOnly(t *testing.T) {
+	rooms := New()
+	defer rooms.Close()
+	docID, otherDoc := uuid.New(), uuid.New()
+
+	reader := NewParticipant(uuid.New(), "Читатель")
+	elsewhere := NewParticipant(uuid.New(), "В другом документе")
+	rooms.Join(docID, reader)
+	rooms.Join(otherDoc, elsewhere)
+	drain(reader)
+	drain(elsewhere)
+
+	rooms.Notify(docID, TypeComments)
+	got := drain(reader)
+	if len(got) != 1 || got[0]["type"] != TypeComments {
+		t.Fatalf("nudge delivered as %v", got)
+	}
+	if extra := drain(elsewhere); len(extra) != 0 {
+		t.Fatalf("a comment in one document woke another: %v", extra)
+	}
+
+	before := rooms.Count()
+	rooms.Notify(uuid.New(), TypeComments)
+	if rooms.Count() != before {
+		t.Fatalf("notifying an empty document created a room: %d to %d", before, rooms.Count())
+	}
+}
