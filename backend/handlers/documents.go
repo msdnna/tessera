@@ -35,10 +35,11 @@ func (h *API) CreateDocument(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title     string     `json:"title" binding:"required"`
-		Icon      string     `json:"icon"`
-		ParentID  *uuid.UUID `json:"parent_id"`
-		ProjectID *uuid.UUID `json:"project_id"`
+		Title      string     `json:"title" binding:"required"`
+		Icon       string     `json:"icon"`
+		ParentID   *uuid.UUID `json:"parent_id"`
+		ProjectID  *uuid.UUID `json:"project_id"`
+		TemplateID *uuid.UUID `json:"template_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -46,6 +47,15 @@ func (h *API) CreateDocument(c *gin.Context) {
 	}
 	if req.ParentID != nil && !h.parentInWorkspace(c, *req.ParentID, wsID) {
 		return
+	}
+	seed, ok := h.seedFromTemplate(c, wsID, req.TemplateID)
+	if !ok {
+		return
+	}
+	// An icon passed explicitly wins; otherwise the template's own icon carries
+	// over, so a document made from "Протокол совещания" looks like one in the grid.
+	if req.Icon == "" {
+		req.Icon = seed.icon
 	}
 	uid := middleware.CurrentUser(c)
 	doc, err := h.q.CreateDocument(c, db.CreateDocumentParams{
@@ -57,6 +67,8 @@ func (h *API) CreateDocument(c *gin.Context) {
 		Slug:        h.uniqueDocumentSlug(c, wsID, req.Title),
 		Icon:        req.Icon,
 		Position:    h.nextDocumentPosition(c, wsID, req.ParentID),
+		Content:     seed.content,
+		Preview:     seed.preview,
 	})
 	if err != nil {
 		fail(c, err)
@@ -65,6 +77,43 @@ func (h *API) CreateDocument(c *gin.Context) {
 	view := viewDocument(doc)
 	h.broadcast(wsID, "document.created", documentMeta(doc))
 	c.JSON(http.StatusCreated, view)
+}
+
+// docSeed is the body a new document starts life with: empty, or a copy of a
+// template (D9).
+type docSeed struct {
+	content []byte
+	preview string
+	icon    string
+}
+
+// seedFromTemplate resolves the optional template_id of a create request.
+//
+// The template's body is copied, not referenced: a document made from a
+// template is thereafter its own document, and later edits to the template must
+// not rewrite documents somebody already filled in. Writes the response and
+// returns false when the template is missing or belongs elsewhere.
+func (h *API) seedFromTemplate(c *gin.Context, wsID uuid.UUID, templateID *uuid.UUID) (docSeed, bool) {
+	empty := docSeed{content: []byte(`{"type":"doc","content":[]}`)}
+	if templateID == nil {
+		return empty, true
+	}
+	tpl, err := h.q.GetDocumentTemplate(c, *templateID)
+	if notFound(c, err) {
+		return empty, false
+	}
+	if err != nil {
+		fail(c, err)
+		return empty, false
+	}
+	if tpl.WorkspaceID != wsID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "template belongs to another workspace"})
+		return empty, false
+	}
+	if len(tpl.Content) == 0 {
+		return empty, true
+	}
+	return docSeed{content: tpl.Content, preview: tpl.Preview, icon: tpl.Icon}, true
 }
 
 // ListDocuments returns the workspace's documents as a flat list (the client

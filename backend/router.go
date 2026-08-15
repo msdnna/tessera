@@ -413,6 +413,19 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/document-versions/:id", rh.GetDocumentVersion)
 			protected.POST("/document-versions/:id/restore", rh.RestoreDocumentVersion)
 
+			// Template gallery (#2734). The gallery belongs to the workspace, not
+			// to any document — a template outlives the document it was made
+			// from — so the list hangs off the workspace, and a single template is
+			// addressed by its own id like versions and comments above. Using one
+			// is not a route here at all: it is `template_id` on document create,
+			// which keeps slug, position and authorship on the single path that
+			// already owns them.
+			protected.GET("/workspaces/:id/document-templates", rh.ListDocumentTemplates)
+			protected.POST("/workspaces/:id/document-templates", rh.CreateDocumentTemplate)
+			protected.GET("/document-templates/:id", rh.GetDocumentTemplate)
+			protected.PATCH("/document-templates/:id", rh.UpdateDocumentTemplate)
+			protected.DELETE("/document-templates/:id", rh.DeleteDocumentTemplate)
+
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)

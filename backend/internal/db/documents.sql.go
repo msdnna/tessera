@@ -24,8 +24,8 @@ func (q *Queries) CountDocumentChildren(ctx context.Context, parentID *uuid.UUID
 }
 
 const createDocument = `-- name: CreateDocument :one
-INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
 `
 
@@ -38,8 +38,16 @@ type CreateDocumentParams struct {
 	Slug        string     `json:"slug"`
 	Icon        string     `json:"icon"`
 	Position    float64    `json:"position"`
+	Content     []byte     `json:"content"`
+	Preview     string     `json:"preview"`
 }
 
+// CreateDocument takes content and preview rather than leaving both at their
+// column defaults, because a document created from a template (D9) is born with
+// a body. Seeding it here instead of following the insert with a content update
+// keeps the new document's history honest: a document that starts as a template
+// has no "empty" state anyone could roll back to, and the version journal (D6)
+// would otherwise record one.
 func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error) {
 	row := q.db.QueryRow(ctx, createDocument,
 		arg.WorkspaceID,
@@ -50,6 +58,8 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		arg.Slug,
 		arg.Icon,
 		arg.Position,
+		arg.Content,
+		arg.Preview,
 	)
 	var i Document
 	err := row.Scan(

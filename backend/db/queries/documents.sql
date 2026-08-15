@@ -1,6 +1,12 @@
+-- CreateDocument takes content and preview rather than leaving both at their
+-- column defaults, because a document created from a template (D9) is born with
+-- a body. Seeding it here instead of following the insert with a content update
+-- keeps the new document's history honest: a document that starts as a template
+-- has no "empty" state anyone could roll back to, and the version journal (D6)
+-- would otherwise record one.
 -- name: CreateDocument :one
-INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- ListDocuments returns the workspace's documents as a flat list; the tree is

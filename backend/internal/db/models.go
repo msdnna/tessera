@@ -75,6 +75,19 @@ type DocumentComment struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
+type DocumentTemplate struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	AuthorID    *uuid.UUID `json:"author_id"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Icon        string     `json:"icon"`
+	Content     []byte     `json:"content"`
+	Preview     string     `json:"preview"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
 type DocumentVersion struct {
 	ID         uuid.UUID  `json:"id"`
 	DocumentID uuid.UUID  `json:"document_id"`
