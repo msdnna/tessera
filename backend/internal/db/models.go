@@ -75,6 +75,20 @@ type DocumentComment struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
+type DocumentVersion struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	Revision   int32      `json:"revision"`
+	AuthorID   *uuid.UUID `json:"author_id"`
+	Title      string     `json:"title"`
+	Content    []byte     `json:"content"`
+	Preview    string     `json:"preview"`
+	Label      string     `json:"label"`
+	Manual     bool       `json:"manual"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
 type DueNotificationState struct {
 	TaskID      uuid.UUID `json:"task_id"`
 	UserID      uuid.UUID `json:"user_id"`

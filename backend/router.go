@@ -405,6 +405,14 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/document-comments/:id/resolve", rh.ResolveDocumentComment)
 			protected.DELETE("/document-comments/:id", rh.DeleteDocumentComment)
 
+			// Version journal, snapshots and rollback (#2731). Same split as the
+			// comments above: the list hangs off the document, a single version
+			// is addressed by its own id.
+			protected.GET("/documents/:id/versions", rh.ListDocumentVersions)
+			protected.POST("/documents/:id/versions", rh.CreateDocumentVersion)
+			protected.GET("/document-versions/:id", rh.GetDocumentVersion)
+			protected.POST("/document-versions/:id/restore", rh.RestoreDocumentVersion)
+
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)

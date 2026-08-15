@@ -52,15 +52,21 @@ const (
 
 // Message types on the wire. Server→client: welcome (once, on join), state
 // (whole-room snapshot), denied (answer to a lock request that lost), comments
-// (something changed in this document's threads — refetch them).
+// (something changed in this document's threads — refetch them), content (the
+// body was replaced under the readers' feet — reload it).
 // Client→server: lock, unlock.
 const (
 	TypeWelcome  = "welcome"
 	TypeState    = "state"
 	TypeDenied   = "denied"
 	TypeComments = "comments"
-	TypeLock     = "lock"
-	TypeUnlock   = "unlock"
+	// TypeContent is sent when the document's body was rewritten by something
+	// other than an edit in the room — today only a rollback to an earlier
+	// version (#2731). It carries no payload: everyone refetches, which is also
+	// what makes a nudge lost to a reconnect cost nothing but a stale tab.
+	TypeContent = "content"
+	TypeLock    = "lock"
+	TypeUnlock  = "unlock"
 )
 
 // Participant is one open socket on one document. The same user may have two

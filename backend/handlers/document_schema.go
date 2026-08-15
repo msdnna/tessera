@@ -232,3 +232,43 @@ func docPreview(root docNode) string {
 	}
 	return text
 }
+
+// isEmptyDocContent reports whether stored content holds nothing worth keeping
+// in the version journal. It answers one question only: whether a document's
+// first tracked save deserves a "before" baseline (#2731). A document created a
+// minute ago and typed into for the first time has no earlier state anyone would
+// want back, and a baseline for it would be an empty entry at the bottom of
+// every journal.
+//
+// Unparseable content counts as non-empty: if we cannot read it, the one thing
+// not to do is decide on the user's behalf that it can be dropped.
+func isEmptyDocContent(raw []byte) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var root docNode
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return false
+	}
+	if docPreview(root) != "" {
+		return false
+	}
+	// Text is not the only content: a document holding a single image or table
+	// is not empty, even though it flattens to an empty preview.
+	empty := true
+	var walk func(docNode)
+	walk = func(n docNode) {
+		if !empty {
+			return
+		}
+		if n.Type == "image" || n.Type == "table" || n.Type == "horizontalRule" {
+			empty = false
+			return
+		}
+		for _, c := range n.Content {
+			walk(c)
+		}
+	}
+	walk(root)
+	return empty
+}

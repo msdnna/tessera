@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
+	"tessera/middleware"
 )
 
 // UpdateDocumentContent saves the document body.
@@ -60,6 +62,14 @@ func (h *API) UpdateDocumentContent(c *gin.Context) {
 	if err != nil {
 		fail(c, err)
 		return
+	}
+	// Journal the save (#2731). Deliberately after the write and deliberately
+	// not fatal: the text is already safe in documents.content, and answering
+	// 500 to a successful save because its history entry failed would make the
+	// editor look broken and push the client into retrying a write it does not
+	// need to repeat.
+	if err := h.snapshotDocument(c, doc, updated, middleware.CurrentUser(c)); err != nil {
+		log.Printf("documents: version snapshot for %s failed: %v", updated.ID, err)
 	}
 	h.broadcast(doc.WorkspaceID, "document.updated", documentMeta(updated))
 	c.JSON(http.StatusOK, gin.H{

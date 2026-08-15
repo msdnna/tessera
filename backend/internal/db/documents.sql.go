@@ -362,6 +362,46 @@ func (q *Queries) ReassignProjectDocumentsWorkspace(ctx context.Context, arg Rea
 	return err
 }
 
+const setDocumentContent = `-- name: SetDocumentContent :one
+UPDATE documents
+SET content = $2, preview = $3, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+`
+
+type SetDocumentContentParams struct {
+	ID      uuid.UUID `json:"id"`
+	Content []byte    `json:"content"`
+	Preview string    `json:"preview"`
+}
+
+// SetDocumentContent writes the body without the updated_at guard above. Used
+// only by the rollback (D6): a restore is not a client racing another client
+// with a stale copy, it is an explicit "make it look like revision N again", and
+// failing it because someone autosaved a second earlier would make the button
+// work only on idle documents. The state being overwritten is snapshotted first,
+// so the rollback is itself undoable.
+func (q *Queries) SetDocumentContent(ctx context.Context, arg SetDocumentContentParams) (Document, error) {
+	row := q.db.QueryRow(ctx, setDocumentContent, arg.ID, arg.Content, arg.Preview)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ParentID,
+		&i.ProjectID,
+		&i.AuthorID,
+		&i.Title,
+		&i.Slug,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Preview,
+	)
+	return i, err
+}
+
 const setDocumentSlug = `-- name: SetDocumentSlug :exec
 UPDATE documents SET slug = $2 WHERE id = $1
 `

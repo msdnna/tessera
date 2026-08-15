@@ -87,3 +87,15 @@ UPDATE documents
 SET content = $2, preview = $3, updated_at = now()
 WHERE id = $1 AND updated_at = $4
 RETURNING *;
+
+-- SetDocumentContent writes the body without the updated_at guard above. Used
+-- only by the rollback (D6): a restore is not a client racing another client
+-- with a stale copy, it is an explicit "make it look like revision N again", and
+-- failing it because someone autosaved a second earlier would make the button
+-- work only on idle documents. The state being overwritten is snapshotted first,
+-- so the rollback is itself undoable.
+-- name: SetDocumentContent :one
+UPDATE documents
+SET content = $2, preview = $3, updated_at = now()
+WHERE id = $1
+RETURNING *;
