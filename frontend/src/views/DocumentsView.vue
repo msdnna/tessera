@@ -64,6 +64,12 @@ const {
   const res = await docsApi.updateContent(selected.value.id, json, version.value)
   version.value = res.data?.updated_at || version.value
   applyPreview(selected.value.id, res.data)
+  // Every save writes the journal (#2731), so an open history panel goes stale
+  // the moment its owner keeps typing — and stale here is worse than merely old:
+  // the comparison is made against the newest entry, so the panel would answer
+  // "версии совпадают" about a document that has since moved on. Only while the
+  // panel is open; a document read without it still costs no journal request.
+  if (historyOpen.value) await versions.load()
   return res.data
 })
 
