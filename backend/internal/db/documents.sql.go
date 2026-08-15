@@ -26,7 +26,7 @@ func (q *Queries) CountDocumentChildren(ctx context.Context, parentID *uuid.UUID
 const createDocument = `-- name: CreateDocument :one
 INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
 `
 
 type CreateDocumentParams struct {
@@ -65,6 +65,7 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Preview,
 	)
 	return i, err
 }
@@ -168,7 +169,7 @@ func (q *Queries) DocumentsMissingSlug(ctx context.Context) ([]DocumentsMissingS
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at FROM documents WHERE id = $1
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview FROM documents WHERE id = $1
 `
 
 func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, error) {
@@ -187,12 +188,13 @@ func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, erro
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Preview,
 	)
 	return i, err
 }
 
 const getDocumentBySlug = `-- name: GetDocumentBySlug :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at FROM documents WHERE workspace_id = $1 AND slug = $2
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview FROM documents WHERE workspace_id = $1 AND slug = $2
 `
 
 type GetDocumentBySlugParams struct {
@@ -216,12 +218,13 @@ func (q *Queries) GetDocumentBySlug(ctx context.Context, arg GetDocumentBySlugPa
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Preview,
 	)
 	return i, err
 }
 
 const listDocuments = `-- name: ListDocuments :many
-SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, position, created_at, updated_at
+SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
 WHERE workspace_id = $1
 ORDER BY position, created_at
@@ -236,6 +239,7 @@ type ListDocumentsRow struct {
 	Title       string     `json:"title"`
 	Slug        string     `json:"slug"`
 	Icon        string     `json:"icon"`
+	Preview     string     `json:"preview"`
 	Position    float64    `json:"position"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
@@ -264,6 +268,7 @@ func (q *Queries) ListDocuments(ctx context.Context, workspaceID uuid.UUID) ([]L
 			&i.Title,
 			&i.Slug,
 			&i.Icon,
+			&i.Preview,
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -279,7 +284,7 @@ func (q *Queries) ListDocuments(ctx context.Context, workspaceID uuid.UUID) ([]L
 }
 
 const listDocumentsByProject = `-- name: ListDocumentsByProject :many
-SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, position, created_at, updated_at
+SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
 WHERE workspace_id = $1 AND project_id = $2
 ORDER BY position, created_at
@@ -299,6 +304,7 @@ type ListDocumentsByProjectRow struct {
 	Title       string     `json:"title"`
 	Slug        string     `json:"slug"`
 	Icon        string     `json:"icon"`
+	Preview     string     `json:"preview"`
 	Position    float64    `json:"position"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
@@ -322,6 +328,7 @@ func (q *Queries) ListDocumentsByProject(ctx context.Context, arg ListDocumentsB
 			&i.Title,
 			&i.Slug,
 			&i.Icon,
+			&i.Preview,
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -369,11 +376,56 @@ func (q *Queries) SetDocumentSlug(ctx context.Context, arg SetDocumentSlugParams
 	return err
 }
 
+const updateDocumentContent = `-- name: UpdateDocumentContent :one
+UPDATE documents
+SET content = $2, preview = $3, updated_at = now()
+WHERE id = $1 AND updated_at = $4
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+`
+
+type UpdateDocumentContentParams struct {
+	ID        uuid.UUID `json:"id"`
+	Content   []byte    `json:"content"`
+	Preview   string    `json:"preview"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// UpdateDocumentContent writes the document body. The updated_at guard is
+// optimistic concurrency: the client sends the timestamp it loaded, and a row
+// that moved on in the meantime matches nothing, so the handler answers 409
+// instead of overwriting an edit it never saw. Per-block merging is D4's job;
+// silently losing the other side's work is not an acceptable stand-in for it.
+func (q *Queries) UpdateDocumentContent(ctx context.Context, arg UpdateDocumentContentParams) (Document, error) {
+	row := q.db.QueryRow(ctx, updateDocumentContent,
+		arg.ID,
+		arg.Content,
+		arg.Preview,
+		arg.UpdatedAt,
+	)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ParentID,
+		&i.ProjectID,
+		&i.AuthorID,
+		&i.Title,
+		&i.Slug,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Preview,
+	)
+	return i, err
+}
+
 const updateDocumentMeta = `-- name: UpdateDocumentMeta :one
 UPDATE documents
 SET title = $2, icon = $3, parent_id = $4, project_id = $5, position = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
 `
 
 type UpdateDocumentMetaParams struct {
@@ -408,6 +460,7 @@ func (q *Queries) UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMeta
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Preview,
 	)
 	return i, err
 }

@@ -9,13 +9,13 @@ RETURNING *;
 -- hundreds of KB per document, and SELECT * would turn opening the section into
 -- downloading every document in the workspace.
 -- name: ListDocuments :many
-SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, position, created_at, updated_at
+SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
 WHERE workspace_id = $1
 ORDER BY position, created_at;
 
 -- name: ListDocumentsByProject :many
-SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, position, created_at, updated_at
+SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
 WHERE workspace_id = $1 AND project_id = $2
 ORDER BY position, created_at;
@@ -76,3 +76,14 @@ SELECT id, workspace_id, title FROM documents WHERE slug = '';
 
 -- name: SetDocumentSlug :exec
 UPDATE documents SET slug = $2 WHERE id = $1;
+
+-- UpdateDocumentContent writes the document body. The updated_at guard is
+-- optimistic concurrency: the client sends the timestamp it loaded, and a row
+-- that moved on in the meantime matches nothing, so the handler answers 409
+-- instead of overwriting an edit it never saw. Per-block merging is D4's job;
+-- silently losing the other side's work is not an acceptable stand-in for it.
+-- name: UpdateDocumentContent :one
+UPDATE documents
+SET content = $2, preview = $3, updated_at = now()
+WHERE id = $1 AND updated_at = $4
+RETURNING *;

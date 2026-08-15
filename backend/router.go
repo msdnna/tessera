@@ -158,6 +158,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// (public — an <img> can't send auth; HMAC-signed so only Tessera
 		// links work, fetched with the integration owner's token).
 		api.GET("/gitlab/asset", rh.GitlabAsset)
+
+		// Signed serve for images embedded in documents. Public for the same
+		// reason as the route above (an <img> can't authenticate), but unlike
+		// /uploads/:name the capability is the HMAC, not the filename —
+		// document content must not be reachable by guessing a URL (#2718).
+		api.GET("/documents/asset", rh.DocumentAsset)
 		api.GET("/gitlab/avatar", rh.GitlabAvatar)
 
 		// Avatar blobs served publicly (an <img> can't send the bearer header);
@@ -371,6 +377,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			protected.GET("/documents/:id", rh.GetDocument)
 			protected.PATCH("/documents/:id", rh.UpdateDocument)
+			protected.PATCH("/documents/:id/content", rh.UpdateDocumentContent)
+			protected.POST("/documents/:id/assets", rh.UploadDocumentAsset)
 			protected.DELETE("/documents/:id", rh.DeleteDocument)
 
 			// GitLab integration: per-user connection (PAT), per-workspace
