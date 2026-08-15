@@ -457,6 +457,8 @@ type TaskComment struct {
 	GlAuthorLogin     string     `json:"gl_author_login"`
 	GlAuthorName      string     `json:"gl_author_name"`
 	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
+	ParentID          *uuid.UUID `json:"parent_id"`
+	GlDiscussionID    string     `json:"gl_discussion_id"`
 }
 
 type TaskEvent struct {
