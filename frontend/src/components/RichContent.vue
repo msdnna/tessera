@@ -5,7 +5,9 @@ import { useMessage } from 'naive-ui'
 import { renderRich, sanitizeSvgFragment } from '@/utils/markdown'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { tasks as tasksApi } from '@/api'
+// #N is resolved workspace-wide, so the endpoint lives on the workspaces api —
+// `tasks` has no equivalent (asking it for one is what silently broke the chips).
+import { workspaces as wsApi } from '@/api'
 import { saveAttachment, attachmentIdFromHref } from '@/utils/download'
 
 // Renders Markdown (via renderRich → sanitised HTML) and then asynchronously
@@ -70,7 +72,7 @@ async function openTaskRef(el) {
   const key = `${wsId}:${number}`
   try {
     if (!refCache.has(key)) {
-      const res = await tasksApi.taskByNumber(wsId, number)
+      const res = await wsApi.taskByNumber(wsId, number)
       refCache.set(key, res.data || null)
     }
     const task = refCache.get(key)

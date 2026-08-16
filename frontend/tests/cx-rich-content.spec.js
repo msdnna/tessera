@@ -12,12 +12,19 @@ const taskByNumber = vi.fn()
 const downloadAttachment = vi.fn(() => Promise.resolve({ data: new Blob(['x']) }))
 const warning = vi.fn()
 
-vi.mock('@/api', () => ({
-  tasks: {
-    taskByNumber: (...a) => taskByNumber(...a),
-    downloadAttachment: (...a) => downloadAttachment(...a),
-  },
-}))
+// Built on top of the REAL module rather than a hand-written shape: a fabricated
+// `tasks.taskByNumber` is exactly what let the broken call ship green — the chip
+// asked the tasks api for an endpoint that only exists on `workspaces`. Spreading
+// the actual exports means a call to a method the api doesn't have blows up here
+// too.
+vi.mock('@/api', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    workspaces: { ...actual.workspaces, taskByNumber: (...a) => taskByNumber(...a) },
+    tasks: { ...actual.tasks, downloadAttachment: (...a) => downloadAttachment(...a) },
+  }
+})
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
