@@ -138,6 +138,50 @@ func TestRenderDocHTMLEscapesAndRefusesUnsafeLinks(t *testing.T) {
 	}
 }
 
+func TestRenderDocHTMLAnchorsInternalLinkTargets(t *testing.T) {
+	// An internal link is what the outline and a cross-reference inside the
+	// document are made of (#2733). Exporting it as an <a href="#id"> that lands
+	// on nothing is the failure this guards: the link is still there, still
+	// clickable, and goes nowhere — which reads as a broken document rather than
+	// as an export that lost a feature.
+	doc := docNode{Type: "doc", Content: []docNode{
+		{Type: "paragraph", Attrs: map[string]any{"id": "p1"}, Content: []docNode{
+			txt("к разделу", docMark{Type: "link", Attrs: map[string]any{"href": "#h1"}}),
+		}},
+		{Type: "paragraph", Attrs: map[string]any{"id": "p2"}, Content: []docNode{txt("текст")}},
+		{Type: "heading", Attrs: map[string]any{"id": "h1", "level": float64(2)}, Content: []docNode{txt("Раздел")}},
+	}}
+	page := renderDocHTML("", doc, nil)
+
+	if !strings.Contains(page, `<h2 id="h1">Раздел</h2>`) {
+		t.Fatalf("linked heading carries no anchor: %q", page)
+	}
+	if !strings.Contains(page, `<a href="#h1">`) {
+		t.Fatalf("internal link was not rendered: %q", page)
+	}
+	// Only the blocks something points at are anchored: an id on every paragraph
+	// is markup LibreOffice has no use for, and the pass that collects targets up
+	// front exists precisely so it can be selective.
+	if strings.Contains(page, `id="p2"`) {
+		t.Fatalf("unlinked block was anchored anyway: %q", page)
+	}
+}
+
+func TestRenderDocHTMLEscapesAnchorID(t *testing.T) {
+	// The id is a hex string when the editor writes it, but stored content is
+	// user input: the schema checks that it is a string, not what is in it.
+	doc := docNode{Type: "doc", Content: []docNode{
+		{Type: "paragraph", Content: []docNode{
+			txt("t", docMark{Type: "link", Attrs: map[string]any{"href": `#a" onload="alert(1)`}}),
+		}},
+		{Type: "heading", Attrs: map[string]any{"id": `a" onload="alert(1)`, "level": float64(1)}},
+	}}
+	page := renderDocHTML("", doc, nil)
+	if strings.Contains(page, `onload="alert(1)"`) {
+		t.Fatalf("anchor id broke out of its attribute: %q", page)
+	}
+}
+
 func TestRenderDocHTMLBlockStyleIsDeterministic(t *testing.T) {
 	n := docNode{Type: "paragraph", Attrs: map[string]any{
 		"textAlign":  "center",

@@ -39,12 +39,21 @@ var blockStyleAttrs = map[string]string{
 	"lineHeight": "line-height",
 }
 
+// docRenderCtx is what the whole walk needs to know beyond the node in front of
+// it: how to resolve an image src, and which blocks are pointed at by an
+// internal link and therefore have to carry an anchor.
+type docRenderCtx struct {
+	resolveImage func(string) string
+	anchors      map[string]bool
+}
+
 // renderDocHTML turns a validated document body into a standalone HTML page.
 //
 // resolveImage is given an <img src> and returns what should be written in its
 // place; it is how the caller inlines document assets the sidecar cannot fetch
 // (see inlineDocAsset). Returning "" drops the image.
 func renderDocHTML(title string, root docNode, resolveImage func(string) string) string {
+	ctx := docRenderCtx{resolveImage: resolveImage, anchors: internalLinkTargets(root)}
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html>\n<html><head>\n")
 	// The charset declaration is not decoration: without it LibreOffice reads the
@@ -57,9 +66,52 @@ func renderDocHTML(title string, root docNode, resolveImage func(string) string)
 	if strings.TrimSpace(title) != "" {
 		b.WriteString("<h1 class=\"doc-title\">" + html.EscapeString(title) + "</h1>\n")
 	}
-	renderDocNodes(&b, root.Content, resolveImage)
+	renderDocNodes(&b, root.Content, ctx)
 	b.WriteString("\n</body></html>\n")
 	return b.String()
+}
+
+// internalLinkTargets collects the blocks an internal link points at.
+//
+// An internal link is a bare `#<block id>` href — the frontend writes block ids
+// rather than slugs of the heading text (utils/docToc.js), so that renaming a
+// heading does not break the links to it. Anchors are written only for the
+// blocks actually linked to, rather than on every block: the export is read by
+// LibreOffice, and an id on every paragraph of a long document is markup nobody
+// asked for. Doing it in one pass up front is what makes that possible — a link
+// may well point at a heading further down the page than the link itself.
+func internalLinkTargets(root docNode) map[string]bool {
+	out := map[string]bool{}
+	var walk func(docNode)
+	walk = func(n docNode) {
+		for _, m := range n.Marks {
+			if m.Type != "link" {
+				continue
+			}
+			href, _ := m.Attrs["href"].(string)
+			if id := strings.TrimPrefix(href, "#"); len(href) > 1 && id != href {
+				out[id] = true
+			}
+		}
+		for _, c := range n.Content {
+			walk(c)
+		}
+	}
+	walk(root)
+	return out
+}
+
+// anchorAttr writes the id a link inside the document jumps to.
+//
+// Escaped rather than trusted: the id comes from stored content, which the
+// schema validates as a string but does not constrain to the hex the editor
+// generates.
+func anchorAttr(n docNode, ctx docRenderCtx) string {
+	id, _ := n.Attrs["id"].(string)
+	if id == "" || !ctx.anchors[id] {
+		return ""
+	}
+	return ` id="` + html.EscapeString(id) + `"`
 }
 
 // docExportCSS is the minimum that makes an exported document look like a
@@ -76,37 +128,37 @@ td, th { border: 0.5pt solid #999999; padding: 3pt; }
 img { max-width: 100%; }
 `
 
-func renderDocNodes(b *strings.Builder, nodes []docNode, resolveImage func(string) string) {
+func renderDocNodes(b *strings.Builder, nodes []docNode, ctx docRenderCtx) {
 	for _, n := range nodes {
-		renderDocNode(b, n, resolveImage)
+		renderDocNode(b, n, ctx)
 	}
 }
 
-func renderDocNode(b *strings.Builder, n docNode, resolveImage func(string) string) {
+func renderDocNode(b *strings.Builder, n docNode, ctx docRenderCtx) {
 	switch n.Type {
 	case "text":
 		b.WriteString(renderDocText(n))
 	case "paragraph":
-		wrap(b, "p", n, resolveImage)
+		wrap(b, "p", n, ctx)
 	case "heading":
 		level := attrInt(n.Attrs, "level", 1)
 		if level < 1 || level > 6 {
 			level = 1
 		}
-		wrapTag(b, fmt.Sprintf("h%d", level), n, resolveImage)
+		wrapTag(b, fmt.Sprintf("h%d", level), n, ctx)
 	case "bulletList":
-		wrap(b, "ul", n, resolveImage)
+		wrap(b, "ul", n, ctx)
 	case "orderedList":
 		start := attrInt(n.Attrs, "start", 1)
 		extra := ""
 		if start > 1 {
 			extra = fmt.Sprintf(` start="%d"`, start)
 		}
-		wrapExtra(b, "ol", extra, n, resolveImage)
+		wrapExtra(b, "ol", extra, n, ctx)
 	case "listItem":
-		wrap(b, "li", n, resolveImage)
+		wrap(b, "li", n, ctx)
 	case "taskList":
-		wrapExtra(b, "ul", ` class="doc-tasks"`, n, resolveImage)
+		wrapExtra(b, "ul", ` class="doc-tasks"`, n, ctx)
 	case "taskItem":
 		// The checkbox is written as a character rather than an <input>: a form
 		// control round-trips into .docx as an empty box with no state, which
@@ -116,10 +168,10 @@ func renderDocNode(b *strings.Builder, n docNode, resolveImage func(string) stri
 			box = "☑ "
 		}
 		b.WriteString("<li>" + box)
-		renderDocNodes(b, n.Content, resolveImage)
+		renderDocNodes(b, n.Content, ctx)
 		b.WriteString("</li>\n")
 	case "blockquote":
-		wrap(b, "blockquote", n, resolveImage)
+		wrap(b, "blockquote", n, ctx)
 	case "codeBlock":
 		b.WriteString("<pre><code>")
 		for _, c := range n.Content {
@@ -133,39 +185,39 @@ func renderDocNode(b *strings.Builder, n docNode, resolveImage func(string) stri
 	case "hardBreak":
 		b.WriteString("<br>")
 	case "image":
-		renderDocImage(b, n, resolveImage)
+		renderDocImage(b, n, ctx)
 	case "pdfEmbed":
 		renderDocPdf(b, n)
 	case "table":
-		wrap(b, "table", n, resolveImage)
+		wrap(b, "table", n, ctx)
 	case "tableRow":
-		wrap(b, "tr", n, resolveImage)
+		wrap(b, "tr", n, ctx)
 	case "tableHeader":
-		wrapExtra(b, "th", cellAttrs(n), n, resolveImage)
+		wrapExtra(b, "th", cellAttrs(n), n, ctx)
 	case "tableCell":
-		wrapExtra(b, "td", cellAttrs(n), n, resolveImage)
+		wrapExtra(b, "td", cellAttrs(n), n, ctx)
 	default:
 		// Unreachable for stored content: validateDocContent refuses anything not
 		// in the allow-list, and TestRenderDocHTMLCoversSchema keeps this switch in
 		// step with it. Rendering the children rather than nothing means a future
 		// node type loses its wrapper instead of losing the user's text.
-		renderDocNodes(b, n.Content, resolveImage)
+		renderDocNodes(b, n.Content, ctx)
 	}
 }
 
-func wrap(b *strings.Builder, tag string, n docNode, resolveImage func(string) string) {
-	wrapExtra(b, tag, "", n, resolveImage)
+func wrap(b *strings.Builder, tag string, n docNode, ctx docRenderCtx) {
+	wrapExtra(b, tag, "", n, ctx)
 }
 
 // wrapTag is wrap for tags that take no style attribute of their own beyond the
 // block style; kept separate only for readability at the call site.
-func wrapTag(b *strings.Builder, tag string, n docNode, resolveImage func(string) string) {
-	wrapExtra(b, tag, "", n, resolveImage)
+func wrapTag(b *strings.Builder, tag string, n docNode, ctx docRenderCtx) {
+	wrapExtra(b, tag, "", n, ctx)
 }
 
-func wrapExtra(b *strings.Builder, tag, extra string, n docNode, resolveImage func(string) string) {
-	b.WriteString("<" + tag + extra + blockStyle(n.Attrs) + ">")
-	renderDocNodes(b, n.Content, resolveImage)
+func wrapExtra(b *strings.Builder, tag, extra string, n docNode, ctx docRenderCtx) {
+	b.WriteString("<" + tag + anchorAttr(n, ctx) + extra + blockStyle(n.Attrs) + ">")
+	renderDocNodes(b, n.Content, ctx)
 	b.WriteString("</" + tag + ">\n")
 }
 
@@ -270,10 +322,10 @@ func cssValue(s string) string {
 	return strings.NewReplacer(";", "", "\"", "", "'", "", "<", "", ">", "", "\n", " ", "\r", " ").Replace(s)
 }
 
-func renderDocImage(b *strings.Builder, n docNode, resolveImage func(string) string) {
+func renderDocImage(b *strings.Builder, n docNode, ctx docRenderCtx) {
 	src, _ := n.Attrs["src"].(string)
-	if resolveImage != nil {
-		src = resolveImage(src)
+	if ctx.resolveImage != nil {
+		src = ctx.resolveImage(src)
 	}
 	if src == "" {
 		return
