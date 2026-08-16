@@ -31,10 +31,13 @@ const (
 // a document is reachable by id alone, so the membership check is the only thing
 // standing between a valid token and someone else's workspace.
 //
-// The socket carries no document content. Edits still go through
-// PATCH /documents/:id/content with its updated_at guard (D2); this handle exists
-// so two people editing different blocks stop colliding on that guard in the
-// first place. Streaming edits over it is D4's successor, not D4.
+// The socket carries no document body — only the news that it changed
+// (docroom.TypeContentSaved), which the client answers with a normal GET. Edits
+// themselves still go through PATCH /documents/:id/content and its updated_at
+// guard; the announcement is what keeps two people editing different blocks from
+// colliding on that guard, and what gets a colleague's text onto the other
+// screen at all. Merging two edits to the *same* block is still out of scope:
+// that block is held by one caret at a time (the locks below).
 func (h *WSHandler) ConnectDocument(c *gin.Context) {
 	uid, ok := h.authenticate(c)
 	if !ok {

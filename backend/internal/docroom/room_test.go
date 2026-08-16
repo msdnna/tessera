@@ -341,3 +341,55 @@ func TestNotifyReachesRoomOnly(t *testing.T) {
 		t.Fatalf("notifying an empty document created a room: %d to %d", before, rooms.Count())
 	}
 }
+
+// The save announcement has to reach the other tab of the same person. Excluding
+// by user id instead of by connection is the easy mistake here, and it leaves
+// that tab showing text the server no longer has.
+func TestSavedContentSkipsOnlyTheSenderConnection(t *testing.T) {
+	rooms := New()
+	defer rooms.Close()
+	docID := uuid.New()
+
+	author := uuid.New()
+	tab1 := NewParticipant(author, "Автор")
+	tab2 := NewParticipant(author, "Автор")
+	colleague := NewParticipant(uuid.New(), "Коллега")
+	for _, p := range []*Participant{tab1, tab2, colleague} {
+		rooms.Join(docID, p)
+	}
+	drain(tab1)
+	drain(tab2)
+	drain(colleague)
+
+	at := time.Now().UTC().Truncate(time.Second)
+	rooms.Send(docID, tab1.ID, ContentSavedMsg{
+		Type: TypeContentSaved, UpdatedAt: at,
+		ByConn: tab1.ID.String(), ByUser: author.String(),
+	})
+
+	if got := drain(tab1); len(got) != 0 {
+		t.Fatalf("the saver was told about its own save: %v", got)
+	}
+	for _, p := range []*Participant{tab2, colleague} {
+		got := drain(p)
+		if len(got) != 1 || got[0]["type"] != TypeContentSaved {
+			t.Fatalf("participant %s got %v, want one %s", p.Name, got, TypeContentSaved)
+		}
+		if got[0]["by_user"] != author.String() {
+			t.Fatalf("frame names %v as the author, want %s", got[0]["by_user"], author)
+		}
+	}
+}
+
+// A document nobody has open must not gain a room just because it was saved:
+// rooms are per open document, and creating one per save would leak an entry for
+// every document ever written to.
+func TestSendToEmptyDocumentCreatesNoRoom(t *testing.T) {
+	rooms := New()
+	defer rooms.Close()
+
+	rooms.Send(uuid.New(), uuid.Nil, ContentSavedMsg{Type: TypeContentSaved})
+	if rooms.Count() != 0 {
+		t.Fatalf("saving an unopened document created %d room(s)", rooms.Count())
+	}
+}

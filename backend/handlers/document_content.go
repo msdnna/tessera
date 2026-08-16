@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
+	"tessera/internal/docroom"
 	"tessera/middleware"
 )
 
@@ -34,6 +36,10 @@ func (h *API) UpdateDocumentContent(c *gin.Context) {
 	var req struct {
 		Content   json.RawMessage `json:"content" binding:"required"`
 		UpdatedAt time.Time       `json:"updated_at" binding:"required"`
+		// The document socket connection this save came from, so the announcement
+		// below skips its own author. Optional: Android, the MCP tools and curl
+		// have no socket, and an empty value correctly announces to everyone.
+		ConnID string `json:"conn_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -72,9 +78,37 @@ func (h *API) UpdateDocumentContent(c *gin.Context) {
 		log.Printf("documents: version snapshot for %s failed: %v", updated.ID, err)
 	}
 	h.broadcast(doc.WorkspaceID, "document.updated", documentMeta(updated))
+	// Then tell the people who have this document *open*. The broadcast above goes
+	// to the workspace hub and drives the list; it deliberately carries no content
+	// and nobody in the editor listens to it, which is exactly why a colleague's
+	// text used to never arrive and their own next save met a 409.
+	h.notifyDocSaved(doc.ID, req.ConnID, middleware.CurrentUser(c), updated.UpdatedAt)
 	c.JSON(http.StatusOK, gin.H{
 		"id":         updated.ID,
 		"updated_at": updated.UpdatedAt,
 		"preview":    updated.Preview,
+	})
+}
+
+// notifyDocSaved announces a save to everyone in the document's room but the
+// connection that made it.
+//
+// An unparseable conn_id is treated as "no connection" rather than as an error:
+// the worst outcome is that the sender gets its own nudge and refetches a
+// document it already has, which costs one request. Refusing the save over it
+// would cost the user their text.
+func (h *API) notifyDocSaved(docID uuid.UUID, connID string, userID uuid.UUID, at time.Time) {
+	if h.docRooms == nil {
+		return
+	}
+	except, err := uuid.Parse(connID)
+	if err != nil {
+		except = uuid.Nil
+	}
+	h.docRooms.Send(docID, except, docroom.ContentSavedMsg{
+		Type:      docroom.TypeContentSaved,
+		UpdatedAt: at,
+		ByConn:    connID,
+		ByUser:    userID.String(),
 	})
 }

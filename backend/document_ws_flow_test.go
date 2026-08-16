@@ -214,6 +214,69 @@ func TestDocumentWSPresenceAndLock(t *testing.T) {
 	}
 }
 
+// TestDocumentWSSaveReachesTheOthers is the rework of #2729: presence alone made
+// collaboration visible but not workable — a colleague's text never arrived, and
+// the reader's own next save then lost to the updated_at guard. The save has to
+// be announced to the room, and pointedly *not* back to the connection that made
+// it (which would put every client in a refetch loop of its own typing).
+func TestDocumentWSSaveReachesTheOthers(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	wsID, docID := mkDoc(t, owner, "Документ на двоих")
+	mate := signup(t)
+	owner.expect(t, owner.post("/workspaces/"+wsID+"/members",
+		map[string]any{"email": mate.Email}), http.StatusCreated)
+
+	author, status := dialDocWS(t, owner.token, docID)
+	if author == nil {
+		t.Fatalf("owner handshake = %d", status)
+	}
+	defer author.Close()
+	welcome := awaitFrame(t, author, "welcome", 5*time.Second)
+	if welcome == nil {
+		t.Fatal("no welcome for the author")
+	}
+	authorConn, _ := welcome["conn_id"].(string)
+
+	reader, status := dialDocWS(t, mate.token, docID)
+	if reader == nil {
+		t.Fatalf("member handshake = %d", status)
+	}
+	defer reader.Close()
+	if awaitFrame(t, reader, "welcome", 5*time.Second) == nil {
+		t.Fatal("no welcome for the reader")
+	}
+
+	doc := owner.expect(t, owner.get("/documents/"+docID), http.StatusOK)
+	saved := owner.expect(t, owner.patch("/documents/"+docID+"/content", map[string]any{
+		"content":    docJSON("Текст, который должен доехать"),
+		"updated_at": doc["updated_at"],
+		"conn_id":    authorConn,
+	}), http.StatusOK)
+
+	// The reader is told, and told *when* — the timestamp is what repairs its
+	// stale base and keeps its own next save out of a 409.
+	news := awaitFrame(t, reader, "content.saved", 5*time.Second)
+	if news == nil {
+		t.Fatal("the save never reached the other participant")
+	}
+	if news["updated_at"] != saved["updated_at"] {
+		t.Fatalf("announced updated_at = %v, saved %v", news["updated_at"], saved["updated_at"])
+	}
+	// The body is deliberately absent: the room evicts participants whose buffer
+	// fills, so frames stay small and the content is refetched over HTTP.
+	if _, carried := news["content"]; carried {
+		t.Fatal("the announcement carried the document body")
+	}
+	if news["by_conn"] != authorConn {
+		t.Fatalf("announcement names %v as the sender, want %s", news["by_conn"], authorConn)
+	}
+
+	if echo := awaitFrame(t, author, "content.saved", 500*time.Millisecond); echo != nil {
+		t.Fatalf("the saver was told about its own save: %#v", echo)
+	}
+}
+
 // TestDocumentWSDroppedOnDelete covers the room teardown: deleting a document
 // has to evict whoever is still in it, including participants in nested
 // documents that the delete takes with it.

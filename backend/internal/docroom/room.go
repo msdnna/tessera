@@ -69,9 +69,24 @@ const (
 	// TypeLinks is sent when the document's task links or approval protocols
 	// changed (#2732). Payload-free like the others: the panel refetches, which
 	// is what keeps a nudge lost to a reconnect from turning into a phantom row.
-	TypeLinks  = "links"
-	TypeLock   = "lock"
-	TypeUnlock = "unlock"
+	TypeLinks = "links"
+	// TypeContentSaved is sent after someone in the room saved the body, so the
+	// others stop reading a document that has moved on under them (#2729 rework).
+	//
+	// It is deliberately *not* TypeContent: that one means a rollback and the
+	// client answers it with a hard reload and an announcement, which is the right
+	// response to "the body was replaced from history" and an absurd one to
+	// "a colleague typed a word".
+	//
+	// The frame carries a timestamp, not the document. The room evicts a
+	// participant whose buffer fills (see the package comment), and that contract
+	// holds only while frames are small: a few hundred kilobytes of content, times
+	// an autosave every 0.8s, times every reader, turns this channel into a machine
+	// for evicting the very people it exists to inform. So the frame is a nudge and
+	// the body is refetched over HTTP.
+	TypeContentSaved = "content.saved"
+	TypeLock         = "lock"
+	TypeUnlock       = "unlock"
 )
 
 // Participant is one open socket on one document. The same user may have two
@@ -194,6 +209,19 @@ type deniedMsg struct {
 	BlockID string `json:"block_id"`
 	UserID  string `json:"user_id"`
 	Name    string `json:"name"`
+}
+
+// ContentSavedMsg announces that the document body changed, without carrying it.
+//
+// ByConn is who saved it, and it is a *connection* rather than a user on
+// purpose: a person with the document open in two tabs has two carets, and the
+// second one needs the edit as much as a stranger's would. Excluding by user id
+// would leave that tab silently stale.
+type ContentSavedMsg struct {
+	Type      string    `json:"type"`
+	UpdatedAt time.Time `json:"updated_at"`
+	ByConn    string    `json:"by_conn"`
+	ByUser    string    `json:"by_user"`
 }
 
 // join adds a participant, sends it a welcome and broadcasts the new state.
@@ -361,6 +389,21 @@ func (r *Room) notify(msgType string) {
 	}
 }
 
+// send delivers an arbitrary payload to everyone in the room except the
+// connection named by exceptConn (uuid.Nil excludes nobody). Unlike notify it
+// carries data, so the payload has to stay small — see TypeContentSaved.
+func (r *Room) send(v any, exceptConn uuid.UUID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	frame := encode(v)
+	for p := range r.members {
+		if p.ID == exceptConn {
+			continue
+		}
+		p.deliver(frame)
+	}
+}
+
 // Size reports the number of open sockets on this document.
 func (r *Room) Size() int {
 	r.mu.Lock()
@@ -457,6 +500,19 @@ func (rs *Rooms) Notify(docID uuid.UUID, msgType string) {
 		return
 	}
 	room.notify(msgType)
+}
+
+// Send delivers a payload-carrying frame to a document's room, skipping the
+// connection that caused it. A document nobody has open has no room and the call
+// is a no-op, which is correct: the next reader loads the body over HTTP anyway.
+func (rs *Rooms) Send(docID uuid.UUID, exceptConn uuid.UUID, v any) {
+	rs.mu.Lock()
+	room, ok := rs.rooms[docID]
+	rs.mu.Unlock()
+	if !ok {
+		return
+	}
+	room.send(v, exceptConn)
 }
 
 // Run expires abandoned locks until Close. Call it once, in its own goroutine.
