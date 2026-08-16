@@ -45,6 +45,12 @@ export function useDocPresence() {
   const contentNudge = ref(0)
   // Bumped when this document's task links or approval protocols changed (#2732).
   const linksNudge = ref(0)
+  // The last save made by someone else in this room: {updatedAt, byUser}. A new
+  // object per frame, so a watcher fires even when two saves land on the same
+  // timestamp. Distinct from contentNudge on purpose — that one means "rolled
+  // back from history" and is answered with a hard reload; this one means "a
+  // colleague typed" and is answered by merging their blocks in.
+  const remoteSave = shallowRef(null)
 
   let ws = null
   let docId = ''
@@ -147,6 +153,15 @@ export function useDocPresence() {
       contentNudge.value += 1
       return
     }
+    if (msg.type === 'content.saved') {
+      // The server already skips the connection that saved; this guard is for
+      // the case it cannot cover — a save sent before the socket handed us a
+      // conn_id, which comes back with our own id in it. Reacting to our own
+      // save would mean refetching what we just sent, forever.
+      if (msg.by_conn && msg.by_conn === connId.value) return
+      remoteSave.value = { updatedAt: msg.updated_at || '', byUser: msg.by_user || '' }
+      return
+    }
     if (msg.type === 'links') {
       // A task was linked or a signature landed (#2732). Payload-free like the
       // other two: an approval route is a row plus its steps, and handing the
@@ -215,6 +230,7 @@ export function useDocPresence() {
     docId = ''
     held.value = ''
     denied.value = null
+    remoteSave.value = null
     stopRefresh()
     clearTimeout(retry)
     retry = null
@@ -240,6 +256,7 @@ export function useDocPresence() {
     commentsNudge,
     contentNudge,
     linksNudge,
+    remoteSave,
     open,
     close,
     acquire,

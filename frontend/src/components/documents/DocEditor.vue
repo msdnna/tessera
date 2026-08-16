@@ -18,7 +18,9 @@ import {
   topLevelBlocks,
 } from '@/utils/docExtensions/dragHandle'
 import { slashState } from '@/utils/docExtensions/slashMenu'
-import { applyBlockLocks, blockIdAtSelection } from '@/utils/docExtensions/blockLocks'
+import { TextSelection } from '@tiptap/pm/state'
+import { applyBlockLocks, blockIdAtSelection, blockRanges } from '@/utils/docExtensions/blockLocks'
+import { blockOrderChanged } from '@/utils/docMerge'
 import { applyBlockComments } from '@/utils/docExtensions/blockComments'
 import { quoteFromBlock } from '@/utils/docComments'
 import { scrollToBlockId } from '@/utils/docExtensions/internalLink'
@@ -74,6 +76,10 @@ const slash = reactive({ active: false, items: [], index: 0, left: 0, top: 0 })
 // loaded a different document" from "the parent echoed back our own edit".
 let lastEmitted = null
 
+// Marks a transaction as someone else's edit arriving over the document socket
+// rather than this user's typing (#2729 rework).
+const REMOTE_META = 'docEditor$remote'
+
 function build() {
   editor.value = new Editor({
     content: ensureBlockIds(toDocJSON(props.modelValue)),
@@ -98,6 +104,11 @@ function build() {
       const json = e.getJSON()
       lastEmitted = json
       emit('update:modelValue', json)
+      // A remote edit updates the parent's copy but is not a change *by* this
+      // client: `change` is what schedules the autosave, and saving what we were
+      // just told would bounce the edit back to its author (who would then apply
+      // it and save it back to us).
+      if (transaction?.getMeta(REMOTE_META)) return
       emit('change', json)
     },
     onTransaction: ({ editor: e }) => {
@@ -272,6 +283,59 @@ function goToBlock(blockId) {
   return scrollToBlockId(editor.value?.view, blockId)
 }
 
+/**
+ * Applies a colleague's edit to the open document (#2729 rework).
+ *
+ * `setContent` is not an option here even though the tree is complete: it tears
+ * the editor down and rebuilds it, taking the caret, the selection and any input
+ * newer than the last debounce with it. Someone typing while a colleague saves
+ * would watch their cursor jump to the top of the page every second or so.
+ *
+ * So the change goes in as an ordinary transaction, and one of two shapes:
+ *
+ *  • same blocks in the same order — replace only the blocks whose content
+ *    actually differs, back to front so the earlier positions stay valid. Every
+ *    untouched block, including the one being typed in, is never addressed;
+ *  • blocks added, removed or reordered — swap the whole content in one step and
+ *    remap the selection through it. Diffing moves properly would buy a smoother
+ *    caret in a case that is already rare (someone else restructuring the
+ *    document while you type in it) at the price of a diff nobody can review.
+ *
+ * @param {object} json the merged document to apply
+ * @returns {boolean} whether anything was applied
+ */
+function applyRemote(json) {
+  const view = editor.value?.view
+  if (!view || !json?.content) return false
+  const { state } = view
+  const target = state.schema.nodeFromJSON(json)
+  if (target.eq(state.doc)) return false
+
+  const { from } = state.selection
+  const tr = state.tr
+  if (blockOrderChanged(editor.value.getJSON(), json)) {
+    tr.replaceWith(0, state.doc.content.size, target.content)
+  } else {
+    const ranges = blockRanges(state.doc)
+    for (let i = ranges.length - 1; i >= 0; i -= 1) {
+      const next = target.child(i)
+      if (state.doc.child(i).eq(next)) continue
+      tr.replaceWith(ranges[i].from, ranges[i].to, next)
+    }
+  }
+  if (!tr.docChanged) return false
+  tr.setSelection(
+    TextSelection.near(tr.doc.resolve(Math.min(tr.mapping.map(from), tr.doc.content.size))),
+  )
+  // Out of the undo stack: Ctrl+Z must not reach for a colleague's text. And
+  // flagged remote, so onUpdate syncs the parent without scheduling a save —
+  // without that, applying an edit would trigger a save that announces it back,
+  // and two clients would resave the document to each other forever.
+  tr.setMeta('addToHistory', false).setMeta(REMOTE_META, true)
+  view.dispatch(tr)
+  return true
+}
+
 /* ---- drag handle -------------------------------------------------------- */
 
 function onSurfaceMove(e) {
@@ -349,7 +413,7 @@ function runSlash(item) {
   editor.value?.commands.slashRun(item)
 }
 
-defineExpose({ editor, goToBlock })
+defineExpose({ editor, goToBlock, applyRemote })
 </script>
 
 <template>
@@ -668,7 +732,11 @@ defineExpose({ editor, goToBlock })
    theme and break in the dark one. */
 .doc-content :deep(.ProseMirror .doc-block-locked) {
   position: relative;
-  border-left: 2px solid var(--t-primary);
+  /* --doc-lock-color is the holder's own colour, set on the decoration by the
+     view (задача 2729 rework). With two colleagues in a document, one accent
+     colour for both would say "occupied" without saying by whom, which is the
+     whole point of the badge. Falls back to the accent when unset. */
+  border-left: 2px solid var(--doc-lock-color, var(--t-primary));
   margin-left: -10px;
   padding-left: 8px;
   border-radius: 2px;
@@ -680,8 +748,8 @@ defineExpose({ editor, goToBlock })
   right: 0;
   padding: 0 6px;
   border-radius: 8px;
-  background: var(--t-primary);
-  color: var(--t-on-primary);
+  background: var(--doc-lock-color, var(--t-primary));
+  color: var(--doc-lock-text, var(--t-on-primary));
   font-size: 10px;
   line-height: 16px;
   white-space: nowrap;

@@ -222,6 +222,68 @@ describe('useDocPresence', () => {
     p.close()
   })
 
+  it('reports a colleague’s save so the view can pull their text', () => {
+    // The rework of #2729: presence alone made collaboration visible but not
+    // workable. This frame is what tells the reader their copy has moved on —
+    // it carries a timestamp, not the body, because the room evicts a
+    // participant whose buffer fills and documents do not fit in that budget.
+    const p = useDocPresence()
+    p.open('doc-1')
+    const sock = FakeSocket.last
+    sock.opened()
+    sock.serverSends(welcome)
+    expect(p.remoteSave.value).toBeNull()
+
+    sock.serverSends({
+      type: 'content.saved',
+      updated_at: '2026-08-16T10:00:00Z',
+      by_conn: 'conn-mate',
+      by_user: 'user-mate',
+    })
+    expect(p.remoteSave.value).toEqual({
+      updatedAt: '2026-08-16T10:00:00Z',
+      byUser: 'user-mate',
+    })
+    // Still a nudge, not a state frame: the roster must survive it.
+    expect(p.connId.value).toBe('conn-me')
+    p.close()
+  })
+
+  it('ignores a save announcement that came from this connection', () => {
+    // The server already skips the sender; this covers the gap it cannot —
+    // a save that left before the welcome frame arrived comes back with our own
+    // id on it, and reacting would mean refetching our own typing in a loop.
+    const p = useDocPresence()
+    p.open('doc-1')
+    const sock = FakeSocket.last
+    sock.opened()
+    sock.serverSends(welcome)
+
+    sock.serverSends({ type: 'content.saved', by_conn: 'conn-me', by_user: 'user-me' })
+    expect(p.remoteSave.value).toBeNull()
+    p.close()
+  })
+
+  it('does not confuse a rollback with a colleague typing', () => {
+    // Two different frames on purpose: `content` means the body was replaced
+    // from history and is answered with a hard reload and an announcement,
+    // which would be absurd to show on every keystroke of a colleague.
+    const p = useDocPresence()
+    p.open('doc-1')
+    const sock = FakeSocket.last
+    sock.opened()
+    sock.serverSends(welcome)
+
+    sock.serverSends({ type: 'content' })
+    expect(p.contentNudge.value).toBe(1)
+    expect(p.remoteSave.value).toBeNull()
+
+    sock.serverSends({ type: 'content.saved', by_conn: 'conn-mate', by_user: 'user-mate' })
+    expect(p.contentNudge.value).toBe(1)
+    expect(p.remoteSave.value).not.toBeNull()
+    p.close()
+  })
+
   it('ignores malformed frames', () => {
     const p = useDocPresence()
     p.open('doc-1')

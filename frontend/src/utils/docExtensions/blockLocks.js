@@ -135,6 +135,16 @@ export const BlockLocks = Extension.create({
                 Decoration.node(b.from, b.to, {
                   class: 'doc-block-locked',
                   'data-locked-by': held.name || '',
+                  // The holder's colour, so two people editing at once are told
+                  // apart by the same cue their avatars carry. Supplied by the
+                  // caller rather than derived here: making it legible depends on
+                  // the active theme, which a ProseMirror plugin has no business
+                  // knowing about. Absent → the CSS falls back to the accent.
+                  ...(held.color
+                    ? {
+                        style: `--doc-lock-color: ${held.color}; --doc-lock-text: ${held.text_color || '#fff'}`,
+                      }
+                    : {}),
                 }),
               )
             }

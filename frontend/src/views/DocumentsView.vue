@@ -45,6 +45,11 @@ import {
 } from '@/utils/docOffice'
 import { builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useThemeStore } from '@/stores/theme'
+import { initials } from '@/utils/initials'
+import { mergeRemoteBlocks } from '@/utils/docMerge'
+import { userColor } from '@/utils/userColor'
+import { hueGrad, onColor, readableHue } from '@/utils/gradient'
 import { useDocAutosave } from '@/composables/useDocAutosave'
 import { useDocComments } from '@/composables/useDocComments'
 import { useDocLinks } from '@/composables/useDocLinks'
@@ -56,6 +61,7 @@ import { docOutline, headingForBlock } from '@/utils/docToc'
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
+const theme = useThemeStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -94,7 +100,10 @@ const {
   cancel: cancelSave,
   resolveConflict,
 } = useDocAutosave(async (json) => {
-  const res = await docsApi.updateContent(selected.value.id, json, version.value)
+  // connId goes with the save so the server can skip announcing it back to us.
+  // It is our *connection*, not our user: the same person's second tab is a
+  // second caret and does need to hear about this.
+  const res = await docsApi.updateContent(selected.value.id, json, version.value, connId.value)
   version.value = res.data?.updated_at || version.value
   applyPreview(selected.value.id, res.data)
   // Every save writes the journal (#2731), so an open history panel goes stale
@@ -115,6 +124,9 @@ const {
   commentsNudge,
   contentNudge,
   linksNudge,
+  remoteSave,
+  connId,
+  held: heldBlock,
   open: openRoom,
   close: closeRoom,
   acquire: claimBlock,
@@ -187,16 +199,119 @@ watch(contentNudge, async () => {
   message.info('Документ восстановлен из истории')
 })
 
+// A colleague saved. Their text has to arrive here, or the room is a set of
+// badges over documents that quietly diverge — and the reader's own next save
+// then loses to the updated_at guard, which is what "перезагрузите страницу"
+// was really saying.
+//
+// The fetch is coalesced: a colleague typing produces an announcement every
+// autosave debounce, and answering each with its own round trip would put one
+// GET per second per reader on the server for no extra information.
+let pullTimer = null
+watch(remoteSave, () => {
+  if (!selected.value?.id) return
+  clearTimeout(pullTimer)
+  pullTimer = setTimeout(pullRemote, 250)
+})
+
+async function pullRemote() {
+  const id = selected.value?.id
+  if (!id) return
+  try {
+    const res = await docsApi.get(id)
+    applyRemoteContent(res.data)
+  } catch {
+    // A failed pull is not worth interrupting anyone over: the next save
+    // announcement retries it, and the version guard still protects the text.
+  }
+}
+
+// Merges the server's document into the editor and re-bases our saves on it.
+//
+// Blocks we are holding keep their local content — that is where the caret and
+// the not-yet-saved keystrokes are. Everything else, including which blocks
+// exist and in what order, comes from the server.
+//
+// Returns false when the merge refused (a block with no id, from an old import):
+// the caller decides between "leave it, the next save will notice" and a hard
+// reload, because guessing at unaddressable blocks is how text goes missing.
+function applyRemoteContent(doc) {
+  if (!doc || doc.id !== selected.value?.id) return false
+  const remote = toDocJSON(doc.content)
+  const merged = mergeRemoteBlocks(content.value, remote, {
+    keepIds: [heldBlock.value, focusedBlockId.value],
+  })
+  if (!merged) return false
+  // Order matters: apply first, then re-base. applyRemote runs through the
+  // editor's onUpdate, which writes content.value — doing it the other way round
+  // would leave version pointing at a document we had not taken yet.
+  editorRef.value?.applyRemote?.(merged)
+  content.value = merged
+  comments.setDoc(merged)
+  if (doc.updated_at) {
+    version.value = doc.updated_at
+    resolveConflict(doc.updated_at)
+  }
+  applyPreview(doc.id, doc)
+  return true
+}
+
+// A 409 still happens — a save can leave here between the announcement and the
+// server's write — but it stops being a dead end. Instead of asking the user to
+// reload (and lose what they typed), take the server's version, keep the block
+// we are holding, and send our text again on top of it.
+//
+// One attempt at a time: if the retry conflicts too, the banner stays and the
+// manual reload button is the answer. Retrying in a loop against a colleague who
+// is typing steadily is how a "self-healing" client burns a CPU on both ends.
+let recoveredAt = 0
+watch(conflict, async (bad) => {
+  if (!bad || !selected.value?.id) return
+  if (Date.now() - recoveredAt < 3000) return
+  recoveredAt = Date.now()
+  try {
+    const res = await docsApi.get(selected.value.id)
+    if (applyRemoteContent(res.data)) scheduleSave(content.value)
+  } catch {
+    // Leave the banner: the user still has the explicit reload.
+  }
+})
+
 // Other people in this document. The server already collapses one person's tabs
 // into a single viewer, and our own id comes from the socket's welcome frame —
 // no auth store needed to know who "me" is here.
 const others = computed(() => viewers.value.filter((v) => v.user_id !== myUserId.value))
 
-function initials(name) {
-  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return '?'
-  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase()
+// Everyone gets a colour derived from their id, so the same person is the same
+// colour on every screen in the room — the badge, the avatar and the stripe down
+// their block all agree. readableHue keeps it legible in the active theme; the
+// base palette alone is too dark against a dark background.
+function colorFor(userId) {
+  return readableHue(userColor(userId), theme.isDark)
 }
+
+// What an avatar needs: the person's colour, the app's diagonal gradient of that
+// same hue, and a legible ink for the moment it becomes a fill.
+//
+// The gradient comes from hueGrad rather than being written out in CSS for two
+// reasons: it is the shared definition of the accent-gradient design language,
+// and the theming guard in cx-doc-editor.spec.js rightly refuses literal colours
+// in this file's stylesheet. onColor matters too — --t-on-primary is tuned for
+// the purple accent and goes unreadable on the bright end of the palette.
+function viewerStyle(userId) {
+  const c = colorFor(userId)
+  return { '--doc-user-color': c, '--doc-user-grad': hueGrad(c), '--doc-user-on': onColor(c) }
+}
+
+// The lock roster the editor paints, with each holder's colour attached. The
+// editor is handed the colour rather than the rule for computing it: theming is
+// this view's business, and a ProseMirror plugin cannot see the theme anyway.
+const paintedLocks = computed(() =>
+  foreignLocks.value.map((l) => {
+    const color = colorFor(l.user_id)
+    return { ...l, color, text_color: onColor(color) }
+  }),
+)
 
 // Refusing a keystroke silently reads as a broken editor, so say who has the
 // block. Throttled by naive-ui itself (identical messages stack), and the
@@ -261,6 +376,7 @@ async function backToGrid() {
   await flushSave()
   // Leaving the document frees whatever block we held right away, instead of
   // making everyone else wait out the lock TTL.
+  clearTimeout(pullTimer)
   closeRoom()
   comments.close()
   versions.close()
@@ -827,6 +943,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  clearTimeout(pullTimer)
   flushSave()
   closeRoom()
 })
@@ -918,14 +1035,19 @@ watch(
           К списку
         </n-button>
         <span class="status">
-          <!-- Who else has this document open (#2729). Someone editing a block
-               carries the accent ring; a reader is flat. -->
+          <!-- Who else has this document open (#2729). Each person carries their
+               own colour — the same one that stripes the block they are holding,
+               which is what makes "жёлтый блок занят" readable as a sentence
+               about a person rather than as generic "someone is editing". The
+               editing state is a ring, not a different colour: the colour is the
+               identity and must not double as a status. -->
           <span v-if="others.length" class="viewers">
             <span
               v-for="v in others"
               :key="v.user_id"
               class="viewer"
               :class="{ editing: v.blocks.length }"
+              :style="viewerStyle(v.user_id)"
               :title="v.blocks.length ? `${v.name} — редактирует` : `${v.name} — смотрит`"
             >
               {{ initials(v.name) }}
@@ -1009,7 +1131,7 @@ watch(
             :model-value="content"
             :upload-image="uploadImage"
             :upload-pdf="uploadPdf"
-            :locks="foreignLocks"
+            :locks="paintedLocks"
             :comments="comments.openCounts.value"
             class="editor"
             @change="onEditorChange"
@@ -1181,21 +1303,25 @@ watch(
   width: 22px;
   height: 22px;
   margin-left: -6px;
-  border: 1px solid var(--t-surface);
+  /* The person's own colour, not the app accent: with two people in a document
+     one accent-coloured badge cannot say which of them is in the yellow block.
+     Falls back to neutral when no colour was supplied. */
+  border: 1px solid var(--doc-user-color, var(--t-surface));
   border-radius: 50%;
   background: var(--t-surface-alt);
-  color: var(--t-text2);
+  color: var(--doc-user-color, var(--t-text2));
   font-size: 10px;
   font-weight: 600;
 }
 .viewer:first-child {
   margin-left: 0;
 }
-/* Actively editing — the accent gradient, as everywhere else a non-neutral
-   element appears. */
+/* Actively editing — filled with the app-wide diagonal gradient, but of this
+   person's hue rather than the accent (--doc-user-grad comes from hueGrad in the
+   script; the accent is the fallback when nobody supplied a colour). */
 .viewer.editing {
-  background: var(--t-accent-grad);
-  color: var(--t-on-primary);
+  background: var(--doc-user-grad, var(--t-accent-grad));
+  color: var(--doc-user-on, var(--t-on-primary));
   border-color: transparent;
 }
 .grid {

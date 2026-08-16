@@ -361,8 +361,14 @@ export const documents = {
   // carries the updated_at the client last saw — the server answers 409 when
   // that no longer matches, rather than silently overwriting someone's edit.
   // skipLoader: autosave fires while typing and must not flash the global bar.
-  updateContent: (id, content, updatedAt) =>
-    api.patch(`/documents/${id}/content`, { content, updated_at: updatedAt }, { skipLoader: true }),
+  // connId is the document socket this save came from, so the server announces
+  // it to the rest of the room but not back to us (#2729).
+  updateContent: (id, content, updatedAt, connId = '') =>
+    api.patch(
+      `/documents/${id}/content`,
+      { content, updated_at: updatedAt, conn_id: connId },
+      { skipLoader: true },
+    ),
   uploadAsset: (id, formData) => api.post(`/documents/${id}/assets`, formData),
   // Separate from uploadAsset because the asset route is images-only by
   // contract — widening it would quietly let every paste handler take PDFs.
