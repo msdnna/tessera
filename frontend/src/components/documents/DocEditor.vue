@@ -1,7 +1,7 @@
 <script setup>
 import { onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { EditorContent, Editor } from '@tiptap/vue-3'
-import { NButton, NIcon, NInput, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NSelect, useMessage } from 'naive-ui'
 import {
   AddOutline,
   ChatbubbleEllipsesOutline,
@@ -21,6 +21,8 @@ import { slashState } from '@/utils/docExtensions/slashMenu'
 import { applyBlockLocks, blockIdAtSelection } from '@/utils/docExtensions/blockLocks'
 import { applyBlockComments } from '@/utils/docExtensions/blockComments'
 import { quoteFromBlock } from '@/utils/docComments'
+import { scrollToBlockId } from '@/utils/docExtensions/internalLink'
+import { docOutline, headingLabel, internalHref, internalTargetId } from '@/utils/docToc'
 import { MAX_PDF_BYTES } from '@/utils/docPdf'
 import DocToolbar from './DocToolbar.vue'
 
@@ -59,6 +61,8 @@ const fileInput = ref(null)
 const pdfInput = ref(null)
 const linkOpen = ref(false)
 const linkValue = ref('')
+// Headings offered as internal link targets, filled when the dialog opens.
+const headings = ref([])
 const uploading = ref(false)
 
 // The gutter that carries the drag handle. `pos` is the document position of
@@ -237,7 +241,21 @@ async function onFile(e) {
 
 function openLink() {
   linkValue.value = editor.value?.getAttributes('link')?.href || ''
+  // The heading list is taken once, when the dialog opens: recomputing it per
+  // keystroke would walk the whole tree while the user types a URL that has
+  // nothing to do with headings.
+  headings.value = docOutline(editor.value?.getJSON() || null).map((row) => ({
+    label: `${'· '.repeat(row.depth)}${headingLabel(row)}`,
+    value: internalHref(row.id),
+  }))
   linkOpen.value = true
+}
+
+// Picking a heading fills the same field the URL is typed into rather than
+// applying straight away, so the two ways of making a link end in one place and
+// the chosen target is visible before it is committed.
+function pickHeading(href) {
+  linkValue.value = href || ''
 }
 
 function applyLink() {
@@ -247,6 +265,11 @@ function applyLink() {
   if (href) chain.setLink({ href }).run()
   else chain.unsetLink().run()
   linkOpen.value = false
+}
+
+// Jumps to a block — used by the outline panel, which has the id but no view.
+function goToBlock(blockId) {
+  return scrollToBlockId(editor.value?.view, blockId)
 }
 
 /* ---- drag handle -------------------------------------------------------- */
@@ -326,7 +349,7 @@ function runSlash(item) {
   editor.value?.commands.slashRun(item)
 }
 
-defineExpose({ editor })
+defineExpose({ editor, goToBlock })
 </script>
 
 <template>
@@ -342,8 +365,20 @@ defineExpose({ editor })
       <n-input
         v-model:value="linkValue"
         size="small"
-        placeholder="https://…"
+        placeholder="https://… или раздел документа"
+        data-testid="doc-link-href"
         @keyup.enter="applyLink"
+      />
+      <n-select
+        v-if="headings.length"
+        class="link-heading"
+        size="small"
+        clearable
+        placeholder="Раздел…"
+        :options="headings"
+        :value="internalTargetId(linkValue) ? linkValue : null"
+        data-testid="doc-link-heading"
+        @update:value="pickHeading"
       />
       <n-button size="small" quaternary title="Применить" @click="applyLink">
         <template #icon><n-icon :component="CheckmarkOutline" /></template>
@@ -434,6 +469,11 @@ defineExpose({ editor })
   align-items: center;
   gap: 4px;
   padding: 6px 0;
+}
+/* The heading picker is a shortcut next to the URL field, not an equal half of
+   the row: most links are still typed. */
+.link-heading {
+  flex: 0 0 180px;
 }
 /* The gutter and the slash popup are absolutely positioned against this box,
    so both anchors are computed from its rect. */
@@ -673,6 +713,23 @@ defineExpose({ editor })
   line-height: 14px;
   text-align: center;
   pointer-events: none;
+}
+
+/* The block an internal link or an outline entry just jumped to (задача 2733 —
+   the hash is left off on purpose: the theming guard in cx-doc-editor.spec.js
+   reads a #NNNN in this block as a literal colour). A smooth scroll ends
+   somewhere in the middle of the page with nothing saying which block was the
+   point of it, so the arrival is marked for a moment and then fades. The cue is
+   a soft fill rather than an outline: an outline would be mistaken for the
+   node-selection ring the drag handle draws. Colours are --t-* only —
+   ProseMirror renders plain DOM, out of reach of naive-ui's themeOverrides. */
+.doc-content :deep(.ProseMirror .doc-block-target) {
+  border-radius: 4px;
+  box-shadow: 0 0 0 6px var(--t-hover);
+  background: var(--t-hover);
+  transition:
+    background 0.4s ease,
+    box-shadow 0.4s ease;
 }
 
 /* Placeholder shown while a dropped image uploads (imageDrop.js). */

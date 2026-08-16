@@ -11,6 +11,7 @@ import { BlockLocks } from './docExtensions/blockLocks'
 import { BlockMove } from './docExtensions/blockMove'
 import { BlockStyle, STYLED_TYPES } from './docExtensions/blockStyle'
 import { ImageDrop } from './docExtensions/imageDrop'
+import { InternalLink } from './docExtensions/internalLink'
 import { PdfEmbed } from './docExtensions/pdfEmbed'
 import { SlashMenu } from './docExtensions/slashMenu'
 
@@ -142,6 +143,9 @@ export function docExtensions(opts = {}) {
     BlockMove,
     BlockLocks.configure({ onBlocked: opts.onBlocked || (() => {}) }),
     BlockComments.configure({ onSelect: opts.onSelectComments || (() => {}) }),
+    // Internal links carry no schema of their own — they are ordinary link
+    // marks whose href is a block id — so this only changes what a click does.
+    InternalLink,
     ImageDrop.configure({ upload: opts.uploadImage || null, onError: opts.onUploadError || null }),
     SlashMenu.configure({ onExternal: opts.onSlashExternal || null }),
     Placeholder.configure({ placeholder: opts.placeholder || 'Начните писать…' }),

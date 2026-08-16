@@ -22,6 +22,7 @@ import {
   DownloadOutline,
   GridOutline,
   LinkOutline,
+  ListOutline,
   TimeOutline,
 } from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
@@ -31,6 +32,7 @@ import DocComments from '@/components/documents/DocComments.vue'
 import DocHistory from '@/components/documents/DocHistory.vue'
 import DocLinks from '@/components/documents/DocLinks.vue'
 import DocTemplates from '@/components/documents/DocTemplates.vue'
+import DocToc from '@/components/documents/DocToc.vue'
 import { fileToTemplate } from '@/utils/docImport'
 import {
   EXPORT_LABELS,
@@ -50,6 +52,7 @@ import { useDocPresence } from '@/composables/useDocPresence'
 import { useDocVersions } from '@/composables/useDocVersions'
 import { toDocJSON } from '@/utils/docSchema'
 import { blockNodeById, quoteFromBlock } from '@/utils/docComments'
+import { docOutline, headingForBlock } from '@/utils/docToc'
 
 const message = useMessage()
 const wsStore = useWorkspacesStore()
@@ -141,6 +144,32 @@ const historyOpen = ref(false)
 const links = useDocLinks()
 const linksOpen = ref(false)
 watch(linksNudge, () => links.load())
+
+// Outline and internal links (#2733). Unlike the panels above it needs no
+// request — the outline is derived from the tree already in memory — but the
+// derivation is still guarded by the toggle: it walks the document, and doing
+// that on every keystroke for a reader who never opened the panel would be a
+// cost with nothing on the other side of it.
+const tocOpen = ref(false)
+const editorRef = ref(null)
+// The block the caret is in, mirrored so the outline can say which section is
+// being read. Recorded here rather than asked of the editor, because the editor
+// already reports it for the block lock.
+const focusedBlockId = ref('')
+const outline = computed(() => (tocOpen.value ? docOutline(content.value) : []))
+const activeHeadingId = computed(() =>
+  tocOpen.value ? headingForBlock(content.value, focusedBlockId.value) : '',
+)
+
+function onBlockFocus(blockId) {
+  focusedBlockId.value = blockId || ''
+  claimBlock(blockId)
+}
+
+// The panel has the heading's id; only the editor can scroll to it.
+function goToHeading(blockId) {
+  editorRef.value?.goToBlock?.(blockId)
+}
 
 // A rollback replaces the body under everyone reading it. Reloading is not
 // optional here: the editor is holding both the old tree and the old updated_at,
@@ -914,6 +943,15 @@ watch(
           <n-button
             quaternary
             size="tiny"
+            :title="tocOpen ? 'Скрыть оглавление' : 'Оглавление'"
+            data-testid="doc-toc-toggle"
+            @click="tocOpen = !tocOpen"
+          >
+            <template #icon><n-icon :component="ListOutline" /></template>
+          </n-button>
+          <n-button
+            quaternary
+            size="tiny"
             :title="historyOpen ? 'Скрыть историю' : 'История версий'"
             @click="toggleHistory"
           >
@@ -967,6 +1005,7 @@ watch(
         <n-input v-model:value="title" placeholder="Заголовок" class="title" @blur="rename" />
         <div class="work">
           <doc-editor
+            ref="editorRef"
             :model-value="content"
             :upload-image="uploadImage"
             :upload-pdf="uploadPdf"
@@ -974,11 +1013,18 @@ watch(
             :comments="comments.openCounts.value"
             class="editor"
             @change="onEditorChange"
-            @block-focus="claimBlock"
+            @block-focus="onBlockFocus"
             @blocked="onBlocked"
             @blur="onEditorBlur"
             @annotate="onAnnotate"
             @select-comments="comments.activeBlockId.value = $event"
+          />
+          <doc-toc
+            v-if="tocOpen"
+            :rows="outline"
+            :active-id="activeHeadingId"
+            @go="goToHeading"
+            @close="tocOpen = false"
           />
           <doc-comments
             v-if="commentsOpen"
