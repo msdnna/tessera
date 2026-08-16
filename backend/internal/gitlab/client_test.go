@@ -247,7 +247,7 @@ func TestCreateIssue(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := New(srv.URL, "tok")
-	created, err := c.CreateIssue(context.Background(), "grp/project", "Title", "Body", []string{"P: High", "T: bug"}, "2026-07-01", []int64{5, 8})
+	created, err := c.CreateIssue(context.Background(), "grp/project", "Title", "Body", []string{"P: High", "T: bug"}, "2026-07-01", []int64{5, 8}, "")
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}
