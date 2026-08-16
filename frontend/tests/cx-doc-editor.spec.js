@@ -123,12 +123,11 @@ describe('document sheet', () => {
     expect(source).toMatch(/left:\s*`\$\{handle\.left}px`/)
   })
 
-  // The cell-selection highlight is an absolute ::after with inset: 0, so it
-  // needs a containing block on the cell itself. Without it the nearest
-  // positioned ancestor is .doc-surface and selecting one cell paints the whole
-  // work area (задача 2739).
-  it('contains the cell-selection overlay inside the cell', () => {
-    expect(css).toMatch(/\.doc-content :deep\(\.ProseMirror td\)\s*{[^}]*position:\s*relative/)
-    expect(css).toMatch(/\.selectedCell::after\)\s*{[^}]*position:\s*absolute/)
+  // The cell-selection highlight paints as a background on the cell, so it can
+  // neither escape the cell (an absolute overlay flooded the whole work area
+  // once) nor cover the selected text (it did that too — задача 2739).
+  it('tints the selected cell behind its text', () => {
+    expect(css).toMatch(/\.selectedCell\)\s*{[^}]*background:/)
+    expect(css).not.toMatch(/\.selectedCell::after/)
   })
 })

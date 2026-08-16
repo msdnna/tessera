@@ -895,10 +895,6 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   border: 1px solid var(--t-border);
   padding: 6px 8px;
   vertical-align: top;
-  /* The cell-selection overlay below is absolutely positioned; without a
-     containing block on the cell it resolves against the document surface and
-     floods the whole work area instead of the picked cells. */
-  position: relative;
 }
 .doc-content :deep(.ProseMirror th) {
   background: var(--t-surface-alt);
@@ -910,12 +906,14 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   border-top: 1px solid var(--t-border);
   margin: 14px 0;
 }
-.doc-content :deep(.ProseMirror .selectedCell::after) {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--t-hover);
-  pointer-events: none;
+/* Cell selection is a tint painted BEHIND the cell text, not a layer on top of
+   it: the previous absolute ::after covered the very text you were selecting
+   (задача 2739 — number written without the hash, the theming guard reads a
+   #NNNN in this block as a literal colour). A plain background also cannot
+   escape the cell, so the whole work area can no longer be flooded. Declared
+   after the th rule so it wins over the header fill. */
+.doc-content :deep(.ProseMirror .selectedCell) {
+  background: color-mix(in srgb, var(--t-primary) 18%, var(--t-surface));
 }
 /* The block picked up by the handle. ProseMirror marks a NodeSelection with
    this class, and without a visible cue a drag looks like it grabbed nothing. */
