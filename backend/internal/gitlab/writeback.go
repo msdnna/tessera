@@ -28,9 +28,33 @@ type Writeback struct {
 	FetchTemplates      bool              `json:"fetch_templates"` // offer repo issue templates when creating
 	ColumnLabelBindings map[string]string `json:"column_label_bindings,omitempty"`
 
+	// ── issue hierarchy (#2592) ──
+	// Deliberately plain flags rather than rows in Bindings: a binding is "a FIELD of
+	// an already-linked task changed → do something to its issue", and creating a
+	// subtask fits neither half — the trigger is structural, and the child has no link
+	// yet. Stretching the binding vocabulary for one case would cost more than it buys.
+
+	// PushChildren allows a new subtask of a grouped, linked parent to be created as a
+	// child work item in GitLab. Off by default, like every other push flag.
+	PushChildren bool `json:"push_children"`
+	// AutoGroupOnChild labels a linked parent as grouped by itself the first time a
+	// subtask is pushed under it. Off by default on purpose: silently editing labels in
+	// GitLab is not something to opt users into — the UI offers the button instead.
+	AutoGroupOnChild bool `json:"auto_group_on_child"`
+	// GroupLabel is the label that marks a grouped parent. Empty = DefaultGroupLabel.
+	GroupLabel string `json:"group_label,omitempty"`
+
 	// Bindings is the customizable trigger→action table. Empty = fall back to the
 	// legacy-flag defaults (effectiveBindings). Non-empty = admin took control.
 	Bindings []Binding `json:"bindings,omitempty"`
+}
+
+// EffectiveGroupLabel is the label the "make this a grouped task" button writes.
+func (w Writeback) EffectiveGroupLabel() string {
+	if s := strings.TrimSpace(w.GroupLabel); s != "" {
+		return s
+	}
+	return DefaultGroupLabel
 }
 
 // Trigger types — the Tessera-side event a binding reacts to. These are the

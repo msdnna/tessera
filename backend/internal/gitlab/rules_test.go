@@ -148,3 +148,59 @@ func TestResolve_UnmappedStatusFallsBackToDefault(t *testing.T) {
 		t.Errorf("unmapped status leaked into tags: %v", tagNames(got))
 	}
 }
+
+// TestResolvesToGroup guards the "make this a grouped task" button (#2592): the label
+// it writes must be one the pull reads back as grouping, under THIS integration's
+// rules. Without the check the button would look like it worked and the label would
+// quietly import as an ordinary tag.
+func TestResolvesToGroup(t *testing.T) {
+	rs := DefaultRules()
+	cases := []struct {
+		label string
+		want  bool
+	}{
+		{DefaultGroupLabel, true},
+		{"M: что угодно после префикса", true},
+		{"S: In progress", false}, // a status label, not a group one
+		{"P: High", false},
+		{"просто тег", false}, // falls through to the default tag action
+		{"", false},
+		{"   ", false},
+		{"M:", false}, // prefix rule is "M: " with the space — near-miss must not pass
+	}
+	for _, tc := range cases {
+		if got := rs.ResolvesToGroup(tc.label); got != tc.want {
+			t.Errorf("ResolvesToGroup(%q) = %v, want %v", tc.label, got, tc.want)
+		}
+	}
+}
+
+// A default group label that its own default rules do not recognise would break the
+// button out of the box, so the two are pinned together.
+func TestDefaultGroupLabelIsGroupedByDefaultRules(t *testing.T) {
+	if !DefaultRules().ResolvesToGroup(DefaultGroupLabel) {
+		t.Fatalf("DefaultRules() does not resolve DefaultGroupLabel (%q) as grouping", DefaultGroupLabel)
+	}
+}
+
+// The grouping label must NOT also arrive as a tag: it is managed by a rule, which is
+// why the frontend hides its prefix from the tag picker. If it leaked into Tags, the
+// tag and the rule-managed field would drift apart.
+func TestGroupLabelIsNotATag(t *testing.T) {
+	got := DefaultRules().Resolve(labels(DefaultGroupLabel))
+	if !got.Group {
+		t.Fatal("group label did not resolve as grouping")
+	}
+	if len(got.Tags) != 0 {
+		t.Errorf("group label leaked into tags: %v", tagNames(got))
+	}
+}
+
+func TestEffectiveGroupLabel(t *testing.T) {
+	if got := (Writeback{}).EffectiveGroupLabel(); got != DefaultGroupLabel {
+		t.Errorf("empty config = %q, want the default", got)
+	}
+	if got := (Writeback{GroupLabel: "  M: Эпик  "}).EffectiveGroupLabel(); got != "M: Эпик" {
+		t.Errorf("configured label = %q, want it trimmed", got)
+	}
+}

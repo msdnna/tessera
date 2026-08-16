@@ -59,6 +59,23 @@ type Resolution struct {
 	Group      bool   // a group rule matched (subtask grouping handled later)
 }
 
+// DefaultGroupLabel is the label put on an issue to mark it a grouped parent when the
+// integration configures none of its own. It is spelled to match the "M: " prefix rule
+// of DefaultRules — see ResolvesToGroup for why that has to hold.
+const DefaultGroupLabel = "M: Сгруппированная задача"
+
+// ResolvesToGroup reports whether a label title marks a grouped parent under these
+// rules. This is the guard on the "make this a grouped task" button (#2592): the label
+// it writes must be one the PULL will read back as grouping. Setting a label that no
+// group rule matches would look like it worked and then quietly import as an ordinary
+// tag, leaving the parent ungrouped and its children scattered.
+func (rs Rules) ResolvesToGroup(label string) bool {
+	if strings.TrimSpace(label) == "" {
+		return false
+	}
+	return rs.Resolve([]Label{{Title: label}}).Group
+}
+
 // DefaultRules encodes the msdnna GitLab taxonomy as generic rules: S:→status,
 // P:→priority, M:→group; everything else becomes a prefixed tag (default action).
 func DefaultRules() Rules {
