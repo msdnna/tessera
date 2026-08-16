@@ -122,4 +122,13 @@ describe('document sheet', () => {
     expect(source).toContain('view.dom.getBoundingClientRect().left')
     expect(source).toMatch(/left:\s*`\$\{handle\.left}px`/)
   })
+
+  // The cell-selection highlight is an absolute ::after with inset: 0, so it
+  // needs a containing block on the cell itself. Without it the nearest
+  // positioned ancestor is .doc-surface and selecting one cell paints the whole
+  // work area (задача 2739).
+  it('contains the cell-selection overlay inside the cell', () => {
+    expect(css).toMatch(/\.doc-content :deep\(\.ProseMirror td\)\s*{[^}]*position:\s*relative/)
+    expect(css).toMatch(/\.selectedCell::after\)\s*{[^}]*position:\s*absolute/)
+  })
 })

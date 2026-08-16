@@ -895,6 +895,10 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   border: 1px solid var(--t-border);
   padding: 6px 8px;
   vertical-align: top;
+  /* The cell-selection overlay below is absolutely positioned; without a
+     containing block on the cell it resolves against the document surface and
+     floods the whole work area instead of the picked cells. */
+  position: relative;
 }
 .doc-content :deep(.ProseMirror th) {
   background: var(--t-surface-alt);
