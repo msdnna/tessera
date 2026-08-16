@@ -124,6 +124,12 @@ export function docExtensions(opts = {}) {
       // Trailing node would append an empty paragraph on every load, which
       // makes a freshly opened document dirty and triggers an autosave.
       trailingNode: false,
+      // The insertion line drawn while a block is dragged. `color: false` is
+      // what stops prosemirror-dropcursor writing an inline background-color —
+      // its default is `currentColor`, which resolved to the body text colour
+      // and drew a black line no theme could reach. Colour comes from the class
+      // instead (.doc-dropcursor in DocEditor.vue), so it follows the accent.
+      dropcursor: { color: false, width: 2, class: 'doc-dropcursor' },
     }),
     TaskList,
     TaskItem.configure({ nested: true }),

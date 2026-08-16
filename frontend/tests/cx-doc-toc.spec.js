@@ -65,3 +65,79 @@ describe('DocToc panel', () => {
   // cx-doc-editor.spec.js (DOC_FILES) — one list, so a new panel cannot be added
   // without its theming being checked.
 })
+
+// The rail is what replaced the 260px column in #2728. The tests below are about
+// the collapse, not the list: the list is covered above and does not change.
+describe('DocToc rail', () => {
+  let wrapper
+  afterEach(() => wrapper?.unmount())
+
+  it('draws one tick per heading and accents the current section', () => {
+    wrapper = mount(DocToc, { props: { rows: docOutline(DOC), activeId: 'b' } })
+    const ticks = wrapper.findAll('[data-testid="doc-toc-tick"]')
+    expect(ticks).toHaveLength(3)
+    const active = ticks.filter((t) => t.classes('active'))
+    expect(active).toHaveLength(1)
+    // Second row is the nested heading, so the accent has to be on the second
+    // tick — a rail that highlights the right count but the wrong tick reads as
+    // "you are somewhere else in the document".
+    expect(ticks.indexOf(active[0])).toBe(1)
+  })
+
+  it('makes a nested heading a shorter tick, so the rail has the shape of the document', () => {
+    wrapper = mount(DocToc, { props: { rows: docOutline(DOC) } })
+    const ticks = wrapper.findAll('[data-testid="doc-toc-tick"]')
+    expect(ticks[0].attributes('style')).toContain('width: 16px')
+    expect(ticks[1].attributes('style')).toContain('width: 13px')
+  })
+
+  // These read the v-show style rather than calling isVisible(). Not a style
+  // preference: isVisible() goes through getComputedStyle, and jsdom caches that
+  // per element without invalidating it when an inline style changes on a
+  // detached tree. One call while the popover is hidden makes every later call
+  // in the same test answer "hidden" no matter what the DOM says — which is a
+  // test that can only ever fail, or worse, only ever pass.
+  const shown = (w) =>
+    w.find('[data-testid="doc-toc-flyout"]').attributes('style') !== 'display: none;'
+
+  it('keeps the titles collapsed until the rail is hovered', async () => {
+    wrapper = mount(DocToc, { props: { rows: docOutline(DOC) } })
+    const toc = () => wrapper.find('[data-testid="doc-toc"]')
+    // v-show, so the entries stay mounted — hidden, not absent.
+    expect(shown(wrapper)).toBe(false)
+    expect(wrapper.findAll('[data-testid="doc-toc-entry"]')).toHaveLength(3)
+    await toc().trigger('mouseenter')
+    expect(shown(wrapper)).toBe(true)
+    await toc().trigger('mouseleave')
+    expect(shown(wrapper)).toBe(false)
+  })
+
+  it('opens on keyboard focus, so the entries are not a Tab trap', async () => {
+    wrapper = mount(DocToc, { props: { rows: docOutline(DOC) } })
+    await wrapper.find('[data-testid="doc-toc"]').trigger('focusin')
+    expect(shown(wrapper)).toBe(true)
+  })
+
+  // The regression this component was rewritten around: a click on an entry
+  // moves focus into the editor, and folding hover and focus into one flag made
+  // that focusout close the outline the pointer was still resting on.
+  it('stays open when focus leaves while the pointer is still on it', async () => {
+    wrapper = mount(DocToc, { props: { rows: docOutline(DOC) } })
+    const toc = wrapper.find('[data-testid="doc-toc"]')
+    await toc.trigger('mouseenter')
+    await toc.trigger('focusin')
+    await toc.trigger('focusout')
+    expect(shown(wrapper)).toBe(true)
+  })
+
+  it('fades the rail out only while the popover is open', async () => {
+    wrapper = mount(DocToc, { props: { rows: docOutline(DOC) } })
+    const rail = () => wrapper.find('.rail')
+    expect(rail().classes('faded')).toBe(false)
+    await wrapper.find('[data-testid="doc-toc"]').trigger('mouseenter')
+    // Faded, not hidden: the rail has to keep taking the pointer, or the
+    // popover would close the instant it opened.
+    expect(rail().classes('faded')).toBe(true)
+    expect(rail().attributes('style')).toBeUndefined()
+  })
+})

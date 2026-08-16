@@ -66,6 +66,14 @@ test('документ: оглавление собирается из заго�
   const editor = await typeLongDocument(page)
 
   await page.getByTestId('doc-toc-toggle').click()
+
+  // Since #2728 the outline is a rail of ticks that opens on hover, so the
+  // titles are behind a hover rather than in a column of their own. The ticks
+  // are asserted first: they are the collapsed state a reader actually sees,
+  // and a rail that draws nothing would otherwise leave nothing to hover.
+  await expect(page.getByTestId('doc-toc-tick')).toHaveCount(2)
+  await page.getByTestId('doc-toc').hover()
+
   const entries = page.getByTestId('doc-toc-entry')
   await expect(entries).toHaveCount(2)
   await expect(entries.nth(0)).toHaveText('Введение')

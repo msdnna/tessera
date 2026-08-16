@@ -61,6 +61,29 @@ describe('document schema', () => {
   })
 })
 
+// The insertion line drawn while a block is dragged (#2728). Worth pinning
+// because the failure is invisible to every other check: the default colour is
+// `currentColor`, which resolves against the body text and paints a black line
+// that no theme can reach. `color: false` is the only value that stops
+// prosemirror-dropcursor writing an inline background-color, and the moment it
+// does, the CSS rule in DocEditor.vue is dead and the line is black again.
+describe('drop cursor', () => {
+  // Read off StarterKit rather than off a top-level extension: the sub-extension
+  // is only instantiated when an Editor is built, and the options object is
+  // where the configuration either arrived or silently did not.
+  const starterKit = docExtensions().find((e) => e.name === 'starterKit')
+
+  it('is still bundled in StarterKit under the key being configured', () => {
+    expect(starterKit).toBeDefined()
+    expect(starterKit.options.dropcursor).not.toBe(false)
+  })
+
+  it('draws no colour of its own and carries the class the theme styles', () => {
+    expect(starterKit.options.dropcursor.color).toBe(false)
+    expect(starterKit.options.dropcursor.class).toBe('doc-dropcursor')
+  })
+})
+
 describe('docPlainText', () => {
   const doc = {
     type: 'doc',

@@ -72,7 +72,8 @@ const uploading = ref(false)
 
 // The gutter that carries the drag handle. `pos` is the document position of
 // the block it currently addresses — everything the handle does needs it.
-const handle = reactive({ visible: false, top: 0, left: 0, pos: 0, index: 0 })
+// `snap` suppresses the travel animation for one frame — see onSurfaceMove.
+const handle = reactive({ visible: false, snap: true, top: 0, left: 0, pos: 0, index: 0 })
 // The gutter element itself — its height is measured rather than assumed, so
 // the centring below keeps working when the button size changes.
 const gutter = ref(null)
@@ -361,6 +362,18 @@ function onSurfaceMove(e) {
     return
   }
   const surfaceRect = surface.value.getBoundingClientRect()
+  // Moving from one block to the next slides the handle across (задача 2728);
+  // the first appearance must not, or it would fly in from wherever the last
+  // hover left it — including from off-screen after a scroll. The class and the
+  // new `top` are applied in the same DOM update, so the jump is not animated,
+  // and the rAF hands the transition back before the pointer can reach another
+  // block.
+  if (!handle.visible) {
+    handle.snap = true
+    requestAnimationFrame(() => {
+      handle.snap = false
+    })
+  }
   handle.visible = true
   // Centred on the block's FIRST LINE, not on its box. A heading's box opens a
   // margin above its text and sets its own line-height, so the box top is a
@@ -538,7 +551,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
       <div
         ref="gutter"
         class="doc-gutter"
-        :class="{ off: !handle.visible }"
+        :class="{ off: !handle.visible, snap: handle.snap }"
         :style="{ top: `${handle.top}px`, left: `${handle.left}px` }"
       >
         <button
@@ -675,6 +688,14 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   display: flex;
   align-items: center;
   gap: 4px;
+  /* Only `top` travels: `left` follows the sheet, and animating it would drag
+     the handle sideways across the text on every window resize. */
+  transition: top 0.12s ease-out;
+}
+/* Set for the frame the handle appears on, so it does not slide in from the
+   last block it addressed (see onSurfaceMove). */
+.doc-gutter.snap {
+  transition: none;
 }
 .doc-gutter.off {
   visibility: hidden;
@@ -963,6 +984,21 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   transition:
     background 0.4s ease,
     box-shadow 0.4s ease;
+}
+
+/* The line marking where a dragged block will land (задача 2728). The colour
+   lives here rather than in the extension's `color` option because that option
+   takes a literal string, and a literal cannot follow the theme — the option is
+   set to `false` in docSchema.js precisely so this rule wins.
+
+   Scoped to .doc-surface and not to .doc-content, which is the wrapper every
+   other editor rule here uses: prosemirror-dropcursor appends its element to
+   `view.dom.offsetParent`, and .doc-content has no `position`, so the nearest
+   positioned ancestor — and the actual parent of this element — is the surface
+   one level up. Under .doc-content the rule would simply never match. */
+.doc-surface :deep(.doc-dropcursor) {
+  background: var(--t-primary);
+  border-radius: 1px;
 }
 
 /* Placeholder shown while a dropped image uploads (imageDrop.js). */
