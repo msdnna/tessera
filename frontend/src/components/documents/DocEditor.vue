@@ -454,10 +454,12 @@ function annotateBlock() {
  * wider than the column, so the visible part of the curve would be the last few
  * pixels before the panel.) Clamped to the sheet in case a wide table overruns.
  *
- * The y is the centre of the block's FIRST LINE, reusing the drag handle's box
- * for the same reason it does — a heading opens a margin above its text, so the
- * box top is a different place from the line, and a link anchored to the box
- * would point above the words it belongs to.
+ * The y is the block's BOTTOM EDGE — that is where the dashed underline of a
+ * discussed block runs, so the curve leaves as a continuation of that line
+ * instead of starting off it. Anchoring to the first line's centre (as this did
+ * before) put the start half a line above the underline on a one-line block and
+ * a whole paragraph above it on a longer one, which read as two unrelated marks
+ * on the same block rather than one mark carried out to the panel.
  *
  * Blocks scrolled out of the content box are reported `visible: false` rather
  * than dropped: the caller distinguishes "gone from the document" (a detached
@@ -479,14 +481,24 @@ function blockAnchors(ids) {
   const out = []
   for (const b of blockRanges(view.state.doc)) {
     if (!b.id || !want.has(b.id)) continue
-    const rect = view.nodeDOM(b.from)?.getBoundingClientRect?.()
+    const dom = view.nodeDOM(b.from)
+    const rect = dom?.getBoundingClientRect?.()
     if (!rect) continue
-    const line = firstLineBox(view, b.from, rect)
-    const y = (line.top + line.bottom) / 2
+    const y = rect.bottom - underlineOffset(dom)
     const x = Math.min(rect.right, sheet.right)
     out.push({ id: b.id, x, y, visible: y >= clip.top && y <= clip.bottom })
   }
   return out
+}
+
+// Half the dashed border, so the curve starts on the underline's centre line
+// rather than on the border box's outer edge — at 1 px the two differ by half a
+// pixel, but the rule is read off the CSS instead of hardcoded here, so a
+// thicker underline keeps the join exact.
+function underlineOffset(dom) {
+  if (!dom || dom.nodeType !== 1 || typeof getComputedStyle !== 'function') return 0
+  const w = Number.parseFloat(getComputedStyle(dom).borderBottomWidth)
+  return Number.isFinite(w) ? w / 2 : 0
 }
 
 // The content box scrolls under a gutter that does not, so both anchors go

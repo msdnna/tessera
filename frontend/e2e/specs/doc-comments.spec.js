@@ -146,6 +146,36 @@ test('документ: блоки связаны с аннотациями ли
   const lines = page.locator('.annotation-lines path')
   await expect(lines).toHaveCount(2)
 
+  // The second /rework of #2730: each line must leave the END of the block's
+  // dashed underline, not the middle of the block. Measured rather than eyeballed
+  // — the start point is read off the path and compared with the underline's own
+  // position, both in page coordinates.
+  const start = await page.evaluate(() => {
+    const work = document.querySelector('.work').getBoundingClientRect()
+    const first = document.querySelector('.ProseMirror .doc-block-commented')
+    const block = first.getBoundingClientRect()
+    const border = Number.parseFloat(getComputedStyle(first).borderBottomWidth)
+    // The topmost line is the one belonging to the first block on the page.
+    const paths = [...document.querySelectorAll('.annotation-lines path')].map((n) => {
+      const v = (n.getAttribute('d').match(/-?\d+(\.\d+)?/g) || []).map(Number)
+      return { x: v[0], y: v[1] }
+    })
+    const p = paths.sort((a, b) => a.y - b.y)[0]
+    return {
+      x: work.left + p.x,
+      y: work.top + p.y,
+      underlineY: block.bottom - border / 2,
+      blockMidY: (block.top + block.bottom) / 2,
+      blockRight: block.right,
+    }
+  })
+  // On the underline, not on the block's middle — the two are far enough apart
+  // that this cannot pass by accident.
+  expect(Math.abs(start.y - start.underlineY)).toBeLessThanOrEqual(1)
+  expect(Math.abs(start.y - start.blockMidY)).toBeGreaterThan(2)
+  // …and at the end of it, where the underline stops.
+  expect(Math.abs(start.x - start.blockRight)).toBeLessThanOrEqual(1)
+
   // Cards are laid out in document order, not in the order the remarks were
   // made — that ordering is the whole anti-crossing mechanism.
   const cards = page.locator('.panel-body .thread')
