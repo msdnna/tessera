@@ -71,7 +71,12 @@ import {
 } from '@/utils/status'
 import { taskLink } from '@/utils/taskLink'
 import { copyText } from '@/utils/clipboard'
-import { effectiveTaskLayout, loadTaskLayout, saveTaskLayout } from '@/utils/taskLayout'
+import {
+  dismissesSidebar,
+  effectiveTaskLayout,
+  loadTaskLayout,
+  saveTaskLayout,
+} from '@/utils/taskLayout'
 import { useResponsive } from '@/composables/useResponsive'
 import {
   formatEstimate,
@@ -192,6 +197,26 @@ function setLayout(v) {
 // hide-panel button and the divider drag are meaningless (and the drag would
 // "revive" a column that can't fit).
 const wide = computed(() => !narrow.value && layout.value !== 'sidebar')
+
+// ── Sidebar layout: a click on empty space dismisses the panel (see
+// `dismissesSidebar` for which clicks count). mousedown in the capture phase, not
+// click: it fires before a menu item can remove itself from the DOM, and a text
+// selection that starts inside the card and ends out on the board isn't mistaken
+// for an outside click. ──
+const cardRef = ref(null)
+function onOutsidePointerDown(e) {
+  if (dismissesSidebar(e.target, cardRef.value?.$el)) emit('update:show', false)
+}
+let dismissBound = false
+function bindDismiss(on) {
+  if (on === dismissBound) return
+  dismissBound = on
+  if (on) document.addEventListener('mousedown', onOutsidePointerDown, true)
+  else document.removeEventListener('mousedown', onOutsidePointerDown, true)
+}
+watch(() => props.show && layout.value === 'sidebar', bindDismiss, { immediate: true })
+onBeforeUnmount(() => bindDismiss(false))
+
 const PANE_KEY = 'tessera_task_pane'
 const rightHidden = ref(localStorage.getItem(PANE_KEY) === 'hidden')
 function toggleRightPane() {
@@ -933,6 +958,7 @@ async function onSubtaskChanged() {
     @update:show="emit('update:show', $event)"
   >
     <n-card
+      ref="cardRef"
       class="tm-card"
       :class="{ 'tm-fullscreen': layout === 'fullscreen', 'tm-sidebar': layout === 'sidebar' }"
       role="dialog"
@@ -1762,7 +1788,35 @@ async function onSubtaskChanged() {
   height: 100vh;
   border-radius: 12px 0 0 12px;
   box-shadow: -8px 0 24px rgb(0 0 0 / 0.18);
-  --tm-body-max: calc(100vh - 210px);
+  /* The body scrolls inside the panel (see .n-card-content below), so the card is a
+     column: content takes the slack, the footer stays pinned at the bottom edge. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Slide in from the right edge and back out to it. The default centred scale-up
+   reads as "a dialog appeared"; a panel docked to the edge has to look like it came
+   from there. Naive puts the transition classes on the card itself, so overriding
+   them here is enough — three classes out-specify its two. */
+.tm-card.tm-sidebar.fade-in-scale-up-transition-enter-from,
+.tm-card.tm-sidebar.fade-in-scale-up-transition-leave-to {
+  opacity: 1;
+  transform: translateX(100%);
+}
+.tm-card.tm-sidebar.fade-in-scale-up-transition-enter-to,
+.tm-card.tm-sidebar.fade-in-scale-up-transition-leave-from {
+  opacity: 1;
+  transform: translateX(0);
+}
+.tm-card.tm-sidebar.fade-in-scale-up-transition-enter-active,
+.tm-card.tm-sidebar.fade-in-scale-up-transition-leave-active {
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-card.tm-sidebar.fade-in-scale-up-transition-enter-active,
+  .tm-card.tm-sidebar.fade-in-scale-up-transition-leave-active {
+    transition: none;
+  }
 }
 .form {
   display: flex;
@@ -1929,10 +1983,19 @@ async function onSubtaskChanged() {
   }
 }
 /* Sidebar keeps the stacked flow, but the card is a fixed-height panel — the body
-   has to scroll inside it, or the footer would be pushed off-screen. */
-.tm-card.tm-sidebar :deep(.n-card__content) {
-  max-height: var(--tm-body-max);
+   has to scroll inside it, or everything past the first screenful hangs off the
+   bottom of the viewport with no way to reach it.
+   The element is `n-card-content` with a single dash while its sibling is
+   `n-card__footer` with BEM underscores — Naive is inconsistent here, and mirroring
+   the footer's spelling onto the content yields a rule that matches nothing and
+   fails silently. */
+.tm-card.tm-sidebar :deep(.n-card-content) {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+}
+.tm-card.tm-sidebar :deep(.n-card__footer) {
+  flex: none;
 }
 .title-input :deep(input) {
   font-size: 18px;
