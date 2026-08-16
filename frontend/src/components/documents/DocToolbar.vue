@@ -220,9 +220,9 @@ function pick(picker, value) {
    only — no literal values, not even as var() fallbacks, because a hardcoded
    light fallback is what hid the broken token names in the first TipTap attempt
    (ed63159) until someone opened the dark theme. */
-.doc-toolbar {
-  border-bottom: 1px solid var(--t-border);
-}
+/* No rule under the toolbar: the work area below already carries its own
+   background and a bordered sheet, so a line here only doubles the seam
+   (задача 2727). */
 .doc-toolbar.disabled {
   opacity: 0.5;
   pointer-events: none;
