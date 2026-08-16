@@ -72,6 +72,11 @@ const props = defineProps({
   // Offer the fullscreen editor. False inside the fullscreen modal itself, which
   // hosts this very component (the button there would just reopen it).
   expandable: { type: Boolean, default: true },
+  // Two panes side by side — text left, live preview right — instead of the
+  // write/preview toggle, and the editor fills the height it is given rather than
+  // growing to its content. For the fullscreen modal: at that size the toggle
+  // wastes the second half of the window and a short text leaves it empty.
+  split: { type: Boolean, default: false },
 })
 const emit = defineEmits([
   'update:modelValue',
@@ -85,6 +90,9 @@ const emit = defineEmits([
 const message = useMessage()
 const boxed = computed(() => props.variant === 'boxed')
 const mode = ref(props.initialMode) // 'write' | 'preview'
+// Split shows both panes at once, so the textarea is always on screen and the
+// mode toggle has nothing left to switch.
+const writing = computed(() => props.split || mode.value === 'write')
 watch(mode, (m) => emit('update:mode', m), { immediate: true })
 function toggleMode() {
   mode.value = mode.value === 'write' ? 'preview' : 'write'
@@ -112,7 +120,7 @@ function setValue(v) {
 // behind an inner scrollbar (the modal scrolls instead).
 function autoGrow() {
   const el = ta.value
-  if (!el) return
+  if (!el || props.split) return // split panes are sized by the layout, not the text
   // Skip while the editor has no width — e.g. inside a collapsed panel (grid track
   // at 0fr). scrollHeight measured at ~0 width explodes (text wraps per glyph),
   // which would leave a giant textarea once the panel is shown again. The height is
@@ -674,13 +682,13 @@ defineExpose({
 </script>
 
 <template>
-  <div class="md2" :class="{ 'md2-boxed': boxed }">
+  <div class="md2" :class="{ 'md2-boxed': boxed, 'md2-splitmode': split }">
     <!-- Default variant: a slim top toolbar — insert actions plus a single
          preview/edit toggle (replaces the old Написать / Просмотр tabs). The boxed
          composer moves every control into the bottom toolbar instead. -->
     <div v-if="!boxed && toolbar" class="md2-tabs">
       <span class="md2-spacer" />
-      <template v-if="mode === 'write'">
+      <template v-if="writing">
         <button
           type="button"
           class="md2-act"
@@ -700,6 +708,7 @@ defineExpose({
         </button>
       </template>
       <button
+        v-if="!split"
         type="button"
         class="md2-act"
         :title="mode === 'write' ? 'Предпросмотр' : 'Редактировать'"
@@ -721,7 +730,7 @@ defineExpose({
 
     <div class="md2-body">
       <Transition name="md2-fade" mode="out-in" @after-enter="autoGrow">
-        <div v-if="mode === 'write'" key="write" class="md2-write" :class="{ dragging }">
+        <div v-if="writing" key="write" class="md2-write" :class="{ dragging }">
           <textarea
             ref="ta"
             :value="modelValue"
@@ -825,11 +834,24 @@ defineExpose({
         />
       </Transition>
 
+      <!-- Split only: the preview sits beside the text instead of replacing it,
+           and follows every keystroke (same v-model, no second copy). -->
+      <RichContent
+        v-if="split"
+        class="md2-preview md2-preview-side"
+        :source="modelValue"
+        :members="mentionItems"
+        interactive
+        task-refs
+        empty="Нечего показать"
+        @toggle="onToggleCheck"
+      />
+
       <!-- Default variant: a formatting bar under the text. The selection bubble
            only carries inline marks, and the header row (when it is rendered at
            all — TaskModal hosts it in .desc-head) only carries insert/preview, so
            lists, checkboxes and spoilers need a home of their own. -->
-      <div v-if="!boxed && mode === 'write'" class="md2-toolbar md2-format">
+      <div v-if="!boxed && writing" class="md2-toolbar md2-format">
         <button
           v-for="b in tools"
           :key="b.title"
@@ -1222,6 +1244,78 @@ defineExpose({
 .md2-preview {
   padding: 2px 0;
   min-height: calc(v-bind(minRows) * 1.55em);
+}
+
+/* ── split mode (fullscreen editor) ──
+   Text left, live preview right, formatting bar across the bottom. The whole
+   component takes the height its host gives it; each pane scrolls on its own, so
+   a short text no longer leaves a dead band under the toolbar and a long one
+   doesn't push the toolbar off the modal. */
+.md2-splitmode {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.md2-splitmode .md2-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  column-gap: 16px;
+}
+.md2-splitmode .md2-write {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  min-height: 0;
+}
+/* Fills the pane instead of auto-growing (autoGrow() is a no-op here), so the
+   textarea is what scrolls. */
+.md2-splitmode .md2-write textarea {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+.md2-splitmode .md2-preview-side {
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-left: 16px;
+  border-left: 1px solid var(--t-border);
+}
+.md2-splitmode .md2-toolbar {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.md2-splitmode .md2-attach {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+/* Narrow screens: one column — the preview goes under the text rather than
+   squeezing both into unreadable strips. */
+@media (max-width: 720px) {
+  .md2-splitmode .md2-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  }
+  .md2-splitmode .md2-preview-side {
+    grid-column: 1;
+    grid-row: 2;
+    padding-left: 0;
+    padding-top: 10px;
+    border-left: none;
+    border-top: 1px solid var(--t-border);
+  }
+  .md2-splitmode .md2-toolbar {
+    grid-row: 3;
+  }
+  .md2-splitmode .md2-attach {
+    grid-row: 4;
+  }
 }
 
 /* ── boxed composer (comments) ──

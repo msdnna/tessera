@@ -48,7 +48,7 @@ function close() {
           :mention-items="mentionItems"
           :command-items="commandItems"
           :attach-task-id="attachTaskId"
-          :min-rows="20"
+          split
           :expandable="false"
           @update:model-value="emit('update:modelValue', $event)"
           @attachments-changed="emit('attachments-changed')"
@@ -100,9 +100,17 @@ function close() {
   background: var(--t-hover);
   color: var(--t-text1);
 }
+/* The editor owns the scrolling here (each split pane scrolls on its own), so the
+   body just hands it the leftover height — an `overflow: auto` here would give the
+   modal a second scrollbar and let the bottom toolbar drift out of view. */
 .mdfs-body {
   flex: 1;
-  overflow: auto;
-  padding: 12px 16px 20px;
+  min-height: 0;
+  display: flex;
+  padding: 12px 16px 14px;
+}
+.mdfs-body > * {
+  flex: 1;
+  min-width: 0;
 }
 </style>

@@ -152,3 +152,85 @@ describe('MarkdownEditor toolbar', () => {
     expect(w.findAll('.md2-format button').some((b) => b.attributes('title') === clip)).toBe(true)
   })
 })
+
+// Split mode (#2717 rework): the fullscreen modal puts text and preview side by
+// side. Before that it hosted the ordinary toggle editor, which auto-grew to its
+// content — a short description left a dead band under the toolbar, and half the
+// window sat unused behind the preview toggle.
+describe('MarkdownEditor split mode', () => {
+  function splitEditor(value = '') {
+    return mount(MarkdownEditor, {
+      props: { modelValue: value, split: true },
+      global: { stubs: { RichContent: true, TesseraSpinner: true, UserAvatar: true } },
+    })
+  }
+
+  it('shows the text and the preview at the same time', () => {
+    const w = splitEditor('# привет')
+    expect(w.find('textarea').exists()).toBe(true)
+    expect(w.find('.md2-preview-side').exists()).toBe(true)
+  })
+
+  it('feeds the live text to the side preview', async () => {
+    const w = splitEditor('раз')
+    const preview = () => w.findComponent({ name: 'RichContent' })
+    expect(preview().props('source')).toBe('раз')
+    await w.setProps({ modelValue: 'раз два' })
+    expect(preview().props('source')).toBe('раз два')
+  })
+
+  it('drops the preview toggle — there is nothing left to switch', () => {
+    const w = splitEditor('x')
+    const titles = w.findAll('.md2-tabs button').map((b) => b.attributes('title'))
+    expect(titles).not.toContain('Предпросмотр')
+    expect(titles).toContain('Вставить изображение') // the rest of the row stays
+  })
+
+  it('keeps the formatting bar — it is the only home for the block tools', () => {
+    const w = splitEditor('x')
+    const titles = w.findAll('.md2-format button').map((b) => b.attributes('title'))
+    expect(titles).toContain('Цитата')
+  })
+
+  // autoGrow() is what writes an inline height; in split it must stay out of the
+  // way, or the textarea would push the toolbar off the bottom of the modal.
+  // jsdom lays nothing out, so the measurements it reads are faked here —
+  // otherwise its own clientWidth === 0 guard returns early and the assertion
+  // would hold with or without the split check.
+  function measurable(w, scrollHeight) {
+    const el = w.find('textarea').element
+    Object.defineProperty(el, 'clientWidth', { value: 400, configurable: true })
+    Object.defineProperty(el, 'scrollHeight', { value: scrollHeight, configurable: true })
+    return el
+  }
+
+  it('leaves the height to the layout instead of growing to the text', () => {
+    const w = splitEditor('a\n'.repeat(50))
+    const el = measurable(w, 800)
+    w.vm.autoGrow()
+    expect(el.style.height).toBe('')
+  })
+
+  it('still auto-grows outside split mode', () => {
+    const w = mount(MarkdownEditor, {
+      props: { modelValue: 'a\n'.repeat(50) },
+      global: { stubs: { RichContent: true, TesseraSpinner: true, UserAvatar: true } },
+    })
+    const el = measurable(w, 800)
+    w.vm.autoGrow()
+    expect(el.style.height).toBe('800px')
+  })
+
+  it('still toggles write/preview when split is off', async () => {
+    const w = mount(MarkdownEditor, {
+      props: { modelValue: 'x' },
+      global: { stubs: { RichContent: true, TesseraSpinner: true, UserAvatar: true } },
+    })
+    expect(w.find('.md2-preview-side').exists()).toBe(false)
+    const toggle = w
+      .findAll('.md2-tabs button')
+      .find((b) => b.attributes('title') === 'Предпросмотр')
+    await toggle.trigger('click')
+    expect(w.find('textarea').exists()).toBe(false)
+  })
+})
