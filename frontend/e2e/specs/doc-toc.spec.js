@@ -65,13 +65,22 @@ test('документ: оглавление собирается из заго�
   await newDocument(page, seed)
   const editor = await typeLongDocument(page)
 
-  await page.getByTestId('doc-toc-toggle').click()
-
+  // No click to open: since #2738 the outline is on by default. The rail costs
+  // 22px, so there is nothing to earn back by hiding it, and asserting it
+  // straight from arrival is also the regression guard for that default.
+  //
   // Since #2728 the outline is a rail of ticks that opens on hover, so the
   // titles are behind a hover rather than in a column of their own. The ticks
   // are asserted first: they are the collapsed state a reader actually sees,
   // and a rail that draws nothing would otherwise leave nothing to hover.
   await expect(page.getByTestId('doc-toc-tick')).toHaveCount(2)
+
+  // The toggle still toggles — it just starts from the other side now.
+  await page.getByTestId('doc-toc-toggle').click()
+  await expect(page.getByTestId('doc-toc')).toHaveCount(0)
+  await page.getByTestId('doc-toc-toggle').click()
+  await expect(page.getByTestId('doc-toc-tick')).toHaveCount(2)
+
   await page.getByTestId('doc-toc').hover()
 
   const entries = page.getByTestId('doc-toc-entry')

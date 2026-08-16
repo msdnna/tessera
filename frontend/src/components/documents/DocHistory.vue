@@ -150,25 +150,17 @@ const STATUS_LABEL = {
 </template>
 
 <style scoped>
+/* Since task 2738 this is not a column in the working row but the content of the
+   sidebar, so it fills whatever it is given: the width, the border and the
+   overlay behaviour all belong to `.side` in DocumentsView, and repeating them
+   here would mean two places to change and a 300px panel inside a 320px box. */
 .doc-history {
   display: flex;
   flex-direction: column;
-  width: 300px;
-  flex: none;
+  width: 100%;
+  flex: 1;
   min-height: 0;
-  border-left: 1px solid var(--t-border);
-  padding-left: 12px;
   gap: 8px;
-}
-@media (max-width: 900px) {
-  .doc-history {
-    width: auto;
-    max-height: 50vh;
-    border-left: none;
-    border-top: 1px solid var(--t-border);
-    padding-left: 0;
-    padding-top: 12px;
-  }
 }
 .panel-head {
   display: flex;

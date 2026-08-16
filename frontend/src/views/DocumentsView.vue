@@ -147,16 +147,25 @@ const commentsOpen = ref(true)
 // reconnect costs one stale panel and nothing more.
 watch(commentsNudge, () => comments.load())
 
+// The journal and the links panel are not columns of their own: they are the two
+// faces of one sidebar that slides in over the discussion (#2738). Sharing a
+// single slot is what makes them harmless — as separate fixed-width columns they
+// took 600px of a 984px working area and left the text 14px wide.
+//
+// Neither is ever open on arrival. That is the point of the change: a reader who
+// wants the text gets the text, and a sidebar is something you ask for.
+const sidePanel = ref('')
+
 // Version journal, snapshots and rollback (#2731).
 const versions = useDocVersions()
-const historyOpen = ref(false)
+const historyOpen = computed(() => sidePanel.value === 'history')
 
 // Task links and approval protocols (#2732). Loaded lazily like the journal: a
 // document is read far more often than it is linked or signed, and every reader
 // paying two requests for a panel they never open would make the section slower
 // for the common case.
 const links = useDocLinks()
-const linksOpen = ref(false)
+const linksOpen = computed(() => sidePanel.value === 'links')
 watch(linksNudge, () => links.load())
 
 // Outline and internal links (#2733). Unlike the panels above it needs no
@@ -164,7 +173,10 @@ watch(linksNudge, () => links.load())
 // derivation is still guarded by the toggle: it walks the document, and doing
 // that on every keystroke for a reader who never opened the panel would be a
 // cost with nothing on the other side of it.
-const tocOpen = ref(false)
+// On by default since #2738. It was hidden on arrival while it was a 260px
+// column and had to earn its place in the row; as a 22px rail of ticks (#2728)
+// it costs nothing and is worth more shown than asked for.
+const tocOpen = ref(true)
 const editorRef = ref(null)
 // The block the caret is in, mirrored so the outline can say which section is
 // being read. Recorded here rather than asked of the editor, because the editor
@@ -392,24 +404,40 @@ async function backToGrid() {
   comments.close()
   versions.close()
   links.close()
+  // The sidebar belongs to the open document, not to the section: coming back to
+  // the grid and into another document should not land on someone else's journal.
+  sidePanel.value = ''
   selected.value = null
   content.value = null
   if (route.params.slug) router.replace('/documents')
 }
 
-// The history panel loads lazily: opening it is the moment the journal is
-// wanted, and a document read without it never fetches one.
-async function toggleHistory() {
-  historyOpen.value = !historyOpen.value
-  if (historyOpen.value && selected.value?.id) await versions.open(selected.value.id)
-  else if (!historyOpen.value) versions.close()
+// The one way in and out of the sidebar. Both panels load lazily: opening one is
+// the moment its data is wanted, and a document read without it never fetches.
+// Clicking the button of the panel already showing closes the sidebar, so the
+// toolbar keeps reading as two toggles even though they share a slot.
+//
+// The outgoing panel is released even when another takes its place — the sidebar
+// shows one at a time, so a journal left loaded behind a links panel nobody can
+// see is a subscription to updates for a hidden view.
+async function showSide(name) {
+  const next = sidePanel.value === name ? '' : name
+  const prev = sidePanel.value
+  if (next === prev) return
+  sidePanel.value = next
+  if (prev === 'history') versions.close()
+  else if (prev === 'links') links.close()
+  if (!selected.value?.id) return
+  if (next === 'history') await versions.open(selected.value.id)
+  else if (next === 'links') await links.open(selected.value.id)
 }
 
-// Same lazy rule for links and protocols.
-async function toggleLinks() {
-  linksOpen.value = !linksOpen.value
-  if (linksOpen.value && selected.value?.id) await links.open(selected.value.id)
-  else if (!linksOpen.value) links.close()
+function toggleHistory() {
+  return showSide('history')
+}
+
+function toggleLinks() {
+  return showSide('links')
 }
 
 // The block a new link would be pinned to. It follows the annotation panel's
@@ -987,7 +1015,10 @@ let narrowQuery = null
 
 function measureLinks() {
   linkFrame = 0
-  if (!commentsOpen.value || narrow.value || !workEl.value) {
+  // An open sidebar sits on top of the discussion (#2738), so the cards these
+  // lines point at are behind it. Drawn anyway they would run out of the text
+  // and stop dead at the sidebar's edge, pointing at nothing.
+  if (!commentsOpen.value || sidePanel.value || narrow.value || !workEl.value) {
     annotationLines.value = []
     return
   }
@@ -1028,7 +1059,7 @@ watch(
     () => content.value,
     commentsOpen,
     tocOpen,
-    historyOpen,
+    sidePanel,
     narrow,
   ],
   scheduleLinks,
@@ -1345,40 +1376,47 @@ watch(
             @clear-anchor="clearAnchor"
             @select="comments.activeBlockId.value = $event"
           />
-          <doc-history
-            v-if="historyOpen"
-            :versions="versions.versions.value"
-            :selected-id="versions.selectedId.value"
-            :baseline="versions.baseline.value"
-            :rows="versions.rows.value"
-            :summary="versions.summary.value"
-            :ready="versions.ready.value"
-            :loading="versions.loading.value"
-            :error="versions.error.value"
-            @select="versions.select"
-            @snapshot="onSnapshot"
-            @restore="onRestore"
-            @close="toggleHistory"
-          />
-          <doc-links
-            v-if="linksOpen"
-            :links="links.links.value"
-            :approvals="links.approvals.value"
-            :user-id="myUserId"
-            :ws-id="wsStore.currentId"
-            :can-raise="links.canRaise.value"
-            :loading="links.loading.value"
-            :error="links.error.value"
-            :anchor-block-id="linkAnchorId"
-            :anchor-quote="linkAnchorQuote"
-            @link="onLink"
-            @unlink="onUnlink"
-            @raise="onRaiseApproval"
-            @decide="onDecide"
-            @cancel="onCancelApproval"
-            @open-task="onOpenTask"
-            @close="toggleLinks"
-          />
+          <!-- The sidebar overlays the discussion instead of joining the row:
+               that is what keeps the text column from shrinking, and it is why
+               the two panels below are mutually exclusive rather than merely
+               narrow (#2738). It never covers the whole working area — the
+               document stays readable behind it. -->
+          <aside v-if="sidePanel" class="side" data-testid="doc-side">
+            <doc-history
+              v-if="historyOpen"
+              :versions="versions.versions.value"
+              :selected-id="versions.selectedId.value"
+              :baseline="versions.baseline.value"
+              :rows="versions.rows.value"
+              :summary="versions.summary.value"
+              :ready="versions.ready.value"
+              :loading="versions.loading.value"
+              :error="versions.error.value"
+              @select="versions.select"
+              @snapshot="onSnapshot"
+              @restore="onRestore"
+              @close="toggleHistory"
+            />
+            <doc-links
+              v-if="linksOpen"
+              :links="links.links.value"
+              :approvals="links.approvals.value"
+              :user-id="myUserId"
+              :ws-id="wsStore.currentId"
+              :can-raise="links.canRaise.value"
+              :loading="links.loading.value"
+              :error="links.error.value"
+              :anchor-block-id="linkAnchorId"
+              :anchor-quote="linkAnchorQuote"
+              @link="onLink"
+              @unlink="onUnlink"
+              @raise="onRaiseApproval"
+              @decide="onDecide"
+              @cancel="onCancelApproval"
+              @open-task="onOpenTask"
+              @close="toggleLinks"
+            />
+          </aside>
         </div>
         <div v-if="children.length" class="nested">
           <n-text depth="3">Вложенные документы</n-text>
@@ -1611,11 +1649,50 @@ watch(
   min-width: 0;
   min-height: 0;
 }
+/* The journal and the links panel (task 2738 — no hash: the theme guard in
+   cx-doc-editor.spec.js reads one as a literal colour). Taken out of the flow
+   entirely: in the row they were two more fixed 300px columns, and three panels
+   beside a flex:1 text column left the text 14px wide. Overlaid, they cost the
+   text nothing — opening one cannot reflow a single line.
+
+   320px is chosen against the discussion, not against the window: that panel is
+   300px plus the 12px gap, so the sidebar lands almost exactly on top of it and
+   the document keeps the width it already had. With the discussion hidden the
+   same 320px eats into the text instead, which is the tradeoff the user picked —
+   the document stays on screen either way. */
+.side {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* Over the annotation layer (z-index 1), which spans the whole working area. */
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-width: 100%;
+  min-height: 0;
+  padding: 10px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+  /* The panel is opaque and sits over live content, so it needs an edge the flat
+     border alone does not give it — without the shadow the discussion behind it
+     reads as part of the same column. The blur is drawn in the border colour
+     rather than a black wash: a literal colour cannot follow the theme, and a
+     dark halo that looks right on white turns into a smudge on the dark one. */
+  box-shadow: -8px 0 20px var(--t-border);
+}
 /* On a narrow screen the panel goes under the editor instead of squeezing the
    text into a column nobody can read. */
 @media (max-width: 900px) {
   .work {
     flex-direction: column;
+  }
+  /* Nothing to overlay in a single column: the sidebar becomes a sheet over the
+     whole working area, which is the only place left where it is readable. */
+  .side {
+    width: 100%;
   }
 }
 .conflict {

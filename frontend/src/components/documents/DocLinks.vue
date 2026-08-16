@@ -332,25 +332,17 @@ function fmtDate(v) {
 </template>
 
 <style scoped>
+/* Content of the sidebar since task 2738, not a column of its own — see the
+   same note in DocHistory.vue. Width, border and overlay live in `.side`.
+   (Task numbers are spelled without the hash inside style blocks: the theme
+   guard in cx-doc-editor.spec.js reads them as literal colours.) */
 .doc-links {
   display: flex;
   flex-direction: column;
-  width: 300px;
-  flex: none;
+  width: 100%;
+  flex: 1;
   min-height: 0;
-  border-left: 1px solid var(--t-border);
-  padding-left: 12px;
   gap: 8px;
-}
-@media (max-width: 900px) {
-  .doc-links {
-    width: auto;
-    max-height: 50vh;
-    border-left: none;
-    border-top: 1px solid var(--t-border);
-    padding-left: 0;
-    padding-top: 12px;
-  }
 }
 .panel-head {
   display: flex;
