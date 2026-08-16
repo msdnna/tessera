@@ -1867,6 +1867,9 @@ type gitlabLinkView struct {
 	AuthorName      string `json:"author_name"`
 	AuthorAvatarURL string `json:"author_avatar_url"`
 	ProjectPath     string `json:"project_path"`
+	// IsGroup mirrors the link's grouping flag so the UI can show the "grouped task"
+	// badge and flip the button, without a second request per task (#2592).
+	IsGroup bool `json:"is_group"`
 }
 
 // gitlabLinkForTask returns the GitLab link view for a task, or nil when the
@@ -1879,7 +1882,7 @@ func (h *API) gitlabLinkForTask(c *gin.Context, taskID uuid.UUID) *gitlabLinkVie
 	return &gitlabLinkView{
 		IID: link.GlIid, WebURL: link.GlWebUrl, Author: link.GlAuthor,
 		AuthorName: link.GlAuthorName, AuthorAvatarURL: link.GlAuthorAvatarUrl,
-		ProjectPath: link.GlProjectPath,
+		ProjectPath: link.GlProjectPath, IsGroup: link.GlIsGroup,
 	}
 }
 

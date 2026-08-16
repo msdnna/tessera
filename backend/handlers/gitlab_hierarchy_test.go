@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/google/uuid"
+
+	"tessera/internal/gitlab"
 )
 
 // TestResolveParentRef is the regression guard for #2592 p.4 ("later pulls must not
@@ -54,6 +57,63 @@ func TestResolveParentRefOnlyDetachesWhenAnswered(t *testing.T) {
 			if detaches && !known {
 				t.Fatalf("resolveParentRef(%v, %v) un-parents on an unanswered hierarchy", claimedBy, known)
 			}
+		}
+	}
+}
+
+// TestCheckGroupGate covers the config-only refusals of the grouping endpoints. The
+// row that carries the most weight is the last one: the button writes a label, and a
+// label this integration's rules do not read back as grouping would look like it
+// worked and then import as an ordinary tag on the next pull, leaving the parent
+// ungrouped and its children unclaimed.
+func TestCheckGroupGate(t *testing.T) {
+	on := gitlab.Writeback{PushChildren: true}
+	rules := gitlab.DefaultRules()
+	cases := []struct {
+		name       string
+		enabled    bool
+		wb         gitlab.Writeback
+		rules      gitlab.Rules
+		linked     bool
+		wantStatus int
+	}{
+		{"allowed", true, on, rules, true, 0},
+		{"integration disabled", false, on, rules, true, http.StatusBadRequest},
+		{"push_children off", true, gitlab.Writeback{}, rules, true, http.StatusBadRequest},
+		{"task not linked", true, on, rules, false, http.StatusBadRequest},
+		{
+			"label is not a grouping label under these rules",
+			true,
+			gitlab.Writeback{PushChildren: true, GroupLabel: "просто тег"},
+			rules, true, http.StatusBadRequest,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status, msg := checkGroupGate(tc.enabled, tc.wb, tc.rules, tc.linked)
+			if status != tc.wantStatus {
+				t.Fatalf("status = %d (%q), want %d", status, msg, tc.wantStatus)
+			}
+			if status != 0 && msg == "" {
+				t.Fatal("refused without a reason")
+			}
+		})
+	}
+}
+
+// TestCheckGroupGateRejectsUnreadableLabelEvenWhenEverythingElseIsOn states that
+// guard as a property: no combination of "everything enabled" may let a label through
+// that ResolvesToGroup rejects. It is the one gate that protects data rather than
+// permissions.
+func TestCheckGroupGateRejectsUnreadableLabelEvenWhenEverythingElseIsOn(t *testing.T) {
+	rules := gitlab.DefaultRules()
+	for _, label := range []string{"todo", "S: В работе", "P: Высокий", "M", "M:"} {
+		wb := gitlab.Writeback{PushChildren: true, GroupLabel: label}
+		if rules.ResolvesToGroup(wb.EffectiveGroupLabel()) {
+			continue // genuinely grouping under the default rules — not a case here
+		}
+		if status, _ := checkGroupGate(true, wb, rules, true); status == 0 {
+			t.Fatalf("group_label %q accepted, but the pull would not read it as grouping", label)
 		}
 	}
 }
