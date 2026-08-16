@@ -7,7 +7,7 @@ import {
   NDropdown,
   NIcon,
   NInput,
-  NPopconfirm,
+  NModal,
   NSpin,
   NText,
   useMessage,
@@ -20,6 +20,7 @@ import {
   CloudUploadOutline,
   DocumentsOutline,
   DownloadOutline,
+  EllipsisHorizontalOutline,
   GridOutline,
   LinkOutline,
   ListOutline,
@@ -365,7 +366,16 @@ async function open(doc) {
     if (historyOpen.value) await versions.open(res.data.id)
     if (linksOpen.value) await links.open(res.data.id)
     const param = res.data.slug || res.data.id
-    if (param && route.params.slug !== param) router.replace(`/documents/${param}`)
+    if (param && route.params.slug !== param) {
+      // Opening a document from the list is a step forward and gets a history
+      // entry, so Back returns to the list — with replace() there was no entry
+      // to go back to, and Back left the section entirely. Canonicalizing a URL
+      // that already names a document (a deep link by id, or the slug a document
+      // earns on its first save) stays a replace: it is the same page under its
+      // proper name, not a second one.
+      if (route.params.slug) router.replace(`/documents/${param}`)
+      else router.push(`/documents/${param}`)
+    }
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -806,7 +816,29 @@ async function rename() {
   }
 }
 
+// Delete / new nested doc used to sit as bare buttons under the text, where they
+// were in the way of reading (#2727). They live in the header's «Действия» menu
+// now — with the delete confirmation moved to a dialog, because a menu item has
+// no anchor a popconfirm could hang off.
+const docActions = computed(() => {
+  const items = [{ key: 'nested', label: 'Вложенный документ' }]
+  if (childCount.value)
+    items.push({ key: 'children', label: `Показать вложенные (${childCount.value})` })
+  items.push({ key: 'div', type: 'divider' })
+  items.push({ key: 'remove', label: 'Удалить документ' })
+  return items
+})
+
+function onDocAction(key) {
+  if (key === 'nested') createNested()
+  else if (key === 'children') drillInto(selected.value)
+  else if (key === 'remove') removeAsk.value = true
+}
+
+const removeAsk = ref(false)
+
 async function remove() {
+  removeAsk.value = false
   if (!selected.value?.id) return
   try {
     await docsApi.remove(selected.value.id, childCount.value > 0)
@@ -943,6 +975,12 @@ const annotationLines = ref([])
 // things that are no longer side by side.
 const NARROW_PX = 900
 const narrow = ref(false)
+// The header slots (Topbar.vue) exist only when this view runs inside AppLayout;
+// a unit test mounting it bare has none, and a narrow header has no room anyway.
+// Either way the controls stay in .head instead of vanishing into a missing
+// teleport target.
+const topbarSlots = ref(false)
+const inTopbar = computed(() => topbarSlots.value && !narrow.value)
 let linkFrame = 0
 let workObserver = null
 let narrowQuery = null
@@ -1018,6 +1056,7 @@ watch(workEl, (el, prev) => {
 })
 
 onMounted(async () => {
+  topbarSlots.value = !!document.getElementById('tb-slot-left')
   window.addEventListener('beforeunload', onBeforeUnload)
   window.addEventListener('resize', scheduleLinks)
   narrowQuery = window.matchMedia?.(`(max-width: ${NARROW_PX}px)`)
@@ -1052,6 +1091,26 @@ onBeforeUnmount(() => {
 onBeforeRouteLeave(async () => {
   await flushSave()
 })
+
+// The document and the list are one route record (documents/:slug?), so moving
+// between them re-renders this view instead of remounting it. Without this watch
+// the URL changed and the open document stayed on screen — clicking «Документы»
+// in the sidebar with a document open looked like a dead link (#2727). Covers the
+// browser Back button for the same reason.
+watch(
+  () => route.params.slug,
+  async (slug) => {
+    if (slug) {
+      const current = selected.value?.slug || selected.value?.id
+      if (slug !== current) {
+        const ok = await resolveSlug(slug)
+        if (!ok) message.error('Документ не найден')
+      }
+      return
+    }
+    if (selected.value) await backToGrid()
+  },
+)
 
 watch(
   () => wsStore.currentId,
@@ -1130,89 +1189,103 @@ watch(
 
     <!-- Editor: title + working area, as asked in the review of #2726. -->
     <template v-else>
+      <!-- «К списку» and the document's own controls ride in the app header:
+           there is free space beside the search, and the working area is left to
+           the document itself (#2727). On a narrow screen the header has no room
+           for them, and in a bare unit-test mount the slots do not exist — both
+           cases fall back to rendering here, in .head. -->
       <div class="head">
-        <n-button quaternary size="small" @click="backToGrid">
-          <template #icon><n-icon :component="ArrowBackOutline" /></template>
-          К списку
-        </n-button>
-        <span class="status">
-          <!-- Who else has this document open (#2729). Each person carries their
+        <teleport to="#tb-slot-left" :disabled="!inTopbar">
+          <n-button quaternary size="small" @click="backToGrid">
+            <template #icon><n-icon :component="ArrowBackOutline" /></template>
+            К списку
+          </n-button>
+        </teleport>
+        <teleport to="#tb-slot-right" :disabled="!inTopbar">
+          <span class="status">
+            <!-- Who else has this document open (#2729). Each person carries their
                own colour — the same one that stripes the block they are holding,
                which is what makes "жёлтый блок занят" readable as a sentence
                about a person rather than as generic "someone is editing". The
                editing state is a ring, not a different colour: the colour is the
                identity and must not double as a status. -->
-          <span v-if="others.length" class="viewers">
-            <span
-              v-for="v in others"
-              :key="v.user_id"
-              class="viewer"
-              :class="{ editing: v.blocks.length }"
-              :style="viewerStyle(v.user_id)"
-              :title="v.blocks.length ? `${v.name} — редактирует` : `${v.name} — смотрит`"
-            >
-              {{ initials(v.name) }}
+            <span v-if="others.length" class="viewers">
+              <span
+                v-for="v in others"
+                :key="v.user_id"
+                class="viewer"
+                :class="{ editing: v.blocks.length }"
+                :style="viewerStyle(v.user_id)"
+                :title="v.blocks.length ? `${v.name} — редактирует` : `${v.name} — смотрит`"
+              >
+                {{ initials(v.name) }}
+              </span>
             </span>
-          </span>
-          <n-button
-            quaternary
-            size="tiny"
-            :title="commentsOpen ? 'Скрыть обсуждение' : 'Показать обсуждение'"
-            @click="commentsOpen = !commentsOpen"
-          >
-            <template #icon><n-icon :component="ChatbubbleEllipsesOutline" /></template>
-            {{ comments.openCount.value || '' }}
-          </n-button>
-          <n-button
-            quaternary
-            size="tiny"
-            :title="tocOpen ? 'Скрыть оглавление' : 'Оглавление'"
-            data-testid="doc-toc-toggle"
-            @click="tocOpen = !tocOpen"
-          >
-            <template #icon><n-icon :component="ListOutline" /></template>
-          </n-button>
-          <n-button
-            quaternary
-            size="tiny"
-            :title="historyOpen ? 'Скрыть историю' : 'История версий'"
-            @click="toggleHistory"
-          >
-            <template #icon><n-icon :component="TimeOutline" /></template>
-          </n-button>
-          <n-button
-            quaternary
-            size="tiny"
-            :title="linksOpen ? 'Скрыть связи' : 'Связи и согласование'"
-            data-testid="doc-links-toggle"
-            @click="toggleLinks"
-          >
-            <template #icon><n-icon :component="LinkOutline" /></template>
-          </n-button>
-          <n-button
-            quaternary
-            size="tiny"
-            title="Сохранить как шаблон"
-            data-testid="doc-save-template"
-            @click="saveAsTemplate"
-          >
-            <template #icon><n-icon :component="BookmarkOutline" /></template>
-          </n-button>
-          <n-dropdown trigger="click" :options="exportOptions" @select="exportAs">
             <n-button
               quaternary
               size="tiny"
-              title="Выгрузить документ"
-              data-testid="doc-export"
-              :loading="!!exporting"
+              :title="commentsOpen ? 'Скрыть обсуждение' : 'Показать обсуждение'"
+              @click="commentsOpen = !commentsOpen"
             >
-              <template #icon><n-icon :component="DownloadOutline" /></template>
+              <template #icon><n-icon :component="ChatbubbleEllipsesOutline" /></template>
+              {{ comments.openCount.value || '' }}
             </n-button>
-          </n-dropdown>
-          <n-text v-if="saving" depth="3">Сохранение…</n-text>
-          <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
-          <n-text v-else depth="3">Все изменения сохранены</n-text>
-        </span>
+            <n-button
+              quaternary
+              size="tiny"
+              :title="tocOpen ? 'Скрыть оглавление' : 'Оглавление'"
+              data-testid="doc-toc-toggle"
+              @click="tocOpen = !tocOpen"
+            >
+              <template #icon><n-icon :component="ListOutline" /></template>
+            </n-button>
+            <n-button
+              quaternary
+              size="tiny"
+              :title="historyOpen ? 'Скрыть историю' : 'История версий'"
+              @click="toggleHistory"
+            >
+              <template #icon><n-icon :component="TimeOutline" /></template>
+            </n-button>
+            <n-button
+              quaternary
+              size="tiny"
+              :title="linksOpen ? 'Скрыть связи' : 'Связи и согласование'"
+              data-testid="doc-links-toggle"
+              @click="toggleLinks"
+            >
+              <template #icon><n-icon :component="LinkOutline" /></template>
+            </n-button>
+            <n-button
+              quaternary
+              size="tiny"
+              title="Сохранить как шаблон"
+              data-testid="doc-save-template"
+              @click="saveAsTemplate"
+            >
+              <template #icon><n-icon :component="BookmarkOutline" /></template>
+            </n-button>
+            <n-dropdown trigger="click" :options="exportOptions" @select="exportAs">
+              <n-button
+                quaternary
+                size="tiny"
+                title="Выгрузить документ"
+                data-testid="doc-export"
+                :loading="!!exporting"
+              >
+                <template #icon><n-icon :component="DownloadOutline" /></template>
+              </n-button>
+            </n-dropdown>
+            <n-dropdown trigger="click" :options="docActions" @select="onDocAction">
+              <n-button quaternary size="tiny" title="Действия" data-testid="doc-actions">
+                <template #icon><n-icon :component="EllipsisHorizontalOutline" /></template>
+              </n-button>
+            </n-dropdown>
+            <n-text v-if="saving" depth="3">Сохранение…</n-text>
+            <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
+            <n-text v-else depth="3">Все изменения сохранены</n-text>
+          </span>
+        </teleport>
       </div>
 
       <n-alert v-if="conflict" type="warning" class="conflict">
@@ -1320,29 +1393,24 @@ watch(
             </button>
           </div>
         </div>
-        <div class="actions">
-          <n-popconfirm
-            :positive-button-props="{ type: 'error' }"
-            positive-text="Удалить"
-            @positive-click="remove"
-          >
-            <template #trigger>
-              <n-button type="error" ghost>Удалить</n-button>
-            </template>
-            <template v-if="childCount">
-              Удалить документ вместе с вложенными ({{ childCount }})?
-            </template>
-            <template v-else>Удалить документ?</template>
-          </n-popconfirm>
-          <span class="grow" />
-          <n-button v-if="childCount" quaternary @click="drillInto(selected)">
-            Показать вложенные ({{ childCount }})
-          </n-button>
-          <n-button @click="createNested">
-            <template #icon><n-icon :component="AddOutline" /></template>
-            Вложенный документ
-          </n-button>
-        </div>
+        <!-- Delete / nested-document moved into the header's «Действия» menu
+             (#2727): under the text they were permanent furniture beside a rare
+             action. -->
+        <n-modal
+          v-model:show="removeAsk"
+          preset="dialog"
+          type="error"
+          title="Удалить документ?"
+          positive-text="Удалить"
+          negative-text="Отмена"
+          :positive-button-props="{ type: 'error' }"
+          :content="
+            childCount
+              ? `Документ будет удалён вместе с вложенными (${childCount}).`
+              : 'Документ будет удалён.'
+          "
+          @positive-click="remove"
+        />
       </template>
     </template>
 
@@ -1380,6 +1448,11 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+/* Both halves teleport into the app header on a wide screen; what stays behind
+   is an empty flex row that would still spend the .docs gap. */
+.head:empty {
+  display: none;
 }
 .crumbs {
   display: flex;

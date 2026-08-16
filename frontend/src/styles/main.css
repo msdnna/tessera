@@ -185,6 +185,31 @@
   color: #fff !important;
 }
 
+/* ── NDialog ────────────────────────────────────────────────────────────────
+   Same treatment as NPopconfirm above, for the cases a confirmation cannot hang
+   off a trigger element — a menu item, e.g. «Действия → Удалить документ» in the
+   documents view. Without this the dialog's confirm button is the only flat
+   non-neutral button in the app. */
+.n-dialog .n-dialog__action .n-button--primary-type:not(.n-button--ghost) {
+  background-image: var(--t-accent-grad) !important;
+  border: none !important;
+  color: #fff !important;
+}
+.n-dialog .n-dialog__action .n-button--error-type:not(.n-button--ghost) {
+  background-image: var(--t-error-grad) !important;
+  border: none !important;
+  color: #fff !important;
+}
+.n-dialog .n-dialog__icon .n-base-icon,
+.n-dialog .n-dialog__icon .n-base-icon svg {
+  fill: url(#t-accent-grad-svg) !important;
+  color: transparent !important;
+}
+.n-dialog.n-dialog--icon-left.n-dialog--error-type .n-dialog__icon .n-base-icon,
+.n-dialog.n-dialog--icon-left.n-dialog--error-type .n-dialog__icon .n-base-icon svg {
+  fill: url(#t-error-grad-svg) !important;
+}
+
 html,
 body,
 #app {

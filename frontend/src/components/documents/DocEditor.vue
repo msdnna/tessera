@@ -645,11 +645,16 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
    cx-doc-editor.spec.js forbids literal colours and the palette has no shadow
    token. The contrast comes from the surface/surface-alt pair instead, which is
    defined in both themes and follows the accent the user picks. */
+/* Same 8px as the sheet below: the work area is the sheet's frame, and a square
+   frame around a rounded sheet read as an unfinished corner (задача 2727).
+   No task number written as "#NNNN" in this stylesheet — the theming guard in
+   cx-doc-editor.spec.js reads four hex digits after a hash as a literal colour. */
 .doc-content {
   flex: 1;
   overflow-y: auto;
   padding: 16px 12px 28px;
   background: var(--t-surface-alt);
+  border-radius: 8px;
   min-height: 0;
 }
 .hidden-file {
