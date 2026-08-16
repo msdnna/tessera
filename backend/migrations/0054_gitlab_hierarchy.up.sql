@@ -4,8 +4,11 @@
 -- still just a task with a parent_id. Everything GitLab-shaped lives on the
 -- integration's own gitlab_links row.
 --
--- Numbering: 0054..0060 are already claimed by task/2712, task/2713 and
--- feat/2718-documents, so this takes 0061 rather than adding a fourth claim on 0054.
+-- Numbering: 0054 is also claimed by task/2712, task/2713 and feat/2718-documents
+-- (which runs 0054..0060). Taking a "free" higher number to dodge them is wrong — it
+-- leaves a gap on THIS branch, and backend/e2e/migrate_test.go requires contiguous
+-- numbering (highest == number of .up.sql files). Numbers are diverged at merge time
+-- by renumbering the later branch, not reserved in advance (see CLAUDE.md).
 --
 -- gl_is_group records that the mirrored issue carries the grouping label. The pull
 -- stays the source of truth for it, but storing it lets a sync keep asking GitLab for
