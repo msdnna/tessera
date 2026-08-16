@@ -85,6 +85,27 @@ func (q *Queries) ClaimPushedUserComment(ctx context.Context, arg ClaimPushedUse
 	return id, err
 }
 
+const countGitlabChildLinks = `-- name: CountGitlabChildLinks :one
+SELECT count(*)
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.parent_id = $2
+`
+
+type CountGitlabChildLinksParams struct {
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ParentID      *uuid.UUID `json:"parent_id"`
+}
+
+// CountGitlabChildLinks counts the linked subtasks under a task — the gate that stops
+// ungrouping a parent that still has GitLab children hanging off it.
+func (q *Queries) CountGitlabChildLinks(ctx context.Context, arg CountGitlabChildLinksParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countGitlabChildLinks, arg.IntegrationID, arg.ParentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createGitlabIntegration = `-- name: CreateGitlabIntegration :one
 
 INSERT INTO gitlab_integrations (
@@ -169,7 +190,7 @@ INSERT INTO gitlab_links (
     gl_author_avatar_url, gl_last_state
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id
 `
 
 type CreateGitlabLinkParams struct {
@@ -229,6 +250,9 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }
@@ -458,7 +482,7 @@ func (q *Queries) GetGitlabIntegrationByProject(ctx context.Context, projectID u
 
 const getGitlabLinkByGlobalID = `-- name: GetGitlabLinkByGlobalID :one
 
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
 `
 
 type GetGitlabLinkByGlobalIDParams struct {
@@ -492,12 +516,15 @@ func (q *Queries) GetGitlabLinkByGlobalID(ctx context.Context, arg GetGitlabLink
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }
 
 const getGitlabLinkByTask = `-- name: GetGitlabLinkByTask :one
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden FROM gitlab_links WHERE task_id = $1
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id FROM gitlab_links WHERE task_id = $1
 `
 
 func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (GitlabLink, error) {
@@ -525,6 +552,9 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }
@@ -755,6 +785,43 @@ func (q *Queries) ListDueSyncIntegrations(ctx context.Context) ([]GitlabIntegrat
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGitlabChildGlobalIDs = `-- name: ListGitlabChildGlobalIDs :many
+SELECT l.gl_global_id
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.parent_id = $2
+`
+
+type ListGitlabChildGlobalIDsParams struct {
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ParentID      *uuid.UUID `json:"parent_id"`
+}
+
+// ListGitlabChildGlobalIDs returns the GitLab global ids of the linked tasks that are
+// currently parented under one task. The pull uses it to tell a real detach in GitLab
+// ("the parent listed its children and this one was not among them") apart from "we
+// could not list that parent's children this run" — without it, one failed child query
+// drops every subtask to top-level.
+func (q *Queries) ListGitlabChildGlobalIDs(ctx context.Context, arg ListGitlabChildGlobalIDsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listGitlabChildGlobalIDs, arg.IntegrationID, arg.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var gl_global_id string
+		if err := rows.Scan(&gl_global_id); err != nil {
+			return nil, err
+		}
+		items = append(items, gl_global_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1018,6 +1085,40 @@ func (q *Queries) RemoveGitlabAssignee(ctx context.Context, arg RemoveGitlabAssi
 	return err
 }
 
+const setGitlabLinkGroup = `-- name: SetGitlabLinkGroup :exec
+
+UPDATE gitlab_links SET gl_is_group = $2 WHERE task_id = $1
+`
+
+type SetGitlabLinkGroupParams struct {
+	TaskID    uuid.UUID `json:"task_id"`
+	GlIsGroup bool      `json:"gl_is_group"`
+}
+
+// ── issue hierarchy: grouped parents and their children (#2592) ──
+// SetGitlabLinkGroup records whether the mirrored issue carries the grouping label.
+func (q *Queries) SetGitlabLinkGroup(ctx context.Context, arg SetGitlabLinkGroupParams) error {
+	_, err := q.db.Exec(ctx, setGitlabLinkGroup, arg.TaskID, arg.GlIsGroup)
+	return err
+}
+
+const setGitlabLinkHierarchy = `-- name: SetGitlabLinkHierarchy :exec
+UPDATE gitlab_links SET gl_work_item_id = $2, gl_parent_global_id = $3 WHERE task_id = $1
+`
+
+type SetGitlabLinkHierarchyParams struct {
+	TaskID           uuid.UUID `json:"task_id"`
+	GlWorkItemID     string    `json:"gl_work_item_id"`
+	GlParentGlobalID string    `json:"gl_parent_global_id"`
+}
+
+// SetGitlabLinkHierarchy caches the issue's own WorkItem gid and its parent's, so the
+// hierarchy mutation never has to construct a gid from a number.
+func (q *Queries) SetGitlabLinkHierarchy(ctx context.Context, arg SetGitlabLinkHierarchyParams) error {
+	_, err := q.db.Exec(ctx, setGitlabLinkHierarchy, arg.TaskID, arg.GlWorkItemID, arg.GlParentGlobalID)
+	return err
+}
+
 const setGitlabLinkSnapshot = `-- name: SetGitlabLinkSnapshot :exec
 UPDATE gitlab_links SET gl_snapshot = $2 WHERE task_id = $1
 `
@@ -1177,7 +1278,7 @@ SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
     gl_last_state = $11,
     last_synced_at = now()
 WHERE task_id = $1
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id
 `
 
 type UpdateGitlabLinkParams struct {
@@ -1231,6 +1332,9 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }
