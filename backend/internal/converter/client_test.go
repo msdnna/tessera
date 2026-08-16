@@ -22,6 +22,28 @@ func TestDisabledClientDoesNotCallOut(t *testing.T) {
 	}
 }
 
+func TestClientIgnoresEnvironmentProxy(t *testing.T) {
+	// The bug this pins (#2733): with HTTP_PROXY set — which it is in this
+	// deployment, for GitLab — the default transport sent `http://converter:3000`
+	// to the proxy, which cannot resolve a compose service name and answered 502.
+	// NO_PROXY did not save it: the network the name resolves into was listed as
+	// `172.16.0.0/12`, and a CIDR entry is only matched against a host that is
+	// already an IP literal.
+	//
+	// This is asserted on the transport rather than by pointing a real proxy at a
+	// running client, because net/http resolves the proxy environment once per
+	// process and caches it — a behavioural test would pass or fail depending on
+	// which test ran first. httptest cannot help either: its servers listen on
+	// 127.0.0.1, which the proxy lookup bypasses unconditionally.
+	tr, ok := New("http://converter:3000").http.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport is %T, want *http.Transport", New("http://converter:3000").http.Transport)
+	}
+	if tr.Proxy != nil {
+		t.Fatal("sidecar client would route through the environment proxy")
+	}
+}
+
 func TestConvertPassesFormatsAndBody(t *testing.T) {
 	var gotFrom, gotTo string
 	var gotBody []byte

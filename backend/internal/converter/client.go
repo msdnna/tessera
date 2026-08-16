@@ -57,10 +57,22 @@ const DefaultTimeout = 150 * time.Second
 
 // New builds a client for baseURL. An empty baseURL yields a disabled client
 // rather than nil, so callers never have to nil-check before asking Enabled.
+//
+// The transport ignores HTTP_PROXY/HTTPS_PROXY on purpose. The sidecar is a
+// neighbour on the compose network, addressed by service name (`converter`),
+// and a request to it must never leave that network — but the default transport
+// sends it to whatever proxy the environment names, and NO_PROXY cannot say
+// otherwise: its CIDR entries are matched only against a URL host that is an IP
+// literal, so a hostname slips past `172.16.0.0/12` even though that is exactly
+// the network it resolves into. The resulting failure is silent from both ends —
+// the proxy answers 502, the sidecar's log stays empty, and the status route
+// reports "unavailable" on an install that is wired correctly (#2733).
 func New(baseURL string) *Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
 	return &Client{
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-		http:    &http.Client{Timeout: DefaultTimeout},
+		http:    &http.Client{Timeout: DefaultTimeout, Transport: transport},
 	}
 }
 

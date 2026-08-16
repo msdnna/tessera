@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -107,6 +108,12 @@ func (h *API) ConverterStatus(c *gin.Context) {
 	}
 	info, err := h.converter.Health(c)
 	if err != nil {
+		// The reason in the body is what the user reads, so it cannot carry the
+		// transport error — and without this line nothing else does either: the
+		// access log shows a 200, the sidecar's log is empty because the request
+		// never arrived, and an operator who set CONVERTER_URL correctly is left
+		// with no thread to pull (#2733).
+		log.Printf("converter: health check failed: %v", err)
 		c.JSON(http.StatusOK, gin.H{
 			"available":      false,
 			"reason":         "сервис конвертации недоступен",
@@ -370,6 +377,10 @@ func converterUnavailable(c *gin.Context, err error) {
 		})
 		return
 	}
+	// Same reasoning as in ConverterStatus: a refusal the sidecar produced is
+	// already in the response above, but a failure to reach it at all leaves the
+	// user with a message that names no cause. Log it once, here.
+	log.Printf("converter: request failed: %v", err)
 	c.JSON(http.StatusServiceUnavailable, gin.H{
 		"error": "сервис конвертации документов недоступен",
 	})
