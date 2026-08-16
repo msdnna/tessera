@@ -76,18 +76,50 @@ describe.each(DOC_FILES)('%s theming', (file) => {
 describe('document toolbar skin', () => {
   const source = readFileSync(resolve(root, 'src/components/documents/DocToolbar.vue'), 'utf8')
 
-  // The selects and tabs are naive-ui components, so they inherit
+  // The popovers and icons are naive-ui components, so they inherit
   // themeOverrides; writing them by hand is how a third-party-looking panel
-  // creeps in.
+  // creeps in. The list changed with the single-row panel (задача 2727): the
+  // tabs and the four selects are gone, the requirement is not.
   it('builds its controls from naive-ui components', () => {
-    for (const tag of ['n-tabs', 'n-tab-pane', 'n-select']) {
+    for (const tag of ['n-popover', 'n-icon']) {
       expect(source).toContain(`<${tag}`)
     }
+  })
+
+  // The tabs hid half the tools behind a click and cost the row its width;
+  // bringing them back would undo the rework silently.
+  it('keeps every tool on one row', () => {
+    expect(source).not.toContain('<n-tabs')
+    expect(source).not.toContain('<n-tab-pane')
   })
 
   // The accent is user-configurable at runtime, so the active state has to read
   // the token rather than a fixed purple.
   it('paints the active button with the accent token', () => {
     expect(source).toMatch(/\.doc-tbtn\.on\s*{[^}]*var\(--t-primary\)/)
+  })
+})
+
+describe('document sheet', () => {
+  const source = readFileSync(resolve(root, 'src/components/documents/DocEditor.vue'), 'utf8')
+  const css = styleBlock(source)
+
+  // The sheet is what makes the editor read as a document rather than as a text
+  // field: a bounded, centred surface standing on a differently coloured work
+  // area. Without a shadow token to lean on, that pair of backgrounds is the
+  // only thing carrying the contrast, so both halves are asserted.
+  it('bounds the editing surface and stands it on the work area', () => {
+    expect(css).toMatch(/\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*max-width:\s*\d+px/)
+    expect(css).toMatch(
+      /\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*background:\s*var\(--t-surface\)/,
+    )
+    expect(css).toMatch(/\.doc-content\s*{[^}]*background:\s*var\(--t-surface-alt\)/)
+  })
+
+  // The handle used to sit at `left: 0` of the surface; once the sheet is
+  // centred that is nowhere near the text, so the anchor has to be measured.
+  it('anchors the drag handle to the sheet', () => {
+    expect(source).toContain('view.dom.getBoundingClientRect().left')
+    expect(source).toMatch(/left:\s*`\$\{handle\.left}px`/)
   })
 })

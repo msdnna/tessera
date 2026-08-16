@@ -69,7 +69,7 @@ const uploading = ref(false)
 
 // The gutter that carries the drag handle. `pos` is the document position of
 // the block it currently addresses — everything the handle does needs it.
-const handle = reactive({ visible: false, top: 0, pos: 0, index: 0 })
+const handle = reactive({ visible: false, top: 0, left: 0, pos: 0, index: 0 })
 const slash = reactive({ active: false, items: [], index: 0, left: 0, top: 0 })
 
 // Tracks the JSON we last emitted, so the watcher below can tell "the parent
@@ -338,6 +338,11 @@ function applyRemote(json) {
 
 /* ---- drag handle -------------------------------------------------------- */
 
+// Distance from the sheet's left edge to the handle. Keeps the three buttons
+// inside the sheet's left padding instead of floating in the work area beside
+// it, where a narrow window would put them off-screen.
+const GUTTER_INSET = 4
+
 function onSurfaceMove(e) {
   const view = editor.value?.view
   if (!view || !props.editable) return
@@ -346,8 +351,14 @@ function onSurfaceMove(e) {
     handle.visible = false
     return
   }
+  const surfaceRect = surface.value.getBoundingClientRect()
   handle.visible = true
-  handle.top = found.rect.top - surface.value.getBoundingClientRect().top
+  handle.top = found.rect.top - surfaceRect.top
+  // Anchored to the sheet, not to the surface: the sheet is centred in the work
+  // area, so a fixed `left: 0` would leave the handle stranded against the far
+  // edge of the window. It rides in the sheet's left padding, which is sized to
+  // hold it (.doc-content :deep(.ProseMirror) below).
+  handle.left = view.dom.getBoundingClientRect().left - surfaceRect.left + GUTTER_INSET
   handle.pos = found.pos
   handle.index = found.index
 }
@@ -457,7 +468,11 @@ defineExpose({ editor, goToBlock, applyRemote })
       @mousemove="onSurfaceMove"
       @mouseleave="handle.visible = false"
     >
-      <div v-show="handle.visible" class="doc-gutter" :style="{ top: `${handle.top}px` }">
+      <div
+        v-show="handle.visible"
+        class="doc-gutter"
+        :style="{ top: `${handle.top}px`, left: `${handle.left}px` }"
+      >
         <button
           type="button"
           class="gutter-btn"
@@ -548,14 +563,16 @@ defineExpose({ editor, goToBlock, applyRemote })
   flex: 1;
   min-height: 0;
 }
+/* The work area the sheet sits on. Its own background is what makes the sheet
+   read as a sheet — there is no shadow to lean on, because the theming guard in
+   cx-doc-editor.spec.js forbids literal colours and the palette has no shadow
+   token. The contrast comes from the surface/surface-alt pair instead, which is
+   defined in both themes and follows the accent the user picks. */
 .doc-content {
   flex: 1;
   overflow-y: auto;
-  /* Left padding is the gutter's lane: without it the handle overlaps the first
-     characters of every line. Three buttons wide since задача 2730 added the
-     "обсудить блок" one (no hash on purpose — the theming guard in
-     cx-doc-editor.spec.js reads a #NNNN in this block as a literal colour). */
-  padding: 12px 2px 12px 52px;
+  padding: 16px 12px 28px;
+  background: var(--t-surface-alt);
   min-height: 0;
 }
 .hidden-file {
@@ -563,9 +580,14 @@ defineExpose({ editor, goToBlock, applyRemote })
 }
 
 /* ---- drag handle ---- */
+/* `left` is set inline from the sheet's rect — see onSurfaceMove.
+   The z-index is load-bearing now that the handle rides inside the sheet's
+   padding rather than beside it: ProseMirror gives its own element
+   `position: relative`, and being a later sibling it would otherwise paint over
+   the handle and swallow every click on it. */
 .doc-gutter {
   position: absolute;
-  left: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 1px;
@@ -651,9 +673,23 @@ defineExpose({ editor, goToBlock, applyRemote })
 /* ProseMirror renders plain DOM, so naive-ui's themeOverrides never reach it —
    the CSS custom properties are the only channel the theme has here. Every
    colour below therefore comes from a --t-* token with no literal fallback. */
+/* The editing surface itself is the sheet: bounded width, centred, its own
+   background against the work area. The left padding doubles as the drag
+   handle's lane (see GUTTER_INSET above), so it is wider than the right one by
+   the width of the three gutter buttons.
+   The width is visual only — this is still a block document, and page size,
+   margins and orientation remain export-time settings (задача 2733), so there
+   are no page breaks here. */
 .doc-content :deep(.ProseMirror) {
   outline: none;
-  min-height: 240px;
+  box-sizing: border-box;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 40px 40px 56px 56px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+  min-height: 480px;
   color: var(--t-text1);
   line-height: 1.6;
 }

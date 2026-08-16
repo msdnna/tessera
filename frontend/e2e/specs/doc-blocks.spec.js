@@ -99,3 +99,29 @@ test('документ: ручка блока появляется по наве
   // draggable is what hands the block to ProseMirror's own drag machinery.
   await expect(gutter.locator('.grip')).toHaveAttribute('draggable', 'true')
 })
+
+// The sheet (задача 2727) is the first thing in this editor with a width of its
+// own, and it moved the handle: the old `left: 0` anchor was the work area's
+// edge, which is nowhere near the text once the sheet is centred. Geometry is
+// checked in the browser because that is the only place it exists — the unit
+// test can only see that the rules were written.
+test('документ: лист центрирован, ручка стоит у текста', async ({ page, seed }) => {
+  const editor = await newDocument(page, seed)
+  await editor.pressSequentially('абзац на листе')
+
+  const work = await page.locator('.doc-content').boundingBox()
+  const sheet = await editor.boundingBox()
+  expect(sheet.width).toBeLessThan(work.width)
+  // Centred: the margins on both sides match to within a pixel.
+  const left = sheet.x - work.x
+  const right = work.x + work.width - (sheet.x + sheet.width)
+  expect(Math.abs(left - right)).toBeLessThan(2)
+
+  await editor.locator('p').first().hover()
+  const handle = await page.locator('.doc-gutter').boundingBox()
+  const text = await editor.locator('p').first().boundingBox()
+  // Inside the sheet, in the lane its left padding leaves — not out in the work
+  // area, and not on top of the first characters.
+  expect(handle.x).toBeGreaterThanOrEqual(sheet.x)
+  expect(handle.x + handle.width).toBeLessThanOrEqual(text.x)
+})
