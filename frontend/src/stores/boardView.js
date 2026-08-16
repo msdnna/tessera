@@ -67,6 +67,10 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const gitlabCanCreate = ref(false)
   const gitlabFetchTemplates = ref(false)
   const gitlabIntegrationId = ref(null)
+  // Same shape for the hierarchy half (#2592): writeback.push_children gates both the
+  // "Сделать сгруппированной" button on a parent and the per-subtask push/retry. Kept
+  // separate from gitlabCanCreate because an integration can allow one and not the other.
+  const gitlabCanGroup = ref(false)
 
   // ── card display (customize-view; part of the per-board saved view) ──
   const cardSize = ref('medium') // 'compact' | 'medium' | 'large'
@@ -109,6 +113,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     gitlabCanCreate.value = false
     gitlabFetchTemplates.value = false
     gitlabIntegrationId.value = null
+    gitlabCanGroup.value = false
     cardSize.value = 'medium'
     stackFields.value = false
     showEmpty.value = true
@@ -136,6 +141,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     gitlabCanCreate,
     gitlabFetchTemplates,
     gitlabIntegrationId,
+    gitlabCanGroup,
     cardSize,
     stackFields,
     showEmpty,

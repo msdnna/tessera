@@ -503,6 +503,12 @@ export const gitlab = {
       params: integId ? { integration_id: integId } : undefined,
       skipLoader: true,
     }),
+  // Issue hierarchy (#2592): mark the task's issue as a grouped parent, and push one
+  // subtask under it. setGroup/clearGroup answer with the refreshed link view;
+  // pushChild only queues (202) — the result arrives over the realtime channel.
+  setGroup: (taskId) => api.post(`/tasks/${taskId}/gitlab-group`),
+  clearGroup: (taskId) => api.delete(`/tasks/${taskId}/gitlab-group`),
+  pushChild: (taskId) => api.post(`/tasks/${taskId}/gitlab-child`),
   // Write-back conflicts: open-conflict inbox + interactive resolution.
   conflicts: (wsId) => api.get(`/workspaces/${wsId}/gitlab/conflicts`),
   resolveConflict: (taskId, conflictId, data) =>

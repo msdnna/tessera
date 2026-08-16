@@ -110,6 +110,7 @@ const {
   gitlabCanCreate,
   gitlabFetchTemplates,
   gitlabIntegrationId,
+  gitlabCanGroup,
   cardSize,
   stackFields,
   showEmpty,
@@ -908,6 +909,9 @@ async function loadWorkspaceMeta() {
   gitlabIntegrationId.value = gi.id || null
   gitlabCanCreate.value = gi.enabled === true && gi.writeback?.push_create === true
   gitlabFetchTemplates.value = gitlabCanCreate.value && gi.writeback?.fetch_templates === true
+  // Grouping is its own flag, not a sub-option of push_create: an integration may push
+  // subtasks into an existing issue hierarchy without allowing issue creation from tasks.
+  gitlabCanGroup.value = gi.enabled === true && gi.writeback?.push_children === true
   // Prefixes whose tags are governed by a status/priority/meta GitLab rule — hidden
   // from tag pickers so they can't be toggled out of sync with the mapped field.
   // Collected across every integration that targets this board (multi-binding).

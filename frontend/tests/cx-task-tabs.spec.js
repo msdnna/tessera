@@ -21,6 +21,7 @@ const api = {
   },
   boards: { createTask: vi.fn() },
   workspaces: { tasks: vi.fn() },
+  gitlab: { pushChild: vi.fn() },
 }
 vi.mock('@/api', () => api)
 
@@ -252,5 +253,77 @@ describe('TaskSubtasksTab.vue', () => {
     const w = mount(C, { props: { task, columns }, global: { stubs } })
     await w.findAll('.subrow')[0].trigger('click')
     expect(w.emitted('open')[0]).toEqual(['s1'])
+  })
+
+  // ── GitLab hierarchy column (#2592) ──
+  // The distinction that matters: an issue exists (gl_iid) but GitLab did not accept
+  // it as a child (empty gl_parent_global_id). That subtask is NOT lost, so the row
+  // must offer a retry instead of reading as "in GitLab".
+  const glTask = (over = {}) => ({
+    ...task,
+    gitlab: { iid: 10, is_group: true, ...(over.gitlab || {}) },
+    subtasks: [
+      {
+        id: 's1',
+        title: 'В иерархии',
+        column_id: 'c1',
+        gl_iid: 11,
+        gl_parent_global_id: 'gid://x',
+      },
+      { id: 's2', title: 'Вне иерархии', column_id: 'c1', gl_iid: 12, gl_parent_global_id: '' },
+      { id: 's3', title: 'Не выгружена', column_id: 'c1' },
+    ],
+  })
+
+  it('tells "child work item" apart from "issue exists but is not in the hierarchy"', async () => {
+    seedBoardStore({ columns })
+    const C = await load()
+    const w = mount(C, {
+      props: { task: glTask(), columns, gitlabCanGroup: true },
+      global: { stubs },
+    })
+    const chips = w.findAll('.gl-chip')
+    expect(chips).toHaveLength(3)
+    // Real child → a plain link to the issue, no action.
+    expect(chips[0].element.tagName).toBe('A')
+    expect(chips[0].text()).toBe('!11')
+    // The other two are actionable, and say which of the two problems it is.
+    expect(chips[1].text()).toBe('вне иерархии')
+    expect(chips[2].text()).toBe('не в GitLab')
+  })
+
+  it('queues a push for the subtask that is out of the hierarchy', async () => {
+    seedBoardStore({ columns })
+    api.gitlab.pushChild.mockResolvedValue({})
+    const C = await load()
+    const w = mount(C, {
+      props: { task: glTask(), columns, gitlabCanGroup: true },
+      global: { stubs },
+    })
+    await w.findAll('.gl-chip')[1].trigger('click')
+    await flushPromises()
+    expect(api.gitlab.pushChild).toHaveBeenCalledWith('s2')
+  })
+
+  it('offers to mark the parent instead of per-row pushes when it is not grouped', async () => {
+    seedBoardStore({ columns })
+    const C = await load()
+    const w = mount(C, {
+      props: { task: glTask({ gitlab: { is_group: false } }), columns, gitlabCanGroup: true },
+      global: { stubs },
+    })
+    // Nothing here can reach the hierarchy, so no row offers a push…
+    expect(w.findAll('.gl-chip.act')).toHaveLength(0)
+    // …and the fix is offered once, at the bottom.
+    await w.find('.gl-hint-act').trigger('click')
+    expect(w.emitted('group-parent')).toHaveLength(1)
+  })
+
+  it('shows nothing GitLab-ish when the integration does not push children', async () => {
+    seedBoardStore({ columns })
+    const C = await load()
+    const w = mount(C, { props: { task: glTask(), columns }, global: { stubs } })
+    expect(w.findAll('.gl-chip')).toHaveLength(0)
+    expect(w.find('.gl-hint').exists()).toBe(false)
   })
 })

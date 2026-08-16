@@ -115,6 +115,12 @@ const lastSynced = ref(null)
 const wbEnabled = ref(false) // master toggle for the whole binding table
 const wbCreate = ref(false) // allow creating GitLab issues from tasks (independent of write-back)
 const wbFetchTemplates = ref(false) // offer repo issue templates when creating
+// Issue hierarchy (#2592). Plain flags, not rows in the binding table: a binding is
+// "a field of an already-linked task changed", and creating a subtask is neither —
+// the trigger is structural and the child has no link yet.
+const wbChildren = ref(false) // push subtasks of a grouped parent as child work items
+const wbAutoGroup = ref(false) // label a linked parent as grouped on the first child
+const wbGroupLabel = ref('') // empty = the backend default ("M: Сгруппированная задача")
 // bindings is the customizable trigger→action table (replaces the fixed toggles).
 // Each entry: { enabled, trigger:{type,column_id,column_name,priority,completed,date_kind},
 //               action:{type,label,clear_prefix,state,date_kind,add_marker} }
@@ -401,6 +407,9 @@ async function applyBinding(data) {
     wbEnabled.value = wb.enabled === true
     wbCreate.value = wb.push_create === true
     wbFetchTemplates.value = wb.fetch_templates === true
+    wbChildren.value = wb.push_children === true
+    wbAutoGroup.value = wb.auto_group_on_child === true
+    wbGroupLabel.value = wb.group_label || ''
     estimationUnit.value = data.estimation_unit || 'time'
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
@@ -651,6 +660,11 @@ async function save() {
         enabled: wbEnabled.value,
         push_create: wbCreate.value,
         fetch_templates: wbCreate.value && wbFetchTemplates.value,
+        push_children: wbChildren.value,
+        // Both sub-options only mean anything with the parent flag on, so they are
+        // cleared with it rather than kept as dormant state (same rule as templates).
+        auto_group_on_child: wbChildren.value && wbAutoGroup.value,
+        group_label: wbChildren.value ? wbGroupLabel.value.trim() : '',
         // The binding table fully replaces the legacy toggles; a non-empty set makes
         // the backend ignore them entirely.
         bindings: wbEnabled.value ? bindings.value.map(serializeBinding) : [],
@@ -1001,6 +1015,23 @@ watch(
                   <n-text depth="3" class="lbl">Получение issue-templates из проекта</n-text>
                   <div><n-switch v-model:value="wbFetchTemplates" size="small" /></div>
                 </template>
+
+                <n-text depth="3" class="lbl">Выгрузка подзадач в иерархию GitLab</n-text>
+                <div><n-switch v-model:value="wbChildren" /></div>
+
+                <template v-if="wbChildren">
+                  <n-text depth="3" class="lbl">Метка сгруппированной задачи</n-text>
+                  <div>
+                    <n-input
+                      v-model:value="wbGroupLabel"
+                      size="small"
+                      placeholder="M: Сгруппированная задача"
+                    />
+                  </div>
+
+                  <n-text depth="3" class="lbl">Помечать родителя автоматически</n-text>
+                  <div><n-switch v-model:value="wbAutoGroup" size="small" /></div>
+                </template>
               </div>
               <p class="gl-wb-hint">
                 <n-text depth="3">
@@ -1011,6 +1042,17 @@ watch(
                   подтягивает шаблоны
                   <code>.gitlab/issue_templates/*.md</code> — их можно выбрать над редактором
                   описания перед созданием.
+                </n-text>
+              </p>
+              <p v-if="wbChildren" class="gl-wb-hint">
+                <n-text depth="3">
+                  «Выгрузка подзадач» добавляет в модалку задачи кнопку «Сделать сгруппированной»
+                  (ставит метку в GitLab), а подзадачи такого родителя создаются в GitLab дочерними
+                  элементами issue. Метку задаём здесь, а не тегом: её префиксом управляет правило
+                  синка, поэтому в тег-пикере он намеренно скрыт — метка должна читаться правилами
+                  этой интеграции как группирующая, иначе сервер отклонит кнопку. «Помечать родителя
+                  автоматически» выключено по умолчанию: иначе первая же подзадача молча правит
+                  метки в GitLab; вместо этого в списке подзадач показывается подсказка с кнопкой.
                 </n-text>
               </p>
               <!-- Uniform "configure" buttons: each opens the right pane in its mode. The

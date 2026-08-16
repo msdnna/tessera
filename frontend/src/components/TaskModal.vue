@@ -31,6 +31,7 @@ import {
   ArchiveOutline,
   ArrowUndoOutline,
   GitMergeOutline,
+  LayersOutline,
   LogoGitlab,
   RepeatOutline,
   AttachOutline,
@@ -127,6 +128,7 @@ const {
   gitlabCanCreate,
   gitlabFetchTemplates,
   gitlabIntegrationId,
+  gitlabCanGroup,
 } = storeToRefs(bv)
 const tagPrefixNames = bv.prefixNames
 const wsId = computed(() => bv.wsId)
@@ -728,6 +730,33 @@ async function createGlIssue() {
     message.error(e?.response?.data?.error || e.message)
   } finally {
     glCreating.value = false
+  }
+}
+// ── Mark this task's issue as a grouped parent (#2592) ──
+// Offered only for an already-linked task on an integration that allows pushing
+// children. Ungrouping is refused by the backend (409) while GitLab-linked subtasks
+// still hang off this issue — that message is what the user sees.
+const glGrouping = ref(false)
+const glGroupAction = computed(() => {
+  if (glGrouping.value) return 'Сохранение…'
+  return task.value?.gitlab?.is_group ? 'Снять группировку' : 'Сделать сгруппированной'
+})
+async function toggleGlGroup() {
+  const link = task.value?.gitlab
+  if (!link || glGrouping.value) return
+  const grouped = link.is_group === true
+  glGrouping.value = true
+  try {
+    const res = grouped ? await glApi.clearGroup(props.taskId) : await glApi.setGroup(props.taskId)
+    // The endpoint answers with the refreshed link view, so no re-fetch is needed for
+    // the button itself; `changed` still fires because the board card shows the badge.
+    task.value = { ...task.value, gitlab: res.data }
+    message.success(grouped ? 'Группировка снята' : 'Задача помечена сгруппированной')
+    emit('changed')
+  } catch (e) {
+    message.error(e?.response?.data?.error || e.message)
+  } finally {
+    glGrouping.value = false
   }
 }
 async function save() {
@@ -1443,6 +1472,21 @@ async function onSubtaskChanged() {
                   <span class="muted">{{ glCreating ? 'Создание…' : 'Создать issue' }}</span>
                 </button>
               </div>
+
+              <!-- grouped-task marker (#2592): the parent half of the GitLab hierarchy.
+                   A button and not a tag — the grouping label lives in a prefix the pull
+                   rules own, so it is hidden from the tag pickers on purpose. -->
+              <div v-if="task?.gitlab && gitlabCanGroup" class="prow">
+                <span class="plabel"
+                  ><n-icon :component="LayersOutline" :size="15" /> Группировка</span
+                >
+                <div class="group-cell">
+                  <span v-if="task.gitlab.is_group" class="group-chip">Сгруппированная</span>
+                  <button class="val" :disabled="glGrouping" @click="toggleGlGroup">
+                    <span class="muted">{{ glGroupAction }}</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div class="section">
@@ -1577,8 +1621,10 @@ async function onSubtaskChanged() {
                   :task="task"
                   :columns="columns"
                   :readonly="readonly"
+                  :gitlab-can-group="gitlabCanGroup"
                   @open="emit('open', $event)"
                   @changed="onSubtaskChanged"
+                  @group-parent="toggleGlGroup"
                 />
               </n-tab-pane>
 
@@ -2077,6 +2123,23 @@ async function onSubtaskChanged() {
 /* recurrence repeat glyph on the due value */
 .recur-mark {
   color: var(--t-primary);
+}
+/* grouped-task marker (#2592): badge + toggle share the value slot */
+.group-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* Neutral outline, not an accent pill: this states a fact about the issue in GitLab,
+   it is not an action. */
+.group-chip {
+  padding: 1px 7px;
+  border: 1px solid var(--t-border);
+  border-radius: 999px;
+  color: var(--t-text2);
+  font-size: 11px;
+  white-space: nowrap;
 }
 /* Read-only value (Author): no hover affordance, default cursor. */
 .val.static {
