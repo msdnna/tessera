@@ -151,14 +151,22 @@ test('документ: ручка блока центрирована по пе
     const block = editor.locator(selector).first()
     await block.hover()
     await expect(gutter).toBeVisible()
-    const row = await gutter.boundingBox()
-    // The first line's own box, not the block's: a heading's box starts above
-    // its text, which is exactly what used to throw the handle off.
-    const line = await block.evaluate((el) => {
-      const r = el.getClientRects()[0]
-      return { top: r.top, bottom: r.bottom }
-    })
-    expect(Math.abs(row.y + row.height / 2 - (line.top + line.bottom) / 2)).toBeLessThan(2)
+    // The handle now slides between blocks over 120ms (the /rework on #2728), so
+    // a single measurement catches it mid-flight on every block but the first.
+    // Polled, not slept through: the claim is about where the handle SETTLES, and
+    // a handle that settles off the line still fails — it just gets 5s to arrive.
+    await expect
+      .poll(async () => {
+        const row = await gutter.boundingBox()
+        // The first line's own box, not the block's: a heading's box starts above
+        // its text, which is exactly what used to throw the handle off.
+        const line = await block.evaluate((el) => {
+          const r = el.getClientRects()[0]
+          return { top: r.top, bottom: r.bottom }
+        })
+        return Math.abs(row.y + row.height / 2 - (line.top + line.bottom) / 2)
+      })
+      .toBeLessThan(2)
   }
 })
 
