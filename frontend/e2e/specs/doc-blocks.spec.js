@@ -125,3 +125,80 @@ test('документ: лист центрирован, ручка стоит �
   expect(handle.x).toBeGreaterThanOrEqual(sheet.x)
   expect(handle.x + handle.width).toBeLessThanOrEqual(text.x)
 })
+
+// The /rework on #2728: the handle was anchored to the top of the block's box.
+// On a paragraph that is within a pixel of the first line, and a 1px CSS nudge
+// hid the rest; on a heading the box opens a 14px margin above the text, and the
+// handle visibly floated. A spec without the heading would be decorative — the
+// paragraph passed before the fix too.
+test('документ: ручка блока центрирована по первой строке и абзаца, и заголовка', async ({
+  page,
+  seed,
+}) => {
+  const editor = await newDocument(page, seed)
+  // One word: the slash query stops at the first space (slashMenu.js), so
+  // "/заголовок 1" would close the menu instead of narrowing it. "заголовок"
+  // leaves h1..h3, and h1 is the highlighted one.
+  await editor.pressSequentially('/заголовок')
+  await page.keyboard.press('Enter')
+  await editor.pressSequentially('заголовок документа')
+  await page.keyboard.press('Enter')
+  await editor.pressSequentially('обычный абзац')
+
+  const gutter = page.locator('.doc-gutter')
+
+  for (const selector of ['h1', 'p']) {
+    const block = editor.locator(selector).first()
+    await block.hover()
+    await expect(gutter).toBeVisible()
+    const row = await gutter.boundingBox()
+    // The first line's own box, not the block's: a heading's box starts above
+    // its text, which is exactly what used to throw the handle off.
+    const line = await block.evaluate((el) => {
+      const r = el.getClientRects()[0]
+      return { top: r.top, bottom: r.bottom }
+    })
+    expect(Math.abs(row.y + row.height / 2 - (line.top + line.bottom) / 2)).toBeLessThan(2)
+  }
+})
+
+test('документ: чекбокс стоит на одной линии со своим текстом', async ({ page, seed }) => {
+  const editor = await newDocument(page, seed)
+  // "чекбокс" is a keyword of the task list and of nothing else, and it is one
+  // word — the slash query ends at the first space.
+  await editor.pressSequentially('/чекбокс')
+  await page.keyboard.press('Enter')
+  await editor.pressSequentially('пункт списка задач')
+
+  const box = editor.locator('ul[data-type="taskList"] li input[type="checkbox"]')
+  const text = editor.locator('ul[data-type="taskList"] li p').first()
+  const b = await box.boundingBox()
+  const t = await text.boundingBox()
+  expect(Math.abs(b.y + b.height / 2 - (t.y + t.height / 2))).toBeLessThan(2)
+})
+
+// The hint used to fight the label for one line and win, truncating it to
+// "Список с то…". Stacked, both are whole — and the groups are what the /rework
+// asked for on top of that.
+test('документ: меню вставки сгруппировано и не обрезает названия', async ({ page, seed }) => {
+  const editor = await newDocument(page, seed)
+  await editor.pressSequentially('/')
+
+  const menu = page.locator('.slash-menu')
+  await expect(menu).toBeVisible()
+  await expect(menu.locator('.slash-group-title')).toHaveText([
+    'Текст',
+    'Списки',
+    'Вставка',
+    'Загрузка',
+  ])
+
+  const label = menu.locator('.slash-label').filter({ hasText: 'Маркированный список' })
+  await expect(label).toBeVisible()
+  const clipped = await label.evaluate((el) => el.scrollWidth > el.clientWidth + 1)
+  expect(clipped).toBe(false)
+
+  // Filtering leaves only the groups that still have entries in them.
+  await editor.pressSequentially('спис')
+  await expect(menu.locator('.slash-group-title')).toHaveText(['Списки'])
+})

@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { EditorContent, Editor } from '@tiptap/vue-3'
 import { NButton, NIcon, NInput, NSelect, useMessage } from 'naive-ui'
 import {
@@ -13,10 +13,13 @@ import { docExtensions, toDocJSON } from '@/utils/docSchema'
 import { BLOCK_ID_META, ensureBlockIds } from '@/utils/docExtensions/blockId'
 import {
   blockAtClientY,
+  centerOffset,
   endBlockDrag,
+  firstLineBox,
   startBlockDrag,
   topLevelBlocks,
 } from '@/utils/docExtensions/dragHandle'
+import { groupSlashItems } from '@/utils/docSlash'
 import { slashState } from '@/utils/docExtensions/slashMenu'
 import { TextSelection } from '@tiptap/pm/state'
 import { applyBlockLocks, blockIdAtSelection, blockRanges } from '@/utils/docExtensions/blockLocks'
@@ -70,7 +73,13 @@ const uploading = ref(false)
 // The gutter that carries the drag handle. `pos` is the document position of
 // the block it currently addresses — everything the handle does needs it.
 const handle = reactive({ visible: false, top: 0, left: 0, pos: 0, index: 0 })
+// The gutter element itself — its height is measured rather than assumed, so
+// the centring below keeps working when the button size changes.
+const gutter = ref(null)
 const slash = reactive({ active: false, items: [], index: 0, left: 0, top: 0 })
+// Display-only bucketing of the filtered items; `slash.items` stays the list the
+// arrow keys and the highlighted index address.
+const slashGroups = computed(() => groupSlashItems(slash.items))
 
 // Tracks the JSON we last emitted, so the watcher below can tell "the parent
 // loaded a different document" from "the parent echoed back our own edit".
@@ -353,7 +362,13 @@ function onSurfaceMove(e) {
   }
   const surfaceRect = surface.value.getBoundingClientRect()
   handle.visible = true
-  handle.top = found.rect.top - surfaceRect.top
+  // Centred on the block's FIRST LINE, not on its box. A heading's box opens a
+  // margin above its text and sets its own line-height, so the box top is a
+  // different place from the line — which is why the handle used to look
+  // centred on a paragraph and adrift on a heading.
+  const line = firstLineBox(view, found.pos, found.rect)
+  handle.top =
+    centerOffset(line.top, line.bottom, gutter.value?.offsetHeight || 0) - surfaceRect.top
   // Anchored to the sheet, not to the surface: the sheet is centred in the work
   // area, so a fixed `left: 0` would leave the handle stranded against the far
   // edge of the window. It rides in the sheet's left padding, which is sized to
@@ -468,9 +483,14 @@ defineExpose({ editor, goToBlock, applyRemote })
       @mousemove="onSurfaceMove"
       @mouseleave="handle.visible = false"
     >
+      <!-- Hidden by visibility, not by v-show/display: the centring below
+           measures the row's height, and a display:none row measures zero — the
+           handle would land half its own height too low on the first hover and
+           only correct itself on the second. -->
       <div
-        v-show="handle.visible"
+        ref="gutter"
         class="doc-gutter"
+        :class="{ off: !handle.visible }"
         :style="{ top: `${handle.top}px`, left: `${handle.left}px` }"
       >
         <button
@@ -479,7 +499,7 @@ defineExpose({ editor, goToBlock, applyRemote })
           title="Вставить блок ниже"
           @mousedown.prevent="insertBelow"
         >
-          <n-icon :component="AddOutline" :size="14" />
+          <n-icon :component="AddOutline" :size="16" />
         </button>
         <button
           type="button"
@@ -487,7 +507,7 @@ defineExpose({ editor, goToBlock, applyRemote })
           title="Обсудить блок"
           @mousedown.prevent="annotateBlock"
         >
-          <n-icon :component="ChatbubbleEllipsesOutline" :size="13" />
+          <n-icon :component="ChatbubbleEllipsesOutline" :size="16" />
         </button>
         <button
           type="button"
@@ -511,18 +531,27 @@ defineExpose({ editor, goToBlock, applyRemote })
         class="slash-menu"
         :style="{ left: `${slash.left}px`, top: `${slash.top}px` }"
       >
-        <button
-          v-for="(item, i) in slash.items"
-          :key="item.key"
-          type="button"
-          class="slash-item"
-          :class="{ on: i === slash.index }"
-          @mousedown.prevent="runSlash(item)"
-        >
-          <n-icon :component="item.icon" :size="15" />
-          <span class="slash-label">{{ item.label }}</span>
-          <span class="slash-hint">{{ item.hint }}</span>
-        </button>
+        <!-- Grouped for reading only: the buttons stay a flat run, and the
+             highlighted index still addresses slash.items, so the arrow keys and
+             the mouse cannot disagree about which entry is current. The headings
+             are plain text, not buttons — Enter must never "insert" a group. -->
+        <div v-for="g in slashGroups" :key="g.group" class="slash-group">
+          <div class="slash-group-title">{{ g.group }}</div>
+          <button
+            v-for="item in g.items"
+            :key="item.key"
+            type="button"
+            class="slash-item"
+            :class="{ on: slash.items.indexOf(item) === slash.index }"
+            @mousedown.prevent="runSlash(item)"
+          >
+            <n-icon :component="item.icon" :size="16" />
+            <span class="slash-text">
+              <span class="slash-label">{{ item.label }}</span>
+              <span class="slash-hint">{{ item.hint }}</span>
+            </span>
+          </button>
+        </div>
       </div>
     </div>
     <input ref="fileInput" type="file" accept="image/*" class="hidden-file" @change="onFile" />
@@ -585,21 +614,25 @@ defineExpose({ editor, goToBlock, applyRemote })
    padding rather than beside it: ProseMirror gives its own element
    `position: relative`, and being a later sibling it would otherwise paint over
    the handle and swallow every click on it. */
+/* No margin nudge here any more: the top is computed from the line box (see
+   onSurfaceMove), so the row is centred by arithmetic rather than by eye. */
 .doc-gutter {
   position: absolute;
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: 1px;
-  /* Nudged up so the pair reads as centred on the first line of the block. */
-  margin-top: 1px;
+  gap: 4px;
+}
+.doc-gutter.off {
+  visibility: hidden;
+  pointer-events: none;
 }
 .gutter-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: 4px;
@@ -625,20 +658,36 @@ defineExpose({ editor, goToBlock, applyRemote })
 .slash-menu {
   position: absolute;
   z-index: 10;
-  width: 260px;
-  max-height: 260px;
+  width: 300px;
+  max-height: 320px;
   overflow-y: auto;
   padding: 4px;
   border: 1px solid var(--t-border);
   border-radius: 8px;
   background: var(--t-surface);
 }
+/* A rule between groups rather than around them: the first group sits right
+   under the menu's own border and a second line there would read as a gap. */
+.slash-group + .slash-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--t-border);
+}
+.slash-group-title {
+  padding: 2px 8px 4px;
+  color: var(--t-text3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 .slash-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 5px 8px;
+  min-height: 32px;
+  padding: 4px 8px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -651,18 +700,21 @@ defineExpose({ editor, goToBlock, applyRemote })
 .slash-item.on {
   background: var(--t-hover);
 }
-/* The label is what the user is reading; the hint gives way first, so
-   "Маркированный список" stays whole instead of losing its ending to a
-   nowrap hint that never shrinks. */
+/* Label above hint instead of beside it. Side by side they competed for one
+   line and the hint truncated the label ("Список с то…"); stacked, both fit and
+   the ellipsis rules below never fire in practice. */
+.slash-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
 .slash-label {
-  flex: 1 0 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .slash-hint {
-  flex: 0 1 auto;
-  min-width: 0;
   overflow: hidden;
   color: var(--t-text3);
   font-size: 11px;
@@ -676,7 +728,9 @@ defineExpose({ editor, goToBlock, applyRemote })
 /* The editing surface itself is the sheet: bounded width, centred, its own
    background against the work area. The left padding doubles as the drag
    handle's lane (see GUTTER_INSET above), so it is wider than the right one by
-   the width of the three gutter buttons.
+   the width of the three gutter buttons — 3×24 plus two 4px gaps plus the inset.
+   The asymmetry is deliberate and maintained by hand: a lane narrower than the
+   row would put the buttons on top of the first characters.
    The width is visual only — this is still a block document, and page size,
    margins and orientation remain export-time settings (задача 2733), so there
    are no page breaks here. */
@@ -685,7 +739,7 @@ defineExpose({ editor, goToBlock, applyRemote })
   box-sizing: border-box;
   max-width: 820px;
   margin: 0 auto;
-  padding: 40px 40px 56px 56px;
+  padding: 40px 40px 56px 88px;
   border: 1px solid var(--t-border);
   border-radius: 8px;
   background: var(--t-surface);
@@ -721,6 +775,28 @@ defineExpose({ editor, goToBlock, applyRemote })
   display: flex;
   align-items: flex-start;
   gap: 6px;
+}
+/* The checkbox is centred on the FIRST LINE, not on the item. `align-items:
+   center` on the item would look right on the one-line task in the screenshot
+   and put the box in the middle of the paragraph on a task that wraps to three
+   lines. Giving the label the line's own height centres it against the line and
+   leaves the rest of the item alone. */
+.doc-content :deep(.ProseMirror ul[data-type='taskList'] li > label) {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 1.6em; /* = the .ProseMirror line-height, so it tracks it */
+  margin: 0;
+  user-select: none;
+}
+.doc-content :deep(.ProseMirror ul[data-type='taskList'] li > div) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* The paragraph inside a task carries the same margin as a standalone one,
+   which would push the text down past the box it is labelled by. */
+.doc-content :deep(.ProseMirror ul[data-type='taskList'] li p) {
+  margin: 0;
 }
 .doc-content :deep(.ProseMirror table) {
   border-collapse: collapse;

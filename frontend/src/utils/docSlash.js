@@ -21,16 +21,26 @@ import {
 //
 // Keywords carry both languages: the interface is Russian, but "/table" is what
 // hands trained on Notion actually type.
+//
+// The list stays FLAT even though the menu draws it in groups: the filter, the
+// arrow-key cursor and the tests all index into it, and a nested shape would
+// make the highlighted index mean two different things. `group` is a label on
+// the item; grouping happens on the way out, in groupSlashItems.
+//
+// Declaration order therefore follows group order. That is not cosmetic either:
+// the arrow keys walk this array, so an item drawn in the second group but
+// declared first would make the cursor jump around the menu.
 
 /**
  * Insertable blocks offered by the "/" menu.
- * @type {Array<{key:string,label:string,hint:string,icon:object,keywords:string[],external?:boolean,apply?:Function}>}
+ * @type {Array<{key:string,label:string,hint:string,group:string,icon:object,keywords:string[],external?:boolean,apply?:Function}>}
  */
 export const SLASH_ITEMS = [
   {
     key: 'paragraph',
     label: 'Текст',
     hint: 'Обычный абзац',
+    group: 'Текст',
     icon: TextOutline,
     keywords: ['текст', 'абзац', 'параграф', 'text', 'paragraph', 'p'],
     apply: (chain) => chain.setParagraph().run(),
@@ -39,6 +49,7 @@ export const SLASH_ITEMS = [
     key: 'h1',
     label: 'Заголовок 1',
     hint: 'Крупный заголовок',
+    group: 'Текст',
     icon: TextOutline,
     keywords: ['заголовок', 'h1', 'heading', 'title'],
     apply: (chain) => chain.setNode('heading', { level: 1 }).run(),
@@ -47,6 +58,7 @@ export const SLASH_ITEMS = [
     key: 'h2',
     label: 'Заголовок 2',
     hint: 'Средний заголовок',
+    group: 'Текст',
     icon: TextOutline,
     keywords: ['заголовок', 'h2', 'heading', 'подзаголовок'],
     apply: (chain) => chain.setNode('heading', { level: 2 }).run(),
@@ -55,14 +67,25 @@ export const SLASH_ITEMS = [
     key: 'h3',
     label: 'Заголовок 3',
     hint: 'Мелкий заголовок',
+    group: 'Текст',
     icon: TextOutline,
     keywords: ['заголовок', 'h3', 'heading'],
     apply: (chain) => chain.setNode('heading', { level: 3 }).run(),
   },
   {
+    key: 'blockquote',
+    label: 'Цитата',
+    hint: 'Выделенный блок текста',
+    group: 'Текст',
+    icon: ChatboxOutline,
+    keywords: ['цитата', 'quote', 'blockquote'],
+    apply: (chain) => chain.toggleBlockquote().run(),
+  },
+  {
     key: 'bulletList',
     label: 'Маркированный список',
     hint: 'Список с точками',
+    group: 'Списки',
     icon: ListOutline,
     keywords: ['список', 'маркированный', 'list', 'bullet', 'ul'],
     apply: (chain) => chain.toggleBulletList().run(),
@@ -71,6 +94,7 @@ export const SLASH_ITEMS = [
     key: 'orderedList',
     label: 'Нумерованный список',
     hint: 'Список по порядку',
+    group: 'Списки',
     icon: ReorderFourOutline,
     keywords: ['список', 'нумерованный', 'номер', 'list', 'ordered', 'ol', 'number'],
     apply: (chain) => chain.toggleOrderedList().run(),
@@ -79,30 +103,16 @@ export const SLASH_ITEMS = [
     key: 'taskList',
     label: 'Список задач',
     hint: 'Чекбоксы',
+    group: 'Списки',
     icon: CheckboxOutline,
     keywords: ['задачи', 'чеклист', 'чекбокс', 'todo', 'task', 'check'],
     apply: (chain) => chain.toggleTaskList().run(),
   },
   {
-    key: 'blockquote',
-    label: 'Цитата',
-    hint: 'Выделенный блок текста',
-    icon: ChatboxOutline,
-    keywords: ['цитата', 'quote', 'blockquote'],
-    apply: (chain) => chain.toggleBlockquote().run(),
-  },
-  {
-    key: 'codeBlock',
-    label: 'Блок кода',
-    hint: 'Моноширинный блок',
-    icon: CodeSlashOutline,
-    keywords: ['код', 'code', 'pre', 'блок кода'],
-    apply: (chain) => chain.toggleCodeBlock().run(),
-  },
-  {
     key: 'table',
     label: 'Таблица 3×3',
     hint: 'С шапкой',
+    group: 'Вставка',
     icon: GridOutline,
     keywords: ['таблица', 'table', 'grid'],
     apply: (chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
@@ -111,14 +121,25 @@ export const SLASH_ITEMS = [
     key: 'horizontalRule',
     label: 'Разделитель',
     hint: 'Горизонтальная линия',
+    group: 'Вставка',
     icon: RemoveOutline,
     keywords: ['разделитель', 'линия', 'hr', 'divider', 'rule'],
     apply: (chain) => chain.setHorizontalRule().run(),
   },
   {
+    key: 'codeBlock',
+    label: 'Блок кода',
+    hint: 'Моноширинный блок',
+    group: 'Вставка',
+    icon: CodeSlashOutline,
+    keywords: ['код', 'code', 'pre', 'блок кода'],
+    apply: (chain) => chain.toggleCodeBlock().run(),
+  },
+  {
     key: 'image',
     label: 'Изображение',
     hint: 'Выбрать файл',
+    group: 'Загрузка',
     icon: ImageOutline,
     // Opens the file picker, which lives in DocEditor — the menu only deletes
     // the typed "/…" and hands off.
@@ -129,6 +150,7 @@ export const SLASH_ITEMS = [
     key: 'pdf',
     label: 'PDF',
     hint: 'Вставить файл для чтения',
+    group: 'Загрузка',
     icon: DocumentTextOutline,
     // Also external: a PDF is uploaded, not typed, so the menu hands off to the
     // picker in DocEditor exactly as the image entry does.
@@ -153,4 +175,30 @@ export function filterSlashItems(items, query) {
   return items.filter(
     (i) => i.label.toLowerCase().includes(q) || i.keywords.some((k) => k.includes(q)),
   )
+}
+
+/**
+ * Buckets items for display, in first-seen group order.
+ *
+ * Display only — the flat list stays the source of truth. A group the filter
+ * emptied is dropped rather than drawn headless, so "/спис" shows "Списки" and
+ * nothing else instead of three empty headings.
+ *
+ * @param {Array} items items to draw, already filtered
+ * @returns {Array<{group:string,items:Array}>}
+ */
+export function groupSlashItems(items) {
+  const out = []
+  const byName = new Map()
+  for (const item of items || []) {
+    const name = item.group || ''
+    let bucket = byName.get(name)
+    if (!bucket) {
+      bucket = { group: name, items: [] }
+      byName.set(name, bucket)
+      out.push(bucket)
+    }
+    bucket.items.push(item)
+  }
+  return out
 }

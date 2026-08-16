@@ -48,6 +48,52 @@ export function blockAtClientY(blocks, y, tolerance = HANDLE_TOLERANCE) {
 }
 
 /**
+ * The box of a block's first line.
+ *
+ * The handle addresses a line, not a box. A heading's box starts a margin above
+ * its text and sets its own line-height, so anchoring to the box top drifts by
+ * exactly that margin — visible as the handle sitting above the heading while it
+ * looks centred on a paragraph.
+ *
+ * @param {object} view ProseMirror editor view
+ * @param {number} pos start position of the block
+ * @param {DOMRect|{top:number,bottom:number}} rect the block's own box
+ * @returns {{top:number,bottom:number}}
+ */
+export function firstLineBox(view, pos, rect) {
+  try {
+    const c = view.coordsAtPos(pos + 1)
+    // The caret box has to sit inside the block it claims to start. An atom
+    // (a rule, an image, a PDF card) has no position inside it, and coordsAtPos
+    // then answers about whatever follows — a different block entirely.
+    if (c && c.bottom > c.top && c.top >= rect.top - 1 && c.bottom <= rect.bottom + 1) {
+      return { top: c.top, bottom: c.bottom }
+    }
+  } catch {
+    // coordsAtPos throws while the view is being torn down; the box below is
+    // the honest answer in that moment anyway.
+  }
+  return { top: rect.top, bottom: rect.bottom }
+}
+
+/**
+ * Where the top of the handle goes so it reads as centred on a line.
+ *
+ * Split out from the component because the arithmetic is the part that can be
+ * wrong on its own: DOM geometry cannot be exercised in a unit test, but this
+ * can. The gutter height is measured rather than assumed — the button size is a
+ * design knob, and a constant here would silently drift the moment it changes.
+ *
+ * @param {number} lineTop viewport top of the line
+ * @param {number} lineBottom viewport bottom of the line
+ * @param {number} gutterHeight measured height of the handle row
+ * @returns {number} viewport-relative top for the handle
+ */
+export function centerOffset(lineTop, lineBottom, gutterHeight) {
+  return (lineTop + lineBottom) / 2 - (gutterHeight || 0) / 2
+}
+
+/**
  * Hands a block to ProseMirror's own drag machinery.
  *
  * Setting `view.dragging` is the whole trick: from there the built-in drop

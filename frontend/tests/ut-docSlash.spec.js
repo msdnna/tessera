@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { docExtensions } from '@/utils/docSchema'
-import { SLASH_ITEMS, filterSlashItems } from '@/utils/docSlash'
+import { SLASH_ITEMS, filterSlashItems, groupSlashItems } from '@/utils/docSlash'
 import { slashRangeAt, slashState } from '@/utils/docExtensions/slashMenu'
 
 function makeEditor(opts = {}) {
@@ -58,6 +58,44 @@ describe('filterSlashItems', () => {
     expect(item.apply(editor.chain().focus())).toBe(true)
     expect(editor.getHTML()).not.toBe(before)
     editor.destroy()
+  })
+})
+
+describe('groupSlashItems', () => {
+  it('gives every entry a group', () => {
+    expect(SLASH_ITEMS.filter((i) => !i.group)).toEqual([])
+  })
+
+  // The whole risk of grouping is losing a block from the menu: it still exists,
+  // the filter still finds it, and it is simply never drawn.
+  it('keeps every item exactly once', () => {
+    const groups = groupSlashItems(SLASH_ITEMS)
+    const flat = groups.flatMap((g) => g.items.map((i) => i.key))
+    expect(flat).toEqual(SLASH_ITEMS.map((i) => i.key))
+  })
+
+  it('preserves the declared order inside a group', () => {
+    const groups = groupSlashItems(SLASH_ITEMS)
+    const lists = groups.find((g) => g.group === 'Списки')
+    expect(lists.items.map((i) => i.key)).toEqual(['bulletList', 'orderedList', 'taskList'])
+  })
+
+  // Arrow keys walk the flat list, so a menu drawn in a different order than the
+  // cursor moves would make the highlight jump around. Declaration order has to
+  // already be group order.
+  it('draws the groups in one contiguous run each', () => {
+    const groups = groupSlashItems(SLASH_ITEMS)
+    expect(groups.map((g) => g.group)).toEqual(['Текст', 'Списки', 'Вставка', 'Загрузка'])
+  })
+
+  it('drops a group the filter emptied', () => {
+    const groups = groupSlashItems(filterSlashItems(SLASH_ITEMS, 'спис'))
+    expect(groups.map((g) => g.group)).toEqual(['Списки'])
+  })
+
+  it('survives an empty list', () => {
+    expect(groupSlashItems([])).toEqual([])
+    expect(groupSlashItems(null)).toEqual([])
   })
 })
 

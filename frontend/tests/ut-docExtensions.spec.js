@@ -3,7 +3,12 @@ import { Editor } from '@tiptap/core'
 import { docExtensions } from '@/utils/docSchema'
 import { ensureBlockIds } from '@/utils/docExtensions/blockId'
 import { MAX_INDENT } from '@/utils/docExtensions/blockStyle'
-import { blockAtClientY, topLevelBlocks } from '@/utils/docExtensions/dragHandle'
+import {
+  blockAtClientY,
+  centerOffset,
+  firstLineBox,
+  topLevelBlocks,
+} from '@/utils/docExtensions/dragHandle'
 import { imageFilesFrom, uploadImagesAt } from '@/utils/docExtensions/imageDrop'
 
 // Mirrors DocEditor: content is stamped before it reaches the editor.
@@ -204,6 +209,42 @@ describe('drag handle geometry', () => {
   it('addresses nothing far below the last block', () => {
     expect(blockAtClientY(fakeBlocks([0, 20]), 400)).toBeNull()
     expect(blockAtClientY([], 10)).toBeNull()
+  })
+
+  // The bug this arithmetic replaces: the handle was anchored to the top of the
+  // block's box, which on a heading is a margin above the text it labels.
+  it('centres the handle on the line, not on the block top', () => {
+    // A 20px line starting at 100 has its middle at 110; a 24px row centred on
+    // it therefore starts at 98 — above the line top, which the old
+    // "top of the box" anchor could never produce.
+    expect(centerOffset(100, 120, 24)).toBe(98)
+  })
+
+  it('survives a gutter that has not been measured yet', () => {
+    expect(centerOffset(100, 120, 0)).toBe(110)
+    expect(centerOffset(100, 120, undefined)).toBe(110)
+  })
+
+  // An atom (a rule, an image, a PDF card) has no position inside it, so
+  // coordsAtPos answers about the block after it. Trusting that answer would
+  // park the handle on the wrong block entirely.
+  it('falls back to the block box when the caret box lands outside it', () => {
+    const rect = { top: 100, bottom: 140 }
+    const outside = { coordsAtPos: () => ({ top: 200, bottom: 220 }) }
+    expect(firstLineBox(outside, 0, rect)).toEqual({ top: 100, bottom: 140 })
+
+    const throwing = {
+      coordsAtPos: () => {
+        throw new Error('view is gone')
+      },
+    }
+    expect(firstLineBox(throwing, 0, rect)).toEqual({ top: 100, bottom: 140 })
+  })
+
+  it('uses the caret box when it sits inside the block', () => {
+    const rect = { top: 100, bottom: 180 }
+    const view = { coordsAtPos: () => ({ top: 104, bottom: 124 }) }
+    expect(firstLineBox(view, 0, rect)).toEqual({ top: 104, bottom: 124 })
   })
 })
 
