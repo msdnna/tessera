@@ -72,6 +72,26 @@ const (
 	TrigComment    = "comment"
 )
 
+// Structural child kinds (#2592). These share the gitlab_writebacks outbox with the
+// triggers above but are deliberately NOT triggers: no binding resolves them, they
+// describe a change to the task TREE rather than to a field, and for child_create the
+// task has no link yet — so the worker branches on them before it looks one up.
+const (
+	KindChildCreate = "child_create" // subtask appeared under a grouped parent → open a child issue
+	KindChildAttach = "child_attach" // an already-linked task became a subtask → re-parent it in GitLab
+	KindChildDetach = "child_detach" // a linked subtask was detached → drop it to top-level in GitLab
+)
+
+// ChildIssueType is the GitLab issue_type given to a pushed subtask. An issue cannot
+// hang under another issue in GitLab's hierarchy — only a work item of type Task can.
+const ChildIssueType = "task"
+
+// IsChildKind reports whether a change_kind is one of the structural child pushes,
+// i.e. whether it must bypass the binding machinery entirely.
+func IsChildKind(kind string) bool {
+	return kind == KindChildCreate || kind == KindChildAttach || kind == KindChildDetach
+}
+
 // Action types — the GitLab-side effect of a matched binding.
 const (
 	ActSetLabel        = "set_label" // set one label, optionally clearing same-prefix siblings

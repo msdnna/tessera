@@ -116,3 +116,24 @@ UPDATE gitlab_writebacks
 SET status = 'sent', conflict = '{}'::jsonb, resolution = $2, resolved_by = $3,
     resolved_at = now(), updated_at = now()
 WHERE id = $1;
+
+-- ── Child work items (#2592) ────────────────────────────────
+
+-- CreateGitlabChildWriteback enqueues a structural child push. Unlike every other
+-- change_kind (each a re-pushable update of an issue that already exists), child_create
+-- OPENS a new issue, so a duplicate row would open a second one. The partial unique
+-- index from migration 0054 makes "at most one in flight per task" a database
+-- invariant; this is the matching insert — ON CONFLICT DO NOTHING collapses the
+-- duplicate instead of letting that index turn an ordinary double-enqueue into an error
+-- on the user's mutation path.
+-- name: CreateGitlabChildWriteback :exec
+INSERT INTO gitlab_writebacks (task_id, integration_id, change_kind, payload, actor_user_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT DO NOTHING;
+
+-- SetGitlabWritebackPayload rewrites a claimed row's payload mid-delivery. Child
+-- creation uses it to record the issue GitLab just opened BEFORE writing the link: if
+-- linking then fails, the retry adopts the reserved iid instead of opening a second
+-- issue for the same subtask.
+-- name: SetGitlabWritebackPayload :exec
+UPDATE gitlab_writebacks SET payload = $2, updated_at = now() WHERE id = $1;
