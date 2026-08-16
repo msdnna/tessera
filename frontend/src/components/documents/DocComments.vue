@@ -81,6 +81,43 @@ function fmtTime(v) {
     minute: '2-digit',
   })
 }
+
+/* ---- anchors for the annotation links (#2730) ---------------------------- */
+
+const bodyEl = ref(null)
+
+/**
+ * Where each thread card sits, for the layer that draws the line to its block.
+ *
+ * Measured here rather than by the parent: the markup is this component's, and a
+ * selector reaching in from outside would break on any change to it. Viewport
+ * coordinates — the parent knows what they are relative to, this panel does not.
+ *
+ * A card scrolled out of the panel is reported `visible: false` instead of being
+ * left out, so the caller can tell "no such thread" from "not on screen".
+ *
+ * @returns {Array<{id: string, blockId: string, resolved: boolean, x: number, y: number,
+ *   visible: boolean}>}
+ */
+function cardAnchors() {
+  const host = bodyEl.value
+  if (!host) return []
+  const clip = host.getBoundingClientRect()
+  return [...host.querySelectorAll('[data-thread-id]')].map((el) => {
+    const r = el.getBoundingClientRect()
+    const y = (r.top + r.bottom) / 2
+    return {
+      id: el.getAttribute('data-thread-id') || '',
+      blockId: el.getAttribute('data-block-id') || '',
+      resolved: !!el.getAttribute('data-resolved'),
+      x: r.left,
+      y,
+      visible: y >= clip.top && y <= clip.bottom,
+    }
+  })
+}
+
+defineExpose({ cardAnchors })
 </script>
 
 <template>
@@ -91,7 +128,7 @@ function fmtTime(v) {
       <n-text v-if="loading" depth="3">…</n-text>
     </div>
 
-    <div class="panel-body">
+    <div ref="bodyEl" class="panel-body">
       <!-- Anchored threads first: they are the ones the text is marked up for. -->
       <template v-for="section in ['anchored', 'document', 'detached']" :key="section">
         <div v-if="groups[section] && groups[section].length" class="section">
@@ -109,6 +146,9 @@ function fmtTime(v) {
             v-for="t in groups[section]"
             :key="t.id"
             class="thread"
+            :data-thread-id="t.id"
+            :data-block-id="t.block_id || ''"
+            :data-resolved="t.resolved_at ? '1' : ''"
             :class="{ active: t.block_id && t.block_id === activeBlockId, done: !!t.resolved_at }"
             @click="t.block_id && emit('select', t.block_id)"
           >

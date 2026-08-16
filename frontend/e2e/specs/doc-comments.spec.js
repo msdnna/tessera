@@ -103,3 +103,76 @@ test('документ: замечание к блоку доезжает до �
     await context.close()
   }
 })
+
+// The /rework of #2730: the counter in the margin says a block is discussed, but
+// not *which* card discusses it. The lines are the answer, and they are geometry
+// — a unit test can check the arithmetic, only a browser can show that the curve
+// starts where the block is and ends where the card is.
+test('документ: блоки связаны с аннотациями линиями, без пересечений', async ({ page, seed }) => {
+  await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
+  await page.goto('/documents')
+  await page.getByRole('button', { name: /Новый документ/ }).click()
+
+  const editor = page.locator('.ProseMirror')
+  await expect(editor).toBeVisible()
+
+  const saved = page.waitForResponse(
+    (r) => /\/documents\/[^/]+\/content$/.test(r.url()) && r.request().method() === 'PATCH',
+  )
+  await editor.click()
+  await editor.pressSequentially('Первый пункт договора')
+  await page.keyboard.press('Enter')
+  await editor.pressSequentially('Второй пункт договора')
+  expect((await saved).status()).toBe(200)
+
+  const paragraphs = editor.locator('p')
+  await expect(paragraphs).toHaveCount(2)
+
+  // Annotate the SECOND paragraph first. The panel used to show threads in the
+  // order the API returned them, so this is the case that produced the crossed
+  // arrows in the review screenshot.
+  for (const [index, body] of [
+    [1, 'Замечание ко второму'],
+    [0, 'Замечание к первому'],
+  ]) {
+    await paragraphs.nth(index).hover()
+    await page.locator('.gutter-btn[title="Обсудить блок"]').click()
+    await page.getByPlaceholder('Комментарий к блоку…').fill(body)
+    await page.getByRole('button', { name: 'Отправить' }).click()
+    await expect(page.getByText(body)).toBeVisible()
+  }
+
+  // Two blocks discussed, two lines drawn.
+  const lines = page.locator('.annotation-lines path')
+  await expect(lines).toHaveCount(2)
+
+  // Cards are laid out in document order, not in the order the remarks were
+  // made — that ordering is the whole anti-crossing mechanism.
+  const cards = page.locator('.panel-body .thread')
+  await expect(cards.nth(0)).toContainText('Замечание к первому')
+  await expect(cards.nth(1)).toContainText('Замечание ко второму')
+
+  // …and the lines themselves do not cross: both ends run the same way down the
+  // screen. Read off the path data, which is what is actually drawn.
+  const ends = await lines.evaluateAll((nodes) =>
+    nodes.map((n) => {
+      const v = (n.getAttribute('d').match(/-?\d+(\.\d+)?/g) || []).map(Number)
+      return { y1: v[1], y2: v[7] }
+    }),
+  )
+  expect(ends).toHaveLength(2)
+  const [top, bottom] = ends[0].y1 <= ends[1].y1 ? ends : [ends[1], ends[0]]
+  expect(top.y2).toBeLessThanOrEqual(bottom.y2)
+
+  // Clicking a discussed block highlights its line and only its line.
+  await paragraphs.nth(0).click()
+  await expect(page.locator('.annotation-lines path.active')).toHaveCount(1)
+
+  // Resolving takes the markup off the block; the line goes with it.
+  await cards.nth(0).click()
+  await page
+    .getByRole('button', { name: /Решено/ })
+    .first()
+    .click()
+  await expect(page.locator('.annotation-lines path')).toHaveCount(1)
+})

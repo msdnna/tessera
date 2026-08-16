@@ -48,6 +48,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
 import { initials } from '@/utils/initials'
 import { mergeRemoteBlocks } from '@/utils/docMerge'
+import { linkGeometry } from '@/utils/docAnnotationLines'
 import { userColor } from '@/utils/userColor'
 import { hueGrad, onColor, readableHue } from '@/utils/gradient'
 import { useDocAutosave } from '@/composables/useDocAutosave'
@@ -931,8 +932,103 @@ function onBeforeUnload(e) {
   e.returnValue = ''
 }
 
+/* ---- annotation link layer (#2730 rework) -------------------------------- */
+
+// The curves tying a discussed block to its card in the panel.
+const workEl = ref(null)
+const commentsRef = ref(null)
+const annotationLines = ref([])
+// Below this the panel goes *under* the editor (see the media query at the
+// bottom of this file), and a line drawn across that stack would connect two
+// things that are no longer side by side.
+const NARROW_PX = 900
+const narrow = ref(false)
+let linkFrame = 0
+let workObserver = null
+let narrowQuery = null
+
+function measureLinks() {
+  linkFrame = 0
+  if (!commentsOpen.value || narrow.value || !workEl.value) {
+    annotationLines.value = []
+    return
+  }
+  const cards = commentsRef.value?.cardAnchors?.() || []
+  const ids = [...new Set(cards.map((c) => c.blockId).filter(Boolean))]
+  const blocks = ids.length ? editorRef.value?.blockAnchors?.(ids) || [] : []
+  // Both sides measure in viewport coordinates; the layer is positioned against
+  // the working area, so everything is rebased onto it here — the two children
+  // have no business knowing where their common parent sits.
+  const box = workEl.value.getBoundingClientRect()
+  const rebase = (p) => ({ ...p, x: p.x - box.left, y: p.y - box.top })
+  annotationLines.value = linkGeometry({
+    blocks: blocks.map(rebase),
+    cards: cards.map(rebase),
+    activeBlockId: comments.activeBlockId.value,
+  })
+}
+
+// Coalesced to a frame: a scroll fires far more often than the screen redraws,
+// and every trigger below can land in the same tick as the others.
+function scheduleLinks() {
+  if (linkFrame) return
+  linkFrame = requestAnimationFrame(measureLinks)
+}
+
+function onNarrowChange(e) {
+  narrow.value = e.matches
+}
+
+// Anything that moves either end invalidates every line, so they are all one
+// trigger. The editor transaction matters as much as the scroll: an edit *above*
+// pushes every block below it, and without this the lines start lying at the
+// first keystroke.
+watch(
+  [
+    () => comments.groups.value,
+    () => comments.activeBlockId.value,
+    () => content.value,
+    commentsOpen,
+    tocOpen,
+    historyOpen,
+    narrow,
+  ],
+  scheduleLinks,
+  { deep: true },
+)
+
+// The working area is behind the loading branch, so it appears (and disappears
+// with the open document) long after mount — the listeners follow the element
+// rather than the component's lifetime.
+watch(workEl, (el, prev) => {
+  if (prev) {
+    prev.removeEventListener('scroll', scheduleLinks, true)
+    workObserver?.unobserve(prev)
+  }
+  if (!el) {
+    annotationLines.value = []
+    return
+  }
+  // Capture, because scroll does not bubble: one listener on the working area
+  // then catches both scroll boxes inside it (the text and the panel), which
+  // scroll independently of each other.
+  el.addEventListener('scroll', scheduleLinks, true)
+  workObserver?.observe(el)
+  scheduleLinks()
+})
+
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  window.addEventListener('resize', scheduleLinks)
+  narrowQuery = window.matchMedia?.(`(max-width: ${NARROW_PX}px)`)
+  if (narrowQuery) {
+    narrow.value = narrowQuery.matches
+    narrowQuery.addEventListener('change', onNarrowChange)
+  }
+  if (window.ResizeObserver) {
+    workObserver = new ResizeObserver(scheduleLinks)
+    if (workEl.value) workObserver.observe(workEl.value)
+  }
   loadConverter()
   await loadList()
   if (route.params.slug) {
@@ -943,6 +1039,11 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  workEl.value?.removeEventListener('scroll', scheduleLinks, true)
+  window.removeEventListener('resize', scheduleLinks)
+  narrowQuery?.removeEventListener('change', onNarrowChange)
+  workObserver?.disconnect()
+  if (linkFrame) cancelAnimationFrame(linkFrame)
   clearTimeout(pullTimer)
   flushSave()
   closeRoom()
@@ -1125,7 +1226,13 @@ watch(
       <n-spin v-if="loading" size="small" />
       <template v-else>
         <n-input v-model:value="title" placeholder="Заголовок" class="title" @blur="rename" />
-        <div class="work">
+        <div ref="workEl" class="work">
+          <!-- Which block each remark is about, drawn rather than implied. The
+               layer spans the editor and the panel because the line crosses the
+               gap between them; it never takes a pointer event. -->
+          <svg v-if="annotationLines.length" class="annotation-lines" aria-hidden="true">
+            <path v-for="l in annotationLines" :key="l.id" :d="l.d" :class="{ active: l.active }" />
+          </svg>
           <doc-editor
             ref="editorRef"
             :model-value="content"
@@ -1150,6 +1257,7 @@ watch(
           />
           <doc-comments
             v-if="commentsOpen"
+            ref="commentsRef"
             :groups="comments.groups.value"
             :active-block-id="comments.activeBlockId.value"
             :user-id="myUserId"
@@ -1399,6 +1507,31 @@ watch(
   gap: 12px;
   flex: 1;
   min-height: 0;
+  /* The reference frame for the annotation-link layer below. */
+  position: relative;
+}
+/* Sits over both halves, so without pointer-events: none it would swallow every
+   click meant for the text or for a thread. */
+.annotation-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+/* Idle links stay at border weight: a dozen equally bright curves read worse
+   than the margin counters they are meant to explain. The selected thread is
+   the one that gets the accent. */
+.annotation-lines path {
+  fill: none;
+  stroke: var(--t-border);
+  stroke-width: 1.5;
+}
+.annotation-lines path.active {
+  stroke: var(--t-primary);
+  stroke-width: 2;
 }
 .editor {
   flex: 1;

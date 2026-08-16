@@ -27,6 +27,32 @@ export function blockIdsIn(json) {
 }
 
 /**
+ * The same ids as blockIdsIn, in the order they appear in the document.
+ *
+ * Separate from blockIdsIn because a Set answers "is this block still here?"
+ * and cannot answer "which of these two comes first" — and the panel needs the
+ * second one to lay its cards out in reading order (#2730).
+ *
+ * @param {object} json ProseMirror document JSON
+ * @returns {Array<string>} ids in document order, without duplicates
+ */
+export function blockIdsInOrder(json) {
+  const out = []
+  const seen = new Set()
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return
+    const id = node.attrs?.id
+    if (id && !seen.has(id)) {
+      seen.add(id)
+      out.push(id)
+    }
+    if (Array.isArray(node.content)) node.content.forEach(walk)
+  }
+  walk(json)
+  return out
+}
+
+/**
  * Finds the block node carrying an id.
  *
  * The counterpart to blockIdsIn: anchoring something *new* to a block needs the
@@ -106,17 +132,33 @@ export function sortThreads(threads) {
  * it — the very thing that asked for the rewrite — is not something the user
  * asked for.
  *
+ * Anchored threads come out in document order when `blockIds` carries one (pass
+ * the array from blockIdsInOrder rather than the Set from blockIdsIn). That is
+ * what keeps the annotation lines from crossing: the cards and the blocks they
+ * point at are then two monotonic sequences, and two monotonic sequences cannot
+ * cross. The cost is that a settled thread on an early block now sits above an
+ * open one further down — inside a block the unresolved-first order still holds,
+ * and a resolved card is dimmed, so the panel keeps saying which is which.
+ *
  * @param {Array<object>} threads threads from buildThreads
- * @param {Set<string>} blockIds ids present in the document, from blockIdsIn
+ * @param {Set<string>|Array<string>} blockIds ids present in the document; an
+ *   array is read as document order, a Set only as membership
  * @returns {{anchored: Array<object>, document: Array<object>, detached: Array<object>}}
  */
 export function splitThreads(threads, blockIds) {
+  const order = Array.isArray(blockIds) ? blockIds : null
   const ids = blockIds instanceof Set ? blockIds : new Set(blockIds || [])
   const out = { anchored: [], document: [], detached: [] }
   for (const t of threads || []) {
     if (!t.block_id) out.document.push(t)
     else if (ids.has(t.block_id)) out.anchored.push(t)
     else out.detached.push(t)
+  }
+  if (order) {
+    const rank = new Map(order.map((id, i) => [id, i]))
+    // Stable sort: threads on the same block keep the order sortThreads gave
+    // them (open before settled, newest first).
+    out.anchored.sort((a, b) => (rank.get(a.block_id) ?? 0) - (rank.get(b.block_id) ?? 0))
   }
   return out
 }

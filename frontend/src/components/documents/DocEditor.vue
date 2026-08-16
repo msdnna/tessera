@@ -428,6 +428,54 @@ function annotateBlock() {
   emit('annotate', { blockId, quote: quoteFromBlock(node.toJSON()) })
 }
 
+/* ---- anchors for the annotation links (#2730) ---------------------------- */
+
+/**
+ * Where each of the given blocks attaches on the text side.
+ *
+ * The x is the right edge of the block's own box — which is the text column, not
+ * the end of the text, since a block fills the column however short its content
+ * is. So the line leaves exactly where the block's underline stops, and a
+ * one-word paragraph does not start its line in the middle of empty space.
+ * (Anchoring to the sheet edge instead leaves a stub in the gutter: the sheet is
+ * wider than the column, so the visible part of the curve would be the last few
+ * pixels before the panel.) Clamped to the sheet in case a wide table overruns.
+ *
+ * The y is the centre of the block's FIRST LINE, reusing the drag handle's box
+ * for the same reason it does — a heading opens a margin above its text, so the
+ * box top is a different place from the line, and a link anchored to the box
+ * would point above the words it belongs to.
+ *
+ * Blocks scrolled out of the content box are reported `visible: false` rather
+ * than dropped: the caller distinguishes "gone from the document" (a detached
+ * thread) from "off screen" (no line this frame).
+ *
+ * @param {Array<string>} ids block ids to measure
+ * @returns {Array<{id: string, x: number, y: number, visible: boolean}>}
+ */
+function blockAnchors(ids) {
+  const view = editor.value?.view
+  if (!view || !ids || !ids.length) return []
+  const want = new Set(ids)
+  // The scroll box is the element EditorContent renders around .ProseMirror;
+  // going through the view keeps this working without a second template ref.
+  const scroller = view.dom.parentElement
+  if (!scroller) return []
+  const clip = scroller.getBoundingClientRect()
+  const sheet = view.dom.getBoundingClientRect()
+  const out = []
+  for (const b of blockRanges(view.state.doc)) {
+    if (!b.id || !want.has(b.id)) continue
+    const rect = view.nodeDOM(b.from)?.getBoundingClientRect?.()
+    if (!rect) continue
+    const line = firstLineBox(view, b.from, rect)
+    const y = (line.top + line.bottom) / 2
+    const x = Math.min(rect.right, sheet.right)
+    out.push({ id: b.id, x, y, visible: y >= clip.top && y <= clip.bottom })
+  }
+  return out
+}
+
 // The content box scrolls under a gutter that does not, so both anchors go
 // stale the moment it moves.
 function onScroll() {
@@ -439,7 +487,7 @@ function runSlash(item) {
   editor.value?.commands.slashRun(item)
 }
 
-defineExpose({ editor, goToBlock, applyRemote })
+defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
 </script>
 
 <template>

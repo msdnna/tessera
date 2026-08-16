@@ -38,6 +38,57 @@ describe('DocComments panel', () => {
   let wrapper
   afterEach(() => wrapper?.unmount())
 
+  it('tags every card with its thread and block, so the link layer can find it', () => {
+    // The parent draws a line to each card. It addresses them by data attribute
+    // rather than by class: the markup belongs to this component, and a selector
+    // reaching in from outside would break on any change to it.
+    wrapper = mount(DocComments, {
+      props: {
+        groups: groups({
+          anchored: [thread('t1'), thread('t2', { block_id: 'b2' })],
+          document: [thread('t3', { block_id: '' })],
+        }),
+      },
+    })
+    const cards = wrapper.findAll('[data-thread-id]')
+    expect(cards.map((c) => c.attributes('data-thread-id'))).toEqual(['t1', 't2', 't3'])
+    expect(cards.map((c) => c.attributes('data-block-id'))).toEqual(['b1', 'b2', ''])
+  })
+
+  it('flags a settled card, so the link layer can stop drawing to it', () => {
+    wrapper = mount(DocComments, {
+      props: {
+        groups: groups({
+          anchored: [thread('t1'), thread('t2', { resolved_at: '2026-08-16T10:00:00Z' })],
+        }),
+      },
+      attachTo: document.body,
+    })
+    expect(wrapper.vm.cardAnchors().map((a) => a.resolved)).toEqual([false, true])
+  })
+
+  it('reports one anchor per card', () => {
+    wrapper = mount(DocComments, {
+      props: { groups: groups({ anchored: [thread('t1'), thread('t2', { block_id: 'b2' })] }) },
+      attachTo: document.body,
+    })
+    const anchors = wrapper.vm.cardAnchors()
+    expect(anchors.map((a) => a.id)).toEqual(['t1', 't2'])
+    expect(anchors.map((a) => a.blockId)).toEqual(['b1', 'b2'])
+    // jsdom gives every box zero size, so the coordinates themselves say
+    // nothing — the shape of the answer is what this can honestly check.
+    for (const a of anchors) {
+      expect(typeof a.x).toBe('number')
+      expect(typeof a.y).toBe('number')
+      expect(typeof a.visible).toBe('boolean')
+    }
+  })
+
+  it('reports no anchors when there are no threads', () => {
+    wrapper = mount(DocComments, { props: { groups: groups() } })
+    expect(wrapper.vm.cardAnchors()).toEqual([])
+  })
+
   it('shows a detached thread under its own heading, not silently dropped', () => {
     // A rewritten paragraph is the normal course of a review; the discussion that
     // asked for the rewrite has to survive it.

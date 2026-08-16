@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { documents as docsApi } from '@/api'
 import {
-  blockIdsIn,
+  blockIdsInOrder,
   buildThreads,
   openCountByBlock,
   sortThreads,
@@ -32,7 +32,9 @@ export function useDocComments() {
   let docId = ''
 
   const threads = computed(() => sortThreads(buildThreads(comments.value)))
-  const groups = computed(() => splitThreads(threads.value, blockIdsIn(docJSON.value)))
+  // Document order, not just membership: the panel's card order decides whether
+  // the annotation lines cross (#2730).
+  const groups = computed(() => splitThreads(threads.value, blockIdsInOrder(docJSON.value)))
   const openCounts = computed(() =>
     [...openCountByBlock(threads.value)].map(([block_id, count]) => ({ block_id, count })),
   )

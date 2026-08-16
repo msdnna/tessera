@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   authorLabel,
   blockIdsIn,
+  blockIdsInOrder,
   buildThreads,
   openCountByBlock,
   quoteFromBlock,
@@ -42,6 +43,34 @@ describe('blockIdsIn', () => {
   it('survives an empty or malformed document', () => {
     expect(blockIdsIn(null).size).toBe(0)
     expect(blockIdsIn({ type: 'doc' }).size).toBe(0)
+  })
+})
+
+describe('blockIdsInOrder', () => {
+  it('returns the ids in reading order', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', attrs: { id: 'a' } },
+        {
+          type: 'bulletList',
+          attrs: { id: 'b' },
+          content: [{ type: 'listItem', content: [{ type: 'paragraph', attrs: { id: 'c' } }] }],
+        },
+        { type: 'paragraph', attrs: { id: 'd' } },
+      ],
+    }
+    expect(blockIdsInOrder(doc)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('holds the same ids as blockIdsIn', () => {
+    const doc = { type: 'doc', content: [{ type: 'paragraph', attrs: { id: 'a' } }] }
+    expect(new Set(blockIdsInOrder(doc))).toEqual(blockIdsIn(doc))
+  })
+
+  it('survives an empty or malformed document', () => {
+    expect(blockIdsInOrder(null)).toEqual([])
+    expect(blockIdsInOrder({ type: 'doc' })).toEqual([])
   })
 })
 
@@ -92,6 +121,38 @@ describe('splitThreads', () => {
     expect(out.anchored.map((t) => t.id)).toEqual(['1'])
     expect(out.document.map((t) => t.id)).toEqual(['2'])
     expect(out.detached.map((t) => t.id)).toEqual(['3'])
+  })
+
+  it('orders anchored threads by document position when given an ordered list', () => {
+    // The panel's card order is what keeps the annotation lines from crossing:
+    // cards and blocks then run the same way down the screen.
+    const threads = [
+      { id: 'late', block_id: 'c' },
+      { id: 'early', block_id: 'a' },
+      { id: 'mid', block_id: 'b' },
+    ]
+    const out = splitThreads(threads, ['a', 'b', 'c'])
+    expect(out.anchored.map((t) => t.id)).toEqual(['early', 'mid', 'late'])
+  })
+
+  it('keeps the incoming order within one block', () => {
+    // Inside a block the sortThreads order (open first, newest first) must
+    // survive — the document sort only decides between blocks.
+    const threads = [
+      { id: 'open', block_id: 'a' },
+      { id: 'done', block_id: 'a' },
+    ]
+    const out = splitThreads(threads, ['a'])
+    expect(out.anchored.map((t) => t.id)).toEqual(['open', 'done'])
+  })
+
+  it('leaves the order alone when given a Set', () => {
+    const threads = [
+      { id: 'late', block_id: 'c' },
+      { id: 'early', block_id: 'a' },
+    ]
+    const out = splitThreads(threads, new Set(['a', 'c']))
+    expect(out.anchored.map((t) => t.id)).toEqual(['late', 'early'])
   })
 
   it('keeps a thread whose block was deleted instead of dropping it', () => {
