@@ -2064,19 +2064,8 @@ async function onSubtaskChanged() {
 .sep {
   opacity: 0.5;
 }
-/* The `plain` class lands on the NInput ROOT element (attr fallthrough), which
-   IS `.n-input` — so a `:deep(.n-input)` descendant selector never matched it
-   (and the modal is teleported to <body>). Set Naive's --n-color vars on
-   `.plain` itself (!important beats the inline ones Naive writes); they inherit
-   into the inner elements, so the field keeps the modal colour even on focus. */
-.plain {
-  --n-color: transparent !important;
-  --n-color-focus: transparent !important;
-}
-.plain :deep(.n-input__border),
-.plain :deep(.n-input__state-border) {
-  display: none !important;
-}
+/* `.plain` (borderless title field) lives in main.css — the document view uses
+   the same class, and two copies would drift. */
 .props {
   display: flex;
   flex-direction: column;

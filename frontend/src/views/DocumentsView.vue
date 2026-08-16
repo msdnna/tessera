@@ -1329,7 +1329,7 @@ watch(
 
       <n-spin v-if="loading" size="small" />
       <template v-else>
-        <n-input v-model:value="title" placeholder="Заголовок" class="title" @blur="rename" />
+        <n-input v-model:value="title" placeholder="Заголовок" class="title plain" @blur="rename" />
         <div ref="workEl" class="work">
           <!-- Which block each remark is about, drawn rather than implied. The
                layer spans the editor and the panel because the line crosses the
