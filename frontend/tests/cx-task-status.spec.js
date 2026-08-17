@@ -36,6 +36,7 @@ vi.mock('@/api', () => ({
     relations: vi.fn(() => Promise.resolve({ data: [] })),
     attachments: vi.fn(() => Promise.resolve({ data: [] })),
     events: vi.fn(() => Promise.resolve({ data: [] })),
+    documents: vi.fn(() => Promise.resolve({ data: [] })),
   },
   boards: {
     get: vi.fn(() =>

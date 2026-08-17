@@ -89,6 +89,23 @@ func (h *API) uniqueNoteSlug(ctx context.Context, wsID uuid.UUID, title string) 
 	}
 }
 
+// uniqueDocumentSlug returns a slug unique within the workspace for a document
+// title.
+func (h *API) uniqueDocumentSlug(ctx context.Context, wsID uuid.UUID, title string) string {
+	base := slug.Make(title)
+	if base == "" {
+		base = "document"
+	}
+	s := base
+	for i := 2; ; i++ {
+		ex, err := h.q.DocumentSlugExists(ctx, db.DocumentSlugExistsParams{WorkspaceID: wsID, Slug: s})
+		if err != nil || !ex {
+			return s
+		}
+		s = base + "-" + strconv.Itoa(i)
+	}
+}
+
 // BackfillSlugs assigns slugs to projects/boards/notes that lack one (rows that
 // predate the slug columns, or boards reset by the per-project re-scope).
 // Idempotent: only empty-slug rows are touched. Run once at startup.
@@ -104,6 +121,10 @@ func (h *API) BackfillSlugs(ctx context.Context) {
 	notes, _ := h.q.NotesMissingSlug(ctx)
 	for _, n := range notes {
 		soft(ctx, "SetNoteSlug", h.q.SetNoteSlug(ctx, db.SetNoteSlugParams{ID: n.ID, Slug: h.uniqueNoteSlug(ctx, n.WorkspaceID, n.Title)}))
+	}
+	documents, _ := h.q.DocumentsMissingSlug(ctx)
+	for _, d := range documents {
+		soft(ctx, "SetDocumentSlug", h.q.SetDocumentSlug(ctx, db.SetDocumentSlugParams{ID: d.ID, Slug: h.uniqueDocumentSlug(ctx, d.WorkspaceID, d.Title)}))
 	}
 	milestones, _ := h.q.MilestonesMissingSlug(ctx)
 	for _, m := range milestones {

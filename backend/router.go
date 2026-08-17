@@ -13,7 +13,9 @@ import (
 
 	"tessera/config"
 	"tessera/handlers"
+	"tessera/internal/converter"
 	"tessera/internal/db"
+	"tessera/internal/docroom"
 	"tessera/internal/mail"
 	"tessera/internal/realtime"
 	"tessera/middleware"
@@ -29,6 +31,13 @@ const (
 	routeUploads     = "/api/uploads"
 	routeAvatar      = "/api/users/me/avatar"
 	routeAttachments = "/api/tasks/:id/attachments"
+	// Document images and imported office files. Both were missing here, which
+	// left them on the blanket 1 MiB JSON budget: a document image is allowed to
+	// be 8 MiB by the handler (maxMediaBytes) and an import 20 MiB, so anything
+	// larger than a megabyte was refused by the transport with a 413 the handler
+	// never got to explain. Found while adding the import route (#2733).
+	routeDocAssets = "/api/documents/:id/assets"
+	routeDocImport = "/api/workspaces/:id/documents/import"
 )
 
 // authRateRules throttles the unauthenticated auth surface — the routes where a
@@ -73,9 +82,19 @@ func orDefault(v, def int64) int64 {
 // the background workers and slug backfill).
 func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, mailer mail.Mailer) (*gin.Engine, *handlers.API) {
 	versionHandler := handlers.NewVersionHandler(appVersion)
-	wsHandler := handlers.NewWSHandler(hub, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
+	// Per-document presence and block locks (#2729). The registry is created here
+	// rather than in main() so the four tests that boot newRouter() get a working
+	// document socket too; its sweeper goroutine ends when rh.CloseDocRooms does.
+	rooms := docroom.New()
+	go rooms.Run()
+	wsHandler := handlers.NewWSHandler(hub, rooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL, cfg.FCMCredentialsFile)
+	rh.WireDocRooms(rooms)
+	// Document import/export sidecar (#2733). converter.New tolerates an empty
+	// URL and reports itself disabled, so nothing here has to branch on whether
+	// the operator deployed LibreOffice.
+	rh.WireConverter(converter.New(cfg.ConverterURL))
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 
@@ -111,6 +130,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		routeAttachments: orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
 		routeUploads:     orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
 		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
 		routeWS:          middleware.NoBodyLimit,
 	}))
 	if cfg.RateLimitEnabled {
@@ -145,6 +166,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// scopes the socket to the user's workspaces.
 		api.GET("/ws", wsHandler.Connect)
 
+		// Per-document presence and block locks. Outside the protected group for
+		// the same reason as /ws (no Authorization header from a browser socket);
+		// the handler authenticates and checks workspace membership against the
+		// document *before* upgrading.
+		api.GET("/documents/:id/ws", wsHandler.ConnectDocument)
+
 		// Inline images embedded in descriptions/comments. Outside the protected
 		// group because an <img> can't send the bearer header: MediaAuth accepts
 		// the httpOnly media cookie the web app carries, or a bearer credential
@@ -158,6 +185,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// (public — an <img> can't send auth; HMAC-signed so only Tessera
 		// links work, fetched with the integration owner's token).
 		api.GET("/gitlab/asset", rh.GitlabAsset)
+
+		// Signed serve for images embedded in documents. Public for the same
+		// reason as the route above (an <img> can't authenticate), but unlike
+		// /uploads/:name the capability is the HMAC, not the filename —
+		// document content must not be reachable by guessing a URL (#2718).
+		api.GET("/documents/asset", rh.DocumentAsset)
 		api.GET("/gitlab/avatar", rh.GitlabAvatar)
 
 		// Avatar blobs served publicly (an <img> can't send the bearer header);
@@ -251,6 +284,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Notes (workspace-scoped).
 			protected.POST("/workspaces/:id/notes", rh.CreateNote)
 			protected.GET("/workspaces/:id/notes", rh.ListNotes)
+
+			// Documents (workspace-scoped, nested via parent_id).
+			protected.POST("/workspaces/:id/documents", rh.CreateDocument)
+			protected.GET("/workspaces/:id/documents", rh.ListDocuments)
+			protected.GET("/workspaces/:id/documents/by-slug/:slug", rh.ResolveDocumentBySlug)
 
 			protected.PATCH("/groups/:id", rh.UpdateProjectGroup)
 			protected.PATCH("/groups/:id/move", rh.MoveProjectGroup)
@@ -363,6 +401,72 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/notes/:id", rh.GetNote)
 			protected.PATCH("/notes/:id", rh.UpdateNote)
 			protected.DELETE("/notes/:id", rh.DeleteNote)
+
+			protected.GET("/documents/:id", rh.GetDocument)
+			protected.PATCH("/documents/:id", rh.UpdateDocument)
+			protected.PATCH("/documents/:id/content", rh.UpdateDocumentContent)
+			protected.POST("/documents/:id/assets", rh.UploadDocumentAsset)
+			protected.POST("/documents/:id/pdf", rh.UploadDocumentPdf)
+			// Office import/export through the LibreOffice sidecar (#2733). The
+			// status route is cheap on purpose: the client asks it once and hides
+			// the import button on an install with no converter, instead of
+			// offering an action that fails after the file picker.
+			//
+			// It sits on its own prefix rather than at /documents/converter for
+			// the same reason the comment and version routes do — and here it is
+			// not only style: a static segment next to /documents/:id is exactly
+			// the shape gin's tree refuses, so the tidy-looking URL would have
+			// panicked the router at boot.
+			protected.GET("/document-converter", rh.ConverterStatus)
+			protected.POST("/workspaces/:id/documents/import", rh.ImportDocument)
+			protected.GET("/documents/:id/export", rh.ExportDocument)
+			protected.DELETE("/documents/:id", rh.DeleteDocument)
+
+			// Block-anchored annotations and their threads (#2730). The thread
+			// endpoints sit on their own prefix rather than under the document:
+			// a comment is addressed by its own id once created, and nesting the
+			// route would make the document id in it decorative — and, worse,
+			// something a client could get wrong while the handler trusted it.
+			protected.GET("/documents/:id/comments", rh.ListDocumentComments)
+			protected.POST("/documents/:id/comments", rh.CreateDocumentComment)
+			protected.PATCH("/document-comments/:id", rh.UpdateDocumentComment)
+			protected.PATCH("/document-comments/:id/resolve", rh.ResolveDocumentComment)
+			protected.DELETE("/document-comments/:id", rh.DeleteDocumentComment)
+
+			// Version journal, snapshots and rollback (#2731). Same split as the
+			// comments above: the list hangs off the document, a single version
+			// is addressed by its own id.
+			protected.GET("/documents/:id/versions", rh.ListDocumentVersions)
+			protected.POST("/documents/:id/versions", rh.CreateDocumentVersion)
+			protected.GET("/document-versions/:id", rh.GetDocumentVersion)
+			protected.POST("/document-versions/:id/restore", rh.RestoreDocumentVersion)
+
+			// Template gallery (#2734). The gallery belongs to the workspace, not
+			// to any document — a template outlives the document it was made
+			// from — so the list hangs off the workspace, and a single template is
+			// addressed by its own id like versions and comments above. Using one
+			// is not a route here at all: it is `template_id` on document create,
+			// which keeps slug, position and authorship on the single path that
+			// already owns them.
+			protected.GET("/workspaces/:id/document-templates", rh.ListDocumentTemplates)
+			protected.POST("/workspaces/:id/document-templates", rh.CreateDocumentTemplate)
+			protected.GET("/document-templates/:id", rh.GetDocumentTemplate)
+			protected.PATCH("/document-templates/:id", rh.UpdateDocumentTemplate)
+			protected.DELETE("/document-templates/:id", rh.DeleteDocumentTemplate)
+
+			// Task links and approval protocols (#2732). The link list is read
+			// from both ends — a document shows its tasks, a task shows its
+			// documents — so both directions get a route; the link itself is
+			// addressed by its own id, like everything else above.
+			protected.GET("/documents/:id/tasks", rh.ListDocumentTaskLinks)
+			protected.POST("/documents/:id/tasks", rh.CreateDocumentTaskLink)
+			protected.DELETE("/document-task-links/:id", rh.DeleteDocumentTaskLink)
+			protected.GET("/tasks/:id/documents", rh.ListTaskDocumentLinks)
+
+			protected.GET("/documents/:id/approvals", rh.ListDocumentApprovals)
+			protected.POST("/documents/:id/approvals", rh.CreateDocumentApproval)
+			protected.POST("/document-approvals/:id/decide", rh.DecideDocumentApproval)
+			protected.POST("/document-approvals/:id/cancel", rh.CancelDocumentApproval)
 
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).

@@ -71,6 +71,7 @@ import website.msdnna.tessera.util.Ion
 sealed interface MainDest {
     data object Home : MainDest
     data object Notes : MainDest
+    data object Documents : MainDest
     data object Reminders : MainDest
     data object Milestones : MainDest
     data object GitLabSettings : MainDest
@@ -234,6 +235,8 @@ fun MainScreen(
             when {
                 saved == "notes" -> dest = MainDest.Notes
 
+                saved == "documents" -> dest = MainDest.Documents
+
                 saved == "reminders" -> dest = MainDest.Reminders
 
                 saved == "milestones" -> dest = MainDest.Milestones
@@ -254,6 +257,7 @@ fun MainScreen(
             when (val d = dest) {
                 is MainDest.Home -> "home"
                 is MainDest.Notes -> "notes"
+                is MainDest.Documents -> "documents"
                 is MainDest.Reminders -> "reminders"
                 is MainDest.Milestones -> "milestones"
                 is MainDest.GitLabSettings -> "gitlab"
@@ -300,6 +304,7 @@ fun MainScreen(
                     onOpenHome = { go(MainDest.Home) },
                     onOpenReminders = { go(MainDest.Reminders) },
                     onOpenNotes = { go(MainDest.Notes) },
+                    onOpenDocuments = { go(MainDest.Documents) },
                     onOpenMilestones = { go(MainDest.Milestones) },
                     onOpenMembers = {
                         membersOpen = true
@@ -378,6 +383,8 @@ fun MainScreen(
                                 preselectNoteId = notesPreselectId,
                                 onPreselectConsumed = { notesPreselectId = null },
                             )
+
+                            is MainDest.Documents -> DocumentsScreen(workspaceId = state.currentId)
 
                             is MainDest.Reminders -> RemindersScreen()
 
@@ -616,6 +623,7 @@ private fun IntegrationTitleSwitcher(title: String, modifier: Modifier = Modifie
 private fun titleFor(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "Моя работа"
     is MainDest.Notes -> "Заметки"
+    is MainDest.Documents -> "Документы"
     is MainDest.Reminders -> "Напоминания"
     is MainDest.Milestones -> "Этапы"
     is MainDest.GitLabSettings -> "GitLab"
@@ -630,6 +638,7 @@ private fun titleFor(dest: MainDest): String = when (dest) {
 private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "home"
     is MainDest.Notes -> "notes"
+    is MainDest.Documents -> "documents"
     is MainDest.Reminders -> "reminders"
     is MainDest.Milestones -> "milestones"
     is MainDest.GitLabSettings -> "gitlab"
