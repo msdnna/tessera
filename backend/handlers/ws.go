@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"tessera/internal/db"
+	"tessera/internal/docroom"
 	"tessera/internal/realtime"
 	"tessera/middleware"
 )
@@ -28,20 +29,22 @@ const bearerSubprotocol = "bearer"
 // gets a socket and an authenticated one never sees another workspace's events.
 type WSHandler struct {
 	hub      *realtime.Hub
+	rooms    *docroom.Rooms // per-document presence/locks (ConnectDocument)
 	q        *db.Queries
 	secret   string
 	upgrader websocket.Upgrader
 }
 
-// NewWSHandler returns a WSHandler backed by the given hub. allowedOrigins is
-// the browser-origin allowlist (the CORS origin plus any desktop origins);
-// requests from other browser origins are refused to block cross-site WebSocket
-// hijacking. Native clients (Android, CLI) send no Origin at all and are
-// admitted on their bearer credential alone.
-func NewWSHandler(hub *realtime.Hub, q *db.Queries, secret string, allowedOrigins ...string) *WSHandler {
+// NewWSHandler returns a WSHandler backed by the given hub and document-room
+// registry. allowedOrigins is the browser-origin allowlist (the CORS origin plus
+// any desktop origins); requests from other browser origins are refused to block
+// cross-site WebSocket hijacking. Native clients (Android, CLI) send no Origin at
+// all and are admitted on their bearer credential alone.
+func NewWSHandler(hub *realtime.Hub, rooms *docroom.Rooms, q *db.Queries, secret string, allowedOrigins ...string) *WSHandler {
 	allowed, wildcard := originAllowlist(allowedOrigins)
 	return &WSHandler{
 		hub:    hub,
+		rooms:  rooms,
 		q:      q,
 		secret: secret,
 		upgrader: websocket.Upgrader{
