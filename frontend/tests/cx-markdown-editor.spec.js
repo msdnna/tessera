@@ -57,11 +57,31 @@ describe('MarkdownEditor keyboard', () => {
     expect(w.props('modelValue')).toBe('hello (world)')
   })
 
-  it('leaves the default alone when nothing is selected', async () => {
+  it('auto-closes a bracket when nothing is selected', async () => {
     w = editor('hello')
     select(w, 5, 5)
     await w.find('textarea').trigger('keydown', { key: '(' })
-    expect(w.props('modelValue')).toBe('hello') // the browser inserts it, not us
+    expect(w.props('modelValue')).toBe('hello()') // pair inserted, caret between
+  })
+
+  it('deletes both halves of an empty pair on Backspace', async () => {
+    w = editor('a()b')
+    select(w, 2, 2)
+    await w.find('textarea').trigger('keydown', { key: 'Backspace' })
+    expect(w.props('modelValue')).toBe('ab')
+  })
+
+  it('continues a list on Enter and ends it on an empty item', async () => {
+    w = editor('- one')
+    const ta = w.find('textarea')
+    select(w, 5, 5)
+    await ta.trigger('keydown', { key: 'Enter' })
+    expect(w.props('modelValue')).toBe('- one\n- ')
+
+    ta.element.value = '- one\n- '
+    select(w, 8, 8)
+    await ta.trigger('keydown', { key: 'Enter' })
+    expect(w.props('modelValue')).toBe('- one\n')
   })
 
   it('does not swallow a modified key combination', async () => {
@@ -109,7 +129,9 @@ describe('MarkdownEditor keyboard', () => {
 describe('MarkdownEditor toolbar', () => {
   it('offers the block tools and inserts a checkbox marker', async () => {
     const w = editor('дело')
-    const checkbox = w.findAll('.md2-format button').find((b) => b.attributes('title') === 'Чекбокс')
+    const checkbox = w
+      .findAll('.md2-format button')
+      .find((b) => b.attributes('title') === 'Чекбокс')
     expect(checkbox).toBeTruthy()
     select(w, 0, 4)
     await checkbox.trigger('mousedown')

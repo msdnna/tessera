@@ -2,10 +2,14 @@ import { describe, it, expect } from 'vitest'
 import {
   WRAP_PAIRS,
   INDENT,
+  AUTOCLOSE_PAIRS,
   wrapSelection,
   indentLines,
   outdentLines,
   orderedListPrefix,
+  autoClose,
+  deletePair,
+  handleEnter,
 } from '@/utils/mdEdit'
 
 describe('wrapSelection', () => {
@@ -80,5 +84,117 @@ describe('outdentLines', () => {
 describe('orderedListPrefix', () => {
   it('numbers from 1 in selection order', () => {
     expect(['a', 'b', 'c'].map(orderedListPrefix)).toEqual(['1. ', '2. ', '3. '])
+  })
+})
+
+describe('autoClose', () => {
+  it('inserts the closing half and parks the caret between', () => {
+    const r = autoClose('foo', 3, '(')
+    expect(r).toEqual({ type: 'insert', value: 'foo()', start: 4, end: 4 })
+  })
+
+  it('steps over a closer the caret already sits before', () => {
+    // "foo()" with the caret between the brackets, user types ")"
+    expect(autoClose('foo()', 4, ')')).toEqual({ type: 'over', caret: 5 })
+  })
+
+  it('closes every configured pair', () => {
+    for (const [open, close] of Object.entries(AUTOCLOSE_PAIRS)) {
+      expect(autoClose('', 0, open).value).toBe(open + close)
+    }
+  })
+
+  it('leaves emphasis marks to the browser (no auto-pair)', () => {
+    expect(autoClose('a', 1, '*')).toBeNull()
+    expect(autoClose('a', 1, '~')).toBeNull()
+  })
+
+  it('does not trap following text inside a bracket', () => {
+    // caret before "bar" — auto-closing "(" here would swallow the word
+    expect(autoClose('bar', 0, '(')).toBeNull()
+    // but a bracket is fine before whitespace / a closer / end of line
+    expect(autoClose('a b', 1, '(')).toBeTruthy()
+    expect(autoClose('()', 1, '[')).toBeTruthy()
+  })
+
+  it('keeps an apostrophe literal inside a word', () => {
+    // "don" + "'" — preceding char is a letter, so no auto-pair
+    expect(autoClose('don', 3, "'")).toBeNull()
+    // at a boundary it does pair
+    expect(autoClose('', 0, "'")).toEqual({ type: 'insert', value: "''", start: 1, end: 1 })
+    expect(autoClose('say ', 4, '"')).toBeTruthy()
+  })
+
+  it('builds a fenced block from three backticks then a boundary quote', () => {
+    // First backtick pairs at the boundary, the second steps over, the third is
+    // literal (preceding char is a backtick, not a boundary).
+    expect(autoClose('', 0, '`')).toEqual({ type: 'insert', value: '``', start: 1, end: 1 })
+    expect(autoClose('``', 1, '`')).toEqual({ type: 'over', caret: 2 })
+    expect(autoClose('``', 2, '`')).toBeNull()
+  })
+})
+
+describe('deletePair', () => {
+  it('removes both halves of an empty pair', () => {
+    expect(deletePair('a()b', 2)).toEqual({ value: 'ab', start: 1, end: 1 })
+    expect(deletePair('""', 1)).toEqual({ value: '', start: 0, end: 0 })
+  })
+
+  it('leaves a non-pair alone', () => {
+    expect(deletePair('ab', 1)).toBeNull()
+    expect(deletePair('(x)', 1)).toBeNull() // not empty between the brackets
+  })
+})
+
+describe('handleEnter — lists', () => {
+  it('continues a bullet with the same marker', () => {
+    const r = handleEnter('- one', 5)
+    expect(r.value).toBe('- one\n- ')
+    expect(r.start).toBe(8)
+  })
+
+  it('increments an ordered list', () => {
+    expect(handleEnter('1. one', 6).value).toBe('1. one\n2. ')
+    expect(handleEnter('3) x', 4).value).toBe('3) x\n4) ')
+  })
+
+  it('resets a checkbox to unchecked', () => {
+    expect(handleEnter('- [x] done', 10).value).toBe('- [x] done\n- [ ] ')
+    expect(handleEnter('  - [ ] a', 9).value).toBe('  - [ ] a\n  - [ ] ')
+  })
+
+  it('preserves indentation', () => {
+    expect(handleEnter('  - a', 5).value).toBe('  - a\n  - ')
+  })
+
+  it('ends the list when the item is empty', () => {
+    // Enter on an empty "- " clears the marker rather than adding another bullet.
+    expect(handleEnter('- one\n- ', 8)).toEqual({ value: '- one\n', start: 6, end: 6 })
+    expect(handleEnter('1. ', 3)).toEqual({ value: '', start: 0, end: 0 })
+  })
+
+  it('returns null on a non-list line', () => {
+    expect(handleEnter('plain text', 10)).toBeNull()
+  })
+})
+
+describe('handleEnter — code fences', () => {
+  it('drops a closing fence under an opening one', () => {
+    const r = handleEnter('```', 3)
+    expect(r.value).toBe('```\n\n```')
+    expect(r.start).toBe(4) // caret on the empty middle line
+  })
+
+  it('keeps the language and indentation on the opening fence', () => {
+    expect(handleEnter('```js', 5).value).toBe('```js\n\n```')
+  })
+
+  it('does not double-close a fence that already has a closer below', () => {
+    // caret at the end of the opening line; a closing ``` exists further down
+    expect(handleEnter('```\ncode\n```', 3)).toBeNull()
+  })
+
+  it('ignores a fence when the caret is mid-line', () => {
+    expect(handleEnter('```js', 3)).toBeNull()
   })
 })

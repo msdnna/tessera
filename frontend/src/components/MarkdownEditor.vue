@@ -31,6 +31,9 @@ import {
   indentLines,
   outdentLines,
   orderedListPrefix,
+  autoClose,
+  deletePair,
+  handleEnter,
 } from '@/utils/mdEdit'
 import { detectSlashQuery, matchCommands, commandInsertText } from '@/utils/commands'
 import { isTauri } from '@/utils/serverBase'
@@ -330,7 +333,8 @@ async function uploadAttachment(file) {
     fd.append('file', file)
     const res = await tasksApi.uploadAttachment(props.attachTaskId, fd)
     const att = res.data
-    if (att?.id) insertAtCaret(`[${att.filename || file.name}](/api/attachments/${att.id}/download)`)
+    if (att?.id)
+      insertAtCaret(`[${att.filename || file.name}](/api/attachments/${att.id}/download)`)
     attachList.value = []
     emit('attachments-changed')
   } catch (err) {
@@ -630,6 +634,38 @@ function onKeydown(e) {
     applyEdit(wrapSelection(el.value, s, end, e.key))
     return
   }
+  // No selection: auto-close brackets / quotes / backticks and step over a closer
+  // the caret already sits before.
+  if (!e.isComposing && e.key.length === 1 && s === end) {
+    const act = autoClose(el.value, s, e.key)
+    if (act) {
+      e.preventDefault()
+      if (act.type === 'over') {
+        el.setSelectionRange(act.caret, act.caret)
+      } else {
+        applyEdit(act)
+      }
+      return
+    }
+  }
+  // Backspace between an empty auto-inserted pair deletes both halves.
+  if (e.key === 'Backspace' && !e.isComposing && s === end) {
+    const r = deletePair(el.value, s)
+    if (r) {
+      e.preventDefault()
+      applyEdit(r)
+      return
+    }
+  }
+  // Enter continues a list (or closes a code fence); Shift+Enter is a plain break.
+  if (e.key === 'Enter' && !e.isComposing && !e.shiftKey && s === end) {
+    const r = handleEnter(el.value, s)
+    if (r) {
+      e.preventDefault()
+      applyEdit(r)
+      return
+    }
+  }
   if (e.key === 'Tab' && tabTraps.value) {
     e.preventDefault()
     if (e.shiftKey) applyEdit(outdentLines(el.value, s, end))
@@ -647,9 +683,7 @@ function onKeydown(e) {
 
 // Lazy + async so the two components can reference each other (the modal hosts a
 // MarkdownEditor of its own) without a circular import at module-eval time.
-const MarkdownFullscreenModal = defineAsyncComponent(
-  () => import('./MarkdownFullscreenModal.vue'),
-)
+const MarkdownFullscreenModal = defineAsyncComponent(() => import('./MarkdownFullscreenModal.vue'))
 const fullscreen = ref(false)
 function openFullscreen() {
   fullscreen.value = true
