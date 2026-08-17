@@ -55,8 +55,35 @@ describe('renderRich', () => {
 
   it('highlights known member display names before generic handles', () => {
     const html = renderRich('hi @Ann Lee and @v.sokolov', [{ label: 'Ann Lee' }])
-    expect(html).toContain('<span class="mention">@Ann Lee</span>')
-    expect(html).toContain('<span class="mention">@v.sokolov</span>')
+    expect(html).toContain('>@Ann Lee</span>')
+    expect(html).toContain('>@v.sokolov</span>')
+    expect(html).toContain('class="mention" data-type="mention"')
+  })
+
+  it('stamps the member id on a known mention so hover cards resolve it', () => {
+    const html = renderRich('hi @Ann Lee', [{ id: 'u1', label: 'Ann Lee' }])
+    expect(html).toContain('data-id="u1"')
+    expect(html).toContain('data-label="Ann Lee"')
+  })
+
+  it('gives a generic handle a label but no id — it names no known member', () => {
+    const html = renderRich('hi @v.sokolov', [{ id: 'u1', label: 'Ann Lee' }])
+    expect(html).toContain('data-label="v.sokolov"')
+    expect(html).not.toContain('data-id=')
+  })
+
+  // A name carrying HTML-special characters is already escaped by the Markdown
+  // renderer by the time mentions are matched, so the raw label never matches it
+  // and the generic handle token takes over. That predates the data-attributes;
+  // what matters here is that the chip stays well-formed and the label read back
+  // off the chip is exactly the text it highlighted — no double escaping.
+  it('keeps the chip well-formed for a name the renderer escaped', () => {
+    const html = renderRich('hi @A&B', [{ id: 'u1', label: 'A&B' }])
+    const chip = new DOMParser()
+      .parseFromString(html, 'text/html')
+      .querySelector('[data-type="mention"]')
+    expect(chip.dataset.label).toBe(chip.textContent.replace(/^@/, ''))
+    expect(html).not.toContain('&amp;amp;')
   })
 
   it('returns "" for empty input', () => {

@@ -73,6 +73,7 @@ import {
   columnTail,
 } from '@/utils/status'
 import { taskLink } from '@/utils/taskLink'
+import { buildMentionItems } from '@/utils/mentions'
 import { copyText } from '@/utils/clipboard'
 import {
   dismissesSidebar,
@@ -141,6 +142,16 @@ const {
 } = storeToRefs(bv)
 const tagPrefixNames = bv.prefixNames
 const wsId = computed(() => bv.wsId)
+// The description used to hand RichContent the raw member rows, which carry no
+// `label` — so highlightMentions matched nothing and multi-word names fell
+// through to the generic handle token ("@Ann Lee" highlighted as "@Ann"). Same
+// builder as the comments tab, so both sides highlight and resolve alike.
+// Full GitLab roster (not the assignee-picker's filtered gitlabMembers): an
+// OAuth-linked member is mentioned by their @gl_username, which buildMentionItems
+// folds onto their Tessera row so the hover card resolves.
+const mentionItems = computed(() =>
+  buildMentionItems(members.value, Object.values(bv.gitlabMembersMap)),
+)
 const projectId = computed(() => bv.projectId)
 
 const store = useWorkspacesStore()
@@ -1608,7 +1619,8 @@ async function onSubtaskChanged() {
               <RichContent
                 v-if="readonly"
                 :source="description || '_Нет описания_'"
-                :members="members"
+                :members="mentionItems"
+                mention-cards
                 task-refs
               />
               <MarkdownEditor

@@ -21,6 +21,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { fmtWhen, groupThreads } from '@/utils/taskFeed'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
+import { buildMentionItems } from '@/utils/mentions'
 import { scrollParent } from '@/utils/dom'
 import MarkdownEditor from '../MarkdownEditor.vue'
 import RichContent from '../RichContent.vue'
@@ -162,26 +163,14 @@ function replyCount(t) {
   return `${n} ${forms}`
 }
 
-// Members offered for @-mentions. Tessera members insert their display name;
-// GitLab-only users (no Tessera account) insert their `@username` so GitLab resolves
-// the mention on writeback. `label` is the inserted text, `display` the row. The
-// store's gitlabMembersList already drops GitLab users mapped to a Tessera member,
-// so nobody shows up twice.
-const mentionItems = computed(() => [
-  ...bv.membersList.map((m) => ({
-    id: m.user_id,
-    label: m.name,
-    display: m.name,
-    avatarUserId: m.user_id,
-  })),
-  ...bv.gitlabMembersList.map((g) => ({
-    id: null,
-    label: g.gl_username,
-    display: g.gl_name || g.gl_username,
-    avatarSrc: g.gl_avatar_url,
-    gitlab: true,
-  })),
-])
+// Members offered for @-mentions — and, via the same rows, resolved by the hover
+// cards. Shared with the description so both render mentions off one shape.
+// Full GitLab roster (Object.values(gitlabMembersMap)), not the filtered
+// gitlabMembersList: buildMentionItems needs the GitLab rows of OAuth-linked
+// members to attach their @gl_username, else the hover card can't resolve them.
+const mentionItems = computed(() =>
+  buildMentionItems(bv.membersList, Object.values(bv.gitlabMembersMap)),
+)
 
 // ── quick actions ──
 // The command registry is workspace-wide (loaded once by the store); the popup
@@ -476,6 +465,7 @@ async function onCommentCheck(c, i) {
                 class="c-text"
                 :source="t.root.body"
                 :members="mentionItems"
+                mention-cards
                 task-refs
                 :interactive="t.root.author_id === meId"
                 @toggle="onCommentCheck(t.root, $event)"
@@ -556,6 +546,7 @@ async function onCommentCheck(c, i) {
                       class="c-text"
                       :source="r.body"
                       :members="mentionItems"
+                      mention-cards
                       task-refs
                       :interactive="r.author_id === meId"
                       @toggle="onCommentCheck(r, $event)"
