@@ -2000,9 +2000,24 @@ async function onSubtaskChanged() {
      form" report). Zero it so the composer sits flush against the scroller's
      bottom edge, with the footer providing the separation below. */
   padding-bottom: 0;
+  /* Reserve the scrollbar gutter permanently. Without it the scrollbar eats into
+     the scroller's right edge only while overflowing, so the composer (which lives
+     inside the scroller) ends up narrower than the footer (which does not) and the
+     «Сохранить» button juts past the composer's right border. The footer below
+     reserves the SAME gutter so the two right edges line up in every browser,
+     whatever width `thin` resolves to. */
+  scrollbar-gutter: stable;
 }
 .tm-card.tm-sidebar :deep(.n-card__footer) {
   flex: none;
+  /* Match the scroller's reserved gutter (see above) so the action buttons align
+     with the composer's right edge; `overflow: hidden` makes scrollbar-gutter take
+     effect without ever showing a bar. */
+  overflow: hidden;
+  scrollbar-gutter: stable;
+  /* Constant breathing room above the buttons — independent of the composer's
+     content, so the gap looks the same with or without the command-preview line. */
+  padding-top: 14px;
 }
 .title-input :deep(input) {
   font-size: 18px;

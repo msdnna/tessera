@@ -199,6 +199,57 @@ test('панель: композер комментариев прижат к н
     .toBeLessThanOrEqual(1)
 })
 
+// #2716 /rework — the composer lives inside the scroller; a classic (space-taking)
+// scrollbar narrows it while the pinned footer keeps full width, so «Сохранить» juts
+// past the composer's right border. Reserving the scrollbar gutter on BOTH lines the
+// two right edges up. Headless Chromium uses a 0-width overlay bar that hides the bug,
+// so the test forces a classic bar to reproduce the user's environment.
+test('панель: кнопки футера выровнены по правому краю композера при скроллбаре', async ({
+  page,
+  backend,
+}) => {
+  const { ws, board, columns } = await backend.freshBoard('modal-align')
+  const stamp = Date.now().toString(36)
+  const title = `С комментариями ${stamp}`
+  const task = await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title })
+  for (let i = 0; i < 20; i++) {
+    await backend.post(`/tasks/${task.id}/comments`, { body: `Комментарий ${i} ${stamp}` })
+  }
+
+  await openBoard(page, board.id, ws.id)
+  await page.addStyleTag({
+    content: `.n-card-content::-webkit-scrollbar{width:14px}
+              .n-card-content::-webkit-scrollbar-thumb{background:#bbb}`,
+  })
+  await cardsIn(page, columns[0].name).filter({ hasText: title }).click()
+  const modal = page.getByTestId('task-modal')
+  await expect(modal).toBeVisible()
+  await page.getByTestId('task-layout-trigger').click()
+  await page.getByTestId('task-layout-sidebar').click()
+  await expect(modal).toHaveClass(/tm-sidebar/)
+  await panelSettled(modal)
+
+  await modal.getByText('Комментарии', { exact: false }).first().click()
+  const edges = await modal.evaluate((root) => {
+    root.querySelector('.n-card-content').scrollTop = 99999
+    const add = root.querySelector('.comment-add')
+    const footer = root.querySelector('.n-card__footer')
+    const saveBtn = [...footer.querySelectorAll('button, .n-button')].pop()
+    return {
+      composerRight: Math.round(add.getBoundingClientRect().right),
+      saveRight: Math.round(saveBtn.getBoundingClientRect().right),
+      gap: Math.round(footer.getBoundingClientRect().top - add.getBoundingClientRect().bottom),
+    }
+  })
+  // The save button never extends past the composer's right border...
+  expect(edges.saveRight).toBeLessThanOrEqual(edges.composerRight + 1)
+  // ...and they are actually aligned (a classic scrollbar was forced, so the gutter
+  // must be reserved on both — otherwise the edges would differ by the bar's width).
+  expect(Math.abs(edges.saveRight - edges.composerRight)).toBeLessThanOrEqual(1)
+  // The composer is not glued to the buttons.
+  expect(edges.gap).toBeGreaterThanOrEqual(8)
+})
+
 // #2716 /rework — without a mask nothing dismisses the panel for free, and Naive's
 // own click-outside can't help: it only fires when the event target is the modal
 // container, which is `pointer-events: none` here. So the two halves of the rule are
