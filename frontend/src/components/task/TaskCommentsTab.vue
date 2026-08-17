@@ -72,6 +72,25 @@ function toggleCollapsed(rootId) {
   collapsed.value = next // reassign — a mutated Set is not reactive
 }
 
+// Scroll to a freshly-arrived comment whoever wrote it. Own sends already scroll
+// (postComment pins to the bottom, postReply to the reply), but a comment that
+// appears by any other route — a realtime/refetch update from another user —
+// would otherwise land off-screen. Gated by `hydrated` so the initial population
+// (empty → full on open) doesn't trigger it; the modal handles the open scroll.
+watch(
+  () => props.comments,
+  (next, prev) => {
+    if (!props.hydrated) return
+    const before = new Set((prev || []).map((c) => c.id))
+    const added = (next || []).filter((c) => !before.has(c.id))
+    if (!added.length) return
+    // The newest by arrival is the last in thread order isn't guaranteed (a reply
+    // sorts under its root), so pick the max by created_at.
+    const target = added.reduce((a, b) => (a.created_at >= b.created_at ? a : b))
+    scrollToComment(target.id)
+  },
+)
+
 // The @-handle that renderRich/GitLab will resolve for a comment's author:
 // a Tessera member mentions by display name, a GitLab-only author by the
 // @username we can recover from the members list (its display name won't
@@ -87,13 +106,44 @@ function mentionHandle(c) {
 
 // Open the reply composer for a thread. `target` is the comment being answered
 // (root or a reply) — its author is pre-mentioned so the reply reads as a reply.
-function startReply(rootId, target) {
+async function startReply(rootId, target) {
   replyingTo.value = rootId
   const handle = mentionHandle(target)
   replyBody.value = handle ? `@${handle}, ` : ''
   // Answering a collapsed thread with the answers hidden would be writing blind.
   if (collapsed.value.has(rootId)) toggleCollapsed(rootId)
-  nextTick(() => replyEditor.value?.focus?.())
+  await nextTick()
+  replyEditor.value?.focus?.()
+  // Reveal the just-opened composer: it lands mid-list (under its thread) and the
+  // sticky footer floats over the bottom of the pane, so plain focus/centre can leave
+  // it behind that footer. Two frames of grace first — the boxed editor (toolbar +
+  // auto-grown textarea) is still short at nextTick, and measuring then makes
+  // revealInPane think the form already fits and skip the scroll.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => revealInPane(commentsListEl.value?.querySelector('.c-reply-add'))),
+  )
+}
+
+// Scroll an element into view within the comments scroller, kept clear of the
+// composer that is `position: sticky; bottom: 0` and floats over the bottom of the
+// pane. Done by explicit maths on the resolved scroller rather than scrollIntoView:
+// the sticky footer isn't part of scrollIntoView's model (it would park the element
+// underneath), and a freshly-mounted reply form races its smooth animation.
+function revealInPane(el) {
+  if (!el) return
+  const sp = scrollParent(el)
+  if (!sp) return
+  const composer = commentsPane.value?.querySelector('.comment-add')
+  const compH = composer ? composer.getBoundingClientRect().height : 0
+  const spRect = sp.getBoundingClientRect()
+  const r = el.getBoundingClientRect()
+  const top = spRect.top + 8 // small breathing room at the pane top
+  const bottom = spRect.bottom - compH - 12 // reserve the sticky-composer band
+  let delta = 0
+  if (r.height > bottom - top || r.top < top)
+    delta = r.top - top // taller than the band, or above the fold → show its top
+  else if (r.bottom > bottom) delta = r.bottom - bottom // below the fold → lift above the composer
+  if (delta) sp.scrollBy({ top: delta, behavior: 'smooth' })
 }
 
 function cancelReply() {
@@ -309,8 +359,7 @@ async function postReply(rootId) {
 
 async function scrollToComment(id) {
   await nextTick()
-  const el = commentsListEl.value?.querySelector(`[data-comment-id="${id}"]`)
-  el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  revealInPane(commentsListEl.value?.querySelector(`[data-comment-id="${id}"]`))
 }
 
 // Report what the backend actually did — intent and result can differ (a
