@@ -484,7 +484,7 @@ func (h *API) performAction(ctx context.Context, client *gitlab.Client, integ db
 	case gitlab.ActSetMilestone:
 		return h.performSetMilestone(ctx, client, integ, w.TaskID, path, iid)
 	case gitlab.ActPostComment:
-		return h.performPostComment(ctx, client, path, iid, act, payload)
+		return h.performPostComment(ctx, client, integ, path, iid, act, payload)
 	case gitlab.ActSetTitleDesc:
 		return h.performSetTitleDesc(ctx, client, integ, w.TaskID, path, iid)
 	default:
@@ -683,9 +683,13 @@ func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db
 // "op" selects the effect: "edit"/"delete" act on the existing note (identified by
 // the stored "gl_note_id" gid); the default posts a new note and tags the originating
 // comment with the returned note id so the next pull dedups it.
-func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, path string, iid int64, act gitlab.BindAction, payload map[string]any) (string, error) {
+func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, path string, iid int64, act gitlab.BindAction, payload map[string]any) (string, error) {
 	op, _ := payload["op"].(string)
 	body, _ := payload["body"].(string)
+	// A comment carries the same Tessera-relative asset links a description does.
+	if body != "" && parseWriteback(integ.Writeback).AttachmentsEnabled() {
+		body, _ = h.pushAssets(ctx, client, integ, body)
+	}
 
 	if op == "edit" || op == "delete" {
 		noteID, ok := parseNoteGID(payload["gl_note_id"])
@@ -845,7 +849,13 @@ func (h *API) performSetTitleDesc(ctx context.Context, client *gitlab.Client, in
 	if err != nil {
 		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
 	}
-	if err := client.UpdateIssueTitleDescription(ctx, path, iid, task.Title, task.Description); err != nil {
+	// Same asset mirroring as issue creation — the hole is identical here, and an
+	// edit that re-pushes a description must not turn its images back into dead links.
+	desc := task.Description
+	if parseWriteback(integ.Writeback).AttachmentsEnabled() {
+		desc, _ = h.pushAssets(ctx, client, integ, desc)
+	}
+	if err := client.UpdateIssueTitleDescription(ctx, path, iid, task.Title, desc); err != nil {
 		return "", err
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
@@ -875,7 +885,7 @@ func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, in
 	// Refresh the conflict baseline so the next push sees nothing remote-changed.
 	// Rewrite attachment links the same way the pull does, so the description
 	// baseline matches what the task stores (avoids a false title_desc conflict).
-	issue.Description = h.rewriteAssets(issue.Description, integ.WorkspaceID)
+	issue.Description = h.rewriteAssets(ctx, issue.Description, integ.WorkspaceID)
 	if serr := h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{
 		TaskID: taskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules)),
 	}); serr != nil {

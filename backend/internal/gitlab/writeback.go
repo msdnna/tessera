@@ -28,6 +28,15 @@ type Writeback struct {
 	FetchTemplates      bool              `json:"fetch_templates"` // offer repo issue templates when creating
 	ColumnLabelBindings map[string]string `json:"column_label_bindings,omitempty"`
 
+	// PushAttachments mirrors Tessera-hosted assets into the GitLab project's
+	// upload store when a description/note is pushed (task #2713). A pointer, not a
+	// plain bool, because this one defaults to ON: an absent key in an integration
+	// configured before this field existed must mean "yes" (dead links in issues are
+	// a bug, not a preference), and a plain bool would read that as "no". Turning it
+	// off is for teams that don't want binaries duplicated into GitLab's storage —
+	// links then degrade to a plain-text note instead of a broken image.
+	PushAttachments *bool `json:"push_attachments,omitempty"`
+
 	// Bindings is the customizable trigger→action table. Empty = fall back to the
 	// legacy-flag defaults (effectiveBindings). Non-empty = admin took control.
 	Bindings []Binding `json:"bindings,omitempty"`
@@ -97,6 +106,12 @@ type BindAction struct {
 
 // DefaultWriteback is the all-off config (write-back disabled).
 func DefaultWriteback() Writeback { return Writeback{} }
+
+// AttachmentsEnabled reports whether pushed bodies should mirror Tessera-hosted
+// assets into GitLab. Absent means enabled — see PushAttachments.
+func (w Writeback) AttachmentsEnabled() bool {
+	return w.PushAttachments == nil || *w.PushAttachments
+}
 
 // effectiveBindings returns the bindings that actually drive write-back. When the
 // admin has authored an explicit set, it wins verbatim. Otherwise the legacy

@@ -570,6 +570,57 @@ func (q *Queries) GetGitlabMemberIDByUsername(ctx context.Context, arg GetGitlab
 	return gl_user_id, err
 }
 
+const getGitlabUpload = `-- name: GetGitlabUpload :one
+
+SELECT integration_id, source_key, gl_url, gl_markdown, created_at FROM gitlab_uploads
+WHERE integration_id = $1 AND source_key = $2
+`
+
+type GetGitlabUploadParams struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	SourceKey     string    `json:"source_key"`
+}
+
+// ── mirrored assets (Tessera upload → GitLab upload store) ──
+// The map is read in both directions: outbound to skip re-uploading an asset that is
+// already in the project's store, inbound (rewriteAssets) to turn our own mirrored
+// URL back into the Tessera one, so a description round-trips byte-for-byte and
+// title_desc conflict detection doesn't see a permanent divergence. See migration 0054.
+func (q *Queries) GetGitlabUpload(ctx context.Context, arg GetGitlabUploadParams) (GitlabUpload, error) {
+	row := q.db.QueryRow(ctx, getGitlabUpload, arg.IntegrationID, arg.SourceKey)
+	var i GitlabUpload
+	err := row.Scan(
+		&i.IntegrationID,
+		&i.SourceKey,
+		&i.GlUrl,
+		&i.GlMarkdown,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getGitlabUploadSourceByURL = `-- name: GetGitlabUploadSourceByURL :one
+SELECT u.source_key FROM gitlab_uploads u
+JOIN gitlab_integrations i ON i.id = u.integration_id
+WHERE i.workspace_id = $1 AND u.gl_url = $2
+LIMIT 1
+`
+
+type GetGitlabUploadSourceByURLParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	GlUrl       string    `json:"gl_url"`
+}
+
+// GetGitlabUploadSourceByURL resolves a GitLab upload URL back to the Tessera source
+// it was mirrored from, scoped to the workspace (rewriteAssets knows the workspace,
+// not which of its bindings performed the upload).
+func (q *Queries) GetGitlabUploadSourceByURL(ctx context.Context, arg GetGitlabUploadSourceByURLParams) (string, error) {
+	row := q.db.QueryRow(ctx, getGitlabUploadSourceByURL, arg.WorkspaceID, arg.GlUrl)
+	var source_key string
+	err := row.Scan(&source_key)
+	return source_key, err
+}
+
 const getUserIDByGitlabUsername = `-- name: GetUserIDByGitlabUsername :one
 SELECT user_id FROM gitlab_credentials WHERE gl_username = $1
 `
@@ -1398,4 +1449,37 @@ func (q *Queries) UpsertGitlabSourcedAssignee(ctx context.Context, arg UpsertGit
 		arg.GlAvatarUrl,
 	)
 	return err
+}
+
+const upsertGitlabUpload = `-- name: UpsertGitlabUpload :one
+INSERT INTO gitlab_uploads (integration_id, source_key, gl_url, gl_markdown)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (integration_id, source_key) DO UPDATE
+SET gl_url = EXCLUDED.gl_url, gl_markdown = EXCLUDED.gl_markdown
+RETURNING integration_id, source_key, gl_url, gl_markdown, created_at
+`
+
+type UpsertGitlabUploadParams struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	SourceKey     string    `json:"source_key"`
+	GlUrl         string    `json:"gl_url"`
+	GlMarkdown    string    `json:"gl_markdown"`
+}
+
+func (q *Queries) UpsertGitlabUpload(ctx context.Context, arg UpsertGitlabUploadParams) (GitlabUpload, error) {
+	row := q.db.QueryRow(ctx, upsertGitlabUpload,
+		arg.IntegrationID,
+		arg.SourceKey,
+		arg.GlUrl,
+		arg.GlMarkdown,
+	)
+	var i GitlabUpload
+	err := row.Scan(
+		&i.IntegrationID,
+		&i.SourceKey,
+		&i.GlUrl,
+		&i.GlMarkdown,
+		&i.CreatedAt,
+	)
+	return i, err
 }
