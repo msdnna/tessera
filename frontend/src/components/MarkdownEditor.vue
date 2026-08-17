@@ -715,7 +715,13 @@ function clear() {
   hideBubble()
 }
 function focus() {
-  ta.value?.focus()
+  const el = ta.value
+  if (!el) return
+  el.focus()
+  // Place the caret at the end so a programmatically prefilled draft (e.g. a
+  // reply seeded with "@author, ") is typed after, not before, the seed text.
+  const end = el.value.length
+  el.setSelectionRange?.(end, end)
 }
 defineExpose({
   getMentions,

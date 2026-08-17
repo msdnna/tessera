@@ -72,11 +72,28 @@ function toggleCollapsed(rootId) {
   collapsed.value = next // reassign — a mutated Set is not reactive
 }
 
-function startReply(rootId) {
+// The @-handle that renderRich/GitLab will resolve for a comment's author:
+// a Tessera member mentions by display name, a GitLab-only author by the
+// @username we can recover from the members list (its display name won't
+// resolve), else the raw name as a courtesy.
+function mentionHandle(c) {
+  if (!c) return ''
+  if (c.author_name) return c.author_name
+  const glName = c.gl_author_name
+  if (!glName) return ''
+  const g = bv.gitlabMembersList.find((m) => (m.gl_name || m.gl_username) === glName)
+  return g?.gl_username || glName
+}
+
+// Open the reply composer for a thread. `target` is the comment being answered
+// (root or a reply) — its author is pre-mentioned so the reply reads as a reply.
+function startReply(rootId, target) {
   replyingTo.value = rootId
-  replyBody.value = ''
+  const handle = mentionHandle(target)
+  replyBody.value = handle ? `@${handle}, ` : ''
   // Answering a collapsed thread with the answers hidden would be writing blind.
   if (collapsed.value.has(rootId)) toggleCollapsed(rootId)
+  nextTick(() => replyEditor.value?.focus?.())
 }
 
 function cancelReply() {
@@ -415,7 +432,7 @@ async function onCommentCheck(c, i) {
                 @toggle="onCommentCheck(t.root, $event)"
               />
               <div class="c-thread-acts">
-                <button v-if="!readonly" class="c-link" @click="startReply(t.root.id)">
+                <button v-if="!readonly" class="c-link" @click="startReply(t.root.id, t.root)">
                   Ответить
                 </button>
                 <button v-if="t.replies.length" class="c-link" @click="toggleCollapsed(t.root.id)">
@@ -427,67 +444,84 @@ async function onCommentCheck(c, i) {
 
           <!-- Replies: indented under the root and tied to it by the rail. The
                rail is a flat neutral grey — the accent gradient is for
-               non-neutral elements only. -->
-          <div v-if="t.replies.length && !collapsed.has(t.root.id)" class="c-replies">
-            <div v-for="r in t.replies" :key="r.id" class="comment c-reply" :data-comment-id="r.id">
-              <UserAvatar
-                class="c-ava"
-                :user-id="r.author_id || ''"
-                :src="r.gl_author_avatar_url"
-                :name="r.author_name || r.gl_author_name || '?'"
-              />
-              <div class="c-body">
-                <div class="c-head">
-                  <span class="c-author">{{ r.author_name || r.gl_author_name || 'Кто-то' }}</span>
-                  <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
-                  <span class="c-when">{{ fmtWhen(r.created_at) }}</span>
-                  <span v-if="r.author_id === meId" class="c-acts">
-                    <button class="c-act" title="Изменить" @click="startEditComment(r)">✎</button>
-                    <n-popconfirm
-                      :positive-button-props="{ type: 'error' }"
-                      positive-text="Удалить"
-                      @positive-click="deleteComment(r.id)"
-                    >
-                      <template #trigger>
-                        <button class="c-act" title="Удалить">✕</button>
-                      </template>
-                      Удалить комментарий?
-                    </n-popconfirm>
-                  </span>
-                </div>
-                <template v-if="editingCommentId === r.id">
-                  <MarkdownEditor
-                    v-model="editingCommentBody"
-                    variant="boxed"
-                    :mention-items="mentionItems"
-                    :attach-task-id="taskId"
-                    :min-rows="2"
-                    placeholder="Комментарий…"
-                    @attachments-changed="emit('changed')"
-                    @submit="saveComment"
+               non-neutral elements only. The grid-rows wrapper animates the
+               collapse/expand smoothly (0fr ↔ 1fr). -->
+          <Transition name="c-collapse">
+            <div v-if="t.replies.length && !collapsed.has(t.root.id)" class="c-collapse">
+              <div class="c-replies">
+                <div
+                  v-for="r in t.replies"
+                  :key="r.id"
+                  class="comment c-reply"
+                  :data-comment-id="r.id"
+                >
+                  <UserAvatar
+                    class="c-ava"
+                    :user-id="r.author_id || ''"
+                    :src="r.gl_author_avatar_url"
+                    :name="r.author_name || r.gl_author_name || '?'"
                   />
-                  <n-space :size="6" style="margin-top: 6px">
-                    <n-button size="tiny" type="primary" @click="saveComment">Сохранить</n-button>
-                    <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
-                  </n-space>
-                </template>
-                <RichContent
-                  v-else
-                  class="c-text"
-                  :source="r.body"
-                  :members="mentionItems"
-                  task-refs
-                  :interactive="r.author_id === meId"
-                  @toggle="onCommentCheck(r, $event)"
-                />
-                <div v-if="!readonly" class="c-thread-acts">
-                  <!-- Replying to a reply targets the same root: threads are two
-                       levels deep, and the backend collapses it anyway. -->
-                  <button class="c-link" @click="startReply(t.root.id)">Ответить</button>
+                  <div class="c-body">
+                    <div class="c-head">
+                      <span class="c-author">{{
+                        r.author_name || r.gl_author_name || 'Кто-то'
+                      }}</span>
+                      <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
+                      <span class="c-when">{{ fmtWhen(r.created_at) }}</span>
+                      <span v-if="r.author_id === meId" class="c-acts">
+                        <button class="c-act" title="Изменить" @click="startEditComment(r)">
+                          ✎
+                        </button>
+                        <n-popconfirm
+                          :positive-button-props="{ type: 'error' }"
+                          positive-text="Удалить"
+                          @positive-click="deleteComment(r.id)"
+                        >
+                          <template #trigger>
+                            <button class="c-act" title="Удалить">✕</button>
+                          </template>
+                          Удалить комментарий?
+                        </n-popconfirm>
+                      </span>
+                    </div>
+                    <template v-if="editingCommentId === r.id">
+                      <MarkdownEditor
+                        v-model="editingCommentBody"
+                        variant="boxed"
+                        :mention-items="mentionItems"
+                        :attach-task-id="taskId"
+                        :min-rows="2"
+                        placeholder="Комментарий…"
+                        @attachments-changed="emit('changed')"
+                        @submit="saveComment"
+                      />
+                      <n-space :size="6" style="margin-top: 6px">
+                        <n-button size="tiny" type="primary" @click="saveComment"
+                          >Сохранить</n-button
+                        >
+                        <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
+                      </n-space>
+                    </template>
+                    <RichContent
+                      v-else
+                      class="c-text"
+                      :source="r.body"
+                      :members="mentionItems"
+                      task-refs
+                      :interactive="r.author_id === meId"
+                      @toggle="onCommentCheck(r, $event)"
+                    />
+                    <div v-if="!readonly" class="c-thread-acts">
+                      <!-- Replying to a reply targets the same root: threads are two
+                       levels deep, and the backend collapses it anyway. The reply's
+                       own author is the one pre-mentioned, though. -->
+                      <button class="c-link" @click="startReply(t.root.id, r)">Ответить</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </Transition>
 
           <div v-if="replyingTo === t.root.id && !readonly" class="c-reply-add">
             <!-- Function ref, not a string one: a string ref inside v-for
@@ -703,6 +737,47 @@ async function onCommentCheck(c, i) {
 }
 .c-text {
   font-size: 13px;
+}
+/* Rendered markdown wraps text in <p>, whose default 1em top/bottom margin opens
+   a wide gap under the header and above the actions — a one-line comment looked
+   double-spaced. Collapse the outermost margins so a comment reads tight; spacing
+   between multiple paragraphs/blocks inside is kept. */
+.c-text :deep(> :first-child) {
+  margin-top: 0;
+}
+.c-text :deep(> :last-child) {
+  margin-bottom: 0;
+}
+/* Smooth collapse/expand of a thread's replies. The grid-rows 0fr↔1fr trick
+   animates auto content height; overflow is clipped only mid-transition so an
+   open mention/command popup in a reply editor isn't cut off at rest. */
+.c-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.c-collapse-enter-active,
+.c-collapse-leave-active {
+  transition:
+    grid-template-rows 0.25s ease,
+    opacity 0.25s ease;
+}
+.c-collapse-enter-active > .c-replies,
+.c-collapse-leave-active > .c-replies {
+  overflow: hidden;
+}
+.c-collapse > .c-replies {
+  min-height: 0;
+}
+.c-collapse-enter-from,
+.c-collapse-leave-to {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .c-collapse-enter-active,
+  .c-collapse-leave-active {
+    transition: none;
+  }
 }
 /* Composer pinned to the bottom of the comments pane (sticks while scrolling). */
 .comment-add {
