@@ -110,4 +110,16 @@ object TestTags {
     /** Composer at the foot of the Комментарии tab, and its send button. */
     const val TASK_COMMENT_INPUT = "task-comment-input"
     const val TASK_COMMENT_SUBMIT = "task-comment-submit"
+
+    // ── documents (read-only, #2735) ───────────────────────────────────────
+
+    /** Root of the documents section — the tree of the workspace's documents. */
+    const val DOCUMENTS_SCREEN = "documents-screen"
+
+    /** The reader that slides over the tree; present exactly while one is open. */
+    const val DOCUMENT_READER = "document-reader"
+
+    /** One row of that tree, keyed by document id — so a spec asserts «this
+     *  document», not «the second row», and a nesting regression is visible. */
+    fun documentRow(id: String) = "document-row:$id"
 }

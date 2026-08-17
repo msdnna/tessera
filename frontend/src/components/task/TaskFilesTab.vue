@@ -7,7 +7,7 @@ import { ref } from 'vue'
 import { NIcon, NButton, NPopconfirm, useMessage } from 'naive-ui'
 import { AttachOutline, DownloadOutline, TrashOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
-import { isTauri } from '@/utils/serverBase'
+import { saveAttachment } from '@/utils/download'
 import EmptyState from '../EmptyState.vue'
 
 const props = defineProps({
@@ -48,26 +48,7 @@ async function onFileChosen(ev) {
 }
 async function downloadAttachment(att) {
   try {
-    const res = await tasksApi.downloadAttachment(att.id)
-    // Desktop: a real "Save as…" dialog + write to disk (the webview can't drive
-    // an <a download> file save). Web keeps the anchor-download path.
-    if (isTauri()) {
-      const { save } = await import('@tauri-apps/plugin-dialog')
-      const { writeFile } = await import('@tauri-apps/plugin-fs')
-      const path = await save({ defaultPath: att.filename })
-      if (!path) return
-      await writeFile(path, new Uint8Array(await res.data.arrayBuffer()))
-      message.success('Файл сохранён')
-      return
-    }
-    const url = URL.createObjectURL(res.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = att.filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    if ((await saveAttachment(att.id, att.filename)) === 'saved') message.success('Файл сохранён')
   } catch (e) {
     message.error(e.message)
   }

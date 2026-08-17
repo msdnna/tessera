@@ -121,4 +121,21 @@ describe('router module', () => {
     expect(paths).toContain('/admin')
     expect(paths.some((p) => p.includes('pathMatch'))).toBe(true)
   })
+
+  // The sidebar's «Документы» link points at /documents, and vue-router marks a
+  // link active only when the open route shares its record. While the list and a
+  // single document were two sibling records, opening a document switched the
+  // record and the sidebar item went dark (#2727) — so the shared record is the
+  // thing to assert, not the path.
+  it('serves the documents list and one document from a single route record', async () => {
+    const mod = await import('@/router/index.js')
+    const router = mod.default
+    const list = router.resolve('/documents').matched.at(-1)
+    const doc = router.resolve('/documents/tz').matched.at(-1)
+    expect(list).toBeTruthy()
+    expect(doc).toBe(list)
+    // The deep link still carries the slug: one record must not mean one page.
+    expect(router.resolve('/documents/tz').params.slug).toBe('tz')
+    expect(router.resolve('/documents').params.slug).toBeFalsy()
+  })
 })

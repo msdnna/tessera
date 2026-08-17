@@ -49,6 +49,13 @@ const routes = [
       // and canonicalizes the URL to /project/<slug>/board/<slug>.
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },
       { path: 'notes', component: () => import('@/views/NotesView.vue') },
+      // Lazy on purpose: D2 brings ProseMirror in here, and the board must not
+      // carry its weight.
+      // One record with an optional param, not two sibling records: the sidebar
+      // link points at /documents, and vue-router marks a link active only when
+      // the open route shares its record. As two records, opening a document
+      // switched the record and the «Документы» item went dark (#2727).
+      { path: 'documents/:slug?', component: () => import('@/views/DocumentsView.vue') },
       { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
       { path: 'milestones', component: () => import('@/views/MilestonesView.vue') },
       { path: 'settings', component: () => import('@/views/SettingsView.vue') },
