@@ -19,7 +19,13 @@ defineProps({
   commandItems: { type: Array, default: () => [] },
   attachTaskId: { type: String, default: null },
 })
-const emit = defineEmits(['update:show', 'update:modelValue', 'attachments-changed', 'persist'])
+const emit = defineEmits([
+  'update:show',
+  'update:modelValue',
+  'attachments-changed',
+  'persist',
+  'after-leave',
+])
 
 function close() {
   emit('update:show', false)
@@ -32,7 +38,9 @@ function close() {
   <n-modal
     :show="show"
     class="mdfs-modal"
+    :internal-appear="true"
     @update:show="$event ? emit('update:show', true) : close()"
+    @after-leave="emit('after-leave')"
   >
     <div class="mdfs">
       <div class="mdfs-head">

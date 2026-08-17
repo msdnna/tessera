@@ -684,9 +684,23 @@ function onKeydown(e) {
 // Lazy + async so the two components can reference each other (the modal hosts a
 // MarkdownEditor of its own) without a circular import at module-eval time.
 const MarkdownFullscreenModal = defineAsyncComponent(() => import('./MarkdownFullscreenModal.vue'))
-const fullscreen = ref(false)
+// Two flags so the open/close animation actually plays: `fsOpen` mounts the modal
+// (lazily — one async load, not one per editor on the page), `fsShow` drives its
+// visibility. Tying the v-if to `show` would rip the modal out of the DOM the
+// instant it closes, skipping the leave transition; instead we keep it mounted
+// until n-modal's after-leave fires. `internal-appear` gives it the enter
+// transition when it mounts already-shown.
+const fsOpen = ref(false)
+const fsShow = ref(false)
 function openFullscreen() {
-  fullscreen.value = true
+  fsOpen.value = true
+  fsShow.value = true
+}
+function onFsShow(v) {
+  fsShow.value = v
+}
+function onFsAfterLeave() {
+  fsOpen.value = false
 }
 
 function getMentions() {
@@ -1017,13 +1031,15 @@ defineExpose({
     <!-- Fullscreen editing shares this component's v-model, so there is no second
          copy of the text to merge back on close. -->
     <MarkdownFullscreenModal
-      v-if="expandable && fullscreen"
-      v-model:show="fullscreen"
+      v-if="expandable && fsOpen"
+      :show="fsShow"
       :model-value="modelValue"
       :placeholder="placeholder"
       :mention-items="mentionItems"
       :command-items="commandItems"
       :attach-task-id="attachTaskId"
+      @update:show="onFsShow"
+      @after-leave="onFsAfterLeave"
       @update:model-value="setValue"
       @attachments-changed="emit('attachments-changed')"
       @persist="emit('persist')"
