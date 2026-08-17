@@ -51,7 +51,7 @@ func (q *Queries) AddTaskTagSourced(ctx context.Context, arg AddTaskTagSourcedPa
 
 const claimPushedUserComment = `-- name: ClaimPushedUserComment :one
 UPDATE task_comments
-SET gl_note_id = $2, updated_at = now()
+SET gl_note_id = $2, gl_discussion_id = $4, updated_at = now()
 WHERE id = (
     SELECT tc.id FROM task_comments tc
     WHERE tc.task_id = $1
@@ -65,9 +65,10 @@ RETURNING id
 `
 
 type ClaimPushedUserCommentParams struct {
-	TaskID   uuid.UUID `json:"task_id"`
-	GlNoteID *string   `json:"gl_note_id"`
-	Body     string    `json:"body"`
+	TaskID         uuid.UUID `json:"task_id"`
+	GlNoteID       *string   `json:"gl_note_id"`
+	Body           string    `json:"body"`
+	GlDiscussionID string    `json:"gl_discussion_id"`
 }
 
 // ── synced comments (idempotent by GitLab note id) ─────────
@@ -79,7 +80,12 @@ type ClaimPushedUserCommentParams struct {
 // comment (author_id set, gl_note_id NULL) with the same body on the task, so the
 // next pull dedups by gid. Returns the claimed comment id (no rows → not ours).
 func (q *Queries) ClaimPushedUserComment(ctx context.Context, arg ClaimPushedUserCommentParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, claimPushedUserComment, arg.TaskID, arg.GlNoteID, arg.Body)
+	row := q.db.QueryRow(ctx, claimPushedUserComment,
+		arg.TaskID,
+		arg.GlNoteID,
+		arg.Body,
+		arg.GlDiscussionID,
+	)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -325,6 +331,25 @@ func (q *Queries) DeleteStaleGitlabTaskTags(ctx context.Context, arg DeleteStale
 		return nil, err
 	}
 	return items, nil
+}
+
+const getCommentIDByGlNoteID = `-- name: GetCommentIDByGlNoteID :one
+SELECT id FROM task_comments WHERE task_id = $1 AND gl_note_id = $2
+`
+
+type GetCommentIDByGlNoteIDParams struct {
+	TaskID   uuid.UUID `json:"task_id"`
+	GlNoteID *string   `json:"gl_note_id"`
+}
+
+// GetCommentIDByGlNoteID resolves an already-imported GitLab note back to its
+// Tessera comment, so a reply arriving in a later pull than its root can still
+// be attached to the right thread.
+func (q *Queries) GetCommentIDByGlNoteID(ctx context.Context, arg GetCommentIDByGlNoteIDParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getCommentIDByGlNoteID, arg.TaskID, arg.GlNoteID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getGitlabCredential = `-- name: GetGitlabCredential :one
@@ -1287,25 +1312,30 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 }
 
 const upsertGitlabComment = `-- name: UpsertGitlabComment :one
-INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at)
-VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7)
+INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at, parent_id, gl_discussion_id)
+VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7, $8, $9)
 ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
-DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now()
+DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, parent_id = EXCLUDED.parent_id, gl_discussion_id = EXCLUDED.gl_discussion_id, updated_at = now()
 RETURNING (xmax = 0) AS inserted
 `
 
 type UpsertGitlabCommentParams struct {
-	TaskID            uuid.UUID `json:"task_id"`
-	Body              string    `json:"body"`
-	GlNoteID          *string   `json:"gl_note_id"`
-	GlAuthorLogin     string    `json:"gl_author_login"`
-	GlAuthorName      string    `json:"gl_author_name"`
-	GlAuthorAvatarUrl string    `json:"gl_author_avatar_url"`
-	CreatedAt         time.Time `json:"created_at"`
+	TaskID            uuid.UUID  `json:"task_id"`
+	Body              string     `json:"body"`
+	GlNoteID          *string    `json:"gl_note_id"`
+	GlAuthorLogin     string     `json:"gl_author_login"`
+	GlAuthorName      string     `json:"gl_author_name"`
+	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
+	CreatedAt         time.Time  `json:"created_at"`
+	ParentID          *uuid.UUID `json:"parent_id"`
+	GlDiscussionID    string     `json:"gl_discussion_id"`
 }
 
 // UpsertGitlabComment returns whether the row was freshly inserted (xmax = 0) so
-// the sync journal can count new comments rather than re-synced ones.
+// the sync journal can count new comments rather than re-synced ones. The
+// conflict branch also refreshes parent_id/gl_discussion_id: that is how already
+// imported flat comments acquire their thread on the next pull, so no data
+// migration is needed.
 func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabCommentParams) (bool, error) {
 	row := q.db.QueryRow(ctx, upsertGitlabComment,
 		arg.TaskID,
@@ -1315,6 +1345,8 @@ func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabComme
 		arg.GlAuthorName,
 		arg.GlAuthorAvatarUrl,
 		arg.CreatedAt,
+		arg.ParentID,
+		arg.GlDiscussionID,
 	)
 	var inserted bool
 	err := row.Scan(&inserted)

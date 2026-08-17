@@ -1634,17 +1634,23 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 // the GitLab author denormalised (it may not be a Tessera user). Returns the count
 // and truncated bodies of newly inserted comments, for the journal.
 func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []gitlab.Note) (added int, bodies []string) {
+	// GitLab note gid → local comment id, so a reply can be attached to the root
+	// it answers. Notes arrive chronologically, and a reply is always newer than
+	// its root, so the root is already in the map by the time we need it.
+	local := map[string]uuid.UUID{}
 	for _, n := range notes {
 		noteID := n.GlobalID
+		parentID := h.threadParent(ctx, taskID, n, local)
 		// First, try to link this note back to the user's own comment that produced
 		// it (posted from Tessera, gid not yet tagged by the async writeback worker).
 		// This avoids re-importing it as a duplicate gitlab-sourced comment when a
 		// pull races the push. Strip an optional Tessera marker footer so the stored
 		// (unmarked) body still matches.
 		claimBody := strings.TrimSuffix(n.Body, tesseraCommentMarker)
-		if _, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
-			TaskID: taskID, GlNoteID: &noteID, Body: claimBody,
+		if claimed, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
+			TaskID: taskID, GlNoteID: &noteID, Body: claimBody, GlDiscussionID: n.DiscussionID,
 		}); cerr == nil {
+			local[noteID] = claimed
 			continue // claimed our own pushed comment — nothing to insert
 		}
 		body := h.rewriteAssets(ctx, n.Body, wsID)
@@ -1652,13 +1658,39 @@ func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []
 			TaskID: taskID, Body: body, GlNoteID: &noteID,
 			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name,
 			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, n.Author.AvatarURL), CreatedAt: n.CreatedAt,
+			ParentID: parentID, GlDiscussionID: n.DiscussionID,
 		})
 		if err == nil && inserted {
 			added++
 			bodies = append(bodies, truncForJournal(body))
 		}
+		if cid, gerr := h.q.GetCommentIDByGlNoteID(ctx, db.GetCommentIDByGlNoteIDParams{
+			TaskID: taskID, GlNoteID: &noteID,
+		}); gerr == nil {
+			local[noteID] = cid
+		}
 	}
 	return added, bodies
+}
+
+// threadParent resolves the local comment a GitLab note replies to: nil when the
+// note opens its discussion, otherwise the comment holding the discussion's root
+// note. The in-pass map covers the common case; the DB lookup covers a reply that
+// arrives in a later incremental pull than the root it answers.
+func (h *API) threadParent(ctx context.Context, taskID uuid.UUID, n gitlab.Note, local map[string]uuid.UUID) *uuid.UUID {
+	if n.RootGID == "" {
+		return nil
+	}
+	if id, ok := local[n.RootGID]; ok {
+		return &id
+	}
+	root := n.RootGID
+	id, err := h.q.GetCommentIDByGlNoteID(ctx, db.GetCommentIDByGlNoteIDParams{TaskID: taskID, GlNoteID: &root})
+	if err != nil {
+		return nil // root not imported (e.g. filtered out) — keep the reply as a root
+	}
+	local[n.RootGID] = id
+	return &id
 }
 
 // effectiveEstimate resolves the estimate (canon minutes) the sync should apply:

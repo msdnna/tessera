@@ -56,3 +56,23 @@ func TestTriggerFromKind(t *testing.T) {
 		t.Errorf("due trigger default kind = %+v", due)
 	}
 }
+
+// A discussion id reaches us in two shapes: the GraphQL gid stored by the pull and
+// the bare sha returned by the REST create. Both must reduce to the sha the REST
+// reply endpoint expects, or replies get posted outside their thread.
+func TestParseDiscussionGID(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"gid://gitlab/Discussion/abc123", "abc123"},
+		{"abc123", "abc123"},
+		{"  abc123  ", "abc123"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := parseDiscussionGID(c.in); got != c.want {
+			t.Errorf("parseDiscussionGID(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

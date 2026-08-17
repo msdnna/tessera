@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -199,6 +200,14 @@ type Note struct {
 	Body      string
 	Author    Person
 	CreatedAt time.Time
+	// DiscussionID is the GitLab discussion (thread) gid this note belongs to. A
+	// plain comment is a discussion of one note, so this is always set.
+	DiscussionID string
+	// RootGID is the gid of the first non-system note in the same discussion, or
+	// "" when this note *is* that root. This is what carries the thread structure
+	// across the wire — the flat Notes slice keeps its chronological shape so
+	// existing consumers are unaffected.
+	RootGID string
 }
 
 // Issue is a GitLab issue reduced to the fields the sync needs.
@@ -248,7 +257,7 @@ query($path: ID!, $username: String, $iids: [String!], $after: String, $updatedA
         author { username name avatarUrl }
         assignees { nodes { username name avatarUrl } }
         labels { nodes { title color } }
-        notes(first: 100) { nodes { id body system createdAt author { username name avatarUrl } } }
+        discussions(first: 100) { nodes { id notes(first: 100) { nodes { id body system createdAt author { username name avatarUrl } } } } }
       }
     }
   }
@@ -375,19 +384,24 @@ type issueNode struct {
 			Color string `json:"color"`
 		} `json:"nodes"`
 	} `json:"labels"`
-	Notes struct {
+	Discussions struct {
 		Nodes []struct {
-			ID        string    `json:"id"`
-			Body      string    `json:"body"`
-			System    bool      `json:"system"`
-			CreatedAt time.Time `json:"createdAt"`
-			Author    *struct {
-				Username  string `json:"username"`
-				Name      string `json:"name"`
-				AvatarURL string `json:"avatarUrl"`
-			} `json:"author"`
+			ID    string `json:"id"`
+			Notes struct {
+				Nodes []struct {
+					ID        string    `json:"id"`
+					Body      string    `json:"body"`
+					System    bool      `json:"system"`
+					CreatedAt time.Time `json:"createdAt"`
+					Author    *struct {
+						Username  string `json:"username"`
+						Name      string `json:"name"`
+						AvatarURL string `json:"avatarUrl"`
+					} `json:"author"`
+				} `json:"nodes"`
+			} `json:"notes"`
 		} `json:"nodes"`
-	} `json:"notes"`
+	} `json:"discussions"`
 }
 
 // absAvatar resolves a possibly instance-relative avatar URL against base.
@@ -429,19 +443,35 @@ func (n issueNode) toIssue(base string) Issue {
 			Login: a.Username, Name: a.Name, AvatarURL: absAvatar(base, a.AvatarURL),
 		})
 	}
-	for _, note := range n.Notes.Nodes {
-		if note.System || note.ID == "" {
-			continue // skip system notes ("changed status…")
-		}
-		nt := Note{GlobalID: note.ID, Body: note.Body, CreatedAt: note.CreatedAt}
-		if note.Author != nil {
-			nt.Author = Person{
-				Login: note.Author.Username, Name: note.Author.Name,
-				AvatarURL: absAvatar(base, note.Author.AvatarURL),
+	// Walk discussions, not a flat note list: the thread structure only exists at
+	// this level. Within a discussion the first non-system note is the root and
+	// every later one is a reply to it. Notes stays flat and chronological — the
+	// branching rides along in DiscussionID/RootGID.
+	for _, disc := range n.Discussions.Nodes {
+		rootGID := ""
+		for _, note := range disc.Notes.Nodes {
+			if note.System || note.ID == "" {
+				continue // skip system notes ("changed status…")
 			}
+			nt := Note{
+				GlobalID: note.ID, Body: note.Body, CreatedAt: note.CreatedAt,
+				DiscussionID: disc.ID, RootGID: rootGID,
+			}
+			if note.Author != nil {
+				nt.Author = Person{
+					Login: note.Author.Username, Name: note.Author.Name,
+					AvatarURL: absAvatar(base, note.Author.AvatarURL),
+				}
+			}
+			if rootGID == "" {
+				rootGID = note.ID // this note opens the thread; the rest reply to it
+			}
+			issue.Notes = append(issue.Notes, nt)
 		}
-		issue.Notes = append(issue.Notes, nt)
 	}
+	sort.SliceStable(issue.Notes, func(i, j int) bool {
+		return issue.Notes[i].CreatedAt.Before(issue.Notes[j].CreatedAt)
+	})
 	return issue
 }
 
@@ -927,6 +957,51 @@ func (c *Client) IssueTemplates(ctx context.Context, projectPath string) ([]Issu
 // Returns "" (with nil error) if the response id couldn't be read.
 func (c *Client) CreateIssueNote(ctx context.Context, projectPath string, iid int64, body string) (string, error) {
 	out, err := c.restForm(ctx, http.MethodPost, issuePath(projectPath, iid)+"/notes", url.Values{"body": {body}})
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		ID int64 `json:"id"`
+	}
+	if uerr := json.Unmarshal(out, &resp); uerr != nil || resp.ID == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("gid://gitlab/Note/%d", resp.ID), nil
+}
+
+// CreateIssueDiscussion opens a new discussion (thread) on the issue and returns
+// its discussion id plus the gid of the note that opened it.
+//
+// Root comments go through this instead of CreateIssueNote: in GitLab the result
+// is indistinguishable (a plain comment *is* a one-note discussion), but the
+// response carries the discussion id — without it a later reply from Tessera has
+// no thread to aim at and would land as a separate root.
+func (c *Client) CreateIssueDiscussion(ctx context.Context, projectPath string, iid int64, body string) (discussionID, noteGID string, err error) {
+	out, err := c.restForm(ctx, http.MethodPost, issuePath(projectPath, iid)+"/discussions", url.Values{"body": {body}})
+	if err != nil {
+		return "", "", err
+	}
+	var resp struct {
+		ID    string `json:"id"`
+		Notes []struct {
+			ID int64 `json:"id"`
+		} `json:"notes"`
+	}
+	if uerr := json.Unmarshal(out, &resp); uerr != nil {
+		return "", "", nil
+	}
+	if len(resp.Notes) > 0 && resp.Notes[0].ID != 0 {
+		noteGID = fmt.Sprintf("gid://gitlab/Note/%d", resp.Notes[0].ID)
+	}
+	return resp.ID, noteGID, nil
+}
+
+// CreateIssueDiscussionNote appends a reply to an existing discussion. discussionID
+// is the REST sha-style id (parse it out of the stored "gid://gitlab/Discussion/<sha>").
+func (c *Client) CreateIssueDiscussionNote(ctx context.Context, projectPath string, iid int64, discussionID, body string) (string, error) {
+	out, err := c.restForm(ctx, http.MethodPost,
+		issuePath(projectPath, iid)+"/discussions/"+url.PathEscape(discussionID)+"/notes",
+		url.Values{"body": {body}})
 	if err != nil {
 		return "", err
 	}

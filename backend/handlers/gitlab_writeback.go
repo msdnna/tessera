@@ -721,18 +721,82 @@ func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, int
 	if act.AddMarker {
 		body += tesseraCommentMarker
 	}
-	gid, err := client.CreateIssueNote(ctx, path, iid, body)
+
+	var (
+		gid, discussionID string
+		err               error
+		msg               = "комментарий опубликован"
+	)
+	cid, hasCID := parseCommentID(payload["comment_id"])
+	// A reply goes into its parent's discussion; a root opens a new one. Posting a
+	// reply as a plain note would visually detach it from the thread in GitLab and
+	// the next pull would drag it back as a separate root.
+	if thread, ok := h.replyThread(ctx, payload); ok {
+		gid, err = client.CreateIssueDiscussionNote(ctx, path, iid, thread, body)
+		discussionID = thread
+		msg = "ответ опубликован в обсуждении"
+	} else {
+		if payload["parent_comment_id"] != nil {
+			// The root has not been pushed yet (or predates threads), so there is no
+			// discussion to answer in. Publishing outside the thread beats dropping
+			// the reply — but say so plainly in the journal.
+			msg = "ответ опубликован вне обсуждения — у родителя нет обсуждения в GitLab"
+		}
+		discussionID, gid, err = client.CreateIssueDiscussion(ctx, path, iid, body)
+	}
 	if err != nil {
 		return "", err
 	}
-	if gid != "" {
-		if cidStr, _ := payload["comment_id"].(string); cidStr != "" {
-			if cid, perr := uuid.Parse(cidStr); perr == nil {
-				soft(ctx, "SetCommentGlNoteID", h.q.SetCommentGlNoteID(ctx, db.SetCommentGlNoteIDParams{ID: cid, GlNoteID: &gid}))
-			}
+	if hasCID && (gid != "" || discussionID != "") {
+		var notePtr *string
+		if gid != "" {
+			notePtr = &gid
 		}
+		soft(ctx, "SetCommentGlIDs", h.q.SetCommentGlIDs(ctx, db.SetCommentGlIDsParams{
+			ID: cid, GlNoteID: notePtr, GlDiscussionID: discussionID,
+		}))
 	}
-	return "комментарий опубликован", nil
+	return msg, nil
+}
+
+// parseCommentID reads the originating Tessera comment id out of a write-back payload.
+func parseCommentID(v any) (uuid.UUID, bool) {
+	s, _ := v.(string)
+	if s == "" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(s)
+	return id, err == nil
+}
+
+// replyThread returns the REST discussion id this comment should be posted into,
+// and false when it is a root comment (or its parent has no GitLab discussion yet).
+func (h *API) replyThread(ctx context.Context, payload map[string]any) (string, bool) {
+	if payload["parent_comment_id"] == nil {
+		return "", false
+	}
+	cid, ok := parseCommentID(payload["comment_id"])
+	if !ok {
+		return "", false
+	}
+	target, err := h.q.GetCommentThreadTarget(ctx, cid)
+	if err != nil || target.GlDiscussionID == "" {
+		return "", false
+	}
+	return parseDiscussionGID(target.GlDiscussionID), true
+}
+
+
+// parseDiscussionGID reduces a stored discussion global id
+// ("gid://gitlab/Discussion/<sha>") to the sha-style id the REST API expects. A
+// value that is already bare is returned unchanged — the REST create path stores
+// it in that form.
+func parseDiscussionGID(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 // parseNoteGID extracts the numeric REST note id from a stored GitLab note global id

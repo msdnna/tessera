@@ -120,6 +120,26 @@ func (q *Queries) CreateGitlabWriteback(ctx context.Context, arg CreateGitlabWri
 	return err
 }
 
+const getCommentThreadTarget = `-- name: GetCommentThreadTarget :one
+SELECT p.gl_discussion_id, p.gl_note_id
+FROM task_comments c JOIN task_comments p ON p.id = c.parent_id
+WHERE c.id = $1
+`
+
+type GetCommentThreadTargetRow struct {
+	GlDiscussionID string  `json:"gl_discussion_id"`
+	GlNoteID       *string `json:"gl_note_id"`
+}
+
+// GetCommentThreadTarget returns the GitLab discussion a reply should be posted
+// into: the discussion of the reply's parent (its thread root).
+func (q *Queries) GetCommentThreadTarget(ctx context.Context, id uuid.UUID) (GetCommentThreadTargetRow, error) {
+	row := q.db.QueryRow(ctx, getCommentThreadTarget, id)
+	var i GetCommentThreadTargetRow
+	err := row.Scan(&i.GlDiscussionID, &i.GlNoteID)
+	return i, err
+}
+
 const getGitlabIntegrationByID = `-- name: GetGitlabIntegrationByID :one
 
 SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations WHERE id = $1
@@ -515,19 +535,22 @@ func (q *Queries) ResolveConflictSettled(ctx context.Context, arg ResolveConflic
 	return err
 }
 
-const setCommentGlNoteID = `-- name: SetCommentGlNoteID :exec
-UPDATE task_comments SET gl_note_id = $2, updated_at = now() WHERE id = $1
+const setCommentGlIDs = `-- name: SetCommentGlIDs :exec
+UPDATE task_comments SET gl_note_id = $2, gl_discussion_id = $3, updated_at = now() WHERE id = $1
 `
 
-type SetCommentGlNoteIDParams struct {
-	ID       uuid.UUID `json:"id"`
-	GlNoteID *string   `json:"gl_note_id"`
+type SetCommentGlIDsParams struct {
+	ID             uuid.UUID `json:"id"`
+	GlNoteID       *string   `json:"gl_note_id"`
+	GlDiscussionID string    `json:"gl_discussion_id"`
 }
 
-// SetCommentGlNoteID tags a Tessera comment with the GitLab note id created by a
+// SetCommentGlIDs tags a Tessera comment with the GitLab note id created by a
 // write-back push, so the next pull's comment upsert (keyed on gl_note_id) updates
-// that row instead of inserting a duplicate.
-func (q *Queries) SetCommentGlNoteID(ctx context.Context, arg SetCommentGlNoteIDParams) error {
-	_, err := q.db.Exec(ctx, setCommentGlNoteID, arg.ID, arg.GlNoteID)
+// that row instead of inserting a duplicate. The discussion id is stored alongside
+// it: without it a later reply from Tessera has no thread to aim at and would be
+// posted as a separate root.
+func (q *Queries) SetCommentGlIDs(ctx context.Context, arg SetCommentGlIDsParams) error {
+	_, err := q.db.Exec(ctx, setCommentGlIDs, arg.ID, arg.GlNoteID, arg.GlDiscussionID)
 	return err
 }

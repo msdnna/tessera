@@ -172,12 +172,23 @@ func (h *API) CreateComment(c *gin.Context) {
 	var req struct {
 		Body     string      `json:"body" binding:"required"`
 		Mentions []uuid.UUID `json:"mentions"`
+		ParentID *uuid.UUID  `json:"parent_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	uid := middleware.CurrentUser(c)
+
+	// Resolve the thread this comment belongs to. Threads are two levels deep, as
+	// in GitLab: replying to a reply lands in the same thread rather than nesting
+	// further. Normalising here rather than on the client is deliberate — Android
+	// and the MCP server hit the same endpoint and must not be able to build a
+	// depth the readers cannot render.
+	parentID, ok := h.resolveCommentParent(c, id, req.ParentID)
+	if !ok {
+		return
+	}
 
 	// Quick actions ("/close", "/assign @msdnna") execute here and their lines are
 	// dropped from the body; custom dictionary commands ("/approve") are left in
@@ -223,7 +234,7 @@ func (h *API) CreateComment(c *gin.Context) {
 	if len(parsed.Cmds) == 0 {
 		body = req.Body // no commands ran: keep the body byte-for-byte
 	}
-	cm, err := h.q.CreateComment(c, db.CreateCommentParams{TaskID: id, AuthorID: &uid, Body: body})
+	cm, err := h.q.CreateComment(c, db.CreateCommentParams{TaskID: id, AuthorID: &uid, Body: body, ParentID: parentID})
 	if err != nil {
 		fail(c, err)
 		return
@@ -231,13 +242,23 @@ func (h *API) CreateComment(c *gin.Context) {
 	h.logEvent(c, id, "comment", map[string]any{"comment_id": cm.ID})
 	h.broadcast(wsID, "task.commented", gin.H{"task_id": id})
 	// Mirror the comment to a linked GitLab issue as a note (opt-in per integration).
-	h.enqueueWriteback(c, id, uid, gitlab.TrigComment, map[string]any{"comment_id": cm.ID.String(), "body": body})
+	wb := map[string]any{"comment_id": cm.ID.String(), "body": body}
+	if parentID != nil {
+		wb["parent_comment_id"] = parentID.String()
+	}
+	h.enqueueWriteback(c, id, uid, gitlab.TrigComment, wb)
 
 	// @-mentions: notify each mentioned workspace member explicitly, then fall
 	// back to the generic "commented" notice for the remaining participants. A
 	// short comment is inlined for context; a long one shows only the #N.
 	ctx := shortCtx(body)
 	mentioned := h.notifyMentions(c, t, wsID, req.Mentions, ctx)
+	if parentID != nil {
+		// A reply has an audience the task's participant list does not cover: the
+		// author of the root comment is frequently neither assignee nor reporter,
+		// and would never learn a branch was started under their text.
+		mentioned = h.notifyThread(c, t, wsID, *parentID, ctx, mentioned)
+	}
 	h.notifyTaskParticipantsExcept(c, t, wsID, "comment",
 		fmt.Sprintf("%s прокомментировал #%s%s", h.actorName(c), taskRef(t.Number), ctx), mentioned)
 	if summary.empty() {
@@ -255,6 +276,71 @@ func (h *API) CreateComment(c *gin.Context) {
 type commentWithCommands struct {
 	db.TaskComment
 	CommandSummary *commandSummary `json:"command_summary,omitempty"`
+}
+
+// promoteThreadSuccessor prepares a thread for the deletion of its root: the
+// oldest reply becomes the new root and the remaining replies are re-hung under
+// it. All-or-nothing — a half-applied promotion would leave replies pointing at
+// a row that is about to disappear (the FK would null them out and scatter the
+// thread across the timeline).
+func (h *API) promoteThreadSuccessor(c *gin.Context, rootID uuid.UUID) error {
+	replies, err := h.q.ListThreadReplies(c, &rootID)
+	if err != nil || len(replies) == 0 {
+		return err
+	}
+	successor := replies[0].ID // oldest first, per the query's ORDER BY
+	return h.inTx(c, func(q *db.Queries) error {
+		if err := q.ReparentReplies(c, db.ReparentRepliesParams{ToRoot: &successor, FromRoot: &rootID}); err != nil {
+			return err
+		}
+		return q.PromoteReplyToRoot(c, successor)
+	})
+}
+
+// resolveCommentParent validates a requested parent and returns the id the reply
+// should actually hang off: nil for a root comment, the parent for a first-level
+// reply, and the parent's own parent when replying to a reply (threads are two
+// levels deep, as in GitLab). A parent on a different task is rejected — that is
+// a branch moved between tasks, not a typo worth silently absorbing.
+func (h *API) resolveCommentParent(c *gin.Context, taskID uuid.UUID, want *uuid.UUID) (*uuid.UUID, bool) {
+	if want == nil {
+		return nil, true
+	}
+	parent, err := h.q.GetComment(c, *want)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "родительский комментарий не найден"})
+		return nil, false
+	}
+	if parent.TaskID != taskID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "родительский комментарий из другой задачи"})
+		return nil, false
+	}
+	if parent.ParentID != nil {
+		return parent.ParentID, true // collapse reply-to-reply into the thread root
+	}
+	return &parent.ID, true
+}
+
+// notifyThread notifies the people already in a thread (its root author and
+// everyone who replied) that someone answered in it, skipping whoever the
+// mention pass already reached. Returns the updated notified set.
+func (h *API) notifyThread(c *gin.Context, t db.Task, wsID, rootID uuid.UUID, ctx string, notified map[uuid.UUID]bool) map[uuid.UUID]bool {
+	ids, err := h.q.ListThreadParticipants(c, rootID)
+	if err != nil {
+		return notified
+	}
+	text := fmt.Sprintf("%s ответил(а) в обсуждении #%s%s", h.actorName(c), taskRef(t.Number), ctx)
+	for _, id := range ids {
+		if id == nil || notified[*id] {
+			continue
+		}
+		if _, err := h.q.GetMembership(c, db.GetMembershipParams{WorkspaceID: wsID, UserID: *id}); err != nil {
+			continue // no longer a member of this workspace
+		}
+		notified[*id] = true
+		h.notify(c, *id, wsID, &t.ID, "comment", text)
+	}
+	return notified
 }
 
 // notifyMentions sends a "mention" notification to each id that is a member of
@@ -348,6 +434,16 @@ func (h *API) DeleteComment(c *gin.Context) {
 	if cm.GlNoteID != nil && *cm.GlNoteID != "" {
 		h.enqueueWriteback(c, cm.TaskID, middleware.CurrentUser(c), gitlab.TrigComment,
 			map[string]any{"op": "delete", "comment_id": id.String(), "gl_note_id": *cm.GlNoteID})
+	}
+	// Deleting a thread root must not take the replies with it: promote the oldest
+	// reply to root and re-hang the rest under it. GitLab behaves the same (the
+	// thread survives as long as it still holds a note), and one "✕" never removes
+	// someone else's text.
+	if cm.ParentID == nil {
+		if err := h.promoteThreadSuccessor(c, id); err != nil {
+			fail(c, err)
+			return
+		}
 	}
 	if err := h.q.DeleteComment(c, id); err != nil {
 		fail(c, err)
