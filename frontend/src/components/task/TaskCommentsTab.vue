@@ -167,9 +167,10 @@ function replyCount(t) {
 // cards. Shared with the description so both render mentions off one shape.
 // Full GitLab roster (Object.values(gitlabMembersMap)), not the filtered
 // gitlabMembersList: buildMentionItems needs the GitLab rows of OAuth-linked
-// members to attach their @gl_username, else the hover card can't resolve them.
+// members to attach their @gl_username (for both the inserted login and hover-card
+// resolution). The raw map is passed too so PAT-linked members get their login.
 const mentionItems = computed(() =>
-  buildMentionItems(bv.membersList, Object.values(bv.gitlabMembersMap)),
+  buildMentionItems(bv.membersList, Object.values(bv.gitlabMembersMap), bv.gitlabMembersMap),
 )
 
 // ── quick actions ──

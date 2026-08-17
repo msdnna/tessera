@@ -105,11 +105,14 @@ function escapeAttrFromHtml(s) {
   return String(s).replace(/"/g, '&quot;')
 }
 
-// highlightMentions wraps "@…" tokens in a styled span. Known member display
-// names (which may contain spaces, e.g. "@Ann Lee") are matched first; any other
-// "@handle" (a username like @v.sokolov from GitLab, not a Tessera user) is also
-// highlighted via a generic fallback token. Operates on rendered HTML and only
-// at text boundaries to avoid touching tags/attributes.
+// highlightMentions wraps "@…" tokens in a styled span. Known members are matched
+// on both `label` (what the composer inserts today — a GitLab login) and `display`
+// (their name): comments written before mentions switched to logins still hold
+// "@Евгений Полянский", and matching only the label would leave them highlighting
+// just the first word via the generic token below. Any other "@handle" (a username
+// like @v.sokolov not tied to a known member) is highlighted via a generic fallback
+// token. Operates on rendered HTML, only at text boundaries, to avoid touching
+// tags/attributes.
 //
 // The chip carries who it names — `data-type/data-id/data-label`, the same
 // contract the legacy TipTap-era chips use (and already allowed by
@@ -117,17 +120,22 @@ function escapeAttrFromHtml(s) {
 // is present only when the token matched a known member; a generic handle gets
 // the label alone.
 function highlightMentions(html, members) {
-  const known = (members || []).filter((m) => m.label)
-  const byLabel = new Map(known.map((m) => [m.label, m]))
-  const alts = known
-    .map((m) => m.label)
+  const known = (members || []).filter((m) => m.label || m.display)
+  // Map both handles a member can be written by to the member. A label mapping
+  // wins over a display one so a login-shaped mention resolves to its own row.
+  const byHandle = new Map()
+  for (const m of known) {
+    if (m.label && !byHandle.has(m.label)) byHandle.set(m.label, m)
+    if (m.display && !byHandle.has(m.display)) byHandle.set(m.display, m)
+  }
+  const alts = [...new Set(known.flatMap((m) => [m.label, m.display]).filter(Boolean))]
     .sort((a, b) => b.length - a.length)
     .map(escapeRe)
   // Generic handle: a letter/digit then word chars, dots or hyphens.
   alts.push('[A-Za-z0-9][\\w.-]*')
   const re = new RegExp(`(^|[\\s>(])@(${alts.join('|')})`, 'g')
   return html.replace(re, (_, lead, handle) => {
-    const m = byLabel.get(handle)
+    const m = byHandle.get(handle)
     const id = m && m.id ? ` data-id="${escapeAttrFromHtml(m.id)}"` : ''
     const label = ` data-label="${escapeAttrFromHtml(handle)}"`
     return `${lead}<span class="mention" data-type="mention"${id}${label}>@${handle}</span>`

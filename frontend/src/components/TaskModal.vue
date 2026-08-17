@@ -150,7 +150,7 @@ const wsId = computed(() => bv.wsId)
 // OAuth-linked member is mentioned by their @gl_username, which buildMentionItems
 // folds onto their Tessera row so the hover card resolves.
 const mentionItems = computed(() =>
-  buildMentionItems(members.value, Object.values(bv.gitlabMembersMap)),
+  buildMentionItems(members.value, Object.values(bv.gitlabMembersMap), bv.gitlabMembersMap),
 )
 const projectId = computed(() => bv.projectId)
 

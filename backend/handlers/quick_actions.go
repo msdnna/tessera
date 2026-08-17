@@ -166,14 +166,19 @@ func (h *API) qaAssign(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickact.C
 	return summary, nil
 }
 
-// matchMember resolves a mention to a workspace member by email local-part,
-// full email or display name (all case-insensitive) — the same shapes the
-// frontend's @-autocomplete offers.
+// matchMember resolves a mention to a workspace member by GitLab login, email
+// local-part, full email or display name (all case-insensitive) — the same
+// shapes the frontend's @-autocomplete offers. The GitLab login is what the
+// autocomplete now inserts for OAuth-linked members, so `/assign @e.polyansky`
+// has to resolve even when it matches neither the email nor the name.
 func matchMember(members []db.ListMembersRow, login string) (uuid.UUID, bool) {
 	login = strings.ToLower(login)
 	for _, m := range members {
 		email := strings.ToLower(m.Email)
 		if email == login || strings.ToLower(m.Name) == login {
+			return m.UserID, true
+		}
+		if m.GlUsername != "" && strings.ToLower(m.GlUsername) == login {
 			return m.UserID, true
 		}
 		if local, _, ok := strings.Cut(email, "@"); ok && local == login {
