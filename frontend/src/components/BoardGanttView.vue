@@ -4,6 +4,7 @@ import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { topoByDeps } from '@/utils/dependencyOrder'
+import { sCurvePath } from '@/utils/curvePath'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { startOfDay, parseDate as parse } from '@/utils/timeAxis'
 import { useChartTimeline } from '@/composables/useChartTimeline'
@@ -264,8 +265,7 @@ const arrows = computed(() => {
     const y1 = ay[e.blocker]
     const x2 = leftW.value + gk.left
     const y2 = ay[e.blocked]
-    const dx = Math.max(22, Math.abs(x2 - x1) * 0.4)
-    const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
+    const d = sCurvePath(x1, y1, x2, y2)
     out.push({ id: e.id, d, mx: (x1 + x2) / 2, my: (y1 + y2) / 2 })
   }
   return out
@@ -333,8 +333,7 @@ async function onLinkUp(e) {
 const linkPath = computed(() => {
   const l = link.value
   if (!l) return ''
-  const dx = Math.max(22, Math.abs(l.x - l.x1) * 0.4)
-  return `M ${l.x1} ${l.y1} C ${l.x1 + dx} ${l.y1}, ${l.x - dx} ${l.y}, ${l.x} ${l.y}`
+  return sCurvePath(l.x1, l.y1, l.x, l.y)
 })
 
 // ── delete an edge ──

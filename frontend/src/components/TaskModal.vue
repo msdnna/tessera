@@ -49,9 +49,12 @@ import {
   GitNetworkOutline,
   EyeOutline,
   CreateOutline,
+  ExpandOutline,
   ShareSocialOutline,
   ChevronForwardOutline,
   ChevronBackOutline,
+  DocumentTextOutline,
+  DocumentText,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, projects as projApi, gitlab as glApi } from '@/api'
 import { storeToRefs } from 'pinia'
@@ -71,6 +74,12 @@ import {
 } from '@/utils/status'
 import { taskLink } from '@/utils/taskLink'
 import { copyText } from '@/utils/clipboard'
+import {
+  dismissesSidebar,
+  effectiveTaskLayout,
+  loadTaskLayout,
+  saveTaskLayout,
+} from '@/utils/taskLayout'
 import { useResponsive } from '@/composables/useResponsive'
 import {
   formatEstimate,
@@ -91,9 +100,11 @@ import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import TaskCommentsTab from './task/TaskCommentsTab.vue'
+import TaskLayoutSwitch from './TaskLayoutSwitch.vue'
 import TaskSubtasksTab from './task/TaskSubtasksTab.vue'
 import TaskRelationsTab from './task/TaskRelationsTab.vue'
 import TaskFilesTab from './task/TaskFilesTab.vue'
+import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
 import TaskHistoryTab from './task/TaskHistoryTab.vue'
 
 const props = defineProps({
@@ -172,7 +183,44 @@ function loadSplitRatio() {
 // the comments in the main flow — hiding it would hide the conversation — so the
 // button is gated on `wide` and the state is a no-op there. ──
 const { isMobile: narrow } = useResponsive(1099)
-const wide = computed(() => !narrow.value)
+
+// ── where to show the task: centred modal (default), fullscreen, or a right-hand
+// side panel that leaves the board underneath usable (#2716). All three are the
+// same n-modal with a different card class and three props — swapping the wrapper
+// for an n-drawer would tear down the subtree and lose the active tab, the comment
+// draft and the unsaved description on every switch. ──
+const savedLayout = ref(loadTaskLayout())
+const layout = computed(() => effectiveTaskLayout(savedLayout.value, narrow.value))
+function setLayout(v) {
+  savedLayout.value = v
+  saveTaskLayout(v)
+}
+
+// `wide` means "there is room for two columns", not "the window is wide": the
+// sidebar layout keeps a wide window but gives the card ~560px, where both the
+// hide-panel button and the divider drag are meaningless (and the drag would
+// "revive" a column that can't fit).
+const wide = computed(() => !narrow.value && layout.value !== 'sidebar')
+
+// ── Sidebar layout: a click on empty space dismisses the panel (see
+// `dismissesSidebar` for which clicks count). mousedown in the capture phase, not
+// click: it fires before a menu item can remove itself from the DOM, and a text
+// selection that starts inside the card and ends out on the board isn't mistaken
+// for an outside click. ──
+const cardRef = ref(null)
+function onOutsidePointerDown(e) {
+  if (dismissesSidebar(e.target, cardRef.value?.$el)) emit('update:show', false)
+}
+let dismissBound = false
+function bindDismiss(on) {
+  if (on === dismissBound) return
+  dismissBound = on
+  if (on) document.addEventListener('mousedown', onOutsidePointerDown, true)
+  else document.removeEventListener('mousedown', onOutsidePointerDown, true)
+}
+watch(() => props.show && layout.value === 'sidebar', bindDismiss, { immediate: true })
+onBeforeUnmount(() => bindDismiss(false))
+
 const PANE_KEY = 'tessera_task_pane'
 const rightHidden = ref(localStorage.getItem(PANE_KEY) === 'hidden')
 function toggleRightPane() {
@@ -266,6 +314,9 @@ const relations = ref([])
 
 const attachments = ref([])
 const events = ref([])
+// Documents that link to this task (#2732) — the other end of the link the
+// documents panel creates.
+const docLinks = ref([])
 
 // The tab counters load async (comments/relations/files fetched after the modal
 // opens). Naive measures the active-tab underline before the badge exists, so it
@@ -277,6 +328,7 @@ watch(
     comments.value.length,
     relations.value.length,
     attachments.value.length,
+    docLinks.value.length,
     task.value?.subtasks?.length,
   ],
   () => nextTick(() => detailTabs.value?.syncBarPosition?.()),
@@ -499,20 +551,33 @@ async function loadSiblings(t) {
 let scrollOnOpen = false
 // Comments / relations / attachments / journal load in parallel — none of them
 // should block the modal opening, so failures are swallowed individually.
+// The editor can add a file to the task (a non-image drop into the description),
+// and the «Файлы» tab plus its badge count are owned here — so it has to be told.
+async function reloadAttachments() {
+  try {
+    const a = await tasksApi.attachments(props.taskId)
+    attachments.value = a.data || []
+    emit('changed')
+  } catch {
+    /* the file is uploaded either way; the list refreshes on reopen */
+  }
+}
 async function loadExtras() {
   const id = props.taskId
   // Populate the thread without the enter fade (only later, user-posted comments fade).
   commentsHydrated.value = false
-  const [c, r, a, e] = await Promise.allSettled([
+  const [c, r, a, e, d] = await Promise.allSettled([
     tasksApi.comments(id),
     tasksApi.relations(id),
     tasksApi.attachments(id),
     tasksApi.events(id),
+    tasksApi.documents(id),
   ])
   comments.value = c.status === 'fulfilled' ? c.value.data || [] : []
   relations.value = r.status === 'fulfilled' ? r.value.data || [] : []
   attachments.value = a.status === 'fulfilled' ? a.value.data || [] : []
   events.value = e.status === 'fulfilled' ? e.value.data || [] : []
+  docLinks.value = d.status === 'fulfilled' ? d.value.data || [] : []
   // On open, land on the newest comment — but only in the wide layout, where the
   // right column scrolls on its own. In the stacked layout the whole modal scrolls,
   // and jumping to the bottom would skip past the title and description.
@@ -891,6 +956,15 @@ function openRelated(rel) {
   }
 }
 
+// Opening a linked document leaves the board, so the modal closes first. The
+// slug is preferred over the id for the same reason the documents section
+// prefers it: it is the shareable form of the address.
+function openDocument(link) {
+  if (!link?.document_id) return
+  close()
+  router.push(`/documents/${link.document_slug || link.document_id}`)
+}
+
 // Adding, completing or moving a subtask changes the parent task itself (its
 // subtask list, its rollups), so the tab reports the mutation and the reload
 // stays here — it is the modal that owns the task detail.
@@ -901,8 +975,26 @@ async function onSubtaskChanged() {
 </script>
 
 <template>
-  <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <n-card class="tm-card" role="dialog" data-testid="task-modal" :bordered="false">
+  <!-- One wrapper for all three layouts. With show-mask=false Naive puts
+       pointer-events:none on the container and :all on the card, and only closes on
+       a click that lands in the container — so in the sidebar layout the board
+       underneath stays fully live (cards clickable, drag-n-drop working) and a
+       stray click on it doesn't slam the panel shut. -->
+  <n-modal
+    :show="show"
+    :show-mask="layout !== 'sidebar'"
+    :block-scroll="layout !== 'sidebar'"
+    :trap-focus="layout !== 'sidebar'"
+    @update:show="emit('update:show', $event)"
+  >
+    <n-card
+      ref="cardRef"
+      class="tm-card"
+      :class="{ 'tm-fullscreen': layout === 'fullscreen', 'tm-sidebar': layout === 'sidebar' }"
+      role="dialog"
+      data-testid="task-modal"
+      :bordered="false"
+    >
       <n-spin :show="loading" :rotate="false">
         <template #icon><TesseraSpinner /></template>
         <div ref="formEl" class="form" :style="{ '--tm-cols': splitCols }">
@@ -962,6 +1054,10 @@ async function onSubtaskChanged() {
                   <n-icon v-else key="share" :component="ShareSocialOutline" :size="15" />
                 </Transition>
               </button>
+              <!-- Where to show the task; reads "where → what's inside", so it sits
+                   before the hide-panel button. Only offered when the choice can
+                   mean something (see effectiveTaskLayout). -->
+              <TaskLayoutSwitch v-if="!narrow" :value="layout" @update:value="setLayout" />
               <!-- Wide layout only: hide/show the right column (tabs). -->
               <button
                 v-if="wide"
@@ -1478,6 +1574,13 @@ async function onSubtaskChanged() {
                     </template>
                     <button
                       class="desc-act"
+                      title="Открыть на весь экран"
+                      @click="descEditor?.openFullscreen()"
+                    >
+                      <n-icon :component="ExpandOutline" :size="16" />
+                    </button>
+                    <button
+                      class="desc-act"
                       :title="descMode === 'write' ? 'Предпросмотр' : 'Редактировать'"
                       @click="descEditor?.toggleMode()"
                     >
@@ -1493,6 +1596,7 @@ async function onSubtaskChanged() {
                 v-if="readonly"
                 :source="description || '_Нет описания_'"
                 :members="members"
+                task-refs
               />
               <MarkdownEditor
                 v-else
@@ -1503,7 +1607,9 @@ async function onSubtaskChanged() {
                 placeholder="Добавьте описание…"
                 :min-rows="3"
                 :initial-mode="descInitialMode"
+                :attach-task-id="taskId"
                 @update:mode="descMode = $event"
+                @attachments-changed="reloadAttachments"
                 @blur="saveDesc"
                 @persist="saveDesc"
               />
@@ -1626,6 +1732,27 @@ async function onSubtaskChanged() {
                 />
               </n-tab-pane>
 
+              <n-tab-pane name="documents">
+                <template #tab>
+                  <span class="tab-lbl">
+                    <n-icon
+                      :component="DocumentTextOutline"
+                      :size="15"
+                      class="tab-ico tab-ico--out"
+                    />
+                    <n-icon :component="DocumentText" :size="15" class="tab-ico tab-ico--fill" />
+                    Документы
+                    <n-badge
+                      v-if="docLinks.length"
+                      :value="docLinks.length"
+                      :max="99"
+                      class="tab-badge"
+                    />
+                  </span>
+                </template>
+                <TaskDocumentsTab v-model:links="docLinks" @open-document="openDocument" />
+              </n-tab-pane>
+
               <n-tab-pane name="history">
                 <template #tab>
                   <span class="tab-lbl">
@@ -1703,6 +1830,55 @@ async function onSubtaskChanged() {
   width: 640px;
   max-width: 94vw;
 }
+/* Edge-to-edge. The column height budget follows the taller card. */
+.tm-card.tm-fullscreen {
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  border-radius: 0;
+  --tm-body-max: calc(100vh - 210px);
+}
+/* Right-hand panel: pinned to the edge, board visible (and usable) beside it. The
+   shadow is load-bearing — without a mask the panel would otherwise bleed into the
+   board behind it. */
+.tm-card.tm-sidebar {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(560px, 100vw);
+  max-width: none;
+  height: 100vh;
+  border-radius: 12px 0 0 12px;
+  box-shadow: -8px 0 24px rgb(0 0 0 / 0.18);
+  /* The body scrolls inside the panel (see .n-card-content below), so the card is a
+     column: content takes the slack, the footer stays pinned at the bottom edge. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Slide in from the right edge and back out to it. The default centred scale-up
+   reads as "a dialog appeared"; a panel docked to the edge has to look like it came
+   from there. Naive puts the transition classes on the card itself, so overriding
+   them here is enough — three classes out-specify its two. */
+.tm-card.tm-sidebar.fade-in-scale-up-transition-enter-from,
+.tm-card.tm-sidebar.fade-in-scale-up-transition-leave-to {
+  opacity: 1;
+  transform: translateX(100%);
+}
+.tm-card.tm-sidebar.fade-in-scale-up-transition-enter-to,
+.tm-card.tm-sidebar.fade-in-scale-up-transition-leave-from {
+  opacity: 1;
+  transform: translateX(0);
+}
+.tm-card.tm-sidebar.fade-in-scale-up-transition-enter-active,
+.tm-card.tm-sidebar.fade-in-scale-up-transition-leave-active {
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-card.tm-sidebar.fade-in-scale-up-transition-enter-active,
+  .tm-card.tm-sidebar.fade-in-scale-up-transition-leave-active {
+    transition: none;
+  }
+}
 .form {
   display: flex;
   flex-direction: column;
@@ -1730,11 +1906,15 @@ async function onSubtaskChanged() {
 .tm-divider:hover .tm-divider-grip {
   background: var(--t-primary);
 }
+/* Two columns are gated on the CARD being wide, not the window: the sidebar layout
+   keeps a wide window but hands the card ~560px, where a two-column grid can't fit.
+   Excluding it here leaves the panel on the already-debugged stacked layout, so no
+   separate narrow-panel styling is needed. */
 @media (min-width: 1100px) {
-  .tm-card {
+  .tm-card:not(.tm-sidebar):not(.tm-fullscreen) {
     width: min(1240px, 96vw);
   }
-  .form {
+  .tm-card:not(.tm-sidebar) .form {
     display: grid;
     /* left | divider track | right — overridable via the --tm-cols var that the
        draggable divider writes (persisted in localStorage). The transition
@@ -1745,27 +1925,27 @@ async function onSubtaskChanged() {
   }
   /* Right column collapsed to a 0fr track: fade it out and stop it catching
      clicks while it shrinks. */
-  .tm-col-right {
+  .tm-card:not(.tm-sidebar) .tm-col-right {
     transition: opacity 0.12s ease;
   }
-  .tm-col-right.tm-col-hidden {
+  .tm-card:not(.tm-sidebar) .tm-col-right.tm-col-hidden {
     opacity: 0;
     overflow: hidden;
     pointer-events: none;
   }
   /* Head + title span all three tracks. */
-  .modal-head,
-  .title-input {
+  .tm-card:not(.tm-sidebar) .modal-head,
+  .tm-card:not(.tm-sidebar) .title-input {
     grid-column: 1 / -1;
   }
-  .tm-col-left {
+  .tm-card:not(.tm-sidebar) .tm-col-left {
     grid-column: 1;
     display: flex;
     flex-direction: column;
     gap: 16px;
     min-width: 0;
   }
-  .tm-divider {
+  .tm-card:not(.tm-sidebar) .tm-divider {
     grid-column: 2;
     display: flex;
     align-items: center;
@@ -1778,31 +1958,31 @@ async function onSubtaskChanged() {
      the tab strip stays pinned while the active pane scrolls inside it (so
      scrolling comments never carry the tabs off-screen). The footer lives in the
      card's #footer slot so it stays pinned full-width. */
-  .tm-col-right {
+  .tm-card:not(.tm-sidebar) .tm-col-right {
     grid-column: 3;
     min-width: 0;
-    max-height: calc(90vh - 210px);
+    max-height: var(--tm-body-max, calc(90vh - 210px));
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
-  .tm-col-left {
-    max-height: calc(90vh - 210px);
+  .tm-card:not(.tm-sidebar) .tm-col-left {
+    max-height: var(--tm-body-max, calc(90vh - 210px));
     overflow-y: auto;
   }
   /* The tabs fill the right column; the nav is pinned (flex:none), the active pane
      takes the rest and scrolls. */
-  .tm-col-right .detail-tabs {
+  .tm-card:not(.tm-sidebar) .tm-col-right .detail-tabs {
     margin: 0;
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
-  .detail-tabs :deep(.n-tabs-nav) {
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tabs-nav) {
     flex: none;
   }
-  .detail-tabs :deep(.n-tab-pane) {
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane) {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -1812,56 +1992,93 @@ async function onSubtaskChanged() {
   /* Comments tab: the list scrolls internally, the composer is a pinned footer that
      sits OUTSIDE the scroll area — so scrolling content can't bleed under its top
      border (which the previous position:sticky composer did). */
-  .tm-col-right .comments {
+  .tm-card:not(.tm-sidebar) .tm-col-right .comments {
     flex: 1;
     min-height: 0;
   }
-  .tm-col-right .c-list {
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list {
     overflow-y: auto;
   }
-  .tm-col-right .comment-add {
+  .tm-card:not(.tm-sidebar) .tm-col-right .comment-add {
     position: static;
   }
   /* Idle: reserved gutter, transparent thumb; reveal on hover/focus — one skin for
      all three scrollers (left column, the active tab pane, the comment list). */
-  .tm-col-left,
-  .detail-tabs :deep(.n-tab-pane),
-  .tm-col-right .c-list {
+  .tm-card:not(.tm-sidebar) .tm-col-left,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane),
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list {
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
     transition: scrollbar-color 0.15s ease;
   }
-  .tm-col-left:hover,
-  .tm-col-left:focus-within,
-  .detail-tabs :deep(.n-tab-pane):hover,
-  .detail-tabs :deep(.n-tab-pane):focus-within,
-  .tm-col-right .c-list:hover,
-  .tm-col-right .c-list:focus-within {
+  .tm-card:not(.tm-sidebar) .tm-col-left:hover,
+  .tm-card:not(.tm-sidebar) .tm-col-left:focus-within,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):hover,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):focus-within,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:hover,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:focus-within {
     scrollbar-color: var(--t-border) transparent;
   }
-  .tm-col-left::-webkit-scrollbar,
-  .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar,
-  .tm-col-right .c-list::-webkit-scrollbar {
+  .tm-card:not(.tm-sidebar) .tm-col-left::-webkit-scrollbar,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list::-webkit-scrollbar {
     width: 10px;
   }
-  .tm-col-left::-webkit-scrollbar-thumb,
-  .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar-thumb,
-  .tm-col-right .c-list::-webkit-scrollbar-thumb {
+  .tm-card:not(.tm-sidebar) .tm-col-left::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list::-webkit-scrollbar-thumb {
     border-radius: 5px;
     border: 3px solid transparent;
     background: transparent;
     background-clip: padding-box;
   }
-  .tm-col-left:hover::-webkit-scrollbar-thumb,
-  .tm-col-left:focus-within::-webkit-scrollbar-thumb,
-  .detail-tabs :deep(.n-tab-pane):hover::-webkit-scrollbar-thumb,
-  .detail-tabs :deep(.n-tab-pane):focus-within::-webkit-scrollbar-thumb,
-  .tm-col-right .c-list:hover::-webkit-scrollbar-thumb,
-  .tm-col-right .c-list:focus-within::-webkit-scrollbar-thumb {
+  .tm-card:not(.tm-sidebar) .tm-col-left:hover::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .tm-col-left:focus-within::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):hover::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):focus-within::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:hover::-webkit-scrollbar-thumb,
+  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:focus-within::-webkit-scrollbar-thumb {
     background: var(--t-border);
     background-clip: padding-box;
   }
+}
+/* Sidebar keeps the stacked flow, but the card is a fixed-height panel — the body
+   has to scroll inside it, or everything past the first screenful hangs off the
+   bottom of the viewport with no way to reach it.
+   The element is `n-card-content` with a single dash while its sibling is
+   `n-card__footer` with BEM underscores — Naive is inconsistent here, and mirroring
+   the footer's spelling onto the content yields a rule that matches nothing and
+   fails silently. */
+.tm-card.tm-sidebar :deep(.n-card-content) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* The comments composer is `position: sticky; bottom: 0`, so it pins to the
+     scroller's content-box bottom — which Naive's default padding-bottom pushes
+     UP by 20px. That leaves a padding strip below the pinned composer through
+     which the last comment shows while scrolling (the "text bleeds through the
+     form" report). Zero it so the composer sits flush against the scroller's
+     bottom edge, with the footer providing the separation below. */
+  padding-bottom: 0;
+  /* Reserve the scrollbar gutter permanently. Without it the scrollbar eats into
+     the scroller's right edge only while overflowing, so the composer (which lives
+     inside the scroller) ends up narrower than the footer (which does not) and the
+     «Сохранить» button juts past the composer's right border. The footer below
+     reserves the SAME gutter so the two right edges line up in every browser,
+     whatever width `thin` resolves to. */
+  scrollbar-gutter: stable;
+}
+.tm-card.tm-sidebar :deep(.n-card__footer) {
+  flex: none;
+  /* Match the scroller's reserved gutter (see above) so the action buttons align
+     with the composer's right edge; `overflow: hidden` makes scrollbar-gutter take
+     effect without ever showing a bar. */
+  overflow: hidden;
+  scrollbar-gutter: stable;
+  /* Constant breathing room above the buttons — independent of the composer's
+     content, so the gap looks the same with or without the command-preview line. */
+  padding-top: 14px;
 }
 .title-input :deep(input) {
   font-size: 18px;
@@ -2025,19 +2242,8 @@ async function onSubtaskChanged() {
 .sep {
   opacity: 0.5;
 }
-/* The `plain` class lands on the NInput ROOT element (attr fallthrough), which
-   IS `.n-input` — so a `:deep(.n-input)` descendant selector never matched it
-   (and the modal is teleported to <body>). Set Naive's --n-color vars on
-   `.plain` itself (!important beats the inline ones Naive writes); they inherit
-   into the inner elements, so the field keeps the modal colour even on focus. */
-.plain {
-  --n-color: transparent !important;
-  --n-color-focus: transparent !important;
-}
-.plain :deep(.n-input__border),
-.plain :deep(.n-input__state-border) {
-  display: none !important;
-}
+/* `.plain` (borderless title field) lives in main.css — the document view uses
+   the same class, and two copies would drift. */
 .props {
   display: flex;
   flex-direction: column;

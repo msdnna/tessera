@@ -17,6 +17,7 @@ import {
 import {
   HomeOutline,
   DocumentTextOutline,
+  DocumentsOutline,
   AlarmOutline,
   RibbonOutline,
   AddOutline,
@@ -242,6 +243,17 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
+          <router-link to="/documents" class="nav-link">
+            <n-icon :component="DocumentsOutline" :size="18" />
+            <span v-if="!collapsed" class="nav-label">
+              Документы<sup class="nav-badge">alpha</sup>
+            </span>
+          </router-link>
+        </template>
+        Документы
+      </n-tooltip>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
           <router-link to="/reminders" class="nav-link">
             <n-icon :component="AlarmOutline" :size="18" />
             <span v-if="!collapsed">Напоминания</span>
@@ -452,6 +464,22 @@ async function deleteWorkspace() {
 }
 .nav-link:hover {
   background: var(--t-hover);
+}
+.nav-label {
+  display: inline-flex;
+  align-items: flex-start;
+}
+.nav-badge {
+  margin-left: 3px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: lowercase;
+  color: var(--t-primary);
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
 }
 .nav-link.router-link-active,
 .nav-link.router-link-exact-active {

@@ -16,3 +16,13 @@ WHERE workspace_id = $1
   AND (title ILIKE '%' || $2 || '%' OR body ILIKE '%' || $2 || '%')
 ORDER BY updated_at DESC
 LIMIT 25;
+
+-- SearchDocuments matches on the title only: in D1 `content` is empty, and
+-- full-text over the block jsonb is a D2 conversation.
+-- name: SearchDocuments :many
+SELECT id, title, slug
+FROM documents
+WHERE workspace_id = $1
+  AND title ILIKE '%' || $2 || '%'
+ORDER BY updated_at DESC
+LIMIT 25;

@@ -344,6 +344,86 @@ export const notes = {
   remove: (id) => api.delete(`/notes/${id}`),
 }
 
+export const documents = {
+  list: (wsId, projectId) =>
+    api.get(
+      `/workspaces/${wsId}/documents`,
+      projectId ? { params: { project_id: projectId } } : {},
+    ),
+  create: (wsId, data) => api.post(`/workspaces/${wsId}/documents`, data),
+  get: (id) => api.get(`/documents/${id}`),
+  // Resolves a workspace-scoped slug. The response carries workspace_id so a
+  // deep link can point the app at the right workspace before mounting.
+  bySlug: (wsId, slug) => api.get(`/workspaces/${wsId}/documents/by-slug/${slug}`),
+  update: (id, data) => api.patch(`/documents/${id}`, data),
+  // Content has its own endpoint: the metadata PATCH above is what realtime and
+  // the list are built around, and both deliberately exclude content (D1). It
+  // carries the updated_at the client last saw — the server answers 409 when
+  // that no longer matches, rather than silently overwriting someone's edit.
+  // skipLoader: autosave fires while typing and must not flash the global bar.
+  // connId is the document socket this save came from, so the server announces
+  // it to the rest of the room but not back to us (#2729).
+  updateContent: (id, content, updatedAt, connId = '') =>
+    api.patch(
+      `/documents/${id}/content`,
+      { content, updated_at: updatedAt, conn_id: connId },
+      { skipLoader: true },
+    ),
+  uploadAsset: (id, formData) => api.post(`/documents/${id}/assets`, formData),
+  // Separate from uploadAsset because the asset route is images-only by
+  // contract — widening it would quietly let every paste handler take PDFs.
+  uploadPdf: (id, formData) => api.post(`/documents/${id}/pdf`, formData),
+  // Office import/export via the LibreOffice sidecar (#2733). The status call
+  // is what lets the UI hide the import button on an install without one,
+  // rather than offering an action that fails after the file picker.
+  // skipLoader: it runs on entering the section, not on a user action.
+  converterStatus: () => api.get('/document-converter', { skipLoader: true }),
+  importFile: (wsId, formData) => api.post(`/workspaces/${wsId}/documents/import`, formData),
+  // responseType blob: the response is a file, and letting axios parse a PDF as
+  // text corrupts it in a way that only shows up when the download is opened.
+  exportFile: (id, format) =>
+    api.get(`/documents/${id}/export?format=${format}`, { responseType: 'blob' }),
+  remove: (id, recursive = false) =>
+    api.delete(`/documents/${id}${recursive ? '?recursive=true' : ''}`),
+  // Block-anchored annotations (#2730). Roots and replies come back in one list
+  // and are threaded on the client — it groups them by block to place them next
+  // to the text anyway. skipLoader: the panel refetches on a socket nudge, and a
+  // colleague resolving a thread must not flash the global progress bar.
+  comments: (id) => api.get(`/documents/${id}/comments`, { skipLoader: true }),
+  addComment: (id, data) => api.post(`/documents/${id}/comments`, data),
+  updateComment: (commentId, body) => api.patch(`/document-comments/${commentId}`, { body }),
+  resolveComment: (commentId, resolved = true) =>
+    api.patch(`/document-comments/${commentId}/resolve`, { resolved }),
+  removeComment: (commentId) => api.delete(`/document-comments/${commentId}`),
+  // Version journal (#2731). The list carries no bodies — a document is up to a
+  // megabyte of JSON and the panel shows fifty entries — so a version is fetched
+  // whole only when it is previewed or compared.
+  versions: (id) => api.get(`/documents/${id}/versions`, { skipLoader: true }),
+  snapshot: (id, label) => api.post(`/documents/${id}/versions`, { label }),
+  version: (versionId) => api.get(`/document-versions/${versionId}`),
+  restoreVersion: (versionId) => api.post(`/document-versions/${versionId}/restore`),
+  // Template gallery (#2734). Like the version journal, the list carries
+  // previews rather than bodies: the gallery renders every template at once and
+  // a body is fetched only when one is previewed. Creating a document *from* a
+  // template is `create(wsId, { template_id })` above — there is no separate
+  // endpoint for it, so slug, position and authorship stay on one path.
+  templates: (wsId) => api.get(`/workspaces/${wsId}/document-templates`),
+  createTemplate: (wsId, data) => api.post(`/workspaces/${wsId}/document-templates`, data),
+  template: (id) => api.get(`/document-templates/${id}`),
+  updateTemplate: (id, data) => api.patch(`/document-templates/${id}`, data),
+  removeTemplate: (id) => api.delete(`/document-templates/${id}`),
+  // Task links and approval protocols (#2732). Both lists refetch on the same
+  // socket nudge, so both skip the loader: a colleague signing a route must not
+  // flash the global progress bar for everyone reading the document.
+  links: (id) => api.get(`/documents/${id}/tasks`, { skipLoader: true }),
+  linkTask: (id, data) => api.post(`/documents/${id}/tasks`, data),
+  unlinkTask: (linkId) => api.delete(`/document-task-links/${linkId}`),
+  approvals: (id) => api.get(`/documents/${id}/approvals`, { skipLoader: true }),
+  createApproval: (id, data) => api.post(`/documents/${id}/approvals`, data),
+  decideApproval: (approvalId, data) => api.post(`/document-approvals/${approvalId}/decide`, data),
+  cancelApproval: (approvalId) => api.post(`/document-approvals/${approvalId}/cancel`),
+}
+
 export const reminders = {
   list: () => api.get('/reminders'),
   create: (data) => api.post('/reminders', data),
@@ -400,6 +480,10 @@ export const tasks = {
   relations: (id) => api.get(`/tasks/${id}/relations`),
   addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),
   removeRelation: (relationId) => api.delete(`/relations/${relationId}`),
+  // The document side of the same link table (#2732). Unlinking is done through
+  // `documents.unlinkTask` — one link row, one endpoint, whichever end you are
+  // looking at it from.
+  documents: (id) => api.get(`/tasks/${id}/documents`),
   attachments: (id) => api.get(`/tasks/${id}/attachments`),
   // Attachment up/download can be large and slow — keep them off the global bar
   // (their call sites show local progress); a blocking overlay here froze the
