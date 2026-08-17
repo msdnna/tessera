@@ -6,14 +6,14 @@ test('поиск по названию оставляет на доске тол
   page,
   backend,
 }) => {
-  const { ws, board, columns } = await backend.freshBoard('flt-q')
+  const { board, columns } = await backend.freshBoard('flt-q')
   const stamp = Date.now().toString(36)
   const keep = `Найди меня ${stamp}`
   const drop = `Мимо ${stamp}`
   await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title: keep })
   await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title: drop })
 
-  await openBoard(page, board.id, ws.id)
+  await openBoard(page, board.id)
   await expect(cardsIn(page, columns[0].name)).toHaveCount(2)
 
   const search = page.getByTestId('board-search')
@@ -30,7 +30,7 @@ test('поиск по названию оставляет на доске тол
 // and its alternatives don't (CLAUDE.md). If it ever silently falls back to
 // status columns, this is the spec that says so.
 test('группировка по тегам: колонки становятся тегами (killer-фича)', async ({ page, backend }) => {
-  const { ws, project, board, columns } = await backend.freshBoard('flt-tags')
+  const { project, board, columns } = await backend.freshBoard('flt-tags')
   const stamp = Date.now().toString(36)
   const tagName = `срочно-${stamp}`
   const tag = await backend.post(`/projects/${project.id}/tags`, { name: tagName })
@@ -44,7 +44,7 @@ test('группировка по тегам: колонки становятс�
   await backend.post(`/tasks/${task.id}/tags`, { tag_id: tag.id })
   await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title: plain })
 
-  await openBoard(page, board.id, ws.id)
+  await openBoard(page, board.id)
 
   // Composer → «+» → Группировка → По тегам (все).
   await page.locator('.facet-add').click()

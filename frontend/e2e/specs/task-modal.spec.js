@@ -12,7 +12,7 @@ test('модалка задачи открывается, показывает �
   page,
   backend,
 }) => {
-  const { ws, board, columns } = await backend.freshBoard('modal')
+  const { board, columns } = await backend.freshBoard('modal')
   const title = `Задача с описанием ${Date.now().toString(36)}`
   const task = await backend.post(`/boards/${board.id}/tasks`, {
     column_id: columns[0].id,
@@ -20,7 +20,7 @@ test('модалка задачи открывается, показывает �
     description: '## Заголовок описания\n\nОбычный абзац.',
   })
 
-  await openBoard(page, board.id, ws.id)
+  await openBoard(page, board.id)
   await cardsIn(page, columns[0].name).filter({ hasText: title }).click()
 
   const modal = page.getByTestId('task-modal')
@@ -92,11 +92,11 @@ test('ответ в треде остаётся вложенным после п
 })
 
 test('модалка закрывается по Escape', async ({ page, backend }) => {
-  const { ws, board, columns } = await backend.freshBoard('modal-esc')
+  const { board, columns } = await backend.freshBoard('modal-esc')
   const title = `Закрой меня ${Date.now().toString(36)}`
   await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title })
 
-  await openBoard(page, board.id, ws.id)
+  await openBoard(page, board.id)
   await cardsIn(page, columns[0].name).filter({ hasText: title }).click()
   await expect(page.getByTestId('task-modal')).toBeVisible()
 

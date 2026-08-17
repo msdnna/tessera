@@ -85,25 +85,17 @@ export async function signIn(page, creds = seed.creds) {
 
 // openBoard navigates to a board and waits for it to settle.
 //
-// `workspaceId` selects the board's workspace the way the sidebar switcher would,
-// by seeding `localStorage.tessera_ws` before the app boots. It is NOT cosmetic:
-// KanbanBoard drops every realtime event whose scope isn't the *current*
-// workspace (KanbanBoard.vue:1196), and members/tags are fetched for that same
-// id — so a board opened while another workspace is active renders, but silently
-// never updates. Specs that seed their own workspace with `freshBoard()` must
-// pass its id, or the realtime assertions fail for a reason that has nothing to
-// do with the socket. (That deep-link case looks like a real app bug, reported
-// on the task — the e2e harness only works around it here.)
+// No workspace seeding here: BoardView switches the app to the board's own
+// workspace while resolving it (#2721), so a deep link is self-sufficient. The
+// harness used to seed `localStorage.tessera_ws` itself, which masked exactly
+// that bug — deep-link.spec.js now covers the case instead.
 //
 // Both waits are load-bearing. `/board/<uuid>` is the legacy entry point:
 // BoardView resolves it and then `router.replace`s to the canonical
 // `/project/<slug>/board/<slug>`, which re-keys KanbanBoard and remounts it.
 // Waiting for the canonical URL first also means a dropped session fails here,
 // with an obvious "still on /login" URL, instead of much later as a missing card.
-export async function openBoard(page, boardId, workspaceId) {
-  if (workspaceId) {
-    await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), workspaceId)
-  }
+export async function openBoard(page, boardId) {
   await page.goto(`/board/${boardId}`)
   await page.waitForURL(/\/project\/[^/]+\/board\//, { timeout: 15000 })
   await expect(page.getByTestId('column').first()).toBeVisible()

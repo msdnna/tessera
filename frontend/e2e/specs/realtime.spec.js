@@ -8,8 +8,8 @@ test('правка «со стороны» по API прилетает на от
   page,
   backend,
 }) => {
-  const { ws, board, columns } = await backend.freshBoard('rt-api')
-  await openBoard(page, board.id, ws.id)
+  const { board, columns } = await backend.freshBoard('rt-api')
+  await openBoard(page, board.id)
 
   const title = `Прилетело по WS ${Date.now().toString(36)}`
   await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title })
@@ -24,8 +24,8 @@ test('две вкладки: карточка, созданная в одной,
   browser,
   backend,
 }) => {
-  const { ws, board, columns } = await backend.freshBoard('rt-tabs')
-  await openBoard(page, board.id, ws.id)
+  const { board, columns } = await backend.freshBoard('rt-tabs')
+  await openBoard(page, board.id)
 
   // The second tab needs its own sign-in: the refresh token rotates, so the two
   // contexts cannot share one captured session (see fixtures.js).
@@ -33,7 +33,7 @@ test('две вкладки: карточка, созданная в одной,
   const otherPage = await other.newPage()
   try {
     await signIn(otherPage)
-    await openBoard(otherPage, board.id, ws.id)
+    await openBoard(otherPage, board.id)
 
     const title = `Из соседней вкладки ${Date.now().toString(36)}`
     const col = cardsIn(page, columns[0].name)
