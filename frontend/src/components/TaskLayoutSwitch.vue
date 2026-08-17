@@ -12,7 +12,7 @@ const props = defineProps({
 const emit = defineEmits(['update:value'])
 
 const opts = [
-  { value: 'modal', label: 'Модалка', icon: 'task-modal' },
+  { value: 'modal', label: 'Модальное окно', icon: 'task-modal' },
   { value: 'fullscreen', label: 'Полный экран', icon: 'task-fullscreen' },
   { value: 'sidebar', label: 'Панель справа', icon: 'task-sidebar' },
 ]
