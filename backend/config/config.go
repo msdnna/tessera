@@ -68,6 +68,12 @@ type Config struct {
 	// users would lose every picture. Web and Android work either way — turn
 	// MEDIA_REQUIRE_AUTH=true on to stop serving uploads to anonymous callers.
 	MediaRequireAuth bool
+	// Base URL of the LibreOffice conversion sidecar (converter/), e.g.
+	// http://converter:3000. Empty disables office import/export: the Documents
+	// section keeps working in full and only those two actions report themselves
+	// as unavailable. Deliberately empty by default — the sidecar is close to a
+	// gigabyte, and an install that does not want it should not have to opt out.
+	ConverterURL string
 	// Request body ceilings, in bytes. MaxBodyBytes is the blanket limit;
 	// uploads and attachments get their own, larger, budgets.
 	MaxBodyBytes       int64
@@ -194,6 +200,7 @@ func New() *Config {
 		TrustedProxies:     splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
 		RateLimitEnabled:   getEnvBool("RATE_LIMIT_ENABLED", true),
 		MediaRequireAuth:   getEnvBool("MEDIA_REQUIRE_AUTH", false),
+		ConverterURL:       getEnv("CONVERTER_URL", ""),
 		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
 		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
 		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),

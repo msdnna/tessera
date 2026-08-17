@@ -416,6 +416,16 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// Documents follow the project, exactly as notes do. requireMember
+	// authorizes on documents.workspace_id, so leaving it stale would keep the
+	// documents visible to the team the project left and hide them from the one
+	// that now owns it.
+	if err := qtx.ReassignProjectDocumentsWorkspace(c, db.ReassignProjectDocumentsWorkspaceParams{
+		ProjectID: &p.ID, WorkspaceID: req.WorkspaceID,
+	}); err != nil {
+		fail(c, err)
+		return
+	}
 	if err := qtx.ReassignProjectGitlabWorkspace(c, db.ReassignProjectGitlabWorkspaceParams{
 		ProjectID: p.ID, WorkspaceID: req.WorkspaceID,
 	}); err != nil {

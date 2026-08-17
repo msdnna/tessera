@@ -25,8 +25,14 @@ const onBoard = () => board.active && !props.mobile
       <n-icon :component="MenuOutline" />
     </n-button>
 
+    <!-- Page-owned header controls land in these two slots via <teleport>. The
+         board fills its side of the header from a store, but a view whose
+         controls are wired to a dozen pieces of its own state (the open
+         document, #2727) teleports the markup instead of lifting the state out.
+         The containers are always rendered so the teleport target exists. -->
     <div class="tb-left">
       <BoardLayoutSwitch v-if="onBoard()" />
+      <div id="tb-slot-left" class="tb-slot" />
     </div>
 
     <div class="tb-center">
@@ -36,6 +42,7 @@ const onBoard = () => board.active && !props.mobile
     </div>
 
     <div class="tb-right">
+      <div id="tb-slot-right" class="tb-slot" />
       <BoardActions v-if="onBoard()" />
       <!-- Mobile board controls: layout + tags + archive in one menu. -->
       <BoardMobileMenu v-if="mobile && board.active" />
@@ -67,6 +74,15 @@ const onBoard = () => board.active && !props.mobile
   align-items: center;
   gap: 8px;
   flex: none;
+}
+/* Empty when no page teleports into it — no gap of its own in that case. */
+.tb-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tb-slot:empty {
+  display: none;
 }
 .tb-center {
   flex: 1;

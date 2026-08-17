@@ -309,8 +309,10 @@ async function onCommentCheck(c, i) {
                 v-model="editingCommentBody"
                 variant="boxed"
                 :mention-items="mentionItems"
+                :attach-task-id="taskId"
                 :min-rows="2"
                 placeholder="Комментарий…"
+                @attachments-changed="emit('changed')"
                 @submit="saveComment"
               />
               <n-space :size="6" style="margin-top: 6px">
@@ -323,6 +325,7 @@ async function onCommentCheck(c, i) {
               class="c-text"
               :source="c.body"
               :members="mentionItems"
+              task-refs
               :interactive="c.author_id === meId"
               @toggle="onCommentCheck(c, $event)"
             />
@@ -346,8 +349,10 @@ async function onCommentCheck(c, i) {
         :sending="posting"
         :mention-items="mentionItems"
         :command-items="commandItems"
+        :attach-task-id="taskId"
         :min-rows="3"
         placeholder="Написать комментарий… (@ — упоминание, / — команда, Ctrl+Enter — отправить)"
+        @attachments-changed="emit('changed')"
         @submit="postComment"
       />
       <!-- Offline-retry banner: shown while waiting to resend after a
