@@ -783,7 +783,14 @@ defineExpose({
     />
 
     <div class="md2-body">
-      <Transition name="md2-fade" mode="out-in" @after-enter="autoGrow">
+      <!-- Cross-fade (NOT mode="out-in"): out-in defers mounting the incoming pane
+           until the outgoing one finishes leaving, and a parent re-render in between
+           (the header's write/preview buttons key off `descMode`) wedged the
+           transition — it settled on an empty slot, so switching a filled description
+           into edit mode showed the toolbar but no textarea (#2742). A plain
+           cross-fade mounts both at once; the leaving pane is taken out of flow in CSS
+           so the layout doesn't jump. -->
+      <Transition name="md2-fade" @after-enter="autoGrow">
         <div v-if="writing" key="write" class="md2-write" :class="{ dragging }">
           <textarea
             ref="ta"
@@ -1092,10 +1099,21 @@ defineExpose({
   opacity: 0.5;
   pointer-events: none;
 }
-/* Fade between write / preview panes. */
+/* Cross-fade between write / preview panes. The leaving pane is pulled out of flow
+   (absolute) so the incoming one owns the layout — no jump, and no `mode="out-in"`
+   wedge (see the template note for #2742). `.md2-body` is the positioning context. */
+.md2-body {
+  position: relative;
+}
 .md2-fade-enter-active,
 .md2-fade-leave-active {
   transition: opacity 0.15s ease;
+}
+.md2-fade-leave-active {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  pointer-events: none;
 }
 .md2-fade-enter-from,
 .md2-fade-leave-to {
