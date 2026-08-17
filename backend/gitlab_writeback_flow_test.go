@@ -64,6 +64,15 @@ func (w *wbFake) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			writeJSON(rw, http.StatusInternalServerError, map[string]any{"message": "boom"})
 			return
 		}
+		// A root comment opens a discussion, so the response carries both the
+		// discussion id (a later reply aims at it) and the opening note's id.
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/discussions") {
+			writeJSON(rw, http.StatusCreated, map[string]any{
+				"id":    "d15cu5510n5ha",
+				"notes": []map[string]any{{"id": 4242}},
+			})
+			return
+		}
 		// Notes get a real id so CreateIssueNote can tag the source comment.
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/notes") {
 			writeJSON(rw, http.StatusCreated, map[string]any{"id": 4242})
@@ -278,9 +287,14 @@ func TestGitlabWritebackPushFlow(t *testing.T) {
 	if !sawStatusLabel || !sawPrioLabel || !sawClose {
 		t.Fatalf("missing pushes: status=%v prio=%v close=%v\ncalls: %+v", sawStatusLabel, sawPrioLabel, sawClose, puts)
 	}
-	notes := w.callsMatching(http.MethodPost, "/issues/1/notes")
+	// Root comments are published as one-note discussions, not bare notes — that
+	// is what gives a later reply a thread id to aim at (see CreateIssueDiscussion).
+	notes := w.callsMatching(http.MethodPost, "/issues/1/discussions")
 	if len(notes) != 1 || notes[0].Form.Get("body") != "Привет из Tessera" {
 		t.Fatalf("note pushes: %+v", notes)
+	}
+	if bare := w.callsMatching(http.MethodPost, "/issues/1/notes"); len(bare) != 0 {
+		t.Fatalf("root comment escaped its discussion: %+v", bare)
 	}
 
 	// Journal: push run(s) with four ok push-actions in total.

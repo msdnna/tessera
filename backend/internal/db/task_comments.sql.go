@@ -13,19 +13,25 @@ import (
 )
 
 const createComment = `-- name: CreateComment :one
-INSERT INTO task_comments (task_id, author_id, body)
-VALUES ($1, $2, $3)
-RETURNING id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url
+INSERT INTO task_comments (task_id, author_id, body, parent_id)
+VALUES ($1, $2, $3, $4)
+RETURNING id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, parent_id, gl_discussion_id
 `
 
 type CreateCommentParams struct {
 	TaskID   uuid.UUID  `json:"task_id"`
 	AuthorID *uuid.UUID `json:"author_id"`
 	Body     string     `json:"body"`
+	ParentID *uuid.UUID `json:"parent_id"`
 }
 
 func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (TaskComment, error) {
-	row := q.db.QueryRow(ctx, createComment, arg.TaskID, arg.AuthorID, arg.Body)
+	row := q.db.QueryRow(ctx, createComment,
+		arg.TaskID,
+		arg.AuthorID,
+		arg.Body,
+		arg.ParentID,
+	)
 	var i TaskComment
 	err := row.Scan(
 		&i.ID,
@@ -38,6 +44,8 @@ func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (T
 		&i.GlAuthorLogin,
 		&i.GlAuthorName,
 		&i.GlAuthorAvatarUrl,
+		&i.ParentID,
+		&i.GlDiscussionID,
 	)
 	return i, err
 }
@@ -52,7 +60,7 @@ func (q *Queries) DeleteComment(ctx context.Context, id uuid.UUID) error {
 }
 
 const getComment = `-- name: GetComment :one
-SELECT id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url FROM task_comments WHERE id = $1
+SELECT id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, parent_id, gl_discussion_id FROM task_comments WHERE id = $1
 `
 
 func (q *Queries) GetComment(ctx context.Context, id uuid.UUID) (TaskComment, error) {
@@ -69,16 +77,19 @@ func (q *Queries) GetComment(ctx context.Context, id uuid.UUID) (TaskComment, er
 		&i.GlAuthorLogin,
 		&i.GlAuthorName,
 		&i.GlAuthorAvatarUrl,
+		&i.ParentID,
+		&i.GlDiscussionID,
 	)
 	return i, err
 }
 
 const listTaskComments = `-- name: ListTaskComments :many
-SELECT c.id, c.task_id, c.author_id, c.body, c.created_at, c.updated_at, c.gl_note_id, c.gl_author_login, c.gl_author_name, c.gl_author_avatar_url, u.name AS author_name, u.email AS author_email
+SELECT c.id, c.task_id, c.author_id, c.body, c.created_at, c.updated_at, c.gl_note_id, c.gl_author_login, c.gl_author_name, c.gl_author_avatar_url, c.parent_id, c.gl_discussion_id, u.name AS author_name, u.email AS author_email
 FROM task_comments c
 LEFT JOIN users u ON u.id = c.author_id
+LEFT JOIN task_comments p ON p.id = c.parent_id
 WHERE c.task_id = $1
-ORDER BY c.created_at
+ORDER BY COALESCE(p.created_at, c.created_at), COALESCE(p.id, c.id), c.created_at
 `
 
 type ListTaskCommentsRow struct {
@@ -92,10 +103,16 @@ type ListTaskCommentsRow struct {
 	GlAuthorLogin     string     `json:"gl_author_login"`
 	GlAuthorName      string     `json:"gl_author_name"`
 	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
+	ParentID          *uuid.UUID `json:"parent_id"`
+	GlDiscussionID    string     `json:"gl_discussion_id"`
 	AuthorName        *string    `json:"author_name"`
 	AuthorEmail       *string    `json:"author_email"`
 }
 
+// ListTaskComments returns the task's comments in thread order: a root, then its
+// replies, then the next root. The response stays a FLAT array (with parent_id)
+// rather than a nested tree — Android and the MCP server render it flat, and this
+// way they keep working unchanged and merely read in a more sensible order.
 func (q *Queries) ListTaskComments(ctx context.Context, taskID uuid.UUID) ([]ListTaskCommentsRow, error) {
 	rows, err := q.db.Query(ctx, listTaskComments, taskID)
 	if err != nil {
@@ -116,6 +133,8 @@ func (q *Queries) ListTaskComments(ctx context.Context, taskID uuid.UUID) ([]Lis
 			&i.GlAuthorLogin,
 			&i.GlAuthorName,
 			&i.GlAuthorAvatarUrl,
+			&i.ParentID,
+			&i.GlDiscussionID,
 			&i.AuthorName,
 			&i.AuthorEmail,
 		); err != nil {
@@ -129,8 +148,103 @@ func (q *Queries) ListTaskComments(ctx context.Context, taskID uuid.UUID) ([]Lis
 	return items, nil
 }
 
+const listThreadParticipants = `-- name: ListThreadParticipants :many
+SELECT DISTINCT c.author_id FROM task_comments c
+WHERE c.author_id IS NOT NULL AND (c.id = $1 OR c.parent_id = $1)
+`
+
+// ListThreadParticipants returns the Tessera users who wrote in a thread (the
+// root's author plus everyone who replied). GitLab-sourced comments have a NULL
+// author_id and drop out. Used to notify a thread when someone replies in it:
+// the root's author is often not a task participant and would otherwise never
+// learn that a branch was started under their comment.
+func (q *Queries) ListThreadParticipants(ctx context.Context, id uuid.UUID) ([]*uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listThreadParticipants, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*uuid.UUID
+	for rows.Next() {
+		var author_id *uuid.UUID
+		if err := rows.Scan(&author_id); err != nil {
+			return nil, err
+		}
+		items = append(items, author_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listThreadReplies = `-- name: ListThreadReplies :many
+SELECT id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, parent_id, gl_discussion_id FROM task_comments WHERE parent_id = $1 ORDER BY created_at
+`
+
+// ListThreadReplies returns the replies under a root, oldest first. Used to pick
+// the successor when the root is deleted and to collect thread participants.
+func (q *Queries) ListThreadReplies(ctx context.Context, parentID *uuid.UUID) ([]TaskComment, error) {
+	rows, err := q.db.Query(ctx, listThreadReplies, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskComment
+	for rows.Next() {
+		var i TaskComment
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.AuthorID,
+			&i.Body,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.GlNoteID,
+			&i.GlAuthorLogin,
+			&i.GlAuthorName,
+			&i.GlAuthorAvatarUrl,
+			&i.ParentID,
+			&i.GlDiscussionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const promoteReplyToRoot = `-- name: PromoteReplyToRoot :exec
+UPDATE task_comments SET parent_id = NULL, updated_at = now() WHERE id = $1
+`
+
+// PromoteReplyToRoot detaches a reply so it can take over a deleted root.
+func (q *Queries) PromoteReplyToRoot(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, promoteReplyToRoot, id)
+	return err
+}
+
+const reparentReplies = `-- name: ReparentReplies :exec
+UPDATE task_comments SET parent_id = $1, updated_at = now()
+WHERE parent_id = $2 AND id <> $1
+`
+
+type ReparentRepliesParams struct {
+	ToRoot   *uuid.UUID `json:"to_root"`
+	FromRoot *uuid.UUID `json:"from_root"`
+}
+
+// ReparentReplies moves the remaining replies of a deleted root onto its successor.
+func (q *Queries) ReparentReplies(ctx context.Context, arg ReparentRepliesParams) error {
+	_, err := q.db.Exec(ctx, reparentReplies, arg.ToRoot, arg.FromRoot)
+	return err
+}
+
 const updateComment = `-- name: UpdateComment :one
-UPDATE task_comments SET body = $2, updated_at = now() WHERE id = $1 RETURNING id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url
+UPDATE task_comments SET body = $2, updated_at = now() WHERE id = $1 RETURNING id, task_id, author_id, body, created_at, updated_at, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, parent_id, gl_discussion_id
 `
 
 type UpdateCommentParams struct {
@@ -152,6 +266,8 @@ func (q *Queries) UpdateComment(ctx context.Context, arg UpdateCommentParams) (T
 		&i.GlAuthorLogin,
 		&i.GlAuthorName,
 		&i.GlAuthorAvatarUrl,
+		&i.ParentID,
+		&i.GlDiscussionID,
 	)
 	return i, err
 }

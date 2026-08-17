@@ -31,6 +31,9 @@ type glNote struct {
 	System      bool
 	AuthorLogin string
 	CreatedAt   time.Time
+	// Discussion groups notes into one thread. Zero means "own thread", which is
+	// what a plain GitLab comment is — a discussion holding a single note.
+	Discussion int64
 }
 
 type glMilestone struct {
@@ -367,12 +370,31 @@ func (f *fakeGitlab) issueNode(is *glIssue) map[string]any {
 	for _, a := range is.AssigneeLogins {
 		assignees = append(assignees, map[string]any{"username": a, "name": "User " + a, "avatarUrl": ""})
 	}
-	notes := make([]any, 0, len(is.Notes))
+	// GraphQL hands notes out grouped by discussion, not as one flat list — that
+	// grouping is the only place thread structure exists on the wire. Notes with
+	// the same Discussion land in one node, in fixture order; Discussion 0 means
+	// the note is its own thread (a plain comment).
+	discOrder := make([]int64, 0, len(is.Notes))
+	discNotes := map[int64][]any{}
 	for _, n := range is.Notes {
-		notes = append(notes, map[string]any{
+		key := n.Discussion
+		if key == 0 {
+			key = -n.ID // own thread, keyed so it can't collide with a real id
+		}
+		if _, seen := discNotes[key]; !seen {
+			discOrder = append(discOrder, key)
+		}
+		discNotes[key] = append(discNotes[key], map[string]any{
 			"id": fmt.Sprintf("gid://gitlab/Note/%d", n.ID), "body": n.Body, "system": n.System,
 			"createdAt": n.CreatedAt.UTC().Format(time.RFC3339),
 			"author":    map[string]any{"username": n.AuthorLogin, "name": "User " + n.AuthorLogin, "avatarUrl": ""},
+		})
+	}
+	discussions := make([]any, 0, len(discOrder))
+	for _, key := range discOrder {
+		discussions = append(discussions, map[string]any{
+			"id":    fmt.Sprintf("gid://gitlab/Discussion/disc%d", key),
+			"notes": map[string]any{"nodes": discNotes[key]},
 		})
 	}
 	var ms any
@@ -393,7 +415,7 @@ func (f *fakeGitlab) issueNode(is *glIssue) map[string]any {
 		"author":    map[string]any{"username": f.username, "name": "GL Bot", "avatarUrl": ""},
 		"assignees": map[string]any{"nodes": assignees},
 		"labels":    map[string]any{"nodes": labels},
-		"notes":     map[string]any{"nodes": notes},
+		"discussions": map[string]any{"nodes": discussions},
 	}
 }
 
@@ -697,7 +719,8 @@ func TestGitlabSyncFlow(t *testing.T) {
 		AssigneeLogins: []string{f.username},
 		Milestone:      &glMilestone{ID: 41, IID: 4, Title: "Sprint 1", State: "active", StartDate: "2026-08-01", DueDate: "2026-08-31"},
 		Notes: []glNote{
-			{ID: 71, Body: "Looks good", AuthorLogin: "reviewer", CreatedAt: time.Now().Add(-time.Hour)},
+			{ID: 71, Body: "Looks good", AuthorLogin: "reviewer", CreatedAt: time.Now().Add(-time.Hour), Discussion: 71},
+			{ID: 73, Body: "Agreed", AuthorLogin: "colleague", CreatedAt: time.Now().Add(-30 * time.Minute), Discussion: 71},
 			{ID: 72, Body: "changed status", System: true, AuthorLogin: "reviewer", CreatedAt: time.Now()},
 		},
 	})
@@ -754,9 +777,18 @@ func TestGitlabSyncFlow(t *testing.T) {
 	if bug["milestone_id"] == nil {
 		t.Fatalf("bug milestone not linked: %v", bug["milestone_id"])
 	}
+	// The two notes share one GitLab discussion, so they must arrive as a thread:
+	// root first, reply pointing at it. A flat pull would give the same two rows
+	// with parent_id nil, which is exactly the regression this guards.
 	comments := c.get("/tasks/" + bug["id"].(string) + "/comments").listBody(t)
-	if len(comments) != 1 || comments[0]["body"] != "Looks good" {
+	if len(comments) != 2 || comments[0]["body"] != "Looks good" || comments[1]["body"] != "Agreed" {
 		t.Fatalf("bug comments: %v", comments)
+	}
+	if comments[0]["parent_id"] != nil {
+		t.Fatalf("thread root has a parent: %v", comments[0]["parent_id"])
+	}
+	if comments[1]["parent_id"] != comments[0]["id"] {
+		t.Fatalf("reply parent = %v, want root %v", comments[1]["parent_id"], comments[0]["id"])
 	}
 
 	// Issue 2: no status label → the default column ("К работе").

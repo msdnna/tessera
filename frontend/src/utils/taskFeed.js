@@ -13,6 +13,35 @@ export function fmtWhen(d) {
   })
 }
 
+// Group the flat comment list the API returns into threads: a root plus the
+// replies hanging off it. The server sends a flat array (so Android and the MCP
+// server keep working) and the tree is assembled here.
+//
+// A reply whose parent is missing from the list — deleted, or filtered out —
+// is promoted to a root of its own rather than dropped: losing someone's text
+// because its parent went away is worse than showing it unindented.
+export function groupThreads(comments) {
+  const list = comments || []
+  const byId = new Map(list.map((c) => [c.id, c]))
+  const threads = []
+  const byRoot = new Map()
+  for (const c of list) {
+    const parentId = c.parent_id && byId.has(c.parent_id) ? c.parent_id : null
+    if (!parentId) {
+      const t = { root: c, replies: [] }
+      threads.push(t)
+      byRoot.set(c.id, t)
+      continue
+    }
+    const t = byRoot.get(parentId)
+    if (t) t.replies.push(c)
+    // Parent exists but its thread hasn't been seen yet (an out-of-order list):
+    // fall back to a root so the comment stays visible.
+    else threads.push({ root: c, replies: [] })
+  }
+  return threads
+}
+
 // Human sentence for a journal event, appended after the actor's name.
 export function eventText(e) {
   const d = e.data || {}

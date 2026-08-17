@@ -52,6 +52,78 @@ func TestCommentsCRUD(t *testing.T) {
 	}
 }
 
+// Comment threads: replies hang off a root, the list comes back in thread order,
+// depth is capped at two levels server-side, and a parent from another task is a
+// 400 rather than a silently re-homed branch.
+func TestCommentThreads(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	id := mkTask(t, c, s.Board, s.col(t, 0), "С тредами")["id"].(string)
+	other := mkTask(t, c, s.Board, s.col(t, 0), "Соседняя")["id"].(string)
+
+	root := c.expect(t, c.post("/tasks/"+id+"/comments", map[string]any{"body": "Корень"}), http.StatusCreated)
+	rootID := root["id"].(string)
+	if root["parent_id"] != nil {
+		t.Fatalf("root parent: %v", root["parent_id"])
+	}
+	reply := c.expect(t, c.post("/tasks/"+id+"/comments",
+		map[string]any{"body": "Ответ", "parent_id": rootID}), http.StatusCreated)
+	if reply["parent_id"] != rootID {
+		t.Fatalf("reply parent = %v, want %s", reply["parent_id"], rootID)
+	}
+
+	// Replying to a reply lands in the same thread — GitLab has no third level,
+	// and the collapse happens here so Android and MCP hitting the same endpoint
+	// cannot produce one.
+	deep := c.expect(t, c.post("/tasks/"+id+"/comments",
+		map[string]any{"body": "Ответ на ответ", "parent_id": reply["id"]}), http.StatusCreated)
+	if deep["parent_id"] != rootID {
+		t.Fatalf("deep reply parent = %v, want root %s", deep["parent_id"], rootID)
+	}
+
+	// A second root posted last still lists after the first thread, not after the
+	// newest comment overall: order is by thread, not by bare created_at.
+	c.expect(t, c.post("/tasks/"+id+"/comments", map[string]any{"body": "Второй корень"}), http.StatusCreated)
+	bodies := []string{}
+	for _, cm := range c.get("/tasks/" + id + "/comments").listBody(t) {
+		bodies = append(bodies, cm["body"].(string))
+	}
+	want := []string{"Корень", "Ответ", "Ответ на ответ", "Второй корень"}
+	if len(bodies) != len(want) {
+		t.Fatalf("thread order: %v, want %v", bodies, want)
+	}
+	for i := range want {
+		if bodies[i] != want[i] {
+			t.Fatalf("thread order: %v, want %v", bodies, want)
+		}
+	}
+
+	// A parent living on another task is a moved branch, not a typo.
+	if r := c.post("/tasks/"+other+"/comments", map[string]any{"body": "Чужой тред", "parent_id": rootID}); r.Status != http.StatusBadRequest {
+		t.Fatalf("cross-task parent: %d\n%s", r.Status, r.Body)
+	}
+
+	// Deleting the root promotes the oldest reply instead of cascading: one "✕"
+	// must not take other people's text with it.
+	if r := c.del("/comments/" + rootID); r.Status != http.StatusNoContent {
+		t.Fatalf("delete root: %d\n%s", r.Status, r.Body)
+	}
+	after := c.get("/tasks/" + id + "/comments").listBody(t)
+	if len(after) != 3 {
+		t.Fatalf("comments after root delete: %v", after)
+	}
+	if after[0]["body"] != "Ответ" || after[0]["parent_id"] != nil {
+		t.Fatalf("successor not promoted: %v", after[0])
+	}
+	if after[1]["body"] != "Ответ на ответ" || after[1]["parent_id"] != after[0]["id"] {
+		t.Fatalf("sibling not re-hung under successor: %v", after[1])
+	}
+	if after[2]["body"] != "Второй корень" || after[2]["parent_id"] != nil {
+		t.Fatalf("unrelated root disturbed: %v", after[2])
+	}
+}
+
 // The activity journal accumulates created / renamed / comment events with an
 // actor attached.
 func TestTaskEventsJournal(t *testing.T) {
