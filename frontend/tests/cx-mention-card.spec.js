@@ -7,6 +7,18 @@ import { mount } from '@vue/test-utils'
 import RichContent from '@/components/RichContent.vue'
 import { buildMentionItems } from '@/utils/mentions'
 
+// RichContent pulls in `useMessage`/`useRouter` for its #N and attachment click
+// delegation (unrelated to hover cards); stub them so the component mounts
+// without a message-provider/router, same as cx-rich-content.spec.js.
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('naive-ui', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    useMessage: () => ({ error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() }),
+  }
+})
+
 const MEMBERS = [{ user_id: 'u1', name: 'Ann Lee', email: 'ann@t.io', role: 'owner' }]
 const GL = [{ gl_username: 'v.sokolov', gl_name: 'Виктор Соколов', gl_avatar_url: '/a.png' }]
 const ITEMS = buildMentionItems(MEMBERS, GL)
@@ -82,8 +94,9 @@ describe('RichContent mention cards', () => {
 
   it('leaves mentions inside code blocks alone — they name no one', async () => {
     const w = await render('`@Ann Lee`')
-    const chip = chipIn(w)
-    await hover(w, chip)
+    // Mentions inside code aren't highlighted at all (renderRich skips code via
+    // replaceOutsideCode), so there is no chip to hover and thus no card.
+    expect(chipIn(w)).toBeNull()
     expect(card()).toBeNull()
     w.unmount()
   })

@@ -15,31 +15,54 @@ export function roleLabel(role) {
   return ROLE_LABELS[role] || role || ''
 }
 
-// buildMentionItems merges the Tessera roster with the GitLab-only roster into
-// the single shape mentions are matched, inserted and hover-carded by.
+// buildMentionItems merges the Tessera roster with the GitLab roster into the
+// single shape mentions are matched, inserted and hover-carded by.
 //
 // Tessera members insert their display name; GitLab-only users insert their
 // `@username` so GitLab resolves the mention on writeback. `label` is the
-// inserted text, `display` the row. The store's gitlabMembersList already drops
-// GitLab users mapped to a Tessera member, so nobody shows up twice.
+// inserted text, `display` the row.
+//
+// Pass the FULL GitLab roster here, not the store's already-filtered
+// gitlabMembersList: a member who signed in via GitLab OAuth is in the Tessera
+// roster (matched on display name) yet mentioned by their `@gl_username`. If
+// their GitLab row were dropped before we get here, that username would resolve
+// to nobody and the hover card never shows. We keep the same de-dup — a GitLab
+// user mapped to a Tessera member is folded into that member (carrying the
+// username) rather than listed twice.
 export function buildMentionItems(members, gitlabMembers) {
+  const mems = members || []
+  const gls = gitlabMembers || []
+  // GitLab row per Tessera user it maps to, so a linked member picks up the
+  // `@gl_username` they're actually mentioned by.
+  const glByTesseraUser = new Map()
+  for (const g of gls) {
+    if (g.tessera_user_id) glByTesseraUser.set(g.tessera_user_id, g)
+  }
+  const memberIds = new Set(mems.map((m) => m.user_id))
   return [
-    ...(members || []).map((m) => ({
-      id: m.user_id,
-      label: m.name,
-      display: m.name,
-      email: m.email,
-      role: m.role,
-      avatarUserId: m.user_id,
-    })),
-    ...(gitlabMembers || []).map((g) => ({
-      id: null,
-      label: g.gl_username,
-      display: g.gl_name || g.gl_username,
-      username: g.gl_username,
-      avatarSrc: g.gl_avatar_url,
-      gitlab: true,
-    })),
+    ...mems.map((m) => {
+      const gl = glByTesseraUser.get(m.user_id)
+      return {
+        id: m.user_id,
+        label: m.name,
+        display: m.name,
+        email: m.email,
+        role: m.role,
+        username: gl ? gl.gl_username : undefined,
+        avatarUserId: m.user_id,
+      }
+    }),
+    // GitLab-only users: not linked to any Tessera member in this workspace.
+    ...gls
+      .filter((g) => !(g.tessera_user_id && memberIds.has(g.tessera_user_id)))
+      .map((g) => ({
+        id: null,
+        label: g.gl_username,
+        display: g.gl_name || g.gl_username,
+        username: g.gl_username,
+        avatarSrc: g.gl_avatar_url,
+        gitlab: true,
+      })),
   ]
 }
 

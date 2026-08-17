@@ -57,7 +57,12 @@ const retryInfo = ref(null)
 
 // Members offered for @-mentions — and, via the same rows, resolved by the hover
 // cards. Shared with the description so both render mentions off one shape.
-const mentionItems = computed(() => buildMentionItems(bv.membersList, bv.gitlabMembersList))
+// Full GitLab roster (Object.values(gitlabMembersMap)), not the filtered
+// gitlabMembersList: buildMentionItems needs the GitLab rows of OAuth-linked
+// members to attach their @gl_username, else the hover card can't resolve them.
+const mentionItems = computed(() =>
+  buildMentionItems(bv.membersList, Object.values(bv.gitlabMembersMap)),
+)
 
 // ── quick actions ──
 // The command registry is workspace-wide (loaded once by the store); the popup

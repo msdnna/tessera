@@ -37,6 +37,19 @@ describe('buildMentionItems', () => {
     expect(buildMentionItems([], [{ gl_username: 'kim' }])[0].display).toBe('kim')
   })
 
+  // A member who signed in via GitLab OAuth is in both rosters: the Tessera row
+  // carries their name, the GitLab row their @username. They must be folded into a
+  // single item that keeps the username — else "@v.sokolov" resolves to nobody.
+  it('folds an OAuth-linked GitLab user into their Tessera member, keeping the username', () => {
+    const linkedGl = [{ ...GL[0], tessera_user_id: 'u2' }]
+    const items = buildMentionItems(MEMBERS, linkedGl)
+    expect(items).toHaveLength(2) // not listed twice
+    const bob = items.find((m) => m.id === 'u2')
+    expect(bob).toMatchObject({ id: 'u2', label: 'Боб', username: 'v.sokolov' })
+    // The GitLab handle resolves to that member (the reworked bug).
+    expect(resolveMention(items, { label: 'v.sokolov' }).id).toBe('u2')
+  })
+
   it('tolerates missing rosters', () => {
     expect(buildMentionItems(null, undefined)).toEqual([])
   })
