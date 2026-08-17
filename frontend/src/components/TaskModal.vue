@@ -49,6 +49,7 @@ import {
   GitNetworkOutline,
   EyeOutline,
   CreateOutline,
+  ExpandOutline,
   ShareSocialOutline,
   ChevronForwardOutline,
   ChevronBackOutline,
@@ -550,6 +551,17 @@ async function loadSiblings(t) {
 let scrollOnOpen = false
 // Comments / relations / attachments / journal load in parallel — none of them
 // should block the modal opening, so failures are swallowed individually.
+// The editor can add a file to the task (a non-image drop into the description),
+// and the «Файлы» tab plus its badge count are owned here — so it has to be told.
+async function reloadAttachments() {
+  try {
+    const a = await tasksApi.attachments(props.taskId)
+    attachments.value = a.data || []
+    emit('changed')
+  } catch {
+    /* the file is uploaded either way; the list refreshes on reopen */
+  }
+}
 async function loadExtras() {
   const id = props.taskId
   // Populate the thread without the enter fade (only later, user-posted comments fade).
@@ -1562,6 +1574,13 @@ async function onSubtaskChanged() {
                     </template>
                     <button
                       class="desc-act"
+                      title="Открыть на весь экран"
+                      @click="descEditor?.openFullscreen()"
+                    >
+                      <n-icon :component="ExpandOutline" :size="16" />
+                    </button>
+                    <button
+                      class="desc-act"
                       :title="descMode === 'write' ? 'Предпросмотр' : 'Редактировать'"
                       @click="descEditor?.toggleMode()"
                     >
@@ -1577,6 +1596,7 @@ async function onSubtaskChanged() {
                 v-if="readonly"
                 :source="description || '_Нет описания_'"
                 :members="members"
+                task-refs
               />
               <MarkdownEditor
                 v-else
@@ -1587,7 +1607,9 @@ async function onSubtaskChanged() {
                 placeholder="Добавьте описание…"
                 :min-rows="3"
                 :initial-mode="descInitialMode"
+                :attach-task-id="taskId"
                 @update:mode="descMode = $event"
+                @attachments-changed="reloadAttachments"
                 @blur="saveDesc"
                 @persist="saveDesc"
               />
