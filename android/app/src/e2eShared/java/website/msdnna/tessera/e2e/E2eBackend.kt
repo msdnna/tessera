@@ -18,6 +18,7 @@ import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
+import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
@@ -263,6 +264,45 @@ object E2eBackend {
     /** Comments on a task, as the server has them. */
     fun comments(fixture: Fixture, taskId: String): List<Comment> =
         getList("tasks/$taskId/comments", fixture.account.accessToken)
+
+    // ── documents (#2735) ──────────────────────────────────────────────────
+    //
+    // Seeded as raw maps rather than through request models: the Android client
+    // is read-only by design, so there is nothing to reuse and adding write
+    // models here would imply an app capability that does not exist.
+
+    /** Creates a document, optionally nested under [parentId]. */
+    fun createDocument(
+        fixture: Fixture,
+        title: String,
+        parentId: String? = null,
+        icon: String = "",
+    ): Document {
+        val body = mutableMapOf<String, Any>("title" to title, "icon" to icon)
+        if (parentId != null) body["parent_id"] = parentId
+        return post("workspaces/${fixture.workspace.id}/documents", body, fixture.account.accessToken)
+    }
+
+    /**
+     * Writes a document body. The endpoint is guarded by the `updated_at` the
+     * caller last saw (autosave conflict detection), so the freshly created
+     * document has to be passed in rather than just its id.
+     */
+    fun setDocumentContent(fixture: Fixture, document: Document, content: Any) {
+        val req = Request.Builder()
+            .url(apiUrl + "documents/${document.id}/content")
+            .patch(
+                gson.toJson(mapOf("content" to content, "updated_at" to document.updatedAt))
+                    .toRequestBody(json),
+            )
+            .header("Authorization", "Bearer ${fixture.account.accessToken}")
+            .build()
+        http.newCall(req).execute().use { resp ->
+            check(resp.isSuccessful) {
+                "e2e seed document content ${document.id} failed: HTTP ${resp.code} ${resp.body.string()}"
+            }
+        }
+    }
 
     // ── plumbing ───────────────────────────────────────────────────────────
 

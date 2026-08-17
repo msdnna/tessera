@@ -45,6 +45,97 @@ type BoardView struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Document struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	ParentID    *uuid.UUID `json:"parent_id"`
+	ProjectID   *uuid.UUID `json:"project_id"`
+	AuthorID    *uuid.UUID `json:"author_id"`
+	Title       string     `json:"title"`
+	Slug        string     `json:"slug"`
+	Icon        string     `json:"icon"`
+	Content     []byte     `json:"content"`
+	Position    float64    `json:"position"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Preview     string     `json:"preview"`
+}
+
+type DocumentApproval struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	VersionID  uuid.UUID  `json:"version_id"`
+	Title      string     `json:"title"`
+	Status     string     `json:"status"`
+	Mode       string     `json:"mode"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ClosedAt   *time.Time `json:"closed_at"`
+}
+
+type DocumentApprovalStep struct {
+	ID           uuid.UUID  `json:"id"`
+	ApprovalID   uuid.UUID  `json:"approval_id"`
+	ApproverID   *uuid.UUID `json:"approver_id"`
+	ApproverName string     `json:"approver_name"`
+	Position     int32      `json:"position"`
+	Status       string     `json:"status"`
+	Comment      string     `json:"comment"`
+	Signature    string     `json:"signature"`
+	DecidedAt    *time.Time `json:"decided_at"`
+}
+
+type DocumentComment struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	BlockID    string     `json:"block_id"`
+	ParentID   *uuid.UUID `json:"parent_id"`
+	AuthorID   *uuid.UUID `json:"author_id"`
+	Body       string     `json:"body"`
+	Quote      string     `json:"quote"`
+	ResolvedAt *time.Time `json:"resolved_at"`
+	ResolvedBy *uuid.UUID `json:"resolved_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type DocumentTaskLink struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	TaskID     uuid.UUID  `json:"task_id"`
+	BlockID    string     `json:"block_id"`
+	Quote      string     `json:"quote"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+type DocumentTemplate struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	AuthorID    *uuid.UUID `json:"author_id"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Icon        string     `json:"icon"`
+	Content     []byte     `json:"content"`
+	Preview     string     `json:"preview"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type DocumentVersion struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	Revision   int32      `json:"revision"`
+	AuthorID   *uuid.UUID `json:"author_id"`
+	Title      string     `json:"title"`
+	Content    []byte     `json:"content"`
+	Preview    string     `json:"preview"`
+	Label      string     `json:"label"`
+	Manual     bool       `json:"manual"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
 type DueNotificationState struct {
 	TaskID      uuid.UUID `json:"task_id"`
 	UserID      uuid.UUID `json:"user_id"`

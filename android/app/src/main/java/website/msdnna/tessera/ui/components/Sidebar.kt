@@ -128,6 +128,7 @@ fun Sidebar(
     onOpenHome: () -> Unit,
     onOpenReminders: () -> Unit,
     onOpenNotes: () -> Unit,
+    onOpenDocuments: () -> Unit,
     onOpenMilestones: () -> Unit,
     onOpenMembers: () -> Unit,
     onOpenGitlab: () -> Unit,
@@ -259,6 +260,7 @@ fun Sidebar(
             NavRow(Ion.ROCKET, "Этапы", active = activeNav == "milestones", onClick = onOpenMilestones)
             NavRow(Ion.ALARM, "Напоминания", active = activeNav == "reminders", onClick = onOpenReminders)
             NavRow(Ion.DOCUMENT_TEXT, "Заметки", active = activeNav == "notes", onClick = onOpenNotes)
+            NavRow(Ion.BOOK, "Документы", active = activeNav == "documents", onClick = onOpenDocuments)
             if (user?.isAdmin == true) {
                 NavRow(
                     Ion.SHIELD_CHECKMARK,

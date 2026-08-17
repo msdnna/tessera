@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.screens.BoardScreen
+import website.msdnna.tessera.ui.screens.DocumentsScreen
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
 
@@ -53,6 +54,25 @@ fun ComposeContentTestRule.openTaskModal(fixture: E2eBackend.Fixture, taskId: St
     setBoardContent(fixture)
     onNodeWithTag(TestTags.taskCard(taskId)).performClick()
     awaitTag(TestTags.TASK_TITLE)
+}
+
+/**
+ * Mounts the documents section and waits until the tree has loaded from the
+ * backend ([anchorId]'s row is on screen).
+ *
+ * Composed directly, for the same reason [setBoardContent] is: reaching the
+ * section from Home means walking the drawer, and folding navigation into every
+ * documents spec would give each one a second way to fail.
+ */
+fun ComposeContentTestRule.setDocumentsContent(fixture: E2eBackend.Fixture, anchorId: String) {
+    setContent {
+        TesseraTheme {
+            Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
+                DocumentsScreen(workspaceId = fixture.workspace.id)
+            }
+        }
+    }
+    awaitTag(TestTags.documentRow(anchorId))
 }
 
 /**
