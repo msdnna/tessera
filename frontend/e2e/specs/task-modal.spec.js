@@ -151,6 +151,54 @@ test('панель задачи прокручивается внутри себ
   await expect.poll(() => body.evaluate((el) => el.scrollTop)).toBeGreaterThan(100)
 })
 
+// #2716 /rework — the comments composer is `position: sticky; bottom: 0`. Naive's
+// card content carries a 20px padding-bottom, so the composer pinned to the
+// content-box bottom left a padding strip below it through which the last comment
+// bled ("текст комментариев просвечивает через форму"). The guard is geometric: the
+// composer's bottom sits flush against the scroller's bottom, so no comment can show
+// beneath it.
+test('панель: композер комментариев прижат к низу, комментарии не просвечивают', async ({
+  page,
+  backend,
+}) => {
+  const { ws, board, columns } = await backend.freshBoard('modal-bleed')
+  const stamp = Date.now().toString(36)
+  const title = `С комментариями ${stamp}`
+  const task = await backend.post(`/boards/${board.id}/tasks`, {
+    column_id: columns[0].id,
+    title,
+  })
+  for (let i = 0; i < 20; i++) {
+    await backend.post(`/tasks/${task.id}/comments`, {
+      body: `Комментарий ${i} — длинная строка для переполнения панели ${stamp}`,
+    })
+  }
+
+  await openBoard(page, board.id, ws.id)
+  await cardsIn(page, columns[0].name).filter({ hasText: title }).click()
+  const modal = page.getByTestId('task-modal')
+  await expect(modal).toBeVisible()
+  await page.getByTestId('task-layout-trigger').click()
+  await page.getByTestId('task-layout-sidebar').click()
+  await expect(modal).toHaveClass(/tm-sidebar/)
+  await panelSettled(modal)
+
+  // Scroll to a mid position where a comment would land in any strip below the
+  // pinned composer, then assert the composer is flush with the scroller bottom.
+  await expect
+    .poll(() =>
+      modal.evaluate((root) => {
+        const sc = root.querySelector('.n-card-content')
+        sc.scrollTop = sc.scrollHeight - sc.clientHeight - 40
+        const add = root.querySelector('.comment-add')
+        if (!add) return -1
+        const strip = sc.getBoundingClientRect().bottom - add.getBoundingClientRect().bottom
+        return Math.round(strip)
+      }),
+    )
+    .toBeLessThanOrEqual(1)
+})
+
 // #2716 /rework — without a mask nothing dismisses the panel for free, and Naive's
 // own click-outside can't help: it only fires when the event target is the modal
 // container, which is `pointer-events: none` here. So the two halves of the rule are

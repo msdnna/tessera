@@ -1993,6 +1993,13 @@ async function onSubtaskChanged() {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* The comments composer is `position: sticky; bottom: 0`, so it pins to the
+     scroller's content-box bottom — which Naive's default padding-bottom pushes
+     UP by 20px. That leaves a padding strip below the pinned composer through
+     which the last comment shows while scrolling (the "text bleeds through the
+     form" report). Zero it so the composer sits flush against the scroller's
+     bottom edge, with the footer providing the separation below. */
+  padding-bottom: 0;
 }
 .tm-card.tm-sidebar :deep(.n-card__footer) {
   flex: none;
