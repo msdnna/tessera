@@ -1,9 +1,11 @@
 <script setup>
-import { ref, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { NPopover, useMessage } from 'naive-ui'
 import { renderRich, sanitizeSvgFragment } from '@/utils/markdown'
+import { resolveMention } from '@/utils/mentions'
 import { useThemeStore } from '@/stores/theme'
+import MentionCard from './MentionCard.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 // #N is resolved workspace-wide, so the endpoint lives on the workspaces api —
 // `tasks` has no equivalent (asking it for one is what silently broke the chips).
@@ -20,11 +22,19 @@ const props = defineProps({
   // When true, GFM task-list checkboxes become clickable; clicking emits `toggle`
   // with the checkbox index so the parent can rewrite the stored markdown.
   interactive: { type: Boolean, default: false },
+  // Opt-in: hovering an @-mention opens a card naming the person. Off by default
+  // because RichContent also renders the description preview on board cards,
+  // where a floating card would cover neighbours and fight drag-and-drop.
+  mentionCards: { type: Boolean, default: false },
   // Opt-in: render "#123" as a link to that task. Off on board cards, where the
   // link would swallow clicks meant for the card and get in the way of dragging.
   taskRefs: { type: Boolean, default: false },
 })
 const emit = defineEmits(['toggle'])
+
+// The popover is a second root node, so attrs are placed by hand on the content
+// div — callers pass `class` (e.g. `.c-text`) and expect it there, not on a wrapper.
+defineOptions({ inheritAttrs: false })
 
 const theme = useThemeStore()
 const ws = useWorkspacesStore()
@@ -103,6 +113,15 @@ async function downloadLink(id, filename) {
 // animates) OR the item's text (manually flip the box so it animates too).
 function onClick(e) {
   const target = e.target
+  // Touch first: there is no hover there, so a tap on the chip is the way in.
+  if (props.mentionCards && coarsePointer()) {
+    const mchip = mentionAt(target)
+    if (mchip) {
+      if (cardShow.value) closeCard()
+      else openCard(mchip)
+      return
+    }
+  }
   const chip = target?.closest?.('[data-task-ref]')
   if (chip) {
     e.preventDefault()
@@ -130,6 +149,102 @@ function onClick(e) {
     queueToggle(box)
   }
 }
+
+// ── mention hover cards ──
+// Events are delegated from the root: the chips live inside v-html, so there is
+// no component per chip to hang listeners on.
+const cardItem = ref(null)
+const cardShow = ref(false)
+const cardX = ref(0)
+const cardY = ref(0)
+let openTimer = null
+let closeTimer = null
+
+function coarsePointer() {
+  return !!window.matchMedia?.('(pointer: coarse)').matches
+}
+
+// The chip under `el`, or null: legacy TipTap-era chips carry data-type, freshly
+// rendered ones carry both that and .mention. Mentions inside code blocks are
+// highlighted by the regex but are not people — no card there.
+function mentionAt(el) {
+  if (!el?.closest) return null
+  const chip = el.closest('[data-type="mention"], .mention')
+  if (!chip || !root.value?.contains(chip)) return null
+  return chip.closest('code, pre') ? null : chip
+}
+
+function openCard(chip) {
+  const item = resolveMention(props.members, {
+    id: chip.dataset.id,
+    label: chip.dataset.label || chip.textContent.replace(/^@/, ''),
+  })
+  if (!item) return // a handle nobody owns — the card would just repeat the text
+  // Anchor on the chip, not the cursor, so the card holds still while the mouse
+  // moves inside the chip.
+  const r = chip.getBoundingClientRect()
+  cardX.value = r.left
+  cardY.value = r.bottom + 6
+  cardItem.value = item
+  cardShow.value = true
+}
+
+function closeCard() {
+  cardShow.value = false
+}
+
+function clearTimers() {
+  clearTimeout(openTimer)
+  clearTimeout(closeTimer)
+  openTimer = null
+  closeTimer = null
+}
+
+// Opening is delayed so running the mouse across a paragraph of mentions doesn't
+// flash cards; closing is delayed so the cursor can travel onto the card itself.
+function onOver(e) {
+  if (!props.mentionCards) return
+  const chip = mentionAt(e.target)
+  if (!chip) return
+  clearTimers()
+  openTimer = setTimeout(() => openCard(chip), 300)
+}
+
+function onOut(e) {
+  if (!props.mentionCards || !mentionAt(e.target)) return
+  clearTimers()
+  closeTimer = setTimeout(closeCard, 200)
+}
+
+function holdCard() {
+  clearTimers()
+}
+
+function releaseCard() {
+  clearTimers()
+  closeTimer = setTimeout(closeCard, 200)
+}
+
+// A card pinned to viewport coordinates goes stale the moment anything scrolls,
+// and Esc is the expected way out of a floating layer.
+function onScroll() {
+  if (cardShow.value) closeCard()
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape') closeCard()
+}
+
+onMounted(() => {
+  if (!props.mentionCards) return
+  window.addEventListener('scroll', onScroll, true)
+  window.addEventListener('keydown', onKeydown)
+})
+onUnmounted(() => {
+  clearTimers()
+  window.removeEventListener('scroll', onScroll, true)
+  window.removeEventListener('keydown', onKeydown)
+})
 
 async function renderMermaid() {
   const el = root.value
@@ -191,8 +306,34 @@ onMounted(build)
 </script>
 
 <template>
-  <!-- eslint-disable-next-line vue/no-v-html -->
-  <div ref="root" class="md" :class="{ interactive }" @click="onClick" v-html="html" />
+  <!-- eslint-disable vue/no-v-html -->
+  <div
+    ref="root"
+    class="md"
+    :class="{ interactive }"
+    v-bind="$attrs"
+    @click="onClick"
+    @mouseover="onOver"
+    @mouseout="onOut"
+    v-html="html"
+  />
+  <!-- eslint-enable vue/no-v-html -->
+  <!-- z-index above the task modal's own layer: the card is teleported to body,
+       so it would otherwise sit under the modal mask. -->
+  <n-popover
+    v-if="mentionCards"
+    raw
+    trigger="manual"
+    placement="bottom-start"
+    :show="cardShow"
+    :x="cardX"
+    :y="cardY"
+    :show-arrow="false"
+    :z-index="4100"
+    @clickoutside="closeCard"
+  >
+    <MentionCard :item="cardItem" @mouseenter="holdCard" @mouseleave="releaseCard" />
+  </n-popover>
 </template>
 
 <style scoped>

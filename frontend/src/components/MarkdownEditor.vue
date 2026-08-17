@@ -715,7 +715,13 @@ function clear() {
   hideBubble()
 }
 function focus() {
-  ta.value?.focus()
+  const el = ta.value
+  if (!el) return
+  el.focus()
+  // Place the caret at the end so a programmatically prefilled draft (e.g. a
+  // reply seeded with "@author, ") is typed after, not before, the seed text.
+  const end = el.value.length
+  el.setSelectionRange?.(end, end)
 }
 defineExpose({
   getMentions,
@@ -839,6 +845,9 @@ defineExpose({
                     :name="m.display || m.label"
                   />
                   <span class="md2-mention-name">{{ m.display || m.label }}</span>
+                  <!-- The login is what actually gets inserted; without it the
+                       row would promise a name and type something else. -->
+                  <span v-if="m.hint" class="md2-mention-hint">{{ m.hint }}</span>
                 </li>
               </template>
             </ul>
@@ -1224,6 +1233,15 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* The login that will be inserted — muted and never squeezed out, since it is
+   the part the name alone doesn't tell you. */
+.md2-mention-hint {
+  flex: none;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--t-text3);
+  font-size: 12px;
 }
 /* Suggestion popup enter/leave: soft fade + a short rise. Position is driven by
    `top`/`left` (inline :style), so the animation is free to use `transform`

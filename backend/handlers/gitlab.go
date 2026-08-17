@@ -1355,7 +1355,7 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parent parentRef, completedAt, dueDate, startDate *time.Time, estimate *float64, actorID uuid.UUID, colName string, j *syncJournal) (uuid.UUID, bool, bool) {
 	parentID := parent.id
 	// Resolve GitLab-relative attachment links to signed proxy URLs.
-	issue.Description = h.rewriteAssets(issue.Description, wsID)
+	issue.Description = h.rewriteAssets(ctx, issue.Description, wsID)
 	// Synced labels become tags scoped to the integration board's project.
 	projectID, perr := h.q.ProjectIDForBoard(ctx, boardID)
 	if perr != nil {
@@ -1732,31 +1732,63 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 // the GitLab author denormalised (it may not be a Tessera user). Returns the count
 // and truncated bodies of newly inserted comments, for the journal.
 func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []gitlab.Note) (added int, bodies []string) {
+	// GitLab note gid → local comment id, so a reply can be attached to the root
+	// it answers. Notes arrive chronologically, and a reply is always newer than
+	// its root, so the root is already in the map by the time we need it.
+	local := map[string]uuid.UUID{}
 	for _, n := range notes {
 		noteID := n.GlobalID
+		parentID := h.threadParent(ctx, taskID, n, local)
 		// First, try to link this note back to the user's own comment that produced
 		// it (posted from Tessera, gid not yet tagged by the async writeback worker).
 		// This avoids re-importing it as a duplicate gitlab-sourced comment when a
 		// pull races the push. Strip an optional Tessera marker footer so the stored
 		// (unmarked) body still matches.
 		claimBody := strings.TrimSuffix(n.Body, tesseraCommentMarker)
-		if _, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
-			TaskID: taskID, GlNoteID: &noteID, Body: claimBody,
+		if claimed, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
+			TaskID: taskID, GlNoteID: &noteID, Body: claimBody, GlDiscussionID: n.DiscussionID,
 		}); cerr == nil {
+			local[noteID] = claimed
 			continue // claimed our own pushed comment — nothing to insert
 		}
-		body := h.rewriteAssets(n.Body, wsID)
+		body := h.rewriteAssets(ctx, n.Body, wsID)
 		inserted, err := h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
 			TaskID: taskID, Body: body, GlNoteID: &noteID,
 			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name,
 			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, n.Author.AvatarURL), CreatedAt: n.CreatedAt,
+			ParentID: parentID, GlDiscussionID: n.DiscussionID,
 		})
 		if err == nil && inserted {
 			added++
 			bodies = append(bodies, truncForJournal(body))
 		}
+		if cid, gerr := h.q.GetCommentIDByGlNoteID(ctx, db.GetCommentIDByGlNoteIDParams{
+			TaskID: taskID, GlNoteID: &noteID,
+		}); gerr == nil {
+			local[noteID] = cid
+		}
 	}
 	return added, bodies
+}
+
+// threadParent resolves the local comment a GitLab note replies to: nil when the
+// note opens its discussion, otherwise the comment holding the discussion's root
+// note. The in-pass map covers the common case; the DB lookup covers a reply that
+// arrives in a later incremental pull than the root it answers.
+func (h *API) threadParent(ctx context.Context, taskID uuid.UUID, n gitlab.Note, local map[string]uuid.UUID) *uuid.UUID {
+	if n.RootGID == "" {
+		return nil
+	}
+	if id, ok := local[n.RootGID]; ok {
+		return &id
+	}
+	root := n.RootGID
+	id, err := h.q.GetCommentIDByGlNoteID(ctx, db.GetCommentIDByGlNoteIDParams{TaskID: taskID, GlNoteID: &root})
+	if err != nil {
+		return nil // root not imported (e.g. filtered out) — keep the reply as a root
+	}
+	local[n.RootGID] = id
+	return &id
 }
 
 // effectiveEstimate resolves the estimate (canon minutes) the sync should apply:
@@ -1870,6 +1902,12 @@ type gitlabLinkView struct {
 	// IsGroup mirrors the link's grouping flag so the UI can show the "grouped task"
 	// badge and flip the button, without a second request per task (#2592).
 	IsGroup bool `json:"is_group"`
+
+	// Attachments reports what mirroring the task's assets into GitLab did
+	// (task #2713). Set only on the create-issue response — uploading bytes makes
+	// that call noticeably slower, so the UI reports the outcome instead of
+	// finishing silently. Omitted everywhere else.
+	Attachments *assetStats `json:"attachments,omitempty"`
 }
 
 // gitlabLinkForTask returns the GitLab link view for a task, or nil when the

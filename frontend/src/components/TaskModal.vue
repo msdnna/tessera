@@ -74,6 +74,7 @@ import {
   columnTail,
 } from '@/utils/status'
 import { taskLink } from '@/utils/taskLink'
+import { buildMentionItems } from '@/utils/mentions'
 import { copyText } from '@/utils/clipboard'
 import {
   dismissesSidebar,
@@ -143,6 +144,16 @@ const {
 } = storeToRefs(bv)
 const tagPrefixNames = bv.prefixNames
 const wsId = computed(() => bv.wsId)
+// The description used to hand RichContent the raw member rows, which carry no
+// `label` — so highlightMentions matched nothing and multi-word names fell
+// through to the generic handle token ("@Ann Lee" highlighted as "@Ann"). Same
+// builder as the comments tab, so both sides highlight and resolve alike.
+// Full GitLab roster (not the assignee-picker's filtered gitlabMembers): an
+// OAuth-linked member is mentioned by their @gl_username, which buildMentionItems
+// folds onto their Tessera row so the hover card resolves.
+const mentionItems = computed(() =>
+  buildMentionItems(members.value, Object.values(bv.gitlabMembersMap), bv.gitlabMembersMap),
+)
 const projectId = computed(() => bv.projectId)
 
 const store = useWorkspacesStore()
@@ -779,17 +790,30 @@ function applyGlTemplate(name) {
   const tpl = glTemplates.value.find((t) => t.name === name)
   if (tpl) description.value = tpl.content
 }
+// glAssetSuffix summarises what creation did with the task's attachments (#2713).
+// Uploading bytes makes the call noticeably slower than it used to be, so the toast
+// says what the wait bought — and names skipped files, since a skipped one is a link
+// the issue will not render.
+function glAssetSuffix(stats) {
+  if (!stats) return ''
+  const parts = []
+  if (stats.uploaded) parts.push(`загружено вложений: ${stats.uploaded}`)
+  if (stats.skipped) parts.push(`не удалось: ${stats.skipped}`)
+  return parts.length ? ` (${parts.join(', ')})` : ''
+}
 async function createGlIssue() {
   glCreating.value = true
   try {
     // Persist the current title/description/properties first so the issue mirrors
     // the on-screen state, then create (the backend reads the saved task).
     await applyMeta()
-    await glApi.createIssue(props.taskId, {})
+    const created = await glApi.createIssue(props.taskId, {})
     // Re-fetch so the task picks up its GitLab provenance and renders as synced.
     const res = await tasksApi.get(props.taskId)
     task.value = res.data
-    message.success(`Создан issue !${res.data.gitlab?.iid} в GitLab`)
+    message.success(
+      `Создан issue !${res.data.gitlab?.iid} в GitLab${glAssetSuffix(created.data?.attachments)}`,
+    )
     emit('changed')
   } catch (e) {
     message.error(e?.response?.data?.error || e.message)
@@ -1639,7 +1663,8 @@ async function onSubtaskChanged() {
               <RichContent
                 v-if="readonly"
                 :source="description || '_Нет описания_'"
-                :members="members"
+                :members="mentionItems"
+                mention-cards
                 task-refs
               />
               <MarkdownEditor

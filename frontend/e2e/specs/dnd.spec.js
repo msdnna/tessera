@@ -7,12 +7,12 @@ test('карточка переносится в соседнюю колонку
   page,
   backend,
 }) => {
-  const { ws, board, columns } = await backend.freshBoard('dnd')
+  const { board, columns } = await backend.freshBoard('dnd')
   const [from, to] = columns
   const title = `Перетащи меня ${Date.now().toString(36)}`
   await backend.post(`/boards/${board.id}/tasks`, { column_id: from.id, title })
 
-  await openBoard(page, board.id, ws.id)
+  await openBoard(page, board.id)
   const card = cardsIn(page, from.name).filter({ hasText: title })
   await expect(card).toBeVisible()
 

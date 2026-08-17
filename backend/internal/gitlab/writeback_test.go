@@ -6,6 +6,22 @@ import (
 	"testing"
 )
 
+// AttachmentsEnabled defaults to ON: an integration configured before the flag
+// existed has no key in its JSONB, and reading that as "off" would silently keep
+// pushing dead links (task #2713). Only an explicit false turns it off.
+func TestAttachmentsEnabledDefaultsOn(t *testing.T) {
+	if !(Writeback{}).AttachmentsEnabled() {
+		t.Error("absent push_attachments should mean enabled")
+	}
+	on, off := true, false
+	if !(Writeback{PushAttachments: &on}).AttachmentsEnabled() {
+		t.Error("explicit true should mean enabled")
+	}
+	if (Writeback{PushAttachments: &off}).AttachmentsEnabled() {
+		t.Error("explicit false should mean disabled")
+	}
+}
+
 func TestWriteback_AllowsDisabled(t *testing.T) {
 	w := Writeback{Enabled: false, PushState: true, PushPriority: true, PushComments: true}
 	for _, kind := range []string{"state", "priority", "comment"} {

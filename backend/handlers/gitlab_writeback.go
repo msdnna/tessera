@@ -496,7 +496,7 @@ func (h *API) performAction(ctx context.Context, client *gitlab.Client, integ db
 	case gitlab.ActSetMilestone:
 		return h.performSetMilestone(ctx, client, integ, w.TaskID, path, iid)
 	case gitlab.ActPostComment:
-		return h.performPostComment(ctx, client, path, iid, act, payload)
+		return h.performPostComment(ctx, client, integ, path, iid, act, payload)
 	case gitlab.ActSetTitleDesc:
 		return h.performSetTitleDesc(ctx, client, integ, w.TaskID, path, iid)
 	default:
@@ -695,9 +695,13 @@ func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db
 // "op" selects the effect: "edit"/"delete" act on the existing note (identified by
 // the stored "gl_note_id" gid); the default posts a new note and tags the originating
 // comment with the returned note id so the next pull dedups it.
-func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, path string, iid int64, act gitlab.BindAction, payload map[string]any) (string, error) {
+func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, path string, iid int64, act gitlab.BindAction, payload map[string]any) (string, error) {
 	op, _ := payload["op"].(string)
 	body, _ := payload["body"].(string)
+	// A comment carries the same Tessera-relative asset links a description does.
+	if body != "" && parseWriteback(integ.Writeback).AttachmentsEnabled() {
+		body, _ = h.pushAssets(ctx, client, integ, body)
+	}
 
 	if op == "edit" || op == "delete" {
 		noteID, ok := parseNoteGID(payload["gl_note_id"])
@@ -729,18 +733,82 @@ func (h *API) performPostComment(ctx context.Context, client *gitlab.Client, pat
 	if act.AddMarker {
 		body += tesseraCommentMarker
 	}
-	gid, err := client.CreateIssueNote(ctx, path, iid, body)
+
+	var (
+		gid, discussionID string
+		err               error
+		msg               = "комментарий опубликован"
+	)
+	cid, hasCID := parseCommentID(payload["comment_id"])
+	// A reply goes into its parent's discussion; a root opens a new one. Posting a
+	// reply as a plain note would visually detach it from the thread in GitLab and
+	// the next pull would drag it back as a separate root.
+	if thread, ok := h.replyThread(ctx, payload); ok {
+		gid, err = client.CreateIssueDiscussionNote(ctx, path, iid, thread, body)
+		discussionID = thread
+		msg = "ответ опубликован в обсуждении"
+	} else {
+		if payload["parent_comment_id"] != nil {
+			// The root has not been pushed yet (or predates threads), so there is no
+			// discussion to answer in. Publishing outside the thread beats dropping
+			// the reply — but say so plainly in the journal.
+			msg = "ответ опубликован вне обсуждения — у родителя нет обсуждения в GitLab"
+		}
+		discussionID, gid, err = client.CreateIssueDiscussion(ctx, path, iid, body)
+	}
 	if err != nil {
 		return "", err
 	}
-	if gid != "" {
-		if cidStr, _ := payload["comment_id"].(string); cidStr != "" {
-			if cid, perr := uuid.Parse(cidStr); perr == nil {
-				soft(ctx, "SetCommentGlNoteID", h.q.SetCommentGlNoteID(ctx, db.SetCommentGlNoteIDParams{ID: cid, GlNoteID: &gid}))
-			}
+	if hasCID && (gid != "" || discussionID != "") {
+		var notePtr *string
+		if gid != "" {
+			notePtr = &gid
 		}
+		soft(ctx, "SetCommentGlIDs", h.q.SetCommentGlIDs(ctx, db.SetCommentGlIDsParams{
+			ID: cid, GlNoteID: notePtr, GlDiscussionID: discussionID,
+		}))
 	}
-	return "комментарий опубликован", nil
+	return msg, nil
+}
+
+// parseCommentID reads the originating Tessera comment id out of a write-back payload.
+func parseCommentID(v any) (uuid.UUID, bool) {
+	s, _ := v.(string)
+	if s == "" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(s)
+	return id, err == nil
+}
+
+// replyThread returns the REST discussion id this comment should be posted into,
+// and false when it is a root comment (or its parent has no GitLab discussion yet).
+func (h *API) replyThread(ctx context.Context, payload map[string]any) (string, bool) {
+	if payload["parent_comment_id"] == nil {
+		return "", false
+	}
+	cid, ok := parseCommentID(payload["comment_id"])
+	if !ok {
+		return "", false
+	}
+	target, err := h.q.GetCommentThreadTarget(ctx, cid)
+	if err != nil || target.GlDiscussionID == "" {
+		return "", false
+	}
+	return parseDiscussionGID(target.GlDiscussionID), true
+}
+
+
+// parseDiscussionGID reduces a stored discussion global id
+// ("gid://gitlab/Discussion/<sha>") to the sha-style id the REST API expects. A
+// value that is already bare is returned unchanged — the REST create path stores
+// it in that form.
+func parseDiscussionGID(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 // parseNoteGID extracts the numeric REST note id from a stored GitLab note global id
@@ -793,7 +861,13 @@ func (h *API) performSetTitleDesc(ctx context.Context, client *gitlab.Client, in
 	if err != nil {
 		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
 	}
-	if err := client.UpdateIssueTitleDescription(ctx, path, iid, task.Title, task.Description); err != nil {
+	// Same asset mirroring as issue creation — the hole is identical here, and an
+	// edit that re-pushes a description must not turn its images back into dead links.
+	desc := task.Description
+	if parseWriteback(integ.Writeback).AttachmentsEnabled() {
+		desc, _ = h.pushAssets(ctx, client, integ, desc)
+	}
+	if err := client.UpdateIssueTitleDescription(ctx, path, iid, task.Title, desc); err != nil {
 		return "", err
 	}
 	h.refreshLinkSnapshot(ctx, client, integ, taskID, path, iid)
@@ -823,7 +897,7 @@ func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, in
 	// Refresh the conflict baseline so the next push sees nothing remote-changed.
 	// Rewrite attachment links the same way the pull does, so the description
 	// baseline matches what the task stores (avoids a false title_desc conflict).
-	issue.Description = h.rewriteAssets(issue.Description, integ.WorkspaceID)
+	issue.Description = h.rewriteAssets(ctx, issue.Description, integ.WorkspaceID)
 	if serr := h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{
 		TaskID: taskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules)),
 	}); serr != nil {

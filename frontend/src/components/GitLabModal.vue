@@ -121,6 +121,10 @@ const wbFetchTemplates = ref(false) // offer repo issue templates when creating
 const wbChildren = ref(false) // push subtasks of a grouped parent as child work items
 const wbAutoGroup = ref(false) // label a linked parent as grouped on the first child
 const wbGroupLabel = ref('') // empty = the backend default ("M: Сгруппированная задача")
+// Mirror Tessera-hosted attachments into GitLab's upload store on push (#2713).
+// Defaults to ON — an integration saved before this flag existed has no key, and
+// the backend reads that as enabled (dead links in issues are a bug, not a taste).
+const wbAttachments = ref(true)
 // bindings is the customizable trigger→action table (replaces the fixed toggles).
 // Each entry: { enabled, trigger:{type,column_id,column_name,priority,completed,date_kind},
 //               action:{type,label,clear_prefix,state,date_kind,add_marker} }
@@ -410,6 +414,7 @@ async function applyBinding(data) {
     wbChildren.value = wb.push_children === true
     wbAutoGroup.value = wb.auto_group_on_child === true
     wbGroupLabel.value = wb.group_label || ''
+    wbAttachments.value = wb.push_attachments !== false
     estimationUnit.value = data.estimation_unit || 'time'
     const r = data.label_rules || {}
     defaultColumn.value = r.default_column || ''
@@ -665,6 +670,7 @@ async function save() {
         // cleared with it rather than kept as dormant state (same rule as templates).
         auto_group_on_child: wbChildren.value && wbAutoGroup.value,
         group_label: wbChildren.value ? wbGroupLabel.value.trim() : '',
+        push_attachments: wbAttachments.value,
         // The binding table fully replaces the legacy toggles; a non-empty set makes
         // the backend ignore them entirely.
         bindings: wbEnabled.value ? bindings.value.map(serializeBinding) : [],
@@ -1032,6 +1038,9 @@ watch(
                   <n-text depth="3" class="lbl">Помечать родителя автоматически</n-text>
                   <div><n-switch v-model:value="wbAutoGroup" size="small" /></div>
                 </template>
+
+                <n-text depth="3" class="lbl">Загружать вложения в GitLab</n-text>
+                <div><n-switch v-model:value="wbAttachments" size="small" /></div>
               </div>
               <p class="gl-wb-hint">
                 <n-text depth="3">
@@ -1041,7 +1050,12 @@ watch(
                   Работает независимо от обратной записи изменений ниже. «Получение issue-templates»
                   подтягивает шаблоны
                   <code>.gitlab/issue_templates/*.md</code> — их можно выбрать над редактором
-                  описания перед созданием.
+                  описания перед созданием. «Загружать вложения» копирует картинки из описания и
+                  комментариев, а также файлы задачи, в хранилище проекта GitLab — иначе ссылки на
+                  них в issue остаются битыми (GitLab резолвит их от своего адреса). Выключите, если
+                  не хотите дублировать бинарники в GitLab: ссылки тогда заменяются пометкой.
+                  Удаление файла в Tessera копию в GitLab не убирает — штатного API удаления
+                  загрузок нет.
                 </n-text>
               </p>
               <p v-if="wbChildren" class="gl-wb-hint">

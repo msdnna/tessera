@@ -468,7 +468,9 @@ export const tasks = {
   // Rich task detail (#8)
   events: (id) => api.get(`/tasks/${id}/events`),
   comments: (id) => api.get(`/tasks/${id}/comments`),
-  addComment: (id, body, mentions) => api.post(`/tasks/${id}/comments`, { body, mentions }),
+  // parentId is optional and last so existing three-argument calls are unchanged.
+  addComment: (id, body, mentions, parentId) =>
+    api.post(`/tasks/${id}/comments`, { body, mentions, parent_id: parentId || null }),
   // Dry-run the quick actions in a draft comment — same parser as the real
   // POST, changes nothing. Powers the «Будет применено: …» hint.
   previewCommands: (id, body) =>
