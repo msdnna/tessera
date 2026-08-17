@@ -99,6 +99,12 @@ test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.h
 # the backend needs migrations applied to tessera_test, which is the DB's
 # business, not the test runner's. Bring it up once, then re-run the suite as
 # often as you like. Port 8092 — :8090 may hold a zombie with older code.
+#
+# The auth rate limiter is off here, as it is in the backend e2e harness
+# (`backend/e2e/harness_test.go`): every spec seeds its own account, so a suite
+# of any size burns through the 10-per-IP register budget and starts failing on
+# HTTP 429 instead of on a defect. The limiter itself is covered by
+# `backend/middleware/ratelimit_test.go`, so nothing goes untested.
 E2E_PORT ?= 8092
 E2E_DB_URL ?= postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
 
@@ -108,6 +114,7 @@ e2e-backend-up: ## Start a throwaway backend on :8092 against tessera_test (for 
 	cd backend && $(GO) build -o /tmp/tessera-e2e-bin .
 	@PORT=$(E2E_PORT) UPLOAD_DIR=/tmp/tessera-e2e-uploads JWT_SECRET=e2e \
 		DATABASE_URL="$(E2E_DB_URL)" \
+		RATE_LIMIT_ENABLED=false \
 		nohup /tmp/tessera-e2e-bin > /tmp/tessera-e2e-backend.log 2>&1 & \
 		for i in $$(seq 1 40); do sleep 0.5; \
 			curl -sf http://localhost:$(E2E_PORT)/api/health > /dev/null && \
@@ -228,6 +235,24 @@ format-android: ## Auto-format Kotlin sources via ktlint
 .PHONY: test-android
 test-android: ## Run Android unit tests
 	@$(ANDROID_GRADLE) :app:testDebugUnitTest
+
+.PHONY: test-e2e-android
+test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e-backend-up`)
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests 'website.msdnna.tessera.e2e.*'
+
+# The instrumented smoke tier: needs a connected device or a running emulator,
+# and reaches the throwaway backend through the emulator's 10.0.2.2 host alias
+# (so `make e2e-backend-up` still runs on the host, exactly as for the JVM tier).
+.PHONY: test-android-instrumented
+test-android-instrumented: ## Android smoke tier on a device/emulator (needs `make e2e-backend-up`)
+	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest
+
+# Compiles the instrumented tier without running it — the only check available on
+# a host with no emulator, and worth having: an androidTest source set that never
+# builds is not caught by lint or by the unit run.
+.PHONY: build-android-instrumented
+build-android-instrumented: ## Compile the instrumented smoke tier (no device needed)
+	@$(ANDROID_GRADLE) :app:assembleDebugAndroidTest
 
 .PHONY: test-android-cover
 test-android-cover: ## Android unit tests + JaCoCo coverage report

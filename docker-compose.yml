@@ -46,6 +46,11 @@ services:
       #   volumes: ["/path/on/host/fcm-service-account.json:/run/secrets/fcm.json:ro"]
       # and set FCM_CREDENTIALS_FILE=/run/secrets/fcm.json in .env.
       - FCM_CREDENTIALS_FILE=${FCM_CREDENTIALS_FILE:-}
+      # Document import/export sidecar. Empty = off: the Documents section works
+      # in full and only office import/export report themselves as unavailable.
+      # Set CONVERTER_URL=http://converter:3000 in .env and start the stack with
+      # `--profile documents` to turn it on (see the converter service below).
+      - CONVERTER_URL=${CONVERTER_URL:-}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
@@ -92,6 +97,35 @@ services:
       # latest.json here (tools/build-android-release.sh); nginx serves /apks/.
       - ./apks:/usr/share/nginx/html/apks:ro
       - ./desktop-dist:/usr/share/nginx/html/desktop:ro
+
+  # Headless LibreOffice behind a small HTTP API, for document import/export
+  # (#2733). Declared here but NOT started by default — it sits behind a compose
+  # profile because the image is close to a gigabyte, and an install that never
+  # imports a .docx should not pay that on every `make up`. Turn it on with:
+  #
+  #   docker compose --profile documents up -d
+  #
+  # and set CONVERTER_URL=http://converter:3000 in .env so the backend uses it.
+  # Without both, import/export answer 503 and the rest of Documents is fine.
+  #
+  # No ports are published: only the backend talks to it, over the compose
+  # network. Publishing would expose an unauthenticated converter that happily
+  # runs LibreOffice on anything posted to it.
+  converter:
+    build:
+      context: ./converter
+      dockerfile: Dockerfile
+      args:
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
+        - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+    container_name: tessera-converter
+    restart: unless-stopped
+    profiles: ["documents"]
+    environment:
+      - TZ=${TZ:-Europe/Moscow}
+    networks:
+      - tessera-network
 
 volumes:
   postgres_data:

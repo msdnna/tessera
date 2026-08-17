@@ -71,7 +71,7 @@ type Task struct {
 	CreatedBy   *string         `json:"created_by"` // task author — resolves the "author" assignee target
 	Number      *int64          `json:"number"`
 	Estimate    *float64        `json:"estimate"`
-	Recurrence  json.RawMessage `json:"recurrence"` // carried through on a full-replace update so it isn't wiped
+	Recurrence  json.RawMessage `json:"recurrence"` // read-only here: updates are partial (TaskPatch) and never touch it
 	MilestoneID *string         `json:"milestone_id"`
 	TagIDs      []string        `json:"tag_ids"`
 	AssigneeIDs []string        `json:"assignee_ids"`
@@ -123,6 +123,20 @@ type Dependency struct {
 	TaskID        string `json:"task_id"`
 	RelatedTaskID string `json:"related_task_id"`
 	Kind          string `json:"kind"`
+}
+
+// Relation is a link recorded on a task (GET /tasks/:id/relations). Kind is
+// relates | blocks | blocked_by | duplicates; Source is provider-neutral
+// (user|gitlab). Rows are one-way — the link to #N may be stored on either end.
+type Relation struct {
+	ID                 string     `json:"id"`
+	TaskID             string     `json:"task_id"`
+	RelatedTaskID      string     `json:"related_task_id"`
+	Kind               string     `json:"kind"`
+	Source             string     `json:"source"`
+	RelatedNumber      *int64     `json:"related_number"`
+	RelatedTitle       string     `json:"related_title"`
+	RelatedCompletedAt *time.Time `json:"related_completed_at"`
 }
 
 // Comment is a task comment. Author display fields are best-effort: a native

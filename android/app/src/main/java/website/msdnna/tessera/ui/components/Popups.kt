@@ -138,6 +138,7 @@ fun TMenuItem(
     warn: Boolean = false,
     leading: @Composable (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val c = Tessera.colors
     // warn (orange) = dangerous-but-not-destructive (e.g. transfer); danger (red) =
@@ -149,7 +150,7 @@ fun TMenuItem(
     }
     val color = accent ?: c.text1
     Row(
-        Modifier.fillMaxWidth().clickableNoRipple(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
+        modifier.fillMaxWidth().clickableNoRipple(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leading != null) {

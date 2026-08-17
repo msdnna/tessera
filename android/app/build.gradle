@@ -34,6 +34,21 @@ android {
         // runtime (DataStore) from the login screen's advanced section so the
         // same APK can point at a dev/test backend.
         buildConfigField "String", "DEFAULT_BASE_URL", "\"https://tessera.msdnna.website\""
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // The e2e harness (backend seeding, waits, drag gesture, screen mounting) is
+    // shared verbatim by both tiers: the Robolectric specs in `src/test` and the
+    // instrumented smoke specs in `src/androidTest`. One copy, not two — a second
+    // harness would drift from the first and the tiers would stop testing the same
+    // thing while still both being green.
+    // Registered on the `kotlin` set, not on `java`: AGP's `java.srcDirs` no longer
+    // feeds the Kotlin compilation, so a directory added there alone is listed by
+    // the build and silently never compiled.
+    sourceSets {
+        getByName('test').kotlin.srcDir('src/e2eShared/java')
+        getByName('androidTest').kotlin.srcDir('src/e2eShared/java')
     }
 
     buildFeatures {
@@ -44,8 +59,14 @@ android {
     testOptions {
         unitTests {
             includeAndroidResources = true
-            all {
+            all { t ->
                 jvmArgs '--add-opens=java.base/java.lang=ALL-UNNAMED'
+                // The e2e tier needs a live backend on :8092, so it stays out of
+                // the plain unit run (`make test-android`) and is opted into with
+                // -Pe2e (`make test-e2e-android`).
+                if (!project.hasProperty('e2e')) {
+                    t.filter { excludeTestsMatching 'website.msdnna.tessera.e2e.*' }
+                }
                 jacoco {
                     includeNoLocationClasses = true
                     excludes = ['jdk.internal.*']
@@ -162,6 +183,26 @@ dependencies {
     testImplementation 'androidx.test.ext:junit:1.3.0'
     testImplementation 'com.squareup.okhttp3:mockwebserver:5.3.2'
     testImplementation 'com.google.truth:truth:1.4.5'
+    // Compose UI testing on the JVM (Robolectric): drives the real composables
+    // for the e2e tier. The BOM has to be repeated for the test configuration —
+    // `implementation platform(...)` above does not carry over to testImplementation.
+    testImplementation composeBom
+    testImplementation 'androidx.compose.ui:ui-test-junit4'
+    // createComposeRule() needs an activity to host the composition; the test
+    // manifest supplies it. It is a debug-only artifact, never in the release APK.
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+
+    // ── Instrumented smoke tier (src/androidTest, needs a device/emulator) ───
+    // Covers what the JVM tier cannot: the real render pipeline, real touch
+    // dispatch and the real MainActivity. Same harness, same anchors.
+    androidTestImplementation composeBom
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    androidTestImplementation 'androidx.test:core:1.7.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    // GrantPermissionRule — MainActivity asks for POST_NOTIFICATIONS on launch and
+    // the system dialog would sit on top of the app, eating the spec's first taps.
+    androidTestImplementation 'androidx.test:rules:1.7.0'
+    androidTestImplementation 'com.google.truth:truth:1.4.5'
 }
 
 // ── JaCoCo (coverage) ────────────────────────────────────────────────────────
@@ -215,7 +256,9 @@ dependencies {
     }
 }
 
-def ktlintSources = files("src/main/java", "src/test/java")
+// Every Kotlin source root, listed by hand — a new source set does not join the
+// lint automatically and would silently go unchecked.
+def ktlintSources = files("src/main/java", "src/test/java", "src/androidTest/java", "src/e2eShared/java")
 
 tasks.register("ktlintCheck", JavaExec) {
     group = "verification"
@@ -226,6 +269,8 @@ tasks.register("ktlintCheck", JavaExec) {
     args(
         "**/src/main/java/**/*.kt",
         "**/src/test/java/**/*.kt",
+        "**/src/androidTest/java/**/*.kt",
+        "**/src/e2eShared/java/**/*.kt",
         "--reporter=plain",
         "--reporter=checkstyle,output=${layout.buildDirectory.get().asFile}/reports/ktlint/ktlint.xml"
     )
@@ -243,7 +288,9 @@ tasks.register("ktlintFormat", JavaExec) {
     args(
         "-F",
         "**/src/main/java/**/*.kt",
-        "**/src/test/java/**/*.kt"
+        "**/src/test/java/**/*.kt",
+        "**/src/androidTest/java/**/*.kt",
+        "**/src/e2eShared/java/**/*.kt"
     )
 }
 
@@ -253,7 +300,7 @@ detekt {
     buildUponDefaultConfig = true
     autoCorrect = false
     parallel = true
-    source.setFrom(files("src/main/java", "src/test/java"))
+    source.setFrom(files("src/main/java", "src/test/java", "src/androidTest/java", "src/e2eShared/java"))
 }
 
 tasks.withType(io.gitlab.arturbosch.detekt.Detekt).configureEach {

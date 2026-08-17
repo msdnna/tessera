@@ -21,7 +21,7 @@ and speaks MCP over **stdio**, so the MCP client launches it as a subprocess.
 | `tessera_list_tasks` | A board's tasks as a **ranked** queue (optionally scoped to a milestone) |
 | `tessera_my_tasks` | Tasks assigned to you across a workspace, ranked |
 | `tessera_next_task` | The single highest-priority actionable task (skips blocked ones on a board) |
-| `tessera_get_task` | Full task detail: description, tags, assignees, subtasks, comments (with author + `is_agent`), image refs, GitLab link |
+| `tessera_get_task` | Full task detail: description, tags, assignees, subtasks, comments (with author + `is_agent`), relations, attachments, image refs, GitLab link |
 | `tessera_view_image` | Fetch & return image(s) referenced by a task (inline images + attachments) so the agent can actually see screenshots/diagrams |
 
 ### Write
@@ -32,6 +32,14 @@ and speaks MCP over **stdio**, so the MCP client launches it as a subprocess.
 | `tessera_update_description` | Attach Markdown to the description — `append` (default, under an optional heading) or `replace`; other fields preserved |
 | `tessera_move_task` | Move a task to a column by **name** (`В процессе`, `На рассмотрении`, …) or UUID; the board's done column auto-completes |
 | `tessera_assign_task` | Set assignees by email / name / UUID / `author` / `me`; `replace=true` hands a task back (e.g. `['author']` returns it to its creator and drops the agent) |
+| `tessera_create_task` | Create a task (or a subtask via `parent_number`/`parent_id`) with description, priority, dates, estimate, assignees and tags; column defaults to the board's leftmost |
+| `tessera_create_subtasks` | Create many subtasks under one parent in a single call; a failing item doesn't roll back the rest (`created` / `failed`) |
+| `tessera_update_task` | Partial edit of title / description / priority / dates / estimate / completed; `clear: ["due_date"]` blanks a date or the estimate |
+| `tessera_set_parent` | Make a task a subtask of another, or `detach: true` to promote it back to a top-level card |
+| `tessera_move_description` | Move (or copy) a description between tasks; `cut: true` empties the source **after** the target is written |
+| `tessera_set_tags` | Add/remove tags by name within the task's project; unknown names error unless `create_missing: true` |
+| `tessera_link_tasks` / `tessera_unlink_tasks` | Link two tasks (`relates` \| `blocks` \| `blocked_by` \| `duplicates`) by `#number`; unlink clears the row from **both** ends |
+| `tessera_upload_attachment` / `tessera_download_attachment` | Attach local files to a task (≤ 25 MiB each) / download a task's attachments to a local directory |
 
 Tasks are addressed by `task_id` (a subtask id works too) or by `workspace_id` +
 `number` (e.g. `#252`). Write tools author as the token's owner — mint the token

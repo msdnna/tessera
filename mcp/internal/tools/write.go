@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,6 +57,10 @@ func registerWrite(s *mcp.Server, c *client.Client) {
 			"and image attachments. Pass a specific ref from tessera_get_task's 'images', or omit ref to view all. " +
 			"Returns the images so you can actually see screenshots and diagrams.",
 	}, viewImage(c))
+
+	registerTasksWrite(s, c)
+	registerLinks(s, c)
+	registerAttachments(s, c)
 }
 
 // ── shared helpers ────────────────────────────────────────────────────────────
@@ -87,17 +90,6 @@ func resolveTaskDetail(ctx context.Context, c *client.Client, taskID, workspaceI
 	default:
 		return model.TaskDetail{}, fmt.Errorf("provide task_id, or workspace_id + number")
 	}
-}
-
-// cleanRecurrence normalises a stored recurrence blob: an empty or JSON-null
-// value becomes nil so it's omitted from a full-replace update (which the
-// backend reads as "no recurrence") instead of being sent as a literal null.
-func cleanRecurrence(r json.RawMessage) json.RawMessage {
-	s := strings.TrimSpace(string(r))
-	if s == "" || s == "null" {
-		return nil
-	}
-	return r
 }
 
 // commentAuthor is the best display name for a comment's author: the native
@@ -249,16 +241,10 @@ func updateDescription(c *client.Client) mcp.ToolHandlerFor[updateDescriptionInp
 			desc = strings.TrimRight(d.Description, "\n") + "\n\n---\n\n" + block
 		}
 
-		if err := c.UpdateTask(ctx, d.ID, client.TaskUpdate{
-			Title:       d.Title,
-			Description: desc,
-			Priority:    d.Priority,
-			DueDate:     d.DueDate,
-			StartDate:   d.StartDate,
-			Estimate:    d.Estimate,
-			Completed:   d.CompletedAt != nil,
-			Recurrence:  cleanRecurrence(d.Recurrence),
-		}); err != nil {
+		// Only the description travels: the PATCH is tri-state, so every other
+		// field keeps whatever it holds server-side even if it changed since the
+		// read above.
+		if err := c.UpdateTask(ctx, d.ID, client.TaskPatch{}.Set("description", desc)); err != nil {
 			return nil, updateDescriptionOut{}, err
 		}
 		return nil, updateDescriptionOut{TaskID: d.ID, Mode: mode, DescLength: len(desc)}, nil
@@ -289,22 +275,9 @@ func moveTask(c *client.Client) mcp.ToolHandlerFor[moveTaskInput, moveTaskOut] {
 		if err != nil {
 			return nil, moveTaskOut{}, err
 		}
-		cols, err := c.ListColumns(ctx, d.BoardID)
+		target, err := resolveColumn(ctx, c, d.BoardID, in.Column)
 		if err != nil {
 			return nil, moveTaskOut{}, err
-		}
-		want := strings.ToLower(strings.TrimSpace(in.Column))
-		var target *model.Column
-		var names []string
-		for i := range cols {
-			names = append(names, cols[i].Name)
-			if cols[i].ID == in.Column || strings.ToLower(strings.TrimSpace(cols[i].Name)) == want {
-				target = &cols[i]
-				break
-			}
-		}
-		if target == nil {
-			return nil, moveTaskOut{}, fmt.Errorf("no column matching %q on this board; available: %s", in.Column, strings.Join(names, ", "))
 		}
 		if err := c.MoveTask(ctx, d.ID, target.ID); err != nil {
 			return nil, moveTaskOut{}, err
@@ -341,55 +314,13 @@ func assignTask(c *client.Client) mcp.ToolHandlerFor[assignTaskInput, assignTask
 			return nil, assignTaskOut{}, err
 		}
 
-		var members []model.Member // loaded lazily, only when a name/email must be resolved
-		membersLoaded := false
-		loadMembers := func() error {
-			if membersLoaded {
-				return nil
-			}
-			wsID := in.WorkspaceID
-			if wsID == "" {
-				if wsID, err = workspaceIDForTask(ctx, c, d); err != nil {
-					return err
-				}
-			}
-			if members, err = c.ListMembers(ctx, wsID); err != nil {
-				return err
-			}
-			membersLoaded = true
-			return nil
+		ids, err := resolveAssignees(ctx, c, in.Assignees, d, in.WorkspaceID)
+		if err != nil {
+			return nil, assignTaskOut{}, err
 		}
-
 		targets := map[string]bool{}
-		for _, raw := range in.Assignees {
-			ref := strings.TrimSpace(raw)
-			if ref == "" {
-				continue
-			}
-			switch {
-			case strings.EqualFold(ref, "me"):
-				self := c.SelfID(ctx)
-				if self == "" {
-					return nil, assignTaskOut{}, fmt.Errorf("cannot resolve 'me': /auth/me lookup failed")
-				}
-				targets[self] = true
-			case strings.EqualFold(ref, "author"):
-				if d.CreatedBy == nil || *d.CreatedBy == "" {
-					return nil, assignTaskOut{}, fmt.Errorf("task has no recorded author to assign")
-				}
-				targets[*d.CreatedBy] = true
-			case uuidRe.MatchString(ref):
-				targets[ref] = true
-			default:
-				if err := loadMembers(); err != nil {
-					return nil, assignTaskOut{}, err
-				}
-				id, mErr := matchMember(ref, members)
-				if mErr != nil {
-					return nil, assignTaskOut{}, mErr
-				}
-				targets[id] = true
-			}
+		for _, id := range ids {
+			targets[id] = true
 		}
 
 		current := map[string]bool{}

@@ -51,12 +51,25 @@ export function absolutizeApiUrl(url) {
 // wsURL builds the realtime WebSocket URL: ws(s)://<host>/api/ws. On web it uses
 // the current origin; on desktop it derives host/scheme from the stored base.
 export function wsURL() {
+  return wsOrigin() + '/api/ws'
+}
+
+// docWsURL builds the per-document collaboration socket URL (presence + block
+// locks, #2729). It is a separate connection from wsURL(): that one is
+// workspace-scoped and read-only, this one is per document and two-way.
+export function docWsURL(docId) {
+  return `${wsOrigin()}/api/documents/${docId}/ws`
+}
+
+// wsOrigin is ws(s)://<host> — the current origin on web, the stored base on
+// desktop.
+function wsOrigin() {
   const base = serverBase()
   if (!base) {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    return `${proto}://${location.host}/api/ws`
+    return `${proto}://${location.host}`
   }
   const u = new URL(base)
   const proto = u.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${u.host}/api/ws`
+  return `${proto}://${u.host}`
 }

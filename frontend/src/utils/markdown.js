@@ -59,7 +59,7 @@ marked.use(
 // Attributes the rich editor emits that DOMPurify must preserve: link targets
 // and mention chips (`<span data-type="mention" data-id="…">@Name</span>`).
 const SANITIZE_OPTS = {
-  ADD_ATTR: ['target', 'rel', 'data-type', 'data-id', 'data-label', 'class'],
+  ADD_ATTR: ['target', 'rel', 'data-type', 'data-id', 'data-label', 'data-task-ref', 'class'],
 }
 
 // On desktop (Tauri) the webview is served from a custom protocol, so the
@@ -103,6 +103,33 @@ function escapeRe(s) {
 // "@handle" (a username like @v.sokolov from GitLab, not a Tessera user) is also
 // highlighted via a generic fallback token. Operates on rendered HTML and only
 // at text boundaries to avoid touching tags/attributes.
+// replaceOutsideCode applies `fn` to the stretches of rendered HTML that sit
+// outside <code>/<pre>. Both decorations below rewrite text in already-rendered
+// HTML, and neither may touch a code sample: "#2550" in a diff is not a task
+// link, and "@root" in a shell snippet is not a mention.
+const CODE_BLOCK_RE = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi
+export function replaceOutsideCode(html, fn) {
+  const s = String(html)
+  let out = ''
+  let last = 0
+  for (const m of s.matchAll(CODE_BLOCK_RE)) {
+    out += fn(s.slice(last, m.index)) + m[0]
+    last = m.index + m[0].length
+  }
+  return out + fn(s.slice(last))
+}
+
+// linkTaskRefs turns "#123" into a chip that RichContent resolves and navigates
+// on click. Capped at 7 digits so long numeric strings don't become links; an
+// unknown number simply fails to resolve and tells the user so.
+const TASK_REF_RE = /(^|[\s>([])#(\d{1,7})\b(?!\.\d)/g
+function linkTaskRefs(html) {
+  return html.replace(
+    TASK_REF_RE,
+    (_, lead, n) => `${lead}<a class="task-ref" data-task-ref="${n}" href="#">#${n}</a>`,
+  )
+}
+
 function highlightMentions(html, members) {
   // Both `label` (what the composer inserts today — a GitLab login) and
   // `display` (the member's name): comments written before mentions switched to
@@ -119,12 +146,17 @@ function highlightMentions(html, members) {
 
 // renderRich renders stored task content for display. Content is Markdown
 // (HTML from the brief TipTap era is passed through too). `members` enables
-// @-mention highlighting in the output.
-export function renderRich(src, members) {
+// @-mention highlighting in the output; `opts.taskRefs` turns "#123" into task
+// links (opt-in — on a board card they would swallow clicks meant for the card).
+export function renderRich(src, members, opts = {}) {
   if (!src) return ''
   const s = String(src)
   const html = looksLikeHtml(s) ? s : marked.parse(s)
-  return DOMPurify.sanitize(highlightMentions(html, members), SANITIZE_OPTS)
+  const decorated = replaceOutsideCode(html, (part) => {
+    const withMentions = highlightMentions(part, members)
+    return opts.taskRefs ? linkTaskRefs(withMentions) : withMentions
+  })
+  return DOMPurify.sanitize(decorated, SANITIZE_OPTS)
 }
 
 // sanitizeSvgFragment cleans a rendered SVG before it reaches the DOM. Mermaid

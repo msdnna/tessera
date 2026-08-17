@@ -168,6 +168,17 @@ type commentOut struct {
 	IsAgent   bool   `json:"is_agent,omitempty"`
 	CreatedAt string `json:"created_at"`
 }
+type relationOut struct {
+	Kind      string `json:"kind"`
+	Number    *int64 `json:"number,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Completed bool   `json:"completed,omitempty"`
+}
+type attachmentRefOut struct {
+	ID       string `json:"id"`
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+}
 type taskDetailOut struct {
 	ID            string        `json:"id"`
 	Number        *int64        `json:"number,omitempty"`
@@ -186,6 +197,9 @@ type taskDetailOut struct {
 	Comments      []commentOut  `json:"comments,omitempty"`
 	Images        []imageRefOut `json:"images,omitempty"`
 	GitlabURL     string        `json:"gitlab_url,omitempty"`
+
+	Relations   []relationOut      `json:"relations,omitempty"`
+	Attachments []attachmentRefOut `json:"attachments,omitempty"`
 }
 
 // ── handlers ────────────────────────────────────────────────────────────────
@@ -395,6 +409,18 @@ func getTask(c *client.Client) mcp.ToolHandlerFor[getTaskInput, taskDetailOut] {
 		}
 		attachments, _ := c.ListAttachments(ctx, d.ID)
 		out.Images = collectImages(d.Description, comments, attachments)
+		for _, a := range attachments {
+			out.Attachments = append(out.Attachments, attachmentRefOut{ID: a.ID, Filename: a.Filename, Size: a.Size})
+		}
+		// Relations and attachments are best-effort enrichment, like comments:
+		// a failure here shouldn't cost the caller the whole task detail.
+		relations, _ := c.ListRelations(ctx, d.ID)
+		for _, r := range relations {
+			out.Relations = append(out.Relations, relationOut{
+				Kind: r.Kind, Number: r.RelatedNumber, Title: r.RelatedTitle,
+				Completed: r.RelatedCompletedAt != nil,
+			})
+		}
 		return nil, out, nil
 	}
 }

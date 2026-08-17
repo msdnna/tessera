@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +78,7 @@ import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.DueDateTimePicker
 import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.IonIcon
@@ -249,6 +251,7 @@ fun TaskModal(
         BackHandler(enabled = tab != 0) { tab = 0 }
         Column(
             Modifier
+                .testTag(TestTags.TASK_MODAL)
                 .popupAppear(TransformOrigin.Center)
                 // With decorFitsSystemWindows off the window spans the whole display,
                 // so the modal has to keep clear of the bars itself.
@@ -323,6 +326,7 @@ fun TaskModal(
                             onBlur = { vm.saveDescription(description) },
                             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
                             mentions = buildMentionItems(members, gitlabMembers),
+                            fieldTag = TestTags.TASK_DESCRIPTION,
                         )
 
                         Spacer(Modifier.height(18.dp))
@@ -417,7 +421,7 @@ fun TaskModal(
                 Spacer(Modifier.weight(1f))
                 TButton("Отмена", kind = TButtonKind.Secondary, onClick = { close() })
                 Spacer(Modifier.width(8.dp))
-                TButton("Сохранить", onClick = {
+                TButton("Сохранить", modifier = Modifier.testTag(TestTags.TASK_SAVE), onClick = {
                     vm.saveCore(title, description)
                     onClose(true)
                 })
@@ -459,7 +463,7 @@ private fun TitleField(title: String, onChange: (String) -> Unit) {
         onValueChange = onChange,
         textStyle = TextStyle(color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
         cursorBrush = SolidColor(c.primary),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag(TestTags.TASK_TITLE),
         decorationBox = { inner ->
             if (title.isEmpty()) Text("Название задачи", color = c.placeholder, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             inner()
@@ -622,6 +626,10 @@ private fun ColumnChipPicker(
     columnId: String,
     enabled: Boolean = true,
     mini: Boolean = false,
+    /** e2e anchors, set only by the status row — see [TestTags.TASK_STATUS] for why
+     *  the subtask chips deliberately stay untagged. */
+    chipTag: String? = null,
+    optionTag: ((String) -> String)? = null,
     onPick: (String) -> Unit,
 ) {
     val c = Tessera.colors
@@ -630,7 +638,8 @@ private fun ColumnChipPicker(
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
-            Modifier.clip(RoundedCornerShape(RadiusSm))
+            Modifier.then(if (chipTag != null) Modifier.testTag(chipTag) else Modifier)
+                .clip(RoundedCornerShape(RadiusSm))
                 .background(c.surfaceAlt)
                 .clickableNoRipple(enabled = enabled && cols.isNotEmpty()) { menu = true }
                 .padding(horizontal = if (mini) 7.dp else 9.dp, vertical = if (mini) 3.dp else 5.dp),
@@ -649,10 +658,12 @@ private fun ColumnChipPicker(
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             cols.forEach { col ->
                 Row(
-                    Modifier.fillMaxWidth().clickableNoRipple {
-                        menu = false
-                        onPick(col.id)
-                    }
+                    Modifier.fillMaxWidth()
+                        .then(optionTag?.let { Modifier.testTag(it(col.id)) } ?: Modifier)
+                        .clickableNoRipple {
+                            menu = false
+                            onPick(col.id)
+                        }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -687,7 +698,14 @@ private fun StatusValue(
     val c = Tessera.colors
     val next = nextColumn(columns, columnId)
     Row(verticalAlignment = Alignment.CenterVertically) {
-        ColumnChipPicker(columns, columnId, enabled = !moving, onPick = onMove)
+        ColumnChipPicker(
+            columns,
+            columnId,
+            enabled = !moving,
+            chipTag = TestTags.TASK_STATUS,
+            optionTag = TestTags::taskStatusOption,
+            onPick = onMove,
+        )
         Spacer(Modifier.width(8.dp))
         // One tap for the most common status change: shift one column right.
         IonIcon(
@@ -716,7 +734,10 @@ private fun PriorityValue(priority: Int, onPick: (Int) -> Unit) {
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     Box {
-        Row(Modifier.clickableNoRipple { menu = true }, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.testTag(TestTags.TASK_PRIORITY).clickableNoRipple { menu = true },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(Modifier.size(9.dp).clip(CircleShape).background(if (priority > 0) accentGradient(PriorityColors[priority]) else SolidColor(c.text3)))
             Spacer(Modifier.width(8.dp))
             Text(PriorityLabels[priority], color = c.text1, fontSize = 14.sp)
@@ -724,10 +745,12 @@ private fun PriorityValue(priority: Int, onPick: (Int) -> Unit) {
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
             PriorityLabels.forEachIndexed { i, label ->
                 Row(
-                    Modifier.fillMaxWidth().clickableNoRipple {
-                        menu = false
-                        onPick(i)
-                    }
+                    Modifier.fillMaxWidth()
+                        .testTag(TestTags.taskPriorityOption(i))
+                        .clickableNoRipple {
+                            menu = false
+                            onPick(i)
+                        }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1351,6 +1374,7 @@ private fun CommentsTab(
             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
             mentions = mentionItems,
             commands = commands,
+            fieldTag = TestTags.TASK_COMMENT_INPUT,
         )
         // Dry-run the draft against the backend's parser instead of re-implementing
         // it here: the hint can never disagree with what will actually happen.
@@ -1363,7 +1387,7 @@ private fun CommentsTab(
             CommandPreviewStrip(preview, previewCustom)
         }
         Spacer(Modifier.height(8.dp))
-        TButton("Отправить", onClick = {
+        TButton("Отправить", modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
             if (draft.isNotBlank()) {
                 vm.postComment(draft, members)
                 draft = ""

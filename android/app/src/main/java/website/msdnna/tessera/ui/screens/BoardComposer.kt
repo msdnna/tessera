@@ -55,6 +55,7 @@ import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import website.msdnna.tessera.data.model.BoardView
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.MemberAvatar
@@ -301,7 +303,11 @@ fun BoardComposerBar(
         // only once expanded (overlay gone). Outside-tap collapse is handled by the
         // scrim in BoardScreen.
         if (!expanded) {
-            Box(Modifier.matchParentSize().clickableNoRipple { setExpanded(true) })
+            Box(
+                Modifier.matchParentSize()
+                    .testTag(TestTags.BOARD_COMPOSER_EXPAND)
+                    .clickableNoRipple { setExpanded(true) },
+            )
         }
     }
 }
@@ -353,18 +359,32 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     }
     var menu by remember { mutableStateOf(false) }
     Box {
-        FacetChip(label, icon = Ion.ALBUMS, group = true, onClick = { menu = true })
+        FacetChip(
+            label,
+            icon = Ion.ALBUMS,
+            group = true,
+            onClick = { menu = true },
+            modifier = Modifier.testTag(TestTags.BOARD_GROUP),
+        )
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
-            CheckRow("По статусам", selected = state.groupMode == "status") {
+            CheckRow("По статусам", selected = state.groupMode == "status", tag = TestTags.BOARD_GROUP_STATUS) {
                 menu = false
                 vm.setGrouping("status")
             }
-            CheckRow("По тегам (все)", selected = state.groupMode == "tag" && state.tagPrefix.isEmpty()) {
+            CheckRow(
+                "По тегам (все)",
+                selected = state.groupMode == "tag" && state.tagPrefix.isEmpty(),
+                tag = TestTags.BOARD_GROUP_TAGS,
+            ) {
                 menu = false
                 vm.setGrouping("tag", prefix = "")
             }
             namespaces.forEach { (ns, nsLabel) ->
-                CheckRow("По тегам · $nsLabel", selected = state.groupMode == "tag" && state.tagPrefix == ns) {
+                CheckRow(
+                    "По тегам · $nsLabel",
+                    selected = state.groupMode == "tag" && state.tagPrefix == ns,
+                    tag = TestTags.boardGroupTagPrefix(ns),
+                ) {
                     menu = false
                     vm.setGrouping("tag", prefix = ns)
                 }
@@ -585,13 +605,14 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
 }
 
 @Composable
-private fun CheckRow(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun CheckRow(label: String, selected: Boolean, tag: String? = null, onClick: () -> Unit) {
     TMenuItem(
         label,
         onClick = onClick,
         trailing = {
             if (selected) IonIcon(Ion.CHECK, size = 16.dp, tint = Tessera.colors.primary, gradient = true)
         },
+        modifier = if (tag != null) Modifier.testTag(tag) else Modifier,
     )
 }
 

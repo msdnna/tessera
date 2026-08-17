@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,11 +34,12 @@ func newMux(t *testing.T, get map[string]any) (*client.Client, *muxAPI) {
 			_ = json.NewEncoder(w).Encode(body)
 			return
 		}
-		buf := make([]byte, r.ContentLength)
-		_, _ = r.Body.Read(buf)
+		buf, _ := io.ReadAll(r.Body)
 		m.writes[r.Method+" "+r.URL.Path] = buf
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id":"cm-new"}`))
+		// One canned body serves every write: comment tools read the id, task
+		// creation also reads the title.
+		_, _ = w.Write([]byte(`{"id":"cm-new","title":"New"}`))
 	}))
 	t.Cleanup(m.Close)
 	return client.New(m.URL+"/api", "tok"), m

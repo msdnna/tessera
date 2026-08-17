@@ -630,6 +630,15 @@ interface ApiService {
     @DELETE("notes/{id}")
     suspend fun deleteNote(@Path("id") noteId: String)
 
+    // ── Documents (#2718) — read-only on Android (#2735) ───────────────────────
+    // The list omits `content`; the body arrives only from the single-document
+    // call, so opening a document is a second request by design.
+    @GET("workspaces/{id}/documents")
+    suspend fun documents(@Path("id") workspaceId: String): List<website.msdnna.tessera.data.model.Document>?
+
+    @GET("documents/{id}")
+    suspend fun document(@Path("id") documentId: String): website.msdnna.tessera.data.model.Document
+
     // ── GitLab integration ────────────────────────────────────────────────────
     @GET("gitlab/connection")
     suspend fun gitlabConnection(): website.msdnna.tessera.data.model.GitlabConnection
