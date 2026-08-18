@@ -216,6 +216,21 @@ export const users = {
   avatarUrl: (id) => `${apiBaseURL()}/users/${id}/avatar`,
 }
 
+// Running build info of the API — { api, commit?, built_at? }. Public, and shown
+// in the sidebar version tooltip next to the web build (#2747). skipLoader: it's
+// a background best-effort read, never worth the slow/offline overlay.
+export const meta = {
+  version: () => api.get('/version', { skipLoader: true }),
+}
+
+// Per-user one-shot "seen" flags backing the What's-New modal, sidebar spotlight
+// hints and future onboarding (#2749). Keys are client-owned opaque strings
+// (whatsnew:<version>, spotlight:<feature>, getstarted:<step>).
+export const acknowledgements = {
+  list: () => api.get('/users/me/acknowledgements', { skipLoader: true }),
+  ack: (key) => api.post('/users/me/acknowledgements', { key }, { skipLoader: true }),
+}
+
 // Global-admin panel (every endpoint re-checks is_admin server-side).
 export const admin = {
   listUsers: () => api.get('/admin/users'),
