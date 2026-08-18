@@ -12,7 +12,6 @@ import {
   NSpin,
   NTabs,
   NTabPane,
-  NSelect,
   NBadge,
   NPopconfirm,
   useMessage,
@@ -45,11 +44,6 @@ import {
   GitMerge,
   Attach,
   Time,
-  ImageOutline,
-  GitNetworkOutline,
-  EyeOutline,
-  CreateOutline,
-  ExpandOutline,
   ShareSocialOutline,
   ChevronForwardOutline,
   ChevronBackOutline,
@@ -95,12 +89,11 @@ import { useThemeStore } from '@/stores/theme'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { useTagFit } from '@/composables/useTagFit'
 import DueEditor from './DueEditor.vue'
-import MarkdownEditor from './MarkdownEditor.vue'
-import RichContent from './RichContent.vue'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import TaskCommentsTab from './task/TaskCommentsTab.vue'
+import TaskDescriptionTab from './task/TaskDescriptionTab.vue'
 import TaskLayoutSwitch from './TaskLayoutSwitch.vue'
 import TaskSubtasksTab from './task/TaskSubtasksTab.vue'
 import TaskRelationsTab from './task/TaskRelationsTab.vue'
@@ -168,11 +161,9 @@ const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
 // ── rich detail (#8): comments, relations, files, journal
 // Open an existing description on the Preview tab; an empty one on Write.
+// The editor itself lives in TaskDescriptionTab (in the left column for modal/
+// fullscreen, or the first tab in the sidebar layout — #2745).
 const descInitialMode = ref('write')
-// The description editor's toolbar lives in the section header (.desc-head); we drive
-// it through the editor ref and mirror its write/preview mode here for the toggle icon.
-const descEditor = ref(null)
-const descMode = ref('write')
 
 // ── wide-screen split pane: draggable divider between the left (properties +
 // description) and right (tabs) columns, ratio persisted in localStorage. Only
@@ -1582,80 +1573,24 @@ async function onSubtaskChanged() {
               </div>
             </div>
 
-            <div class="section">
-              <div class="desc-head">
-                <span class="slabel">Описание</span>
-                <div class="desc-head-r">
-                  <n-select
-                    v-if="task && !task.gitlab && gitlabFetchTemplates && glTemplates.length"
-                    v-model:value="glTemplate"
-                    :options="glTemplateOptions"
-                    size="small"
-                    clearable
-                    placeholder="Шаблон issue…"
-                    class="tpl-select"
-                    @update:value="applyGlTemplate"
-                  />
-                  <div v-if="!readonly" class="desc-acts">
-                    <template v-if="descMode === 'write'">
-                      <button
-                        class="desc-act"
-                        title="Вставить изображение"
-                        @click="descEditor?.pickImage()"
-                      >
-                        <n-icon :component="ImageOutline" :size="16" />
-                      </button>
-                      <button
-                        class="desc-act"
-                        title="Вставить Mermaid-диаграмму"
-                        @click="descEditor?.insertMermaid()"
-                      >
-                        <n-icon :component="GitNetworkOutline" :size="16" />
-                      </button>
-                    </template>
-                    <button
-                      class="desc-act"
-                      title="Открыть на весь экран"
-                      @click="descEditor?.openFullscreen()"
-                    >
-                      <n-icon :component="ExpandOutline" :size="16" />
-                    </button>
-                    <button
-                      class="desc-act"
-                      :title="descMode === 'write' ? 'Предпросмотр' : 'Редактировать'"
-                      @click="descEditor?.toggleMode()"
-                    >
-                      <n-icon
-                        :component="descMode === 'write' ? EyeOutline : CreateOutline"
-                        :size="16"
-                      />
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <RichContent
-                v-if="readonly"
-                :source="description || '_Нет описания_'"
-                :members="mentionItems"
-                mention-cards
-                task-refs
-              />
-              <MarkdownEditor
-                v-else
-                ref="descEditor"
-                :key="taskId"
-                v-model="description"
-                :toolbar="false"
-                placeholder="Добавьте описание…"
-                :min-rows="3"
-                :initial-mode="descInitialMode"
-                :attach-task-id="taskId"
-                @update:mode="descMode = $event"
-                @attachments-changed="reloadAttachments"
-                @blur="saveDesc"
-                @persist="saveDesc"
-              />
-            </div>
+            <!-- Description lives here for the modal / fullscreen layouts. In the
+                 sidebar layout it moves into the first "Описание" tab below so a
+                 long description doesn't bury the other tabs (#2745). -->
+            <TaskDescriptionTab
+              v-if="layout !== 'sidebar'"
+              v-model="description"
+              v-model:template-value="glTemplate"
+              :readonly="readonly"
+              :members="mentionItems"
+              :task-id="taskId"
+              :initial-mode="descInitialMode"
+              :show-template="!!(task && !task.gitlab && gitlabFetchTemplates && glTemplates.length)"
+              :template-options="glTemplateOptions"
+              @apply-template="applyGlTemplate"
+              @attachments-changed="reloadAttachments"
+              @blur="saveDesc"
+              @persist="saveDesc"
+            />
           </div>
 
           <!-- Draggable divider (wide layout only); drag resizes the two columns,
@@ -1674,6 +1609,40 @@ async function onSubtaskChanged() {
             <!-- Keyed by task so the line indicator doesn't slide when switching
                between a task and its subtask / related task. -->
             <n-tabs ref="detailTabs" :key="taskId" type="line" size="small" class="detail-tabs">
+              <!-- Sidebar layout only: description as the first tab so it doesn't
+                   bury the rest of the tabs on long descriptions (#2745). Kept
+                   mounted (display-directive="show") so editor state survives tab
+                   switches. -->
+              <n-tab-pane v-if="layout === 'sidebar'" name="description" display-directive="show">
+                <template #tab>
+                  <span class="tab-lbl">
+                    <n-icon
+                      :component="DocumentTextOutline"
+                      :size="15"
+                      class="tab-ico tab-ico--out"
+                    />
+                    <n-icon :component="DocumentText" :size="15" class="tab-ico tab-ico--fill" />
+                    Описание
+                  </span>
+                </template>
+                <TaskDescriptionTab
+                  v-model="description"
+                  v-model:template-value="glTemplate"
+                  :readonly="readonly"
+                  :members="mentionItems"
+                  :task-id="taskId"
+                  :initial-mode="descInitialMode"
+                  :show-template="
+                    !!(task && !task.gitlab && gitlabFetchTemplates && glTemplates.length)
+                  "
+                  :template-options="glTemplateOptions"
+                  @apply-template="applyGlTemplate"
+                  @attachments-changed="reloadAttachments"
+                  @blur="saveDesc"
+                  @persist="saveDesc"
+                />
+              </n-tab-pane>
+
               <n-tab-pane name="comments">
                 <template #tab>
                   <span class="tab-lbl">
@@ -2203,43 +2172,6 @@ async function onSubtaskChanged() {
     transition: none;
   }
 }
-.desc-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.desc-head-r {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.desc-head .tpl-select {
-  width: 200px;
-}
-.desc-acts {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.desc-act {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--t-text2);
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-}
-.desc-act:hover {
-  background: var(--t-hover);
-  color: var(--t-text1);
-}
 .gl-author {
   color: var(--t-text3);
 }
@@ -2401,15 +2333,6 @@ async function onSubtaskChanged() {
 .avatar.sm {
   margin-left: 0;
   box-shadow: none;
-}
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.slabel {
-  font-size: 12px;
-  color: var(--t-text3);
 }
 /* ── status row: [● column ▾] [▸ shift] [✓ close] ──
    The chip and its popover menu are shared with the subtasks tab — see
@@ -2591,59 +2514,6 @@ async function onSubtaskChanged() {
   .footer :deep(.n-button__icon) {
     margin: 0;
   }
-}
-
-/* rendered markdown (description + comments) */
-.md {
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--t-text1);
-  word-break: break-word;
-}
-.md:empty::before {
-  content: 'Добавьте описание…';
-  color: var(--t-text3);
-}
-.section > .md {
-  padding: 8px 10px;
-  border-radius: 8px;
-  cursor: text;
-  min-height: 40px;
-}
-.section > .md:hover {
-  background: var(--t-surface-alt);
-}
-.md :deep(p) {
-  margin: 0 0 8px;
-}
-.md :deep(p:last-child) {
-  margin-bottom: 0;
-}
-.md :deep(ul),
-.md :deep(ol) {
-  margin: 0 0 8px;
-  padding-left: 20px;
-}
-.md :deep(code) {
-  background: var(--t-surface-alt);
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-.md :deep(pre) {
-  background: var(--t-surface-alt);
-  padding: 10px;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-.md :deep(a) {
-  color: var(--t-primary);
-}
-.md :deep(blockquote) {
-  margin: 0 0 8px;
-  padding-left: 10px;
-  border-left: 3px solid var(--t-border);
-  color: var(--t-text2);
 }
 
 .detail-tabs {
