@@ -14,6 +14,7 @@ import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
+import SidebarSpotlight from './SidebarSpotlight.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
@@ -254,10 +255,10 @@ watch(
       @resolved="conflicts.load()"
     />
 
-    <!-- "Что нового" after an update (#2749). The sidebar spotlight arrows that
-         follow the modal are a separate, still-to-be-designed visual (mockups
-         under review) and are not mounted yet. -->
+    <!-- "Что нового" after an update, then one-at-a-time sidebar spotlight hints
+         with an animated arrow to the new section (#2749). -->
     <WhatsNewModal />
+    <SidebarSpotlight />
   </div>
 </template>
 

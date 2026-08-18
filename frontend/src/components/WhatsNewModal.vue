@@ -62,6 +62,11 @@ function close() {
   max-width: calc(100vw - 32px);
   border-radius: 14px;
   background: var(--t-surface);
+  /* Glowing accent card, matching the picked spotlight popover style. */
+  border: 1px solid color-mix(in srgb, var(--t-primary) 45%, var(--t-border));
+  box-shadow:
+    0 18px 50px rgba(124, 92, 255, 0.26),
+    0 0 0 1px color-mix(in srgb, var(--t-primary) 26%, transparent);
 }
 .wn-head {
   display: flex;

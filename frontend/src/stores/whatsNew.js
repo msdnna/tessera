@@ -32,6 +32,9 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
   const loaded = ref(false)
   // The release entries to show in the modal this session (computed on load).
   const pending = ref([])
+  // Spotlight hints to show one-at-a-time AFTER the modal is dismissed. Kept
+  // separate from `pending` so dismissing the modal doesn't wipe the queue.
+  const spotlightQueue = ref([])
 
   function has(key) {
     return acked.value.has(key)
@@ -72,29 +75,50 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
     }
 
     const highest = ackedVersions.reduce((m, v) => (cmp(v, m) > 0 ? v : m), '0.0.0')
-    pending.value = WHATS_NEW.filter(
+    const releases = WHATS_NEW.filter(
       (e) => cmp(e.version, highest) > 0 && cmp(e.version, currentVersion) <= 0,
     ).sort((a, b) => cmp(b.version, a.version))
+    pending.value = releases
+
+    // Spotlights from those releases the user hasn't dismissed yet, newest first,
+    // de-duplicated by navKey. Snapshotted here so it outlives dismissModal().
+    const seen = new Set()
+    spotlightQueue.value = releases
+      .map((e) => e.spotlight)
+      .filter((s) => s && !has(SPOTLIGHT_PREFIX + s.navKey))
+      .filter((s) => (seen.has(s.navKey) ? false : seen.add(s.navKey)))
   }
 
   // Called when the user dismisses the modal: mark every shown release seen, and
-  // advance the baseline to the current build.
+  // advance the baseline to the current build. The spotlight queue is untouched
+  // and starts showing once the modal is gone.
   async function dismissModal() {
     const keys = pending.value.map((e) => WHATSNEW_PREFIX + e.version)
     pending.value = []
     await Promise.all([...keys, WHATSNEW_PREFIX + currentVersion].map(ack))
   }
 
-  // Spotlights the user hasn't dismissed yet, drawn from the pending releases.
-  const spotlights = computed(() =>
-    pending.value
-      .map((e) => e.spotlight)
-      .filter((s) => s && !has(SPOTLIGHT_PREFIX + s.navKey)),
+  // The spotlight to show right now: the head of the queue, but only once the
+  // modal is closed (modal first, then spotlights one at a time).
+  const currentSpotlight = computed(() =>
+    pending.value.length === 0 ? spotlightQueue.value[0] || null : null,
   )
 
-  function dismissSpotlight(navKey) {
-    return ack(SPOTLIGHT_PREFIX + navKey)
+  async function dismissSpotlight(navKey) {
+    spotlightQueue.value = spotlightQueue.value.filter((s) => s.navKey !== navKey)
+    await ack(SPOTLIGHT_PREFIX + navKey)
   }
 
-  return { acked, loaded, pending, spotlights, load, has, ack, dismissModal, dismissSpotlight }
+  return {
+    acked,
+    loaded,
+    pending,
+    spotlightQueue,
+    currentSpotlight,
+    load,
+    has,
+    ack,
+    dismissModal,
+    dismissSpotlight,
+  }
 })
