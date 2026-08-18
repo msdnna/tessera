@@ -110,6 +110,7 @@ const {
   gitlabCanCreate,
   gitlabFetchTemplates,
   gitlabIntegrationId,
+  gitlabCanGroup,
   cardSize,
   stackFields,
   showEmpty,
@@ -701,11 +702,20 @@ const colWidth = computed(() => {
   // plus a few px slack so sub-pixel rounding can't trip the horizontal scrollbar.
   const reserved =
     (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 4 + nCollapsed * STRIP_W
-  const w = Math.floor((cw - reserved) / nExpanded)
+  const fit = Math.floor((cw - reserved) / nExpanded)
   // Fill the viewport while comfortable; the width band comes from the chosen card
   // size (compact narrower, large wider), so columns never get too narrow to hold
   // their fields and scroll horizontally once they'd shrink past the band's min.
-  return Math.min(Math.max(w, cardMin.value), cardCap.value)
+  //
+  // A `fit`-wide column always fits the row (that's how `reserved` is derived);
+  // clamping UP to the band min is what can overrun the board by a couple px and raise
+  // a full-width horizontal scrollbar for columns that essentially fit. So only clamp
+  // up — and let the board scroll — once columns would get *meaningfully* narrower than
+  // the min; within a gap's worth of it, keep the fitting width so no stray scrollbar
+  // appears when everything is already visible (#2743).
+  if (fit > cardCap.value) return cardCap.value
+  if (fit >= cardMin.value - GAP) return fit
+  return cardMin.value
 })
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 
@@ -908,6 +918,9 @@ async function loadWorkspaceMeta() {
   gitlabIntegrationId.value = gi.id || null
   gitlabCanCreate.value = gi.enabled === true && gi.writeback?.push_create === true
   gitlabFetchTemplates.value = gitlabCanCreate.value && gi.writeback?.fetch_templates === true
+  // Grouping is its own flag, not a sub-option of push_create: an integration may push
+  // subtasks into an existing issue hierarchy without allowing issue creation from tasks.
+  gitlabCanGroup.value = gi.enabled === true && gi.writeback?.push_children === true
   // Prefixes whose tags are governed by a status/priority/meta GitLab rule — hidden
   // from tag pickers so they can't be toggled out of sync with the mapped field.
   // Collected across every integration that targets this board (multi-binding).
@@ -1482,6 +1495,7 @@ async function restoreFromArchive(taskId) {
             ref="searchEl"
             v-model="filters.q"
             class="composer-search"
+            data-testid="board-search"
             placeholder="Поиск по названию…"
           />
           <button
@@ -1698,6 +1712,9 @@ async function restoreFromArchive(taskId) {
           <template #item="{ element: dcol }">
             <div
               class="col"
+              data-testid="column"
+              :data-column-key="dcol.key"
+              :data-column-name="dcol.name"
               :class="{ collapsed: colCollapsedNow(dcol) }"
               :style="{
                 '--col-accent': dcol.color || 'var(--t-primary)',
@@ -1779,7 +1796,11 @@ async function restoreFromArchive(taskId) {
               </draggable>
 
               <template v-if="!archivedMode">
-                <div v-if="addingInColumn === dcol.key" class="add-task-input">
+                <div
+                  v-if="addingInColumn === dcol.key"
+                  class="add-task-input"
+                  data-testid="add-task-input"
+                >
                   <n-input
                     :ref="(el) => (taskInput = el)"
                     v-model:value="newTaskTitle"
@@ -1792,7 +1813,14 @@ async function restoreFromArchive(taskId) {
                     @blur="submitAddTask(dcol)"
                   />
                 </div>
-                <n-button v-else text size="tiny" class="add-btn" @click="startAddTask(dcol)">
+                <n-button
+                  v-else
+                  text
+                  size="tiny"
+                  class="add-btn"
+                  data-testid="add-task-button"
+                  @click="startAddTask(dcol)"
+                >
                   ＋ Создать задачу
                 </n-button>
               </template>
@@ -2248,6 +2276,11 @@ async function restoreFromArchive(taskId) {
   align-items: flex-start;
   overflow-x: auto;
   padding-bottom: 8px;
+  /* When a task is open in the fixed sidebar panel it covers the board's right edge;
+     reserve exactly the panel's width of scroll slack so every column can be scrolled
+     out from under it (#2743). Zero when no panel is open — no reserve, no scrollbar
+     (a flex spacer would drag the `gap` in even at 0 width and force a stray scroll). */
+  padding-right: var(--task-panel-w, 0px);
 }
 .cols {
   display: flex;

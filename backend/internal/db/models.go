@@ -45,6 +45,97 @@ type BoardView struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Document struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	ParentID    *uuid.UUID `json:"parent_id"`
+	ProjectID   *uuid.UUID `json:"project_id"`
+	AuthorID    *uuid.UUID `json:"author_id"`
+	Title       string     `json:"title"`
+	Slug        string     `json:"slug"`
+	Icon        string     `json:"icon"`
+	Content     []byte     `json:"content"`
+	Position    float64    `json:"position"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Preview     string     `json:"preview"`
+}
+
+type DocumentApproval struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	VersionID  uuid.UUID  `json:"version_id"`
+	Title      string     `json:"title"`
+	Status     string     `json:"status"`
+	Mode       string     `json:"mode"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ClosedAt   *time.Time `json:"closed_at"`
+}
+
+type DocumentApprovalStep struct {
+	ID           uuid.UUID  `json:"id"`
+	ApprovalID   uuid.UUID  `json:"approval_id"`
+	ApproverID   *uuid.UUID `json:"approver_id"`
+	ApproverName string     `json:"approver_name"`
+	Position     int32      `json:"position"`
+	Status       string     `json:"status"`
+	Comment      string     `json:"comment"`
+	Signature    string     `json:"signature"`
+	DecidedAt    *time.Time `json:"decided_at"`
+}
+
+type DocumentComment struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	BlockID    string     `json:"block_id"`
+	ParentID   *uuid.UUID `json:"parent_id"`
+	AuthorID   *uuid.UUID `json:"author_id"`
+	Body       string     `json:"body"`
+	Quote      string     `json:"quote"`
+	ResolvedAt *time.Time `json:"resolved_at"`
+	ResolvedBy *uuid.UUID `json:"resolved_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type DocumentTaskLink struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	TaskID     uuid.UUID  `json:"task_id"`
+	BlockID    string     `json:"block_id"`
+	Quote      string     `json:"quote"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+type DocumentTemplate struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	AuthorID    *uuid.UUID `json:"author_id"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Icon        string     `json:"icon"`
+	Content     []byte     `json:"content"`
+	Preview     string     `json:"preview"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type DocumentVersion struct {
+	ID         uuid.UUID  `json:"id"`
+	DocumentID uuid.UUID  `json:"document_id"`
+	Revision   int32      `json:"revision"`
+	AuthorID   *uuid.UUID `json:"author_id"`
+	Title      string     `json:"title"`
+	Content    []byte     `json:"content"`
+	Preview    string     `json:"preview"`
+	Label      string     `json:"label"`
+	Manual     bool       `json:"manual"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
 type DueNotificationState struct {
 	TaskID      uuid.UUID `json:"task_id"`
 	UserID      uuid.UUID `json:"user_id"`
@@ -124,6 +215,9 @@ type GitlabLink struct {
 	EstimateOverridden  bool       `json:"estimate_overridden"`
 	GlSnapshot          []byte     `json:"gl_snapshot"`
 	MilestoneOverridden bool       `json:"milestone_overridden"`
+	GlIsGroup           bool       `json:"gl_is_group"`
+	GlWorkItemID        string     `json:"gl_work_item_id"`
+	GlParentGlobalID    string     `json:"gl_parent_global_id"`
 }
 
 type GitlabMilestoneLink struct {
@@ -179,6 +273,14 @@ type GitlabSyncRun struct {
 	StartedAt     time.Time  `json:"started_at"`
 	FinishedAt    *time.Time `json:"finished_at"`
 	Mode          string     `json:"mode"`
+}
+
+type GitlabUpload struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	SourceKey     string    `json:"source_key"`
+	GlUrl         string    `json:"gl_url"`
+	GlMarkdown    string    `json:"gl_markdown"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type GitlabWriteback struct {
@@ -457,6 +559,8 @@ type TaskComment struct {
 	GlAuthorLogin     string     `json:"gl_author_login"`
 	GlAuthorName      string     `json:"gl_author_name"`
 	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
+	ParentID          *uuid.UUID `json:"parent_id"`
+	GlDiscussionID    string     `json:"gl_discussion_id"`
 }
 
 type TaskEvent struct {
@@ -508,6 +612,12 @@ type User struct {
 	Bio           string    `json:"bio"`
 	Company       string    `json:"company"`
 	JobTitle      string    `json:"job_title"`
+}
+
+type UserAcknowledgement struct {
+	UserID uuid.UUID `json:"user_id"`
+	Key    string    `json:"key"`
+	AckAt  time.Time `json:"ack_at"`
 }
 
 type UserAvatar struct {

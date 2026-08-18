@@ -6,8 +6,16 @@ RUN apk add --no-cache git
 COPY go.mod go.sum ./
 RUN go mod download
 
+# Build metadata surfaced by GET /api/version. The build context is ./backend
+# (no .git), so these are passed in from deploy/build-and-save.sh; both default
+# to empty and the API omits an empty field.
+ARG GIT_COMMIT=
+ARG BUILD_DATE=
+
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o tessera . \
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags="-s -w -X main.commit=${GIT_COMMIT} -X main.builtAt=${BUILD_DATE}" \
+      -o tessera . \
  && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o migrate ./cmd/migrate
 
 # Distroless: no shell, minimal attack surface. Static binary (CGO disabled).

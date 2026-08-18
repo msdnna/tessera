@@ -113,6 +113,63 @@ jobs:
           path: _badges/backend.json
           retention-days: 1
 
+  # Black-box e2e (#2709): builds the real binaries and runs them as
+  # subprocesses against a throwaway database — main(), the production config
+  # guards, migration rollback, SIGTERM draining, real sockets. A job of its own
+  # rather than a step inside Backend, so lint/unit feedback stays fast and a
+  # failure here reads as its own line.
+  backend-e2e:
+    name: Backend e2e
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tessera
+          POSTGRES_PASSWORD: tessera
+          POSTGRES_DB: tessera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tessera -d tessera_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      # The suite creates (and drops) its own database next to this one; the
+      # migration test rolls the schema back, so it must not share.
+      TEST_DATABASE_URL: postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same toolchain-resolution dance as the Backend job: setup-go ignores the
+      # `toolchain` directive, and the suite shells out to build with it.
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      # Failures carry the subprocess's own stderr in the test output, so there
+      # is nothing separate to upload as an artifact.
+      - name: End-to-end suite
+        run: make test-e2e-backend GO=go
+
+      # The image tier is the expensive one (a docker build from scratch), and
+      # what it guards — a broken Dockerfile — only matters at release time. Push
+      # to a shared branch, not every PR.
+      - name: Image tier (docker build + boot)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          cd backend && E2E_GO=go E2E_DOCKER=1 go test -tags=e2e -count=1 \
+            -timeout 30m -run TestDockerImageBootsAndServes ./e2e/...
+
   web:
     name: Web
     needs: changes
@@ -162,6 +219,87 @@ jobs:
           path: _badges/web.json
           retention-days: 1
 
+  web-e2e:
+    name: Web e2e
+    needs: changes
+    # Push-only, not on every PR: the browser suite is minutes-long (bounded, but
+    # far slower than the lint/unit checks), so it must not gate a PR merge — the
+    # same pattern as the Android emulator smoke below. It runs post-merge on
+    # develop/main to catch regressions before the branch moves on; the fast
+    # lint/unit/backend jobs remain the PR gate. Kept a separate job so a flake
+    # reads as its own red line rather than failing the `web` unit job.
+    if: ${{ needs.changes.outputs.web == 'true' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    # Hard ceiling so a broad breakage can never grind for an hour again (a runaway
+    # is also caught earlier by Playwright's maxFailures bail-out).
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tessera
+          POSTGRES_PASSWORD: tessera
+          POSTGRES_DB: tessera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tessera -d tessera_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same toolchain dance as the backend job: setup-go ignores `toolchain`.
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      - name: Start backend on :8092 (tessera_test)
+        run: make e2e-backend-up GO=go
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install
+        working-directory: frontend
+        run: corepack yarn install --immutable
+
+      # Only chromium, and only in CI: the dev box already has the matching
+      # browser cached and its network can't reach the CDN (see the task).
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: corepack yarn playwright install --with-deps chromium
+
+      - name: Run e2e (Playwright against the built bundle)
+        run: make test-e2e-frontend
+
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
+
+      - name: Backend log
+        if: ${{ failure() }}
+        run: tail -200 /tmp/tessera-e2e-backend.log || true
+
   android:
     name: Android
     needs: changes
@@ -210,6 +348,187 @@ jobs:
           name: badge-android
           path: _badges/android.json
           retention-days: 1
+
+  android-e2e:
+    name: Android e2e (JVM)
+    needs: changes
+    if: ${{ needs.changes.outputs.android == 'true' }}
+    runs-on: ubuntu-latest
+    # The Robolectric tier: real composables, real ViewModels, real Retrofit and a
+    # real backend, all on the JVM — no emulator, so it is cheap enough to gate
+    # every PR. A separate job from `android` for the same reason `web-e2e` is
+    # separate: a backend-dependent flake must not blur the fast lint/unit signal.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tessera
+          POSTGRES_PASSWORD: tessera
+          POSTGRES_DB: tessera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tessera -d tessera_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same toolchain dance as the backend job: setup-go ignores `toolchain`.
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      - name: Start backend on :8092 (tessera_test)
+        run: make e2e-backend-up GO=go
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 37 (preview channel)
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'cmdline-tools;latest' >/dev/null
+          SDKMGR="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMGR" --licenses --channel=3 >/dev/null 2>&1 || true
+          "$SDKMGR" --channel=3 'platforms;android-37.0'
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Stub android/local.env (Makefile sources it; SOCKS proxy unused in CI)
+        run: touch android/local.env
+
+      - name: Run e2e (Compose UI under Robolectric against the live backend)
+        run: make test-e2e-android
+
+      - name: Upload test report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-e2e-report
+          path: |
+            android/app/build/reports/tests/**
+            android/app/build/test-results/**
+          retention-days: 7
+
+      - name: Backend log
+        if: ${{ failure() }}
+        run: tail -200 /tmp/tessera-e2e-backend.log || true
+
+  android-emulator:
+    name: Android smoke (emulator)
+    needs: changes
+    # Push-only, not on every PR: booting an emulator costs 8-12 minutes, and the
+    # JVM tier above already covers the behaviour on each PR. What this adds is the
+    # part Robolectric substitutes away — real rendering, real touch dispatch, the
+    # real MainActivity — which is worth catching before `develop` moves, not before
+    # every review comment.
+    if: ${{ needs.changes.outputs.android == 'true' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tessera
+          POSTGRES_PASSWORD: tessera
+          POSTGRES_DB: tessera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tessera -d tessera_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      # Runs on the runner host; the emulator reaches it at 10.0.2.2:8092, which
+      # is what E2eBackend resolves to when it is not running under Robolectric.
+      - name: Start backend on :8092 (tessera_test)
+        run: make e2e-backend-up GO=go
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 37 (preview channel)
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'cmdline-tools;latest' >/dev/null
+          SDKMGR="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMGR" --licenses --channel=3 >/dev/null 2>&1 || true
+          "$SDKMGR" --channel=3 'platforms;android-37.0'
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Stub android/local.env (Makefile sources it; SOCKS proxy unused in CI)
+        run: touch android/local.env
+
+      # ubuntu-latest exposes /dev/kvm, but only to the `kvm` group — without this
+      # the emulator falls back to software rendering and the job times out rather
+      # than failing outright.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # `google_apis` rather than `google_apis_playstore`: the play image has no
+      # root adb, which the runner needs to clear app state between tests.
+      - name: Run smoke tier on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -no-boot-anim
+          script: make test-android-instrumented
+
+      - name: Upload test report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-smoke-report
+          path: |
+            android/app/build/reports/androidTests/**
+            android/app/build/outputs/androidTest-results/**
+          retention-days: 7
+
+      - name: Backend log
+        if: ${{ failure() }}
+        run: tail -200 /tmp/tessera-e2e-backend.log || true
 
   mcp:
     name: MCP

@@ -97,6 +97,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -113,6 +114,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.BoardDragOverlay
 import website.msdnna.tessera.ui.components.BoardDragState
 import website.msdnna.tessera.ui.components.ColorDot
@@ -178,7 +180,12 @@ private fun ColumnStrip(
     onExpand: () -> Unit,
 ) {
     Column(
+        // Same anchor as the expanded lane (the two branches are mutually
+        // exclusive): «this column is on the board» has to hold whether or not
+        // it happens to be collapsed — an empty lane collapses on its own when
+        // the board pref says so, and a spec should not fail over that.
         Modifier.animatePlacement().width(44.dp).fillMaxHeight()
+            .testTag(TestTags.boardColumn(lane.id))
             .clip(RoundedCornerShape(RadiusLg))
             .topAccentFrame(
                 accent = laneColor,
@@ -395,6 +402,7 @@ fun KanbanView(
                         // clone tracks the finger) — no collapse, so it doesn't jump.
                         Column(
                             Modifier.animatePlacement().width(colWidth).fillMaxHeight()
+                                .testTag(TestTags.boardColumn(lane.id))
                                 .dragDim(lane.id == draggingColId),
                         ) {
                             Column(
@@ -527,6 +535,7 @@ fun KanbanView(
                                                 nestSlot = nestDrop?.takeIf { it.parentId == task.id }?.let { it.beforeId to it.afterId },
                                                 conflictTaskIds = conflictTaskIds,
                                                 onOpenConflict = onOpenConflict,
+                                                anchored = true,
                                             )
                                         }
                                     }
@@ -544,9 +553,13 @@ fun KanbanView(
                                                             addingColumn = null
                                                         },
                                                         onDismiss = { addingColumn = null },
+                                                        modifier = Modifier.testTag(TestTags.columnTaskInput(lane.id)),
                                                     )
                                                 } else {
-                                                    CreateText("+ СОЗДАТЬ ЗАДАЧУ") { addingColumn = lane.id }
+                                                    CreateText(
+                                                        "+ СОЗДАТЬ ЗАДАЧУ",
+                                                        modifier = Modifier.testTag(TestTags.columnAddTask(lane.id)),
+                                                    ) { addingColumn = lane.id }
                                                 }
                                             }
                                         }
@@ -575,11 +588,13 @@ fun KanbanView(
                                     addingNewColumn = false
                                 },
                                 onDismiss = { addingNewColumn = false },
+                                modifier = Modifier.testTag(TestTags.BOARD_COLUMN_INPUT),
                             )
                         }
                     } else {
                         Box(
                             Modifier.fillMaxWidth()
+                                .testTag(TestTags.BOARD_ADD_COLUMN)
                                 .clip(RoundedCornerShape(RadiusLg))
                                 .dashedBorder(Tessera.colors.border, RadiusLg)
                                 .clickableNoRipple { addingNewColumn = true }
@@ -677,7 +692,7 @@ private val ColumnPalette = listOf(
 )
 
 @Composable
-private fun CreateText(label: String, onClick: () -> Unit) {
+private fun CreateText(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = Tessera.colors
     Text(
         label,
@@ -685,7 +700,7 @@ private fun CreateText(label: String, onClick: () -> Unit) {
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
         textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusMd)).clickableNoRipple(onClick = onClick)
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusMd)).clickableNoRipple(onClick = onClick)
             .padding(vertical = 10.dp),
     )
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -26,7 +27,12 @@ import (
 // from GitLab using the integration owner's token. No expiry — the unguessable
 // signature is the capability, like Tessera's own public uploads.
 
-var uploadRe = regexp.MustCompile(`/uploads/[^\s)"'<>]+`)
+// uploadRe matches a GitLab project-relative upload path. The first alternative is
+// not a target but a guard: Tessera's own "/api/uploads/<name>" ends in the literal
+// "/uploads/…", so without claiming the longer form first the rewrite would fire on
+// the tail and mangle a Tessera URL into "/api/" + a proxy link. RE2 has no
+// lookbehind, so the alternation does the work and rewriteInbound skips the match.
+var uploadRe = regexp.MustCompile(`/api/uploads/[A-Za-z0-9_-]+\.[A-Za-z0-9]+|/uploads/[^\s)"'<>]+`)
 
 // assetGitlabConn resolves the connection for the asset/avatar proxies: the
 // instance service token first, else any workspace binding owner's PAT. Returns the
@@ -91,12 +97,47 @@ func (h *API) avatarProxyURL(wsID uuid.UUID, absURL string) string {
 
 // rewriteAssets rewrites GitLab project-relative "/uploads/…" links in markdown
 // (or inline HTML) to signed proxy URLs so they resolve in Tessera.
-func (h *API) rewriteAssets(body string, wsID uuid.UUID) string {
+//
+// One exception, and it is what keeps outbound mirroring from fighting the conflict
+// detector (task #2713): a link Tessera itself uploaded into GitLab is mapped back
+// to the "/api/uploads/<name>" URL it came from, not to a proxy URL. Otherwise a
+// description that went out with a mirrored image would come back differently shaped
+// than the one `tasks.description` holds, every title_desc comparison would read as
+// diverged, and each edit would re-upload the whole image set.
+func (h *API) rewriteAssets(ctx context.Context, body string, wsID uuid.UUID) string {
 	if body == "" || !strings.Contains(body, "/uploads/") {
 		return body
 	}
-	return uploadRe.ReplaceAllStringFunc(body, func(p string) string {
-		return h.assetProxyURL(wsID, p)
+	return rewriteInbound(body,
+		func(p string) (string, bool) {
+			src, err := h.q.GetGitlabUploadSourceByURL(ctx, db.GetGitlabUploadSourceByURLParams{
+				WorkspaceID: wsID, GlUrl: p,
+			})
+			return src, err == nil && strings.HasPrefix(src, "/api/uploads/")
+		},
+		func(p string) string { return h.assetProxyURL(wsID, p) },
+	)
+}
+
+// rewriteInbound is the pure half of rewriteAssets: ours reports whether a GitLab
+// upload URL is one Tessera itself mirrored (and with which source URL), proxy wraps
+// everything else. Split out so the round-trip against rewriteOutbound is testable
+// without a database.
+//
+// Code spans are skipped, mirroring the outbound rewrite. Beyond not corrupting a
+// snippet, the symmetry is load-bearing: if only one direction skipped code, a body
+// with an upload path inside a fence would come back differently shaped than it went
+// out and title_desc would read as permanently diverged.
+func rewriteInbound(body string, ours func(string) (string, bool), proxy func(string) string) string {
+	return replaceOutsideCode(body, codeRanges(body), uploadRe, func(m []string) string {
+		p := m[0]
+		if strings.HasPrefix(p, "/api/uploads/") {
+			return p // a Tessera URL matched only by the guard alternative — leave it
+		}
+		if src, ok := ours(p); ok {
+			return src
+		}
+		return proxy(p)
 	})
 }
 

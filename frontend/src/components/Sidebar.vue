@@ -17,6 +17,7 @@ import {
 import {
   HomeOutline,
   DocumentTextOutline,
+  DocumentsOutline,
   AlarmOutline,
   RibbonOutline,
   AddOutline,
@@ -170,7 +171,7 @@ async function deleteWorkspace() {
 </script>
 
 <template>
-  <div class="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
+  <div class="sidebar" data-testid="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
     <div class="brand">
       <!-- Expanded: wordmark sized so its text stays no taller than the tool icons
            to its right. Collapsed rail: the mark, a touch larger. -->
@@ -224,7 +225,7 @@ async function deleteWorkspace() {
     <nav class="nav">
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/" class="nav-link" active-class="nav-link-home-noop">
+          <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
             <n-icon :component="HomeOutline" :size="18" />
             <span v-if="!collapsed">Главная</span>
           </router-link>
@@ -233,7 +234,7 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/notes" class="nav-link">
+          <router-link to="/notes" class="nav-link" data-nav="notes">
             <n-icon :component="DocumentTextOutline" :size="18" />
             <span v-if="!collapsed">Заметки</span>
           </router-link>
@@ -242,7 +243,18 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/reminders" class="nav-link">
+          <router-link to="/documents" class="nav-link" data-nav="documents">
+            <n-icon :component="DocumentsOutline" :size="18" />
+            <span v-if="!collapsed" class="nav-label">
+              Документы<sup class="nav-badge">alpha</sup>
+            </span>
+          </router-link>
+        </template>
+        Документы
+      </n-tooltip>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <router-link to="/reminders" class="nav-link" data-nav="reminders">
             <n-icon :component="AlarmOutline" :size="18" />
             <span v-if="!collapsed">Напоминания</span>
           </router-link>
@@ -251,7 +263,7 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/milestones" class="nav-link">
+          <router-link to="/milestones" class="nav-link" data-nav="milestones">
             <n-icon :component="RibbonOutline" :size="18" />
             <span v-if="!collapsed">Этапы</span>
           </router-link>
@@ -452,6 +464,22 @@ async function deleteWorkspace() {
 }
 .nav-link:hover {
   background: var(--t-hover);
+}
+.nav-label {
+  display: inline-flex;
+  align-items: flex-start;
+}
+.nav-badge {
+  margin-left: 3px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: lowercase;
+  color: var(--t-primary);
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
 }
 .nav-link.router-link-active,
 .nav-link.router-link-exact-active {

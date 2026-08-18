@@ -151,6 +151,10 @@ func main() {
 	}
 
 	stop() // restore default signal handling: a second Ctrl-C kills immediately
+	// Document rooms go first: their locks are in-memory, so a participant left
+	// connected here would be shown as "editing" by everyone who reconnects to
+	// the replacement process, with nobody able to release it (#2729).
+	rh.CloseDocRooms()
 	drain(srv, &workers, hub, &hubWG, cfg.GracefulTimeout)
 	// pool.Close runs deferred, after everything that could still use it.
 }

@@ -6,6 +6,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
+import UpdateToast from '@/components/UpdateToast.vue'
 import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
 
 const theme = useThemeStore()
@@ -103,5 +104,7 @@ onUnmounted(() => unlistenOAuth?.())
     </n-message-provider>
     <!-- Global "server slow / unreachable" overlay (branded loader + retry). -->
     <app-connection-overlay />
+    <!-- Global "new version deployed" toast (PWA prompt-mode update, #2748). -->
+    <update-toast />
   </n-config-provider>
 </template>

@@ -624,12 +624,16 @@ const listSubtasksWithMeta = `-- name: ListSubtasksWithMeta :many
 SELECT
     t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
-    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
+    gl.gl_iid,
+    gl.gl_web_url,
+    gl.gl_parent_global_id
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
+LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.parent_id = $1
-GROUP BY t.id
+GROUP BY t.id, gl.task_id
 ORDER BY t.position
 `
 
@@ -659,10 +663,20 @@ type ListSubtasksWithMetaRow struct {
 	MilestoneID        *uuid.UUID       `json:"milestone_id"`
 	TagIds             []uuid.UUID      `json:"tag_ids"`
 	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
+	GlIid              *int64           `json:"gl_iid"`
+	GlWebUrl           *string          `json:"gl_web_url"`
+	GlParentGlobalID   *string          `json:"gl_parent_global_id"`
 }
 
 // ListSubtasksWithMeta returns a parent's subtasks with tag/assignee ids, so the
 // task modal can render a kanban-style hover card for each one.
+//
+// The three gl_* columns are the subtask's GitLab hierarchy state (#2592), which the
+// subtasks tab renders per row: gl_iid non-null means the subtask has its own issue,
+// and an EMPTY gl_parent_global_id on top of that is precisely "created and linked,
+// but GitLab did not accept it into the hierarchy" — the state that offers a retry.
+// Joined here rather than fetched per row because the tab renders the whole list at
+// once; gitlab_links is keyed by task_id, so this cannot multiply rows.
 func (q *Queries) ListSubtasksWithMeta(ctx context.Context, parentID *uuid.UUID) ([]ListSubtasksWithMetaRow, error) {
 	rows, err := q.db.Query(ctx, listSubtasksWithMeta, parentID)
 	if err != nil {
@@ -698,6 +712,9 @@ func (q *Queries) ListSubtasksWithMeta(ctx context.Context, parentID *uuid.UUID)
 			&i.MilestoneID,
 			&i.TagIds,
 			&i.AssigneeIds,
+			&i.GlIid,
+			&i.GlWebUrl,
+			&i.GlParentGlobalID,
 		); err != nil {
 			return nil, err
 		}

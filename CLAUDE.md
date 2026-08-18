@@ -115,6 +115,8 @@ make dev             # Postgres в Docker + backend на :8090 (host)
 make migrate         # применить миграции (host → localhost:5432)
 make up / down / logs
 make lint / test     # агрегаты; есть lint-backend/-frontend/-android, test-*
+make test-e2e-backend       # чёрный ящик: настоящие бинари + одноразовая БД (build-tag e2e)
+make test-e2e-backend-docker # то же + сборка и старт образа (минуты)
 make version         # версии всех компонентов
 make bump-api  BUMP=minor   # + bump-web / bump-android
 ```
@@ -126,11 +128,30 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
 - **БД:** боевая `tessera` (контейнер `tessera-postgres`, том `tessera_postgres_data`,
   tessera/tessera, :5432) — **НИКОГДА не TRUNCATE/DROP/`down -v`**. E2e — только против
   `tessera_test`. После новой миграции прогонять migrate И на `tessera`, И на `tessera_test`
-  (аддитивны → безопасно). См. скилл **tessera-e2e**.
+  (аддитивны → безопасно). См. скилл **tessera-e2e**. Автоматический e2e
+  (`backend/e2e/`, `make test-e2e-backend`) создаёт **свою** одноразовую БД
+  `tessera_e2e_<runId>` рядом и дропает её в конце — он делает `migrate down`,
+  которому нельзя на общей `tessera_test`.
 - **Порты:** dev backend :8090 (budget держит :8080), Vite :5174, docker-фронт :8083.
   Для throwaway-e2e бери порт **8092+** (на :8090 может висеть зомби со старым кодом).
 - **E2e-скрипты:** `bash <<'SCRIPT'` (дефолтный zsh ломается на uuid в арифметике);
   JSON парсить `python3`, не jq-бинарём.
+- **Web e2e (Playwright, #2710):** `make e2e-backend-up` (бэкенд :8092 против `tessera_test`)
+  → `make test-e2e-frontend` (сборка + прогон против `vite preview` :4174) →
+  `make e2e-backend-down`. Спеки в `frontend/e2e/`, **не** в `frontend/tests/` (там vitest).
+  `@playwright/test` пинуется **ровно 1.62.0** под уже скачанный chromium в
+  `~/.cache/ms-playwright`; `playwright install` локально не запускать — CDN недоступен.
+- **Android e2e (#2711) — два яруса, харнесс общий** (`android/app/src/e2eShared`, он же
+  в `src/test` и в `src/androidTest`). Ярус A: Compose UI Test под **Robolectric** против
+  того же бэкенда на :8092 — `make e2e-backend-up` → `make test-e2e-android`. Спеки в
+  `app/src/test/java/.../e2e/`, из `make test-android` отфильтрованы (`-Pe2e`). Ярус B:
+  инструментальные smoke-тесты (`app/src/androidTest/.../smoke/`) — `make test-android-instrumented`,
+  нужен девайс/эмулятор; без него компиляцию проверяет `make build-android-instrumented`.
+  Адрес бэкенда `E2eBackend` выбирает сам: Robolectric → `localhost`, устройство → `10.0.2.2`.
+  Якоря — `Modifier.testTag` из реестра `ui/TestTags.kt`, **не** тексты (локализованы и
+  переписываются). Новый Kotlin-сорс-сет надо руками добавлять в `ktlintSources`/`detekt.source`
+  **и** регистрировать через `sourceSets { ….kotlin.srcDir(…) }` — `java.srcDirs` Kotlin
+  больше не компилирует, каталог молча выпадает из сборки.
 
 ## Дизайн-язык (важно — легко нарушить)
 

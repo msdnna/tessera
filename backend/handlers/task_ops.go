@@ -531,11 +531,22 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 		}
 		boardID, columnID = parent.BoardID, parent.ColumnID
 	}
+	prevParent := t.ParentID
 	updated, err := h.q.SetTaskParent(c, db.SetTaskParentParams{
 		ID: t.ID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
 	})
 	if err != nil {
 		return t, err
+	}
+	// Mirror the move in GitLab's hierarchy (#2592). Re-parenting to a different parent
+	// is one attach: workItemUpdate replaces the parent, so an explicit detach first
+	// would only produce a window where the child hangs at top-level.
+	actor := middleware.CurrentUser(c)
+	switch {
+	case parentID != nil:
+		h.enqueueChildAttach(c, t.ID, *parentID, actor)
+	case prevParent != nil:
+		h.enqueueChildDetach(c, t.ID, *prevParent, actor)
 	}
 	h.broadcastAs(c, wsID, "task.moved", updated)
 	return updated, nil
@@ -587,6 +598,7 @@ func (h *API) applyCreateSubtask(c *gin.Context, parent db.Task, wsID uuid.UUID,
 		return db.Task{}, err
 	}
 	h.logEvent(c, sub.ID, "created", nil)
+	h.enqueueChildAttach(c, sub.ID, parent.ID, uid) // GitLab child work item (#2592)
 	h.broadcastAs(c, wsID, "task.created", sub)
 	return sub, nil
 }

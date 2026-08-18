@@ -12,6 +12,48 @@ import (
 	"github.com/google/uuid"
 )
 
+const searchDocuments = `-- name: SearchDocuments :many
+SELECT id, title, slug
+FROM documents
+WHERE workspace_id = $1
+  AND title ILIKE '%' || $2 || '%'
+ORDER BY updated_at DESC
+LIMIT 25
+`
+
+type SearchDocumentsParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Column2     *string   `json:"column_2"`
+}
+
+type SearchDocumentsRow struct {
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+	Slug  string    `json:"slug"`
+}
+
+// SearchDocuments matches on the title only: in D1 `content` is empty, and
+// full-text over the block jsonb is a D2 conversation.
+func (q *Queries) SearchDocuments(ctx context.Context, arg SearchDocumentsParams) ([]SearchDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, searchDocuments, arg.WorkspaceID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchDocumentsRow
+	for rows.Next() {
+		var i SearchDocumentsRow
+		if err := rows.Scan(&i.ID, &i.Title, &i.Slug); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchNotes = `-- name: SearchNotes :many
 SELECT id, title, slug
 FROM notes

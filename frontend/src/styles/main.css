@@ -185,6 +185,31 @@
   color: #fff !important;
 }
 
+/* ── NDialog ────────────────────────────────────────────────────────────────
+   Same treatment as NPopconfirm above, for the cases a confirmation cannot hang
+   off a trigger element — a menu item, e.g. «Действия → Удалить документ» in the
+   documents view. Without this the dialog's confirm button is the only flat
+   non-neutral button in the app. */
+.n-dialog .n-dialog__action .n-button--primary-type:not(.n-button--ghost) {
+  background-image: var(--t-accent-grad) !important;
+  border: none !important;
+  color: #fff !important;
+}
+.n-dialog .n-dialog__action .n-button--error-type:not(.n-button--ghost) {
+  background-image: var(--t-error-grad) !important;
+  border: none !important;
+  color: #fff !important;
+}
+.n-dialog .n-dialog__icon .n-base-icon,
+.n-dialog .n-dialog__icon .n-base-icon svg {
+  fill: url(#t-accent-grad-svg) !important;
+  color: transparent !important;
+}
+.n-dialog.n-dialog--icon-left.n-dialog--error-type .n-dialog__icon .n-base-icon,
+.n-dialog.n-dialog--icon-left.n-dialog--error-type .n-dialog__icon .n-base-icon svg {
+  fill: url(#t-error-grad-svg) !important;
+}
+
 html,
 body,
 #app {
@@ -462,6 +487,22 @@ body {
   padding: 0 3px;
   font-weight: 500;
 }
+/* "#123" cross-reference chip. Lives here, not in RichContent: scoped selectors
+   never reach v-html content. Flat and neutral — a reference is a pointer, not an
+   action, and a description can be dense with them. */
+.task-ref {
+  color: var(--t-text2);
+  background: var(--t-hover);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+.task-ref:hover {
+  color: var(--t-primary);
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
+}
 
 /* Scrollable dropdown menus (e.g. the board composer's tag filter list) cap at
    the viewport instead of running off the bottom of the page. Naive's scrollbar
@@ -609,4 +650,39 @@ body {
 .n-empty .n-empty__icon {
   color: var(--t-primary);
   opacity: 0.85;
+}
+
+/* Borderless title field: an n-input that reads as heading text until you click
+   into it. Used by the task modal and the document view — one rule, so the two
+   titles cannot drift apart. The class lands on the NInput ROOT (attr
+   fallthrough), which IS `.n-input`, so the vars go on `.plain` itself and
+   inherit inward; !important beats the inline values Naive writes. */
+.plain {
+  --n-color: transparent !important;
+  --n-color-focus: transparent !important;
+}
+.plain .n-input__border,
+.plain .n-input__state-border {
+  display: none !important;
+}
+
+/* Sidebar spotlight (#2749): the target nav item nods toward the arrow as it
+   lands. Global because the hint overlay (SidebarSpotlight.vue) toggles the
+   class on a Sidebar nav-link in a different component's scope. */
+@keyframes sl-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+.nav-link.sl-nudge {
+  animation: sl-nudge 1.1s ease-in-out 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-link.sl-nudge {
+    animation: none;
+  }
 }

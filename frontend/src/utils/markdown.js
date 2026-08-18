@@ -59,7 +59,7 @@ marked.use(
 // Attributes the rich editor emits that DOMPurify must preserve: link targets
 // and mention chips (`<span data-type="mention" data-id="…">@Name</span>`).
 const SANITIZE_OPTS = {
-  ADD_ATTR: ['target', 'rel', 'data-type', 'data-id', 'data-label', 'class'],
+  ADD_ATTR: ['target', 'rel', 'data-type', 'data-id', 'data-label', 'data-task-ref', 'class'],
 }
 
 // On desktop (Tauri) the webview is served from a custom protocol, so the
@@ -98,31 +98,90 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// highlightMentions wraps "@…" tokens in a styled span. Known member display
-// names (which may contain spaces, e.g. "@Ann Lee") are matched first; any other
-// "@handle" (a username like @v.sokolov from GitLab, not a Tessera user) is also
-// highlighted via a generic fallback token. Operates on rendered HTML and only
-// at text boundaries to avoid touching tags/attributes.
+// The chip text is lifted out of already-rendered HTML, so `<`/`>`/`&` are
+// escaped there already — re-escaping `&` would double it ("&amp;amp;"). Only a
+// bare quote can still break out of the attribute, so that is all we touch.
+function escapeAttrFromHtml(s) {
+  return String(s).replace(/"/g, '&quot;')
+}
+
+// highlightMentions wraps "@…" tokens in a styled span. Known members are matched
+// on both `label` (what the composer inserts today — a GitLab login) and `display`
+// (their name): comments written before mentions switched to logins still hold
+// "@Евгений Полянский", and matching only the label would leave them highlighting
+// just the first word via the generic token below. Any other "@handle" (a username
+// like @v.sokolov not tied to a known member) is highlighted via a generic fallback
+// token. Operates on rendered HTML, only at text boundaries, to avoid touching
+// tags/attributes.
+//
+// The chip carries who it names — `data-type/data-id/data-label`, the same
+// contract the legacy TipTap-era chips use (and already allowed by
+// SANITIZE_OPTS), so hover cards resolve on old and new content alike. `data-id`
+// is present only when the token matched a known member; a generic handle gets
+// the label alone.
 function highlightMentions(html, members) {
-  const alts = (members || [])
-    .map((m) => m.label)
-    .filter(Boolean)
+  const known = (members || []).filter((m) => m.label || m.display)
+  // Map both handles a member can be written by to the member. A label mapping
+  // wins over a display one so a login-shaped mention resolves to its own row.
+  const byHandle = new Map()
+  for (const m of known) {
+    if (m.label && !byHandle.has(m.label)) byHandle.set(m.label, m)
+    if (m.display && !byHandle.has(m.display)) byHandle.set(m.display, m)
+  }
+  const alts = [...new Set(known.flatMap((m) => [m.label, m.display]).filter(Boolean))]
     .sort((a, b) => b.length - a.length)
     .map(escapeRe)
   // Generic handle: a letter/digit then word chars, dots or hyphens.
   alts.push('[A-Za-z0-9][\\w.-]*')
   const re = new RegExp(`(^|[\\s>(])@(${alts.join('|')})`, 'g')
-  return html.replace(re, '$1<span class="mention">@$2</span>')
+  return html.replace(re, (_, lead, handle) => {
+    const m = byHandle.get(handle)
+    const id = m && m.id ? ` data-id="${escapeAttrFromHtml(m.id)}"` : ''
+    const label = ` data-label="${escapeAttrFromHtml(handle)}"`
+    return `${lead}<span class="mention" data-type="mention"${id}${label}>@${handle}</span>`
+  })
+}
+
+// replaceOutsideCode applies `fn` to the stretches of rendered HTML that sit
+// outside <code>/<pre>. Both decorations below rewrite text in already-rendered
+// HTML, and neither may touch a code sample: "#2550" in a diff is not a task
+// link, and "@root" in a shell snippet is not a mention.
+const CODE_BLOCK_RE = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi
+export function replaceOutsideCode(html, fn) {
+  const s = String(html)
+  let out = ''
+  let last = 0
+  for (const m of s.matchAll(CODE_BLOCK_RE)) {
+    out += fn(s.slice(last, m.index)) + m[0]
+    last = m.index + m[0].length
+  }
+  return out + fn(s.slice(last))
+}
+
+// linkTaskRefs turns "#123" into a chip that RichContent resolves and navigates
+// on click. Capped at 7 digits so long numeric strings don't become links; an
+// unknown number simply fails to resolve and tells the user so.
+const TASK_REF_RE = /(^|[\s>([])#(\d{1,7})\b(?!\.\d)/g
+function linkTaskRefs(html) {
+  return html.replace(
+    TASK_REF_RE,
+    (_, lead, n) => `${lead}<a class="task-ref" data-task-ref="${n}" href="#">#${n}</a>`,
+  )
 }
 
 // renderRich renders stored task content for display. Content is Markdown
 // (HTML from the brief TipTap era is passed through too). `members` enables
-// @-mention highlighting in the output.
-export function renderRich(src, members) {
+// @-mention highlighting in the output; `opts.taskRefs` turns "#123" into task
+// links (opt-in — on a board card they would swallow clicks meant for the card).
+export function renderRich(src, members, opts = {}) {
   if (!src) return ''
   const s = String(src)
   const html = looksLikeHtml(s) ? s : marked.parse(s)
-  return DOMPurify.sanitize(highlightMentions(html, members), SANITIZE_OPTS)
+  const decorated = replaceOutsideCode(html, (part) => {
+    const withMentions = highlightMentions(part, members)
+    return opts.taskRefs ? linkTaskRefs(withMentions) : withMentions
+  })
+  return DOMPurify.sanitize(decorated, SANITIZE_OPTS)
 }
 
 // sanitizeSvgFragment cleans a rendered SVG before it reaches the DOM. Mermaid

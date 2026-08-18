@@ -75,3 +75,10 @@ docker-compose.override.yml
 
 # Desktop (Tauri) release output (built + published, not tracked)
 desktop-dist/
+
+# Playwright web e2e (#2710): reports, traces and the per-run seed/session are
+# all generated artifacts — the suite recreates them on every run.
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/e2e/.auth/

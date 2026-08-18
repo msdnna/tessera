@@ -67,16 +67,27 @@ SELECT * FROM tasks WHERE parent_id = $1 ORDER BY position;
 
 -- ListSubtasksWithMeta returns a parent's subtasks with tag/assignee ids, so the
 -- task modal can render a kanban-style hover card for each one.
+--
+-- The three gl_* columns are the subtask's GitLab hierarchy state (#2592), which the
+-- subtasks tab renders per row: gl_iid non-null means the subtask has its own issue,
+-- and an EMPTY gl_parent_global_id on top of that is precisely "created and linked,
+-- but GitLab did not accept it into the hierarchy" — the state that offers a retry.
+-- Joined here rather than fetched per row because the tab renders the whole list at
+-- once; gitlab_links is keyed by task_id, so this cannot multiply rows.
 -- name: ListSubtasksWithMeta :many
 SELECT
     t.*,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
-    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
+    COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
+    gl.gl_iid,
+    gl.gl_web_url,
+    gl.gl_parent_global_id
 FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
+LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.parent_id = $1
-GROUP BY t.id
+GROUP BY t.id, gl.task_id
 ORDER BY t.position;
 
 -- ListBoardSubtasksWithMeta returns every subtask on a board (parent_id set)

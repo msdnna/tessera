@@ -3,6 +3,7 @@ package gitlab
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -247,7 +248,7 @@ func TestCreateIssue(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := New(srv.URL, "tok")
-	created, err := c.CreateIssue(context.Background(), "grp/project", "Title", "Body", []string{"P: High", "T: bug"}, "2026-07-01", []int64{5, 8})
+	created, err := c.CreateIssue(context.Background(), "grp/project", "Title", "Body", []string{"P: High", "T: bug"}, "2026-07-01", []int64{5, 8}, "")
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}
@@ -314,6 +315,65 @@ func TestCreateIssueNote_ReturnsGID(t *testing.T) {
 	}
 	if gid != "gid://gitlab/Note/42" {
 		t.Errorf("gid = %q, want gid://gitlab/Note/42", gid)
+	}
+}
+
+// UploadFile posts real multipart to the project's upload endpoint and returns the
+// project-relative URL GitLab renders the asset by (task #2713).
+func TestUploadFile(t *testing.T) {
+	var gotPath, gotToken, gotSudo, gotName, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		gotToken = r.Header.Get("PRIVATE-TOKEN")
+		gotSudo = r.Header.Get("Sudo")
+		f, hdr, err := r.FormFile("file")
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		defer func() { _ = f.Close() }()
+		gotName = hdr.Filename
+		b, _ := io.ReadAll(f)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"alt":"pic","url":"/uploads/sha1/pic.png","markdown":"![pic](/uploads/sha1/pic.png)"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(srv.URL, "tok").WithSudo("ivan")
+	up, err := c.UploadFile(context.Background(), "grp/project", "pic.png", strings.NewReader("PNGDATA"))
+	if err != nil {
+		t.Fatalf("UploadFile: %v", err)
+	}
+	if up.URL != "/uploads/sha1/pic.png" {
+		t.Errorf("url = %q, want /uploads/sha1/pic.png", up.URL)
+	}
+	if gotPath != "/api/v4/projects/grp%2Fproject/uploads" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if gotToken != "tok" || gotSudo != "ivan" {
+		t.Errorf("auth headers: token=%q sudo=%q", gotToken, gotSudo)
+	}
+	if gotName != "pic.png" || gotBody != "PNGDATA" {
+		t.Errorf("uploaded %q = %q, want pic.png = PNGDATA", gotName, gotBody)
+	}
+}
+
+// A refused upload (too large for the instance, insufficient scope) surfaces as an
+// *APIError so the caller can degrade that one link instead of failing the push.
+func TestUploadFile_ErrorCarriesStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		_, _ = w.Write([]byte(`{"message":"file is too big"}`))
+	}))
+	t.Cleanup(srv.Close)
+	_, err := New(srv.URL, "tok").UploadFile(context.Background(), "grp/project", "big.bin", strings.NewReader("x"))
+	var ae *APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want *APIError, got %v", err)
+	}
+	if ae.Status != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413", ae.Status)
 	}
 }
 

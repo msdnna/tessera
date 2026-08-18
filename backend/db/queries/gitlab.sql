@@ -147,6 +147,36 @@ RETURNING *;
 -- name: SetGitlabLinkSnapshot :exec
 UPDATE gitlab_links SET gl_snapshot = $2 WHERE task_id = $1;
 
+-- ── issue hierarchy: grouped parents and their children (#2592) ──
+
+-- SetGitlabLinkGroup records whether the mirrored issue carries the grouping label.
+-- name: SetGitlabLinkGroup :exec
+UPDATE gitlab_links SET gl_is_group = $2 WHERE task_id = $1;
+
+-- SetGitlabLinkHierarchy caches the issue's own WorkItem gid and its parent's, so the
+-- hierarchy mutation never has to construct a gid from a number.
+-- name: SetGitlabLinkHierarchy :exec
+UPDATE gitlab_links SET gl_work_item_id = $2, gl_parent_global_id = $3 WHERE task_id = $1;
+
+-- ListGitlabChildGlobalIDs returns the GitLab global ids of the linked tasks that are
+-- currently parented under one task. The pull uses it to tell a real detach in GitLab
+-- ("the parent listed its children and this one was not among them") apart from "we
+-- could not list that parent's children this run" — without it, one failed child query
+-- drops every subtask to top-level.
+-- name: ListGitlabChildGlobalIDs :many
+SELECT l.gl_global_id
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.parent_id = $2;
+
+-- CountGitlabChildLinks counts the linked subtasks under a task — the gate that stops
+-- ungrouping a parent that still has GitLab children hanging off it.
+-- name: CountGitlabChildLinks :one
+SELECT count(*)
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.parent_id = $2;
+
 -- SyncUpsertTask updates the synced fields of a linked task without touching its
 -- position (the user may have reordered it on the board).
 -- name: SyncUpdateTask :one
@@ -262,7 +292,7 @@ SELECT gl_user_id FROM gitlab_project_members WHERE integration_id = $1 AND gl_u
 -- next pull dedups by gid. Returns the claimed comment id (no rows → not ours).
 -- name: ClaimPushedUserComment :one
 UPDATE task_comments
-SET gl_note_id = $2, updated_at = now()
+SET gl_note_id = $2, gl_discussion_id = $4, updated_at = now()
 WHERE id = (
     SELECT tc.id FROM task_comments tc
     WHERE tc.task_id = $1
@@ -275,10 +305,45 @@ WHERE id = (
 RETURNING id;
 
 -- UpsertGitlabComment returns whether the row was freshly inserted (xmax = 0) so
--- the sync journal can count new comments rather than re-synced ones.
+-- the sync journal can count new comments rather than re-synced ones. The
+-- conflict branch also refreshes parent_id/gl_discussion_id: that is how already
+-- imported flat comments acquire their thread on the next pull, so no data
+-- migration is needed.
 -- name: UpsertGitlabComment :one
-INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at)
-VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7)
+INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at, parent_id, gl_discussion_id)
+VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7, $8, $9)
 ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
-DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now()
+DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, parent_id = EXCLUDED.parent_id, gl_discussion_id = EXCLUDED.gl_discussion_id, updated_at = now()
 RETURNING (xmax = 0) AS inserted;
+
+-- GetCommentIDByGlNoteID resolves an already-imported GitLab note back to its
+-- Tessera comment, so a reply arriving in a later pull than its root can still
+-- be attached to the right thread.
+-- name: GetCommentIDByGlNoteID :one
+SELECT id FROM task_comments WHERE task_id = $1 AND gl_note_id = $2;
+
+-- ── mirrored assets (Tessera upload → GitLab upload store) ──
+-- The map is read in both directions: outbound to skip re-uploading an asset that is
+-- already in the project's store, inbound (rewriteAssets) to turn our own mirrored
+-- URL back into the Tessera one, so a description round-trips byte-for-byte and
+-- title_desc conflict detection doesn't see a permanent divergence. See migration 0062.
+
+-- name: GetGitlabUpload :one
+SELECT * FROM gitlab_uploads
+WHERE integration_id = $1 AND source_key = $2;
+
+-- name: UpsertGitlabUpload :one
+INSERT INTO gitlab_uploads (integration_id, source_key, gl_url, gl_markdown)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (integration_id, source_key) DO UPDATE
+SET gl_url = EXCLUDED.gl_url, gl_markdown = EXCLUDED.gl_markdown
+RETURNING *;
+
+-- GetGitlabUploadSourceByURL resolves a GitLab upload URL back to the Tessera source
+-- it was mirrored from, scoped to the workspace (rewriteAssets knows the workspace,
+-- not which of its bindings performed the upload).
+-- name: GetGitlabUploadSourceByURL :one
+SELECT u.source_key FROM gitlab_uploads u
+JOIN gitlab_integrations i ON i.id = u.integration_id
+WHERE i.workspace_id = $1 AND u.gl_url = $2
+LIMIT 1;

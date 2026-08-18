@@ -602,6 +602,11 @@ defineExpose({ reload: () => loadRuns() })
 .j-op.delete {
   color: #d03050;
 }
+/* skip — the sync deliberately left something alone (e.g. a parent's children could
+   not be listed, so its subtasks were kept as they were). */
+.j-op.skip {
+  color: #f0a020;
+}
 .j-action-sum {
   flex: 1 1 auto;
   min-width: 0;

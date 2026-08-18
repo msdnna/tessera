@@ -129,6 +129,7 @@ async function submit() {
         <n-input
           v-model:value="email"
           placeholder="you@example.com"
+          data-testid="login-email"
           @input="errors.email = ''"
           @keyup.enter="submit"
         />
@@ -142,11 +143,14 @@ async function submit() {
           v-model:value="password"
           type="password"
           show-password-on="click"
+          data-testid="login-password"
           @input="errors.password = ''"
           @keyup.enter="submit"
         />
       </n-form-item>
-      <n-button type="primary" block :loading="loading" @click="submit">Войти</n-button>
+      <n-button type="primary" block data-testid="login-submit" :loading="loading" @click="submit">
+        Войти
+      </n-button>
     </n-form>
     <template v-if="gitlabEnabled">
       <div class="auth-or"><span>или</span></div>

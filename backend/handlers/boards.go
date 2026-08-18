@@ -11,6 +11,15 @@ import (
 
 // ── Boards ─────────────────────────────────────────────────
 
+// boardScopeView is a board plus the workspace it lives in. Deep-link resolution
+// needs the scope (the client filters realtime events and loads members by it),
+// and both resolvers already hold the id for their access check — so returning
+// it costs no extra query. Embedding keeps the JSON shape flat and additive.
+type boardScopeView struct {
+	db.Board
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
 // CreateBoard adds a board to a project.
 func (h *API) CreateBoard(c *gin.Context) {
 	projectID, ok := parseID(c, "id")
@@ -153,7 +162,7 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, b)
+	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID})
 }
 
 // GetBoard returns a single board by UUID or human-readable slug.
@@ -182,7 +191,7 @@ func (h *API) GetBoard(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	c.JSON(http.StatusOK, b)
+	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID})
 }
 
 // UpdateBoard renames a board.

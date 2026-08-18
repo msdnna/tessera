@@ -113,6 +113,8 @@ func protectedRoutes() []struct{ method, path string } {
 		{"POST", "/tasks/" + u + "/gitlab-assignees"},
 		{"DELETE", "/tasks/" + u + "/gitlab-assignees/someone"},
 		{"POST", "/tasks/" + u + "/gitlab-issue"},
+		{"POST", "/tasks/" + u + "/gitlab-group"},
+		{"DELETE", "/tasks/" + u + "/gitlab-group"},
 		{"GET", "/tasks/" + u + "/events"},
 		{"GET", "/tasks/" + u + "/comments"},
 		{"POST", "/tasks/" + u + "/comments"},

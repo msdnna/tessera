@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   renderMarkdown,
   renderRich,
+  replaceOutsideCode,
   sanitizeSvgFragment,
   toggleTaskMarker,
   toEditorHtml,
@@ -54,13 +55,117 @@ describe('renderRich', () => {
 
   it('highlights known member display names before generic handles', () => {
     const html = renderRich('hi @Ann Lee and @v.sokolov', [{ label: 'Ann Lee' }])
-    expect(html).toContain('<span class="mention">@Ann Lee</span>')
-    expect(html).toContain('<span class="mention">@v.sokolov</span>')
+    expect(html).toContain('>@Ann Lee</span>')
+    expect(html).toContain('>@v.sokolov</span>')
+    expect(html).toContain('class="mention" data-type="mention"')
+  })
+
+  it('stamps the member id on a known mention so hover cards resolve it', () => {
+    const html = renderRich('hi @Ann Lee', [{ id: 'u1', label: 'Ann Lee' }])
+    expect(html).toContain('data-id="u1"')
+    expect(html).toContain('data-label="Ann Lee"')
+  })
+
+  it('gives a generic handle a label but no id — it names no known member', () => {
+    const html = renderRich('hi @v.sokolov', [{ id: 'u1', label: 'Ann Lee' }])
+    expect(html).toContain('data-label="v.sokolov"')
+    expect(html).not.toContain('data-id=')
+  })
+
+  // A name carrying HTML-special characters is already escaped by the Markdown
+  // renderer by the time mentions are matched, so the raw label never matches it
+  // and the generic handle token takes over. That predates the data-attributes;
+  // what matters here is that the chip stays well-formed and the label read back
+  // off the chip is exactly the text it highlighted — no double escaping.
+  it('keeps the chip well-formed for a name the renderer escaped', () => {
+    const html = renderRich('hi @A&B', [{ id: 'u1', label: 'A&B' }])
+    const chip = new DOMParser()
+      .parseFromString(html, 'text/html')
+      .querySelector('[data-type="mention"]')
+    expect(chip.dataset.label).toBe(chip.textContent.replace(/^@/, ''))
+    expect(html).not.toContain('&amp;amp;')
+  })
+
+  it('highlights a mention written as the login', () => {
+    const html = renderRich('hi @e.polyansky', [{ label: 'e.polyansky', display: 'Ann Lee' }])
+    expect(html).toContain('class="mention" data-type="mention"')
+    expect(html).toContain('>@e.polyansky</span>')
+  })
+
+  it('still highlights the full name in comments written before the login switch', () => {
+    // label is the login now, but the stored comment holds the old display name.
+    const html = renderRich('hi @Ann Lee', [{ label: 'e.polyansky', display: 'Ann Lee' }])
+    expect(html).toContain('>@Ann Lee</span>')
+    expect(html).toContain('data-label="Ann Lee"')
+  })
+
+  it('prefers the longer name when one is a prefix of another', () => {
+    const html = renderRich('hi @Ann Lee Smith', [
+      { label: 'a.lee', display: 'Ann Lee' },
+      { label: 'a.lee.smith', display: 'Ann Lee Smith' },
+    ])
+    expect(html).toContain('>@Ann Lee Smith</span>')
   })
 
   it('returns "" for empty input', () => {
     expect(renderRich('')).toBe('')
     expect(renderRich(null)).toBe('')
+  })
+
+  // Behaviour change (#2717): mentions used to be highlighted inside code too,
+  // because the regexp knew nothing about <code>/<pre>. Task refs made that
+  // untenable — "#2550" shows up in diffs and snippets constantly — so both
+  // decorations now run only outside code.
+  it('leaves @handles inside code spans and fences alone', () => {
+    const inline = renderRich('run `sudo -u @root` now', [])
+    expect(inline).toContain('<code>sudo -u @root</code>')
+    expect(inline).not.toContain('<code>sudo -u <span class="mention">')
+
+    const fenced = renderRich('```\ncurl @host\n```', [])
+    expect(fenced).not.toContain('class="mention"')
+  })
+
+  it('links #N task references only when asked', () => {
+    const off = renderRich('see #2550', [])
+    expect(off).not.toContain('task-ref')
+
+    const on = renderRich('see #2550', [], { taskRefs: true })
+    expect(on).toContain('data-task-ref="2550"')
+    expect(on).toContain('>#2550</a>')
+  })
+
+  it('does not link #N inside code', () => {
+    const html = renderRich('fix `#2550` and\n\n```\n-#123\n```', [], { taskRefs: true })
+    expect(html).toContain('<code>#2550</code>')
+    expect(html).not.toContain('data-task-ref')
+  })
+
+  it('ignores over-long digit runs and hex-looking colours', () => {
+    const html = renderRich('#12345678 and #1a2b3c', [], { taskRefs: true })
+    expect(html).not.toContain('data-task-ref')
+  })
+
+  it('keeps <details>/<summary> spoilers through the sanitiser', () => {
+    const html = renderRich('<details><summary>Подробнее</summary>\n\n**тайна**\n\n</details>', [])
+    expect(html).toContain('<details>')
+    expect(html).toContain('<summary>Подробнее</summary>')
+    expect(html).toContain('<strong>тайна</strong>')
+  })
+})
+
+describe('replaceOutsideCode', () => {
+  it('applies the callback only outside code elements', () => {
+    const out = replaceOutsideCode('a<code>b</code>c', (part) => part.toUpperCase())
+    expect(out).toBe('A<code>b</code>C')
+  })
+
+  it('treats a <pre><code> fence as a single untouched block', () => {
+    const out = replaceOutsideCode('x<pre><code>y</code></pre>z', (part) => part.toUpperCase())
+    expect(out).toBe('X<pre><code>y</code></pre>Z')
+  })
+
+  it('passes content through untouched when there is no code at all', () => {
+    expect(replaceOutsideCode('plain', (p) => `[${p}]`)).toBe('[plain]')
   })
 })
 

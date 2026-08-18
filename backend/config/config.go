@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
@@ -67,6 +68,12 @@ type Config struct {
 	// users would lose every picture. Web and Android work either way — turn
 	// MEDIA_REQUIRE_AUTH=true on to stop serving uploads to anonymous callers.
 	MediaRequireAuth bool
+	// Base URL of the LibreOffice conversion sidecar (converter/), e.g.
+	// http://converter:3000. Empty disables office import/export: the Documents
+	// section keeps working in full and only those two actions report themselves
+	// as unavailable. Deliberately empty by default — the sidecar is close to a
+	// gigabyte, and an install that does not want it should not have to opt out.
+	ConverterURL string
 	// Request body ceilings, in bytes. MaxBodyBytes is the blanket limit;
 	// uploads and attachments get their own, larger, budgets.
 	MaxBodyBytes       int64
@@ -89,6 +96,20 @@ const (
 	DefaultMaxAttachmentBytes int64 = 26 << 20 // 25 MiB attachment + framing
 )
 
+// fatal reports a fail-closed misconfiguration and stops the process.
+//
+// Deliberately not log.Fatal: main() calls slog.SetDefault before New(), and
+// that routes the standard log package through the slog handler at INFO level —
+// so on a box running LOG_LEVEL=warn (an ordinary production setting) the guards
+// below would kill the process without printing a word, leaving an operator with
+// an exit code and no reason. slog.Error clears every threshold the logger
+// accepts. Caught by the e2e boot suite (#2709), which asserts the message is
+// still there under LOG_LEVEL=warn.
+func fatal(msg string) {
+	slog.Error(msg)
+	os.Exit(1)
+}
+
 // New reads configuration from the environment. In production
 // (APP_ENV=production) JWT_SECRET and DATABASE_URL must be explicitly set —
 // fail-closed prevents the binary from booting with dev defaults.
@@ -98,7 +119,7 @@ func New() *Config {
 	jwt := os.Getenv("JWT_SECRET")
 	if jwt == "" {
 		if prod {
-			log.Fatal("JWT_SECRET is required in production (APP_ENV=production)")
+			fatal("JWT_SECRET is required in production (APP_ENV=production)")
 		}
 		jwt = "dev-secret-change-in-production-min32chars!"
 		log.Println("WARNING: JWT_SECRET not set — using dev default (do NOT use in production)")
@@ -122,7 +143,7 @@ func New() *Config {
 	}
 	if dbURL == "" {
 		if prod {
-			log.Fatal("DATABASE_URL is required in production (APP_ENV=production)")
+			fatal("DATABASE_URL is required in production (APP_ENV=production)")
 		}
 		dbURL = "postgres://tessera:tessera@localhost:5432/tessera?sslmode=disable"
 		log.Println("WARNING: DATABASE_URL not set — using local dev default")
@@ -133,7 +154,7 @@ func New() *Config {
 	encKey := os.Getenv("ENCRYPTION_KEY")
 	if encKey == "" {
 		if prod {
-			log.Fatal("ENCRYPTION_KEY is required in production (APP_ENV=production)")
+			fatal("ENCRYPTION_KEY is required in production (APP_ENV=production)")
 		}
 		encKey = "dev-encryption-key-change-in-production"
 		log.Println("WARNING: ENCRYPTION_KEY not set — using dev default (stored secrets won't decrypt in prod)")
@@ -179,6 +200,7 @@ func New() *Config {
 		TrustedProxies:     splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
 		RateLimitEnabled:   getEnvBool("RATE_LIMIT_ENABLED", true),
 		MediaRequireAuth:   getEnvBool("MEDIA_REQUIRE_AUTH", false),
+		ConverterURL:       getEnv("CONVERTER_URL", ""),
 		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
 		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
 		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),

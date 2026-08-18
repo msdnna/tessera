@@ -51,7 +51,7 @@ func (q *Queries) AddTaskTagSourced(ctx context.Context, arg AddTaskTagSourcedPa
 
 const claimPushedUserComment = `-- name: ClaimPushedUserComment :one
 UPDATE task_comments
-SET gl_note_id = $2, updated_at = now()
+SET gl_note_id = $2, gl_discussion_id = $4, updated_at = now()
 WHERE id = (
     SELECT tc.id FROM task_comments tc
     WHERE tc.task_id = $1
@@ -65,9 +65,10 @@ RETURNING id
 `
 
 type ClaimPushedUserCommentParams struct {
-	TaskID   uuid.UUID `json:"task_id"`
-	GlNoteID *string   `json:"gl_note_id"`
-	Body     string    `json:"body"`
+	TaskID         uuid.UUID `json:"task_id"`
+	GlNoteID       *string   `json:"gl_note_id"`
+	Body           string    `json:"body"`
+	GlDiscussionID string    `json:"gl_discussion_id"`
 }
 
 // ── synced comments (idempotent by GitLab note id) ─────────
@@ -79,10 +80,36 @@ type ClaimPushedUserCommentParams struct {
 // comment (author_id set, gl_note_id NULL) with the same body on the task, so the
 // next pull dedups by gid. Returns the claimed comment id (no rows → not ours).
 func (q *Queries) ClaimPushedUserComment(ctx context.Context, arg ClaimPushedUserCommentParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, claimPushedUserComment, arg.TaskID, arg.GlNoteID, arg.Body)
+	row := q.db.QueryRow(ctx, claimPushedUserComment,
+		arg.TaskID,
+		arg.GlNoteID,
+		arg.Body,
+		arg.GlDiscussionID,
+	)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const countGitlabChildLinks = `-- name: CountGitlabChildLinks :one
+SELECT count(*)
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.parent_id = $2
+`
+
+type CountGitlabChildLinksParams struct {
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ParentID      *uuid.UUID `json:"parent_id"`
+}
+
+// CountGitlabChildLinks counts the linked subtasks under a task — the gate that stops
+// ungrouping a parent that still has GitLab children hanging off it.
+func (q *Queries) CountGitlabChildLinks(ctx context.Context, arg CountGitlabChildLinksParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countGitlabChildLinks, arg.IntegrationID, arg.ParentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createGitlabIntegration = `-- name: CreateGitlabIntegration :one
@@ -169,7 +196,7 @@ INSERT INTO gitlab_links (
     gl_author_avatar_url, gl_last_state
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id
 `
 
 type CreateGitlabLinkParams struct {
@@ -229,6 +256,9 @@ func (q *Queries) CreateGitlabLink(ctx context.Context, arg CreateGitlabLinkPara
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }
@@ -325,6 +355,25 @@ func (q *Queries) DeleteStaleGitlabTaskTags(ctx context.Context, arg DeleteStale
 		return nil, err
 	}
 	return items, nil
+}
+
+const getCommentIDByGlNoteID = `-- name: GetCommentIDByGlNoteID :one
+SELECT id FROM task_comments WHERE task_id = $1 AND gl_note_id = $2
+`
+
+type GetCommentIDByGlNoteIDParams struct {
+	TaskID   uuid.UUID `json:"task_id"`
+	GlNoteID *string   `json:"gl_note_id"`
+}
+
+// GetCommentIDByGlNoteID resolves an already-imported GitLab note back to its
+// Tessera comment, so a reply arriving in a later pull than its root can still
+// be attached to the right thread.
+func (q *Queries) GetCommentIDByGlNoteID(ctx context.Context, arg GetCommentIDByGlNoteIDParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getCommentIDByGlNoteID, arg.TaskID, arg.GlNoteID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getGitlabCredential = `-- name: GetGitlabCredential :one
@@ -458,7 +507,7 @@ func (q *Queries) GetGitlabIntegrationByProject(ctx context.Context, projectID u
 
 const getGitlabLinkByGlobalID = `-- name: GetGitlabLinkByGlobalID :one
 
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id FROM gitlab_links WHERE integration_id = $1 AND gl_global_id = $2
 `
 
 type GetGitlabLinkByGlobalIDParams struct {
@@ -492,12 +541,15 @@ func (q *Queries) GetGitlabLinkByGlobalID(ctx context.Context, arg GetGitlabLink
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }
 
 const getGitlabLinkByTask = `-- name: GetGitlabLinkByTask :one
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden FROM gitlab_links WHERE task_id = $1
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id FROM gitlab_links WHERE task_id = $1
 `
 
 func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (GitlabLink, error) {
@@ -525,6 +577,9 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }
@@ -543,6 +598,57 @@ func (q *Queries) GetGitlabMemberIDByUsername(ctx context.Context, arg GetGitlab
 	var gl_user_id int64
 	err := row.Scan(&gl_user_id)
 	return gl_user_id, err
+}
+
+const getGitlabUpload = `-- name: GetGitlabUpload :one
+
+SELECT integration_id, source_key, gl_url, gl_markdown, created_at FROM gitlab_uploads
+WHERE integration_id = $1 AND source_key = $2
+`
+
+type GetGitlabUploadParams struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	SourceKey     string    `json:"source_key"`
+}
+
+// ── mirrored assets (Tessera upload → GitLab upload store) ──
+// The map is read in both directions: outbound to skip re-uploading an asset that is
+// already in the project's store, inbound (rewriteAssets) to turn our own mirrored
+// URL back into the Tessera one, so a description round-trips byte-for-byte and
+// title_desc conflict detection doesn't see a permanent divergence. See migration 0062.
+func (q *Queries) GetGitlabUpload(ctx context.Context, arg GetGitlabUploadParams) (GitlabUpload, error) {
+	row := q.db.QueryRow(ctx, getGitlabUpload, arg.IntegrationID, arg.SourceKey)
+	var i GitlabUpload
+	err := row.Scan(
+		&i.IntegrationID,
+		&i.SourceKey,
+		&i.GlUrl,
+		&i.GlMarkdown,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getGitlabUploadSourceByURL = `-- name: GetGitlabUploadSourceByURL :one
+SELECT u.source_key FROM gitlab_uploads u
+JOIN gitlab_integrations i ON i.id = u.integration_id
+WHERE i.workspace_id = $1 AND u.gl_url = $2
+LIMIT 1
+`
+
+type GetGitlabUploadSourceByURLParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	GlUrl       string    `json:"gl_url"`
+}
+
+// GetGitlabUploadSourceByURL resolves a GitLab upload URL back to the Tessera source
+// it was mirrored from, scoped to the workspace (rewriteAssets knows the workspace,
+// not which of its bindings performed the upload).
+func (q *Queries) GetGitlabUploadSourceByURL(ctx context.Context, arg GetGitlabUploadSourceByURLParams) (string, error) {
+	row := q.db.QueryRow(ctx, getGitlabUploadSourceByURL, arg.WorkspaceID, arg.GlUrl)
+	var source_key string
+	err := row.Scan(&source_key)
+	return source_key, err
 }
 
 const getUserIDByGitlabUsername = `-- name: GetUserIDByGitlabUsername :one
@@ -755,6 +861,43 @@ func (q *Queries) ListDueSyncIntegrations(ctx context.Context) ([]GitlabIntegrat
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGitlabChildGlobalIDs = `-- name: ListGitlabChildGlobalIDs :many
+SELECT l.gl_global_id
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.parent_id = $2
+`
+
+type ListGitlabChildGlobalIDsParams struct {
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ParentID      *uuid.UUID `json:"parent_id"`
+}
+
+// ListGitlabChildGlobalIDs returns the GitLab global ids of the linked tasks that are
+// currently parented under one task. The pull uses it to tell a real detach in GitLab
+// ("the parent listed its children and this one was not among them") apart from "we
+// could not list that parent's children this run" — without it, one failed child query
+// drops every subtask to top-level.
+func (q *Queries) ListGitlabChildGlobalIDs(ctx context.Context, arg ListGitlabChildGlobalIDsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listGitlabChildGlobalIDs, arg.IntegrationID, arg.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var gl_global_id string
+		if err := rows.Scan(&gl_global_id); err != nil {
+			return nil, err
+		}
+		items = append(items, gl_global_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1018,6 +1161,40 @@ func (q *Queries) RemoveGitlabAssignee(ctx context.Context, arg RemoveGitlabAssi
 	return err
 }
 
+const setGitlabLinkGroup = `-- name: SetGitlabLinkGroup :exec
+
+UPDATE gitlab_links SET gl_is_group = $2 WHERE task_id = $1
+`
+
+type SetGitlabLinkGroupParams struct {
+	TaskID    uuid.UUID `json:"task_id"`
+	GlIsGroup bool      `json:"gl_is_group"`
+}
+
+// ── issue hierarchy: grouped parents and their children (#2592) ──
+// SetGitlabLinkGroup records whether the mirrored issue carries the grouping label.
+func (q *Queries) SetGitlabLinkGroup(ctx context.Context, arg SetGitlabLinkGroupParams) error {
+	_, err := q.db.Exec(ctx, setGitlabLinkGroup, arg.TaskID, arg.GlIsGroup)
+	return err
+}
+
+const setGitlabLinkHierarchy = `-- name: SetGitlabLinkHierarchy :exec
+UPDATE gitlab_links SET gl_work_item_id = $2, gl_parent_global_id = $3 WHERE task_id = $1
+`
+
+type SetGitlabLinkHierarchyParams struct {
+	TaskID           uuid.UUID `json:"task_id"`
+	GlWorkItemID     string    `json:"gl_work_item_id"`
+	GlParentGlobalID string    `json:"gl_parent_global_id"`
+}
+
+// SetGitlabLinkHierarchy caches the issue's own WorkItem gid and its parent's, so the
+// hierarchy mutation never has to construct a gid from a number.
+func (q *Queries) SetGitlabLinkHierarchy(ctx context.Context, arg SetGitlabLinkHierarchyParams) error {
+	_, err := q.db.Exec(ctx, setGitlabLinkHierarchy, arg.TaskID, arg.GlWorkItemID, arg.GlParentGlobalID)
+	return err
+}
+
 const setGitlabLinkSnapshot = `-- name: SetGitlabLinkSnapshot :exec
 UPDATE gitlab_links SET gl_snapshot = $2 WHERE task_id = $1
 `
@@ -1177,7 +1354,7 @@ SET gl_iid = $2, gl_web_url = $3, gl_updated_at = $4,
     gl_last_state = $11,
     last_synced_at = now()
 WHERE task_id = $1
-RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden
+RETURNING task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id
 `
 
 type UpdateGitlabLinkParams struct {
@@ -1231,30 +1408,38 @@ func (q *Queries) UpdateGitlabLink(ctx context.Context, arg UpdateGitlabLinkPara
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }
 
 const upsertGitlabComment = `-- name: UpsertGitlabComment :one
-INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at)
-VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7)
+INSERT INTO task_comments (task_id, author_id, body, gl_note_id, gl_author_login, gl_author_name, gl_author_avatar_url, created_at, updated_at, parent_id, gl_discussion_id)
+VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $7, $8, $9)
 ON CONFLICT (gl_note_id) WHERE gl_note_id IS NOT NULL
-DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, updated_at = now()
+DO UPDATE SET body = EXCLUDED.body, gl_author_name = EXCLUDED.gl_author_name, gl_author_avatar_url = EXCLUDED.gl_author_avatar_url, parent_id = EXCLUDED.parent_id, gl_discussion_id = EXCLUDED.gl_discussion_id, updated_at = now()
 RETURNING (xmax = 0) AS inserted
 `
 
 type UpsertGitlabCommentParams struct {
-	TaskID            uuid.UUID `json:"task_id"`
-	Body              string    `json:"body"`
-	GlNoteID          *string   `json:"gl_note_id"`
-	GlAuthorLogin     string    `json:"gl_author_login"`
-	GlAuthorName      string    `json:"gl_author_name"`
-	GlAuthorAvatarUrl string    `json:"gl_author_avatar_url"`
-	CreatedAt         time.Time `json:"created_at"`
+	TaskID            uuid.UUID  `json:"task_id"`
+	Body              string     `json:"body"`
+	GlNoteID          *string    `json:"gl_note_id"`
+	GlAuthorLogin     string     `json:"gl_author_login"`
+	GlAuthorName      string     `json:"gl_author_name"`
+	GlAuthorAvatarUrl string     `json:"gl_author_avatar_url"`
+	CreatedAt         time.Time  `json:"created_at"`
+	ParentID          *uuid.UUID `json:"parent_id"`
+	GlDiscussionID    string     `json:"gl_discussion_id"`
 }
 
 // UpsertGitlabComment returns whether the row was freshly inserted (xmax = 0) so
-// the sync journal can count new comments rather than re-synced ones.
+// the sync journal can count new comments rather than re-synced ones. The
+// conflict branch also refreshes parent_id/gl_discussion_id: that is how already
+// imported flat comments acquire their thread on the next pull, so no data
+// migration is needed.
 func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabCommentParams) (bool, error) {
 	row := q.db.QueryRow(ctx, upsertGitlabComment,
 		arg.TaskID,
@@ -1264,6 +1449,8 @@ func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabComme
 		arg.GlAuthorName,
 		arg.GlAuthorAvatarUrl,
 		arg.CreatedAt,
+		arg.ParentID,
+		arg.GlDiscussionID,
 	)
 	var inserted bool
 	err := row.Scan(&inserted)
@@ -1366,4 +1553,37 @@ func (q *Queries) UpsertGitlabSourcedAssignee(ctx context.Context, arg UpsertGit
 		arg.GlAvatarUrl,
 	)
 	return err
+}
+
+const upsertGitlabUpload = `-- name: UpsertGitlabUpload :one
+INSERT INTO gitlab_uploads (integration_id, source_key, gl_url, gl_markdown)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (integration_id, source_key) DO UPDATE
+SET gl_url = EXCLUDED.gl_url, gl_markdown = EXCLUDED.gl_markdown
+RETURNING integration_id, source_key, gl_url, gl_markdown, created_at
+`
+
+type UpsertGitlabUploadParams struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	SourceKey     string    `json:"source_key"`
+	GlUrl         string    `json:"gl_url"`
+	GlMarkdown    string    `json:"gl_markdown"`
+}
+
+func (q *Queries) UpsertGitlabUpload(ctx context.Context, arg UpsertGitlabUploadParams) (GitlabUpload, error) {
+	row := q.db.QueryRow(ctx, upsertGitlabUpload,
+		arg.IntegrationID,
+		arg.SourceKey,
+		arg.GlUrl,
+		arg.GlMarkdown,
+	)
+	var i GitlabUpload
+	err := row.Scan(
+		&i.IntegrationID,
+		&i.SourceKey,
+		&i.GlUrl,
+		&i.GlMarkdown,
+		&i.CreatedAt,
+	)
+	return i, err
 }

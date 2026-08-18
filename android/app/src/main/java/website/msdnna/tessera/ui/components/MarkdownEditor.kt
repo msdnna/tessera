@@ -42,6 +42,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -108,6 +109,10 @@ fun MarkdownEditor(
     // Quick-action rows for the `/`-popup; empty → commands off. Only passed where
     // commands actually run (the new-comment composer) — see the web editor.
     commands: List<CommandItem> = emptyList(),
+    /** e2e anchor placed on the text area itself — `modifier` lands on the column
+     *  that also holds the toolbar and the preview, which carries no text-input
+     *  semantics to type into. Null on the editors no spec drives. */
+    fieldTag: String? = null,
 ) {
     // Tokens (names / usernames) highlighted in the preview after an '@'.
     val mentionTokens = remember(mentions) { mentions.map { it.insert } }
@@ -244,6 +249,7 @@ fun MarkdownEditor(
                     cursorBrush = SolidColor(c.primary),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(if (fieldTag != null) Modifier.testTag(fieldTag) else Modifier)
                         .heightIn(min = minHeight)
                         .clip(RoundedCornerShape(RadiusMd))
                         .background(c.surface)

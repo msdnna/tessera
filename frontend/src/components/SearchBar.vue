@@ -6,6 +6,7 @@ import {
   CheckmarkCircle,
   EllipseOutline,
   DocumentTextOutline,
+  DocumentsOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
@@ -28,7 +29,7 @@ watch(q, (val) => {
   clearTimeout(debounce)
   const term = val.trim()
   if (!term) {
-    results.value = { tasks: [], notes: [] }
+    results.value = { tasks: [], notes: [], documents: [] }
     loading.value = false
     return
   }
@@ -44,15 +45,20 @@ async function runSearch(term) {
   try {
     const res = await wsApi.search(wsId, term)
     if (mine !== seq) return // a newer query landed first
-    results.value = { tasks: res.data.tasks || [], notes: res.data.notes || [] }
+    results.value = {
+      tasks: res.data.tasks || [],
+      notes: res.data.notes || [],
+      documents: res.data.documents || [],
+    }
   } catch {
-    results.value = { tasks: [], notes: [] }
+    results.value = { tasks: [], notes: [], documents: [] }
   } finally {
     if (mine === seq) loading.value = false
   }
 }
 
-const hasResults = () => results.value.tasks.length || results.value.notes.length
+const hasResults = () =>
+  results.value.tasks.length || results.value.notes.length || results.value.documents.length
 
 function close() {
   // delay so a result click registers before blur hides the panel
@@ -75,6 +81,12 @@ function gotoNote(n) {
   q.value = ''
   router.push(`/notes?note=${n.slug || n.id}`)
 }
+
+function gotoDocument(d) {
+  open.value = false
+  q.value = ''
+  router.push(`/documents/${d.slug || d.id}`)
+}
 </script>
 
 <template>
@@ -82,7 +94,7 @@ function gotoNote(n) {
     <n-input
       ref="inputRef"
       v-model:value="q"
-      placeholder="Поиск задач и заметок…"
+      placeholder="Поиск задач, заметок и документов…"
       clearable
       round
       @focus="q.trim() && (open = true)"
@@ -128,13 +140,27 @@ function gotoNote(n) {
               <span class="ttl">{{ n.title || 'Без названия' }}</span>
             </button>
           </div>
+          <div v-if="results.documents.length" class="grp">
+            <div class="grp-h">Документы</div>
+            <button
+              v-for="d in results.documents"
+              :key="d.id"
+              class="row"
+              @mousedown.prevent="gotoDocument(d)"
+            >
+              <n-icon class="ico" :component="DocumentsOutline" />
+              <span class="ttl">{{ d.title || 'Без названия' }}</span>
+            </button>
+          </div>
         </template>
         <div v-else class="empty">
           <empty-state :icon="SearchOutline" text="Ничего не найдено" size="small" />
         </div>
       </template>
       <div class="hint">
-        <n-text depth="3">Поиск по названию и описанию задач, заголовку и тексту заметок</n-text>
+        <n-text depth="3">
+          Поиск по названию и описанию задач, заголовку и тексту заметок, заголовку документов
+        </n-text>
       </div>
     </div>
   </div>

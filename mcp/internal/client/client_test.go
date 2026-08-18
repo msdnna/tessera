@@ -221,12 +221,9 @@ func TestFetchImageRefResolution(t *testing.T) {
 	}
 }
 
-func TestUpdateTaskSendsFullBody(t *testing.T) {
+func TestUpdateTaskSendsOnlySetFields(t *testing.T) {
 	c, rec := newServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	est := 2.0
-	err := c.UpdateTask(context.Background(), "t1", TaskUpdate{
-		Title: "T", Priority: 3, Estimate: &est, Recurrence: json.RawMessage(`{"freq":"daily"}`),
-	})
+	err := c.UpdateTask(context.Background(), "t1", TaskPatch{}.Set("title", "T").Clear("due_date"))
 	if err != nil {
 		t.Fatalf("UpdateTask: %v", err)
 	}
@@ -235,7 +232,97 @@ func TestUpdateTaskSendsFullBody(t *testing.T) {
 	}
 	var sent map[string]json.RawMessage
 	_ = json.Unmarshal(rec.lastBody, &sent)
-	if _, ok := sent["recurrence"]; !ok {
-		t.Fatalf("recurrence not sent: %s", rec.lastBody)
+	if len(sent) != 2 {
+		t.Fatalf("body carries %d fields, want just the two set: %s", len(sent), rec.lastBody)
+	}
+	if string(sent["title"]) != `"T"` || string(sent["due_date"]) != "null" {
+		t.Fatalf("body = %s", rec.lastBody)
+	}
+	// An untouched field must not appear at all — that's what keeps a partial
+	// edit from blanking someone else's concurrent change.
+	if _, ok := sent["description"]; ok {
+		t.Fatalf("description sent unasked: %s", rec.lastBody)
+	}
+}
+
+func TestUpdateTaskEmptyPatchSkipsRequest(t *testing.T) {
+	c, rec := newServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	if err := c.UpdateTask(context.Background(), "t1", TaskPatch{}); err != nil {
+		t.Fatalf("UpdateTask: %v", err)
+	}
+	if rec.lastPath != "" {
+		t.Fatalf("empty patch hit the server: %s", rec.lastPath)
+	}
+}
+
+func TestCreateTaskPostsToBoard(t *testing.T) {
+	c, rec := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(model.Task{ID: "t-new", Title: "New"})
+	})
+	parent := "t-parent"
+	got, err := c.CreateTask(context.Background(), "b1", NewTaskParams{
+		ColumnID: "c1", Title: "New", ParentID: &parent, Priority: 3,
+	})
+	if err != nil || got.ID != "t-new" {
+		t.Fatalf("CreateTask: %+v %v", got, err)
+	}
+	if rec.lastMethod != http.MethodPost || rec.lastPath != "/api/boards/b1/tasks" {
+		t.Fatalf("request = %s %s", rec.lastMethod, rec.lastPath)
+	}
+	var sent map[string]any
+	_ = json.Unmarshal(rec.lastBody, &sent)
+	if sent["column_id"] != "c1" || sent["parent_id"] != "t-parent" {
+		t.Fatalf("body = %s", rec.lastBody)
+	}
+	// Unset optionals stay out of the body so the backend applies its defaults.
+	if _, ok := sent["due_date"]; ok {
+		t.Fatalf("empty due_date sent: %s", rec.lastBody)
+	}
+}
+
+func TestSetParentSendsNullOnDetach(t *testing.T) {
+	c, rec := newServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	if err := c.SetParent(context.Background(), "t1", nil); err != nil {
+		t.Fatalf("SetParent: %v", err)
+	}
+	if rec.lastPath != "/api/tasks/t1/parent" || !strings.Contains(string(rec.lastBody), `"parent_id":null`) {
+		t.Fatalf("request = %s %s", rec.lastPath, rec.lastBody)
+	}
+}
+
+func TestDownloadAttachmentStreams(t *testing.T) {
+	c, rec := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "FILEDATA")
+	})
+	var buf bytes.Buffer
+	n, err := c.DownloadAttachment(context.Background(), "att1", &buf)
+	if err != nil || n != 8 || buf.String() != "FILEDATA" {
+		t.Fatalf("DownloadAttachment: %d %q %v", n, buf.String(), err)
+	}
+	if rec.lastPath != "/api/attachments/att1/download" || rec.lastAuth != "Bearer test-token" {
+		t.Fatalf("request = %s %s", rec.lastPath, rec.lastAuth)
+	}
+}
+
+func TestUploadAttachmentMultipart(t *testing.T) {
+	var gotFilename string
+	c, rec := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if _, hdr, ferr := r.FormFile("file"); ferr == nil {
+			gotFilename = hdr.Filename
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(model.Attachment{ID: "att1", Filename: "log.txt", Size: 3})
+	})
+	att, err := c.UploadAttachment(context.Background(), "t1", "log.txt", "text/plain", []byte("abc"))
+	if err != nil || att.ID != "att1" {
+		t.Fatalf("UploadAttachment: %+v %v", att, err)
+	}
+	if rec.lastPath != "/api/tasks/t1/attachments" || gotFilename != "log.txt" {
+		t.Fatalf("request = %s, filename %q", rec.lastPath, gotFilename)
 	}
 }

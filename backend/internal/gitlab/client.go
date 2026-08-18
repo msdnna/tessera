@@ -10,9 +10,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -197,6 +200,14 @@ type Note struct {
 	Body      string
 	Author    Person
 	CreatedAt time.Time
+	// DiscussionID is the GitLab discussion (thread) gid this note belongs to. A
+	// plain comment is a discussion of one note, so this is always set.
+	DiscussionID string
+	// RootGID is the gid of the first non-system note in the same discussion, or
+	// "" when this note *is* that root. This is what carries the thread structure
+	// across the wire — the flat Notes slice keeps its chronological shape so
+	// existing consumers are unaffected.
+	RootGID string
 }
 
 // Issue is a GitLab issue reduced to the fields the sync needs.
@@ -246,7 +257,7 @@ query($path: ID!, $username: String, $iids: [String!], $after: String, $updatedA
         author { username name avatarUrl }
         assignees { nodes { username name avatarUrl } }
         labels { nodes { title color } }
-        notes(first: 100) { nodes { id body system createdAt author { username name avatarUrl } } }
+        discussions(first: 100) { nodes { id notes(first: 100) { nodes { id body system createdAt author { username name avatarUrl } } } } }
       }
     }
   }
@@ -373,19 +384,24 @@ type issueNode struct {
 			Color string `json:"color"`
 		} `json:"nodes"`
 	} `json:"labels"`
-	Notes struct {
+	Discussions struct {
 		Nodes []struct {
-			ID        string    `json:"id"`
-			Body      string    `json:"body"`
-			System    bool      `json:"system"`
-			CreatedAt time.Time `json:"createdAt"`
-			Author    *struct {
-				Username  string `json:"username"`
-				Name      string `json:"name"`
-				AvatarURL string `json:"avatarUrl"`
-			} `json:"author"`
+			ID    string `json:"id"`
+			Notes struct {
+				Nodes []struct {
+					ID        string    `json:"id"`
+					Body      string    `json:"body"`
+					System    bool      `json:"system"`
+					CreatedAt time.Time `json:"createdAt"`
+					Author    *struct {
+						Username  string `json:"username"`
+						Name      string `json:"name"`
+						AvatarURL string `json:"avatarUrl"`
+					} `json:"author"`
+				} `json:"nodes"`
+			} `json:"notes"`
 		} `json:"nodes"`
-	} `json:"notes"`
+	} `json:"discussions"`
 }
 
 // absAvatar resolves a possibly instance-relative avatar URL against base.
@@ -427,19 +443,35 @@ func (n issueNode) toIssue(base string) Issue {
 			Login: a.Username, Name: a.Name, AvatarURL: absAvatar(base, a.AvatarURL),
 		})
 	}
-	for _, note := range n.Notes.Nodes {
-		if note.System || note.ID == "" {
-			continue // skip system notes ("changed status…")
-		}
-		nt := Note{GlobalID: note.ID, Body: note.Body, CreatedAt: note.CreatedAt}
-		if note.Author != nil {
-			nt.Author = Person{
-				Login: note.Author.Username, Name: note.Author.Name,
-				AvatarURL: absAvatar(base, note.Author.AvatarURL),
+	// Walk discussions, not a flat note list: the thread structure only exists at
+	// this level. Within a discussion the first non-system note is the root and
+	// every later one is a reply to it. Notes stays flat and chronological — the
+	// branching rides along in DiscussionID/RootGID.
+	for _, disc := range n.Discussions.Nodes {
+		rootGID := ""
+		for _, note := range disc.Notes.Nodes {
+			if note.System || note.ID == "" {
+				continue // skip system notes ("changed status…")
 			}
+			nt := Note{
+				GlobalID: note.ID, Body: note.Body, CreatedAt: note.CreatedAt,
+				DiscussionID: disc.ID, RootGID: rootGID,
+			}
+			if note.Author != nil {
+				nt.Author = Person{
+					Login: note.Author.Username, Name: note.Author.Name,
+					AvatarURL: absAvatar(base, note.Author.AvatarURL),
+				}
+			}
+			if rootGID == "" {
+				rootGID = note.ID // this note opens the thread; the rest reply to it
+			}
+			issue.Notes = append(issue.Notes, nt)
 		}
-		issue.Notes = append(issue.Notes, nt)
 	}
+	sort.SliceStable(issue.Notes, func(i, j int) bool {
+		return issue.Notes[i].CreatedAt.Before(issue.Notes[j].CreatedAt)
+	})
 	return issue
 }
 
@@ -774,9 +806,18 @@ func (c *Client) CreateProjectMilestone(ctx context.Context, projectPath, title,
 // CreateIssue opens a new issue in the project from Tessera-side fields. labels are
 // full label titles (joined into the comma-separated labels param); dueDate is
 // "YYYY-MM-DD" or empty; assigneeIDs are numeric GitLab user ids (empty = none).
-func (c *Client) CreateIssue(ctx context.Context, projectPath, title, description string, labels []string, dueDate string, assigneeIDs []int64) (CreatedIssue, error) {
+//
+// issueType is GitLab's issue_type ("" for the default "issue", "task" for an item
+// that can hang under a grouped parent — see workitems.go). Instances that predate
+// typed issues ignore the parameter, so passing it is safe; what varies is whether the
+// created item is actually eligible for the hierarchy, which the caller finds out from
+// SetWorkItemParent rather than by guessing here.
+func (c *Client) CreateIssue(ctx context.Context, projectPath, title, description string, labels []string, dueDate string, assigneeIDs []int64, issueType string) (CreatedIssue, error) {
 	form := url.Values{}
 	form.Set("title", title)
+	if issueType != "" {
+		form.Set("issue_type", issueType)
+	}
 	if description != "" {
 		form.Set("description", description)
 	}
@@ -807,6 +848,69 @@ func (c *Client) CreateIssue(ctx context.Context, projectPath, title, descriptio
 		return CreatedIssue{}, uerr
 	}
 	return CreatedIssue{ID: resp.ID, IID: resp.IID, WebURL: resp.WebURL, State: resp.State}, nil
+}
+
+// Upload is the result of mirroring a file into a project's upload store.
+// URL is project-relative ("/uploads/<secret>/<name>") — the form GitLab renders
+// inside that project's issues and notes.
+type Upload struct {
+	Alt      string `json:"alt"`
+	URL      string `json:"url"`
+	FullPath string `json:"full_path"`
+	Markdown string `json:"markdown"`
+}
+
+// UploadFile posts a file to the project's upload store (POST /projects/:id/uploads)
+// and returns the URL GitLab serves it by, so a Tessera-hosted asset referenced in a
+// pushed description/note resolves for GitLab readers instead of 404ing against
+// GitLab's own origin.
+//
+// The body is streamed through an io.Pipe rather than buffered: an attachment may be
+// up to 25 MiB and the write-back worker can run several pushes at once.
+func (c *Client) UploadFile(ctx context.Context, projectPath, filename string, r io.Reader) (Upload, error) {
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		part, err := mw.CreateFormFile("file", filepath.Base(filename))
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		if _, err := io.Copy(part, r); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.CloseWithError(mw.Close())
+	}()
+	defer func() { _ = pr.Close() }()
+
+	endpoint := c.baseURL + "/api/v4/projects/" + projectPathEsc(projectPath) + "/uploads"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, pr)
+	if err != nil {
+		return Upload{}, err
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if c.sudo != "" {
+		req.Header.Set("Sudo", c.sudo)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return Upload{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return Upload{}, &APIError{Status: resp.StatusCode, Body: string(body)}
+	}
+	var up Upload
+	if uerr := json.Unmarshal(body, &up); uerr != nil {
+		return Upload{}, uerr
+	}
+	if up.URL == "" {
+		return Upload{}, fmt.Errorf("gitlab: upload response carried no url")
+	}
+	return up, nil
 }
 
 // IssueTemplate is a repo issue template (.gitlab/issue_templates/<Name>.md).
@@ -862,6 +966,51 @@ func (c *Client) IssueTemplates(ctx context.Context, projectPath string) ([]Issu
 // Returns "" (with nil error) if the response id couldn't be read.
 func (c *Client) CreateIssueNote(ctx context.Context, projectPath string, iid int64, body string) (string, error) {
 	out, err := c.restForm(ctx, http.MethodPost, issuePath(projectPath, iid)+"/notes", url.Values{"body": {body}})
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		ID int64 `json:"id"`
+	}
+	if uerr := json.Unmarshal(out, &resp); uerr != nil || resp.ID == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("gid://gitlab/Note/%d", resp.ID), nil
+}
+
+// CreateIssueDiscussion opens a new discussion (thread) on the issue and returns
+// its discussion id plus the gid of the note that opened it.
+//
+// Root comments go through this instead of CreateIssueNote: in GitLab the result
+// is indistinguishable (a plain comment *is* a one-note discussion), but the
+// response carries the discussion id — without it a later reply from Tessera has
+// no thread to aim at and would land as a separate root.
+func (c *Client) CreateIssueDiscussion(ctx context.Context, projectPath string, iid int64, body string) (discussionID, noteGID string, err error) {
+	out, err := c.restForm(ctx, http.MethodPost, issuePath(projectPath, iid)+"/discussions", url.Values{"body": {body}})
+	if err != nil {
+		return "", "", err
+	}
+	var resp struct {
+		ID    string `json:"id"`
+		Notes []struct {
+			ID int64 `json:"id"`
+		} `json:"notes"`
+	}
+	if uerr := json.Unmarshal(out, &resp); uerr != nil {
+		return "", "", nil
+	}
+	if len(resp.Notes) > 0 && resp.Notes[0].ID != 0 {
+		noteGID = fmt.Sprintf("gid://gitlab/Note/%d", resp.Notes[0].ID)
+	}
+	return resp.ID, noteGID, nil
+}
+
+// CreateIssueDiscussionNote appends a reply to an existing discussion. discussionID
+// is the REST sha-style id (parse it out of the stored "gid://gitlab/Discussion/<sha>").
+func (c *Client) CreateIssueDiscussionNote(ctx context.Context, projectPath string, iid int64, discussionID, body string) (string, error) {
+	out, err := c.restForm(ctx, http.MethodPost,
+		issuePath(projectPath, iid)+"/discussions/"+url.PathEscape(discussionID)+"/notes",
+		url.Values{"body": {body}})
 	if err != nil {
 		return "", err
 	}

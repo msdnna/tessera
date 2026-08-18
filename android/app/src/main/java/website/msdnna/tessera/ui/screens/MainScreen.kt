@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +53,7 @@ import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.realtime.DeviceNotifier
 import website.msdnna.tessera.data.repository.BoardRepository
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.Sidebar
 import website.msdnna.tessera.ui.components.TDropdown
@@ -69,6 +71,7 @@ import website.msdnna.tessera.util.Ion
 sealed interface MainDest {
     data object Home : MainDest
     data object Notes : MainDest
+    data object Documents : MainDest
     data object Reminders : MainDest
     data object Milestones : MainDest
     data object GitLabSettings : MainDest
@@ -232,6 +235,8 @@ fun MainScreen(
             when {
                 saved == "notes" -> dest = MainDest.Notes
 
+                saved == "documents" -> dest = MainDest.Documents
+
                 saved == "reminders" -> dest = MainDest.Reminders
 
                 saved == "milestones" -> dest = MainDest.Milestones
@@ -252,6 +257,7 @@ fun MainScreen(
             when (val d = dest) {
                 is MainDest.Home -> "home"
                 is MainDest.Notes -> "notes"
+                is MainDest.Documents -> "documents"
                 is MainDest.Reminders -> "reminders"
                 is MainDest.Milestones -> "milestones"
                 is MainDest.GitLabSettings -> "gitlab"
@@ -298,6 +304,7 @@ fun MainScreen(
                     onOpenHome = { go(MainDest.Home) },
                     onOpenReminders = { go(MainDest.Reminders) },
                     onOpenNotes = { go(MainDest.Notes) },
+                    onOpenDocuments = { go(MainDest.Documents) },
                     onOpenMilestones = { go(MainDest.Milestones) },
                     onOpenMembers = {
                         membersOpen = true
@@ -329,7 +336,7 @@ fun MainScreen(
             }
         },
     ) {
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().testTag(TestTags.MAIN_SHELL)) {
             Column(
                 Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),
             ) {
@@ -376,6 +383,8 @@ fun MainScreen(
                                 preselectNoteId = notesPreselectId,
                                 onPreselectConsumed = { notesPreselectId = null },
                             )
+
+                            is MainDest.Documents -> DocumentsScreen(workspaceId = state.currentId)
 
                             is MainDest.Reminders -> RemindersScreen()
 
@@ -614,6 +623,7 @@ private fun IntegrationTitleSwitcher(title: String, modifier: Modifier = Modifie
 private fun titleFor(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "Моя работа"
     is MainDest.Notes -> "Заметки"
+    is MainDest.Documents -> "Документы"
     is MainDest.Reminders -> "Напоминания"
     is MainDest.Milestones -> "Этапы"
     is MainDest.GitLabSettings -> "GitLab"
@@ -628,6 +638,7 @@ private fun titleFor(dest: MainDest): String = when (dest) {
 private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "home"
     is MainDest.Notes -> "notes"
+    is MainDest.Documents -> "documents"
     is MainDest.Reminders -> "reminders"
     is MainDest.Milestones -> "milestones"
     is MainDest.GitLabSettings -> "gitlab"

@@ -45,11 +45,20 @@ WHERE id = $1;
 -- name: MarkWritebackFailed :exec
 UPDATE gitlab_writebacks SET status = 'failed', last_error = $2, updated_at = now() WHERE id = $1;
 
--- SetCommentGlNoteID tags a Tessera comment with the GitLab note id created by a
+-- SetCommentGlIDs tags a Tessera comment with the GitLab note id created by a
 -- write-back push, so the next pull's comment upsert (keyed on gl_note_id) updates
--- that row instead of inserting a duplicate.
--- name: SetCommentGlNoteID :exec
-UPDATE task_comments SET gl_note_id = $2, updated_at = now() WHERE id = $1;
+-- that row instead of inserting a duplicate. The discussion id is stored alongside
+-- it: without it a later reply from Tessera has no thread to aim at and would be
+-- posted as a separate root.
+-- name: SetCommentGlIDs :exec
+UPDATE task_comments SET gl_note_id = $2, gl_discussion_id = $3, updated_at = now() WHERE id = $1;
+
+-- GetCommentThreadTarget returns the GitLab discussion a reply should be posted
+-- into: the discussion of the reply's parent (its thread root).
+-- name: GetCommentThreadTarget :one
+SELECT p.gl_discussion_id, p.gl_note_id
+FROM task_comments c JOIN task_comments p ON p.id = c.parent_id
+WHERE c.id = $1;
 
 -- ── Write-back conflicts ────────────────────────────────────
 
@@ -116,3 +125,24 @@ UPDATE gitlab_writebacks
 SET status = 'sent', conflict = '{}'::jsonb, resolution = $2, resolved_by = $3,
     resolved_at = now(), updated_at = now()
 WHERE id = $1;
+
+-- ── Child work items (#2592) ────────────────────────────────
+
+-- CreateGitlabChildWriteback enqueues a structural child push. Unlike every other
+-- change_kind (each a re-pushable update of an issue that already exists), child_create
+-- OPENS a new issue, so a duplicate row would open a second one. The partial unique
+-- index from migration 0054 makes "at most one in flight per task" a database
+-- invariant; this is the matching insert — ON CONFLICT DO NOTHING collapses the
+-- duplicate instead of letting that index turn an ordinary double-enqueue into an error
+-- on the user's mutation path.
+-- name: CreateGitlabChildWriteback :exec
+INSERT INTO gitlab_writebacks (task_id, integration_id, change_kind, payload, actor_user_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT DO NOTHING;
+
+-- SetGitlabWritebackPayload rewrites a claimed row's payload mid-delivery. Child
+-- creation uses it to record the issue GitLab just opened BEFORE writing the link: if
+-- linking then fails, the retry adopts the reserved iid instead of opening a second
+-- issue for the same subtask.
+-- name: SetGitlabWritebackPayload :exec
+UPDATE gitlab_writebacks SET payload = $2, updated_at = now() WHERE id = $1;

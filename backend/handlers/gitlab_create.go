@@ -90,7 +90,15 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 	}
 	assignees := h.resolveTaskGitlabAssigneeIDs(c, integ, id)
 
-	created, err := client.CreateIssue(c, integ.ProjectPath, task.Title, description, labels, due, assignees)
+	// Mirror Tessera-hosted assets into the project's upload store BEFORE creating
+	// the issue, so it is born with working links instead of being edited a second
+	// later (which would also show up as a bogus edit in the GitLab activity feed).
+	var assets assetStats
+	if wb.AttachmentsEnabled() {
+		description, assets = h.pushAssets(c, client, integ, description)
+	}
+
+	created, err := client.CreateIssue(c, integ.ProjectPath, task.Title, description, labels, due, assignees, "")
 	if err != nil {
 		log.Printf("gitlab create issue for task %s: %v", id, err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "GitLab rejected the issue: " + truncErr(err)})
@@ -128,6 +136,15 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		fail(c, cerr)
 		return
 	}
+	// The Attachments tab goes up as its own note rather than into the description —
+	// the description is diffed against the task on every write-back, so injecting a
+	// file list there would park the sync in a permanent conflict.
+	if wb.AttachmentsEnabled() {
+		noteStats := h.pushTaskAttachmentsNote(c, client, integ, id, created.IID)
+		assets.Uploaded += noteStats.Uploaded
+		assets.Skipped += noteStats.Skipped
+	}
+
 	// True up the link snapshot (accurate hashes, author name/avatar, state) from the
 	// freshly-created issue so the next scheduled pull sees nothing remote-changed.
 	h.refreshLinkSnapshot(c, client, integ, id, integ.ProjectPath, created.IID)
@@ -140,13 +157,16 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 	link, lerr := h.q.GetGitlabLinkByTask(c, id)
 	if lerr != nil {
 		// Link is in place; just return the creation basics.
-		c.JSON(http.StatusOK, &gitlabLinkView{IID: created.IID, WebURL: created.WebURL, ProjectPath: integ.ProjectPath})
+		c.JSON(http.StatusOK, &gitlabLinkView{
+			IID: created.IID, WebURL: created.WebURL, ProjectPath: integ.ProjectPath,
+			Attachments: &assets,
+		})
 		return
 	}
 	c.JSON(http.StatusOK, &gitlabLinkView{
 		IID: link.GlIid, WebURL: link.GlWebUrl, Author: link.GlAuthor,
 		AuthorName: link.GlAuthorName, AuthorAvatarURL: link.GlAuthorAvatarUrl,
-		ProjectPath: link.GlProjectPath,
+		ProjectPath: link.GlProjectPath, Attachments: &assets,
 	})
 }
 

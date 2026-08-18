@@ -28,6 +28,11 @@ services:
         - HTTP_PROXY=${HTTP_PROXY:-}
         - HTTPS_PROXY=${HTTPS_PROXY:-}
         - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+        # Build metadata for GET /api/version (shown in the sidebar version tooltip).
+        # Set at deploy time, e.g. GIT_COMMIT=$(git rev-parse --short HEAD)
+        # BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) docker compose build backend
+        - GIT_COMMIT=${GIT_COMMIT:-}
+        - BUILD_DATE=${BUILD_DATE:-}
     container_name: tessera-backend
     restart: unless-stopped
     environment:
@@ -46,6 +51,11 @@ services:
       #   volumes: ["/path/on/host/fcm-service-account.json:/run/secrets/fcm.json:ro"]
       # and set FCM_CREDENTIALS_FILE=/run/secrets/fcm.json in .env.
       - FCM_CREDENTIALS_FILE=${FCM_CREDENTIALS_FILE:-}
+      # Document import/export sidecar. Empty = off: the Documents section works
+      # in full and only office import/export report themselves as unavailable.
+      # Set CONVERTER_URL=http://converter:3000 in .env and start the stack with
+      # `--profile documents` to turn it on (see the converter service below).
+      - CONVERTER_URL=${CONVERTER_URL:-}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
@@ -61,6 +71,15 @@ services:
       - tessera-network
     volumes:
       - uploads_data:/data/uploads
+    # Liveness for the API itself — postgres had a healthcheck and the service in
+    # front of it did not, so `docker compose ps` called a wedged backend "up".
+    # wget is busybox's, already in the alpine runtime stage.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   frontend:
     build:
@@ -70,6 +89,10 @@ services:
         - HTTP_PROXY=${HTTP_PROXY:-}
         - HTTPS_PROXY=${HTTPS_PROXY:-}
         - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+        # Build metadata shown in the sidebar version tooltip (#2747). Same values
+        # as the backend service; see its build args for how to set them.
+        - GIT_COMMIT=${GIT_COMMIT:-}
+        - BUILD_DATE=${BUILD_DATE:-}
     container_name: tessera-frontend
     restart: unless-stopped
     ports:
@@ -83,6 +106,35 @@ services:
       # latest.json here (tools/build-android-release.sh); nginx serves /apks/.
       - ./apks:/usr/share/nginx/html/apks:ro
       - ./desktop-dist:/usr/share/nginx/html/desktop:ro
+
+  # Headless LibreOffice behind a small HTTP API, for document import/export
+  # (#2733). Declared here but NOT started by default — it sits behind a compose
+  # profile because the image is close to a gigabyte, and an install that never
+  # imports a .docx should not pay that on every `make up`. Turn it on with:
+  #
+  #   docker compose --profile documents up -d
+  #
+  # and set CONVERTER_URL=http://converter:3000 in .env so the backend uses it.
+  # Without both, import/export answer 503 and the rest of Documents is fine.
+  #
+  # No ports are published: only the backend talks to it, over the compose
+  # network. Publishing would expose an unauthenticated converter that happily
+  # runs LibreOffice on anything posted to it.
+  converter:
+    build:
+      context: ./converter
+      dockerfile: Dockerfile
+      args:
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
+        - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+    container_name: tessera-converter
+    restart: unless-stopped
+    profiles: ["documents"]
+    environment:
+      - TZ=${TZ:-Europe/Moscow}
+    networks:
+      - tessera-network
 
 volumes:
   postgres_data:

@@ -813,8 +813,8 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		return 0, 0, fmt.Errorf("integration board has no columns")
 	}
 
-	claimed, childrenOf := r.fetchGroupedChildren(ctx, issues)
-	created, updated, syncedIIDs := r.mirrorIssues(ctx, issues, claimed, childrenOf)
+	claimed, childrenOf, distrusted := r.fetchGroupedChildren(ctx, issues)
+	created, updated, syncedIIDs := r.mirrorIssues(ctx, issues, claimed, childrenOf, distrusted)
 
 	// Linked items last: every task the links can point at has been mirrored by now,
 	// so a link between two issues of this run resolves on the first pass.
@@ -985,18 +985,30 @@ func (r *syncRun) resolveBoardCol(ctx context.Context, issue gitlab.Issue, res g
 
 // fetchGroupedChildren is the pre-pass for grouped parents: it fetches their GitLab
 // children so they sync as Tessera subtasks (and are not duplicated as top-level
-// cards). It returns the children per parent global id, and the set of child global
-// ids claimed that way — the mirror pass skips those.
-func (r *syncRun) fetchGroupedChildren(ctx context.Context, issues []gitlab.Issue) (claimed map[string]bool, childrenOf map[string][]gitlab.Issue) {
+// cards). It returns the children per parent global id, the set of child global ids
+// claimed that way (the mirror pass skips those), and the set of global ids whose
+// parent could NOT be determined this run — see distrustChildren.
+//
+// A parent is asked for its children whenever the grouping label resolves OR the link
+// says it was grouped before. That second half matters: if the label is dropped in
+// GitLab (or a rule stops matching), the children are still children over there, and
+// silently forgetting to ask would dissolve the whole subtree on the next pull.
+func (r *syncRun) fetchGroupedChildren(ctx context.Context, issues []gitlab.Issue) (claimed map[string]bool, childrenOf map[string][]gitlab.Issue, distrusted map[string]bool) {
 	claimed = map[string]bool{}
 	childrenOf = map[string][]gitlab.Issue{}
+	distrusted = map[string]bool{}
 	for _, issue := range issues {
-		if !r.rules.Resolve(issue.Labels).Group {
+		grouped := r.rules.Resolve(issue.Labels).Group
+		if !grouped && !r.wasGrouped(ctx, issue) {
 			continue
 		}
 		iids, cerr := r.client.ChildIIDs(ctx, r.integ.ProjectPath, issue.IID)
-		if cerr != nil || len(iids) == 0 {
+		if cerr != nil {
+			r.distrustChildren(ctx, issue, distrusted)
 			continue
+		}
+		if len(iids) == 0 {
+			continue // answered, and the answer is "no children": a detach is real
 		}
 		strs := make([]string, 0, len(iids))
 		for _, id := range iids {
@@ -1004,6 +1016,9 @@ func (r *syncRun) fetchGroupedChildren(ctx context.Context, issues []gitlab.Issu
 		}
 		kids, kerr := r.client.IssuesByIIDs(ctx, r.integ.ProjectPath, strs)
 		if kerr != nil {
+			// We know it HAS children but could not fetch them — the strongest possible
+			// case for not reading "unclaimed" as "detached".
+			r.distrustChildren(ctx, issue, distrusted)
 			continue
 		}
 		childrenOf[issue.GlobalID] = kids
@@ -1011,13 +1026,53 @@ func (r *syncRun) fetchGroupedChildren(ctx context.Context, issues []gitlab.Issu
 			claimed[k.GlobalID] = true
 		}
 	}
-	return claimed, childrenOf
+	return claimed, childrenOf, distrusted
+}
+
+// wasGrouped reports whether the link for this issue remembers it as a grouped parent,
+// so an issue whose grouping label disappeared is still asked for its children.
+func (r *syncRun) wasGrouped(ctx context.Context, issue gitlab.Issue) bool {
+	link, err := r.h.q.GetGitlabLinkByGlobalID(ctx, db.GetGitlabLinkByGlobalIDParams{
+		IntegrationID: r.integ.ID, GlGlobalID: issue.GlobalID,
+	})
+	return err == nil && link.GlIsGroup
+}
+
+// distrustChildren marks every GitLab-linked task currently parented under this
+// issue's mirror as "parent unknown this run", so the mirror pass leaves those
+// subtasks alone instead of dropping them to top-level. Best-effort: if we cannot even
+// read the current children, there is nothing to protect.
+func (r *syncRun) distrustChildren(ctx context.Context, issue gitlab.Issue, distrusted map[string]bool) {
+	link, err := r.h.q.GetGitlabLinkByGlobalID(ctx, db.GetGitlabLinkByGlobalIDParams{
+		IntegrationID: r.integ.ID, GlGlobalID: issue.GlobalID,
+	})
+	if err != nil {
+		return
+	}
+	parentID := link.TaskID
+	gids, gerr := r.h.q.ListGitlabChildGlobalIDs(ctx, db.ListGitlabChildGlobalIDsParams{
+		IntegrationID: r.integ.ID, ParentID: &parentID,
+	})
+	if gerr != nil {
+		return
+	}
+	for _, gid := range gids {
+		distrusted[gid] = true
+	}
+	if len(gids) > 0 {
+		iid := issue.IID
+		r.j.add(journalAction{
+			Direction: "pull", EntityType: "task", Op: "skip", GlIid: &iid,
+			Summary: "иерархия #" + strconv.FormatInt(iid, 10) + ": список детей недоступен, подзадачи оставлены как есть",
+			Detail:  map[string]any{"children_kept": len(gids)},
+		})
+	}
 }
 
 // mirrorIssues mirrors every issue of the run onto its board, following a grouped
 // parent down into its children. Per-issue failures are skipped, not fatal. The
 // returned iids are the ones actually mirrored — the scope of the linked-items pass.
-func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claimed map[string]bool, childrenOf map[string][]gitlab.Issue) (created, updated int, syncedIIDs []int64) {
+func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claimed map[string]bool, childrenOf map[string][]gitlab.Issue, distrusted map[string]bool) (created, updated int, syncedIIDs []int64) {
 	for _, issue := range issues {
 		if claimed[issue.GlobalID] {
 			continue // synced as a subtask under its parent
@@ -1027,7 +1082,8 @@ func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claim
 		dueDate := effectiveDue(issue, r.integ.DueSource)
 		startDate := effectiveStart(issue, r.integ.StartSource)
 		estimate := effectiveEstimate(issue, r.estimateUnit)
-		taskID, wasCreated, ok := r.h.syncOneIssue(ctx, r.integ, issue, res, r.integ.WorkspaceID, bc.id, col.ID, nil, completedAt, dueDate, startDate, estimate, r.actorID, col.Name, r.j)
+		parent := resolveParentRef(nil, !distrusted[issue.GlobalID])
+		taskID, wasCreated, ok := r.h.syncOneIssue(ctx, r.integ, issue, res, r.integ.WorkspaceID, bc.id, col.ID, parent, completedAt, dueDate, startDate, estimate, r.actorID, col.Name, r.j)
 		if !ok {
 			continue
 		}
@@ -1064,7 +1120,7 @@ func (r *syncRun) mirrorChildren(ctx context.Context, kids []gitlab.Issue, paren
 		kstart := effectiveStart(kid, r.integ.StartSource)
 		kest := effectiveEstimate(kid, r.estimateUnit)
 		pid := parentID
-		ktid, kc, kok := r.h.syncOneIssue(ctx, r.integ, kid, kres, r.integ.WorkspaceID, bc.id, col.ID, &pid, kdone, kdue, kstart, kest, r.actorID, col.Name, r.j)
+		ktid, kc, kok := r.h.syncOneIssue(ctx, r.integ, kid, kres, r.integ.WorkspaceID, bc.id, col.ID, resolveParentRef(&pid, true), kdone, kdue, kstart, kest, r.actorID, col.Name, r.j)
 		if !kok {
 			continue
 		}
@@ -1251,6 +1307,38 @@ func (h *API) syncCreateTask(ctx context.Context, wsID, boardID, columnID uuid.U
 	return t, nil
 }
 
+// parentRef is a three-valued answer to "which task should this issue hang under?":
+// a concrete parent, no parent at all, or "we could not find out this run".
+//
+// The third value is the whole point. A mirrored issue that nobody claimed used to be
+// re-parented to nil unconditionally, so a single failed child query (or a GitLab
+// hiccup on one parent) read as "every one of its subtasks was detached" and scattered
+// them across the board as top-level cards — a pull is not supposed to be able to
+// restructure the board, least of all on a network error (#2592).
+type parentRef struct {
+	id    *uuid.UUID
+	known bool
+}
+
+// resolveParentRef decides the parent a mirrored issue should end up with:
+//
+//   - claimedBy != nil — a grouped parent listed it among its children this run.
+//   - !hierarchyKnown — it hangs under a task whose GitLab children we could NOT list
+//     this run. Unknown: leave the subtask exactly where it is.
+//   - otherwise — either it never had a parent, or its parent WAS listed and did not
+//     claim it. That is a genuine detach in GitLab, so the task goes top-level. This
+//     is the ONLY branch allowed to un-parent anything.
+func resolveParentRef(claimedBy *uuid.UUID, hierarchyKnown bool) parentRef {
+	switch {
+	case claimedBy != nil:
+		return parentRef{id: claimedBy, known: true}
+	case !hierarchyKnown:
+		return parentRef{known: false}
+	default:
+		return parentRef{known: true}
+	}
+}
+
 // sameUUIDPtr reports whether two optional UUIDs are equal.
 func sameUUIDPtr(a, b *uuid.UUID) bool {
 	if a == nil || b == nil {
@@ -1260,13 +1348,14 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 }
 
 // syncOneIssue creates or updates the Tessera task mirroring one issue on the
-// given board/column, optionally as a subtask of parentID, reconciling its link
+// given board/column, optionally as a subtask (see parentRef), reconciling its link
 // and meta. It records a create/update action in the sync journal j (only when
 // something actually changed). Returns the task id, whether it was newly created,
 // and ok=false on a per-issue failure (logged, caller continues).
-func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parentID *uuid.UUID, completedAt, dueDate, startDate *time.Time, estimate *float64, actorID uuid.UUID, colName string, j *syncJournal) (uuid.UUID, bool, bool) {
+func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issue gitlab.Issue, res gitlab.Resolution, wsID, boardID, columnID uuid.UUID, parent parentRef, completedAt, dueDate, startDate *time.Time, estimate *float64, actorID uuid.UUID, colName string, j *syncJournal) (uuid.UUID, bool, bool) {
+	parentID := parent.id
 	// Resolve GitLab-relative attachment links to signed proxy URLs.
-	issue.Description = h.rewriteAssets(issue.Description, wsID)
+	issue.Description = h.rewriteAssets(ctx, issue.Description, wsID)
 	// Synced labels become tags scoped to the integration board's project.
 	projectID, perr := h.q.ProjectIDForBoard(ctx, boardID)
 	if perr != nil {
@@ -1302,6 +1391,9 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			return uuid.Nil, false, false
 		}
 		soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: t.ID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))}))
+		if res.Group {
+			soft(ctx, "SetGitlabLinkGroup", h.q.SetGitlabLinkGroup(ctx, db.SetGitlabLinkGroupParams{TaskID: t.ID, GlIsGroup: true}))
+		}
 		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false)
 		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
@@ -1355,8 +1447,9 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			return uuid.Nil, false, false
 		}
 		// Re-parent if the grouping changed (e.g. an issue became a child, or a
-		// child was detached). SetTaskParent also fixes board/column.
-		if !sameUUIDPtr(t.ParentID, parentID) {
+		// child was detached). SetTaskParent also fixes board/column. Skipped entirely
+		// when the parent is unknown this run — see parentRef.
+		if parent.known && !sameUUIDPtr(t.ParentID, parentID) {
 			if reparented, perr := h.q.SetTaskParent(ctx, db.SetTaskParentParams{
 				ID: link.TaskID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
 			}); perr == nil {
@@ -1376,6 +1469,11 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			return uuid.Nil, false, false
 		}
 		soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: buildGlSnapshot(issue, parseRules(integ.LabelRules))}))
+		// GitLab stays the source of truth for the grouping flag; write it only when it
+		// actually flipped, so a routine sync of thousands of issues stays read-only here.
+		if link.GlIsGroup != res.Group {
+			soft(ctx, "SetGitlabLinkGroup", h.q.SetGitlabLinkGroup(ctx, db.SetGitlabLinkGroupParams{TaskID: link.TaskID, GlIsGroup: res.Group}))
+		}
 		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
@@ -1634,31 +1732,63 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 // the GitLab author denormalised (it may not be a Tessera user). Returns the count
 // and truncated bodies of newly inserted comments, for the journal.
 func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []gitlab.Note) (added int, bodies []string) {
+	// GitLab note gid → local comment id, so a reply can be attached to the root
+	// it answers. Notes arrive chronologically, and a reply is always newer than
+	// its root, so the root is already in the map by the time we need it.
+	local := map[string]uuid.UUID{}
 	for _, n := range notes {
 		noteID := n.GlobalID
+		parentID := h.threadParent(ctx, taskID, n, local)
 		// First, try to link this note back to the user's own comment that produced
 		// it (posted from Tessera, gid not yet tagged by the async writeback worker).
 		// This avoids re-importing it as a duplicate gitlab-sourced comment when a
 		// pull races the push. Strip an optional Tessera marker footer so the stored
 		// (unmarked) body still matches.
 		claimBody := strings.TrimSuffix(n.Body, tesseraCommentMarker)
-		if _, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
-			TaskID: taskID, GlNoteID: &noteID, Body: claimBody,
+		if claimed, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
+			TaskID: taskID, GlNoteID: &noteID, Body: claimBody, GlDiscussionID: n.DiscussionID,
 		}); cerr == nil {
+			local[noteID] = claimed
 			continue // claimed our own pushed comment — nothing to insert
 		}
-		body := h.rewriteAssets(n.Body, wsID)
+		body := h.rewriteAssets(ctx, n.Body, wsID)
 		inserted, err := h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
 			TaskID: taskID, Body: body, GlNoteID: &noteID,
 			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name,
 			GlAuthorAvatarUrl: h.avatarProxyURL(wsID, n.Author.AvatarURL), CreatedAt: n.CreatedAt,
+			ParentID: parentID, GlDiscussionID: n.DiscussionID,
 		})
 		if err == nil && inserted {
 			added++
 			bodies = append(bodies, truncForJournal(body))
 		}
+		if cid, gerr := h.q.GetCommentIDByGlNoteID(ctx, db.GetCommentIDByGlNoteIDParams{
+			TaskID: taskID, GlNoteID: &noteID,
+		}); gerr == nil {
+			local[noteID] = cid
+		}
 	}
 	return added, bodies
+}
+
+// threadParent resolves the local comment a GitLab note replies to: nil when the
+// note opens its discussion, otherwise the comment holding the discussion's root
+// note. The in-pass map covers the common case; the DB lookup covers a reply that
+// arrives in a later incremental pull than the root it answers.
+func (h *API) threadParent(ctx context.Context, taskID uuid.UUID, n gitlab.Note, local map[string]uuid.UUID) *uuid.UUID {
+	if n.RootGID == "" {
+		return nil
+	}
+	if id, ok := local[n.RootGID]; ok {
+		return &id
+	}
+	root := n.RootGID
+	id, err := h.q.GetCommentIDByGlNoteID(ctx, db.GetCommentIDByGlNoteIDParams{TaskID: taskID, GlNoteID: &root})
+	if err != nil {
+		return nil // root not imported (e.g. filtered out) — keep the reply as a root
+	}
+	local[n.RootGID] = id
+	return &id
 }
 
 // effectiveEstimate resolves the estimate (canon minutes) the sync should apply:
@@ -1769,6 +1899,15 @@ type gitlabLinkView struct {
 	AuthorName      string `json:"author_name"`
 	AuthorAvatarURL string `json:"author_avatar_url"`
 	ProjectPath     string `json:"project_path"`
+	// IsGroup mirrors the link's grouping flag so the UI can show the "grouped task"
+	// badge and flip the button, without a second request per task (#2592).
+	IsGroup bool `json:"is_group"`
+
+	// Attachments reports what mirroring the task's assets into GitLab did
+	// (task #2713). Set only on the create-issue response — uploading bytes makes
+	// that call noticeably slower, so the UI reports the outcome instead of
+	// finishing silently. Omitted everywhere else.
+	Attachments *assetStats `json:"attachments,omitempty"`
 }
 
 // gitlabLinkForTask returns the GitLab link view for a task, or nil when the
@@ -1781,7 +1920,7 @@ func (h *API) gitlabLinkForTask(c *gin.Context, taskID uuid.UUID) *gitlabLinkVie
 	return &gitlabLinkView{
 		IID: link.GlIid, WebURL: link.GlWebUrl, Author: link.GlAuthor,
 		AuthorName: link.GlAuthorName, AuthorAvatarURL: link.GlAuthorAvatarUrl,
-		ProjectPath: link.GlProjectPath,
+		ProjectPath: link.GlProjectPath, IsGroup: link.GlIsGroup,
 	}
 }
 
