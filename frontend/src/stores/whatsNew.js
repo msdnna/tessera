@@ -52,9 +52,10 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
   }
 
   // Load acks and decide what (if anything) to surface. First-ever run with this
-  // feature (no whatsnew acks) silently baselines the current version instead of
-  // dumping the whole history on the user — we only interrupt for releases they
-  // actually updated *into*.
+  // A user with no whatsnew acks has baseline 0.0.0, so a first run surfaces the
+  // curated highlights up to the current build once (debut + testable: clearing
+  // the whatsnew acks makes it show again). Nothing is written until the user
+  // dismisses — so the mere presence of the modal never leaves a DB trail.
   async function load() {
     try {
       const { data } = await acknowledgements.list()
@@ -68,11 +69,6 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
     const ackedVersions = [...acked.value]
       .filter((k) => k.startsWith(WHATSNEW_PREFIX))
       .map((k) => k.slice(WHATSNEW_PREFIX.length))
-
-    if (ackedVersions.length === 0) {
-      await ack(WHATSNEW_PREFIX + currentVersion)
-      return
-    }
 
     const highest = ackedVersions.reduce((m, v) => (cmp(v, m) > 0 ? v : m), '0.0.0')
     const releases = WHATS_NEW.filter(
