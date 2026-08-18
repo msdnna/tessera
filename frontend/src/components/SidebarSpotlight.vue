@@ -25,6 +25,7 @@ const arrowPath = ref(null)
 const arrowHead = ref(null)
 const popStyle = ref({})
 const pathLen = ref(0)
+const headGap = ref(0) // px of the tip left undrawn by the stroke (the arrowhead)
 let targetEl = null
 let nudgeTimer = null
 
@@ -48,10 +49,15 @@ function place() {
 
   nextTick(() => {
     const p = pop.value.getBoundingClientRect()
-    // Arrow: from the popover's top-left corner up to the target's right edge.
+    // Aim the arrow at the item's *content*, not the full-width nav row: the tip
+    // lands just past the label/badge (close to the text) rather than at the far
+    // right of the sidebar — but never on the "alpha" badge itself.
+    const anchor = targetEl.querySelector('.nav-badge') || targetEl.querySelector('span') || targetEl
+    const a = anchor.getBoundingClientRect()
+    // Arrow: from the popover's top-left corner to just right of the label/badge.
     const x1 = p.left + 14
     const y1 = p.top + 8
-    const x2 = t.right + 6
+    const x2 = a.right + 12
     const y2 = t.top + t.height / 2
     const dx = x1 - x2 // > 0 (popover is right of the item)
     const dy = y1 - y2 // > 0 (popover is below the item)
@@ -68,16 +74,20 @@ function place() {
     const len = path.getTotalLength()
     pathLen.value = len
 
-    // Arrowhead oriented along the final tangent.
-    const end = path.getPointAtLength(len)
-    const near = path.getPointAtLength(Math.max(0, len - 8))
-    const ang = Math.atan2(end.y - near.y, end.x - near.x)
-    const s = 7
-    const a1 = ang + Math.PI - 0.5
-    const a2 = ang + Math.PI + 0.5
+    // Sharp arrowhead. The stroke stops HEAD px short of the tip (final dashoffset
+    // = HEAD, see --gap) so the round line-cap never pokes through the triangle —
+    // the earlier "blunted" look. The triangle spans that gap to a clean point.
+    const HEAD = 11
+    const halfW = 5
+    headGap.value = HEAD
+    const tip = path.getPointAtLength(len)
+    const base = path.getPointAtLength(Math.max(0, len - HEAD))
+    const ang = Math.atan2(tip.y - base.y, tip.x - base.x)
+    const nx = Math.cos(ang + Math.PI / 2)
+    const ny = Math.sin(ang + Math.PI / 2)
     arrowHead.value.setAttribute(
       'points',
-      `${end.x},${end.y} ${end.x + s * Math.cos(a1)},${end.y + s * Math.sin(a1)} ${end.x + s * Math.cos(a2)},${end.y + s * Math.sin(a2)}`,
+      `${tip.x},${tip.y} ${base.x + nx * halfW},${base.y + ny * halfW} ${base.x - nx * halfW},${base.y - ny * halfW}`,
     )
 
     // Kick off: draw the arrow, then nod the target as the arrowhead lands.
@@ -136,7 +146,7 @@ onBeforeUnmount(() => {
         <path
           ref="arrowPath"
           class="sl-path"
-          :style="{ '--len': pathLen }"
+          :style="{ '--len': pathLen, '--gap': headGap }"
           fill="none"
           stroke="url(#t-accent-grad-svg)"
         />
@@ -182,11 +192,13 @@ onBeforeUnmount(() => {
   animation: sl-draw 0.58s cubic-bezier(0.65, 0, 0.35, 1) 0.26s forwards;
 }
 .sl-layer.playing .sl-head {
-  animation: sl-head 0.18s ease 0.78s forwards;
+  animation: sl-head 0.18s ease 0.76s forwards;
 }
+/* Stop the stroke --gap px short of the tip so the arrowhead's point stays sharp
+   (the round cap sits behind the triangle base instead of poking through it). */
 @keyframes sl-draw {
   to {
-    stroke-dashoffset: 0;
+    stroke-dashoffset: var(--gap);
   }
 }
 @keyframes sl-head {
