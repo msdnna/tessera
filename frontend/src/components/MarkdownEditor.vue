@@ -457,7 +457,13 @@ const tools = [...inlineTools, ...blockTools]
 // upload/attach busy flags and the attach availability stay reactive.
 const barTools = computed(() => [
   ...tools,
-  { icon: ImageOutline, size: 16, title: 'Вставить изображение', fn: pickImage, busy: uploading.value },
+  {
+    icon: ImageOutline,
+    size: 16,
+    title: 'Вставить изображение',
+    fn: pickImage,
+    busy: uploading.value,
+  },
   { icon: GitNetworkOutline, size: 16, title: 'Вставить Mermaid-диаграмму', fn: insertMermaid },
   ...(canAttach.value
     ? [

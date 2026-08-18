@@ -1628,7 +1628,9 @@ async function onSubtaskChanged() {
               :members="mentionItems"
               :task-id="taskId"
               :initial-mode="descInitialMode"
-              :show-template="!!(task && !task.gitlab && gitlabFetchTemplates && glTemplates.length)"
+              :show-template="
+                !!(task && !task.gitlab && gitlabFetchTemplates && glTemplates.length)
+              "
               :template-options="glTemplateOptions"
               @apply-template="applyGlTemplate"
               @attachments-changed="reloadAttachments"

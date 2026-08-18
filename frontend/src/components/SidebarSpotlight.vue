@@ -52,7 +52,8 @@ function place() {
     // Aim the arrow at the item's *content*, not the full-width nav row: the tip
     // lands just past the label/badge (close to the text) rather than at the far
     // right of the sidebar — but never on the "alpha" badge itself.
-    const anchor = targetEl.querySelector('.nav-badge') || targetEl.querySelector('span') || targetEl
+    const anchor =
+      targetEl.querySelector('.nav-badge') || targetEl.querySelector('span') || targetEl
     const a = anchor.getBoundingClientRect()
     // Arrow: from the popover's top-left corner to just right of the label/badge.
     const x1 = p.left + 14

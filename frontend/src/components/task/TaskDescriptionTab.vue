@@ -80,7 +80,11 @@ const descMode = ref(props.initialMode === 'preview' ? 'preview' : 'write')
               <n-icon :component="GitNetworkOutline" :size="16" />
             </button>
           </template>
-          <button class="desc-act" title="Открыть на весь экран" @click="descEditor?.openFullscreen()">
+          <button
+            class="desc-act"
+            title="Открыть на весь экран"
+            @click="descEditor?.openFullscreen()"
+          >
             <n-icon :component="ExpandOutline" :size="16" />
           </button>
           <button
