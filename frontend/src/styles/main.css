@@ -665,3 +665,24 @@ body {
 .plain .n-input__state-border {
   display: none !important;
 }
+
+/* Sidebar spotlight (#2749): the target nav item nods toward the arrow as it
+   lands. Global because the hint overlay (SidebarSpotlight.vue) toggles the
+   class on a Sidebar nav-link in a different component's scope. */
+@keyframes sl-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+.nav-link.sl-nudge {
+  animation: sl-nudge 1.1s ease-in-out 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-link.sl-nudge {
+    animation: none;
+  }
+}

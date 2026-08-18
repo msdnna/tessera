@@ -28,6 +28,11 @@ services:
         - HTTP_PROXY=${HTTP_PROXY:-}
         - HTTPS_PROXY=${HTTPS_PROXY:-}
         - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+        # Build metadata for GET /api/version (shown in the sidebar version tooltip).
+        # Set at deploy time, e.g. GIT_COMMIT=$(git rev-parse --short HEAD)
+        # BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) docker compose build backend
+        - GIT_COMMIT=${GIT_COMMIT:-}
+        - BUILD_DATE=${BUILD_DATE:-}
     container_name: tessera-backend
     restart: unless-stopped
     environment:
@@ -84,6 +89,10 @@ services:
         - HTTP_PROXY=${HTTP_PROXY:-}
         - HTTPS_PROXY=${HTTPS_PROXY:-}
         - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+        # Build metadata shown in the sidebar version tooltip (#2747). Same values
+        # as the backend service; see its build args for how to set them.
+        - GIT_COMMIT=${GIT_COMMIT:-}
+        - BUILD_DATE=${BUILD_DATE:-}
     container_name: tessera-frontend
     restart: unless-stopped
     ports:

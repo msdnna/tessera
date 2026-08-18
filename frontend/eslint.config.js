@@ -12,7 +12,12 @@ export default [
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
+      globals: {
+        ...globals.browser,
+        __APP_VERSION__: 'readonly',
+        __APP_COMMIT__: 'readonly',
+        __BUILD_DATE__: 'readonly',
+      },
     },
     rules: {
       'vue/multi-word-component-names': 'off',

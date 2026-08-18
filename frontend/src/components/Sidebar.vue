@@ -225,7 +225,7 @@ async function deleteWorkspace() {
     <nav class="nav">
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/" class="nav-link" active-class="nav-link-home-noop">
+          <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
             <n-icon :component="HomeOutline" :size="18" />
             <span v-if="!collapsed">Главная</span>
           </router-link>
@@ -234,7 +234,7 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/notes" class="nav-link">
+          <router-link to="/notes" class="nav-link" data-nav="notes">
             <n-icon :component="DocumentTextOutline" :size="18" />
             <span v-if="!collapsed">Заметки</span>
           </router-link>
@@ -243,7 +243,7 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/documents" class="nav-link">
+          <router-link to="/documents" class="nav-link" data-nav="documents">
             <n-icon :component="DocumentsOutline" :size="18" />
             <span v-if="!collapsed" class="nav-label">
               Документы<sup class="nav-badge">alpha</sup>
@@ -254,7 +254,7 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/reminders" class="nav-link">
+          <router-link to="/reminders" class="nav-link" data-nav="reminders">
             <n-icon :component="AlarmOutline" :size="18" />
             <span v-if="!collapsed">Напоминания</span>
           </router-link>
@@ -263,7 +263,7 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/milestones" class="nav-link">
+          <router-link to="/milestones" class="nav-link" data-nav="milestones">
             <n-icon :component="RibbonOutline" :size="18" />
             <span v-if="!collapsed">Этапы</span>
           </router-link>
