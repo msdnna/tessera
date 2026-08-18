@@ -81,7 +81,7 @@ func orDefault(v, def int64) int64 {
 // it together with the resource-handler layer (main() reuses the latter for
 // the background workers and slug backfill).
 func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, mailer mail.Mailer) (*gin.Engine, *handlers.API) {
-	versionHandler := handlers.NewVersionHandler(appVersion)
+	versionHandler := handlers.NewVersionHandler(appVersion, commit, builtAt)
 	// Per-document presence and block locks (#2729). The registry is created here
 	// rather than in main() so the four tests that boot newRouter() get a working
 	// document socket too; its sweeper goroutine ends when rh.CloseDocRooms does.
@@ -216,6 +216,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PUT("/users/me/preferences", rh.UpdateMyPreferences)
 			protected.PUT("/users/me/avatar", rh.UploadMyAvatar)
 			protected.DELETE("/users/me/avatar", rh.DeleteMyAvatar)
+			// Per-user one-shot "seen" flags: What's-New modal, sidebar spotlights,
+			// future onboarding. Keyed by an opaque client-owned string.
+			protected.GET("/users/me/acknowledgements", rh.ListMyAcknowledgements)
+			protected.POST("/users/me/acknowledgements", rh.AcknowledgeMe)
 
 			// Workspaces & membership.
 			protected.POST("/workspaces", rh.CreateWorkspace)
