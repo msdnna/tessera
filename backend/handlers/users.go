@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -33,6 +34,10 @@ type userDTO struct {
 	Company       string    `json:"company"`
 	JobTitle      string    `json:"job_title"`
 	AvatarURL     string    `json:"avatar_url,omitempty"`
+	// When the account was created. The web client uses it to decide whether to
+	// show the "What's New" changelog: only accounts that predate the running
+	// build (i.e. actually updated into it) see it, not brand-new sign-ups (#2749).
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // prefsDTO mirrors user_preferences (localizing + personalizing settings).
@@ -70,7 +75,7 @@ func buildUserDTO(c *gin.Context, q *db.Queries, u db.User) userDTO {
 	dto := userDTO{
 		ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin, EmailVerified: u.EmailVerified,
 		Provider: u.Provider, LastName: u.LastName, FirstName: u.FirstName, MiddleName: u.MiddleName,
-		Bio: u.Bio, Company: u.Company, JobTitle: u.JobTitle,
+		Bio: u.Bio, Company: u.Company, JobTitle: u.JobTitle, CreatedAt: u.CreatedAt,
 	}
 	if has, err := q.UserHasAvatar(c, u.ID); err == nil && has {
 		dto.AvatarURL = "/api/users/" + u.ID.String() + "/avatar"

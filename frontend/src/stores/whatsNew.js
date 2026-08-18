@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { acknowledgements } from '@/api'
+import { useAuthStore } from '@/stores/auth'
 import { WHATS_NEW } from '@/data/whatsNew'
 
 // Per-user "seen once" state for the What's-New modal and the sidebar spotlight
@@ -26,6 +27,22 @@ function cmp(a, b) {
 }
 
 const currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
+const buildDate = typeof __BUILD_DATE__ !== 'undefined' ? __BUILD_DATE__ : ''
+
+// A "brand-new" account is one created on/after the running build — it never
+// updated *into* anything, so the changelog would be noise (and, in the e2e
+// suite, every freshly-registered user would get the modal's mask over the page,
+// blocking clicks — #2749). Only accounts that predate the build see What's New.
+// Unknown timestamps fall back to "not brand-new" (show), which never happens in
+// practice: the server always sends created_at and the build always stamps a date.
+function isBrandNewAccount() {
+  const created = useAuthStore().user?.created_at
+  if (!created || !buildDate) return false
+  const c = new Date(created).getTime()
+  const b = new Date(buildDate).getTime()
+  if (Number.isNaN(c) || Number.isNaN(b)) return false
+  return c >= b
+}
 
 export const useWhatsNewStore = defineStore('whatsNew', () => {
   const acked = ref(new Set())
@@ -69,6 +86,13 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
     const ackedVersions = [...acked.value]
       .filter((k) => k.startsWith(WHATSNEW_PREFIX))
       .map((k) => k.slice(WHATSNEW_PREFIX.length))
+
+    // Brand-new sign-ups (no acks yet, account created on/after this build) get
+    // baselined silently — nothing to catch up on, nothing to interrupt them with.
+    if (ackedVersions.length === 0 && isBrandNewAccount()) {
+      await ack(WHATSNEW_PREFIX + currentVersion)
+      return
+    }
 
     const highest = ackedVersions.reduce((m, v) => (cmp(v, m) > 0 ? v : m), '0.0.0')
     const releases = WHATS_NEW.filter(
