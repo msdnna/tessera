@@ -68,6 +68,14 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
+      # Build metadata for the sidebar version tooltip (vite bakes these into the
+      # bundle; the ./frontend build context has no .git to read them from).
+      - name: Build metadata
+        id: bmeta
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build & push frontend image
         uses: docker/build-push-action@v6
         with:
@@ -75,6 +83,9 @@ jobs:
           file: frontend/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_COMMIT=${{ steps.bmeta.outputs.commit }}
+            BUILD_DATE=${{ steps.bmeta.outputs.date }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

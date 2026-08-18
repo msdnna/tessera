@@ -88,6 +88,14 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
+      # Build metadata for GET /api/version (the build context is ./backend, which
+      # has no .git, so the Dockerfile can't read these itself — pass them in).
+      - name: Build metadata
+        id: bmeta
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build & push backend image
         uses: docker/build-push-action@v6
         with:
@@ -95,6 +103,9 @@ jobs:
           file: backend/Dockerfile.prod
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_COMMIT=${{ steps.bmeta.outputs.commit }}
+            BUILD_DATE=${{ steps.bmeta.outputs.date }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
