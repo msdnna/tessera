@@ -236,7 +236,17 @@ async function scrollToBottom() {
 function autoGrow() {
   commentEditor.value?.autoGrow?.()
 }
-defineExpose({ scrollToBottom, autoGrow })
+// Closing the task modal (and switching to another task in the sidebar panel, which
+// keeps this subtree mounted) drops any open reply composer — the modal calls this.
+function resetComposers() {
+  cancelReply()
+  editingCommentId.value = null
+}
+watch(
+  () => props.taskId,
+  () => resetComposers(),
+)
+defineExpose({ scrollToBottom, autoGrow, resetComposers })
 
 // ── offline retry for a comment POST ──
 // A network error (server unreachable — err.offline) is retried a few times with
@@ -578,21 +588,11 @@ async function onCommentCheck(c, i) {
               :command-items="commandItems"
               :attach-task-id="taskId"
               :min-rows="2"
-              placeholder="Ответить… (Ctrl+Enter — отправить)"
+              placeholder="Ответить… (Esc — отмена, Ctrl+Enter — отправить)"
               @attachments-changed="emit('changed')"
               @submit="postReply(t.root.id)"
+              @cancel="cancelReply"
             />
-            <n-space :size="6" style="margin-top: 6px">
-              <n-button
-                size="tiny"
-                type="primary"
-                :loading="replyingPost"
-                @click="postReply(t.root.id)"
-              >
-                Ответить
-              </n-button>
-              <n-button size="tiny" @click="cancelReply">Отмена</n-button>
-            </n-space>
           </div>
         </div>
       </TransitionGroup>

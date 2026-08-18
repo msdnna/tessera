@@ -21,6 +21,7 @@ import {
   ChevronDownOutline,
   AttachOutline,
   ExpandOutline,
+  EllipsisHorizontalOutline,
 } from '@vicons/ionicons5'
 import { uploads as uploadsApi, tasks as tasksApi } from '@/api'
 import { toggleTaskMarker } from '@/utils/markdown'
@@ -88,6 +89,9 @@ const emit = defineEmits([
   'persist',
   'update:mode',
   'attachments-changed',
+  // Esc in the field — the host may use it to dismiss the composer (e.g. the reply
+  // form). The description editor doesn't listen, so this is a no-op there.
+  'cancel',
 ])
 
 const message = useMessage()
@@ -111,9 +115,52 @@ watch(
   },
 )
 const ta = ref(null)
+const rootEl = ref(null)
+const previewSide = ref(null)
 
 // Members the user picked from the dropdown, so getMentions can resolve ids.
 const picked = ref([])
+
+// ── narrow (boxed) composer: fold the formatting/insert buttons into a popover ──
+// A comment composer in the sidebar-panel layout is only ~470–500px wide, where the
+// full toolbar overruns the box and shoves the send button past its right edge
+// (#2743). Below a threshold we collapse every format/insert control into one menu
+// button, so only the menu toggle + preview/expand/send stay on the bar — those can
+// never overflow. Measured off the editor's own width (ResizeObserver), so it reacts
+// to the panel, not the viewport.
+const compact = ref(false)
+const fmtOpen = ref(false)
+let ro = null
+onMounted(() => {
+  if (!boxed.value || !rootEl.value || typeof ResizeObserver === 'undefined') return
+  ro = new ResizeObserver((entries) => {
+    const w = entries[0]?.contentRect?.width
+    if (w) {
+      compact.value = w < 560
+      if (!compact.value) fmtOpen.value = false
+    }
+  })
+  ro.observe(rootEl.value)
+})
+onBeforeUnmount(() => ro?.disconnect())
+
+// Split editor: keep the live preview lined up with the text as either side scrolls.
+// Proportional (the two panes are different heights), with a one-frame guard so the
+// programmatic scroll of the follower doesn't bounce back as a second sync.
+let syncingScroll = false
+function syncScroll(src) {
+  if (!props.split || syncingScroll) return
+  const lead = src === 'text' ? ta.value : previewSide.value
+  const follow = src === 'text' ? previewSide.value : ta.value
+  if (!lead || !follow) return
+  const room = lead.scrollHeight - lead.clientHeight
+  const ratio = room > 0 ? lead.scrollTop / room : 0
+  syncingScroll = true
+  follow.scrollTop = ratio * (follow.scrollHeight - follow.clientHeight)
+  requestAnimationFrame(() => {
+    syncingScroll = false
+  })
+}
 
 function setValue(v) {
   emit('update:modelValue', v)
@@ -405,6 +452,25 @@ const blockTools = [
   { icon: ChevronDownOutline, title: 'Спойлер', fn: insertSpoiler },
 ]
 const tools = [...inlineTools, ...blockTools]
+// The boxed composer's full button set (formatting + insert), rendered inline when
+// there's room and inside the compact popover when there isn't. Computed so the
+// upload/attach busy flags and the attach availability stay reactive.
+const barTools = computed(() => [
+  ...tools,
+  { icon: ImageOutline, size: 16, title: 'Вставить изображение', fn: pickImage, busy: uploading.value },
+  { icon: GitNetworkOutline, size: 16, title: 'Вставить Mermaid-диаграмму', fn: insertMermaid },
+  ...(canAttach.value
+    ? [
+        {
+          icon: AttachOutline,
+          size: 16,
+          title: 'Приложить файл к задаче и вставить ссылку',
+          fn: openAttachPicker,
+          busy: attaching.value,
+        },
+      ]
+    : []),
+])
 
 // ── selection bubble toolbar ──
 const bubble = ref(null) // { top, left } in viewport coords, or null
@@ -469,6 +535,7 @@ function hideBubble() {
 function onTaScroll() {
   hideBubble()
   if (mq.value) updateSugPos()
+  if (props.split) syncScroll('text')
 }
 function onBlur() {
   // Defer so a bubble-button mousedown can run before we tear it down.
@@ -673,11 +740,16 @@ function onKeydown(e) {
     else applyEdit(indentLines(el.value, s, end))
     return
   }
-  // First Esc gives Tab back to the browser; the second one propagates and lets
-  // the surrounding modal close as usual.
-  if (e.key === 'Escape' && tabTraps.value) {
-    tabTraps.value = false
-    e.stopPropagation()
+  // Esc asks the host to dismiss the composer (the reply form listens; the
+  // description doesn't). It's also the tab-trap release: the first Esc gives Tab
+  // back to the browser and is kept from the surrounding modal, the second one
+  // propagates and lets the modal close as usual.
+  if (e.key === 'Escape') {
+    emit('cancel')
+    if (tabTraps.value) {
+      tabTraps.value = false
+      e.stopPropagation()
+    }
   }
 }
 
@@ -736,7 +808,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="md2" :class="{ 'md2-boxed': boxed, 'md2-splitmode': split }">
+  <div ref="rootEl" class="md2" :class="{ 'md2-boxed': boxed, 'md2-splitmode': split }">
     <!-- Default variant: a slim top toolbar — insert actions plus a single
          preview/edit toggle (replaces the old Написать / Просмотр tabs). The boxed
          composer moves every control into the bottom toolbar instead. -->
@@ -899,17 +971,21 @@ defineExpose({
       </Transition>
 
       <!-- Split only: the preview sits beside the text instead of replacing it,
-           and follows every keystroke (same v-model, no second copy). -->
-      <RichContent
-        v-if="split"
-        class="md2-preview md2-preview-side"
-        :source="modelValue"
-        :members="mentionItems"
-        interactive
-        task-refs
-        empty="Нечего показать"
-        @toggle="onToggleCheck"
-      />
+           and follows every keystroke (same v-model, no second copy). RichContent is
+           a multi-root component, so it never inherits this file's scoped attribute —
+           the grid/overflow rules have to land on a native wrapper, or the preview
+           spills its content over the toolbar with no scrollbar (#2744). -->
+      <div v-if="split" ref="previewSide" class="md2-preview-side" @scroll="syncScroll('preview')">
+        <RichContent
+          class="md2-preview"
+          :source="modelValue"
+          :members="mentionItems"
+          interactive
+          task-refs
+          empty="Нечего показать"
+          @toggle="onToggleCheck"
+        />
+      </div>
 
       <!-- Default variant: a formatting bar under the text. The selection bubble
            only carries inline marks, and the header row (when it is rendered at
@@ -965,51 +1041,55 @@ defineExpose({
         </li>
       </ul>
 
+      <!-- Compact composer: the format/insert buttons live in this popover instead of
+           on the bar, so a narrow composer can't overflow (see the toolbar below). In
+           flow (not floating) so it can't be clipped by the box. -->
+      <div v-if="boxed && compact && fmtOpen && mode === 'write'" class="md2-fmtbar">
+        <button
+          v-for="b in barTools"
+          :key="b.title"
+          type="button"
+          class="md2-tbtn"
+          :class="[b.cls, { busy: b.busy }]"
+          :title="b.title"
+          @mousedown.prevent="b.fn"
+        >
+          <n-icon v-if="b.icon" :component="b.icon" :size="b.size || 15" />
+          <template v-else>{{ b.t }}</template>
+        </button>
+      </div>
+
       <!-- Boxed variant: persistent toolbar under the text (formatting is still also
          available via the selection bubble). mousedown.prevent keeps the caret /
-         selection in the textarea so the format buttons act on it. -->
+         selection in the textarea so the format buttons act on it. When the composer
+         is narrow, the whole format/insert group folds into a single menu button so
+         the bar (and the send button on its right) never overflows the box (#2743). -->
       <div v-if="boxed" class="md2-toolbar">
         <template v-if="mode === 'write'">
           <button
-            v-for="b in tools"
-            :key="b.title"
+            v-if="compact"
             type="button"
             class="md2-tbtn"
-            :class="b.cls"
-            :title="b.title"
-            @mousedown.prevent="b.fn"
+            :class="{ active: fmtOpen }"
+            title="Форматирование и вставка"
+            @mousedown.prevent="fmtOpen = !fmtOpen"
           >
-            <n-icon v-if="b.icon" :component="b.icon" :size="15" />
-            <template v-else>{{ b.t }}</template>
+            <n-icon :component="EllipsisHorizontalOutline" :size="18" />
           </button>
-          <span class="md2-tsep" />
-          <button
-            type="button"
-            class="md2-tbtn"
-            :class="{ busy: uploading }"
-            title="Вставить изображение"
-            @mousedown.prevent="pickImage"
-          >
-            <n-icon :component="ImageOutline" :size="16" />
-          </button>
-          <button
-            type="button"
-            class="md2-tbtn"
-            title="Вставить Mermaid-диаграмму"
-            @mousedown.prevent="insertMermaid"
-          >
-            <n-icon :component="GitNetworkOutline" :size="16" />
-          </button>
-          <button
-            v-if="canAttach"
-            type="button"
-            class="md2-tbtn"
-            :class="{ busy: attaching }"
-            title="Приложить файл к задаче и вставить ссылку"
-            @mousedown.prevent="openAttachPicker"
-          >
-            <n-icon :component="AttachOutline" :size="16" />
-          </button>
+          <template v-else>
+            <button
+              v-for="b in barTools"
+              :key="b.title"
+              type="button"
+              class="md2-tbtn"
+              :class="[b.cls, { busy: b.busy }]"
+              :title="b.title"
+              @mousedown.prevent="b.fn"
+            >
+              <n-icon v-if="b.icon" :component="b.icon" :size="b.size || 15" />
+              <template v-else>{{ b.t }}</template>
+            </button>
+          </template>
         </template>
         <span class="md2-spacer" />
         <button
@@ -1435,6 +1515,23 @@ defineExpose({
    a horizontal scroll in the narrow description column. */
 .md2-format {
   flex-wrap: wrap;
+}
+/* Compact composer: the folded-away format/insert buttons, shown above the bar when
+   its menu button is toggled. Wraps so it fits any composer width. */
+.md2-fmtbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 4px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-input-bg);
+}
+.md2-tbtn.active {
+  background: var(--t-hover);
+  color: var(--t-text1);
 }
 /* Drop target feedback: without it a dragged file gives no hint that the editor
    will take it (the textarea has no box of its own to change). */
