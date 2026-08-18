@@ -22,6 +22,8 @@ db-down: ## Stop Postgres
 # ── Docker ─────────────────────────────────────────────────
 .PHONY: up
 up: ## Build + start all services
+	GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null || echo '')" \
+	BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 	$(COMPOSE) up -d --build
 
 .PHONY: down
