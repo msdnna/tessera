@@ -614,6 +614,12 @@ type User struct {
 	JobTitle      string    `json:"job_title"`
 }
 
+type UserAcknowledgement struct {
+	UserID uuid.UUID `json:"user_id"`
+	Key    string    `json:"key"`
+	AckAt  time.Time `json:"ack_at"`
+}
+
 type UserAvatar struct {
 	UserID      uuid.UUID `json:"user_id"`
 	ContentType string    `json:"content_type"`
