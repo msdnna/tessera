@@ -13,6 +13,7 @@ import {
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
+import WhatsNewModal from './WhatsNewModal.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
@@ -20,6 +21,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
@@ -30,6 +32,7 @@ const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const conflicts = useConflictsStore()
+const whatsNew = useWhatsNewStore()
 const { isMobile } = useResponsive()
 const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
 const route = useRoute()
@@ -121,6 +124,10 @@ onMounted(async () => {
   await ws.loadWorkspaces()
   await notes.load()
   conflicts.load(ws.currentId)
+  // "What's new" after an update + sidebar spotlight hints (#2749). Best-effort:
+  // decides on its own whether anything is worth showing (and stays silent on a
+  // first run or when offline).
+  whatsNew.load()
   // On desktop, ask for notification permission up front so reminders can fire
   // without waiting for the first event (best-effort).
   if (isTauri()) {
@@ -246,6 +253,11 @@ watch(
       :focus-task-id="conflicts.focusTaskId"
       @resolved="conflicts.load()"
     />
+
+    <!-- "Что нового" after an update (#2749). The sidebar spotlight arrows that
+         follow the modal are a separate, still-to-be-designed visual (mockups
+         under review) and are not mounted yet. -->
+    <WhatsNewModal />
   </div>
 </template>
 
