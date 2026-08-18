@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
-import { CloudDownloadOutline, CloseOutline, RefreshOutline } from '@vicons/ionicons5'
+import { CloudDownloadOutline, CloseOutline, ReloadOutline } from '@vicons/ionicons5'
 import { useAppUpdate } from '@/composables/useAppUpdate'
 
 // A single, global "new version available" toast, styled after the board
@@ -40,7 +40,7 @@ function postpone() {
         <div class="u-text">Загружена новая версия Tessera</div>
         <div class="u-actions">
           <button class="u-btn primary" :disabled="reloading" @click="reload">
-            <n-icon :component="RefreshOutline" :size="13" />
+            <n-icon :component="ReloadOutline" :size="13" />
             {{ reloading ? 'Обновляем…' : 'Обновить' }}
           </button>
           <button class="u-btn" :disabled="reloading" @click="postpone">Отложить</button>
