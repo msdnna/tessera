@@ -215,6 +215,9 @@ type GitlabLink struct {
 	EstimateOverridden  bool       `json:"estimate_overridden"`
 	GlSnapshot          []byte     `json:"gl_snapshot"`
 	MilestoneOverridden bool       `json:"milestone_overridden"`
+	GlIsGroup           bool       `json:"gl_is_group"`
+	GlWorkItemID        string     `json:"gl_work_item_id"`
+	GlParentGlobalID    string     `json:"gl_parent_global_id"`
 }
 
 type GitlabMilestoneLink struct {

@@ -97,6 +97,12 @@ func (h *API) CreateTask(c *gin.Context) {
 		return
 	}
 	h.logEvent(c, t.ID, "created", nil)
+	// A subtask of a grouped, linked parent is mirrored into GitLab as a child work
+	// item (#2592). Queued, never inline: GitLab must not be able to slow down — or
+	// fail — task creation.
+	if req.ParentID != nil {
+		h.enqueueChildAttach(c, t.ID, *req.ParentID, uid)
+	}
 	h.broadcastAs(c, wsID, "task.created", t)
 	c.JSON(http.StatusCreated, t)
 }

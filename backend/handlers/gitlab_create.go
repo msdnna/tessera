@@ -98,7 +98,7 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		description, assets = h.pushAssets(c, client, integ, description)
 	}
 
-	created, err := client.CreateIssue(c, integ.ProjectPath, task.Title, description, labels, due, assignees)
+	created, err := client.CreateIssue(c, integ.ProjectPath, task.Title, description, labels, due, assignees, "")
 	if err != nil {
 		log.Printf("gitlab create issue for task %s: %v", id, err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "GitLab rejected the issue: " + truncErr(err)})

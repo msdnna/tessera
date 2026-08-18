@@ -147,6 +147,36 @@ RETURNING *;
 -- name: SetGitlabLinkSnapshot :exec
 UPDATE gitlab_links SET gl_snapshot = $2 WHERE task_id = $1;
 
+-- ── issue hierarchy: grouped parents and their children (#2592) ──
+
+-- SetGitlabLinkGroup records whether the mirrored issue carries the grouping label.
+-- name: SetGitlabLinkGroup :exec
+UPDATE gitlab_links SET gl_is_group = $2 WHERE task_id = $1;
+
+-- SetGitlabLinkHierarchy caches the issue's own WorkItem gid and its parent's, so the
+-- hierarchy mutation never has to construct a gid from a number.
+-- name: SetGitlabLinkHierarchy :exec
+UPDATE gitlab_links SET gl_work_item_id = $2, gl_parent_global_id = $3 WHERE task_id = $1;
+
+-- ListGitlabChildGlobalIDs returns the GitLab global ids of the linked tasks that are
+-- currently parented under one task. The pull uses it to tell a real detach in GitLab
+-- ("the parent listed its children and this one was not among them") apart from "we
+-- could not list that parent's children this run" — without it, one failed child query
+-- drops every subtask to top-level.
+-- name: ListGitlabChildGlobalIDs :many
+SELECT l.gl_global_id
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.parent_id = $2;
+
+-- CountGitlabChildLinks counts the linked subtasks under a task — the gate that stops
+-- ungrouping a parent that still has GitLab children hanging off it.
+-- name: CountGitlabChildLinks :one
+SELECT count(*)
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.parent_id = $2;
+
 -- SyncUpsertTask updates the synced fields of a linked task without touching its
 -- position (the user may have reordered it on the board).
 -- name: SyncUpdateTask :one

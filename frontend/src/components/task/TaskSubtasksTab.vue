@@ -5,7 +5,7 @@
 import { ref, computed } from 'vue'
 import { NIcon, NInput, NPopover, useMessage } from 'naive-ui'
 import { CheckmarkCircle, EllipseOutline, GitBranchOutline } from '@vicons/ionicons5'
-import { tasks as tasksApi, boards as boardsApi } from '@/api'
+import { tasks as tasksApi, boards as boardsApi, gitlab as glApi } from '@/api'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { PRIORITY_COLORS } from '@/styles/tokens'
@@ -19,8 +19,11 @@ const props = defineProps({
   // deep-link can open a task from elsewhere), so this stays a prop.
   columns: { type: Array, default: () => [] },
   readonly: { type: Boolean, default: false },
+  // writeback.push_children on the board's integration (#2592) — gates the whole
+  // GitLab column of this list, including the "parent is not grouped" hint.
+  gitlabCanGroup: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed'])
+const emit = defineEmits(['open', 'changed', 'group-parent'])
 
 const message = useMessage()
 const bv = useBoardViewStore()
@@ -64,6 +67,42 @@ async function toggleSubtask(sub) {
     message.error(e.message)
   }
 }
+// ── GitLab hierarchy state of each subtask (#2592) ──
+// The three states the row can be in, in the order they are worth telling apart:
+//   'child'    — has its own issue AND a parent work item in GitLab: nothing to do.
+//   'detached' — has an issue, but GitLab refused the hierarchy (empty parent gid).
+//                The subtask is NOT lost; it is simply top-level over there → retry.
+//   'absent'   — no issue at all: created before the parent was grouped, or the push
+//                is still queued. Offered as a manual push.
+// The whole column is hidden unless the parent itself is a linked, grouped issue —
+// otherwise nothing here can succeed, and the hint below says why instead.
+const parentLinked = computed(() => !!props.task?.gitlab)
+const parentGrouped = computed(() => props.task?.gitlab?.is_group === true)
+const showGitlab = computed(() => props.gitlabCanGroup && parentLinked.value)
+
+function glState(sub) {
+  if (!sub?.gl_iid) return 'absent'
+  return sub.gl_parent_global_id ? 'child' : 'detached'
+}
+// Rows in flight, so a double click cannot queue the same push twice.
+const pushing = ref(new Set())
+async function pushChild(sub) {
+  if (props.readonly || !sub || pushing.value.has(sub.id)) return
+  pushing.value = new Set(pushing.value).add(sub.id)
+  try {
+    await glApi.pushChild(sub.id)
+    // 202: the worker owns the GitLab round trip. Say "queued" rather than "done" —
+    // the row updates when the write-back lands and the parent is re-fetched.
+    message.success('Выгрузка подзадачи в GitLab поставлена в очередь')
+  } catch (e) {
+    message.error(e?.response?.data?.error || e.message)
+  } finally {
+    const next = new Set(pushing.value)
+    next.delete(sub.id)
+    pushing.value = next
+  }
+}
+
 // Same move as the status row, for a subtask row, without opening it.
 async function moveSubtask(sub, columnId) {
   if (props.readonly || !sub || columnId === sub.column_id) return
@@ -100,6 +139,34 @@ async function moveSubtask(sub, columnId) {
           />
           <span class="sub-title">{{ sub.title }}</span>
           <span v-if="sub.due_date" class="sub-due">{{ subDue(sub.due_date) }}</span>
+          <!-- GitLab hierarchy state (#2592): a plain chip when the subtask really is a
+               child work item over there, an actionable one in the two states that are
+               not yet that. -->
+          <template v-if="showGitlab">
+            <a
+              v-if="glState(sub) === 'child'"
+              class="gl-chip"
+              :href="sub.gl_web_url || undefined"
+              target="_blank"
+              rel="noopener"
+              :title="'Дочерний элемент issue в GitLab'"
+              @click.stop
+              >!{{ sub.gl_iid }}</a
+            >
+            <button
+              v-else-if="!readonly && parentGrouped"
+              class="gl-chip act"
+              :disabled="pushing.has(sub.id)"
+              :title="
+                glState(sub) === 'detached'
+                  ? `Issue !${sub.gl_iid} создан, но GitLab не принял его в иерархию — повторить`
+                  : 'Подзадача ещё не выгружена в GitLab — выгрузить'
+              "
+              @click.stop="pushChild(sub)"
+            >
+              {{ glState(sub) === 'detached' ? 'вне иерархии' : 'не в GitLab' }}
+            </button>
+          </template>
           <!-- status of the subtask, changeable without opening it -->
           <n-popover v-if="!readonly && sortedCols.length" trigger="click" placement="bottom-end">
             <template #trigger>
@@ -137,6 +204,16 @@ async function moveSubtask(sub, columnId) {
       :icon="GitBranchOutline"
       text="Подзадач пока нет"
     />
+    <!-- The one case the per-row chips cannot express: the parent is linked but not a
+         grouped issue, so no subtask here can reach the GitLab hierarchy at all. Said
+         once, with the fix next to it, instead of repeated on every row. -->
+    <div
+      v-if="showGitlab && !parentGrouped && !readonly && (task?.subtasks || []).length"
+      class="gl-hint"
+    >
+      <span>Родитель не помечен как сгруппированная задача — подзадачи не уедут в GitLab.</span>
+      <button class="gl-hint-act" @click="emit('group-parent')">Пометить</button>
+    </div>
     <n-input
       v-model:value="newSubtask"
       size="small"
@@ -206,5 +283,53 @@ async function moveSubtask(sub, columnId) {
 .sub-due {
   font-size: 11px;
   color: var(--t-text3);
+}
+/* GitLab hierarchy chips (#2592) — neutral, like the column chip next to them: this
+   is provenance, not an accent action. */
+.gl-chip {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--t-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--t-text3);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.gl-chip.act {
+  cursor: pointer;
+}
+.gl-chip.act:hover {
+  color: var(--t-text1);
+  border-color: var(--t-text3);
+}
+.gl-chip.act:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.gl-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  color: var(--t-text3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.gl-hint-act {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--t-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t-text2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.gl-hint-act:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
 }
 </style>

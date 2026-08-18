@@ -28,6 +28,22 @@ type Writeback struct {
 	FetchTemplates      bool              `json:"fetch_templates"` // offer repo issue templates when creating
 	ColumnLabelBindings map[string]string `json:"column_label_bindings,omitempty"`
 
+	// ── issue hierarchy (#2592) ──
+	// Deliberately plain flags rather than rows in Bindings: a binding is "a FIELD of
+	// an already-linked task changed → do something to its issue", and creating a
+	// subtask fits neither half — the trigger is structural, and the child has no link
+	// yet. Stretching the binding vocabulary for one case would cost more than it buys.
+
+	// PushChildren allows a new subtask of a grouped, linked parent to be created as a
+	// child work item in GitLab. Off by default, like every other push flag.
+	PushChildren bool `json:"push_children"`
+	// AutoGroupOnChild labels a linked parent as grouped by itself the first time a
+	// subtask is pushed under it. Off by default on purpose: silently editing labels in
+	// GitLab is not something to opt users into — the UI offers the button instead.
+	AutoGroupOnChild bool `json:"auto_group_on_child"`
+	// GroupLabel is the label that marks a grouped parent. Empty = DefaultGroupLabel.
+	GroupLabel string `json:"group_label,omitempty"`
+
 	// PushAttachments mirrors Tessera-hosted assets into the GitLab project's
 	// upload store when a description/note is pushed (task #2713). A pointer, not a
 	// plain bool, because this one defaults to ON: an absent key in an integration
@@ -40,6 +56,14 @@ type Writeback struct {
 	// Bindings is the customizable trigger→action table. Empty = fall back to the
 	// legacy-flag defaults (effectiveBindings). Non-empty = admin took control.
 	Bindings []Binding `json:"bindings,omitempty"`
+}
+
+// EffectiveGroupLabel is the label the "make this a grouped task" button writes.
+func (w Writeback) EffectiveGroupLabel() string {
+	if s := strings.TrimSpace(w.GroupLabel); s != "" {
+		return s
+	}
+	return DefaultGroupLabel
 }
 
 // Trigger types — the Tessera-side event a binding reacts to. These are the
@@ -56,6 +80,26 @@ const (
 	TrigLabels     = "labels" // a tag was added/removed
 	TrigComment    = "comment"
 )
+
+// Structural child kinds (#2592). These share the gitlab_writebacks outbox with the
+// triggers above but are deliberately NOT triggers: no binding resolves them, they
+// describe a change to the task TREE rather than to a field, and for child_create the
+// task has no link yet — so the worker branches on them before it looks one up.
+const (
+	KindChildCreate = "child_create" // subtask appeared under a grouped parent → open a child issue
+	KindChildAttach = "child_attach" // an already-linked task became a subtask → re-parent it in GitLab
+	KindChildDetach = "child_detach" // a linked subtask was detached → drop it to top-level in GitLab
+)
+
+// ChildIssueType is the GitLab issue_type given to a pushed subtask. An issue cannot
+// hang under another issue in GitLab's hierarchy — only a work item of type Task can.
+const ChildIssueType = "task"
+
+// IsChildKind reports whether a change_kind is one of the structural child pushes,
+// i.e. whether it must bypass the binding machinery entirely.
+func IsChildKind(kind string) bool {
+	return kind == KindChildCreate || kind == KindChildAttach || kind == KindChildDetach
+}
 
 // Action types — the GitLab-side effect of a matched binding.
 const (

@@ -148,7 +148,7 @@ func (q *Queries) GetGitlabIntegrationByWorkspaceProject(ctx context.Context, ar
 }
 
 const getGitlabLinkByIID = `-- name: GetGitlabLinkByIID :one
-SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden FROM gitlab_links WHERE integration_id = $1 AND gl_iid = $2 LIMIT 1
+SELECT task_id, integration_id, gl_global_id, gl_iid, gl_project_path, gl_web_url, gl_updated_at, title_hash, desc_hash, labels_hash, last_synced_at, created_at, gl_author, gl_author_name, due_overridden, gl_author_avatar_url, start_overridden, gl_last_state, estimate_overridden, gl_snapshot, milestone_overridden, gl_is_group, gl_work_item_id, gl_parent_global_id FROM gitlab_links WHERE integration_id = $1 AND gl_iid = $2 LIMIT 1
 `
 
 type GetGitlabLinkByIIDParams struct {
@@ -183,6 +183,9 @@ func (q *Queries) GetGitlabLinkByIID(ctx context.Context, arg GetGitlabLinkByIID
 		&i.EstimateOverridden,
 		&i.GlSnapshot,
 		&i.MilestoneOverridden,
+		&i.GlIsGroup,
+		&i.GlWorkItemID,
+		&i.GlParentGlobalID,
 	)
 	return i, err
 }

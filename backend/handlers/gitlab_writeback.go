@@ -292,6 +292,12 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 		return prefix + ": этап"
 	case "title_desc":
 		return prefix + ": заголовок/описание"
+	case gitlab.KindChildCreate:
+		return prefix + ": подзадача в GitLab"
+	case gitlab.KindChildAttach:
+		return prefix + ": привязка к родителю"
+	case gitlab.KindChildDetach:
+		return prefix + ": открепление от родителя"
 	default:
 		return prefix + ": " + kind
 	}
@@ -332,6 +338,12 @@ func isPermanentWriteback(err error) bool {
 // (network / GitLab 5xx) to retry.
 func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (writebackResult, error) {
 	var res writebackResult
+	// Structural child pushes branch out before the link lookup below: a child_create
+	// row exists precisely because its task has NO link yet, so falling through would
+	// give up on it permanently ("task no longer linked") on the very first attempt.
+	if gitlab.IsChildKind(w.ChangeKind) {
+		return h.performChildWriteback(ctx, w)
+	}
 	link, err := h.q.GetGitlabLinkByTask(ctx, w.TaskID)
 	if err != nil {
 		return res, notify.Permanent(fmt.Errorf("task no longer linked: %w", err))

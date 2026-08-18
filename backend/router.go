@@ -339,6 +339,13 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/tasks/:id/gitlab-assignees", rh.PinTaskGitlabAssignee)
 			protected.DELETE("/tasks/:id/gitlab-assignees/:username", rh.RemoveTaskGitlabAssignee)
 			protected.POST("/tasks/:id/gitlab-issue", rh.CreateGitlabIssueFromTask)
+			// Issue hierarchy (#2592): mark a linked issue as a grouped parent, so
+			// subtasks created under it can be pushed as child work items.
+			protected.POST("/tasks/:id/gitlab-group", rh.SetGitlabTaskGroup)
+			protected.DELETE("/tasks/:id/gitlab-group", rh.ClearGitlabTaskGroup)
+			// Manual (re)push of one subtask into the hierarchy — the retry behind a
+			// subtask that GitLab declined, and the backfill for older subtasks.
+			protected.POST("/tasks/:id/gitlab-child", rh.PushGitlabChild)
 
 			// Rich task detail: journal, comments, relations, attachments (#8).
 			protected.GET("/tasks/:id/events", rh.ListTaskEvents)

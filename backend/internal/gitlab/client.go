@@ -806,9 +806,18 @@ func (c *Client) CreateProjectMilestone(ctx context.Context, projectPath, title,
 // CreateIssue opens a new issue in the project from Tessera-side fields. labels are
 // full label titles (joined into the comma-separated labels param); dueDate is
 // "YYYY-MM-DD" or empty; assigneeIDs are numeric GitLab user ids (empty = none).
-func (c *Client) CreateIssue(ctx context.Context, projectPath, title, description string, labels []string, dueDate string, assigneeIDs []int64) (CreatedIssue, error) {
+//
+// issueType is GitLab's issue_type ("" for the default "issue", "task" for an item
+// that can hang under a grouped parent — see workitems.go). Instances that predate
+// typed issues ignore the parameter, so passing it is safe; what varies is whether the
+// created item is actually eligible for the hierarchy, which the caller finds out from
+// SetWorkItemParent rather than by guessing here.
+func (c *Client) CreateIssue(ctx context.Context, projectPath, title, description string, labels []string, dueDate string, assigneeIDs []int64, issueType string) (CreatedIssue, error) {
 	form := url.Values{}
 	form.Set("title", title)
+	if issueType != "" {
+		form.Set("issue_type", issueType)
+	}
 	if description != "" {
 		form.Set("description", description)
 	}

@@ -96,6 +96,40 @@ func (q *Queries) CoalescePendingWriteback(ctx context.Context, arg CoalescePend
 	return result.RowsAffected(), nil
 }
 
+const createGitlabChildWriteback = `-- name: CreateGitlabChildWriteback :exec
+
+INSERT INTO gitlab_writebacks (task_id, integration_id, change_kind, payload, actor_user_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT DO NOTHING
+`
+
+type CreateGitlabChildWritebackParams struct {
+	TaskID        uuid.UUID  `json:"task_id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	ChangeKind    string     `json:"change_kind"`
+	Payload       []byte     `json:"payload"`
+	ActorUserID   *uuid.UUID `json:"actor_user_id"`
+}
+
+// ── Child work items (#2592) ────────────────────────────────
+// CreateGitlabChildWriteback enqueues a structural child push. Unlike every other
+// change_kind (each a re-pushable update of an issue that already exists), child_create
+// OPENS a new issue, so a duplicate row would open a second one. The partial unique
+// index from migration 0054 makes "at most one in flight per task" a database
+// invariant; this is the matching insert — ON CONFLICT DO NOTHING collapses the
+// duplicate instead of letting that index turn an ordinary double-enqueue into an error
+// on the user's mutation path.
+func (q *Queries) CreateGitlabChildWriteback(ctx context.Context, arg CreateGitlabChildWritebackParams) error {
+	_, err := q.db.Exec(ctx, createGitlabChildWriteback,
+		arg.TaskID,
+		arg.IntegrationID,
+		arg.ChangeKind,
+		arg.Payload,
+		arg.ActorUserID,
+	)
+	return err
+}
+
 const createGitlabWriteback = `-- name: CreateGitlabWriteback :exec
 INSERT INTO gitlab_writebacks (task_id, integration_id, change_kind, payload, actor_user_id)
 VALUES ($1, $2, $3, $4, $5)
@@ -552,5 +586,23 @@ type SetCommentGlIDsParams struct {
 // posted as a separate root.
 func (q *Queries) SetCommentGlIDs(ctx context.Context, arg SetCommentGlIDsParams) error {
 	_, err := q.db.Exec(ctx, setCommentGlIDs, arg.ID, arg.GlNoteID, arg.GlDiscussionID)
+	return err
+}
+
+const setGitlabWritebackPayload = `-- name: SetGitlabWritebackPayload :exec
+UPDATE gitlab_writebacks SET payload = $2, updated_at = now() WHERE id = $1
+`
+
+type SetGitlabWritebackPayloadParams struct {
+	ID      uuid.UUID `json:"id"`
+	Payload []byte    `json:"payload"`
+}
+
+// SetGitlabWritebackPayload rewrites a claimed row's payload mid-delivery. Child
+// creation uses it to record the issue GitLab just opened BEFORE writing the link: if
+// linking then fails, the retry adopts the reserved iid instead of opening a second
+// issue for the same subtask.
+func (q *Queries) SetGitlabWritebackPayload(ctx context.Context, arg SetGitlabWritebackPayloadParams) error {
+	_, err := q.db.Exec(ctx, setGitlabWritebackPayload, arg.ID, arg.Payload)
 	return err
 }
