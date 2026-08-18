@@ -15,7 +15,13 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // One retry is enough to ride out a genuine flake; two just tripled the cost of
+  // a real, reproducible failure (each hung spec waited out the full timeout).
+  retries: process.env.CI ? 1 : 0,
+  // Bail once a run is clearly broken instead of grinding through all specs (× the
+  // per-spec timeout × retries) — that is what turned one regression into an
+  // hour-long red job. A handful of failures is plenty of signal.
+  maxFailures: process.env.CI ? 10 : undefined,
   timeout: 45000,
   expect: { timeout: 10000 },
   globalSetup: resolve('./e2e/global-setup.js'),

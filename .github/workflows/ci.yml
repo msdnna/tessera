@@ -222,10 +222,17 @@ jobs:
   web-e2e:
     name: Web e2e
     needs: changes
-    if: ${{ needs.changes.outputs.web == 'true' }}
+    # Push-only, not on every PR: the browser suite is minutes-long (bounded, but
+    # far slower than the lint/unit checks), so it must not gate a PR merge — the
+    # same pattern as the Android emulator smoke below. It runs post-merge on
+    # develop/main to catch regressions before the branch moves on; the fast
+    # lint/unit/backend jobs remain the PR gate. Kept a separate job so a flake
+    # reads as its own red line rather than failing the `web` unit job.
+    if: ${{ needs.changes.outputs.web == 'true' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
-    # A separate job, not a step inside `web`: the browser suite must not delay
-    # the fast lint/unit feedback, and a flake should read as its own red line.
+    # Hard ceiling so a broad breakage can never grind for an hour again (a runaway
+    # is also caught earlier by Playwright's maxFailures bail-out).
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17-alpine
