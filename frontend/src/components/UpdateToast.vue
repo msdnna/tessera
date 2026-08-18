@@ -108,7 +108,10 @@ function postpone() {
   color: var(--t-text2);
   cursor: pointer;
 }
-.u-btn:hover:not(:disabled) {
+/* Only the neutral "Отложить" button greys on hover — the primary one keeps its
+   accent (a blanket .u-btn:hover would paint it grey and leave white text on it,
+   unreadable; #2748 rework). */
+.u-btn:not(.primary):hover:not(:disabled) {
   background: var(--t-hover);
 }
 .u-btn:disabled {
@@ -119,6 +122,9 @@ function postpone() {
   border-color: transparent;
   background: var(--t-accent-grad, var(--t-primary));
   color: var(--t-on-primary, #fff);
+}
+.u-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.06);
 }
 .u-close {
   position: absolute;
