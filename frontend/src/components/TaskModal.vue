@@ -232,6 +232,19 @@ function bindDismiss(on) {
 watch(() => props.show && layout.value === 'sidebar', bindDismiss, { immediate: true })
 onBeforeUnmount(() => bindDismiss(false))
 
+// The sidebar panel is `position: fixed` over the right edge, so it covers the board
+// underneath — the rightmost columns (e.g. «Готово») end up behind it, unreachable by
+// the board's own horizontal scroll (#2743). While the panel is up we publish its
+// width as a root CSS var; the board reserves that much scroll slack on its right so
+// every column can be scrolled out from under the panel. Cleared when it closes.
+function setPanelReserve(on) {
+  const root = document.documentElement
+  if (on) root.style.setProperty('--task-panel-w', 'min(560px, 100vw)')
+  else root.style.removeProperty('--task-panel-w')
+}
+watch(() => props.show && layout.value === 'sidebar', setPanelReserve, { immediate: true })
+onBeforeUnmount(() => setPanelReserve(false))
+
 const PANE_KEY = 'tessera_task_pane'
 const rightHidden = ref(localStorage.getItem(PANE_KEY) === 'hidden')
 function toggleRightPane() {
@@ -604,6 +617,10 @@ watch(
     if (show) {
       scrollOnOpen = true
       loadDetail()
+    } else {
+      // Closing the panel drops any open reply/edit composer (the subtree stays
+      // mounted, so it wouldn't clear itself).
+      commentsTab.value?.resetComposers?.()
     }
   },
 )
