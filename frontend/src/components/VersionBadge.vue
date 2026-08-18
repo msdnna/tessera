@@ -80,15 +80,19 @@ const rowText = computed(() => {
 <style scoped>
 .ver-row {
   font-size: 11px;
+  /* Deliberately very faint — a corner build stamp that shouldn't catch the eye
+     (#2747 rework); it firms up on hover. */
   color: var(--t-text3);
+  opacity: 0.5;
   line-height: 1.4;
   cursor: default;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: opacity 0.15s ease;
 }
 .ver-row:hover {
-  color: var(--t-text2);
+  opacity: 0.9;
 }
 .ver-tip,
 .ver-block {

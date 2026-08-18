@@ -5,7 +5,6 @@ import { LogOutOutline, SettingsOutline, ShieldCheckmarkOutline } from '@vicons/
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useApiImage } from '@/composables/useApiImage'
-import VersionBadge from './VersionBadge.vue'
 
 const props = defineProps({
   mobile: { type: Boolean, default: false },
@@ -65,7 +64,6 @@ function logout() {
           <template #icon><n-icon :component="LogOutOutline" /></template>
           Выйти
         </n-button>
-        <div class="up-ver"><version-badge mode="block" /></div>
       </div>
     </n-popover>
     <div v-else class="user">
@@ -103,7 +101,6 @@ function logout() {
         Выйти
       </n-tooltip>
     </div>
-    <version-badge v-if="!compact" class="ver-foot" mode="row" />
   </div>
 </template>
 
@@ -164,16 +161,5 @@ function logout() {
   color: var(--t-text3);
   overflow: hidden;
   text-overflow: ellipsis;
-}
-/* Version line under the user row (expanded footer). */
-.ver-foot {
-  margin-top: 6px;
-  padding: 0 2px;
-}
-/* Separator above the version block inside the collapsed avatar popover. */
-.up-ver {
-  margin-top: 2px;
-  padding-top: 8px;
-  border-top: 1px solid var(--t-border);
 }
 </style>

@@ -15,6 +15,7 @@ import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
 import SidebarSpotlight from './SidebarSpotlight.vue'
+import VersionBadge from './VersionBadge.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
@@ -199,7 +200,7 @@ watch(
         <span class="rz-bar" />
       </div>
 
-      <n-layout>
+      <n-layout class="work-pane">
         <n-layout-header bordered>
           <Topbar :show-tools="collapsed || narrow" />
         </n-layout-header>
@@ -219,11 +220,15 @@ watch(
             </transition>
           </router-view>
         </n-layout-content>
+        <!-- Faint build-version line in the working-area footer (#2747). Wrapped
+             in a div because VersionBadge is multi-root (class wouldn't fall
+             through to a positioned element). -->
+        <div class="area-version"><version-badge mode="row" /></div>
       </n-layout>
     </n-layout>
 
     <!-- Mobile: hamburger opens the sidebar in a drawer -->
-    <n-layout v-else style="height: 100vh">
+    <n-layout v-else class="work-pane" style="height: 100vh">
       <n-layout-header bordered>
         <Topbar :mobile="true" @menu="drawerOpen = true" />
       </n-layout-header>
@@ -239,6 +244,7 @@ watch(
           </transition>
         </router-view>
       </n-layout-content>
+      <div class="area-version"><version-badge mode="row" /></div>
       <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
         <n-drawer-content body-content-style="padding: 0">
           <Sidebar :mobile="true" />
@@ -266,6 +272,23 @@ watch(
 /* Single transition-trackable root; the inner n-layouts own the 100vh height. */
 .app-shell {
   height: 100vh;
+}
+/* Positioning context for the working-area version footer. */
+.work-pane {
+  position: relative;
+}
+/* Faint build-version line pinned to the bottom-right of the working area (#2747).
+   It sits above the content but doesn't scroll with it; only the text itself is
+   interactive (for the tooltip), so it never blocks clicks on the board. */
+.area-version {
+  position: absolute;
+  right: 12px;
+  bottom: 4px;
+  z-index: 3;
+  pointer-events: none;
+}
+.area-version :deep(.ver-row) {
+  pointer-events: auto;
 }
 /* Positioning context for the page transition: the leaving route view is pulled
    out of flow (.page-leave-active in main.css) so the incoming view fills the
