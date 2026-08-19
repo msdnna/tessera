@@ -61,12 +61,26 @@ api.interceptors.request.use((config) => {
 // Coalesced so concurrent 401s share one in-flight refresh.
 let refreshInflight = null
 
+// refreshFailure tells the two ways a refresh can fail apart. `offline: true`
+// means we never got a verdict — no response at all (network/DNS/timeout), or a
+// status that says the server could not answer right now rather than that the
+// session is gone. Treating those as "signed out" is what dropped people onto
+// the login screen after a brief connection blip (#2750).
+function refreshFailure(err) {
+  const status = err?.response?.status
+  const offline = !err?.response || status >= 500 || status === 408 || status === 429
+  return { token: null, offline }
+}
+
+// Resolves to { token, offline }: `token` is the new access token, or null when
+// there is none — and then `offline` says whether that means "no session" (false)
+// or "could not reach the server" (true).
 async function refreshAccessToken() {
   if (refreshInflight) return refreshInflight
   const refreshToken = storedRefreshToken()
   // On web there is nothing to check up front — whether a session exists is the
   // cookie's business, and the answer is the response status.
-  if (!cookieAuth() && !refreshToken) return null
+  if (!cookieAuth() && !refreshToken) return { token: null, offline: false }
   refreshInflight = axios
     .post(
       `${apiBaseURL()}/auth/refresh`,
@@ -81,9 +95,9 @@ async function refreshAccessToken() {
       // Only ever present in body mode (desktop); on web the rotated token went
       // back into the cookie.
       if (data.refresh_token) localStorage.setItem('tessera_refresh_token', data.refresh_token)
-      return data.access_token || null
+      return { token: data.access_token || null, offline: false }
     })
-    .catch(() => null)
+    .catch(refreshFailure)
     .finally(() => {
       refreshInflight = null
     })
@@ -92,7 +106,9 @@ async function refreshAccessToken() {
 
 // restoreSession re-establishes a session on app start-up. The access token died
 // with the previous page load, so the refresh cookie (desktop: the stored token)
-// is the only proof we were signed in. Resolves to the new access token or null.
+// is the only proof we were signed in. Resolves to the same { token, offline }
+// shape as refreshAccessToken — the caller must not clear the session when
+// `offline` is true, or an unlucky reload permanently forgets a live login.
 export function restoreSession() {
   return refreshAccessToken()
 }
@@ -113,21 +129,30 @@ api.interceptors.response.use(
     const original = err.config
     const isUnauthorized = err.response?.status === 401
     const isRefreshCall = original?.url?.includes('/auth/refresh')
+    // Tracks why a refresh attempt on this response failed, so the teardown
+    // below can tell "the session is over" from "we couldn't ask".
+    let refreshOffline = false
     if (isUnauthorized && original && !original._retry && !isRefreshCall) {
       original._retry = true
-      const newToken = await refreshAccessToken()
+      const { token: newToken, offline } = await refreshAccessToken()
       if (newToken) {
         original.headers = original.headers || {}
         original.headers.Authorization = `Bearer ${newToken}`
         return api(original)
       }
+      refreshOffline = offline
     }
-    if (isUnauthorized && !isRefreshCall) {
+    // Only an answered "no" ends the session. When the refresh itself could not
+    // reach the server the session is left intact and the request just fails —
+    // the connection overlay is already up, and the next attempt (once the link
+    // is back) refreshes normally instead of landing on /login.
+    if (isUnauthorized && !isRefreshCall && !refreshOffline) {
       setAccessToken('')
       localStorage.removeItem('tessera_refresh_token')
       localStorage.removeItem('tessera_user')
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }
+    if (refreshOffline) setOffline(true)
     const raw = err.response?.data?.error || err.message || 'Ошибка запроса'
     const wrapped = new Error(humanizeError(raw))
     // Keep the HTTP status reachable: most callers just show `e.message`, but a
@@ -138,7 +163,11 @@ api.interceptors.response.use(
     // from an HTTP error the server answered with. Callers that retry (e.g. the
     // comment composer) only retry when offline; a 4xx/5xx is not a connectivity
     // problem and must not be re-sent.
-    wrapped.offline = !reached
+    // refreshOffline counts as offline too: the original call did reach the
+    // server (that's where its 401 came from), but the retry never happened
+    // because the refresh couldn't get through — a connectivity failure, and
+    // callers that retry on `offline` should retry this.
+    wrapped.offline = !reached || refreshOffline
     return Promise.reject(wrapped)
   },
 )

@@ -177,13 +177,25 @@ describe('auth store', () => {
     expect(s.user).toBeNull()
   })
 
+  // #2750: /auth/me failing because the network is down says nothing about
+  // whether the session is still valid — signing the user out on it is exactly
+  // the "brief blip → login screen" the bug report describes.
+  it('verify keeps the session when /auth/me fails offline', async () => {
+    apiMock.auth.me.mockRejectedValue(Object.assign(new Error('offline'), { offline: true }))
+    const s = useAuthStore()
+    s.setAuth({ access_token: 'tok', user: { id: 'v1' } })
+    await s.verify()
+    expect(s.token).toBe('tok')
+    expect(s.user).not.toBeNull()
+  })
+
   // #2684: with the access token held in memory, a reload starts signed out —
   // bootstrap() is what turns the refresh cookie back into a live session, and
   // main.js awaits it before the router (and its guard) exist.
   describe('bootstrap', () => {
     it('restores the session and reloads the profile', async () => {
       localStorage.setItem('tessera_user', '{"id":"u1"}')
-      apiMock.restoreSession.mockResolvedValueOnce('fresh')
+      apiMock.restoreSession.mockResolvedValueOnce({ token: 'fresh', offline: false })
       apiMock.auth.me.mockResolvedValue({ data: { user: { id: 'u1', is_admin: true } } })
       const s = useAuthStore()
       await s.bootstrap()
@@ -202,11 +214,46 @@ describe('auth store', () => {
 
     it('clears the stale cache when the refresh cookie is gone', async () => {
       localStorage.setItem('tessera_user', '{"id":"u1"}')
-      apiMock.restoreSession.mockResolvedValueOnce(null)
+      apiMock.restoreSession.mockResolvedValueOnce({ token: null, offline: false })
       const s = useAuthStore()
       await s.bootstrap()
       expect(s.isAuthenticated).toBe(false)
       expect(localStorage.getItem('tessera_user')).toBeNull()
+    })
+
+    // #2750: clearSession() drops `tessera_user`, and that key is the flag
+    // bootstrap() checks to decide whether to restore at all — so clearing it on
+    // a network error made ONE offline reload forget a live session forever.
+    it('keeps the cached user when the server is unreachable, and retries', async () => {
+      localStorage.setItem('tessera_user', '{"id":"u1"}')
+      apiMock.restoreSession
+        .mockResolvedValueOnce({ token: null, offline: true })
+        .mockResolvedValueOnce({ token: 'fresh', offline: false })
+      apiMock.auth.me.mockResolvedValue({ data: { user: { id: 'u1' } } })
+      const s = useAuthStore()
+      // Fake timers: the retry backoff is seconds of real time otherwise.
+      vi.useFakeTimers()
+      const done = s.bootstrap()
+      await vi.runAllTimersAsync()
+      await done
+      vi.useRealTimers()
+      expect(apiMock.restoreSession).toHaveBeenCalledTimes(2)
+      expect(s.token).toBe('fresh')
+      expect(localStorage.getItem('tessera_user')).not.toBeNull()
+    })
+
+    it('gives up after the retries but leaves the session recoverable', async () => {
+      localStorage.setItem('tessera_user', '{"id":"u1"}')
+      apiMock.restoreSession.mockResolvedValue({ token: null, offline: true })
+      const s = useAuthStore()
+      vi.useFakeTimers()
+      const done = s.bootstrap()
+      await vi.runAllTimersAsync()
+      await done
+      vi.useRealTimers()
+      expect(s.isAuthenticated).toBe(false)
+      // The cached user survives, so the next reload tries the cookie again.
+      expect(localStorage.getItem('tessera_user')).toBe('{"id":"u1"}')
     })
   })
 })

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"tessera/internal/auth"
@@ -171,20 +172,39 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	hash := auth.HashRefreshToken(token)
 	rt, err := h.q.GetRefreshToken(c, hash)
 	if err != nil {
+		// A database blip is not a verdict on the session. Answering 401 here
+		// would clear the cookie and destroy a perfectly valid login over a
+		// momentary storage failure, with no way back except a fresh sign-in.
+		if !errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "storage unavailable"})
+			return
+		}
 		reject(http.StatusUnauthorized, "invalid refresh token")
 		return
 	}
-	if rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
+	usable, replay := refreshTokenUsable(rt, time.Now())
+	if !usable {
 		reject(http.StatusUnauthorized, "refresh token expired or revoked")
 		return
 	}
 
-	if err := h.q.RevokeRefreshToken(c, hash); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return
+	// On a replay the row is already revoked — re-revoking it would only push the
+	// grace window forward on every retry, turning a one-off answer to a lost
+	// response into an indefinitely reusable token.
+	if !replay {
+		if err := h.q.RevokeRefreshToken(c, hash); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+	} else {
+		log.Printf("auth: refresh token replayed within grace window (user %s)", rt.UserID)
 	}
 	user, err := h.q.GetUserByID(c, rt.UserID)
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "storage unavailable"})
+			return
+		}
 		reject(http.StatusUnauthorized, "user not found")
 		return
 	}
@@ -192,6 +212,34 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	// Rotation stays in the channel it arrived on: a cookie-mode client gets the
 	// new token back as a cookie even if it forgot the header.
 	h.issueMode(c, user, fromCookie || wantsCookieAuth(c))
+}
+
+// refreshGrace is how long a just-rotated refresh token keeps working. Rotation
+// cannot be atomic with delivery: the server revokes the presented token and
+// only then writes the new pair, so a connection dropped in between leaves the
+// client holding a token the server has already killed — the user is signed out
+// by a lost response, not by anything wrong with their session. Within this
+// window the old token answers once more with a fresh pair.
+//
+// The window is deliberately short: it is sized for a retry of an interrupted
+// request, not for a stolen token to be useful.
+const refreshGrace = 30 * time.Second
+
+// refreshTokenUsable decides whether a stored refresh token may still be traded
+// for a new pair. `replay` marks the grace case — the token was revoked, but so
+// recently that this is a retry of a rotation whose response never landed.
+func refreshTokenUsable(rt db.RefreshToken, now time.Time) (usable, replay bool) {
+	// Expiry is absolute: the grace window never resurrects a token past its TTL.
+	if now.After(rt.ExpiresAt) {
+		return false, false
+	}
+	if rt.RevokedAt == nil {
+		return true, false
+	}
+	if now.Sub(*rt.RevokedAt) <= refreshGrace {
+		return true, true
+	}
+	return false, false
 }
 
 // Logout revokes the presented refresh token and clears the cookie. Without it a
@@ -211,7 +259,9 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	h.clearMediaCookie(c)
 
 	if token != "" {
-		if err := h.q.RevokeRefreshToken(c, auth.HashRefreshToken(token)); err != nil {
+		// Hard revoke, not the rotation one: an explicit sign-out must not leave
+		// the token usable for the length of the grace window.
+		if err := h.q.ExpireRefreshToken(c, auth.HashRefreshToken(token)); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}

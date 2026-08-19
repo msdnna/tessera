@@ -101,15 +101,34 @@ export const useAuthStore = defineStore('auth', () => {
   //
   // The cached user is the "was signed in here" hint — without it we'd fire a
   // pointless refresh (and eat a 401) on every anonymous visit to the login page.
+  // Backoff between start-up retries while the server is unreachable, in ms.
+  // Bounded and short: bootstrap() gates the first paint, so this is "wait out a
+  // blip", not "retry forever" — after the last one the app renders signed out
+  // but with `tessera_user` intact, so a later reload restores normally.
+  const BOOTSTRAP_RETRIES = [1000, 2000, 4000]
+
   async function bootstrap() {
     if (!localStorage.getItem('tessera_user')) return
-    const access = await restoreSession()
-    if (!access) {
-      clearSession()
-      return
+    let attempt = 0
+    for (;;) {
+      const { token: access, offline } = await restoreSession()
+      if (access) {
+        setToken(access)
+        await verify()
+        return
+      }
+      // A server that answered "no session" is the end of it. Only an
+      // unreachable one is worth retrying — and must NOT clear the session:
+      // clearSession() drops `tessera_user`, which is the very flag this
+      // function checks to decide whether to try at all, so one offline start
+      // used to make every later reload skip restoration entirely (#2750).
+      if (!offline) {
+        clearSession()
+        return
+      }
+      if (attempt >= BOOTSTRAP_RETRIES.length) return
+      await new Promise((r) => setTimeout(r, BOOTSTRAP_RETRIES[attempt++]))
     }
-    setToken(access)
-    await verify()
   }
 
   // verify confirms the token is still valid and refreshes the cached profile.
@@ -120,8 +139,12 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = res.data.user
       localStorage.setItem('tessera_user', JSON.stringify(user.value))
       if (res.data.preferences) useThemeStore().hydrate(res.data.preferences)
-    } catch {
-      clearSession()
+    } catch (e) {
+      // Same rule as bootstrap(): a failed round-trip is not proof the session
+      // ended. `e.offline` is set by the api layer (network failure, or a 401
+      // whose refresh could not reach the server) — leave the session alone and
+      // let the connection overlay handle it.
+      if (!e?.offline) clearSession()
     }
   }
 
