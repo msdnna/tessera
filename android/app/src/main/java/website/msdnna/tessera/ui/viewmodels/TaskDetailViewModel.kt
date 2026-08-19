@@ -262,9 +262,10 @@ class TaskDetailViewModel(
 
     // ── comments ─────────────────────────────────────────────────────────────
 
-    fun postComment(body: String, members: List<Member>) = mutate {
+    /** Posts a comment; [parentId] set makes it a reply into that thread. */
+    fun postComment(body: String, members: List<Member>, parentId: String? = null) = mutate {
         if (body.isBlank()) return@mutate
-        val res = taskRepo.addComment(taskId, body, detectMentions(body, members))
+        val res = taskRepo.addComment(taskId, body, detectMentions(body, members), parentId)
         _state.update {
             it.copy(comments = taskRepo.comments(taskId), changed = true, commandPreview = emptyList(), commandCustom = emptyList())
         }

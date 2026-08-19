@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -48,7 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
@@ -73,8 +76,10 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.GitlabAssignee
 import website.msdnna.tessera.data.model.GitlabLink
+import website.msdnna.tessera.data.model.GitlabMember
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.Tag
@@ -118,12 +123,14 @@ import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
 import website.msdnna.tessera.util.doneTarget
 import website.msdnna.tessera.util.dueLabel
+import website.msdnna.tessera.util.groupThreads
 import website.msdnna.tessera.util.isExternalSource
 import website.msdnna.tessera.util.moveNeighbors
 import website.msdnna.tessera.util.nextColumn
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
+import website.msdnna.tessera.util.replyCountLabel
 import website.msdnna.tessera.util.shortDate
 import website.msdnna.tessera.util.siblingNeighbors
 import website.msdnna.tessera.util.sortedColumns
@@ -1312,12 +1319,128 @@ private fun DescriptionTab(
     )
 }
 
+/**
+ * One comment — avatar, header, body (or its editor). [actions] renders the
+ * links under the text (Ответить / Свернуть ответы), which differ between a
+ * thread root and a reply.
+ */
+@Composable
+private fun CommentRow(
+    cm: Comment,
+    avatarSize: Dp,
+    meId: String?,
+    vm: TaskDetailViewModel,
+    mentionItems: List<MentionItem>,
+    mentionNames: List<String>,
+    editing: Boolean,
+    editBody: String,
+    onEditBody: (String) -> Unit,
+    onStartEdit: () -> Unit,
+    onEndEdit: () -> Unit,
+    actions: @Composable () -> Unit,
+) {
+    val c = Tessera.colors
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        MemberAvatar(
+            avatarSize,
+            cm.displayName ?: "?",
+            userId = cm.authorId,
+            avatarUrl = cm.glAuthorAvatarUrl,
+            muted = cm.isGitlab,
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(cm.displayName ?: "Кто-то", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                if (cm.isGitlab) {
+                    Spacer(Modifier.width(5.dp))
+                    Text("· GitLab", color = c.text3, fontSize = 11.sp)
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(whenLabel(cm.createdAt), color = c.text3, fontSize = 11.sp)
+                if (cm.authorId != null && cm.authorId == meId) {
+                    Spacer(Modifier.weight(1f))
+                    IonIconButton(Ion.PENCIL, onStartEdit, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                    IonIconButton(Ion.CLOSE, { vm.deleteComment(cm.id) }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            if (editing) {
+                MarkdownEditor(
+                    value = editBody,
+                    onValueChange = onEditBody,
+                    placeholder = "Комментарий…",
+                    minHeight = 56.dp,
+                    mentions = mentionItems,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row {
+                    TButton("Сохранить", onClick = {
+                        vm.editComment(cm.id, editBody)
+                        onEndEdit()
+                    }, modifier = Modifier.height(34.dp))
+                    Spacer(Modifier.width(6.dp))
+                    TButton("Отмена", kind = TButtonKind.Secondary, onClick = onEndEdit, modifier = Modifier.height(34.dp))
+                }
+            } else {
+                val own = cm.authorId != null && cm.authorId == meId
+                RichContent(
+                    cm.body,
+                    mentions = mentionNames,
+                    interactive = own,
+                    onToggleCheck = if (own) {
+                        { i -> vm.editComment(cm.id, toggleTaskMarker(cm.body, i)) }
+                    } else {
+                        null
+                    },
+                )
+            }
+            actions()
+        }
+    }
+}
+
+/** A flat text link under a comment (Ответить, Свернуть ответы). */
+@Composable
+private fun CommentLink(text: String, onClick: () -> Unit) {
+    Text(
+        text,
+        color = Tessera.colors.text3,
+        fontSize = 12.sp,
+        modifier = Modifier.clickableNoRipple(onClick = onClick).padding(top = 2.dp, end = 12.dp, bottom = 2.dp),
+    )
+}
+
+/**
+ * Indent + the rail that ties a thread's replies to their root. The rail is a
+ * flat neutral grey on purpose: the accent gradient belongs to non-neutral
+ * elements only. Drawn rather than bordered so it spans the whole branch, and
+ * inside the node's own bounds (the leading padding offsets it) so nothing is
+ * clipped away.
+ */
+private fun Modifier.replyRail(color: Color): Modifier = this
+    .padding(start = 13.dp) // half the 26dp root avatar → the rail meets its centre
+    .drawBehind { drawRect(color, size = Size(2.dp.toPx(), size.height)) }
+    .padding(start = 15.dp)
+
+/**
+ * The @-handle a reply pre-mentions for [cm]'s author: a Tessera author by
+ * display name, a GitLab-only one by the @username the roster recovers (their
+ * display name would not resolve to anything).
+ */
+private fun mentionHandle(cm: Comment, gitlabMembers: List<GitlabMember>): String {
+    cm.authorName?.takeIf { it.isNotBlank() }?.let { return it }
+    val glName = cm.glAuthorName?.takeIf { it.isNotBlank() } ?: return ""
+    val g = gitlabMembers.find { m -> (if (m.glName.isNotBlank()) m.glName else m.glUsername) == glName }
+    return g?.glUsername?.takeIf { it.isNotBlank() } ?: glName
+}
+
 @Composable
 private fun CommentsTab(
     vm: TaskDetailViewModel,
-    comments: List<website.msdnna.tessera.data.model.Comment>,
+    comments: List<Comment>,
     members: List<Member>,
-    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    gitlabMembers: List<GitlabMember>,
     meId: String?,
     commands: List<CommandItem>,
     preview: List<website.msdnna.tessera.data.model.CommandOutcome>,
@@ -1327,72 +1450,112 @@ private fun CommentsTab(
     var draft by remember { mutableStateOf("") }
     var editingId by remember { mutableStateOf<String?>(null) }
     var editBody by remember { mutableStateOf("") }
+    // Local-only UI state: threads start expanded, and at most one reply
+    // composer is open (the root it answers, plus its draft).
+    var collapsed by remember { mutableStateOf(emptySet<String>()) }
+    var replyingTo by remember { mutableStateOf<String?>(null) }
+    var replyDraft by remember { mutableStateOf("") }
     val mentionItems = buildMentionItems(members, gitlabMembers)
     // Highlight tokens for read-only comment rendering (names + GitLab usernames).
     val mentionNames = mentionItems.map { it.insert }
+    // The API list is flat (each row carries parent_id) — assemble the threads.
+    val threads = groupThreads(comments)
+
+    // Open the reply composer on [rootId], answering [target] (root or one of its
+    // replies — either way the reply hangs off the root, as the backend collapses
+    // reply-to-reply; the answered author is the one pre-mentioned).
+    fun startReply(rootId: String, target: Comment) {
+        replyingTo = rootId
+        val handle = mentionHandle(target, gitlabMembers)
+        replyDraft = if (handle.isNotBlank()) "@$handle, " else ""
+        // Answering a collapsed thread with the answers hidden is writing blind.
+        collapsed = collapsed - rootId
+    }
 
     Column(Modifier.fillMaxWidth()) {
         if (comments.isEmpty()) {
             Text("Комментариев пока нет", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
         }
-        comments.forEach { cm ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                MemberAvatar(
-                    26.dp,
-                    cm.displayName ?: "?",
-                    userId = cm.authorId,
-                    avatarUrl = cm.glAuthorAvatarUrl,
-                    muted = cm.isGitlab,
-                )
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(cm.displayName ?: "Кто-то", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        if (cm.isGitlab) {
-                            Spacer(Modifier.width(5.dp))
-                            Text("· GitLab", color = c.text3, fontSize = 11.sp)
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        Text(whenLabel(cm.createdAt), color = c.text3, fontSize = 11.sp)
-                        if (cm.authorId != null && cm.authorId == meId) {
-                            Spacer(Modifier.weight(1f))
-                            IonIconButton(Ion.PENCIL, {
-                                editingId = cm.id
-                                editBody = cm.body
-                            }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
-                            IonIconButton(Ion.CLOSE, { vm.deleteComment(cm.id) }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+        threads.forEach { t ->
+            val hidden = t.root.id in collapsed
+            CommentRow(
+                cm = t.root,
+                avatarSize = 26.dp,
+                meId = meId,
+                vm = vm,
+                mentionItems = mentionItems,
+                mentionNames = mentionNames,
+                editing = editingId == t.root.id,
+                editBody = editBody,
+                onEditBody = { editBody = it },
+                onStartEdit = {
+                    editingId = t.root.id
+                    editBody = t.root.body
+                },
+                onEndEdit = { editingId = null },
+            ) {
+                Row {
+                    CommentLink("Ответить") { startReply(t.root.id, t.root) }
+                    if (t.replies.isNotEmpty()) {
+                        CommentLink(if (hidden) replyCountLabel(t.replies.size) else "Свернуть ответы") {
+                            collapsed = if (hidden) collapsed - t.root.id else collapsed + t.root.id
                         }
                     }
-                    Spacer(Modifier.height(2.dp))
-                    if (editingId == cm.id) {
-                        MarkdownEditor(
-                            value = editBody,
-                            onValueChange = { editBody = it },
-                            placeholder = "Комментарий…",
-                            minHeight = 56.dp,
-                            mentions = mentionItems,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Row {
-                            TButton("Сохранить", onClick = {
-                                vm.editComment(cm.id, editBody)
-                                editingId = null
-                            }, modifier = Modifier.height(34.dp))
-                            Spacer(Modifier.width(6.dp))
-                            TButton("Отмена", kind = TButtonKind.Secondary, onClick = { editingId = null }, modifier = Modifier.height(34.dp))
+                }
+            }
+            AnimatedVisibility(visible = t.replies.isNotEmpty() && !hidden) {
+                Column(Modifier.replyRail(c.border)) {
+                    t.replies.forEach { r ->
+                        CommentRow(
+                            cm = r,
+                            avatarSize = 22.dp,
+                            meId = meId,
+                            vm = vm,
+                            mentionItems = mentionItems,
+                            mentionNames = mentionNames,
+                            editing = editingId == r.id,
+                            editBody = editBody,
+                            onEditBody = { editBody = it },
+                            onStartEdit = {
+                                editingId = r.id
+                                editBody = r.body
+                            },
+                            onEndEdit = { editingId = null },
+                        ) {
+                            CommentLink("Ответить") { startReply(t.root.id, r) }
                         }
-                    } else {
-                        val own = cm.authorId != null && cm.authorId == meId
-                        RichContent(
-                            cm.body,
-                            mentions = mentionNames,
-                            interactive = own,
-                            onToggleCheck = if (own) {
-                                { i -> vm.editComment(cm.id, toggleTaskMarker(cm.body, i)) }
-                            } else {
-                                null
+                    }
+                }
+            }
+            if (replyingTo == t.root.id) {
+                Column(Modifier.replyRail(c.border).padding(bottom = 8.dp)) {
+                    MarkdownEditor(
+                        value = replyDraft,
+                        onValueChange = { replyDraft = it },
+                        placeholder = "Ответить… (@ — упоминание)",
+                        minHeight = 56.dp,
+                        uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
+                        mentions = mentionItems,
+                        fieldTag = TestTags.TASK_REPLY_INPUT,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row {
+                        TButton(
+                            "Ответить",
+                            modifier = Modifier.height(34.dp).testTag(TestTags.TASK_REPLY_SUBMIT),
+                            onClick = {
+                                if (replyDraft.isNotBlank()) {
+                                    vm.postComment(replyDraft, members, t.root.id)
+                                    replyDraft = ""
+                                    replyingTo = null
+                                }
                             },
                         )
+                        Spacer(Modifier.width(6.dp))
+                        TButton("Отмена", kind = TButtonKind.Secondary, modifier = Modifier.height(34.dp), onClick = {
+                            replyingTo = null
+                            replyDraft = ""
+                        })
                     }
                 }
             }

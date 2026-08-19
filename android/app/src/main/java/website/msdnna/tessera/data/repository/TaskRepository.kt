@@ -28,8 +28,12 @@ class TaskRepository {
     suspend fun detail(taskId: String): TaskDetail = api.task(taskId)
 
     suspend fun comments(taskId: String): List<Comment> = api.comments(taskId).orEmpty()
-    suspend fun addComment(taskId: String, body: String, mentions: List<String>): CommentResult =
-        api.createComment(taskId, CreateCommentRequest(body, mentions))
+    suspend fun addComment(
+        taskId: String,
+        body: String,
+        mentions: List<String>,
+        parentId: String? = null,
+    ): CommentResult = api.createComment(taskId, CreateCommentRequest(body, mentions, parentId))
 
     /** Dry-runs the draft against the backend's own parser: what each `/`-command
      *  in it would do, without executing anything. */

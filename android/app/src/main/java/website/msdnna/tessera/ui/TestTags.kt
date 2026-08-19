@@ -122,6 +122,10 @@ object TestTags {
     const val TASK_COMMENT_INPUT = "task-comment-input"
     const val TASK_COMMENT_SUBMIT = "task-comment-submit"
 
+    /** The in-thread reply composer — at most one is open at a time. */
+    const val TASK_REPLY_INPUT = "task-reply-input"
+    const val TASK_REPLY_SUBMIT = "task-reply-submit"
+
     // ── documents (read-only, #2735) ───────────────────────────────────────
 
     /** Root of the documents section — the tree of the workspace's documents. */
