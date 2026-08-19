@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watchEffect } from 'vue'
 import { acknowledgements } from '@/api'
+import { GET_STARTED } from '@/data/getStarted'
+import { isBrandNewAccount } from '@/utils/account'
 
 // Step engine for the Get Started guide (#2753). The scenario itself lives in
 // src/data/getStarted.js; this store only knows how to walk a list of steps,
@@ -100,6 +102,42 @@ export const useTourStore = defineStore('tour', () => {
     return true
   }
 
+  // «Обучение» in the sidebar footer: always from the first step, whatever the
+  // acks say — re-running the guide is the whole point of the entry point.
+  function startGuide() {
+    return start(GET_STARTED)
+  }
+
+  // Autostart for a first-time user, decided from the acks the What's-New store
+  // already fetched (no second request).
+  //
+  // Runs only for an account created on/after this build AND with no
+  // `getstarted:*` ack: pressing «Пропустить» or reaching the end therefore ends
+  // the autostart forever, and re-running is manual from then on.
+  //
+  // On mobile the guide is not shown AND no ack is written (the author's call):
+  // the sidebar lives in a closed drawer there, so the scenario has nothing to
+  // point at — the account keeps its right to see the guide on a desktop.
+  //
+  // `fromId` restores the step across an F5 mid-guide. Only a reload needs it;
+  // SPA navigation keeps the store. A guide the user walked away from is never
+  // resumed *for* them — they either pressed «Пропустить» (ack, gone) or come
+  // back to the same browser, where continuing where they stopped is the least
+  // surprising thing that can happen.
+  function autoStart({ acked, mobile } = {}) {
+    if (active.value || mobile) return false
+    const keys = acked instanceof Set ? [...acked] : Array.isArray(acked) ? acked : []
+    if (keys.some((k) => String(k).startsWith(TOUR_PREFIX))) return false
+    if (!isBrandNewAccount()) return false
+    let fromId
+    try {
+      fromId = localStorage.getItem(TOUR_STEP_KEY) || undefined
+    } catch {
+      /* private mode — start from the top */
+    }
+    return start(GET_STARTED, { fromId })
+  }
+
   function stop() {
     active.value = false
     index.value = -1
@@ -197,6 +235,8 @@ export const useTourStore = defineStore('tour', () => {
     isLast,
     anchors,
     start,
+    startGuide,
+    autoStart,
     stop,
     next,
     skip,

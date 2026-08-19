@@ -25,6 +25,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWhatsNewStore } from '@/stores/whatsNew'
+import { useTourStore } from '@/stores/tour'
 import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
@@ -36,6 +37,7 @@ const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const conflicts = useConflictsStore()
 const whatsNew = useWhatsNewStore()
+const tour = useTourStore()
 const { isMobile } = useResponsive()
 const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
 const route = useRoute()
@@ -130,7 +132,16 @@ onMounted(async () => {
   // "What's new" after an update + sidebar spotlight hints (#2749). Best-effort:
   // decides on its own whether anything is worth showing (and stays silent on a
   // first run or when offline).
-  whatsNew.load()
+  //
+  // The Get Started guide (#2753) rides on the same acks, so it decides right
+  // after the load — no second request, and no chance of the two overlapping:
+  // the guide's audience (brand-new accounts) is exactly the audience What's New
+  // stays silent for. Only when the acks were actually read (`load()` → true):
+  // an empty set from a failed request would re-run the guide for a user who has
+  // already been through it.
+  whatsNew
+    .load()
+    .then((ok) => ok && tour.autoStart({ acked: whatsNew.acked, mobile: isMobile.value }))
   // On desktop, ask for notification permission up front so reminders can fire
   // without waiting for the first event (best-effort).
   if (isTauri()) {

@@ -1,9 +1,15 @@
 <script setup>
 import { computed } from 'vue'
 import { NButton, NIcon, NPopover, NTooltip, NAvatar } from 'naive-ui'
-import { LogOutOutline, SettingsOutline, ShieldCheckmarkOutline } from '@vicons/ionicons5'
+import {
+  LogOutOutline,
+  SchoolOutline,
+  SettingsOutline,
+  ShieldCheckmarkOutline,
+} from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useTourStore } from '@/stores/tour'
 import { useApiImage } from '@/composables/useApiImage'
 
 const props = defineProps({
@@ -13,6 +19,7 @@ const props = defineProps({
 
 const authStore = useAuthStore()
 const router = useRouter()
+const tour = useTourStore()
 
 // useApiImage: direct URL on web; an axios-fetched blob: URL on desktop (the
 // webview can't load the remote '/api/…/avatar' <img> directly).
@@ -23,6 +30,15 @@ function openSettings() {
 }
 function openAdmin() {
   router.push('/admin')
+}
+
+// The Get Started guide's permanent entry point (#2753): the autostart only ever
+// fires once per account, so this is how anyone re-runs it. The first step points
+// at the workspace switcher, so the guide is started from Home rather than from
+// whatever screen the user happened to be on.
+function startTour() {
+  router.push('/')
+  tour.startGuide()
 }
 
 const initials = computed(() => {
@@ -58,6 +74,10 @@ function logout() {
           <template #icon><n-icon :component="SettingsOutline" /></template>
           Настройки
         </n-button>
+        <n-button size="small" block data-tour="footer-tour" @click="startTour">
+          <template #icon><n-icon :component="SchoolOutline" /></template>
+          Обучение
+        </n-button>
         <n-button v-if="isAdmin" size="small" block @click="openAdmin">
           <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>
           Администрирование
@@ -85,6 +105,21 @@ function logout() {
           </n-button>
         </template>
         Администрирование
+      </n-tooltip>
+      <n-tooltip>
+        <template #trigger>
+          <n-button
+            quaternary
+            circle
+            size="small"
+            aria-label="Обучение"
+            data-tour="footer-tour"
+            @click="startTour"
+          >
+            <n-icon :component="SchoolOutline" />
+          </n-button>
+        </template>
+        Обучение
       </n-tooltip>
       <n-tooltip>
         <template #trigger>

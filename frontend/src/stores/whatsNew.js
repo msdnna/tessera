@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { acknowledgements } from '@/api'
-import { useAuthStore } from '@/stores/auth'
+import { useTourStore } from '@/stores/tour'
+import { isBrandNewAccount } from '@/utils/account'
 import { WHATS_NEW } from '@/data/whatsNew'
 
 // Per-user "seen once" state for the What's-New modal and the sidebar spotlight
@@ -27,28 +28,25 @@ function cmp(a, b) {
 }
 
 const currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
-const buildDate = typeof __BUILD_DATE__ !== 'undefined' ? __BUILD_DATE__ : ''
 
-// A "brand-new" account is one created on/after the running build — it never
-// updated *into* anything, so the changelog would be noise (and, in the e2e
-// suite, every freshly-registered user would get the modal's mask over the page,
-// blocking clicks — #2749). Only accounts that predate the build see What's New.
-// Unknown timestamps fall back to "not brand-new" (show), which never happens in
-// practice: the server always sends created_at and the build always stamps a date.
-function isBrandNewAccount() {
-  const created = useAuthStore().user?.created_at
-  if (!created || !buildDate) return false
-  const c = new Date(created).getTime()
-  const b = new Date(buildDate).getTime()
-  if (Number.isNaN(c) || Number.isNaN(b)) return false
-  return c >= b
-}
+// Freshly-registered accounts are excluded from What's New: they never updated
+// *into* anything, so the changelog would be noise (and, in the e2e suite, every
+// registered user would get the modal's mask over the page, blocking clicks —
+// #2749). The test itself is shared with the Get Started guide, see utils/account.
 
 export const useWhatsNewStore = defineStore('whatsNew', () => {
+  const tour = useTourStore()
   const acked = ref(new Set())
   const loaded = ref(false)
   // The release entries to show in the modal this session (computed on load).
-  const pending = ref([])
+  const pendingRaw = ref([])
+  // While the Get Started guide is running it owns the screen: the changelog
+  // modal would drop its own mask on top of the guide's. Nothing is lost — the
+  // queue is only hidden, so it surfaces as soon as the guide is over (or on the
+  // next load). Autostart alone can't collide (a brand-new account gets the
+  // changelog baselined silently), but «Обучение» in the footer can be pressed
+  // by anyone, at any time.
+  const pending = computed(() => (tour.active ? [] : pendingRaw.value))
   // Spotlight hints to show one-at-a-time AFTER the modal is dismissed. Kept
   // separate from `pending` so dismissing the modal doesn't wipe the queue.
   const spotlightQueue = ref([])
@@ -73,13 +71,17 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
   // curated highlights up to the current build once (debut + testable: clearing
   // the whatsnew acks makes it show again). Nothing is written until the user
   // dismisses — so the mere presence of the modal never leaves a DB trail.
+  //
+  // Returns whether the acks were actually read: the Get Started guide rides on
+  // the same set, and "the request failed" must not read as "this user has no
+  // getstarted ack" — that would re-run the guide for someone who finished it.
   async function load() {
     try {
       const { data } = await acknowledgements.list()
       acked.value = new Set((data || []).map((a) => a.key))
     } catch {
       loaded.value = true
-      return // offline / unauth — surface nothing rather than risk a double-show
+      return false // offline / unauth — surface nothing rather than risk a double-show
     }
     loaded.value = true
 
@@ -91,14 +93,14 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
     // baselined silently — nothing to catch up on, nothing to interrupt them with.
     if (ackedVersions.length === 0 && isBrandNewAccount()) {
       await ack(WHATSNEW_PREFIX + currentVersion)
-      return
+      return true
     }
 
     const highest = ackedVersions.reduce((m, v) => (cmp(v, m) > 0 ? v : m), '0.0.0')
     const releases = WHATS_NEW.filter(
       (e) => cmp(e.version, highest) > 0 && cmp(e.version, currentVersion) <= 0,
     ).sort((a, b) => cmp(b.version, a.version))
-    pending.value = releases
+    pendingRaw.value = releases
 
     // Spotlights from those releases the user hasn't dismissed yet, newest first,
     // de-duplicated by navKey. Snapshotted here so it outlives dismissModal().
@@ -107,21 +109,23 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
       .map((e) => e.spotlight)
       .filter((s) => s && !has(SPOTLIGHT_PREFIX + s.navKey))
       .filter((s) => (seen.has(s.navKey) ? false : seen.add(s.navKey)))
+    return true
   }
 
   // Called when the user dismisses the modal: mark every shown release seen, and
   // advance the baseline to the current build. The spotlight queue is untouched
   // and starts showing once the modal is gone.
   async function dismissModal() {
-    const keys = pending.value.map((e) => WHATSNEW_PREFIX + e.version)
-    pending.value = []
+    const keys = pendingRaw.value.map((e) => WHATSNEW_PREFIX + e.version)
+    pendingRaw.value = []
     await Promise.all([...keys, WHATSNEW_PREFIX + currentVersion].map(ack))
   }
 
   // The spotlight to show right now: the head of the queue, but only once the
-  // modal is closed (modal first, then spotlights one at a time).
+  // modal is closed (modal first, then spotlights one at a time) — and never
+  // while the guide is drawing its own arrows.
   const currentSpotlight = computed(() =>
-    pending.value.length === 0 ? spotlightQueue.value[0] || null : null,
+    pending.value.length === 0 && !tour.active ? spotlightQueue.value[0] || null : null,
   )
 
   async function dismissSpotlight(navKey) {
