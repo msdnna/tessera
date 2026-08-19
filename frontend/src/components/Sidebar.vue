@@ -192,7 +192,7 @@ async function deleteWorkspace() {
 
     <div v-if="collapsed" class="rail-sep" />
 
-    <div v-if="!collapsed" class="ws-switch">
+    <div v-if="!collapsed" class="ws-switch" data-tour="ws-switch">
       <n-select
         :value="store.currentId"
         :options="wsOptions"
@@ -276,8 +276,16 @@ async function deleteWorkspace() {
 
     <div v-if="!collapsed" class="proj-head">
       <n-text depth="3" strong>Проекты</n-text>
-      <n-dropdown trigger="click" :options="addOptions" @select="addAtRoot">
-        <n-button text size="small" title="Добавить">
+      <!-- node-props tags each option for the Get Started guide (#2753): naive
+           merges them into the option node, so the tour can anchor on a menu
+           item the same way it anchors on any other element. -->
+      <n-dropdown
+        trigger="click"
+        :options="addOptions"
+        :node-props="(o) => ({ 'data-tour': `menu-${o.key}` })"
+        @select="addAtRoot"
+      >
+        <n-button text size="small" title="Добавить" data-tour="proj-add">
           <n-icon :component="AddOutline" />
         </n-button>
       </n-dropdown>

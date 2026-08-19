@@ -170,6 +170,68 @@ describe('tour store', () => {
       expect(t.current.id).toBe('after')
     })
 
+    describe('advanceOn.count', () => {
+      const COUNT_STEPS = [
+        {
+          id: 'create-board',
+          anchor: 'board-name',
+          mode: 'action',
+          advanceOn: { count: 'board-row' },
+        },
+        { id: 'after', anchor: 'board-row', mode: 'info' },
+      ]
+
+      it('takes the first report as the baseline and advances when it grows', () => {
+        const t = useTourStore()
+        t.start(COUNT_STEPS)
+        t.counted('create-board', 0)
+        expect(t.current.id).toBe('create-board')
+        t.counted('create-board', 1)
+        expect(t.current.id).toBe('after')
+      })
+
+      it('does not advance on a count that was already there on entry', () => {
+        // Re-running the guide with boards already in the tree still walks the
+        // user through creating one.
+        const t = useTourStore()
+        t.start(COUNT_STEPS)
+        t.counted('create-board', 3)
+        t.counted('create-board', 3)
+        expect(t.current.id).toBe('create-board')
+        t.counted('create-board', 4)
+        expect(t.current.id).toBe('after')
+      })
+
+      it('re-baselines on every step, so one report cannot advance two', () => {
+        const t = useTourStore()
+        t.start([
+          { ...COUNT_STEPS[0], id: 'one' },
+          { ...COUNT_STEPS[0], id: 'two' },
+          COUNT_STEPS[1],
+        ])
+        t.counted('one', 0)
+        t.counted('one', 1)
+        expect(t.current.id).toBe('two')
+        t.counted('two', 1)
+        expect(t.current.id).toBe('two')
+        t.counted('two', 2)
+        expect(t.current.id).toBe('after')
+      })
+
+      it('ignores reports for another step and steps without a count', () => {
+        const t = useTourStore()
+        t.start(COUNT_STEPS)
+        t.counted('after', 9)
+        t.counted('create-board', undefined)
+        expect(t.current.id).toBe('create-board')
+
+        t.start(STEPS) // 'workspaces' is an info step, no advanceOn at all
+        t.counted('workspaces', 0)
+        t.counted('workspaces', 5)
+        expect(t.current.id).toBe('workspaces')
+      })
+    })
+
     it('skips a step whose anchor never showed up instead of hanging', () => {
       const t = useTourStore()
       t.start(STEPS)

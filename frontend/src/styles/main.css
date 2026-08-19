@@ -686,3 +686,12 @@ body {
     animation: none;
   }
 }
+
+/* Get Started guide (#2753): TourOverlay marks the elements it currently points
+   at. Sidebar row buttons ("+" on a project) are opacity: 0 until the row is
+   hovered, so without this the arrow would land on nothing visible. Global and
+   !important because the attribute is set from another component's scope onto a
+   node whose own scoped rule is more specific. */
+[data-tour-active] {
+  opacity: 1 !important;
+}

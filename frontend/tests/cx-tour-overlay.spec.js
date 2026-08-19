@@ -172,6 +172,39 @@ describe('TourOverlay', () => {
     }
   })
 
+  it('advances a step when the entity it asked for appears', async () => {
+    anchor('board-name')
+    const tour = useTourStore()
+    tour.start([
+      {
+        id: 'create-board',
+        anchor: 'board-name',
+        mode: 'action',
+        advanceOn: { count: 'board-row' },
+      },
+      INFO,
+    ])
+    await render()
+    expect(tour.current.id).toBe('create-board')
+
+    anchor('board-row')
+    await new Promise((r) => requestAnimationFrame(r))
+    await nextTick()
+    expect(tour.current.id).toBe('workspaces')
+  })
+
+  it('flags the elements it points at, so hover-only buttons stay visible', async () => {
+    const el = anchor('board-add')
+    const tour = useTourStore()
+    tour.start([{ id: 'add-board', anchor: 'board-add', title: 'Доска', mode: 'action' }])
+    await render()
+    expect(el.hasAttribute('data-tour-active')).toBe(true)
+
+    await tour.skip()
+    await nextTick()
+    expect(el.hasAttribute('data-tour-active')).toBe(false)
+  })
+
   it('picks up an anchor that appears later (dropdown, modal)', async () => {
     const tour = useTourStore()
     tour.start([{ id: 'late', anchor: 'menu-project', title: 'Проект' }])

@@ -514,6 +514,7 @@ async function addBoard() {
   <div class="project-block">
     <div
       class="row project-row"
+      data-tour="project-row"
       @contextmenu.prevent.stop="onProjectCtx"
       @touchstart.passive="lpProj.start"
       @touchend="lpProj.cancel"
@@ -543,6 +544,7 @@ async function addBoard() {
         text
         size="tiny"
         title="Добавить доску"
+        data-tour="board-add"
         @click.stop="startAddBoard"
       >
         <n-icon :component="AddOutline" />
@@ -610,6 +612,7 @@ async function addBoard() {
           v-for="b in boards"
           :key="b.id"
           class="row board-row"
+          data-tour="board-row"
           :class="{
             active:
               route.params.projectSlug === project.slug &&
@@ -692,6 +695,7 @@ async function addBoard() {
             v-model:value="newBoardName"
             size="tiny"
             placeholder="Название доски"
+            data-tour="board-name"
             @keyup.enter="addBoard"
             @blur="addBoard"
           />

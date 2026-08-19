@@ -39,10 +39,18 @@ function boxOf(el) {
  * @param onMissing (keys) => void  called once when the *first* key never resolved
  *                                  within `timeout` ms, so the caller can skip the
  *                                  step rather than hang on an arrow to nothing
+ * @param countFn   () => string    reactive getter for a key whose *number* of
+ *                                  matches the caller wants (the guide advances a
+ *                                  step when the entity it asked for appears, and
+ *                                  tasks live in component state with no store to
+ *                                  watch — the DOM is what there is). Counted on
+ *                                  the same mutation pass, so it costs one extra
+ *                                  querySelectorAll per frame that already ran.
  */
-export function useTourAnchor(keysFn, { timeout = 8000, onMissing } = {}) {
+export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {}) {
   const rects = ref([])
   const els = ref([])
+  const count = ref(0)
   let frame = 0
   let missTimer = 0
   let ro = null
@@ -55,6 +63,8 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing } = {}) {
     const nextRects = nextEls.map((el) => (el ? boxOf(el) : null))
     els.value = nextEls
     rects.value = nextRects
+    const countSel = anchorSelector(countFn?.())
+    count.value = countSel ? document.querySelectorAll(countSel).length : 0
     if (ro) {
       ro.disconnect()
       nextEls.forEach((el) => el && ro.observe(el))
@@ -89,8 +99,8 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing } = {}) {
   window.addEventListener('scroll', refresh, true)
 
   watch(
-    keysFn,
-    (keys) => {
+    () => [keysFn(), countFn?.()],
+    ([keys]) => {
       measure() // synchronous so the first paint already has a box
       armMissing(keys || [])
     },
@@ -106,5 +116,5 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing } = {}) {
     if (frame) cancelAnimationFrame(frame)
   })
 
-  return { rects, els, refresh }
+  return { rects, els, count, refresh }
 }

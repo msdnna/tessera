@@ -29,8 +29,9 @@ const playing = ref(false)
 const popStyle = ref({})
 const arrows = ref([]) // { len, head } per anchor, in `anchors` order
 
-const { rects } = useTourAnchor(() => tour.anchors, {
+const { rects, els, count } = useTourAnchor(() => tour.anchors, {
   onMissing: () => tour.anchorMissing(step.value?.id),
+  countFn: () => step.value?.advanceOn?.count || '',
 })
 
 const target = computed(() => rects.value[0] || null)
@@ -128,6 +129,36 @@ function onDocClick(e) {
 }
 document.addEventListener('click', onDocClick, true)
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true))
+
+// Steps that wait for an entity to be created report the match count on every
+// mutation pass; re-reporting on a step change too gives the store its baseline
+// even when the new step happens to start on the same number.
+watch([count, () => step.value?.id], ([n, id]) => id && tour.counted(id, n), {
+  immediate: true,
+  flush: 'post',
+})
+
+// Some anchors are only revealed on hover (the sidebar's per-row buttons). Flag
+// the live ones so the rule in main.css can hold them visible while the guide
+// points at them — otherwise the arrow lands on an invisible target.
+let marked = []
+function unmark() {
+  marked.forEach((el) => el.removeAttribute('data-tour-active'))
+  marked = []
+}
+watch(
+  els,
+  (next) => {
+    unmark()
+    marked = (next || []).filter(Boolean)
+    marked.forEach((el) => el.setAttribute('data-tour-active', ''))
+  },
+  // immediate: the composable resolves the first anchors while it is being set
+  // up, i.e. before this watcher exists — without it the opening step of a tour
+  // that starts before the overlay mounts is never flagged.
+  { immediate: true, flush: 'post' },
+)
+onBeforeUnmount(unmark)
 
 // Post-flush throughout: the popover is measured from its real box, so every
 // layout pass has to run after the DOM is patched (on the step the layer mounts,

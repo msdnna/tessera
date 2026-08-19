@@ -83,10 +83,16 @@ async function submit() {
           placeholder="Название проекта"
           autofocus
           :disabled="busy"
+          data-tour="project-name"
           @keyup.enter="submit"
         />
 
-        <n-checkbox v-if="canPickSlug" v-model:checked="customSlug" :disabled="busy">
+        <n-checkbox
+          v-if="canPickSlug"
+          v-model:checked="customSlug"
+          :disabled="busy"
+          data-tour="project-slug"
+        >
           Задать адрес вручную
         </n-checkbox>
         <n-input

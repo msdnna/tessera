@@ -24,12 +24,18 @@ import { acknowledgements } from '@/api'
 //       click: 'menu-project',        // …the user clicked this anchor, or
 //       snapshot: () => projects.length,   // …a value taken on step entry
 //       when: (base) => projects.length > base,  // …changed as expected
-//     },
+//       count: 'project-row',         // …or more elements match this anchor
+//     },                              //    than when the step opened
 //   }
 //
-// `snapshot`/`when` is the answer to "wait for the click or for the entity?":
-// we advance on the entity actually being created, so closing the modal without
-// creating anything leaves the tour where it was instead of running ahead.
+// `snapshot`/`when` and `count` are the answer to "wait for the click or for the
+// entity?": we advance on the entity actually being created, so closing the
+// modal without creating anything leaves the tour where it was instead of
+// running ahead. `count` is the same rule for entities with no store to watch
+// (board tasks live in KanbanBoard's own state) — the caller reports how many
+// elements match, and the first report after entering the step is the baseline,
+// so re-running the guide with projects already in the tree still walks the user
+// through creating one.
 
 export const TOUR_PREFIX = 'getstarted:'
 export const TOUR_DONE = TOUR_PREFIX + 'done'
@@ -55,6 +61,9 @@ export const useTourStore = defineStore('tour', () => {
 
   // Value captured when an action step became current, handed back to when().
   let entry = null
+  // Same idea for advanceOn.count, except the baseline can only be taken from
+  // the first report the view makes after the step opened (the store has no DOM).
+  let entryCount = null
 
   function persist(step) {
     try {
@@ -68,6 +77,7 @@ export const useTourStore = defineStore('tour', () => {
   function arm() {
     const step = steps.value[index.value] || null
     entry = step?.advanceOn?.snapshot?.() ?? null
+    entryCount = null
     persist(step)
   }
 
@@ -87,6 +97,7 @@ export const useTourStore = defineStore('tour', () => {
     index.value = -1
     steps.value = []
     entry = null
+    entryCount = null
     persist(null)
   }
 
@@ -142,6 +153,19 @@ export const useTourStore = defineStore('tour', () => {
     next()
   }
 
+  // How many elements currently match the step's advanceOn.count anchor. The
+  // first report after the step opened is the baseline; growth ends the step.
+  function counted(stepId, n) {
+    const step = current.value
+    if (!active.value || step?.id !== stepId || step.mode !== 'action') return
+    if (!step.advanceOn?.count || typeof n !== 'number') return
+    if (entryCount === null) {
+      entryCount = n
+      return
+    }
+    if (n > entryCount) next()
+  }
+
   // Entity-based advancement: re-checked whenever anything when() reads changes.
   watchEffect(() => {
     const step = current.value
@@ -163,6 +187,7 @@ export const useTourStore = defineStore('tour', () => {
     skip,
     finish,
     clicked,
+    counted,
     anchorMissing,
   }
 })
