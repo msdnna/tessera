@@ -90,6 +90,17 @@ object TestTags {
     /** The description editor's text area (absent while it shows the preview tab). */
     const val TASK_DESCRIPTION = "task-description"
 
+    /** A tab in the modal's strip, keyed by role rather than by its localised
+     *  label. «Описание» is the first tab and the one open on load (#2754). */
+    fun taskTab(key: String) = "task-tab:$key"
+
+    const val TASK_TAB_DESCRIPTION = "description"
+    const val TASK_TAB_COMMENTS = "comments"
+    const val TASK_TAB_SUBTASKS = "subtasks"
+    const val TASK_TAB_RELATIONS = "relations"
+    const val TASK_TAB_FILES = "files"
+    const val TASK_TAB_HISTORY = "history"
+
     /** Footer button that commits title + description. */
     const val TASK_SAVE = "task-save"
 

@@ -52,8 +52,10 @@ class TaskModalE2eTest {
         compose.openTaskModal(e2e.fixture, task.id)
         compose.onNodeWithTag(TestTags.TASK_TITLE).performTextClearance()
         compose.onNodeWithTag(TestTags.TASK_TITLE).performTextInput(newTitle)
-        // The editor opens on its «Написать» tab only while the description is
-        // empty — a seeded task has none, so the text area is composed right away.
+        // The description lives in the modal's first tab, which is the one open on
+        // load (#2754) — no tab switch needed here. The editor opens on its
+        // «Написать» tab only while the description is empty; a seeded task has
+        // none, so the text area is composed right away.
         compose.onNodeWithTag(TestTags.TASK_DESCRIPTION).performScrollTo().performTextInput(description)
         // No scroll for the footer: it is pinned below the scrolling body, so
         // `performScrollTo` there fails on «no parent with a Scroll action».
@@ -105,6 +107,8 @@ class TaskModalE2eTest {
         val body = "комментарий из спеки ${System.nanoTime()}"
 
         compose.openTaskModal(e2e.fixture, task.id)
+        // Комментарии is no longer the tab open on load — «Описание» is (#2754).
+        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_COMMENTS)).performScrollTo().performClick()
         // The composer sits under the tab strip at the foot of a scrolling body:
         // it is composed, but a tap at its off-window coordinates is dropped
         // silently rather than rejected — hence the scroll before typing.
@@ -115,6 +119,31 @@ class TaskModalE2eTest {
             E2eBackend.comments(e2e.fixture, task.id).firstOrNull { it.body == body }
         }
         assertThat(posted.authorId).isEqualTo(e2e.fixture.account.user.id)
+    }
+
+    @Test
+    fun `the description opens in its own first tab and survives a tab switch`() {
+        val text = "описание во вкладке ${System.nanoTime()}"
+        val task = E2eBackend.createTask(e2e.fixture, "tabs ${System.nanoTime()}")
+
+        compose.openTaskModal(e2e.fixture, task.id)
+
+        // Открыта именно «Описание»: поле редактора на экране, а composer
+        // комментариев — нет (обе вкладки существуют в полосе, но содержимое
+        // рисуется только у выбранной).
+        compose.onNodeWithTag(TestTags.TASK_DESCRIPTION).performScrollTo().performTextInput(text)
+        compose.onNodeWithTag(TestTags.TASK_COMMENT_INPUT).assertDoesNotExist()
+
+        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_COMMENTS)).performScrollTo().performClick()
+        compose.awaitTag(TestTags.TASK_COMMENT_INPUT)
+        compose.onNodeWithTag(TestTags.TASK_DESCRIPTION).assertDoesNotExist()
+
+        // Возврат на «Описание» отдаёт набранный текст, а не перечитанный с
+        // сервера: вкладка уходит из композиции, и правка пережила бы это только
+        // потому, что состояние поднято в модалку.
+        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_DESCRIPTION)).performScrollTo().performClick()
+        compose.awaitTag(TestTags.TASK_DESCRIPTION)
+        compose.onNodeWithTag(TestTags.TASK_DESCRIPTION).assertTextContains(text)
     }
 
     private companion object {

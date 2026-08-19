@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -220,6 +221,7 @@ fun TaskModal(
     var title by remember(detail?.id) { mutableStateOf(detail?.title ?: "") }
     var description by remember(detail?.id) { mutableStateOf(detail?.description ?: "") }
     var tab by remember { mutableStateOf(0) }
+    val tabState = rememberSaveableStateHolder()
     var confirmArchive by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
@@ -315,28 +317,15 @@ fun TaskModal(
                             parentCandidates = parentCandidates,
                         )
 
-                        Spacer(Modifier.height(16.dp))
-                        Text("Описание", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.height(4.dp))
-                        MarkdownEditor(
-                            value = description,
-                            onValueChange = { description = it },
-                            placeholder = "Добавьте описание…",
-                            startInPreview = detail.description.isNotBlank(),
-                            onBlur = { vm.saveDescription(description) },
-                            uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
-                            mentions = buildMentionItems(members, gitlabMembers),
-                            fieldTag = TestTags.TASK_DESCRIPTION,
-                        )
-
                         Spacer(Modifier.height(18.dp))
                         UnderlineTabs(
                             tabs = listOf(
-                                TabItem("Комментарии", state.comments.size),
-                                TabItem("Подзадачи", detail.subtasks.size),
-                                TabItem("Связи", state.relations.size),
-                                TabItem("Файлы", state.attachments.size),
-                                TabItem("История"),
+                                TabItem("Описание", testTag = TestTags.taskTab(TestTags.TASK_TAB_DESCRIPTION)),
+                                TabItem("Комментарии", state.comments.size, TestTags.taskTab(TestTags.TASK_TAB_COMMENTS)),
+                                TabItem("Подзадачи", detail.subtasks.size, TestTags.taskTab(TestTags.TASK_TAB_SUBTASKS)),
+                                TabItem("Связи", state.relations.size, TestTags.taskTab(TestTags.TASK_TAB_RELATIONS)),
+                                TabItem("Файлы", state.attachments.size, TestTags.taskTab(TestTags.TASK_TAB_FILES)),
+                                TabItem("История", testTag = TestTags.taskTab(TestTags.TASK_TAB_HISTORY)),
                             ),
                             selected = tab,
                             onSelect = { tab = it },
@@ -353,31 +342,51 @@ fun TaskModal(
                             },
                             label = "taskTab",
                         ) { t ->
-                            when (t) {
-                                0 -> CommentsTab(
-                                    vm = vm,
-                                    comments = state.comments,
-                                    members = members,
-                                    gitlabMembers = gitlabMembers,
-                                    meId = me?.id,
-                                    commands = commands,
-                                    preview = state.commandPreview,
-                                    previewCustom = state.commandCustom,
-                                )
+                            // Each tab keeps its own saveable state across switches
+                            // (the description editor's Написать/Просмотр mode above
+                            // all): leaving a tab drops it from the composition, and
+                            // a plain `remember` there would reset on every return.
+                            // Keyed by task too: navigating to a subtask reuses the
+                            // same tab indices, and the description editor's mode is
+                            // seeded from *that* task's text — restoring the previous
+                            // task's «Просмотр» would show an empty preview instead of
+                            // the field to type in.
+                            tabState.SaveableStateProvider("${detail.id}:$t") {
+                                when (t) {
+                                    0 -> DescriptionTab(
+                                        value = description,
+                                        onValueChange = { description = it },
+                                        startInPreview = detail.description.isNotBlank(),
+                                        onBlur = { vm.saveDescription(description) },
+                                        uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
+                                        mentions = buildMentionItems(members, gitlabMembers),
+                                    )
 
-                                1 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
+                                    1 -> CommentsTab(
+                                        vm = vm,
+                                        comments = state.comments,
+                                        members = members,
+                                        gitlabMembers = gitlabMembers,
+                                        meId = me?.id,
+                                        commands = commands,
+                                        preview = state.commandPreview,
+                                        previewCustom = state.commandCustom,
+                                    )
 
-                                2 -> RelationsTab(
-                                    vm = vm,
-                                    relations = state.relations,
-                                    candidates = state.relationCandidates,
-                                    currentTaskId = detail.id,
-                                    onOpen = { currentId = it },
-                                )
+                                    2 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
 
-                                3 -> FilesTab(vm, state.attachments)
+                                    3 -> RelationsTab(
+                                        vm = vm,
+                                        relations = state.relations,
+                                        candidates = state.relationCandidates,
+                                        currentTaskId = detail.id,
+                                        onOpen = { currentId = it },
+                                    )
 
-                                else -> HistoryTab(state.events)
+                                    4 -> FilesTab(vm, state.attachments)
+
+                                    else -> HistoryTab(state.events)
+                                }
                             }
                         }
                     }
@@ -1275,6 +1284,33 @@ private fun CommandPreviewStrip(
 }
 
 // ── tabs ─────────────────────────────────────────────────────────────────────
+
+/**
+ * The description editor, the modal's first tab (#2754, web parity with #2745).
+ *
+ * It used to sit above the tab strip, which on a phone — always the narrow layout —
+ * pushed the comments and subtasks off-screen behind a long description.
+ */
+@Composable
+private fun DescriptionTab(
+    value: String,
+    onValueChange: (String) -> Unit,
+    startInPreview: Boolean,
+    onBlur: () -> Unit,
+    uploadImage: suspend (ByteArray, String, String?) -> String?,
+    mentions: List<website.msdnna.tessera.ui.components.MentionItem>,
+) {
+    MarkdownEditor(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = "Добавьте описание…",
+        startInPreview = startInPreview,
+        onBlur = onBlur,
+        uploadImage = uploadImage,
+        mentions = mentions,
+        fieldTag = TestTags.TASK_DESCRIPTION,
+    )
+}
 
 @Composable
 private fun CommentsTab(

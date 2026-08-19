@@ -230,8 +230,12 @@ fun TSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modi
     }
 }
 
-/** A single underline-tab definition: a label and an optional count badge. */
-data class TabItem(val label: String, val count: Int = 0)
+/**
+ * A single underline-tab definition: a label and an optional count badge.
+ * [testTag] anchors the tab for e2e specs — labels are localised prose and get
+ * rewritten, so specs must not tap by text (see `ui/TestTags.kt`).
+ */
+data class TabItem(val label: String, val count: Int = 0, val testTag: String? = null)
 
 /**
  * Horizontally scrollable underline tabs, matching the web's `n-tabs type=line`:
@@ -260,7 +264,12 @@ fun UnderlineTabs(
                     // label row), so a fillMaxWidth underline spans exactly the
                     // tab text + badge — even inside this horizontally-scrolling
                     // (unbounded-width) row, where plain fillMaxWidth collapses to 0.
-                    Column(Modifier.width(IntrinsicSize.Max).clickableNoRipple { onSelect(i) }) {
+                    Column(
+                        Modifier
+                            .width(IntrinsicSize.Max)
+                            .then(tab.testTag?.let { Modifier.testTag(it) } ?: Modifier)
+                            .clickableNoRipple { onSelect(i) },
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 tab.label,

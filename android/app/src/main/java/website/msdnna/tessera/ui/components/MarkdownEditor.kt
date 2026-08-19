@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,7 +118,10 @@ fun MarkdownEditor(
     // Tokens (names / usernames) highlighted in the preview after an '@'.
     val mentionTokens = remember(mentions) { mentions.map { it.insert } }
     val c = Tessera.colors
-    var preview by remember { mutableStateOf(startInPreview) }
+    // Saveable, not plain remember: inside the task modal the editor lives in a tab
+    // that leaves the composition when another tab is shown (#2754) — the chosen
+    // Написать/Просмотр mode has to survive coming back, and a rotation with it.
+    var preview by rememberSaveable { mutableStateOf(startInPreview) }
     var uploading by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
