@@ -1,0 +1,244 @@
+import { setActivePinia, createPinia } from 'pinia'
+import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
+import { ref, nextTick } from 'vue'
+
+const apiMock = vi.hoisted(() => ({
+  acknowledgements: { ack: vi.fn(() => Promise.resolve()), list: vi.fn() },
+}))
+vi.mock('@/api', () => apiMock)
+
+import { useTourStore, TOUR_DONE, TOUR_SKIPPED, TOUR_STEP_KEY } from '@/stores/tour'
+import { anchorSelector } from '@/composables/useTourAnchor'
+import { arcPath, headPoints, layoutArrow } from '@/utils/tourArrow'
+
+const STEPS = [
+  { id: 'workspaces', anchor: 'ws-switch', title: 'Пространства', mode: 'info' },
+  {
+    id: 'open-menu',
+    anchor: 'proj-add',
+    title: 'Создать',
+    mode: 'action',
+    advanceOn: { click: 'proj-add' },
+  },
+  { id: 'done', anchor: 'footer-settings', title: 'Готово', mode: 'info' },
+]
+
+beforeEach(() => {
+  localStorage.clear()
+  vi.clearAllMocks()
+  setActivePinia(createPinia())
+})
+afterEach(() => localStorage.clear())
+
+describe('tour store', () => {
+  it('is inert until started', () => {
+    const t = useTourStore()
+    expect(t.active).toBe(false)
+    expect(t.current).toBe(null)
+    expect(t.anchors).toEqual([])
+  })
+
+  it('refuses to start on an empty scenario', () => {
+    const t = useTourStore()
+    expect(t.start([])).toBe(false)
+    expect(t.active).toBe(false)
+  })
+
+  it('walks the steps and acks done at the end', async () => {
+    const t = useTourStore()
+    t.start(STEPS)
+    expect(t.current.id).toBe('workspaces')
+    expect(localStorage.getItem(TOUR_STEP_KEY)).toBe('workspaces')
+
+    t.next()
+    expect(t.current.id).toBe('open-menu')
+    t.next()
+    expect(t.current.id).toBe('done')
+    expect(t.isLast).toBe(true)
+
+    t.next()
+    await nextTick()
+    expect(t.active).toBe(false)
+    expect(apiMock.acknowledgements.ack).toHaveBeenCalledWith(TOUR_DONE)
+    // Nothing left to resume from after a reload.
+    expect(localStorage.getItem(TOUR_STEP_KEY)).toBe(null)
+  })
+
+  it('resumes from a persisted step id', () => {
+    const t = useTourStore()
+    t.start(STEPS, { fromId: 'done' })
+    expect(t.current.id).toBe('done')
+  })
+
+  it('falls back to the first step when the persisted id is gone', () => {
+    const t = useTourStore()
+    t.start(STEPS, { fromId: 'renamed-away' })
+    expect(t.current.id).toBe('workspaces')
+  })
+
+  it('skip acks skipped once and ends the tour from any step', async () => {
+    const t = useTourStore()
+    t.start(STEPS)
+    t.next()
+    await t.skip()
+    expect(t.active).toBe(false)
+    expect(apiMock.acknowledgements.ack).toHaveBeenCalledWith(TOUR_SKIPPED)
+    // A second skip is a no-op, not a second write.
+    await t.skip()
+    expect(apiMock.acknowledgements.ack).toHaveBeenCalledTimes(1)
+  })
+
+  it('survives a failed ack (offline)', async () => {
+    apiMock.acknowledgements.ack.mockRejectedValueOnce(new Error('offline'))
+    const t = useTourStore()
+    t.start(STEPS)
+    await expect(t.skip()).resolves.toBeUndefined()
+    expect(t.active).toBe(false)
+  })
+
+  it('exposes the primary anchor first, then the extras', () => {
+    const t = useTourStore()
+    t.start([{ id: 'card', anchor: 'card-priority', extra: ['card-due', 'card-tags'] }])
+    expect(t.anchors).toEqual(['card-priority', 'card-due', 'card-tags'])
+  })
+
+  describe('advancing', () => {
+    it('advances an action step on a click on its anchor', () => {
+      const t = useTourStore()
+      t.start(STEPS)
+      t.next()
+      t.clicked('open-menu')
+      expect(t.current.id).toBe('done')
+    })
+
+    it('ignores a click reported for a step that is no longer current', () => {
+      const t = useTourStore()
+      t.start(STEPS)
+      t.clicked('open-menu')
+      expect(t.current.id).toBe('workspaces')
+    })
+
+    it('waits for the entity, not the click, when the step declares when()', async () => {
+      const projects = ref([])
+      const t = useTourStore()
+      t.start([
+        {
+          id: 'create-project',
+          anchor: 'menu-project',
+          mode: 'action',
+          advanceOn: {
+            click: 'menu-project',
+            snapshot: () => projects.value.length,
+            when: (base) => projects.value.length > base,
+          },
+        },
+        { id: 'after', anchor: 'node-add', mode: 'info' },
+      ])
+
+      // Clicking the menu item is not enough — the modal may still be cancelled.
+      t.clicked('create-project')
+      await nextTick()
+      expect(t.current.id).toBe('create-project')
+
+      projects.value = [{ id: 1 }]
+      await nextTick()
+      expect(t.current.id).toBe('after')
+    })
+
+    it('does not fire when() on a value that was already true on entry', async () => {
+      // A user who restarts the guide with projects already in the tree must
+      // still be walked through creating one — the baseline is per-step.
+      const projects = ref([{ id: 1 }])
+      const t = useTourStore()
+      t.start([
+        {
+          id: 'create-project',
+          anchor: 'menu-project',
+          mode: 'action',
+          advanceOn: {
+            snapshot: () => projects.value.length,
+            when: (base) => projects.value.length > base,
+          },
+        },
+        { id: 'after', anchor: 'node-add', mode: 'info' },
+      ])
+      await nextTick()
+      expect(t.current.id).toBe('create-project')
+
+      projects.value = [{ id: 1 }, { id: 2 }]
+      await nextTick()
+      expect(t.current.id).toBe('after')
+    })
+
+    it('skips a step whose anchor never showed up instead of hanging', () => {
+      const t = useTourStore()
+      t.start(STEPS)
+      t.anchorMissing('workspaces')
+      expect(t.current.id).toBe('open-menu')
+      // A stale report from an already-left step changes nothing.
+      t.anchorMissing('workspaces')
+      expect(t.current.id).toBe('open-menu')
+    })
+  })
+})
+
+describe('anchorSelector', () => {
+  it('wraps a bare key into a data-tour selector', () => {
+    expect(anchorSelector('ws-switch')).toBe('[data-tour="ws-switch"]')
+  })
+
+  it('passes a raw CSS selector through', () => {
+    const raw = '[data-column-name="К работе"] [data-testid="add-task-button"]'
+    expect(anchorSelector(raw)).toBe(raw)
+    expect(anchorSelector('.n-tabs [data-name="comments"]')).toBe('.n-tabs [data-name="comments"]')
+  })
+
+  it('is empty for a missing key', () => {
+    expect(anchorSelector('')).toBe('')
+    expect(anchorSelector(undefined)).toBe('')
+  })
+})
+
+describe('tour arrow geometry', () => {
+  it('draws a cubic from the popover to the target', () => {
+    const d = arcPath({ x: 200, y: 120 }, { x: 60, y: 40 })
+    expect(d).toMatch(/^M 200 120 C .+, .+, 60 40$/)
+  })
+
+  it('bows the same amount whichever side the popover sits on', () => {
+    // A popover far above the target must not inherit a runaway bow from an
+    // unsigned Math.min clamp.
+    const below = arcPath({ x: 200, y: 900 }, { x: 60, y: 40 })
+    const above = arcPath({ x: 200, y: 40 }, { x: 60, y: 900 })
+    // first control point: "C cx1 cy1, …" — its y is the bowed one
+    const bowOf = (d, y) => Math.abs(parseFloat(d.split('C ')[1].split(' ')[1]) - y)
+    expect(bowOf(below, 900)).toBeCloseTo(20)
+    expect(bowOf(above, 40)).toBeCloseTo(20)
+  })
+
+  it('builds a triangle around the tip', () => {
+    const pts = headPoints({ x: 10, y: 0 }, { x: 0, y: 0 }, 5)
+      .split(' ')
+      .map((p) => p.split(',').map(Number))
+    expect(pts[0]).toEqual([10, 0])
+    // Base corners straddle the path, 2*halfW apart.
+    expect(Math.abs(pts[1][1] - pts[2][1])).toBeCloseTo(10)
+  })
+
+  it('degrades to no head when the path cannot be measured (jsdom)', () => {
+    const fake = { setAttribute: vi.fn() }
+    expect(layoutArrow(fake, { x: 0, y: 0 }, { x: 10, y: 10 })).toEqual({ len: 0, head: '' })
+    expect(fake.setAttribute).toHaveBeenCalledWith('d', expect.stringContaining('M 0 0 C'))
+  })
+
+  it('measures the head from a real path', () => {
+    const path = {
+      setAttribute: vi.fn(),
+      getTotalLength: () => 100,
+      getPointAtLength: (l) => ({ x: l, y: 0 }),
+    }
+    const { len, head } = layoutArrow(path, { x: 0, y: 0 }, { x: 100, y: 0 })
+    expect(len).toBe(100)
+    expect(head.split(' ')[0]).toBe('100,0')
+  })
+})

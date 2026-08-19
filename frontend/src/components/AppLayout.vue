@@ -15,6 +15,7 @@ import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
 import SidebarSpotlight from './SidebarSpotlight.vue'
+import TourOverlay from './TourOverlay.vue'
 import VersionBadge from './VersionBadge.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
@@ -265,6 +266,10 @@ watch(
          with an animated arrow to the new section (#2749). -->
     <WhatsNewModal />
     <SidebarSpotlight />
+
+    <!-- Get Started guide (#2753). Inert until the tour store is started — the
+         autostart / «Обучение» entry point is wired up separately. -->
+    <TourOverlay />
   </div>
 </template>
 

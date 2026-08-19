@@ -4,6 +4,7 @@ import { NIcon } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useResponsive } from '@/composables/useResponsive'
+import { layoutArrow, ARROW_HEAD } from '@/utils/tourArrow'
 
 // One-at-a-time sidebar spotlight hint (#2749), shown after the What's-New modal:
 // a glowing popover with a curved gradient arrow that "draws" itself from the
@@ -60,36 +61,13 @@ function place() {
     const y1 = p.top + 8
     const x2 = a.right + 12
     const y2 = t.top + t.height / 2
-    const dx = x1 - x2 // > 0 (popover is right of the item)
-    const dy = y1 - y2 // > 0 (popover is below the item)
-    // Tighter arc for the narrow gap (smaller "radius" than the mockup): keep the
-    // control points close to the endpoints with a shallow upward bow.
-    const bow = Math.min(20, dy * 0.35)
-    const cx1 = x1 - dx * 0.55
-    const cy1 = y1 - bow
-    const cx2 = x2 + dx * 0.16
-    const cy2 = y2 - bow * 0.7
-    const d = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`
-    const path = arrowPath.value
-    path.setAttribute('d', d)
-    const len = path.getTotalLength()
+    // Tighter arc for the narrow gap (smaller "radius" than the mockup) and a
+    // sharp head that the stroke stops ARROW_HEAD px short of — shared with the
+    // Get Started tour, see utils/tourArrow.js (#2753).
+    const { len, head } = layoutArrow(arrowPath.value, { x: x1, y: y1 }, { x: x2, y: y2 })
     pathLen.value = len
-
-    // Sharp arrowhead. The stroke stops HEAD px short of the tip (final dashoffset
-    // = HEAD, see --gap) so the round line-cap never pokes through the triangle —
-    // the earlier "blunted" look. The triangle spans that gap to a clean point.
-    const HEAD = 11
-    const halfW = 5
-    headGap.value = HEAD
-    const tip = path.getPointAtLength(len)
-    const base = path.getPointAtLength(Math.max(0, len - HEAD))
-    const ang = Math.atan2(tip.y - base.y, tip.x - base.x)
-    const nx = Math.cos(ang + Math.PI / 2)
-    const ny = Math.sin(ang + Math.PI / 2)
-    arrowHead.value.setAttribute(
-      'points',
-      `${tip.x},${tip.y} ${base.x + nx * halfW},${base.y + ny * halfW} ${base.x - nx * halfW},${base.y - ny * halfW}`,
-    )
+    headGap.value = ARROW_HEAD
+    arrowHead.value.setAttribute('points', head)
 
     // Kick off: draw the arrow, then nod the target as the arrowhead lands.
     playing.value = false
