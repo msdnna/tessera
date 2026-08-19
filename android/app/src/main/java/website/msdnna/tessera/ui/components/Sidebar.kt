@@ -1,5 +1,11 @@
 package website.msdnna.tessera.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -14,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,6 +46,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -48,10 +56,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import kotlin.math.roundToInt
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.Project
@@ -65,6 +76,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.WhatsNewSpotlight
 
 // ── Layout metrics ────────────────────────────────────────────────────────────
 // Per-nesting-level indent. Must match the projection step used by the DnD code
@@ -141,6 +153,11 @@ fun Sidebar(
     onOpenMilestone: (projectId: String, milestoneId: String) -> Unit = { _, _ -> },
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
+    // Server version shown next to the app's in the footer (#2766), and the
+    // one-shot hint to draw at a nav item — null while there is none to show.
+    apiVersion: String = "",
+    spotlight: WhatsNewSpotlight? = null,
+    onDismissSpotlight: (String) -> Unit = {},
 ) {
     val c = Tessera.colors
     val density = LocalDensity.current
@@ -156,6 +173,16 @@ fun Sidebar(
     val drag = rememberSidebarDragState()
     val treeScroll = rememberScrollState()
     var viewportH by remember { mutableIntStateOf(0) }
+
+    // Window rect of the row the current hint points at, reported by that row
+    // itself. Cleared when the hint moves on, so a stale rect can never place the
+    // arrow at a row that is no longer the target (or no longer in the tree).
+    var spotTarget by remember { mutableStateOf<Rect?>(null) }
+    val spotKey = spotlight?.navKey
+    LaunchedEffect(spotKey) { spotTarget = null }
+    // Handed only to the targeted row: it makes that row report its rect and nod.
+    fun spotSink(navKey: String): ((Rect) -> Unit)? =
+        if (spotKey == navKey) ({ rect: Rect -> spotTarget = rect }) else null
 
     val flat = remember(state.groups, state.projects, state.expandedGroups) { buildFlat(state) }
 
@@ -256,17 +283,18 @@ fun Sidebar(
             }
 
             Spacer(Modifier.padding(top = 2.dp))
-            NavRow(Ion.HOME, "Моя работа", active = activeNav == "home", onClick = onOpenHome)
-            NavRow(Ion.ROCKET, "Этапы", active = activeNav == "milestones", onClick = onOpenMilestones)
-            NavRow(Ion.ALARM, "Напоминания", active = activeNav == "reminders", onClick = onOpenReminders)
-            NavRow(Ion.DOCUMENT_TEXT, "Заметки", active = activeNav == "notes", onClick = onOpenNotes)
-            NavRow(Ion.BOOK, "Документы", active = activeNav == "documents", onClick = onOpenDocuments)
+            NavRow(Ion.HOME, "Моя работа", activeNav == "home", onOpenHome, spotSink("home"))
+            NavRow(Ion.ROCKET, "Этапы", activeNav == "milestones", onOpenMilestones, spotSink("milestones"))
+            NavRow(Ion.ALARM, "Напоминания", activeNav == "reminders", onOpenReminders, spotSink("reminders"))
+            NavRow(Ion.DOCUMENT_TEXT, "Заметки", activeNav == "notes", onOpenNotes, spotSink("notes"))
+            NavRow(Ion.BOOK, "Документы", activeNav == "documents", onOpenDocuments, spotSink("documents"))
             if (user?.isAdmin == true) {
                 NavRow(
                     Ion.SHIELD_CHECKMARK,
                     "Администрирование",
                     active = activeNav == "admin",
                     onClick = onOpenAdmin,
+                    spotlight = spotSink("admin"),
                 )
             }
 
@@ -314,7 +342,7 @@ fun Sidebar(
 
             HorizontalDivider(color = c.border)
             if (updateVersion != null) SidebarUpdateRow(updateVersion, onUpdate)
-            SidebarFooter(user, onOpenSettings, onLogout)
+            SidebarFooter(user, apiVersion, onOpenSettings, onLogout)
         }
 
         // Drag overlay (insertion line at projected depth + floating clone).
@@ -325,6 +353,17 @@ fun Sidebar(
         }
         SidebarDragOverlay(drag, drop) { depth -> indentDp(depth) }
         SidebarAutoScroll(drag, treeScroll, viewportH)
+
+        // One-shot hint over the tree. The row reports its rect in window
+        // coordinates (the drag overlay's convention), so shift it into this
+        // Box's own space before drawing.
+        if (spotlight != null) {
+            SidebarSpotlight(
+                spot = spotlight,
+                target = spotTarget?.translate(-drag.rootOffset.x, -drag.rootOffset.y),
+                onDismiss = { onDismissSpotlight(spotlight.navKey) },
+            )
+        }
     }
 
     if (showTheme) {
@@ -404,25 +443,56 @@ private fun buildFlat(state: WorkspaceUiState): List<SbNode> {
 
 /** A primary-destination row (Моя работа / Напоминания / Заметки). */
 @Composable
-private fun NavRow(icon: String, label: String, active: Boolean, onClick: () -> Unit) {
+private fun NavRow(
+    icon: String,
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    // Non-null only for the row the current spotlight points at (#2766): the row
+    // reports its window rect to the overlay and sways towards the hint. The
+    // reporting box stays still — measuring the swaying row would jitter the arrow.
+    spotlight: ((Rect) -> Unit)? = null,
+) {
     val c = Tessera.colors
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp)
-            .clip(RoundedCornerShape(RadiusSm))
-            .background(if (active) c.surfaceAlt else c.surface)
-            .clickableNoRipple(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val sway = if (spotlight != null) navSway() else 0f
+    Box(
+        Modifier.fillMaxWidth().onGloballyPositioned { coords ->
+            spotlight?.invoke(Rect(coords.positionInWindow(), coords.size.toSize()))
+        },
     ) {
-        IonIcon(icon, size = 18.dp, tint = if (active) c.primary else c.text2, gradient = active)
-        Spacer(Modifier.width(10.dp))
-        Text(
-            label,
-            color = if (active) c.text1 else c.text2,
-            fontSize = 14.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp)
+                .offset { IntOffset(sway.roundToInt(), 0) }
+                .clip(RoundedCornerShape(RadiusSm))
+                .background(if (active) c.surfaceAlt else c.surface)
+                .clickableNoRipple(onClick = onClick)
+                .padding(horizontal = 8.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IonIcon(icon, size = 18.dp, tint = if (active) c.primary else c.text2, gradient = active)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                label,
+                color = if (active) c.text1 else c.text2,
+                fontSize = 14.sp,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+            )
+        }
     }
+}
+
+/** The spotlighted row's slow sway, in px — small enough to notice without
+ *  nagging (the web nods its item once; a phone drawer opens long after the
+ *  hint was queued, so here it keeps breathing while the hint is up). */
+@Composable
+private fun navSway(): Float {
+    val shift by rememberInfiniteTransition(label = "nav-sway").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(760, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "nav-sway-x",
+    )
+    return shift * with(LocalDensity.current) { 5.dp.toPx() }
 }
 
 @Composable
@@ -923,7 +993,7 @@ private fun SidebarUpdateRow(version: String, onUpdate: () -> Unit) {
 }
 
 @Composable
-private fun SidebarFooter(user: User?, onOpenSettings: () -> Unit, onLogout: () -> Unit) {
+private fun SidebarFooter(user: User?, apiVersion: String, onOpenSettings: () -> Unit, onLogout: () -> Unit) {
     val c = Tessera.colors
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -949,7 +1019,11 @@ private fun SidebarFooter(user: User?, onOpenSettings: () -> Unit, onLogout: () 
                 Text(user?.name?.ifBlank { "Пользователь" } ?: "Пользователь", color = c.text1, fontSize = 14.sp, maxLines = 1)
                 val email = user?.email.orEmpty()
                 if (email.isNotBlank()) Text(email, color = c.text3, fontSize = 12.sp, maxLines = 1)
-                Text("v${website.msdnna.tessera.BuildConfig.VERSION_NAME}", color = c.text3, fontSize = 11.sp, maxLines = 1)
+                // App version, plus the server's own once it answers /version —
+                // when they disagree it's the first thing worth seeing (#2766).
+                val versions = "v${website.msdnna.tessera.BuildConfig.VERSION_NAME}" +
+                    if (apiVersion.isNotBlank()) " · API $apiVersion" else ""
+                Text(versions, color = c.text3, fontSize = 11.sp, maxLines = 1)
             }
         }
         IonIconButton(Ion.SETTINGS, onClick = onOpenSettings)

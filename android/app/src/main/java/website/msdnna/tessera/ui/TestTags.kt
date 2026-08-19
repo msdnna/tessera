@@ -137,4 +137,15 @@ object TestTags {
     /** One row of that tree, keyed by document id — so a spec asserts «this
      *  document», not «the second row», and a nesting regression is visible. */
     fun documentRow(id: String) = "document-row:$id"
+
+    // ── what's new / spotlight (#2766) ──────────────────────────────────────
+
+    /** The post-update changelog card and its «Понятно». Present only while the
+     *  user has releases to catch up on, so a spec can assert both states. */
+    const val WHATS_NEW_CARD = "whats-new-card"
+    const val WHATS_NEW_DISMISS = "whats-new-dismiss"
+
+    /** The sidebar hint that follows the card, and its «Понятно». One at a time. */
+    const val SPOTLIGHT_CARD = "spotlight-card"
+    const val SPOTLIGHT_DISMISS = "spotlight-dismiss"
 }

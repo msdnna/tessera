@@ -112,6 +112,21 @@ interface ApiService {
     @DELETE("users/me/avatar")
     suspend fun deleteAvatar()
 
+    // ── per-user one-shot flags + API version (#2766) ──
+    // The keys are opaque to the server and shared with the web client, so a
+    // release dismissed there stays dismissed here.
+    @GET("users/me/acknowledgements")
+    suspend fun acknowledgements(): List<website.msdnna.tessera.data.model.Acknowledgement>?
+
+    @POST("users/me/acknowledgements")
+    suspend fun acknowledge(
+        @Body body: website.msdnna.tessera.data.model.AckRequest,
+    ): website.msdnna.tessera.data.model.Acknowledgement
+
+    /** Public (no auth) — the server's own version, shown beside the app's. */
+    @GET("version")
+    suspend fun apiVersion(): website.msdnna.tessera.data.model.ApiVersion
+
     // ── account lifecycle (U2): verification, password reset ──
     @POST("auth/verify-email")
     suspend fun verifyEmail(@Body body: TokenRequest)
