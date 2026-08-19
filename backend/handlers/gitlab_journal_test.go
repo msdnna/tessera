@@ -78,3 +78,71 @@ func TestNewJournalStampsStart(t *testing.T) {
 		t.Fatalf("fresh journal status = %q, want ok", j.status)
 	}
 }
+
+// TestSkipEmptyRun pins which runs may go unrecorded. The rule exists to keep the
+// every-few-minutes auto heartbeat out of the journal, but it used to swallow the
+// daily full sweep too — and since the background-jobs panel drops finished syncs
+// from the live registry and expects the journal to back them, an unchanged full
+// sweep simply vanished from the panel the moment it finished (#2751).
+func TestSkipEmptyRun(t *testing.T) {
+	cases := []struct {
+		name    string
+		kind    string
+		trigger string
+		mode    string
+		actions int
+		status  string
+		want    bool
+	}{
+		{"auto incremental pull, no changes", "pull", "auto", "incremental", 0, "ok", true},
+		{"auto full sweep, no changes", "pull", "auto", "full", 0, "ok", false},
+		{"auto incremental pull with changes", "pull", "auto", "incremental", 2, "ok", false},
+		{"auto full sweep with changes", "pull", "auto", "full", 2, "ok", false},
+		{"manual incremental pull, no changes", "pull", "manual", "incremental", 0, "ok", false},
+		{"manual full sweep, no changes", "pull", "manual", "full", 0, "ok", false},
+		{"failed auto incremental pull", "pull", "auto", "incremental", 0, "error", false},
+		{"auto push, nothing delivered", "push", "auto", "full", 0, "ok", true},
+		{"auto push with deliveries", "push", "auto", "full", 1, "ok", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			j := &syncJournal{
+				kind: tc.kind, trigger: tc.trigger, mode: tc.mode, status: tc.status,
+				actions: make([]journalAction, tc.actions),
+			}
+			if got := j.skipEmpty(); got != tc.want {
+				t.Errorf("skipEmpty() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCreateParamsCarriesMode pins that the run row records how the pull fetched
+// its issues. beginJournal and flushJournal used to build these params separately
+// and the flush copy left Mode unset, so every run created at flush time (i.e.
+// every auto run) landed with a blank mode and the panel could not tell a full
+// sweep from an incremental one.
+func TestCreateParamsCarriesMode(t *testing.T) {
+	integID, actorID := uuid.New(), uuid.New()
+	started := time.Now().Add(-90 * time.Minute)
+	j := &syncJournal{
+		integrationID: integID, kind: "pull", trigger: "auto", mode: "full",
+		actorID: &actorID, startedAt: started, status: "ok",
+	}
+	p := j.createParams()
+	if p.Mode != "full" {
+		t.Errorf("Mode = %q, want full", p.Mode)
+	}
+	if p.IntegrationID != integID || p.Kind != "pull" || p.Trigger != "auto" {
+		t.Errorf("params lost identity: %+v", p)
+	}
+	if p.ActorID == nil || *p.ActorID != actorID {
+		t.Errorf("ActorID = %v, want %v", p.ActorID, actorID)
+	}
+	if !p.StartedAt.Equal(started) {
+		t.Errorf("StartedAt = %v, want the real start %v", p.StartedAt, started)
+	}
+	if p.Status != "running" {
+		t.Errorf("Status = %q, want running (FinishGitlabSyncRun stamps the outcome)", p.Status)
+	}
+}
