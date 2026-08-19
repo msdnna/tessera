@@ -86,6 +86,9 @@ var allowedDocAttrs = map[string]bool{
 	"color":      true,
 	"fontFamily": true,
 	"fontSize":   true,
+	// Fill and grid of a table cell, kept from an imported document (#2756).
+	"backgroundColor": true,
+	"borderColor":     true,
 	"name":       true, // pdfEmbed — the original file name, shown in its header
 	"size":       true, // pdfEmbed — byte size, shown before the file is fetched
 }

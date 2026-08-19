@@ -15,7 +15,7 @@ import { ImageDrop } from './docExtensions/imageDrop'
 import { InternalLink } from './docExtensions/internalLink'
 import { PdfEmbed } from './docExtensions/pdfEmbed'
 import { SlashMenu } from './docExtensions/slashMenu'
-import { darkSheetInk } from './docColor'
+import { darkSheetFill, darkSheetInk, darkSheetLine, hexColor } from './docColor'
 
 // The document is stored as the ProseMirror JSON tree the editor produces
 // (documents.content, jsonb — chosen in D1). That makes the schema itself the
@@ -67,6 +67,8 @@ export const ALLOWED_MARKS = ['bold', 'italic', 'strike', 'underline', 'code', '
 export const ALLOWED_ATTRS = [
   'align',
   'alt',
+  'backgroundColor',
+  'borderColor',
   'checked',
   'class',
   'color',
@@ -110,17 +112,47 @@ export const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
 // work on both sheets — but an imported Word document brings colours chosen
 // against white paper, and #1f4e79 on the dark sheet is unreadable.
 //
-// The stored attribute stays exactly what the document said; the second custom
-// property is a *rendering* hint the dark theme picks up (DocEditor.vue), so
-// switching themes switches the painted colour and switching back gives the
-// original. Doing it the other way round — normalising the colour on import —
-// would bake one theme's correction into the document and export it back to
-// .docx as a colour the author never chose.
+// The stored attribute stays exactly what the document said; the painted colour
+// is chosen per theme (see themed() below). Doing it the other way round —
+// normalising the colour on import — would bake one theme's correction into the
+// document and export it back to .docx as a colour the author never chose.
 const inkCache = new Map()
 
 function darkInk(color) {
   if (!inkCache.has(color)) inkCache.set(color, darkSheetInk(color))
   return inkCache.get(color)
+}
+
+/**
+ * Writes a declaration whose value the theme can take over.
+ *
+ * The obvious shape — a plain `color: X` inline plus a dark-theme rule that
+ * repaints it — cannot work: an inline declaration beats any author rule, so
+ * such a rule is inert, which is what happened to the first cut of the imported
+ * colours. Handing the *value* over to a custom property inverts the priority:
+ * the fallback holds the document's own colour and applies while nothing sets
+ * the property, and the dark theme wins simply by defining it (DocEditor.vue).
+ *
+ * @param {string} prop CSS property to write
+ * @param {string} slot custom property the theme may override the value with
+ * @param {string} value colour stored in the document
+ * @param {string} dark the same colour, adapted to the dark sheet
+ * @returns {string} declarations for a style attribute
+ */
+function themed(prop, slot, value, dark) {
+  return `${prop}: var(${slot}, ${value}); ${slot}-dark: ${dark}`
+}
+
+// The document's own value, read back out of a declaration themed() wrote.
+// Round-trips matter here: copying a table or a coloured run between two
+// documents goes through the clipboard as HTML, and without this the stored
+// colour would become the literal string "var(--doc-ink, #1f4e79)".
+const THEMED_RE = /^var\(\s*(--doc-[a-z-]+)\s*,\s*(.+?)\s*\)$/i
+
+function unthemed(value) {
+  const css = String(value ?? '').trim()
+  const m = css.match(THEMED_RE)
+  return m ? m[2] : css
 }
 
 export const DocColor = Color.extend({
@@ -132,11 +164,13 @@ export const DocColor = Color.extend({
           color: {
             default: null,
             parseHTML: (element) =>
-              (getStyleProperty(element, 'color') ?? element.style.color)?.replace(/['"]+/g, ''),
+              unthemed(
+                (getStyleProperty(element, 'color') ?? element.style.color)?.replace(/['"]+/g, ''),
+              ) || null,
             renderHTML: (attributes) => {
               if (!attributes.color) return {}
               return {
-                style: `color: ${attributes.color}; --doc-ink-dark: ${darkInk(attributes.color)}`,
+                style: themed('color', '--doc-ink', attributes.color, darkInk(attributes.color)),
               }
             },
           },
@@ -145,6 +179,101 @@ export const DocColor = Color.extend({
     ]
   },
 })
+
+// Table fills and borders brought in from an imported document (#2756).
+//
+// The converter writes them on the cell — `<td bgcolor="#d9e2f3" style="background:
+// #d9e2f3; border: 1px solid #000000">` — and upstream's TableCell declares no
+// attribute for either, so the header band and the grid of every imported table
+// were flattened to the sheet's own styling at parse time.
+//
+// Same contract as the text colour above: the document stores what the file
+// said, and the dark theme repaints from a custom property the render emits
+// beside it (DocEditor.vue). Word's fills are pale because they were drawn under
+// near-black ink, so on the dark sheet they need to move — but in the *document*
+// they stay the author's colours, and an export back to .docx carries those.
+const fillCache = new Map()
+const lineCache = new Map()
+
+function cached(map, fn, color) {
+  if (!map.has(color)) map.set(color, fn(color))
+  return map.get(color)
+}
+
+/**
+ * Reads a colour off a cell, ignoring the "no colour" spellings.
+ *
+ * `transparent` and a zero-alpha rgba are what a cell without a fill
+ * reserializes to; storing them would put an attribute on every cell of every
+ * table and make the parity between imported and typed tables noise.
+ *
+ * @param {string} value CSS colour
+ * @returns {string|null}
+ */
+function cellColor(value) {
+  const css = unthemed(String(value || '').replace(/['"]+/g, '')).toLowerCase()
+  if (!css || css === 'transparent' || css === 'initial' || css === 'currentcolor') return null
+  if (/^rgba\(.*[\s,]0(\.0+)?\)$/i.test(css)) return null
+  // A `background:` shorthand only reaches us through the CSSOM, which hands
+  // back rgb() — the document should say what the file said.
+  return hexColor(css)
+}
+
+const CELL_STYLE_ATTRS = {
+  backgroundColor: {
+    default: null,
+    // Three sources, in the order they are trustworthy: the declaration as the
+    // document wrote it (which is also how a themed value survives a paste),
+    // the longhand the CSSOM derives from a `background:` shorthand, and the
+    // legacy bgcolor attribute — the sidecar writes both, but the .html files
+    // the same import route accepts often carry only the attribute.
+    parseHTML: (el) =>
+      cellColor(
+        getStyleProperty(el, 'background-color') ||
+          el.style.backgroundColor ||
+          el.getAttribute('bgcolor'),
+      ),
+    renderHTML: (attrs) => {
+      if (!attrs.backgroundColor) return {}
+      const fill = attrs.backgroundColor
+      return {
+        style: themed(
+          'background-color',
+          '--doc-fill',
+          fill,
+          cached(fillCache, darkSheetFill, fill),
+        ),
+      }
+    },
+  },
+  borderColor: {
+    default: null,
+    // The shorthand-shaped borderColor is empty as soon as the four sides
+    // differ, so the top edge is the fallback rather than the primary source.
+    parseHTML: (el) =>
+      cellColor(
+        getStyleProperty(el, 'border-color') || el.style.borderColor || el.style.borderTopColor,
+      ),
+    renderHTML: (attrs) => {
+      if (!attrs.borderColor) return {}
+      const line = attrs.borderColor
+      return {
+        style: themed('border-color', '--doc-line', line, cached(lineCache, darkSheetLine, line)),
+      }
+    },
+  },
+}
+
+function withCellStyle(extension) {
+  return extension.extend({
+    addAttributes() {
+      return { ...this.parent?.(), ...CELL_STYLE_ATTRS }
+    },
+  })
+}
+
+export const DocTableCell = withCellStyle(TableCell)
+export const DocTableHeader = withCellStyle(TableHeader)
 
 /**
  * Builds the extension set for the document editor.
@@ -180,8 +309,8 @@ export function docExtensions(opts = {}) {
     TaskItem.configure({ nested: true }),
     Table.configure({ resizable: true }),
     TableRow,
-    TableHeader,
-    TableCell,
+    DocTableHeader,
+    DocTableCell,
     Image.configure({ inline: false, allowBase64: false }),
     PdfEmbed,
     TextStyle,

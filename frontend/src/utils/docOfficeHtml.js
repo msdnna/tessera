@@ -22,8 +22,12 @@
 //   * the default ink (<body text="…">, usually #222222) and the base font
 //     size. Both are "Word's default", not formatting: keeping them would
 //     freeze the document to the light theme and to one size forever.
-//   * table fills and borders — they need a schema attribute that does not
-//     exist yet (подзадача #2756).
+//
+// Table fills and borders are not translated here either, but for the opposite
+// reason: the converter already writes them as `bgcolor`/`background` and
+// `border` on the cell, and the schema now reads them straight off the element
+// (#2756). Rewriting them into something else would only add a step that can
+// drift.
 
 // Properties worth lifting out of the <style> block. Everything else there is
 // print geometry (@page, margins, orphans/widows) that a block document has no

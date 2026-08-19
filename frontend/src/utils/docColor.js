@@ -135,6 +135,22 @@ function toHex(rgb) {
 }
 
 /**
+ * Normalises a colour to #rrggbb, leaving anything unparseable alone.
+ *
+ * Colours read back through the CSSOM come out as `rgb(217, 226, 243)` even
+ * when the file said `#d9e2f3`, and a document that stores one form on import
+ * and the other on a paste is a document whose colours no longer compare equal
+ * — which is what the version diff and the merge path do with them.
+ *
+ * @param {string} value CSS colour
+ * @returns {string} hex, or the input unchanged
+ */
+export function hexColor(value) {
+  const rgb = parseCssColor(value)
+  return rgb ? toHex(rgb) : String(value ?? '').trim()
+}
+
+/**
  * Moves a colour's lightness until it reads against the given background.
  *
  * The input is returned untouched when it already passes or cannot be parsed,
@@ -177,4 +193,37 @@ export function readableInk(color, background, minRatio = MIN_RATIO) {
  */
 export function darkSheetInk(color) {
   return readableInk(color, DARK.surface)
+}
+
+// A border is furniture, not text: WCAG asks 3:1 of a non-text element, and
+// holding a table's grid to the body-text ratio would turn Word's thin black
+// rules into bright lines that draw the eye away from the content they frame.
+const LINE_RATIO = 3
+
+/**
+ * The colour to fill a table cell with on the dark document sheet (#2756).
+ *
+ * Measured against the *ink*, not against the sheet: a fill is read through the
+ * text sitting on it, and Word's header fills are pale precisely because they
+ * were chosen to sit under near-black paper ink. Left alone, #d9e2f3 on the
+ * dark sheet is a light band carrying the dark theme's light text — the one
+ * combination that is genuinely unreadable. Passing the ink as the "background"
+ * argument makes readableInk darken the fill (it moves away from the lighter of
+ * the two), which is what keeps the header of an imported table a blue header
+ * rather than the sheet's own grey.
+ *
+ * @param {string} color CSS colour stored in the document
+ * @returns {string} CSS colour
+ */
+export function darkSheetFill(color) {
+  return readableInk(color, DARK.text1)
+}
+
+/**
+ * The colour to draw a table cell's border in on the dark document sheet.
+ * @param {string} color CSS colour stored in the document
+ * @returns {string} CSS colour
+ */
+export function darkSheetLine(color) {
+  return readableInk(color, DARK.surface, LINE_RATIO)
 }
