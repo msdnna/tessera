@@ -64,6 +64,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.MentionItem
 import website.msdnna.tessera.util.commandInsertText
 import website.msdnna.tessera.util.detectSlashQuery
 import website.msdnna.tessera.util.matchCommands
@@ -74,19 +75,6 @@ private const val MERMAID_SNIPPET = "\n```mermaid\ngraph TD\n  A[Старт] -->
 
 /** "@query" right before the caret (mirrors the web editor's mention trigger). */
 private val MENTION_RE = Regex("(^|\\s)@([^\\s@]*)$")
-
-/**
- * One @-mention candidate for the editor's autocomplete (web `mentionItems` parity).
- * [insert] is the text put after '@' — a Tessera display name, or a GitLab username
- * (GitLab resolves it on write-back). [display] + avatar identify the picker row.
- */
-data class MentionItem(
-    val insert: String,
-    val display: String,
-    val avatarUserId: String? = null,
-    val avatarSrc: String? = null,
-    val gitlab: Boolean = false,
-)
 
 /**
  * The web `MarkdownEditor`, native: a Написать / Просмотр tab pair, a borderless
@@ -110,13 +98,14 @@ fun MarkdownEditor(
     // Quick-action rows for the `/`-popup; empty → commands off. Only passed where
     // commands actually run (the new-comment composer) — see the web editor.
     commands: List<CommandItem> = emptyList(),
+    // Opt-in: "#123" in the preview becomes a link, reported here on tap (the
+    // web editor previews with task-refs on too).
+    onTaskRef: ((Int) -> Unit)? = null,
     /** e2e anchor placed on the text area itself — `modifier` lands on the column
      *  that also holds the toolbar and the preview, which carries no text-input
      *  semantics to type into. Null on the editors no spec drives. */
     fieldTag: String? = null,
 ) {
-    // Tokens (names / usernames) highlighted in the preview after an '@'.
-    val mentionTokens = remember(mentions) { mentions.map { it.insert } }
     val c = Tessera.colors
     // Saveable, not plain remember: inside the task modal the editor lives in a tab
     // that leaves the composition when another tab is shown (#2754) — the chosen
@@ -202,7 +191,9 @@ fun MarkdownEditor(
                     // persists via onBlur (the description/comment save path).
                     RichContent(
                         value,
-                        mentions = mentionTokens,
+                        mentions = mentions,
+                        taskRefs = onTaskRef != null,
+                        onTaskRef = onTaskRef,
                         interactive = true,
                         onToggleCheck = { i ->
                             onValueChange(toggleTaskMarker(value, i))

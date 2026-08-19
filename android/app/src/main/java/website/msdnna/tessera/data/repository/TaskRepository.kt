@@ -64,6 +64,10 @@ class TaskRepository {
     suspend fun workspaceTasks(workspaceId: String): List<website.msdnna.tessera.data.model.WorkspaceTask> =
         api.workspaceTasks(workspaceId, includeSubtasks = 1).orEmpty()
 
+    /** The task a «#N» link names, or null when the workspace has no such number. */
+    suspend fun taskByNumber(workspaceId: String, number: Int): website.msdnna.tessera.data.model.Task? =
+        runCatching { api.taskByNumber(workspaceId, number) }.getOrNull()
+
     /** Downloads an attachment's bytes (auth'd) to a cache file, returning it. */
     suspend fun downloadAttachment(cacheDir: java.io.File, attachmentId: String, filename: String): java.io.File {
         val body = api.downloadAttachment(attachmentId)

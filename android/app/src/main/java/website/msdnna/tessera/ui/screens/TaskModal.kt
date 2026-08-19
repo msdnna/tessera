@@ -91,7 +91,6 @@ import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.MarkdownEditor
-import website.msdnna.tessera.ui.components.MentionItem
 import website.msdnna.tessera.ui.components.RichContent
 import website.msdnna.tessera.ui.components.SourceBadge
 import website.msdnna.tessera.ui.components.TButton
@@ -119,6 +118,8 @@ import website.msdnna.tessera.ui.theme.accentGradientTint
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
 import website.msdnna.tessera.util.doneTarget
@@ -203,6 +204,21 @@ fun TaskModal(
     // and result can differ (a recurring task bounces straight out of the done
     // column), so echo its own wording rather than the click.
     val toastCtx = LocalContext.current
+
+    // A tapped «#N» opens that task right here (the modal already navigates by id,
+    // as the subtask and relation tabs do). A number nobody owns just says so —
+    // the same wording as on web.
+    val openTaskRef: (Int) -> Unit = { number ->
+        vm.resolveTaskNumber(number) { id ->
+            if (id != null) {
+                currentId = id
+            } else {
+                android.widget.Toast
+                    .makeText(toastCtx, "Задача #$number не найдена", android.widget.Toast.LENGTH_SHORT)
+                    .show()
+            }
+        }
+    }
     LaunchedEffect(state.commandNotice) {
         val summary = state.commandNotice ?: return@LaunchedEffect
         val applied = summary.applied.orEmpty().map { it.summary.ifBlank { "/${it.key}" } }
@@ -367,6 +383,7 @@ fun TaskModal(
                                         onBlur = { vm.saveDescription(description) },
                                         uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
                                         mentions = buildMentionItems(members, gitlabMembers),
+                                        onTaskRef = openTaskRef,
                                     )
 
                                     1 -> CommentsTab(
@@ -378,6 +395,7 @@ fun TaskModal(
                                         commands = commands,
                                         preview = state.commandPreview,
                                         previewCustom = state.commandCustom,
+                                        onTaskRef = openTaskRef,
                                     )
 
                                     2 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
@@ -1225,26 +1243,6 @@ private fun MilestoneValue(
     }
 }
 
-/** @-mention candidates (web `mentionItems`): Tessera members insert their name;
- *  GitLab-only users (no Tessera account) insert their username, which GitLab
- *  resolves on write-back. Tessera-side notifications key off the name via
- *  `detectMentions`, so GitLab users never generate a Tessera notification. */
-private fun buildMentionItems(
-    members: List<Member>,
-    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
-): List<MentionItem> {
-    val tessera = members.map { MentionItem(insert = it.name, display = it.name, avatarUserId = it.userId) }
-    val gl = gitlabMembers.filter { it.tesseraUserId == null }.map {
-        MentionItem(
-            insert = it.glUsername,
-            display = it.glName.ifBlank { it.glUsername },
-            avatarSrc = it.glAvatarUrl,
-            gitlab = true,
-        )
-    }
-    return tessera + gl
-}
-
 /** How long the composer waits after a keystroke before dry-running the draft. */
 private const val CommandPreviewDebounceMs = 400L
 
@@ -1305,7 +1303,8 @@ private fun DescriptionTab(
     startInPreview: Boolean,
     onBlur: () -> Unit,
     uploadImage: suspend (ByteArray, String, String?) -> String?,
-    mentions: List<website.msdnna.tessera.ui.components.MentionItem>,
+    mentions: List<MentionItem>,
+    onTaskRef: (Int) -> Unit,
 ) {
     MarkdownEditor(
         value = value,
@@ -1315,6 +1314,7 @@ private fun DescriptionTab(
         onBlur = onBlur,
         uploadImage = uploadImage,
         mentions = mentions,
+        onTaskRef = onTaskRef,
         fieldTag = TestTags.TASK_DESCRIPTION,
     )
 }
@@ -1331,7 +1331,7 @@ private fun CommentRow(
     meId: String?,
     vm: TaskDetailViewModel,
     mentionItems: List<MentionItem>,
-    mentionNames: List<String>,
+    onTaskRef: (Int) -> Unit,
     editing: Boolean,
     editBody: String,
     onEditBody: (String) -> Unit,
@@ -1372,6 +1372,7 @@ private fun CommentRow(
                     placeholder = "Комментарий…",
                     minHeight = 56.dp,
                     mentions = mentionItems,
+                    onTaskRef = onTaskRef,
                 )
                 Spacer(Modifier.height(6.dp))
                 Row {
@@ -1386,7 +1387,10 @@ private fun CommentRow(
                 val own = cm.authorId != null && cm.authorId == meId
                 RichContent(
                     cm.body,
-                    mentions = mentionNames,
+                    mentions = mentionItems,
+                    mentionCards = true,
+                    taskRefs = true,
+                    onTaskRef = onTaskRef,
                     interactive = own,
                     onToggleCheck = if (own) {
                         { i -> vm.editComment(cm.id, toggleTaskMarker(cm.body, i)) }
@@ -1445,6 +1449,7 @@ private fun CommentsTab(
     commands: List<CommandItem>,
     preview: List<website.msdnna.tessera.data.model.CommandOutcome>,
     previewCustom: List<String>,
+    onTaskRef: (Int) -> Unit,
 ) {
     val c = Tessera.colors
     var draft by remember { mutableStateOf("") }
@@ -1456,8 +1461,6 @@ private fun CommentsTab(
     var replyingTo by remember { mutableStateOf<String?>(null) }
     var replyDraft by remember { mutableStateOf("") }
     val mentionItems = buildMentionItems(members, gitlabMembers)
-    // Highlight tokens for read-only comment rendering (names + GitLab usernames).
-    val mentionNames = mentionItems.map { it.insert }
     // The API list is flat (each row carries parent_id) — assemble the threads.
     val threads = groupThreads(comments)
 
@@ -1484,7 +1487,7 @@ private fun CommentsTab(
                 meId = meId,
                 vm = vm,
                 mentionItems = mentionItems,
-                mentionNames = mentionNames,
+                onTaskRef = onTaskRef,
                 editing = editingId == t.root.id,
                 editBody = editBody,
                 onEditBody = { editBody = it },
@@ -1512,7 +1515,7 @@ private fun CommentsTab(
                             meId = meId,
                             vm = vm,
                             mentionItems = mentionItems,
-                            mentionNames = mentionNames,
+                            onTaskRef = onTaskRef,
                             editing = editingId == r.id,
                             editBody = editBody,
                             onEditBody = { editBody = it },
@@ -1536,6 +1539,7 @@ private fun CommentsTab(
                         minHeight = 56.dp,
                         uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
                         mentions = mentionItems,
+                        onTaskRef = onTaskRef,
                         fieldTag = TestTags.TASK_REPLY_INPUT,
                     )
                     Spacer(Modifier.height(8.dp))
@@ -1573,6 +1577,7 @@ private fun CommentsTab(
             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
             mentions = mentionItems,
             commands = commands,
+            onTaskRef = onTaskRef,
             fieldTag = TestTags.TASK_COMMENT_INPUT,
         )
         // Dry-run the draft against the backend's parser instead of re-implementing
