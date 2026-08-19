@@ -112,6 +112,31 @@ describe('normalizeOfficeHtml', () => {
     expect(out).not.toContain('<hr>')
   })
 
+  it('finds the rule even after the declaration block was reserialized', () => {
+    // The style attribute exactly as the attached document writes it. Setting
+    // any property (here: the alignment) makes the browser rewrite the block and
+    // the `border-bottom` shorthand comes back as border-width/style/color — a
+    // regex over the attribute stops seeing it, which is how the rules under the
+    // headings kept going missing on the real file while the short fixture above
+    // still passed.
+    const out = normalizeOfficeHtml(
+      '<p align="center" style="letter-spacing: 0.3pt; line-height: 115%; border-top: none; ' +
+        'border-bottom: 1.00pt solid #4f81bd; border-left: none; border-right: none; ' +
+        'padding-top: 0in; padding-bottom: 0.06in">Заголовок</p>',
+    )
+    expect(out).toMatch(/Заголовок[\s\S]*<hr>/)
+  })
+
+  it('rewrites a percentage line-height as a unitless ratio', () => {
+    // 115% of the *paragraph's* 16px stays 18.4px however big the title inside
+    // it is, so a 32px heading overlaps its own next line. Unitless scales.
+    const out = normalizeOfficeHtml(
+      '<p style="line-height: 115%"><font size="6" style="font-size: 24pt">Титул</font></p>',
+    )
+    expect(out).toContain('line-height: 1.15')
+    expect(out).not.toContain('115%')
+  })
+
   it('turns a single-cell monospace table into a code block', () => {
     // How Word writes a code listing, and how the attached document does it.
     const out = normalizeOfficeHtml(

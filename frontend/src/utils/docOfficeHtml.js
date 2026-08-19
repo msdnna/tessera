@@ -92,6 +92,7 @@ export function normalizeOfficeHtml(html) {
   dropDefaultInk(body, defaultInk)
   dropBaseFontSize(body)
   monospaceToCode(doc)
+  unitlessLineHeight(doc)
   bordersToRules(doc)
   return body.innerHTML
 }
@@ -436,6 +437,25 @@ function blockText(el) {
 }
 
 /**
+ * Rewrites `line-height: 115%` as the unitless ratio `1.15`.
+ *
+ * A percentage resolves against the *paragraph's* own font size, so a title
+ * whose size lives on an inner span (Word writes it that way, and restoring
+ * those sizes is the point of this module) keeps a line box computed for 16px
+ * while the glyphs are 32px — the lines of the title overlap. The unitless form
+ * resolves per element and scales with the text it wraps.
+ *
+ * @param {Document} doc parsed document
+ */
+function unitlessLineHeight(doc) {
+  doc.body.querySelectorAll('[style*="line-height"]').forEach((el) => {
+    const m = String(el.style.lineHeight || '').match(/^(-?[\d.]+)%$/)
+    if (!m) return
+    el.style.setProperty('line-height', String(parseFloat(m[1]) / 100))
+  })
+}
+
+/**
  * Turns a bordered paragraph into a paragraph plus a horizontal rule.
  *
  * Word draws the rule under a title as a paragraph border, which is why the
@@ -447,9 +467,8 @@ function blockText(el) {
  */
 function bordersToRules(doc) {
   doc.body.querySelectorAll('p, div').forEach((el) => {
-    const style = el.getAttribute('style') || ''
-    const top = hasBorder(style, 'top')
-    const bottom = hasBorder(style, 'bottom')
+    const top = hasBorder(el, 'Top')
+    const bottom = hasBorder(el, 'Bottom')
     if (!top && !bottom) return
     if (top) el.before(doc.createElement('hr'))
     if (!bottom) return
@@ -459,18 +478,28 @@ function bordersToRules(doc) {
 }
 
 /**
- * Whether a style attribute declares a visible border on one side.
- * @param {string} style raw style attribute
- * @param {string} side 'top' or 'bottom'
+ * Whether an element declares a visible border on one side.
+ *
+ * Asked of the CSSOM rather than of the style *attribute* on purpose. Setting
+ * any property (alignment, colour, size — everything above this step does it)
+ * makes the browser reserialize the declaration block, and a shorthand written
+ * by the converter as `border-bottom: 1pt solid #4f81bd` comes back out as the
+ * longhands `border-width/style/color`. A regex over the attribute finds the
+ * border only while nothing else has touched the element — which is why the
+ * rules under the headings still went missing after the first pass.
+ *
+ * @param {Element} el element to inspect
+ * @param {string} side 'Top' or 'Bottom' (CSSOM camelCase)
  */
-function hasBorder(style, side) {
-  const m = style.match(new RegExp('border-' + side + '\\s*:\\s*([^;]+)', 'i'))
-  if (!m) return false
-  const value = m[1].trim().toLowerCase()
-  if (!value || value.includes('none') || value.includes('hidden')) return false
-  // A zero-width border is written as `0in` as often as it is omitted.
-  const width = value.match(/(-?[\d.]+)\s*(px|pt|in|cm|mm|em)?/)
-  return !width || parseFloat(width[1]) > 0
+function hasBorder(el, side) {
+  const style = el.style
+  const kind = String(style['border' + side + 'Style'] || '').toLowerCase()
+  if (!kind || kind === 'none' || kind === 'hidden') return false
+  const width = String(style['border' + side + 'Width'] || '').trim()
+  // `medium` is the initial width and what a shorthand without one reserializes
+  // to, so an absent width means visible, not zero.
+  const n = width.match(/^(-?[\d.]+)/)
+  return !n || parseFloat(n[1]) > 0
 }
 
 /**
