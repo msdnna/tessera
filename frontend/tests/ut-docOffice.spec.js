@@ -91,18 +91,34 @@ describe('importOfficeFile', () => {
     expect(api.importFile.mock.calls[0][1].get('parent_id')).toBe('parent-9')
   })
 
-  it('reports dropped pictures rather than swallowing them', async () => {
+  it('reports dropped pictures, with the reason, rather than swallowing them', async () => {
     const api = stubApi({
       importFile: vi.fn(async () => ({
         data: {
           document: { id: 'doc-1', updated_at: 'v1' },
           html: '<p>t</p>',
           images_dropped: 3,
+          images_dropped_reason: 'формат картинки не поддерживается — 3',
         },
       })),
     })
-    const { imagesDropped } = await importOfficeFile(api, 'ws-1', fakeFile('a.docx'))
+    const { imagesDropped, imagesDroppedReason } = await importOfficeFile(
+      api,
+      'ws-1',
+      fakeFile('a.docx'),
+    )
     expect(imagesDropped).toBe(3)
+    expect(imagesDroppedReason).toBe('формат картинки не поддерживается — 3')
+  })
+
+  it('survives a backend that does not send the drop reason yet', async () => {
+    const api = stubApi({
+      importFile: vi.fn(async () => ({
+        data: { document: { id: 'doc-1', updated_at: 'v1' }, html: '<p>t</p>', images_dropped: 1 },
+      })),
+    })
+    const { imagesDroppedReason } = await importOfficeFile(api, 'ws-1', fakeFile('a.docx'))
+    expect(imagesDroppedReason).toBe('')
   })
 
   it('refuses a format the route does not take, without uploading', async () => {

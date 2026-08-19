@@ -84,7 +84,7 @@ export function importAccept(extra = ['.md', '.markdown', '.json']) {
  * @param {string} wsId workspace id
  * @param {File} file picked file
  * @param {{parentId?: string}} [opts]
- * @returns {Promise<{document: object, imagesDropped: number}>}
+ * @returns {Promise<{document: object, imagesDropped: number, imagesDroppedReason: string}>}
  */
 export async function importOfficeFile(api, wsId, file, opts = {}) {
   if (!file) throw new Error('Файл не выбран')
@@ -109,6 +109,10 @@ export async function importOfficeFile(api, wsId, file, opts = {}) {
   return {
     document: saved?.data?.updated_at ? { ...doc, updated_at: saved.data.updated_at } : doc,
     imagesDropped: Number(res.data.images_dropped) || 0,
+    // Why they were dropped, phrased by the server (it is the side that knows
+    // whether the bytes were an unsupported format or a ceiling was hit). An
+    // older backend does not send it, so the caller must treat it as optional.
+    imagesDroppedReason: String(res.data.images_dropped_reason || ''),
   }
 }
 
