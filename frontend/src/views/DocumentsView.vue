@@ -661,12 +661,11 @@ async function importOffice(file) {
   if (needsConverter(file.name) && !converter.value.available) {
     throw new Error(converter.value.reason || 'Конвертация офисных форматов недоступна')
   }
-  const { document: doc, imagesDropped, imagesDroppedReason } = await importOfficeFile(
-    docsApi,
-    wsStore.currentId,
-    file,
-    { parentId: parentId.value },
-  )
+  const {
+    document: doc,
+    imagesDropped,
+    imagesDroppedReason,
+  } = await importOfficeFile(docsApi, wsStore.currentId, file, { parentId: parentId.value })
   // Dropped pictures are said out loud, and with the reason: a bare count told
   // the user something was lost without telling them whether re-inserting the
   // figure as PNG would help or whether it is ours to fix (#2755). The warning

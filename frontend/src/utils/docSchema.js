@@ -1,3 +1,4 @@
+import { getStyleProperty } from '@tiptap/core'
 import { StarterKit } from '@tiptap/starter-kit'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
@@ -14,6 +15,7 @@ import { ImageDrop } from './docExtensions/imageDrop'
 import { InternalLink } from './docExtensions/internalLink'
 import { PdfEmbed } from './docExtensions/pdfEmbed'
 import { SlashMenu } from './docExtensions/slashMenu'
+import { darkSheetInk } from './docColor'
 
 // The document is stored as the ProseMirror JSON tree the editor produces
 // (documents.content, jsonb — chosen in D1). That makes the schema itself the
@@ -101,6 +103,49 @@ export const FONT_FAMILIES = [
 
 export const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
 
+// Text colour, with the dark theme accounted for at render time (#2755).
+//
+// Upstream's Color extension writes `style="color: X"` and nothing else. That
+// is fine for a colour picked inside Tessera — the picker offers colours that
+// work on both sheets — but an imported Word document brings colours chosen
+// against white paper, and #1f4e79 on the dark sheet is unreadable.
+//
+// The stored attribute stays exactly what the document said; the second custom
+// property is a *rendering* hint the dark theme picks up (DocEditor.vue), so
+// switching themes switches the painted colour and switching back gives the
+// original. Doing it the other way round — normalising the colour on import —
+// would bake one theme's correction into the document and export it back to
+// .docx as a colour the author never chose.
+const inkCache = new Map()
+
+function darkInk(color) {
+  if (!inkCache.has(color)) inkCache.set(color, darkSheetInk(color))
+  return inkCache.get(color)
+}
+
+export const DocColor = Color.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          color: {
+            default: null,
+            parseHTML: (element) =>
+              (getStyleProperty(element, 'color') ?? element.style.color)?.replace(/['"]+/g, ''),
+            renderHTML: (attributes) => {
+              if (!attributes.color) return {}
+              return {
+                style: `color: ${attributes.color}; --doc-ink-dark: ${darkInk(attributes.color)}`,
+              }
+            },
+          },
+        },
+      },
+    ]
+  },
+})
+
 /**
  * Builds the extension set for the document editor.
  *
@@ -142,7 +187,7 @@ export function docExtensions(opts = {}) {
     TextStyle,
     FontFamily,
     FontSize,
-    Color,
+    DocColor,
     TextAlign.configure({ types: STYLED_TYPES }),
     BlockId,
     BlockStyle,

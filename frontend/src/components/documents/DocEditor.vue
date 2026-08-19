@@ -901,6 +901,15 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   font-weight: 600;
   text-align: left;
 }
+/* Colours brought in from an imported document (задача 2755). They were picked
+   against white paper, so on the dark sheet they are repainted with the
+   lightness-lifted variant the mark emits alongside the original (DocColor in
+   docSchema.js). The document itself is untouched — switching back to the light
+   theme brings the author's colour back verbatim, and only elements that
+   actually carry a colour are matched. */
+[data-theme='dark'] .doc-content :deep(.ProseMirror [style*='--doc-ink-dark']) {
+  color: var(--doc-ink-dark);
+}
 .doc-content :deep(.ProseMirror hr) {
   border: none;
   border-top: 1px solid var(--t-border);

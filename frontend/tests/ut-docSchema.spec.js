@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { getSchema } from '@tiptap/core'
+import { generateHTML, getSchema } from '@tiptap/core'
+import { darkSheetInk } from '@/utils/docColor'
 import {
   ALLOWED_ATTRS,
   ALLOWED_MARKS,
@@ -58,6 +59,41 @@ describe('document schema', () => {
     expect(toDocJSON(null)).toEqual(EMPTY_DOC)
     expect(toDocJSON({ type: 'paragraph' })).toEqual(EMPTY_DOC)
     expect(toDocJSON('nope')).toEqual(EMPTY_DOC)
+  })
+})
+
+// Text colour on the dark sheet (задача 2755). An imported Word document brings
+// colours picked against white paper, so the mark renders the original *and* a
+// lightness-lifted variant the dark theme switches to. The stored attribute has
+// to stay the author's colour — baking the correction into the document would
+// export it back to .docx as a colour nobody chose.
+describe('text colour', () => {
+  const render = (color) =>
+    generateHTML(
+      {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', marks: [{ type: 'textStyle', attrs: { color } }], text: 'т' },
+            ],
+          },
+        ],
+      },
+      docExtensions(),
+    )
+
+  it('renders the document colour and the dark-theme variant beside it', () => {
+    // The browser's serialiser normalises the hex to rgb() on the standard
+    // property; the custom one it leaves alone.
+    const html = render('#1f4e79')
+    expect(html).toContain('color: rgb(31, 78, 121)')
+    expect(html).toContain('--doc-ink-dark: ' + darkSheetInk('#1f4e79'))
+  })
+
+  it('emits nothing extra for text that carries no colour', () => {
+    expect(render(null)).not.toContain('--doc-ink-dark')
   })
 })
 
