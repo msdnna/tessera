@@ -13,11 +13,15 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -26,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -39,8 +44,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -54,6 +61,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,10 +73,16 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.MdEdit
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.applyTyping
 import website.msdnna.tessera.util.commandInsertText
 import website.msdnna.tessera.util.detectSlashQuery
+import website.msdnna.tessera.util.indentLines
+import website.msdnna.tessera.util.linePrefixLines
 import website.msdnna.tessera.util.matchCommands
+import website.msdnna.tessera.util.orderedListPrefix
+import website.msdnna.tessera.util.outdentLines
 import website.msdnna.tessera.util.toggleTaskMarker
 
 /** Snippet inserted by the mermaid toolbar button (matches the web editor). */
@@ -105,12 +120,16 @@ fun MarkdownEditor(
      *  that also holds the toolbar and the preview, which carries no text-input
      *  semantics to type into. Null on the editors no spec drives. */
     fieldTag: String? = null,
+    // Offer the fullscreen split editor (web parity). False inside that dialog
+    // itself, which reuses this composable and must not offer to reopen itself.
+    allowFullscreen: Boolean = true,
 ) {
     val c = Tessera.colors
     // Saveable, not plain remember: inside the task modal the editor lives in a tab
     // that leaves the composition when another tab is shown (#2754) — the chosen
     // Написать/Просмотр mode has to survive coming back, and a rotation with it.
     var preview by rememberSaveable { mutableStateOf(startInPreview) }
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
     var uploading by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -124,10 +143,14 @@ fun MarkdownEditor(
     // (e.g. an image insert appends to the parent's string).
     var tfv by remember { mutableStateOf(TextFieldValue(value)) }
     if (tfv.text != value) tfv = TextFieldValue(value)
-    fun update(next: TextFieldValue) {
+    /** Programmatic edit (toolbar, suggestion pick) — applied verbatim. */
+    fun set(next: TextFieldValue) {
         tfv = next
         if (next.text != value) onValueChange(next.text)
     }
+
+    /** An edit the IME just made — smart-typing rules get a say first. */
+    fun update(next: TextFieldValue) = set(smartTyping(tfv, next))
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri == null || uploadImage == null) return@rememberLauncherForActivityResult
@@ -168,9 +191,18 @@ fun MarkdownEditor(
                 }
                 IonIconButton(
                     Ion.BRANCH,
-                    onClick = { update(insert(tfv, MERMAID_SNIPPET)) },
+                    onClick = { set(insert(tfv, MERMAID_SNIPPET)) },
                     boxSize = 30.dp,
                     iconSize = 17.dp,
+                    tint = c.text2,
+                )
+            }
+            if (allowFullscreen) {
+                IonIconButton(
+                    Ion.EXPAND,
+                    onClick = { fullscreen = true },
+                    boxSize = 30.dp,
+                    iconSize = 16.dp,
                     tint = c.text2,
                 )
             }
@@ -178,7 +210,7 @@ fun MarkdownEditor(
 
         if (!preview) {
             Spacer(Modifier.height(6.dp))
-            FormatToolbar(onApply = { update(it(tfv)) })
+            FormatToolbar(onApply = { set(it(tfv)) })
         }
         Spacer(Modifier.height(6.dp))
 
@@ -225,13 +257,13 @@ fun MarkdownEditor(
                 val start = caret - (query?.length ?: 0) - 1
                 val ins = "@${item.insert} "
                 val text = tfv.text.substring(0, start) + ins + tfv.text.substring(caret)
-                update(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
+                set(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
             }
             fun pickCommand(item: CommandItem) {
                 val start = slash?.start ?: return
                 val ins = commandInsertText(item)
                 val text = tfv.text.substring(0, start) + ins + tfv.text.substring(caret)
-                update(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
+                set(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))
             }
             val selectionColors = TextSelectionColors(c.primary, c.primary.copy(alpha = 0.3f))
             CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
@@ -274,6 +306,110 @@ fun MarkdownEditor(
             }
         }
     }
+
+    if (fullscreen) {
+        MarkdownFullscreenDialog(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            mentions = mentions,
+            commands = commands,
+            onTaskRef = onTaskRef,
+            uploadImage = uploadImage,
+            onDismiss = {
+                fullscreen = false
+                // The inline field never saw focus while the dialog was up, so its
+                // blur never fires — persist what came back from the dialog here.
+                onBlur?.invoke()
+            },
+        )
+    }
+}
+
+/**
+ * The web editor's fullscreen mode: the same editor over a live preview, so long
+ * descriptions can be written without the surrounding modal's cramped height.
+ * Landscape / tablet (the short-height case) puts the two side by side instead —
+ * stacked, each pane would be a couple of lines tall.
+ */
+@Composable
+private fun MarkdownFullscreenDialog(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    mentions: List<MentionItem>,
+    commands: List<CommandItem>,
+    onTaskRef: ((Int) -> Unit)?,
+    uploadImage: (suspend (ByteArray, String, String?) -> String?)?,
+    onDismiss: () -> Unit,
+) {
+    val c = Tessera.colors
+    val wide = LocalConfiguration.current.screenWidthDp >= 600
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.fillMaxSize().background(c.bg).systemBarsPadding().imePadding()) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Редактор", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                IonIconButton(Ion.CLOSE, onClick = onDismiss, boxSize = 34.dp, iconSize = 18.dp, tint = c.text2)
+            }
+            val panes: @Composable (Modifier, Modifier) -> Unit = { editorMod, previewMod ->
+                Box(editorMod.padding(horizontal = 12.dp).verticalScroll(rememberScrollState())) {
+                    MarkdownEditor(
+                        value = value,
+                        onValueChange = onValueChange,
+                        placeholder = placeholder,
+                        mentions = mentions,
+                        commands = commands,
+                        onTaskRef = onTaskRef,
+                        uploadImage = uploadImage,
+                        allowFullscreen = false,
+                    )
+                }
+                Box(
+                    previewMod
+                        .padding(12.dp)
+                        .clip(RoundedCornerShape(RadiusMd))
+                        .background(c.surfaceAlt)
+                        .padding(12.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    if (value.isBlank()) {
+                        Text("Предпросмотр", color = c.placeholder, fontSize = 13.sp)
+                    } else {
+                        RichContent(value, mentions = mentions, taskRefs = onTaskRef != null, onTaskRef = onTaskRef)
+                    }
+                }
+            }
+            if (wide) {
+                Row(Modifier.fillMaxWidth().weight(1f)) {
+                    panes(Modifier.weight(1f).fillMaxHeight(), Modifier.weight(1f).fillMaxHeight())
+                }
+            } else {
+                panes(Modifier.fillMaxWidth().weight(1f), Modifier.fillMaxWidth().weight(1f))
+            }
+        }
+    }
+}
+
+/**
+ * Re-applies the smart-typing rules to the edit the IME already made ([prev] →
+ * [next]), returning the state it should have been. A soft keyboard delivers no
+ * key events worth intercepting, so the rules run on the diff instead. A live
+ * composing region is left strictly alone: rewriting text under predictive input
+ * corrupts what the IME thinks it owns.
+ */
+private fun smartTyping(prev: TextFieldValue, next: TextFieldValue): TextFieldValue {
+    if (next.composition != null || !next.selection.collapsed) return next
+    val edit = applyTyping(
+        prev.text,
+        prev.selection.start,
+        prev.selection.end,
+        next.text,
+        next.selection.start,
+    ) ?: return next
+    return TextFieldValue(edit.text, androidx.compose.ui.text.TextRange(edit.start, edit.end))
 }
 
 /** The formatting buttons. Each applies a transform to the current value. */
@@ -289,8 +425,17 @@ private fun FormatToolbar(onApply: ((TextFieldValue) -> TextFieldValue) -> Unit)
         FmtButton({ Text("</>", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = it) }) { onApply { v -> wrap(v, "`") } }
         FmtButton({ Text("H", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = it) }) { onApply { v -> linePrefix(v, "## ") } }
         FmtButton({ Text("•", fontSize = 16.sp, color = it) }) { onApply { v -> linePrefix(v, "- ") } }
+        FmtButton({ IonIcon(Ion.LIST, size = 15.dp, tint = it) }) { onApply { v -> orderedList(v) } }
+        // The literal marker, not a glyph: no bundled ionicon draws a checkbox, and
+        // a text ☑ is not in every system font.
+        FmtButton({ Text("[ ]", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = it) }) { onApply { v -> linePrefix(v, "- [ ] ") } }
         FmtButton({ Text("❝", fontSize = 14.sp, color = it) }) { onApply { v -> linePrefix(v, "> ") } }
+        FmtButton({ IonIcon(Ion.CHEVRON_DOWN, size = 15.dp, tint = it) }) { onApply { v -> spoiler(v) } }
         FmtButton({ IonIcon(Ion.LINK, size = 15.dp, tint = it) }) { onApply { v -> link(v) } }
+        // Indent / outdent are buttons because Android has no Tab: the soft keyboard
+        // has no such key, and a hardware one is not something we can count on.
+        FmtButton({ IonIcon(Ion.CHEVRON_FORWARD, Modifier.rotate(180f), size = 15.dp, tint = it) }) { onApply { v -> outdent(v) } }
+        FmtButton({ IonIcon(Ion.CHEVRON_FORWARD, size = 15.dp, tint = it) }) { onApply { v -> indent(v) } }
     }
 }
 
@@ -442,13 +587,29 @@ private fun wrap(v: TextFieldValue, pre: String, post: String): TextFieldValue {
     return TextFieldValue(text, sel)
 }
 
-/** Prepends [prefix] to the start of the caret's line. */
-private fun linePrefix(v: TextFieldValue, prefix: String): TextFieldValue {
-    val t = v.text
-    val caret = v.selection.min
-    val lineStart = t.lastIndexOf('\n', (caret - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
-    val text = t.substring(0, lineStart) + prefix + t.substring(lineStart)
-    return TextFieldValue(text, androidx.compose.ui.text.TextRange(v.selection.max + prefix.length))
+private fun MdEdit.toValue(): TextFieldValue =
+    TextFieldValue(text, androidx.compose.ui.text.TextRange(start, end))
+
+/** Prepends [prefix] to every line the selection touches, keeping the block selected. */
+private fun linePrefix(v: TextFieldValue, prefix: String): TextFieldValue =
+    linePrefixLines(v.text, v.selection.min, v.selection.max, prefix).toValue()
+
+/** Same, numbering the lines 1., 2., 3. */
+private fun orderedList(v: TextFieldValue): TextFieldValue =
+    linePrefixLines(v.text, v.selection.min, v.selection.max, orderedListPrefix).toValue()
+
+private fun indent(v: TextFieldValue): TextFieldValue =
+    indentLines(v.text, v.selection.min, v.selection.max).toValue()
+
+/** Nothing to strip (already at column 0) leaves the value untouched. */
+private fun outdent(v: TextFieldValue): TextFieldValue =
+    outdentLines(v.text, v.selection.min, v.selection.max)?.toValue() ?: v
+
+/** Blank lines around the body are load-bearing: without them the markdown inside
+ *  `<details>` is kept as raw HTML and never renders (same as on web). */
+private fun spoiler(v: TextFieldValue): TextFieldValue {
+    val sel = v.text.substring(v.selection.min, v.selection.max).ifEmpty { "Скрытый текст" }
+    return insert(v, "\n<details><summary>Подробнее</summary>\n\n$sel\n\n</details>\n")
 }
 
 /** Turns the selection (or empty caret) into `[text](url)`, selecting `url`. */
