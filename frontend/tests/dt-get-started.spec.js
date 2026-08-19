@@ -22,6 +22,14 @@ const MARKUP = [
   'src/components/Sidebar.vue',
   'src/components/ProjectRow.vue',
   'src/components/ProjectCreateModal.vue',
+  'src/components/task/TaskCardPills.vue',
+  'src/components/TaskModal.vue',
+  'src/components/KanbanBoard.vue',
+  'src/components/BoardLayoutSwitch.vue',
+  'src/components/BoardActions.vue',
+  'src/components/SearchBar.vue',
+  'src/components/SidebarFooter.vue',
+  'src/components/WorkspaceTools.vue',
 ]
 const markup = MARKUP.map((f) => readFileSync(resolve(root, f), 'utf8')).join('\n')
 const kanban = readFileSync(resolve(root, 'src/components/KanbanBoard.vue'), 'utf8')
@@ -30,8 +38,26 @@ const isRawSelector = (key) => /[[\].#\s>]/.test(key)
 
 function anchorKeys() {
   const keys = []
-  for (const s of GET_STARTED) keys.push(s.anchor, ...(s.extra || []), s.advanceOn?.count)
-  return [...new Set(keys.filter(Boolean))]
+  for (const s of GET_STARTED) {
+    keys.push(s.anchor, ...(s.extra || []), s.advanceOn?.count, s.advanceOn?.set)
+    if (typeof s.advanceOn?.click === 'string') keys.push(s.advanceOn.click)
+  }
+  return [...new Set(keys.filter((k) => k && typeof k === 'string'))]
+}
+
+// Bare keys, plus the ones buried inside a composite selector — the card steps
+// scope their anchor to the «К работе» column, so `card-priority` never appears
+// on its own.
+function tourKeys() {
+  const out = new Set()
+  for (const key of anchorKeys()) {
+    if (!isRawSelector(key)) {
+      out.add(key)
+      continue
+    }
+    for (const m of key.matchAll(/data-tour="([^"]+)"/g)) out.add(m[1])
+  }
+  return [...out]
 }
 
 describe('Get Started scenario', () => {
@@ -52,7 +78,7 @@ describe('Get Started scenario', () => {
     for (const s of GET_STARTED) {
       if (s.mode === 'action') {
         const a = s.advanceOn || {}
-        expect(a.click || a.count || a.when, `${s.id} can never advance`).toBeTruthy()
+        expect(a.click || a.count || a.set || a.when, `${s.id} can never advance`).toBeTruthy()
       } else {
         // An info step advances on «Понятно»; an advanceOn there would be dead
         // config, since the store only consults it for action steps.
@@ -61,10 +87,35 @@ describe('Get Started scenario', () => {
     }
   })
 
-  it('starts on the workspace switcher and ends on the first task', () => {
+  it('starts on the workspace switcher and ends on the closing step', () => {
     expect(GET_STARTED[0].id).toBe('workspaces')
     expect(GET_STARTED[0].mode).toBe('info')
-    expect(GET_STARTED.at(-1).id).toBe('task-create')
+    // The last step has to be an info one: «Понятно» on it is what calls
+    // finish() and writes the getstarted:done ack. An action step there would
+    // leave the guide with no way to end other than «Пропустить».
+    expect(GET_STARTED.at(-1).id).toBe('done')
+    expect(GET_STARTED.at(-1).mode).toBe('info')
+  })
+
+  it('walks the scenario in the order the task describes', () => {
+    const ids = GET_STARTED.map((s) => s.id)
+    const spine = [
+      'workspaces',
+      'project-create',
+      'board-create',
+      'task-create',
+      'card-fields',
+      'card-open',
+      'tm-due',
+      'tm-save',
+      'board-tools',
+      'nav-sections',
+      'done',
+    ]
+    expect(spine.map((id) => ids.indexOf(id))).toEqual(
+      [...spine.map((id) => ids.indexOf(id))].sort((a, b) => a - b),
+    )
+    expect(ids).toEqual(expect.arrayContaining(spine))
   })
 
   it('waits for the entity, not the click, wherever one is created', () => {
@@ -79,9 +130,41 @@ describe('Get Started scenario', () => {
   })
 
   it('names only anchors that exist in the markup', () => {
-    for (const key of anchorKeys()) {
-      if (isRawSelector(key) || key.startsWith('menu-')) continue
+    for (const key of tourKeys()) {
+      if (key.startsWith('menu-')) continue
       expect(markup, `data-tour="${key}" is not in the markup`).toContain(`"${key}"`)
+    }
+  })
+
+  it('keeps its borrowed selectors (tabs, nav) in sync with the markup', () => {
+    // These ride on attributes naive/the sidebar already render, so nothing in
+    // the guide would fail loudly if a tab or a nav route were renamed.
+    const modal = readFileSync(resolve(root, 'src/components/TaskModal.vue'), 'utf8')
+    const sidebar = readFileSync(resolve(root, 'src/components/Sidebar.vue'), 'utf8')
+    for (const key of anchorKeys()) {
+      for (const [, name] of key.matchAll(/\[data-name="([^"]+)"\]/g)) {
+        expect(modal, `tab "${name}"`).toContain(`<n-tab-pane name="${name}"`)
+      }
+      for (const [, nav] of key.matchAll(/\[data-nav="([^"]+)"\]/g)) {
+        expect(sidebar, `nav "${nav}"`).toContain(`data-nav="${nav}"`)
+      }
+    }
+  })
+
+  it('marks a filled field for every set-based step', () => {
+    // advanceOn.set matches on a data-tour-set marker the field renders only
+    // while it holds a value. A step whose marker was never wired up would look
+    // fine here and hang in the app.
+    const modal = readFileSync(resolve(root, 'src/components/TaskModal.vue'), 'utf8')
+    for (const s of GET_STARTED) {
+      const sel = s.advanceOn?.set
+      if (!sel) continue
+      expect(sel, s.id).toContain('[data-tour-set]')
+      const key = sel.match(/data-tour="([^"]+)"/)?.[1]
+      expect(key, s.id).toBe(s.anchor)
+      expect(modal, `${s.id}: no :data-tour-set beside data-tour="${key}"`).toMatch(
+        new RegExp(`data-tour="${key}"[\\s\\S]{0,120}:data-tour-set=`),
+      )
     }
   })
 

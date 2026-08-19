@@ -12,9 +12,21 @@
 // something — a dropdown, an inline input — have nothing to create, so those do
 // advance on the click itself.
 //
-// This file covers scenario points 1–5 (workspaces → project → board → first
-// task); points 6–12 (task card, task modal, board tools, sections) are appended
-// in #2759.
+// Points 6–12 (#2759) show the task the user just created, then the board's own
+// tools and the other sections. Two kinds of step there:
+//
+//   * "show, don't ask" (points 6, 9-tabs, 10, 11) — info steps with `extra`
+//     anchors, several arrows at once out of one popover.
+//   * "fill this in" (point 8) — action steps that end on the field carrying a
+//     value (`advanceOn.set`), not on the picker being opened: opening the due
+//     calendar and closing it empty leaves the step where it was, same rule as
+//     the cancelled project modal above.
+//
+// Card anchors are scoped to the «К работе» column so a board that already has
+// cards elsewhere can't pull the arrow onto some other task.
+
+// The card the user creates in the last step of point 5.
+const NEW_CARD = '[data-column-name="К работе"] [data-testid="task-card"]'
 
 export const GET_STARTED = [
   {
@@ -81,6 +93,137 @@ export const GET_STARTED = [
     title: 'Создайте задачу',
     body: 'Нажмите «Создать задачу» в колонке «К работе», введите название и нажмите Enter.',
     mode: 'action',
-    advanceOn: { count: '[data-column-name="К работе"] [data-testid="task-card"]' },
+    advanceOn: { count: NEW_CARD },
+  },
+
+  // ── 6. Что можно задать прямо на карточке ────────────────────────────────
+  {
+    id: 'card-fields',
+    anchor: `${NEW_CARD} [data-tour="card-priority"]`,
+    extra: [
+      `${NEW_CARD} [data-tour="card-due"]`,
+      `${NEW_CARD} [data-tour="card-tags"]`,
+      `${NEW_CARD} [data-tour="card-assignees"]`,
+    ],
+    title: 'Прямо на карточке',
+    body: 'Приоритет, срок, теги и исполнители правятся не открывая задачу — по клику на значок карточки.',
+    mode: 'info',
+  },
+
+  // ── 7. Открыть карточку ──────────────────────────────────────────────────
+  {
+    id: 'card-open',
+    anchor: NEW_CARD,
+    title: 'Откройте задачу',
+    body: 'Нажмите на карточку — откроется полная форма задачи.',
+    mode: 'action',
+    // `click: true` = «клик по собственному якорю шага», чтобы не повторять
+    // длинный селектор карточки.
+    advanceOn: { click: true },
+  },
+
+  // ── 8. Заполнить поля задачи ─────────────────────────────────────────────
+  {
+    id: 'tm-due',
+    anchor: 'tm-due',
+    title: 'Срок',
+    body: 'Задайте срок — в календаре же настраиваются повтор и напоминание.',
+    mode: 'action',
+    advanceOn: { set: '[data-tour="tm-due"][data-tour-set]' },
+  },
+  {
+    id: 'tm-assignees',
+    anchor: 'tm-assignees',
+    title: 'Исполнители',
+    body: 'Выберите, кто ведёт задачу. Пока вы в пространстве один — назначьте себя.',
+    mode: 'action',
+    advanceOn: { set: '[data-tour="tm-assignees"][data-tour-set]' },
+  },
+  {
+    id: 'tm-priority',
+    anchor: 'tm-priority',
+    title: 'Приоритет',
+    body: 'Приоритет красит точку на карточке и по нему же можно сортировать доску.',
+    mode: 'action',
+    advanceOn: { set: '[data-tour="tm-priority"][data-tour-set]' },
+  },
+  {
+    id: 'tm-tags',
+    anchor: 'tm-tags',
+    title: 'Теги',
+    body: 'Тег создаётся прямо отсюда. По тегам доска умеет группироваться в колонки — это главный способ разложить задачи по-своему.',
+    mode: 'action',
+    advanceOn: { set: '[data-tour="tm-tags"][data-tour-set]' },
+  },
+  {
+    id: 'tm-description',
+    anchor: 'tm-description',
+    title: 'Описание',
+    body: 'Опишите задачу: поддерживается Markdown, вложения и упоминания через @.',
+    mode: 'action',
+    advanceOn: { set: '[data-tour="tm-description"][data-tour-set]' },
+  },
+
+  // ── 9. Табы и сохранение ─────────────────────────────────────────────────
+  {
+    id: 'tm-tabs',
+    anchor: '[data-name="comments"]',
+    extra: ['[data-name="subtasks"]', '[data-name="relations"]', '[data-name="history"]'],
+    title: 'Комментарии, подзадачи, связи',
+    body: 'Здесь же — обсуждение, дерево подзадач, связи с другими задачами и полная история изменений.',
+    mode: 'info',
+  },
+  {
+    id: 'tm-save',
+    anchor: 'tm-save',
+    title: 'Сохраните задачу',
+    body: 'Нажмите «Сохранить» — модалка закроется, а изменения появятся на карточке.',
+    mode: 'action',
+    advanceOn: { click: 'tm-save' },
+  },
+
+  // ── 10. Инструменты доски ────────────────────────────────────────────────
+  {
+    id: 'board-tools',
+    anchor: 'board-layout',
+    extra: ['ws-search', 'board-actions'],
+    title: 'Виды и инструменты доски',
+    body: 'Слева — канбан, список, календарь и гант: одни и те же задачи в разных разрезах. В центре — поиск по всему пространству, справа — теги, этапы и архив.',
+    mode: 'info',
+  },
+  {
+    id: 'board-composer',
+    anchor: 'board-composer',
+    extra: ['board-customize'],
+    title: 'Группировка, сортировка, фильтры',
+    body: 'Через «+» на этой панели добавляются группировка (в том числе по тегам), сортировка и фильтры, а справа — настройка вида карточек.',
+    mode: 'info',
+  },
+
+  // ── 11. Остальные разделы ────────────────────────────────────────────────
+  {
+    id: 'nav-sections',
+    anchor: '[data-nav="notes"]',
+    extra: ['[data-nav="documents"]', '[data-nav="reminders"]'],
+    title: 'Заметки, документы, напоминания',
+    body: 'Кроме досок в пространстве живут заметки, совместные документы и напоминания.',
+    mode: 'info',
+  },
+  {
+    id: 'nav-footer',
+    anchor: 'footer-settings',
+    extra: ['footer-notifications'],
+    title: 'Настройки и уведомления',
+    body: 'Внизу — ваш профиль и настройки, рядом — колокольчик с уведомлениями.',
+    mode: 'info',
+  },
+
+  // ── 12. Финал ────────────────────────────────────────────────────────────
+  {
+    id: 'done',
+    anchor: 'sb-footer',
+    title: 'Готово',
+    body: 'Это всё, что нужно для старта. Обучение можно перезапустить отсюда же, из нижней части боковой панели.',
+    mode: 'info',
   },
 ]

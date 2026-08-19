@@ -43,7 +43,7 @@ function logout() {
 </script>
 
 <template>
-  <div class="sb-footer" :class="{ collapsed }">
+  <div class="sb-footer" :class="{ collapsed }" data-tour="sb-footer">
     <n-popover v-if="compact" trigger="click" :placement="collapsed ? 'right-end' : 'top-start'">
       <template #trigger>
         <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" />
@@ -52,7 +52,9 @@ function logout() {
       <div class="user-pop">
         <div class="up-name">{{ authStore.user?.name || 'Профиль' }}</div>
         <div class="up-mail">{{ authStore.user?.email }}</div>
-        <n-button size="small" block @click="openSettings">
+        <!-- Same anchor on both shapes of the footer (compact popover / full
+             row): only one of them is ever in the DOM. -->
+        <n-button size="small" block data-tour="footer-settings" @click="openSettings">
           <template #icon><n-icon :component="SettingsOutline" /></template>
           Настройки
         </n-button>
@@ -86,7 +88,14 @@ function logout() {
       </n-tooltip>
       <n-tooltip>
         <template #trigger>
-          <n-button quaternary circle size="small" aria-label="Настройки" @click="openSettings">
+          <n-button
+            quaternary
+            circle
+            size="small"
+            aria-label="Настройки"
+            data-tour="footer-settings"
+            @click="openSettings"
+          >
             <n-icon :component="SettingsOutline" />
           </n-button>
         </template>

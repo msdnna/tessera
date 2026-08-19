@@ -406,6 +406,7 @@ async function toggleGlAssignee(m) {
           class="pill"
           :class="{ set: task.priority }"
           :title="stackFields ? 'Приоритет' : ''"
+          data-tour="card-priority"
           @click.stop
         >
           <n-icon
@@ -449,6 +450,7 @@ async function toggleGlAssignee(m) {
           class="pill"
           :class="{ set: due, overdue }"
           :title="stackFields ? 'Срок' : ''"
+          data-tour="card-due"
           @click.stop
         >
           <n-icon :component="CalendarClearOutline" :size="13" />
@@ -546,12 +548,20 @@ async function toggleGlAssignee(m) {
       <template #trigger>
         <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
           <template #trigger>
-            <button v-if="!stackFields && !taskTags.length" class="pill" @click.stop>
+            <!-- Three mutually exclusive shapes, one anchor: whichever renders is
+                 the tag pill the guide points at (#2759). -->
+            <button
+              v-if="!stackFields && !taskTags.length"
+              class="pill"
+              data-tour="card-tags"
+              @click.stop
+            >
               <n-icon :component="PricetagOutline" :size="13" />
             </button>
             <button
               v-else-if="!stackFields"
               class="pill tag-pill"
+              data-tour="card-tags"
               :style="
                 firstTagScoped
                   ? { border: 'none', background: 'none', padding: 0 }
@@ -586,7 +596,7 @@ async function toggleGlAssignee(m) {
             </button>
             <!-- stacked: leading tag icon + outlined-oval chips that fit on the
                  row, rest → +N (same behaviour as the task modal). -->
-            <button v-else class="pill" title="Теги" @click.stop>
+            <button v-else class="pill" title="Теги" data-tour="card-tags" @click.stop>
               <n-icon
                 :component="PricetagOutline"
                 :size="13"
@@ -706,6 +716,7 @@ async function toggleGlAssignee(m) {
               <button
                 class="pill assignee-pill"
                 :title="stackFields ? 'Исполнитель' : ''"
+                data-tour="card-assignees"
                 @click.stop
               >
                 <n-icon

@@ -25,7 +25,9 @@ import { acknowledgements } from '@/api'
 //       snapshot: () => projects.length,   // …a value taken on step entry
 //       when: (base) => projects.length > base,  // …changed as expected
 //       count: 'project-row',         // …or more elements match this anchor
-//     },                              //    than when the step opened
+//                                     //    than when the step opened, or
+//       set: '[data-tour="tm-due"][data-tour-set]',  // …anything matches at all
+//     },
 //   }
 //
 // `snapshot`/`when` and `count` are the answer to "wait for the click or for the
@@ -36,6 +38,12 @@ import { acknowledgements } from '@/api'
 // elements match, and the first report after entering the step is the baseline,
 // so re-running the guide with projects already in the tree still walks the user
 // through creating one.
+//
+// `set` is the same idea for the task modal's fields (#2759), where "created" is
+// a boolean, not a count: the field carries a data-tour-set marker while it has a
+// value, and the step ends as soon as it matches. Deliberately baseline-free —
+// a count baseline would deadlock the step on a task whose field was already
+// filled, and only «Пропустить» would get the user out.
 
 export const TOUR_PREFIX = 'getstarted:'
 export const TOUR_DONE = TOUR_PREFIX + 'done'
@@ -153,12 +161,19 @@ export const useTourStore = defineStore('tour', () => {
     next()
   }
 
-  // How many elements currently match the step's advanceOn.count anchor. The
-  // first report after the step opened is the baseline; growth ends the step.
+  // How many elements currently match the step's advanceOn.count (or .set)
+  // anchor. For `count` the first report after the step opened is the baseline
+  // and growth ends the step; for `set` any match at all ends it.
   function counted(stepId, n) {
     const step = current.value
     if (!active.value || step?.id !== stepId || step.mode !== 'action') return
-    if (!step.advanceOn?.count || typeof n !== 'number') return
+    const on = step.advanceOn || {}
+    if (typeof n !== 'number') return
+    if (on.set) {
+      if (n > 0) next()
+      return
+    }
+    if (!on.count) return
     if (entryCount === null) {
       entryCount = n
       return

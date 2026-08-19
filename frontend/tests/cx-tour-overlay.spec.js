@@ -193,6 +193,30 @@ describe('TourOverlay', () => {
     expect(tour.current.id).toBe('workspaces')
   })
 
+  it('advances a set-step when the field starts carrying a value', async () => {
+    // The overlay feeds advanceOn.set through the same counter as .count, so a
+    // marker attribute appearing on the field is what ends the step (#2759).
+    const el = anchor('tm-due')
+    const tour = useTourStore()
+    tour.start([
+      {
+        id: 'tm-due',
+        anchor: 'tm-due',
+        mode: 'action',
+        advanceOn: { set: '[data-tour="tm-due"][data-tour-set]' },
+      },
+      INFO,
+    ])
+    anchor('ws-switch')
+    await render()
+    expect(tour.current.id).toBe('tm-due')
+
+    el.setAttribute('data-tour-set', '')
+    await new Promise((r) => requestAnimationFrame(r))
+    await nextTick()
+    expect(tour.current.id).toBe('workspaces')
+  })
+
   it('flags the elements it points at, so hover-only buttons stay visible', async () => {
     const el = anchor('board-add')
     const tour = useTourStore()

@@ -232,6 +232,36 @@ describe('tour store', () => {
       })
     })
 
+    describe('advanceOn.set', () => {
+      const SET_STEPS = [
+        {
+          id: 'tm-due',
+          anchor: 'tm-due',
+          mode: 'action',
+          advanceOn: { set: '[data-tour="tm-due"][data-tour-set]' },
+        },
+        { id: 'after', anchor: 'tm-save', mode: 'info' },
+      ]
+
+      it('advances as soon as the field carries a value', () => {
+        const t = useTourStore()
+        t.start(SET_STEPS)
+        t.counted('tm-due', 0)
+        expect(t.current.id).toBe('tm-due')
+        t.counted('tm-due', 1)
+        expect(t.current.id).toBe('after')
+      })
+
+      it('takes no baseline, so an already-filled field cannot deadlock', () => {
+        // Unlike count: a task that already has a due date would otherwise pin
+        // the step at 1 forever, leaving only «Пропустить» to escape.
+        const t = useTourStore()
+        t.start(SET_STEPS)
+        t.counted('tm-due', 1)
+        expect(t.current.id).toBe('after')
+      })
+    })
+
     it('skips a step whose anchor never showed up instead of hanging', () => {
       const t = useTourStore()
       t.start(STEPS)

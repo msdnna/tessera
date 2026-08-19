@@ -31,7 +31,7 @@ const arrows = ref([]) // { len, head } per anchor, in `anchors` order
 
 const { rects, els, count } = useTourAnchor(() => tour.anchors, {
   onMissing: () => tour.anchorMissing(step.value?.id),
-  countFn: () => step.value?.advanceOn?.count || '',
+  countFn: () => step.value?.advanceOn?.count || step.value?.advanceOn?.set || '',
 })
 
 const target = computed(() => rects.value[0] || null)
