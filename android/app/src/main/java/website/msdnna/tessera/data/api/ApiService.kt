@@ -112,6 +112,21 @@ interface ApiService {
     @DELETE("users/me/avatar")
     suspend fun deleteAvatar()
 
+    // ── per-user one-shot flags + API version (#2766) ──
+    // The keys are opaque to the server and shared with the web client, so a
+    // release dismissed there stays dismissed here.
+    @GET("users/me/acknowledgements")
+    suspend fun acknowledgements(): List<website.msdnna.tessera.data.model.Acknowledgement>?
+
+    @POST("users/me/acknowledgements")
+    suspend fun acknowledge(
+        @Body body: website.msdnna.tessera.data.model.AckRequest,
+    ): website.msdnna.tessera.data.model.Acknowledgement
+
+    /** Public (no auth) — the server's own version, shown beside the app's. */
+    @GET("version")
+    suspend fun apiVersion(): website.msdnna.tessera.data.model.ApiVersion
+
     // ── account lifecycle (U2): verification, password reset ──
     @POST("auth/verify-email")
     suspend fun verifyEmail(@Body body: TokenRequest)
@@ -602,6 +617,14 @@ interface ApiService {
         @retrofit2.http.Query("assignee") assignee: String? = null,
         @retrofit2.http.Query("include_subtasks") includeSubtasks: Int? = null,
     ): List<website.msdnna.tessera.data.model.WorkspaceTask>?
+
+    /** Resolves a per-workspace task number (the «#252» in text) to its task —
+     *  backs the "#N" links in descriptions and comments. 404 when nobody owns it. */
+    @GET("workspaces/{id}/tasks/by-number/{number}")
+    suspend fun taskByNumber(
+        @Path("id") workspaceId: String,
+        @Path("number") number: Int,
+    ): website.msdnna.tessera.data.model.Task
 
     @GET("workspaces/{id}/summary")
     suspend fun workspaceSummary(

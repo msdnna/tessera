@@ -85,6 +85,9 @@ data class Comment(
     @SerializedName("body") val body: String = "",
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("updated_at") val updatedAt: String = "",
+    // Thread root this comment answers, null for a root itself. The list stays
+    // FLAT (roots and their replies interleaved) — see [groupThreads].
+    @SerializedName("parent_id") val parentId: String? = null,
     @SerializedName("author_name") val authorName: String? = null,
     @SerializedName("author_email") val authorEmail: String? = null,
     // GitLab note author (when the comment was synced from GitLab; author_id null).
@@ -158,6 +161,9 @@ data class UploadResponse(@SerializedName("url") val url: String = "")
 data class CreateCommentRequest(
     @SerializedName("body") val body: String,
     @SerializedName("mentions") val mentions: List<String> = emptyList(),
+    // Reply target. The backend collapses a reply-to-reply onto the same root,
+    // so this may be any comment of the task, not just a root.
+    @SerializedName("parent_id") val parentId: String? = null,
 )
 
 data class UpdateCommentRequest(@SerializedName("body") val body: String)

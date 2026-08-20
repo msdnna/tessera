@@ -102,6 +102,7 @@ fun MainScreen(
     notifVm: NotificationViewModel = viewModel(),
     updateVm: UpdateViewModel = viewModel(),
     conflictsVm: website.msdnna.tessera.ui.viewmodels.ConflictsViewModel = viewModel(),
+    whatsNewVm: website.msdnna.tessera.ui.viewmodels.WhatsNewViewModel = viewModel(),
 ) {
     val c = Tessera.colors
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -114,6 +115,9 @@ fun MainScreen(
     val conflictsState by conflictsVm.state.collectAsStateWithLifecycle()
     val updateState by updateVm.state.collectAsStateWithLifecycle()
     val updateAvailable by updateVm.available.collectAsStateWithLifecycle()
+    val whatsNew by whatsNewVm.releases.collectAsStateWithLifecycle()
+    val spotlight by whatsNewVm.spotlight.collectAsStateWithLifecycle()
+    val apiVersion by whatsNewVm.apiVersion.collectAsStateWithLifecycle()
     val boardRepo = remember { BoardRepository() }
     val gitlabRepo = remember { website.msdnna.tessera.data.repository.GitlabRepository() }
 
@@ -227,6 +231,10 @@ fun MainScreen(
     // start. check() no-ops if a prompt is already shown or was dismissed.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { updateVm.check() }
 
+    // What's-New / spotlight state is per account and needs the profile's
+    // created_at, so it loads once the signed-in user is known (#2766).
+    LaunchedEffect(user?.id) { whatsNewVm.load(user) }
+
     // Restore the last-open destination once on launch (a reminder deep-link wins).
     var restoreDone by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -332,6 +340,12 @@ fun MainScreen(
                         scope.launch { drawerState.close() }
                         updateVm.startDownload()
                     },
+                    apiVersion = apiVersion,
+                    // The hint only makes sense once the drawer is on its way open —
+                    // its arrow points at a row that is otherwise off-screen, and
+                    // drawing it earlier would spend the animation behind the shell.
+                    spotlight = spotlight.takeIf { drawerState.targetValue == DrawerValue.Open },
+                    onDismissSpotlight = { whatsNewVm.dismissSpotlight(it) },
                 )
             }
         },
@@ -454,6 +468,10 @@ fun MainScreen(
                     },
                 )
             }
+
+            // Post-update changelog — declared before the update prompt so that a
+            // pending update (the more urgent of the two) draws on top of it.
+            WhatsNewSheet(releases = whatsNew, onDismiss = { whatsNewVm.dismissCard() })
 
             UpdateDialog(
                 state = updateState,

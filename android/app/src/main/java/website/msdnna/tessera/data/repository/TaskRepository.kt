@@ -28,8 +28,12 @@ class TaskRepository {
     suspend fun detail(taskId: String): TaskDetail = api.task(taskId)
 
     suspend fun comments(taskId: String): List<Comment> = api.comments(taskId).orEmpty()
-    suspend fun addComment(taskId: String, body: String, mentions: List<String>): CommentResult =
-        api.createComment(taskId, CreateCommentRequest(body, mentions))
+    suspend fun addComment(
+        taskId: String,
+        body: String,
+        mentions: List<String>,
+        parentId: String? = null,
+    ): CommentResult = api.createComment(taskId, CreateCommentRequest(body, mentions, parentId))
 
     /** Dry-runs the draft against the backend's own parser: what each `/`-command
      *  in it would do, without executing anything. */
@@ -59,6 +63,10 @@ class TaskRepository {
      *  subtasks so a subtask can be picked as a blocking relation (web parity). */
     suspend fun workspaceTasks(workspaceId: String): List<website.msdnna.tessera.data.model.WorkspaceTask> =
         api.workspaceTasks(workspaceId, includeSubtasks = 1).orEmpty()
+
+    /** The task a «#N» link names, or null when the workspace has no such number. */
+    suspend fun taskByNumber(workspaceId: String, number: Int): website.msdnna.tessera.data.model.Task? =
+        runCatching { api.taskByNumber(workspaceId, number) }.getOrNull()
 
     /** Downloads an attachment's bytes (auth'd) to a cache file, returning it. */
     suspend fun downloadAttachment(cacheDir: java.io.File, attachmentId: String, filename: String): java.io.File {

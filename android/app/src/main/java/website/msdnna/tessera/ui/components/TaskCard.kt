@@ -72,6 +72,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.divergedColumn
 import website.msdnna.tessera.util.dueShort
@@ -759,7 +760,7 @@ private fun DescriptionPill(task: Task, state: BoardUiState) {
         }
         TDropdown(expanded = open, onDismiss = { open = false }, scrollable = true) {
             Box(Modifier.width(280.dp).heightIn(max = 320.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
-                RichContent(source = task.description, mentions = state.members.map { it.name })
+                RichContent(source = task.description, mentions = buildMentionItems(state.members, state.gitlabMembers))
             }
         }
     }

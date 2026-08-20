@@ -150,6 +150,10 @@ data class Member(
     @SerializedName("role") val role: String = "",
     @SerializedName("email") val email: String = "",
     @SerializedName("name") val name: String = "",
+    // The member's GitLab login (empty when their account isn't linked), so an
+    // @-mention can insert `@login` — a display name with spaces resolves to
+    // nobody once the comment is pushed to GitLab.
+    @SerializedName("gl_username") val glUsername: String = "",
 )
 
 data class CreateTagRequest(
