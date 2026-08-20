@@ -349,6 +349,31 @@ export function toDocJSON(json) {
 }
 
 /**
+ * Normalises a stored document into one the editor can put a caret in.
+ *
+ * A `doc` with no blocks (`content: []` — the canonical "empty" form the
+ * backend seeds, and what `toDocJSON` falls back to) has nowhere to place the
+ * caret, so ProseMirror shows a gap-cursor (a 20px black dash) instead of the
+ * normal caret, and the "Начните писать…" placeholder — a decoration on an
+ * empty paragraph — has no node to attach to and never appears. Seeding one
+ * empty paragraph gives both the caret and the placeholder a home; pressing
+ * Enter used to be the only way to get there (#2761).
+ *
+ * Kept separate from `toDocJSON` on purpose: `EMPTY_DOC` stays the canonical
+ * empty form for storage and merge (`mergeRemoteBlocks` rejects a block without
+ * an id, and the seeded paragraph gets its id from `ensureBlockIds` only after
+ * this runs), while `editableDoc` is only for the value handed to the editor.
+ * Do not "simplify" this back into `toDocJSON`.
+ *
+ * @param {*} json parsed content
+ */
+export function editableDoc(json) {
+  const doc = toDocJSON(json)
+  if (Array.isArray(doc.content) && doc.content.length) return doc
+  return { type: 'doc', content: [{ type: 'paragraph' }] }
+}
+
+/**
  * Extracts plain text from a document tree, used for previews and for the
  * "is this document empty" check.
  *

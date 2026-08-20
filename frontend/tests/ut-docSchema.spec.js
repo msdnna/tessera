@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { generateHTML, getSchema } from '@tiptap/core'
+import { Editor, generateHTML, getSchema } from '@tiptap/core'
+import { GapCursor } from '@tiptap/pm/gapcursor'
 import {
   contrastRatio,
   darkSheetFill,
@@ -16,6 +17,7 @@ import {
   EMPTY_DOC,
   docExtensions,
   docPlainText,
+  editableDoc,
   isDocJSON,
   isEmptyDoc,
   toDocJSON,
@@ -176,6 +178,55 @@ describe('table cell styling', () => {
     expect(
       contrastRatio(parseCssColor(darkSheetFill('#d9e2f3')), parseCssColor(DARK.text1)),
     ).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+// An empty `doc` (content: []) leaves the editor with nowhere to put the caret,
+// so ProseMirror shows a gap-cursor and the placeholder never renders (#2761).
+// editableDoc seeds one empty paragraph for the value handed to the editor.
+describe('editableDoc', () => {
+  it('seeds one empty paragraph for a blockless document', () => {
+    expect(editableDoc(EMPTY_DOC)).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] })
+  })
+
+  it('seeds a paragraph for null and junk too', () => {
+    const seeded = { type: 'doc', content: [{ type: 'paragraph' }] }
+    expect(editableDoc(null)).toEqual(seeded)
+    expect(editableDoc('nope')).toEqual(seeded)
+    expect(editableDoc({ type: 'paragraph' })).toEqual(seeded)
+  })
+
+  it('leaves a document that already has blocks untouched', () => {
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'ok' }] }],
+    }
+    expect(editableDoc(doc)).toBe(doc)
+  })
+
+  it('produces a document the schema accepts', () => {
+    expect(() => schema.nodeFromJSON(editableDoc(EMPTY_DOC))).not.toThrow()
+  })
+})
+
+// Regression on a real editor: a document built from the canonical empty form
+// must land on a normal text caret with the placeholder showing, not the
+// gap-cursor that used to require pressing Enter to escape (#2761).
+describe('empty document caret', () => {
+  it('gives an empty document a text caret and the placeholder, not a gap-cursor', () => {
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: docExtensions(),
+      content: editableDoc(EMPTY_DOC),
+    })
+    try {
+      expect(editor.state.doc.childCount).toBe(1)
+      expect(editor.state.selection instanceof GapCursor).toBe(false)
+      // isEmpty is the condition TipTap uses to draw the placeholder decoration.
+      expect(editor.isEmpty).toBe(true)
+    } finally {
+      editor.destroy()
+    }
   })
 })
 

@@ -9,7 +9,7 @@ import {
   CloseOutline,
   ReorderTwoOutline,
 } from '@vicons/ionicons5'
-import { docExtensions, toDocJSON } from '@/utils/docSchema'
+import { docExtensions, editableDoc } from '@/utils/docSchema'
 import { BLOCK_ID_META, ensureBlockIds } from '@/utils/docExtensions/blockId'
 import {
   blockAtClientY,
@@ -92,7 +92,7 @@ const REMOTE_META = 'docEditor$remote'
 
 function build() {
   editor.value = new Editor({
-    content: ensureBlockIds(toDocJSON(props.modelValue)),
+    content: ensureBlockIds(editableDoc(props.modelValue)),
     editable: props.editable,
     extensions: docExtensions({
       placeholder: props.placeholder,
@@ -201,7 +201,7 @@ watch(
     if (JSON.stringify(current) === JSON.stringify(next)) return
     // emitUpdate: false — loading a document is not an edit and must not start
     // an autosave cycle (which would then race the load it came from).
-    editor.value.commands.setContent(ensureBlockIds(toDocJSON(next)), { emitUpdate: false })
+    editor.value.commands.setContent(ensureBlockIds(editableDoc(next)), { emitUpdate: false })
   },
 )
 
@@ -839,6 +839,12 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   height: 0;
   pointer-events: none;
   color: var(--t-placeholder);
+}
+/* The gap-cursor stays legal around table/horizontalRule/pdfEmbed blocks; its
+   border colour is hard-coded black in @tiptap/core, invisible on a dark
+   surface — pin it to the theme text token (task 2761). */
+.doc-content :deep(.ProseMirror-gapcursor::after) {
+  border-top-color: var(--t-text1);
 }
 .doc-content :deep(.ProseMirror h1),
 .doc-content :deep(.ProseMirror h2),
