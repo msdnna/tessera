@@ -30,6 +30,13 @@ export const PANEL_SEL = [
   '.n-cascader-menu',
 ].join(',')
 
+// Larger overlay surfaces the user may open mid-tour — a create-workspace modal,
+// the board-settings drawer. These get cut OUT of the dimming mask so the guide
+// never darkens something the user just opened (#2753 rework), but unlike the
+// small pickers they are NOT fed to popover placement: the tour popover has to be
+// free to sit *inside* a modal (naming a project, filling a task field).
+export const SURFACE_SEL = ['.n-modal', '.n-drawer'].join(',')
+
 function boxOf(el) {
   const r = el.getBoundingClientRect()
   // Elements that are in the DOM but not laid out (display:none, a collapsed
@@ -71,6 +78,7 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
   const els = ref([])
   const count = ref(0)
   const panels = ref([])
+  const surfaces = ref([])
   let frame = 0
   let missTimer = 0
   let ro = null
@@ -86,6 +94,7 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
     const countSel = anchorSelector(countFn?.())
     count.value = countSel ? document.querySelectorAll(countSel).length : 0
     panels.value = [...document.querySelectorAll(PANEL_SEL)].map(boxOf).filter(Boolean)
+    surfaces.value = [...document.querySelectorAll(SURFACE_SEL)].map(boxOf).filter(Boolean)
     if (ro) {
       ro.disconnect()
       nextEls.forEach((el) => el && ro.observe(el))
@@ -137,5 +146,5 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
     if (frame) cancelAnimationFrame(frame)
   })
 
-  return { rects, els, count, panels, refresh }
+  return { rects, els, count, panels, surfaces, refresh }
 }

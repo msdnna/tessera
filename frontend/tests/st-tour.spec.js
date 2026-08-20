@@ -9,7 +9,7 @@ vi.mock('@/api', () => apiMock)
 
 import { useTourStore, TOUR_DONE, TOUR_SKIPPED, TOUR_STEP_KEY } from '@/stores/tour'
 import { anchorSelector } from '@/composables/useTourAnchor'
-import { arcPath, arcPathBowed, headPoints, layoutArrow } from '@/utils/tourArrow'
+import { arcPath, tourArc, headPoints, layoutArrow } from '@/utils/tourArrow'
 
 const STEPS = [
   { id: 'workspaces', anchor: 'ws-switch', title: 'Пространства', mode: 'info' },
@@ -337,17 +337,28 @@ describe('tour arrow geometry', () => {
     expect(bowOf(above, 40)).toBeCloseTo(20)
   })
 
-  it('bows the tour arrow off the chord even when it is horizontal', () => {
-    // #2753 rework: a straight horizontal stub read as "an arrowhead from
-    // nowhere". arcPathBowed curves it off the chord so it's a visible line.
-    const d = arcPathBowed({ x: 100, y: 200 }, { x: 260, y: 200 })
-    expect(d).toMatch(/^M 100 200 C /)
-    // control points sit off the y=200 chord (perpendicular bow)
+  it('makes the tour arrow arrive along the popover side, so the head points at the target', () => {
+    // #2753 rework: a popover below a target that is far off to the side used to
+    // draw an arrow skidding in sideways. tourArc('bottom') makes the last
+    // segment vertical, so the head points straight up at the target.
+    const from = { x: 680, y: 340 } // popover top edge, centred
+    const to = { x: 250, y: 60 } // target far up-left (e.g. the layout switch)
+    const d = tourArc(from, to, 'bottom')
     const c = d.split('C ')[1].split(/[ ,]+/).map(Number)
-    expect(Math.abs(c[1] - 200)).toBeGreaterThan(4)
-    expect(Math.abs(c[3] - 200)).toBeGreaterThan(4)
-    // starts and ends exactly on the endpoints
-    expect(d.endsWith('260 200')).toBe(true)
+    // c2 (the end control point) sits directly below the tip → final approach is
+    // vertical.
+    expect(c[2]).toBe(to.x)
+    expect(c[3]).toBeGreaterThan(to.y)
+    expect(d.startsWith('M 680 340')).toBe(true)
+    expect(d.endsWith('250 60')).toBe(true)
+  })
+
+  it('arrives horizontally when the popover is to the side', () => {
+    const d = tourArc({ x: 300, y: 200 }, { x: 100, y: 400 }, 'right')
+    const c = d.split('C ')[1].split(/[ ,]+/).map(Number)
+    // end control point is level with the tip and beyond it → head points left.
+    expect(c[3]).toBe(400)
+    expect(c[2]).toBeGreaterThan(100)
   })
 
   it('builds a triangle around the tip', () => {

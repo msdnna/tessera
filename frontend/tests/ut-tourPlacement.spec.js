@@ -69,6 +69,19 @@ describe('tour popover placement', () => {
     expect(hits(box, calendar)).toBe(false)
   })
 
+  it('goes to the opposite side of an open dropdown even if their boxes do not touch', () => {
+    // tags picker: a small dropdown opens just below the field. The popover would
+    // have cleared it by intersection (there's a gap), but it must still go above
+    // so it isn't wedged between the field and its own dropdown.
+    const field = r(150, 300, 300, 30)
+    const dropdown = r(150, 336, 200, 40) // small, right under the field
+    const p = choosePlacement(unionRect([field]), [field], [field, dropdown], {
+      ...OPTS,
+      panels: [dropdown],
+    })
+    expect(p.side).toBe('top')
+  })
+
   it('always returns a box inside the viewport, even when nothing clears', () => {
     // A target hugging every edge with avoids all around → fallback clamps in.
     const a = r(0, 0, 1440, 900)
