@@ -661,16 +661,20 @@ async function importOffice(file) {
   if (needsConverter(file.name) && !converter.value.available) {
     throw new Error(converter.value.reason || 'Конвертация офисных форматов недоступна')
   }
-  const { document: doc, imagesDropped } = await importOfficeFile(
-    docsApi,
-    wsStore.currentId,
-    file,
-    { parentId: parentId.value },
-  )
-  // Dropped pictures are said out loud. A document that quietly lost half its
-  // figures looks like a successful import until somebody scrolls.
+  const {
+    document: doc,
+    imagesDropped,
+    imagesDroppedReason,
+  } = await importOfficeFile(docsApi, wsStore.currentId, file, { parentId: parentId.value })
+  // Dropped pictures are said out loud, and with the reason: a bare count told
+  // the user something was lost without telling them whether re-inserting the
+  // figure as PNG would help or whether it is ours to fix (#2755). The warning
+  // stays up longer than the default — it is the only place the reason appears.
   if (imagesDropped) {
-    message.warning(`Документ импортирован, изображений пропущено: ${imagesDropped}`)
+    const why = imagesDroppedReason ? ` (${imagesDroppedReason})` : ''
+    message.warning(`Документ импортирован, изображений пропущено: ${imagesDropped}${why}`, {
+      duration: 8000,
+    })
   } else {
     message.success('Документ импортирован')
   }

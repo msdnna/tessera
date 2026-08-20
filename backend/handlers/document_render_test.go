@@ -201,6 +201,30 @@ func TestRenderDocHTMLBlockStyleIsDeterministic(t *testing.T) {
 	}
 }
 
+// An imported table keeps the fill and the grid the .docx had (#2756), and the
+// export has to hand them back: a round trip through Tessera that returns a
+// table stripped of its header band looks like Tessera lost the formatting,
+// which is the complaint the import fix answered in the first place.
+func TestRenderDocHTMLKeepsCellFillAndBorder(t *testing.T) {
+	cell := docNode{Type: "tableCell", Attrs: map[string]any{
+		"backgroundColor": "#d9e2f3",
+		"borderColor":     "#000000",
+		"colspan":         float64(2),
+	}, Content: []docNode{txt("Шапка")}}
+	out := render(cell)
+	for _, want := range []string{`colspan="2"`, "background-color:#d9e2f3", "border-color:#000000"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("cell rendered as %q, missing %q", out, want)
+		}
+	}
+	// One style attribute, not two: colspan and the fill are written by different
+	// halves of the renderer, and a second style= would be dropped by every
+	// parser that reads the export.
+	if strings.Count(out, "style=") != 1 {
+		t.Fatalf("cell should carry exactly one style attribute: %q", out)
+	}
+}
+
 func TestRenderDocHTMLDeclaresCharset(t *testing.T) {
 	// Without this LibreOffice guesses the encoding and a Cyrillic document
 	// exports as mojibake — a failure that looks like data loss and passes every

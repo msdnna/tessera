@@ -185,16 +185,19 @@ func (h *API) ImportDocument(c *gin.Context) {
 		return
 	}
 
-	body, dropped := h.storeImportedImages(doc, string(html))
+	body, images := h.storeImportedImages(doc, string(html))
+	images.log(doc, name)
 	h.broadcast(wsID, "document.created", documentMeta(doc))
 	// The body comes back as HTML rather than as blocks: the client parses it
 	// with the editor's schema and saves it through the ordinary content
 	// endpoint, so an import is validated by exactly the same code as typing.
 	c.JSON(http.StatusCreated, gin.H{
-		"document":         viewDocument(doc),
-		"html":             body,
-		"images_dropped":   dropped,
-		"source_file_name": name,
+		"document":               viewDocument(doc),
+		"html":                   body,
+		"images_dropped":         images.dropped,
+		"images_dropped_reason":  images.summary(),
+		"images_dropped_reasons": images.counts(),
+		"source_file_name":       name,
 	})
 }
 
@@ -303,35 +306,167 @@ func (h *API) ExportDocument(c *gin.Context) {
 	c.Data(http.StatusOK, spec.mime, out)
 }
 
+// dropReason names why one inlined picture did not become a document asset.
+//
+// The reasons are separate values rather than one "dropped" counter because
+// they call for different actions: a format we do not store is the user's to
+// fix (re-insert the picture as PNG), a ceiling is the operator's, and a write
+// failure is ours. Reporting only the count made an import that lost fifteen
+// figures indistinguishable from all three (#2755) — the diagnosis cost an hour
+// of forensics that the response could have answered.
+type dropReason string
+
+const (
+	dropUnreadable  dropReason = "unreadable"
+	dropCountLimit  dropReason = "count_limit"
+	dropTotalLimit  dropReason = "total_limit"
+	dropBase64      dropReason = "base64"
+	dropEmpty       dropReason = "empty"
+	dropTooLarge    dropReason = "too_large"
+	dropUnsupported dropReason = "unsupported_type"
+	dropMkdir       dropReason = "mkdir_failed"
+	dropWrite       dropReason = "write_failed"
+)
+
+// dropReasonText is what the user reads in the import warning, so it says what
+// happened to their document rather than which branch was taken.
+var dropReasonText = map[dropReason]string{
+	dropUnreadable:  "не удалось разобрать разметку",
+	dropCountLimit:  "превышен лимит на число картинок в одном импорте",
+	dropTotalLimit:  "превышен лимит на общий объём картинок",
+	dropBase64:      "повреждённые данные картинки",
+	dropEmpty:       "пустая картинка",
+	dropTooLarge:    "картинка больше 8 МБ",
+	dropUnsupported: "формат картинки не поддерживается",
+	dropMkdir:       "не удалось создать каталог для файлов",
+	dropWrite:       "не удалось записать файл",
+}
+
+// importImageStats is the outcome of moving one import's pictures onto disk.
+type importImageStats struct {
+	saved   int
+	dropped int
+	reasons map[dropReason]int
+	// details keeps a bounded sample for the log — enough to identify the
+	// offending picture (its declared type and size) without turning one bad
+	// document into thousands of log lines.
+	details []string
+}
+
+// maxDropLogLines bounds the per-picture log sample. Fifteen dropped figures
+// are worth naming one by one; a thousand are not.
+const maxDropLogLines = 10
+
+func (s *importImageStats) drop(reason dropReason, mime string, size int) {
+	s.dropped++
+	if s.reasons == nil {
+		s.reasons = map[dropReason]int{}
+	}
+	s.reasons[reason]++
+	if len(s.details) < maxDropLogLines {
+		s.details = append(s.details, fmt.Sprintf("%s (declared %q, %d B)", reason, mime, size))
+	}
+}
+
+// counts is the reason breakdown for the API response, keyed by the stable
+// reason name so a client can branch on it.
+func (s importImageStats) counts() map[string]int {
+	if s.dropped == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(s.reasons))
+	for reason, n := range s.reasons {
+		out[string(reason)] = n
+	}
+	return out
+}
+
+// summary is the human-readable half of the same thing: one Russian phrase the
+// client can append to its warning without knowing the reason vocabulary.
+func (s importImageStats) summary() string {
+	if s.dropped == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(s.reasons))
+	for reason := range s.reasons {
+		names = append(names, string(reason))
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		text, ok := dropReasonText[dropReason(name)]
+		if !ok {
+			text = name
+		}
+		parts = append(parts, fmt.Sprintf("%s — %d", text, s.reasons[dropReason(name)]))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// log records what an import did with its pictures. It runs on every import,
+// not only on failure: "0 dropped" in the log is what tells an operator the
+// import happened at all on this build, which is exactly the question #2755
+// could not answer from the logs afterwards.
+func (s importImageStats) log(doc db.Document, fileName string) {
+	if s.dropped == 0 {
+		log.Printf("document import %s (%q): %d image(s) stored", doc.ID, fileName, s.saved)
+		return
+	}
+	log.Printf("document import %s (%q): %d image(s) stored, %d dropped [%s]%s",
+		doc.ID, fileName, s.saved, s.dropped, s.summary(), logSuffix(s))
+}
+
+func logSuffix(s importImageStats) string {
+	if len(s.details) == 0 {
+		return ""
+	}
+	suffix := "; first: " + strings.Join(s.details, ", ")
+	if s.dropped > len(s.details) {
+		suffix += ", …"
+	}
+	return suffix
+}
+
 // storeImportedImages moves the pictures LibreOffice inlined into the HTML onto
 // disk as document assets and rewrites the markup to point at their signed URLs.
 //
-// Returns the rewritten HTML and how many pictures were dropped. Dropping is
-// not silent at the API level — the count is reported to the client — because a
-// document that quietly lost half its figures looks like a successful import
-// until somebody scrolls.
-func (h *API) storeImportedImages(doc db.Document, page string) (string, int) {
+// Returns the rewritten HTML and what happened to each picture. Dropping is not
+// silent at the API level — the count and the reasons are reported to the
+// client and to the log — because a document that quietly lost half its figures
+// looks like a successful import until somebody scrolls.
+func (h *API) storeImportedImages(doc db.Document, page string) (string, importImageStats) {
 	dir := filepath.Join(h.uploadDir, "documents", doc.ID.String())
-	dropped := 0
-	saved := 0
+	stats := importImageStats{}
 	total := 0
 	made := false
 
 	out := dataImageRe.ReplaceAllStringFunc(page, func(match string) string {
 		groups := dataImageRe.FindStringSubmatch(match)
 		if len(groups) != 5 {
-			dropped++
+			stats.drop(dropUnreadable, "", len(match))
 			return ""
 		}
-		if saved >= maxImportAssets || total >= maxImportTotalAssets {
-			dropped++
+		mime := groups[2]
+		if stats.saved >= maxImportAssets {
+			stats.drop(dropCountLimit, mime, 0)
+			return ""
+		}
+		if total >= maxImportTotalAssets {
+			stats.drop(dropTotalLimit, mime, 0)
 			return ""
 		}
 		// The base64 payload carries the newlines LibreOffice wrapped it with.
 		payload := strings.NewReplacer("\n", "", "\r", "", " ", "", "\t", "").Replace(groups[3])
 		raw, err := base64.StdEncoding.DecodeString(payload)
-		if err != nil || len(raw) == 0 || len(raw) > maxImportAssetBytes {
-			dropped++
+		switch {
+		case err != nil:
+			stats.drop(dropBase64, mime, len(payload))
+			return ""
+		case len(raw) == 0:
+			stats.drop(dropEmpty, mime, 0)
+			return ""
+		case len(raw) > maxImportAssetBytes:
+			stats.drop(dropTooLarge, mime, len(raw))
 			return ""
 		}
 		// The declared MIME type is ignored in favour of sniffing the bytes: the
@@ -340,26 +475,29 @@ func (h *API) storeImportedImages(doc db.Document, page string) (string, int) {
 		// as an image.
 		ext, ok := mediaExts[sniffBytes(raw)]
 		if !ok {
-			dropped++
+			// The sniffed type, not the declared one, is what explains this drop:
+			// a Word document full of EMF vector drawings arrives declaring
+			// image/png and is refused on its bytes.
+			stats.drop(dropUnsupported, sniffBytes(raw), len(raw))
 			return ""
 		}
 		if !made {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
-				dropped++
+				stats.drop(dropMkdir, mime, len(raw))
 				return ""
 			}
 			made = true
 		}
 		fname := uuid.NewString() + ext
 		if err := os.WriteFile(filepath.Join(dir, fname), raw, 0o644); err != nil {
-			dropped++
+			stats.drop(dropWrite, mime, len(raw))
 			return ""
 		}
-		saved++
+		stats.saved++
 		total += len(raw)
 		return groups[1] + escapeAttr(h.docAssetURL(doc.WorkspaceID, doc.ID, fname)) + groups[4]
 	})
-	return out, dropped
+	return out, stats
 }
 
 // converterUnavailable answers a conversion that could not happen.

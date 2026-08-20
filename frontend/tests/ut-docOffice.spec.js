@@ -85,24 +85,74 @@ describe('importOfficeFile', () => {
     expect(imagesDropped).toBe(0)
   })
 
+  it('keeps the formatting the converter only expresses in legacy markup', async () => {
+    // End of the chain the normaliser sits in: what the sidecar sends for the
+    // document from задача 2755, and what has to survive into the body.
+    const api = stubApi({
+      importFile: vi.fn(async () => ({
+        data: {
+          document: { id: 'doc-1', updated_at: 'v1' },
+          html:
+            '<style>h1.western { font-size: 16pt }</style>' +
+            '<body text="#222222">' +
+            '<p align="center" style="border-bottom: 1.00pt solid #4f81bd">' +
+            '<font color="#1f4e79"><font size="6" style="font-size: 24pt"><b>Инструкция</b></font></font></p>' +
+            '<h1 class="western">Требования</h1>' +
+            '<center><table><tr><td><p><font face="Consolas, serif">sudo sysctl -w vm.max_map_count=262144</font></p></td></tr></table></center>' +
+            '</body>',
+          images_dropped: 0,
+        },
+      })),
+    })
+    await importOfficeFile(api, 'ws-1', fakeFile('Инструкция.docx'))
+    const body = JSON.stringify(api.updateContent.mock.calls[0][1])
+
+    // Colour, size and centring — none of which TipTap can see before the
+    // normaliser rewrites them as inline styles.
+    expect(body).toContain('"color":"rgb(31, 78, 121)"')
+    expect(body).toContain('"fontSize":"32px"')
+    expect(body).toContain('"textAlign":"center"')
+    // The rule Word drew as a paragraph border, and the code listing it wrote
+    // as a one-cell table.
+    expect(body).toContain('"horizontalRule"')
+    expect(body).toContain('"codeBlock"')
+    expect(body).toContain('vm.max_map_count=262144')
+  })
+
   it('passes the folder the user is looking at', async () => {
     const api = stubApi()
     await importOfficeFile(api, 'ws-1', fakeFile('a.docx'), { parentId: 'parent-9' })
     expect(api.importFile.mock.calls[0][1].get('parent_id')).toBe('parent-9')
   })
 
-  it('reports dropped pictures rather than swallowing them', async () => {
+  it('reports dropped pictures, with the reason, rather than swallowing them', async () => {
     const api = stubApi({
       importFile: vi.fn(async () => ({
         data: {
           document: { id: 'doc-1', updated_at: 'v1' },
           html: '<p>t</p>',
           images_dropped: 3,
+          images_dropped_reason: 'формат картинки не поддерживается — 3',
         },
       })),
     })
-    const { imagesDropped } = await importOfficeFile(api, 'ws-1', fakeFile('a.docx'))
+    const { imagesDropped, imagesDroppedReason } = await importOfficeFile(
+      api,
+      'ws-1',
+      fakeFile('a.docx'),
+    )
     expect(imagesDropped).toBe(3)
+    expect(imagesDroppedReason).toBe('формат картинки не поддерживается — 3')
+  })
+
+  it('survives a backend that does not send the drop reason yet', async () => {
+    const api = stubApi({
+      importFile: vi.fn(async () => ({
+        data: { document: { id: 'doc-1', updated_at: 'v1' }, html: '<p>t</p>', images_dropped: 1 },
+      })),
+    })
+    const { imagesDroppedReason } = await importOfficeFile(api, 'ws-1', fakeFile('a.docx'))
+    expect(imagesDroppedReason).toBe('')
   })
 
   it('refuses a format the route does not take, without uploading', async () => {

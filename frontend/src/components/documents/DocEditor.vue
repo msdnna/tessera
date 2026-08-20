@@ -901,6 +901,30 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   font-weight: 600;
   text-align: left;
 }
+/* Ink, fills and rules brought in from an imported document (задачи 2755, 2756 —
+   numbers written without the hash, the theming guard reads a #NNNN in this
+   block as a literal colour). They were picked against white paper, so on the
+   dark sheet they are repainted with the adapted variant the element emits
+   beside the original (DocColor and the cell attributes in docSchema.js).
+
+   These rules hand over a *value*, not a property: the colour is written inline
+   as `color: var(--doc-ink, <the document's own colour>)`, and an inline
+   declaration outranks any rule here, so repainting the property itself would be
+   inert. Defining the custom property the fallback hangs off wins instead — and
+   the light theme, which defines nothing, paints the author's colour verbatim. */
+[data-theme='dark'] .doc-content :deep(.ProseMirror [style*='--doc-ink-dark']) {
+  --doc-ink: var(--doc-ink-dark);
+}
+/* A Word header band is pale because it was drawn under near-black ink; on the
+   dark sheet it carries the theme's light text instead, so its fill is darkened
+   rather than kept. The cell's own background wins over the .ProseMirror th fill
+   above by being inline, which is what an imported header needs. */
+[data-theme='dark'] .doc-content :deep(.ProseMirror [style*='--doc-fill-dark']) {
+  --doc-fill: var(--doc-fill-dark);
+}
+[data-theme='dark'] .doc-content :deep(.ProseMirror [style*='--doc-line-dark']) {
+  --doc-line: var(--doc-line-dark);
+}
 .doc-content :deep(.ProseMirror hr) {
   border: none;
   border-top: 1px solid var(--t-border);
@@ -914,6 +938,15 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
    after the th rule so it wins over the header fill. */
 .doc-content :deep(.ProseMirror .selectedCell) {
   background: color-mix(in srgb, var(--t-primary) 18%, var(--t-surface));
+  /* An imported cell paints its fill inline, which outranks the line above, so
+     the tint reaches it through the same custom property the theme uses. */
+  --doc-fill: color-mix(in srgb, var(--t-primary) 18%, var(--t-surface));
+}
+/* Repeated under the dark theme because the rule that darkens an imported fill
+   carries one selector more and would otherwise keep the cell painted as if it
+   were not selected. */
+[data-theme='dark'] .doc-content :deep(.ProseMirror .selectedCell) {
+  --doc-fill: color-mix(in srgb, var(--t-primary) 18%, var(--t-surface));
 }
 /* The block picked up by the handle. ProseMirror marks a NodeSelection with
    this class, and without a visible cue a drag looks like it grabbed nothing. */

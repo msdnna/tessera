@@ -1,4 +1,5 @@
 import { htmlToDoc } from './docImport'
+import { normalizeOfficeHtml } from './docOfficeHtml'
 import { PDF_EXTENSION, isPdfFile, pdfDocument } from './docPdf'
 
 // Office import/export (#2733). The conversion itself happens in a LibreOffice
@@ -84,7 +85,7 @@ export function importAccept(extra = ['.md', '.markdown', '.json']) {
  * @param {string} wsId workspace id
  * @param {File} file picked file
  * @param {{parentId?: string}} [opts]
- * @returns {Promise<{document: object, imagesDropped: number}>}
+ * @returns {Promise<{document: object, imagesDropped: number, imagesDroppedReason: string}>}
  */
 export async function importOfficeFile(api, wsId, file, opts = {}) {
   if (!file) throw new Error('Файл не выбран')
@@ -104,11 +105,22 @@ export async function importOfficeFile(api, wsId, file, opts = {}) {
 
   // A PDF comes back as a stored file rather than as HTML — there is nothing to
   // parse, and the body is the single block that points at it.
-  const content = res.data?.pdf ? pdfDocument(res.data.pdf) : htmlToDoc(res.data.html || '')
+  //
+  // Everything else goes through normalizeOfficeHtml first: the sidecar speaks
+  // legacy HTML (<font>, <center>, class rules in a <style> block) that the
+  // schema cannot see, so without that step the colours, sizes, rules and code
+  // blocks of the source document are dropped at parse time (#2755).
+  const content = res.data?.pdf
+    ? pdfDocument(res.data.pdf)
+    : htmlToDoc(normalizeOfficeHtml(res.data.html || ''))
   const saved = await api.updateContent(doc.id, content, doc.updated_at)
   return {
     document: saved?.data?.updated_at ? { ...doc, updated_at: saved.data.updated_at } : doc,
     imagesDropped: Number(res.data.images_dropped) || 0,
+    // Why they were dropped, phrased by the server (it is the side that knows
+    // whether the bytes were an unsupported format or a ceiling was hit). An
+    // older backend does not send it, so the caller must treat it as optional.
+    imagesDroppedReason: String(res.data.images_dropped_reason || ''),
   }
 }
 
