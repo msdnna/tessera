@@ -1,6 +1,7 @@
 package website.msdnna.tessera.ui.components
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color as AColor
 import android.net.Uri
@@ -98,10 +99,8 @@ fun RichContent(
         AndroidView(
             modifier = Modifier.fillMaxWidth().height(heightDp.dp),
             factory = {
-                WebView(it).apply {
+                NonScrollingWebView(it).apply {
                     setBackgroundColor(AColor.TRANSPARENT)
-                    isVerticalScrollBarEnabled = false
-                    isHorizontalScrollBarEnabled = false
                     settings.javaScriptEnabled = true
                     settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                     settings.allowFileAccess = true
@@ -188,6 +187,39 @@ fun RichContent(
     }
 }
 
+/**
+ * A WebView that must never scroll its own content. The document is sized to fit
+ * (the page reports its height back), so internal scrolling can only mean the
+ * height report lagged a frame — and then the view pans its own content inside a
+ * too-short window: text gets clipped mid-line and the drag never reaches the
+ * scrolling modal around it (#2781).
+ *
+ * Reporting the right height is the actual fix; this is the guard that keeps the
+ * symptom from returning. Telling the scrolling machinery the vertical range
+ * equals the visible extent is what does the work — with nothing to scroll,
+ * Chromium neither moves the content nor asks the parent to stop intercepting
+ * the drag. [onScrollChanged] pins the offset for anything that scrolls the view
+ * programmatically (focus/anchor jumps).
+ */
+internal class NonScrollingWebView(context: Context) : WebView(context) {
+    init {
+        overScrollMode = OVER_SCROLL_NEVER
+        isVerticalScrollBarEnabled = false
+        isHorizontalScrollBarEnabled = false
+    }
+
+    override fun computeVerticalScrollRange(): Int = computeVerticalScrollExtent()
+
+    override fun onOverScrolled(scrollX: Int, scrollY: Int, clampedX: Boolean, clampedY: Boolean) {
+        super.onOverScrolled(scrollX, 0, clampedX, clampedY)
+    }
+
+    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+        super.onScrollChanged(l, 0, oldl, oldt)
+        if (scrollY != 0) scrollTo(l, 0)
+    }
+}
+
 private val richHttp by lazy { OkHttpClient() }
 
 /** Fetches a backend resource (inline image) with the Bearer token, as a
@@ -239,7 +271,8 @@ private fun buildRichHtml(
   html,body{margin:0;padding:0;background:transparent;}
   body{color:${hex(c.text1)};font-family:-apple-system,Roboto,sans-serif;font-size:14px;line-height:1.55;
        word-wrap:break-word;overflow-wrap:anywhere;}
-  #content{padding:0;}
+  /* flow-root so child margins stay inside the box we measure for the height. */
+  #content{padding:0;display:flow-root;}
   a{text-decoration:none;$accentGradCss}
   p{margin:0 0 8px;} p:last-child{margin-bottom:0;}
   h1,h2,h3,h4{margin:12px 0 6px;line-height:1.3;font-weight:600;}
@@ -373,7 +406,30 @@ private fun buildRichHtml(
       if (i >= 0 && window.AndroidRich) AndroidRich.onCheckToggle(i);
     });
   }
-  function report(){ if (window.AndroidRich) AndroidRich.onHeight(document.body.scrollHeight + 4); }
+  // The height has to track the document continuously, not once at the end of
+  // this script: the hljs stylesheet arrives from a CDN, font metrics settle
+  // late, a width change (rotation, the modal shrinking under the keyboard)
+  // reflows everything, and ticking a checkbox rewrites content without a
+  // reload. Any of those leaves the reported height short — and a short WebView
+  // scrolls its own content instead of the modal (#2781).
+  // Measured off #content (display:flow-root, so child margins count) rather
+  // than body/documentElement: those never report less than the viewport, so a
+  // document that got shorter could never shrink back.
+  var lastH = -1, frame = 0;
+  function push(){
+    frame = 0;
+    var h = Math.ceil(Math.max(el.scrollHeight, el.getBoundingClientRect().height)) + 4;
+    if (h !== lastH && window.AndroidRich) { lastH = h; AndroidRich.onHeight(h); }
+  }
+  function report(){ if (!frame) frame = requestAnimationFrame(push); }
+  if (window.ResizeObserver) new ResizeObserver(report).observe(el);
+  // Width changes (rotation, keyboard) reflow without changing #content's box
+  // height in every case — measure again regardless.
+  window.addEventListener('resize', report);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(report);
+  // The hljs theme is a CDN <link>: it restyles `pre` once it lands.
+  var themeCss = document.querySelector('link[rel=stylesheet]');
+  if (themeCss) { themeCss.addEventListener('load', report); themeCss.addEventListener('error', report); }
   // Image loads change height — re-report once they settle.
   el.querySelectorAll('img').forEach(function(im){ im.addEventListener('load', report); });
   var mer = el.querySelectorAll('code.language-mermaid');
