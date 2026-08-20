@@ -6,6 +6,57 @@ import (
 	"testing"
 )
 
+// A long full sweep must stay in the background-jobs panel once it finishes.
+// The panel drops finished syncs from the live in-memory registry and expects the
+// durable journal to back them, but the journal window filtered on started_at —
+// so a sweep that ran longer than the window (JOBS_JOURNAL_TTL, 1h by default)
+// fell out of it at the exact moment it completed and the row simply vanished.
+// Short incremental runs always finished inside the window, which is why only
+// full syncs disappeared (#2751).
+func TestAdminJobsKeepsLongFullSyncRun(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	makeAdmin(t, c)
+	s := mkStack(t, c)
+	f := newFakeGitlab(t, "gl-journal-window", "grp-journal-window")
+	connectGitlab(t, c, f)
+
+	integ := createIntegration(t, c, s.WS, s.Board, f, nil)
+
+	// Seed the journal directly rather than timing a real pull: the subject here
+	// is the retention window, and a 90-minute sweep can only be expressed by
+	// writing the timestamps. It started outside the default 1h window and
+	// finished a minute ago, well inside it.
+	var runID string
+	if err := testPool.QueryRow(context.Background(),
+		`INSERT INTO gitlab_sync_runs
+		     (integration_id, kind, trigger, mode, status, started_at, finished_at)
+		 VALUES ($1, 'pull', 'auto', 'full', 'ok',
+		         now() - interval '90 minutes', now() - interval '1 minute')
+		 RETURNING id`, integ["id"].(string)).Scan(&runID); err != nil {
+		t.Fatalf("seed journal run: %v", err)
+	}
+
+	var run map[string]any
+	for _, j := range c.get("/admin/jobs").listBody(t) {
+		if j["key"] == "syncrun:"+runID {
+			run = j
+		}
+	}
+	if run == nil {
+		t.Fatalf("full sync run %s missing from /admin/jobs — it finished inside the window", runID)
+	}
+	if run["status"] != "done" {
+		t.Errorf("run status = %v, want done", run["status"])
+	}
+	if run["mode"] != "full" {
+		t.Errorf("run mode = %v, want full (the panel labels the sweep by it)", run["mode"])
+	}
+	if run["persisted"] != true {
+		t.Errorf("run persisted = %v, want true (it comes from the journal)", run["persisted"])
+	}
+}
+
 func TestAdminJobsAPI(t *testing.T) {
 	c := signup(t)
 

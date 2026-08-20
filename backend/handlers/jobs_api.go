@@ -95,9 +95,9 @@ func (h *API) ListJobs(c *gin.Context) {
 		}
 		out = append(out, entryToDTO(e))
 	}
-	// Durable finished sync runs within the retention window.
+	// Durable sync runs that finished within the retention window.
 	since := time.Now().Add(-jobsJournalWindow())
-	if runs, err := h.q.ListRecentGitlabSyncRuns(c, db.ListRecentGitlabSyncRunsParams{StartedAt: since, Limit: 200}); err == nil {
+	if runs, err := h.q.ListRecentGitlabSyncRuns(c, db.ListRecentGitlabSyncRunsParams{Since: since, Lim: 200}); err == nil {
 		for _, r := range runs {
 			out = append(out, syncRunToDTO(r))
 		}
