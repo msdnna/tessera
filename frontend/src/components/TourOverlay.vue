@@ -4,7 +4,13 @@ import { NIcon } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
 import { useTourStore } from '@/stores/tour'
 import { useTourAnchor, anchorSelector } from '@/composables/useTourAnchor'
-import { layoutArrow, tourArc, ARROW_HEAD, unionRect, choosePlacement } from '@/utils/tourArrow'
+import {
+  layoutArrow,
+  arcPathBowed,
+  ARROW_HEAD,
+  unionRect,
+  choosePlacement,
+} from '@/utils/tourArrow'
 
 // The Get Started guide's viewport layer (#2753): a dimming mask with a cut-out
 // around the element in play, one curved arrow per anchor, and the popover.
@@ -40,7 +46,12 @@ const { rects, els, count, panels, surfaces } = useTourAnchor(() => tour.anchors
 })
 
 const target = computed(() => rects.value[0] || null)
-const masked = computed(() => step.value?.mask !== false)
+// The dimming mask is suppressed entirely while an overlay surface (a modal or
+// drawer the user opened) is on screen: that surface brings its own backdrop, so
+// adding the tour's dim on top only double-darkened it and left an ugly ring
+// around the card. With the mask off, the modal looks exactly as it would
+// outside the tour (#2753 rework). The arrows/popover still show.
+const masked = computed(() => step.value?.mask !== false && surfaces.value.length === 0)
 const isAction = computed(() => step.value?.mode === 'action')
 // A picker (calendar, priority/tags/assignee popover) is open. Used to keep the
 // popover clear of it and to hold a `set`-step until it's closed (#2753 rework).
@@ -73,15 +84,14 @@ function getCutRects() {
 }
 
 // Everything the mask punches a bright hole in: the step's anchors, any open
-// picker panel or overlay surface (so the guide never dims a control the user is
-// using — a picker, or a modal/drawer they opened mid-tour), and the step's
-// declared `cut` extras.
+// picker panel (so the guide never dims the control it just pointed at), and the
+// step's declared `cut` extras. (Modals/drawers don't need a hole — the mask is
+// switched off entirely while one is open.)
 const holes = computed(() => {
   const out = []
   for (const r of rects.value) if (r) out.push(r)
   if (masked.value) {
     for (const p of panels.value) out.push(p)
-    for (const s of surfaces.value) out.push(s)
     out.push(...getCutRects())
   }
   return out
@@ -132,21 +142,17 @@ function arrowTip(t) {
   return { x: t.right + 12, y: tcy }
 }
 
-// Async so the caller can await the arrows being laid out (their --len set on
-// the DOM paths) before restarting the draw animation — otherwise replay() fired
-// against len-0 paths and some steps drew no line at all (#2753 rework).
-async function place() {
+function place() {
   if (!target.value || !pop.value) return
   placePopover()
-  await nextTick()
-  if (!pop.value) return
-  const p = pop.value.getBoundingClientRect()
-  arrows.value = rects.value.map((r, i) => {
-    const el = arrowEls.value[i]
-    if (!r || !el) return { len: 0, head: '' }
-    return layoutArrow(el, arrowOrigin(p, r), arrowTip(r), ARROW_HEAD, (f, t) =>
-      tourArc(f, t, popSide.value),
-    )
+  nextTick(() => {
+    if (!pop.value) return
+    const p = pop.value.getBoundingClientRect()
+    arrows.value = rects.value.map((r, i) => {
+      const el = arrowEls.value[i]
+      if (!r || !el) return { len: 0, head: '' }
+      return layoutArrow(el, arrowOrigin(p, r), arrowTip(r), ARROW_HEAD, arcPathBowed)
+    })
   })
 }
 
@@ -214,7 +220,7 @@ onBeforeUnmount(unmark)
 // `pop` doesn't exist yet during the pre-flush pass).
 watch(rects, place, { deep: true, flush: 'post' })
 // A picker/surface opening or closing shifts the free space around the group, so
-// re-place (and, for masked steps, re-cut) when either set changes.
+// re-place when either set changes.
 watch(panels, place, { deep: true, flush: 'post' })
 watch(surfaces, place, { deep: true, flush: 'post' })
 watch(
@@ -223,9 +229,8 @@ watch(
     if (!id) return
     arrows.value = []
     await nextTick()
-    await place() // wait until the arrows' --len is on the DOM paths…
-    await nextTick()
-    replay() // …then restart the draw animation, so it always plays
+    place()
+    replay()
   },
   { immediate: true, flush: 'post' },
 )

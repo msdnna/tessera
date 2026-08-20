@@ -148,40 +148,24 @@ export function arcPath(from, to) {
   return `M ${from.x} ${from.y} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${to.x} ${to.y}`
 }
 
-// Cubic whose ends both run along the axis of `side` (the side the popover sits
-// on): it leaves the popover perpendicular to that edge and *arrives at the
-// target from that same side* — so the arrowhead always points straight at the
-// element (up when the popover is below, left when it's to the right, …) instead
-// of skidding in sideways, however far off to the side the target is (#2753
-// rework). The off-axis distance is absorbed by the S of the curve, giving a
-// proper drawn line. Used by the Get Started tour; the What's-New spotlight keeps
-// arcPath so its look is unchanged.
-export function tourArc(from, to, side) {
-  const dist = Math.hypot(to.x - from.x, to.y - from.y) || 1
-  const k = Math.min(70, dist * 0.42) // hook depth (how far the ends run straight)
-  // A sideways bulge on the origin-side control point, so the curve is never a
-  // dead-straight vertical/horizontal line: that would give the path a
-  // zero-width bounding box, and the accent gradient stroke degenerates to
-  // nothing on it (the arrow "disappears" — the web-accent-gradient trap, and
-  // what read as "no draw animation" on the straight-up steps, #2753 rework).
-  // Only c1 is offset, so the tip approach (c2 → to) stays axis-aligned and the
-  // head still points straight at the target.
-  const lat = Math.max(14, Math.min(30, dist * 0.22))
-  let c1, c2
-  if (side === 'bottom') {
-    c1 = { x: from.x + lat, y: from.y - k }
-    c2 = { x: to.x, y: to.y + k }
-  } else if (side === 'top') {
-    c1 = { x: from.x + lat, y: from.y + k }
-    c2 = { x: to.x, y: to.y - k }
-  } else if (side === 'right') {
-    c1 = { x: from.x - k, y: from.y + lat }
-    c2 = { x: to.x + k, y: to.y }
-  } else {
-    c1 = { x: from.x + k, y: from.y + lat }
-    c2 = { x: to.x - k, y: to.y }
-  }
-  return `M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`
+// Bowed cubic that always curves off the straight chord, by an amount that grows
+// with length — so even a short, horizontal arrow reads as a proper drawn line
+// with a gentle arc rather than a straight stub (#2753 rework). The bow is on a
+// consistent perpendicular side, which fans a group of arrows out of one popover
+// edge into a tidy sheaf. Used by the Get Started tour; the What's-New spotlight
+// keeps arcPath so its look is unchanged.
+export function arcPathBowed(from, to) {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const len = Math.hypot(dx, dy) || 1
+  const nx = -dy / len // unit perpendicular to the chord
+  const ny = dx / len
+  const bow = Math.min(28, len * 0.16)
+  const c1x = from.x + dx / 3 + nx * bow
+  const c1y = from.y + dy / 3 + ny * bow
+  const c2x = from.x + (dx * 2) / 3 + nx * bow
+  const c2y = from.y + (dy * 2) / 3 + ny * bow
+  return `M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`
 }
 
 // Triangle spanning the last `head` px of the path, pointing at `tip`.

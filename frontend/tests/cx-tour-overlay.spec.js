@@ -40,6 +40,20 @@ function panel(box = { left: 200, top: 200, width: 220, height: 260 }) {
   return el
 }
 
+// A stand-in for an overlay surface the user opened mid-tour (a modal/drawer):
+// while one is on screen the dimming mask is switched off entirely (#2753).
+function surface(cls = 'n-modal', box = { left: 400, top: 200, width: 400, height: 300 }) {
+  const el = document.createElement('div')
+  el.className = cls
+  el.getBoundingClientRect = () => ({
+    ...box,
+    right: box.left + box.width,
+    bottom: box.top + box.height,
+  })
+  document.body.appendChild(el)
+  return el
+}
+
 const INFO = { id: 'workspaces', anchor: 'ws-switch', title: 'Пространства', body: 'Тут они' }
 const ACTION = {
   id: 'open-menu',
@@ -158,6 +172,17 @@ describe('TourOverlay', () => {
     await render()
     expect(document.querySelector('.tr-mask')).toBe(null)
     expect(pop()).not.toBe(null)
+  })
+
+  it('switches the mask off while a modal/drawer is open (no double-dim)', async () => {
+    anchor('ws-switch')
+    surface('n-modal')
+    const tour = useTourStore()
+    tour.start([INFO])
+    await render()
+    // Popover/arrows still show, but the page is not dimmed by the tour.
+    expect(pop()).not.toBe(null)
+    expect(document.querySelector('.tr-mask')).toBe(null)
   })
 
   it('draws one arrow per anchor', async () => {
