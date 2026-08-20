@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"testing"
+
+	"tessera/internal/auth"
 )
 
 // #2684: the web SPA asks for its refresh token as an httpOnly cookie
@@ -124,8 +127,8 @@ func TestRefreshCookieAttributes(t *testing.T) {
 	}
 }
 
-// Refresh works on the cookie alone (empty body), rotates it, and kills the old
-// token — the flow the SPA performs after every reload.
+// Refresh works on the cookie alone (empty body), rotates it, and retires the
+// old token — the flow the SPA performs after every reload.
 func TestRefreshWithCookieOnly(t *testing.T) {
 	t.Parallel()
 	_, ck := registerCookieMode(t)
@@ -145,14 +148,47 @@ func TestRefreshWithCookieOnly(t *testing.T) {
 		t.Fatal("refresh returned no access token")
 	}
 
-	// The rotated-out token is dead, and the rejection clears the cookie so the
-	// browser stops presenting it (JS cannot delete it itself).
+	// #2750: within the grace window the rotated-out token answers once more.
+	// Rotation cannot be atomic with delivery, so a connection dropped between
+	// the two used to sign the user out over a response that never arrived.
+	replay := authReq(t, http.MethodPost, "/auth/refresh", map[string]any{}, cookieMode, ck)
+	if replay.Status != http.StatusOK {
+		t.Fatalf("replaying the rotated cookie inside the grace window: status %d, want 200\n%s",
+			replay.Status, replay.Body)
+	}
+	if again := refreshCookie(replay); again == nil || again.Value == "" {
+		t.Fatal("grace replay did not hand back a usable cookie")
+	}
+
+	// Past the window it is dead, and the rejection clears the cookie so the
+	// browser stops presenting it (JS cannot delete it itself). Age the
+	// revocation rather than sleep for it.
+	if _, err := testPool.Exec(context.Background(),
+		`UPDATE refresh_tokens SET revoked_at = now() - interval '10 minutes'
+		 WHERE token_hash = $1`, auth.HashRefreshToken(ck.Value)); err != nil {
+		t.Fatalf("aging the revoked token: %v", err)
+	}
 	reuse := authReq(t, http.MethodPost, "/auth/refresh", map[string]any{}, cookieMode, ck)
 	if reuse.Status != http.StatusUnauthorized {
-		t.Fatalf("reusing a rotated cookie: status %d, want 401", reuse.Status)
+		t.Fatalf("reusing a long-rotated cookie: status %d, want 401", reuse.Status)
 	}
 	if cleared := refreshCookie(reuse); cleared == nil || cleared.MaxAge >= 0 {
 		t.Fatalf("rejected cookie was not expired: %v", cleared)
+	}
+}
+
+// Signing out must not leave the token alive for the length of the grace window:
+// logout hard-expires it, so "log out" means now, not thirty seconds from now.
+func TestLogoutBeatsRefreshGrace(t *testing.T) {
+	t.Parallel()
+	_, ck := registerCookieMode(t)
+
+	if r := authReq(t, http.MethodPost, "/auth/logout", map[string]any{}, cookieMode, ck); r.Status != http.StatusNoContent {
+		t.Fatalf("logout: status %d\n%s", r.Status, r.Body)
+	}
+	r := authReq(t, http.MethodPost, "/auth/refresh", map[string]any{}, cookieMode, ck)
+	if r.Status != http.StatusUnauthorized {
+		t.Fatalf("refresh after logout: status %d, want 401\n%s", r.Status, r.Body)
 	}
 }
 

@@ -532,14 +532,14 @@ const listRecentGitlabSyncRuns = `-- name: ListRecentGitlabSyncRuns :many
 SELECT r.id, r.integration_id, r.kind, r.trigger, r.actor_id, r.status, r.created_count, r.updated_count, r.deleted_count, r.action_count, r.error, r.started_at, r.finished_at, r.mode, COALESCE(NULLIF(i.name, ''), i.project_path) AS integration_label
 FROM gitlab_sync_runs r
 JOIN gitlab_integrations i ON i.id = r.integration_id
-WHERE r.finished_at IS NOT NULL AND r.started_at >= $1
-ORDER BY r.started_at DESC
+WHERE r.finished_at IS NOT NULL AND r.finished_at >= $1::timestamptz
+ORDER BY r.finished_at DESC
 LIMIT $2
 `
 
 type ListRecentGitlabSyncRunsParams struct {
-	StartedAt time.Time `json:"started_at"`
-	Limit     int32     `json:"limit"`
+	Since time.Time `json:"since"`
+	Lim   int32     `json:"lim"`
 }
 
 type ListRecentGitlabSyncRunsRow struct {
@@ -560,12 +560,16 @@ type ListRecentGitlabSyncRunsRow struct {
 	IntegrationLabel string     `json:"integration_label"`
 }
 
-// ListRecentGitlabSyncRuns returns finished sync runs across every integration
-// started within the retention window, with the integration name — the durable
+// ListRecentGitlabSyncRuns returns sync runs across every integration that
+// *finished* within the retention window, with the integration name — the durable
 // backing for the background-jobs panel's journal (survives a restart, unlike the
-// in-memory registry). Instance-wide (admin panel), newest first.
+// in-memory registry). The window keys on finished_at, not started_at: a full
+// sweep can easily run longer than the window, and keying on its start would drop
+// it from the panel at the very moment it completes (the live registry discards
+// finished syncs then too, so the row would simply vanish). Instance-wide (admin
+// panel), newest finish first.
 func (q *Queries) ListRecentGitlabSyncRuns(ctx context.Context, arg ListRecentGitlabSyncRunsParams) ([]ListRecentGitlabSyncRunsRow, error) {
-	rows, err := q.db.Query(ctx, listRecentGitlabSyncRuns, arg.StartedAt, arg.Limit)
+	rows, err := q.db.Query(ctx, listRecentGitlabSyncRuns, arg.Since, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

@@ -31,9 +31,12 @@ func TestStoreImportedImagesWritesAssetsAndRewritesSrc(t *testing.T) {
 	h, doc := importFixture(t)
 	page := "<p>до</p>" + dataImg("image/png", pngBytes) + "<p>после</p>" + dataImg("image/png", pngBytes)
 
-	out, dropped := h.storeImportedImages(doc, page)
-	if dropped != 0 {
-		t.Fatalf("dropped %d pictures from a valid document", dropped)
+	out, stats := h.storeImportedImages(doc, page)
+	if stats.dropped != 0 {
+		t.Fatalf("dropped %d pictures from a valid document (%s)", stats.dropped, stats.summary())
+	}
+	if stats.saved != 2 {
+		t.Fatalf("saved = %d, want 2", stats.saved)
 	}
 	if strings.Contains(out, "data:image") {
 		t.Fatalf("a data: URI survived into the stored body: %q", out)
@@ -64,9 +67,15 @@ func TestStoreImportedImagesDropsNonImages(t *testing.T) {
 	// arbitrary content into the assets directory under an image's name.
 	page := dataImg("image/png", []byte("<html>not an image at all</html>"))
 
-	out, dropped := h.storeImportedImages(doc, page)
-	if dropped != 1 {
-		t.Fatalf("dropped = %d, want 1", dropped)
+	out, stats := h.storeImportedImages(doc, page)
+	if stats.dropped != 1 {
+		t.Fatalf("dropped = %d, want 1", stats.dropped)
+	}
+	// The reason is the point of the count: "1 dropped" alone sent #2755 to an
+	// hour of forensics before anyone knew whether it was the format, a ceiling
+	// or a failed write.
+	if stats.reasons[dropUnsupported] != 1 {
+		t.Fatalf("reasons = %v, want unsupported_type", stats.reasons)
 	}
 	if strings.Contains(out, "<img") {
 		t.Fatalf("dropped picture left an <img> behind: %q", out)
@@ -80,18 +89,21 @@ func TestStoreImportedImagesDropsOversizedPicture(t *testing.T) {
 	h, doc := importFixture(t)
 	big := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, maxImportAssetBytes+1)...)
 
-	_, dropped := h.storeImportedImages(doc, dataImg("image/png", big))
-	if dropped != 1 {
-		t.Fatalf("dropped = %d, want 1 (picture over the per-asset ceiling)", dropped)
+	_, stats := h.storeImportedImages(doc, dataImg("image/png", big))
+	if stats.dropped != 1 {
+		t.Fatalf("dropped = %d, want 1 (picture over the per-asset ceiling)", stats.dropped)
+	}
+	if stats.reasons[dropTooLarge] != 1 {
+		t.Fatalf("reasons = %v, want too_large", stats.reasons)
 	}
 }
 
 func TestStoreImportedImagesLeavesLinkedPicturesAlone(t *testing.T) {
 	h, doc := importFixture(t)
 	page := `<img src="https://example.org/logo.png">`
-	out, dropped := h.storeImportedImages(doc, page)
-	if out != page || dropped != 0 {
-		t.Fatalf("an externally linked picture was rewritten: %q (dropped %d)", out, dropped)
+	out, stats := h.storeImportedImages(doc, page)
+	if out != page || stats.dropped != 0 {
+		t.Fatalf("an externally linked picture was rewritten: %q (dropped %d)", out, stats.dropped)
 	}
 }
 

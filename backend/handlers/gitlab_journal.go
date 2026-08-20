@@ -79,6 +79,17 @@ func (h *API) newJournal(integrationID uuid.UUID, kind, trigger string, actorID 
 	}
 }
 
+// createParams describes the run row to open for this journal. Both creation
+// sites (beginJournal up front, flushJournal at the end) go through it — they used
+// to spell the params out separately and drifted, with the flush copy silently
+// dropping Mode, so every auto run landed in the journal with a blank mode.
+func (j *syncJournal) createParams() db.CreateGitlabSyncRunParams {
+	return db.CreateGitlabSyncRunParams{
+		IntegrationID: j.integrationID, Kind: j.kind, Trigger: j.trigger, ActorID: j.actorID,
+		Status: "running", StartedAt: j.startedAt, Mode: j.mode,
+	}
+}
+
 // beginJournal opens the run row before the sync starts, so a long manual run is
 // visible as "running" in the journal while it works instead of appearing only
 // once it finishes. Manual runs only — an auto heartbeat with no changes must not
@@ -88,10 +99,7 @@ func (h *API) beginJournal(ctx context.Context, j *syncJournal) {
 	if j == nil || j.trigger != "manual" || j.runID != nil {
 		return
 	}
-	run, err := h.q.CreateGitlabSyncRun(ctx, db.CreateGitlabSyncRunParams{
-		IntegrationID: j.integrationID, Kind: j.kind, Trigger: j.trigger, ActorID: j.actorID,
-		Status: "running", StartedAt: j.startedAt, Mode: j.mode,
-	})
+	run, err := h.q.CreateGitlabSyncRun(ctx, j.createParams())
 	if err != nil {
 		log.Printf("gitlab journal: begin run failed: %v", err)
 		return
@@ -141,24 +149,36 @@ func (j *syncJournal) abort(err error) {
 	j.errText = err.Error()
 }
 
+// skipEmpty reports whether this run may go unrecorded. It covers the frequent
+// no-op — a successful auto run that changed nothing, which fires every few
+// minutes and would otherwise fill the journal with empty heartbeats
+// (gitlab_integrations.last_synced_at already records that it ran).
+//
+// The auto *full sweep* is carved out: it is the periodic pull that does delete
+// detection and stamps last_full_synced_at, it happens about once a day, and the
+// background-jobs panel is expected to keep showing it as finished afterwards.
+// Skipping it when it found nothing made it vanish from the panel the moment it
+// completed (the live registry drops finished syncs, and nothing replaced it from
+// the journal) — the very symptom this guard was never meant to cause.
+func (j *syncJournal) skipEmpty() bool {
+	fullSweep := j.kind == "pull" && j.mode == "full"
+	return len(j.actions) == 0 && j.status == "ok" && j.trigger != "manual" && !fullSweep
+}
+
 // flushJournal persists the run and its actions, then prunes old runs. When
 // beginJournal already opened the run row, its actions are appended to it and the
 // status stamped — otherwise the row is created here, still carrying the real
-// start time. A successful auto run with no actions is skipped so the journal
-// isn't filled with empty heartbeats (gitlab_integrations.last_synced_at already
-// records that). Best-effort: a journal write failure must never break the sync.
+// start time and mode. Best-effort: a journal write failure must never break the
+// sync.
 func (h *API) flushJournal(ctx context.Context, j *syncJournal) {
 	if j == nil {
 		return
 	}
 	if j.runID == nil {
-		if len(j.actions) == 0 && j.status == "ok" && j.trigger != "manual" {
+		if j.skipEmpty() {
 			return
 		}
-		run, err := h.q.CreateGitlabSyncRun(ctx, db.CreateGitlabSyncRunParams{
-			IntegrationID: j.integrationID, Kind: j.kind, Trigger: j.trigger, ActorID: j.actorID,
-			Status: "running", StartedAt: j.startedAt,
-		})
+		run, err := h.q.CreateGitlabSyncRun(ctx, j.createParams())
 		if err != nil {
 			log.Printf("gitlab journal: create run failed: %v", err)
 			return

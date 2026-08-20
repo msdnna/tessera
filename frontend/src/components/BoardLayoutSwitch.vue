@@ -16,7 +16,7 @@ const opts = [
 </script>
 
 <template>
-  <div class="layout-switch">
+  <div class="layout-switch" data-tour="board-layout">
     <n-button
       v-for="o in opts"
       :key="o.value"

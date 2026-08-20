@@ -1,6 +1,7 @@
 package website.msdnna.tessera.ui.components
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color as AColor
 import android.net.Uri
@@ -9,8 +10,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +35,8 @@ import org.json.JSONObject
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraColors
+import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.resolveMention
 
 /**
  * Renders stored Markdown exactly like the web `RichContent.vue`: marked → HTML,
@@ -48,11 +54,19 @@ import website.msdnna.tessera.ui.theme.TesseraColors
 fun RichContent(
     source: String,
     modifier: Modifier = Modifier,
-    mentions: List<String> = emptyList(),
+    mentions: List<MentionItem> = emptyList(),
     // When true, GFM task checkboxes become clickable; a click reports the box
     // index via [onToggleCheck] so the caller can rewrite the stored markdown.
     interactive: Boolean = false,
     onToggleCheck: ((Int) -> Unit)? = null,
+    // Opt-in: tapping an @-mention opens a card naming the person. Off by default
+    // because RichContent also draws the description preview on board cards, where
+    // a floating card would cover neighbours and fight drag-and-drop.
+    mentionCards: Boolean = false,
+    // Opt-in: render "#123" as a link and report a tap on it. Off on board cards,
+    // where the link would swallow clicks meant for the card.
+    taskRefs: Boolean = false,
+    onTaskRef: ((Int) -> Unit)? = null,
 ) {
     val c = Tessera.colors
     val ctx = LocalContext.current
@@ -60,6 +74,13 @@ fun RichContent(
     var heightDp by remember { mutableStateOf(1) }
     // Latest callback, so the long-lived JS bridge always calls the current one.
     val toggleCb by rememberUpdatedState(onToggleCheck)
+    val taskRefCb by rememberUpdatedState(onTaskRef)
+    val roster by rememberUpdatedState(mentions)
+    // The mention card and where its chip sits (CSS px inside the view — with the
+    // viewport at initial-scale=1 those are dp, as the height report already assumes).
+    var card by remember { mutableStateOf<MentionItem?>(null) }
+    var cardX by remember { mutableStateOf(0) }
+    var cardY by remember { mutableStateOf(0) }
     // A self-originated checkbox tap already toggled (and animated) the box in the
     // WebView, so skip the reload the resulting markdown change would trigger —
     // reloading would wipe the tick animation. `lastLoaded` makes `update` act only
@@ -68,75 +89,135 @@ fun RichContent(
     val lastLoaded = remember { mutableStateOf<String?>(null) }
 
     // Rebuild the document whenever the source, theme, mentions or mode changes.
-    val html = remember(source, c.isDark, mentions, interactive) {
-        buildRichHtml(source, c, serverRoot, mentions, interactive)
+    val html = remember(source, c.isDark, mentions, interactive, mentionCards, taskRefs) {
+        // Both handles a person can be written by are matched, longer first.
+        val handles = mentions.flatMap { listOf(it.insert, it.display) }.filter { it.isNotBlank() }.distinct()
+        buildRichHtml(source, c, serverRoot, handles, interactive, mentionCards, taskRefs)
     }
 
-    AndroidView(
-        modifier = modifier.fillMaxWidth().height(heightDp.dp),
-        factory = {
-            WebView(it).apply {
-                setBackgroundColor(AColor.TRANSPARENT)
-                isVerticalScrollBarEnabled = false
-                isHorizontalScrollBarEnabled = false
-                settings.javaScriptEnabled = true
-                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                settings.allowFileAccess = true
-                addJavascriptInterface(
-                    object {
-                        @JavascriptInterface
-                        fun onHeight(px: Int) {
-                            post { heightDp = px.coerceIn(1, 6000) }
-                        }
-
-                        @JavascriptInterface
-                        fun onCheckToggle(index: Int) {
-                            post {
-                                skipNextLoad.value = true
-                                toggleCb?.invoke(index)
+    Box(modifier.fillMaxWidth()) {
+        AndroidView(
+            modifier = Modifier.fillMaxWidth().height(heightDp.dp),
+            factory = {
+                NonScrollingWebView(it).apply {
+                    setBackgroundColor(AColor.TRANSPARENT)
+                    settings.javaScriptEnabled = true
+                    settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    settings.allowFileAccess = true
+                    addJavascriptInterface(
+                        object {
+                            @JavascriptInterface
+                            fun onHeight(px: Int) {
+                                post { heightDp = px.coerceIn(1, 6000) }
                             }
-                        }
-                    },
-                    "AndroidRich",
-                )
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                        val url = request.url
-                        if (url.scheme == "http" || url.scheme == "https") {
-                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url.toString()))) }
-                            return true
-                        }
-                        return false
-                    }
 
-                    // Inline images live on our backend (`/api/uploads/…`). The
-                    // WebView's own network stack can't load them (its TLS/policy
-                    // differs from the app's working OkHttp — and any future auth
-                    // wouldn't be sent), so fetch our-server resources through the
-                    // same OkHttp path Coil uses and hand the bytes back.
-                    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                        val url = request.url.toString()
-                        val root = RetrofitClient.serverRoot
-                        if (root.isBlank() || !url.startsWith(root) || request.method != "GET") return null
-                        return runCatching { fetchResource(url) }.getOrNull()
+                            @JavascriptInterface
+                            fun onCheckToggle(index: Int) {
+                                post {
+                                    skipNextLoad.value = true
+                                    toggleCb?.invoke(index)
+                                }
+                            }
+
+                            /** A tapped @-mention: the card opens by the chip, and
+                             *  only for a handle somebody in the roster owns. */
+                            @JavascriptInterface
+                            fun onMention(handle: String, x: Int, y: Int) {
+                                post {
+                                    val item = resolveMention(roster, handle) ?: return@post
+                                    cardX = x
+                                    cardY = y
+                                    card = item
+                                }
+                            }
+
+                            @JavascriptInterface
+                            fun onTaskRef(number: Int) {
+                                post { taskRefCb?.invoke(number) }
+                            }
+                        },
+                        "AndroidRich",
+                    )
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                            val url = request.url
+                            if (url.scheme == "http" || url.scheme == "https") {
+                                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url.toString()))) }
+                                return true
+                            }
+                            return false
+                        }
+
+                        // Inline images live on our backend (`/api/uploads/…`). The
+                        // WebView's own network stack can't load them (its TLS/policy
+                        // differs from the app's working OkHttp — and any future auth
+                        // wouldn't be sent), so fetch our-server resources through the
+                        // same OkHttp path Coil uses and hand the bytes back.
+                        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                            val url = request.url.toString()
+                            val root = RetrofitClient.serverRoot
+                            if (root.isBlank() || !url.startsWith(root) || request.method != "GET") return null
+                            return runCatching { fetchResource(url) }.getOrNull()
+                        }
                     }
                 }
-            }
-        },
-        update = { web ->
-            // Only (re)load on a genuine html change. A self-toggle changed the html
-            // (markdown rewrite) but the WebView DOM already reflects + animated it,
-            // so adopt the new html without reloading.
-            if (html != lastLoaded.value) {
-                if (skipNextLoad.value) {
-                    skipNextLoad.value = false
-                } else {
-                    web.loadDataWithBaseURL("file:///android_asset/richcontent/", html, "text/html", "utf-8", null)
+            },
+            update = { web ->
+                // Only (re)load on a genuine html change. A self-toggle changed the html
+                // (markdown rewrite) but the WebView DOM already reflects + animated it,
+                // so adopt the new html without reloading.
+                if (html != lastLoaded.value) {
+                    if (skipNextLoad.value) {
+                        skipNextLoad.value = false
+                    } else {
+                        web.loadDataWithBaseURL("file:///android_asset/richcontent/", html, "text/html", "utf-8", null)
+                    }
+                    lastLoaded.value = html
                 }
-                lastLoaded.value = html
+            },
+        )
+        // Anchored to the chip: a zero-size box at the reported position, with the
+        // card hanging off it (the popup positions against its parent's bounds).
+        val shown = card
+        if (shown != null) {
+            Box(Modifier.offset(cardX.dp, cardY.dp).size(1.dp)) {
+                MentionCardPopup(shown) { card = null }
             }
-        },
-    )
+        }
+    }
+}
+
+/**
+ * A WebView that must never scroll its own content. The document is sized to fit
+ * (the page reports its height back), so internal scrolling can only mean the
+ * height report lagged a frame — and then the view pans its own content inside a
+ * too-short window: text gets clipped mid-line and the drag never reaches the
+ * scrolling modal around it (#2781).
+ *
+ * Reporting the right height is the actual fix; this is the guard that keeps the
+ * symptom from returning. Telling the scrolling machinery the vertical range
+ * equals the visible extent is what does the work — with nothing to scroll,
+ * Chromium neither moves the content nor asks the parent to stop intercepting
+ * the drag. [onScrollChanged] pins the offset for anything that scrolls the view
+ * programmatically (focus/anchor jumps).
+ */
+internal class NonScrollingWebView(context: Context) : WebView(context) {
+    init {
+        overScrollMode = OVER_SCROLL_NEVER
+        isVerticalScrollBarEnabled = false
+        isHorizontalScrollBarEnabled = false
+    }
+
+    override fun computeVerticalScrollRange(): Int = computeVerticalScrollExtent()
+
+    override fun onOverScrolled(scrollX: Int, scrollY: Int, clampedX: Boolean, clampedY: Boolean) {
+        super.onOverScrolled(scrollX, 0, clampedX, clampedY)
+    }
+
+    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+        super.onScrollChanged(l, 0, oldl, oldt)
+        if (scrollY != 0) scrollTo(l, 0)
+    }
 }
 
 private val richHttp by lazy { OkHttpClient() }
@@ -165,6 +246,8 @@ private fun buildRichHtml(
     serverRoot: String,
     mentions: List<String>,
     interactive: Boolean,
+    mentionCards: Boolean,
+    taskRefs: Boolean,
 ): String {
     val hljsTheme = if (c.isDark) "github-dark" else "github"
     val src = JSONObject.quote(source)
@@ -188,7 +271,8 @@ private fun buildRichHtml(
   html,body{margin:0;padding:0;background:transparent;}
   body{color:${hex(c.text1)};font-family:-apple-system,Roboto,sans-serif;font-size:14px;line-height:1.55;
        word-wrap:break-word;overflow-wrap:anywhere;}
-  #content{padding:0;}
+  /* flow-root so child margins stay inside the box we measure for the height. */
+  #content{padding:0;display:flow-root;}
   a{text-decoration:none;$accentGradCss}
   p{margin:0 0 8px;} p:last-child{margin-bottom:0;}
   h1,h2,h3,h4{margin:12px 0 6px;line-height:1.3;font-weight:600;}
@@ -218,6 +302,7 @@ private fun buildRichHtml(
   pre code{background:transparent;padding:0;font-size:12.5px;}
   table{border-collapse:collapse;margin:8px 0;} th,td{border:1px solid ${hex(c.border)};padding:4px 8px;}
   .mention{font-weight:600;$accentGradCss}
+  .task-ref{font-weight:600;cursor:pointer;$accentGradCss}
   .mermaid-diagram{display:flex;justify-content:center;margin:10px 0;}
   .mermaid-diagram svg{max-width:100%;height:auto;}
 </style>
@@ -226,18 +311,44 @@ private fun buildRichHtml(
 <script src="file:///android_asset/richcontent/marked.umd.js"></script>
 <script>
   var SRC = $src, ROOT = $root, MENTIONS = $mentionsJson, INTERACTIVE = $interactive;
+  var MENTION_CARDS = $mentionCards, TASK_REFS = $taskRefs;
   marked.setOptions({breaks:true, gfm:true});
   // Wrap "@Name" tokens for known members in a .mention span (mirrors the web
   // utils/markdown.js highlightMentions: text boundaries only, longer names first).
+  // data-handle carries who was written, so a tap can be resolved to the person.
   function escapeRe(s){ return s.replace(/[-.*+?^()|[\]\\{}$]/g, '\\$&'); }
+  function attr(s){ return s.replace(/"/g, '&quot;'); }
   function highlightMentions(html){
     var labels = MENTIONS.filter(Boolean).sort(function(a,b){ return b.length - a.length; }).map(escapeRe);
     if (!labels.length) return html;
     var re = new RegExp('(^|[\\s>(])@(' + labels.join('|') + ')', 'g');
-    return html.replace(re, '$1<span class="mention">@$2</span>');
+    return html.replace(re, function(_, lead, handle){
+      return lead + '<span class="mention" data-handle="' + attr(handle) + '">@' + handle + '</span>';
+    });
+  }
+  // "#123" → a chip the app resolves and opens. Capped at 7 digits so a long
+  // numeric string doesn't become a link (web linkTaskRefs).
+  function linkTaskRefs(html){
+    return html.replace(/(^|[\s>([])#(\d{1,7})\b(?!\.\d)/g, function(_, lead, n){
+      return lead + '<a class="task-ref" data-task-ref="' + n + '" href="#">#' + n + '</a>';
+    });
+  }
+  // Both decorations rewrite already-rendered HTML and neither may touch a code
+  // sample: "#2550" in a diff is not a task link and "@root" in a shell snippet
+  // is not a mention (port of the web replaceOutsideCode).
+  function replaceOutsideCode(html, fn){
+    var re = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi, out = '', last = 0, m;
+    while ((m = re.exec(html)) !== null) {
+      out += fn(html.slice(last, m.index)) + m[0];
+      last = m.index + m[0].length;
+    }
+    return out + fn(html.slice(last));
   }
   var el = document.getElementById('content');
-  el.innerHTML = highlightMentions(marked.parse(SRC || ''));
+  el.innerHTML = replaceOutsideCode(marked.parse(SRC || ''), function(part){
+    var withMentions = highlightMentions(part);
+    return TASK_REFS ? linkTaskRefs(withMentions) : withMentions;
+  });
   // Expand root-relative upload/asset URLs to the active server (inline images
   // are intercepted + fetched with auth; links open in the browser).
   el.querySelectorAll('img').forEach(function(im){
@@ -252,11 +363,36 @@ private fun buildRichHtml(
   // checkbox OR on the item's text toggles it. The native checkbox toggle animates
   // (no preventDefault); a text tap flips it manually so it animates too. Kotlin
   // skips the reload the markdown rewrite triggers (the DOM already matches it).
+  var allBoxes = [];
   if (INTERACTIVE) {
-    var allBoxes = [].slice.call(el.querySelectorAll('input[type=checkbox]'));
+    allBoxes = [].slice.call(el.querySelectorAll('input[type=checkbox]'));
     allBoxes.forEach(function(box){ box.disabled = false; });
+  }
+  if (INTERACTIVE || MENTION_CARDS || TASK_REFS) {
     el.addEventListener('click', function(e){
-      var t = e.target, box = null;
+      var t = e.target;
+      // Mention chips and "#N" links come first — they work whether or not the
+      // content is interactive. A mention highlighted inside a code sample is
+      // not a person, so it gets no card.
+      if (MENTION_CARDS && t.closest) {
+        var chip = t.closest('.mention');
+        if (chip && !chip.closest('code,pre')) {
+          var r = chip.getBoundingClientRect();
+          var handle = (chip.getAttribute('data-handle') || chip.textContent || '').replace(/^@/, '');
+          if (window.AndroidRich) AndroidRich.onMention(handle, Math.round(r.left), Math.round(r.bottom));
+          return;
+        }
+      }
+      if (TASK_REFS && t.closest) {
+        var ref = t.closest('[data-task-ref]');
+        if (ref) {
+          e.preventDefault(); // href="#" would reload the document
+          if (window.AndroidRich) AndroidRich.onTaskRef(parseInt(ref.getAttribute('data-task-ref'), 10));
+          return;
+        }
+      }
+      if (!INTERACTIVE) return;
+      var box = null;
       if (t.tagName === 'INPUT' && t.type === 'checkbox') {
         box = t;
       } else {
@@ -270,7 +406,30 @@ private fun buildRichHtml(
       if (i >= 0 && window.AndroidRich) AndroidRich.onCheckToggle(i);
     });
   }
-  function report(){ if (window.AndroidRich) AndroidRich.onHeight(document.body.scrollHeight + 4); }
+  // The height has to track the document continuously, not once at the end of
+  // this script: the hljs stylesheet arrives from a CDN, font metrics settle
+  // late, a width change (rotation, the modal shrinking under the keyboard)
+  // reflows everything, and ticking a checkbox rewrites content without a
+  // reload. Any of those leaves the reported height short — and a short WebView
+  // scrolls its own content instead of the modal (#2781).
+  // Measured off #content (display:flow-root, so child margins count) rather
+  // than body/documentElement: those never report less than the viewport, so a
+  // document that got shorter could never shrink back.
+  var lastH = -1, frame = 0;
+  function push(){
+    frame = 0;
+    var h = Math.ceil(Math.max(el.scrollHeight, el.getBoundingClientRect().height)) + 4;
+    if (h !== lastH && window.AndroidRich) { lastH = h; AndroidRich.onHeight(h); }
+  }
+  function report(){ if (!frame) frame = requestAnimationFrame(push); }
+  if (window.ResizeObserver) new ResizeObserver(report).observe(el);
+  // Width changes (rotation, keyboard) reflow without changing #content's box
+  // height in every case — measure again regardless.
+  window.addEventListener('resize', report);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(report);
+  // The hljs theme is a CDN <link>: it restyles `pre` once it lands.
+  var themeCss = document.querySelector('link[rel=stylesheet]');
+  if (themeCss) { themeCss.addEventListener('load', report); themeCss.addEventListener('error', report); }
   // Image loads change height — re-report once they settle.
   el.querySelectorAll('img').forEach(function(im){ im.addEventListener('load', report); });
   var mer = el.querySelectorAll('code.language-mermaid');

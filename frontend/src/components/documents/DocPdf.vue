@@ -107,19 +107,44 @@ async function renderPage(pdfjsPage, number) {
   }
 }
 
-async function renderWindow() {
-  if (!pdfDoc || destroyed) return
-  const wanted = pagesAround(page.value, total.value)
-  const keep = new Set(wanted)
+// Render passes are queued, never interleaved. A pass yields on every page, so
+// a second one entering meanwhile would call render() into a canvas the first
+// one still owns — pdf.js rejects that outright ("Cannot use the same canvas
+// during multiple render() operations", #2752), and the rejection surfaced as
+// an error banner over an otherwise correctly drawn document. Overlap is the
+// normal case, not a corner one: the ResizeObserver fires its first callback
+// right after mount, while onMounted's pass is still on page 1.
+let renderChain = Promise.resolve()
+let renderSeq = 0
+
+function renderWindow() {
+  const seq = (renderSeq += 1)
+  // Cancelling happens here rather than inside the pass: a scroll that outruns
+  // rendering has to drop work on the pages it left behind now, not after the
+  // pass ahead of it has drained. The cancelled task still settles before the
+  // next pass starts, so the canvas is free by then.
+  const keep = new Set(pagesAround(page.value, total.value))
   for (const [number, task] of tasks) {
     if (!keep.has(number)) task.cancel()
   }
+  // .catch keeps the chain resolved — a rejected link would silently swallow
+  // every pass queued after it.
+  renderChain = renderChain.then(() => renderWindowPass(seq)).catch(setError)
+  return renderChain
+}
+
+async function renderWindowPass(seq) {
+  if (!pdfDoc || destroyed) return
+  const wanted = pagesAround(page.value, total.value)
+  const keep = new Set(wanted)
   for (const [number] of rendered.value) {
     if (!keep.has(number)) rendered.value.delete(number)
   }
   await nextTick()
   for (const number of wanted) {
-    if (destroyed) return
+    // A superseded pass stops instead of drawing pages the newer one — already
+    // queued behind it — is about to redraw at the current page and scale.
+    if (destroyed || seq !== renderSeq) return
     try {
       const pdfjsPage = await pdfDoc.getPage(number)
       await renderPage(pdfjsPage, number)

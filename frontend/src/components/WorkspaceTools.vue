@@ -167,7 +167,14 @@ function fmtTime(d) {
     <!-- Notifications -->
     <n-popover trigger="click" :placement="placement">
       <template #trigger>
-        <n-button quaternary circle size="small" aria-label="Уведомления" class="bell-btn">
+        <n-button
+          quaternary
+          circle
+          size="small"
+          aria-label="Уведомления"
+          class="bell-btn"
+          data-tour="footer-notifications"
+        >
           <n-badge :value="notes.unread" :max="9" :show="notes.unread > 0" class="bell-badge">
             <n-icon :component="NotificationsOutline" />
           </n-badge>

@@ -17,6 +17,10 @@ data class User(
     @SerializedName("company") val company: String = "",
     @SerializedName("job_title") val jobTitle: String = "",
     @SerializedName("avatar_url") val avatarUrl: String = "",
+    // When the account was created. Drives the "What's New" gate: an account
+    // younger than the running build never updated *into* it, so it gets the
+    // changelog baselined silently instead of shown (#2766, web parity).
+    @SerializedName("created_at") val createdAt: String = "",
 )
 
 /** Per-user localizing + personalizing preferences (backend `user_preferences`). */

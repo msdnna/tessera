@@ -37,6 +37,11 @@ import (
 var blockStyleAttrs = map[string]string{
 	"textAlign":  "text-align",
 	"lineHeight": "line-height",
+	// Only table cells carry these (docSchema.js, #2756), but they travel the
+	// same path: an export that dropped the fill would hand back a .docx whose
+	// tables lost exactly the styling the import had just recovered.
+	"backgroundColor": "background-color",
+	"borderColor":     "border-color",
 }
 
 // docRenderCtx is what the whole walk needs to know beyond the node in front of

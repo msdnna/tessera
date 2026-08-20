@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -72,6 +71,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.divergedColumn
 import website.msdnna.tessera.util.dueShort
@@ -758,8 +758,12 @@ private fun DescriptionPill(task: Task, state: BoardUiState) {
             IonIcon(Ion.MENU, size = 13.dp, tint = c.text2)
         }
         TDropdown(expanded = open, onDismiss = { open = false }, scrollable = true) {
-            Box(Modifier.width(280.dp).heightIn(max = 320.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
-                RichContent(source = task.description, mentions = state.members.map { it.name })
+            // No height cap here: the popover itself scrolls (TDropdown
+            // `scrollable`). Capping the box would squeeze the RichContent
+            // WebView below its content height, and it no longer scrolls
+            // internally to compensate (#2781) — the rest would be unreachable.
+            Box(Modifier.width(280.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                RichContent(source = task.description, mentions = buildMentionItems(state.members, state.gitlabMembers))
             }
         }
     }

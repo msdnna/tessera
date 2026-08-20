@@ -38,6 +38,20 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 	return i, err
 }
 
+const expireRefreshToken = `-- name: ExpireRefreshToken :exec
+UPDATE refresh_tokens
+SET revoked_at = now(), expires_at = now() - interval '1 second'
+WHERE token_hash = $1
+`
+
+// Hard revoke for sign-out: pulling expires_at into the past puts the token
+// outside the rotation grace window too, so "log out" means logged out now and
+// not thirty seconds from now.
+func (q *Queries) ExpireRefreshToken(ctx context.Context, tokenHash string) error {
+	_, err := q.db.Exec(ctx, expireRefreshToken, tokenHash)
+	return err
+}
+
 const getRefreshToken = `-- name: GetRefreshToken :one
 SELECT id, user_id, token_hash, expires_at, revoked_at, created_at FROM refresh_tokens WHERE token_hash = $1
 `
@@ -58,10 +72,13 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 
 const revokeAllUserTokens = `-- name: RevokeAllUserTokens :exec
 UPDATE refresh_tokens
-SET revoked_at = now()
-WHERE user_id = $1 AND revoked_at IS NULL
+SET revoked_at = now(), expires_at = now() - interval '1 second'
+WHERE user_id = $1 AND expires_at > now()
 `
 
+// Same hard revoke across every session — used after a password reset. Selects
+// on expires_at rather than "revoked_at IS NULL" so tokens sitting in the grace
+// window are killed as well, instead of surviving the reset by half a minute.
 func (q *Queries) RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, revokeAllUserTokens, userID)
 	return err
@@ -71,6 +88,9 @@ const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
 UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1
 `
 
+// Rotation revoke: the token stays inside the handler's grace window (see
+// refreshGrace in handlers/auth.go), so a client whose new pair was lost to a
+// dropped connection can retry with the old one.
 func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
 	_, err := q.db.Exec(ctx, revokeRefreshToken, tokenHash)
 	return err

@@ -9,16 +9,30 @@ import { useRegisterSW } from 'virtual:pwa-register/vue'
 //
 // In dev (no SW is built) the virtual module is a no-op and `needRefresh` stays
 // false, so nothing renders.
+// How often a focused, untouched tab re-checks for a fresh deploy. The SW only
+// checks on navigation by default, so a board left open would otherwise miss a
+// `make up` until the next reload (#2779 — the toast used to appear only after
+// F5). sw.js is served `no-cache`, so each check is a cheap conditional fetch.
+const POLL_MS = 60 * 1000
+
 export function useAppUpdate() {
   const { needRefresh, updateServiceWorker } = useRegisterSW({
     immediate: true,
     onRegisteredSW(_swUrl, registration) {
-      // The SW only checks for an update on navigation by default; a long-lived
-      // tab (a board left open all day) would miss a deploy. Poll hourly so it
-      // still surfaces the toast without a manual reload.
-      if (registration) {
-        setInterval(() => registration.update(), 60 * 60 * 1000)
+      if (!registration) return
+      const check = () => {
+        // Skip work while the tab is hidden — visibilitychange re-checks the
+        // moment it comes back, which is when a new build actually matters.
+        if (document.visibilityState === 'visible') registration.update()
       }
+      // Poll on a short interval so a deploy surfaces within ~a minute even on a
+      // tab that's just sitting there, and re-check immediately whenever the user
+      // returns to the tab (the common case: deploy happens while it's in the
+      // background) — together this makes the toast appear promptly without a
+      // manual reload.
+      setInterval(check, POLL_MS)
+      document.addEventListener('visibilitychange', check)
+      window.addEventListener('focus', check)
     },
   })
   return { needRefresh, updateServiceWorker }

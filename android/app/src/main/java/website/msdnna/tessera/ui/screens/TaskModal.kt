@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -42,12 +43,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
@@ -72,8 +76,10 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.GitlabAssignee
 import website.msdnna.tessera.data.model.GitlabLink
+import website.msdnna.tessera.data.model.GitlabMember
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.Tag
@@ -85,7 +91,7 @@ import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.MarkdownEditor
-import website.msdnna.tessera.ui.components.MentionItem
+import website.msdnna.tessera.ui.components.MarkdownModeToggle
 import website.msdnna.tessera.ui.components.RichContent
 import website.msdnna.tessera.ui.components.SourceBadge
 import website.msdnna.tessera.ui.components.TButton
@@ -113,16 +119,20 @@ import website.msdnna.tessera.ui.theme.accentGradientTint
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
 import website.msdnna.tessera.util.doneTarget
 import website.msdnna.tessera.util.dueLabel
+import website.msdnna.tessera.util.groupThreads
 import website.msdnna.tessera.util.isExternalSource
 import website.msdnna.tessera.util.moveNeighbors
 import website.msdnna.tessera.util.nextColumn
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
+import website.msdnna.tessera.util.replyCountLabel
 import website.msdnna.tessera.util.shortDate
 import website.msdnna.tessera.util.siblingNeighbors
 import website.msdnna.tessera.util.sortedColumns
@@ -195,6 +205,21 @@ fun TaskModal(
     // and result can differ (a recurring task bounces straight out of the done
     // column), so echo its own wording rather than the click.
     val toastCtx = LocalContext.current
+
+    // A tapped «#N» opens that task right here (the modal already navigates by id,
+    // as the subtask and relation tabs do). A number nobody owns just says so —
+    // the same wording as on web.
+    val openTaskRef: (Int) -> Unit = { number ->
+        vm.resolveTaskNumber(number) { id ->
+            if (id != null) {
+                currentId = id
+            } else {
+                android.widget.Toast
+                    .makeText(toastCtx, "Задача #$number не найдена", android.widget.Toast.LENGTH_SHORT)
+                    .show()
+            }
+        }
+    }
     LaunchedEffect(state.commandNotice) {
         val summary = state.commandNotice ?: return@LaunchedEffect
         val applied = summary.applied.orEmpty().map { it.summary.ifBlank { "/${it.key}" } }
@@ -220,6 +245,7 @@ fun TaskModal(
     var title by remember(detail?.id) { mutableStateOf(detail?.title ?: "") }
     var description by remember(detail?.id) { mutableStateOf(detail?.description ?: "") }
     var tab by remember { mutableStateOf(0) }
+    val tabState = rememberSaveableStateHolder()
     var confirmArchive by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
@@ -315,28 +341,15 @@ fun TaskModal(
                             parentCandidates = parentCandidates,
                         )
 
-                        Spacer(Modifier.height(16.dp))
-                        Text("Описание", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.height(4.dp))
-                        MarkdownEditor(
-                            value = description,
-                            onValueChange = { description = it },
-                            placeholder = "Добавьте описание…",
-                            startInPreview = detail.description.isNotBlank(),
-                            onBlur = { vm.saveDescription(description) },
-                            uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
-                            mentions = buildMentionItems(members, gitlabMembers),
-                            fieldTag = TestTags.TASK_DESCRIPTION,
-                        )
-
                         Spacer(Modifier.height(18.dp))
                         UnderlineTabs(
                             tabs = listOf(
-                                TabItem("Комментарии", state.comments.size),
-                                TabItem("Подзадачи", detail.subtasks.size),
-                                TabItem("Связи", state.relations.size),
-                                TabItem("Файлы", state.attachments.size),
-                                TabItem("История"),
+                                TabItem("Описание", testTag = TestTags.taskTab(TestTags.TASK_TAB_DESCRIPTION)),
+                                TabItem("Комментарии", state.comments.size, TestTags.taskTab(TestTags.TASK_TAB_COMMENTS)),
+                                TabItem("Подзадачи", detail.subtasks.size, TestTags.taskTab(TestTags.TASK_TAB_SUBTASKS)),
+                                TabItem("Связи", state.relations.size, TestTags.taskTab(TestTags.TASK_TAB_RELATIONS)),
+                                TabItem("Файлы", state.attachments.size, TestTags.taskTab(TestTags.TASK_TAB_FILES)),
+                                TabItem("История", testTag = TestTags.taskTab(TestTags.TASK_TAB_HISTORY)),
                             ),
                             selected = tab,
                             onSelect = { tab = it },
@@ -353,31 +366,53 @@ fun TaskModal(
                             },
                             label = "taskTab",
                         ) { t ->
-                            when (t) {
-                                0 -> CommentsTab(
-                                    vm = vm,
-                                    comments = state.comments,
-                                    members = members,
-                                    gitlabMembers = gitlabMembers,
-                                    meId = me?.id,
-                                    commands = commands,
-                                    preview = state.commandPreview,
-                                    previewCustom = state.commandCustom,
-                                )
+                            // Each tab keeps its own saveable state across switches
+                            // (the description editor's Написать/Просмотр mode above
+                            // all): leaving a tab drops it from the composition, and
+                            // a plain `remember` there would reset on every return.
+                            // Keyed by task too: navigating to a subtask reuses the
+                            // same tab indices, and the description editor's mode is
+                            // seeded from *that* task's text — restoring the previous
+                            // task's «Просмотр» would show an empty preview instead of
+                            // the field to type in.
+                            tabState.SaveableStateProvider("${detail.id}:$t") {
+                                when (t) {
+                                    0 -> DescriptionTab(
+                                        value = description,
+                                        onValueChange = { description = it },
+                                        startInPreview = detail.description.isNotBlank(),
+                                        onBlur = { vm.saveDescription(description) },
+                                        uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
+                                        mentions = buildMentionItems(members, gitlabMembers),
+                                        onTaskRef = openTaskRef,
+                                    )
 
-                                1 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
+                                    1 -> CommentsTab(
+                                        vm = vm,
+                                        comments = state.comments,
+                                        members = members,
+                                        gitlabMembers = gitlabMembers,
+                                        meId = me?.id,
+                                        commands = commands,
+                                        preview = state.commandPreview,
+                                        previewCustom = state.commandCustom,
+                                        onTaskRef = openTaskRef,
+                                    )
 
-                                2 -> RelationsTab(
-                                    vm = vm,
-                                    relations = state.relations,
-                                    candidates = state.relationCandidates,
-                                    currentTaskId = detail.id,
-                                    onOpen = { currentId = it },
-                                )
+                                    2 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
 
-                                3 -> FilesTab(vm, state.attachments)
+                                    3 -> RelationsTab(
+                                        vm = vm,
+                                        relations = state.relations,
+                                        candidates = state.relationCandidates,
+                                        currentTaskId = detail.id,
+                                        onOpen = { currentId = it },
+                                    )
 
-                                else -> HistoryTab(state.events)
+                                    4 -> FilesTab(vm, state.attachments)
+
+                                    else -> HistoryTab(state.events)
+                                }
                             }
                         }
                     }
@@ -1209,26 +1244,6 @@ private fun MilestoneValue(
     }
 }
 
-/** @-mention candidates (web `mentionItems`): Tessera members insert their name;
- *  GitLab-only users (no Tessera account) insert their username, which GitLab
- *  resolves on write-back. Tessera-side notifications key off the name via
- *  `detectMentions`, so GitLab users never generate a Tessera notification. */
-private fun buildMentionItems(
-    members: List<Member>,
-    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
-): List<MentionItem> {
-    val tessera = members.map { MentionItem(insert = it.name, display = it.name, avatarUserId = it.userId) }
-    val gl = gitlabMembers.filter { it.tesseraUserId == null }.map {
-        MentionItem(
-            insert = it.glUsername,
-            display = it.glName.ifBlank { it.glUsername },
-            avatarSrc = it.glAvatarUrl,
-            gitlab = true,
-        )
-    }
-    return tessera + gl
-}
-
 /** How long the composer waits after a keystroke before dry-running the draft. */
 private const val CommandPreviewDebounceMs = 400L
 
@@ -1276,87 +1291,296 @@ private fun CommandPreviewStrip(
 
 // ── tabs ─────────────────────────────────────────────────────────────────────
 
+/**
+ * The description editor, the modal's first tab (#2754, web parity with #2745).
+ *
+ * It used to sit above the tab strip, which on a phone — always the narrow layout —
+ * pushed the comments and subtasks off-screen behind a long description.
+ */
+@Composable
+private fun DescriptionTab(
+    value: String,
+    onValueChange: (String) -> Unit,
+    startInPreview: Boolean,
+    onBlur: () -> Unit,
+    uploadImage: suspend (ByteArray, String, String?) -> String?,
+    mentions: List<MentionItem>,
+    onTaskRef: (Int) -> Unit,
+) {
+    MarkdownEditor(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = "Добавьте описание…",
+        startInPreview = startInPreview,
+        onBlur = onBlur,
+        uploadImage = uploadImage,
+        mentions = mentions,
+        onTaskRef = onTaskRef,
+        fieldTag = TestTags.TASK_DESCRIPTION,
+    )
+}
+
+/**
+ * One comment — avatar, header, body (or its editor). [actions] renders the
+ * links under the text (Ответить / Свернуть ответы), which differ between a
+ * thread root and a reply.
+ */
+@Composable
+private fun CommentRow(
+    cm: Comment,
+    avatarSize: Dp,
+    meId: String?,
+    vm: TaskDetailViewModel,
+    mentionItems: List<MentionItem>,
+    onTaskRef: (Int) -> Unit,
+    editing: Boolean,
+    editBody: String,
+    onEditBody: (String) -> Unit,
+    editPreview: Boolean,
+    onToggleEditPreview: () -> Unit,
+    onStartEdit: () -> Unit,
+    onEndEdit: () -> Unit,
+    actions: @Composable () -> Unit,
+) {
+    val c = Tessera.colors
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        MemberAvatar(
+            avatarSize,
+            cm.displayName ?: "?",
+            userId = cm.authorId,
+            avatarUrl = cm.glAuthorAvatarUrl,
+            muted = cm.isGitlab,
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(cm.displayName ?: "Кто-то", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                if (cm.isGitlab) {
+                    Spacer(Modifier.width(5.dp))
+                    Text("· GitLab", color = c.text3, fontSize = 11.sp)
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(whenLabel(cm.createdAt), color = c.text3, fontSize = 11.sp)
+                if (cm.authorId != null && cm.authorId == meId) {
+                    Spacer(Modifier.weight(1f))
+                    IonIconButton(Ion.PENCIL, onStartEdit, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                    IonIconButton(Ion.CLOSE, { vm.deleteComment(cm.id) }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            if (editing) {
+                MarkdownEditor(
+                    value = editBody,
+                    onValueChange = onEditBody,
+                    placeholder = "Комментарий…",
+                    minHeight = 56.dp,
+                    mentions = mentionItems,
+                    onTaskRef = onTaskRef,
+                    previewOverride = editPreview,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TButton("Сохранить", onClick = {
+                        vm.editComment(cm.id, editBody)
+                        onEndEdit()
+                    }, modifier = Modifier.height(34.dp))
+                    Spacer(Modifier.width(6.dp))
+                    TButton("Отмена", kind = TButtonKind.Secondary, onClick = onEndEdit, modifier = Modifier.height(34.dp))
+                    Spacer(Modifier.weight(1f))
+                    MarkdownModeToggle(preview = editPreview, onToggle = onToggleEditPreview)
+                }
+            } else {
+                val own = cm.authorId != null && cm.authorId == meId
+                RichContent(
+                    cm.body,
+                    mentions = mentionItems,
+                    mentionCards = true,
+                    taskRefs = true,
+                    onTaskRef = onTaskRef,
+                    interactive = own,
+                    onToggleCheck = if (own) {
+                        { i -> vm.editComment(cm.id, toggleTaskMarker(cm.body, i)) }
+                    } else {
+                        null
+                    },
+                )
+            }
+            actions()
+        }
+    }
+}
+
+/** A flat text link under a comment (Ответить, Свернуть ответы). */
+@Composable
+private fun CommentLink(text: String, onClick: () -> Unit) {
+    Text(
+        text,
+        color = Tessera.colors.text3,
+        fontSize = 12.sp,
+        modifier = Modifier.clickableNoRipple(onClick = onClick).padding(top = 2.dp, end = 12.dp, bottom = 2.dp),
+    )
+}
+
+/**
+ * Indent + the rail that ties a thread's replies to their root. The rail is a
+ * flat neutral grey on purpose: the accent gradient belongs to non-neutral
+ * elements only. Drawn rather than bordered so it spans the whole branch, and
+ * inside the node's own bounds (the leading padding offsets it) so nothing is
+ * clipped away.
+ */
+private fun Modifier.replyRail(color: Color): Modifier = this
+    .padding(start = 13.dp) // half the 26dp root avatar → the rail meets its centre
+    .drawBehind { drawRect(color, size = Size(2.dp.toPx(), size.height)) }
+    .padding(start = 15.dp)
+
+/**
+ * The @-handle a reply pre-mentions for [cm]'s author: a Tessera author by
+ * display name, a GitLab-only one by the @username the roster recovers (their
+ * display name would not resolve to anything).
+ */
+private fun mentionHandle(cm: Comment, gitlabMembers: List<GitlabMember>): String {
+    cm.authorName?.takeIf { it.isNotBlank() }?.let { return it }
+    val glName = cm.glAuthorName?.takeIf { it.isNotBlank() } ?: return ""
+    val g = gitlabMembers.find { m -> (if (m.glName.isNotBlank()) m.glName else m.glUsername) == glName }
+    return g?.glUsername?.takeIf { it.isNotBlank() } ?: glName
+}
+
 @Composable
 private fun CommentsTab(
     vm: TaskDetailViewModel,
-    comments: List<website.msdnna.tessera.data.model.Comment>,
+    comments: List<Comment>,
     members: List<Member>,
-    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    gitlabMembers: List<GitlabMember>,
     meId: String?,
     commands: List<CommandItem>,
     preview: List<website.msdnna.tessera.data.model.CommandOutcome>,
     previewCustom: List<String>,
+    onTaskRef: (Int) -> Unit,
 ) {
     val c = Tessera.colors
     var draft by remember { mutableStateOf("") }
+    // Each composer's Написать/Просмотр state (the toggle sits by its Send/Cancel
+    // buttons, not in the editor's top row — web parity, #2754).
+    var draftPreview by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
     var editBody by remember { mutableStateOf("") }
+    var editPreview by remember { mutableStateOf(false) }
+    // Local-only UI state: threads start expanded, and at most one reply
+    // composer is open (the root it answers, plus its draft).
+    var collapsed by remember { mutableStateOf(emptySet<String>()) }
+    var replyingTo by remember { mutableStateOf<String?>(null) }
+    var replyDraft by remember { mutableStateOf("") }
+    var replyPreview by remember { mutableStateOf(false) }
     val mentionItems = buildMentionItems(members, gitlabMembers)
-    // Highlight tokens for read-only comment rendering (names + GitLab usernames).
-    val mentionNames = mentionItems.map { it.insert }
+    // The API list is flat (each row carries parent_id) — assemble the threads.
+    val threads = groupThreads(comments)
+
+    // Open the reply composer on [rootId], answering [target] (root or one of its
+    // replies — either way the reply hangs off the root, as the backend collapses
+    // reply-to-reply; the answered author is the one pre-mentioned).
+    fun startReply(rootId: String, target: Comment) {
+        replyingTo = rootId
+        replyPreview = false
+        val handle = mentionHandle(target, gitlabMembers)
+        replyDraft = if (handle.isNotBlank()) "@$handle, " else ""
+        // Answering a collapsed thread with the answers hidden is writing blind.
+        collapsed = collapsed - rootId
+    }
 
     Column(Modifier.fillMaxWidth()) {
         if (comments.isEmpty()) {
             Text("Комментариев пока нет", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
         }
-        comments.forEach { cm ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                MemberAvatar(
-                    26.dp,
-                    cm.displayName ?: "?",
-                    userId = cm.authorId,
-                    avatarUrl = cm.glAuthorAvatarUrl,
-                    muted = cm.isGitlab,
-                )
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(cm.displayName ?: "Кто-то", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        if (cm.isGitlab) {
-                            Spacer(Modifier.width(5.dp))
-                            Text("· GitLab", color = c.text3, fontSize = 11.sp)
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        Text(whenLabel(cm.createdAt), color = c.text3, fontSize = 11.sp)
-                        if (cm.authorId != null && cm.authorId == meId) {
-                            Spacer(Modifier.weight(1f))
-                            IonIconButton(Ion.PENCIL, {
-                                editingId = cm.id
-                                editBody = cm.body
-                            }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
-                            IonIconButton(Ion.CLOSE, { vm.deleteComment(cm.id) }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+        threads.forEach { t ->
+            val hidden = t.root.id in collapsed
+            CommentRow(
+                cm = t.root,
+                avatarSize = 26.dp,
+                meId = meId,
+                vm = vm,
+                mentionItems = mentionItems,
+                onTaskRef = onTaskRef,
+                editing = editingId == t.root.id,
+                editBody = editBody,
+                onEditBody = { editBody = it },
+                editPreview = editPreview,
+                onToggleEditPreview = { editPreview = !editPreview },
+                onStartEdit = {
+                    editingId = t.root.id
+                    editBody = t.root.body
+                    editPreview = false
+                },
+                onEndEdit = { editingId = null },
+            ) {
+                Row {
+                    CommentLink("Ответить") { startReply(t.root.id, t.root) }
+                    if (t.replies.isNotEmpty()) {
+                        CommentLink(if (hidden) replyCountLabel(t.replies.size) else "Свернуть ответы") {
+                            collapsed = if (hidden) collapsed - t.root.id else collapsed + t.root.id
                         }
                     }
-                    Spacer(Modifier.height(2.dp))
-                    if (editingId == cm.id) {
-                        MarkdownEditor(
-                            value = editBody,
-                            onValueChange = { editBody = it },
-                            placeholder = "Комментарий…",
-                            minHeight = 56.dp,
-                            mentions = mentionItems,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Row {
-                            TButton("Сохранить", onClick = {
-                                vm.editComment(cm.id, editBody)
-                                editingId = null
-                            }, modifier = Modifier.height(34.dp))
-                            Spacer(Modifier.width(6.dp))
-                            TButton("Отмена", kind = TButtonKind.Secondary, onClick = { editingId = null }, modifier = Modifier.height(34.dp))
+                }
+            }
+            AnimatedVisibility(visible = t.replies.isNotEmpty() && !hidden) {
+                Column(Modifier.replyRail(c.border)) {
+                    t.replies.forEach { r ->
+                        CommentRow(
+                            cm = r,
+                            avatarSize = 22.dp,
+                            meId = meId,
+                            vm = vm,
+                            mentionItems = mentionItems,
+                            onTaskRef = onTaskRef,
+                            editing = editingId == r.id,
+                            editBody = editBody,
+                            onEditBody = { editBody = it },
+                            editPreview = editPreview,
+                            onToggleEditPreview = { editPreview = !editPreview },
+                            onStartEdit = {
+                                editingId = r.id
+                                editBody = r.body
+                                editPreview = false
+                            },
+                            onEndEdit = { editingId = null },
+                        ) {
+                            CommentLink("Ответить") { startReply(t.root.id, r) }
                         }
-                    } else {
-                        val own = cm.authorId != null && cm.authorId == meId
-                        RichContent(
-                            cm.body,
-                            mentions = mentionNames,
-                            interactive = own,
-                            onToggleCheck = if (own) {
-                                { i -> vm.editComment(cm.id, toggleTaskMarker(cm.body, i)) }
-                            } else {
-                                null
+                    }
+                }
+            }
+            if (replyingTo == t.root.id) {
+                Column(Modifier.replyRail(c.border).padding(bottom = 8.dp)) {
+                    MarkdownEditor(
+                        value = replyDraft,
+                        onValueChange = { replyDraft = it },
+                        placeholder = "Ответить… (@ — упоминание)",
+                        minHeight = 56.dp,
+                        uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
+                        mentions = mentionItems,
+                        onTaskRef = onTaskRef,
+                        fieldTag = TestTags.TASK_REPLY_INPUT,
+                        previewOverride = replyPreview,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TButton(
+                            "Ответить",
+                            modifier = Modifier.height(34.dp).testTag(TestTags.TASK_REPLY_SUBMIT),
+                            onClick = {
+                                if (replyDraft.isNotBlank()) {
+                                    vm.postComment(replyDraft, members, t.root.id)
+                                    replyDraft = ""
+                                    replyingTo = null
+                                }
                             },
                         )
+                        Spacer(Modifier.width(6.dp))
+                        TButton("Отмена", kind = TButtonKind.Secondary, modifier = Modifier.height(34.dp), onClick = {
+                            replyingTo = null
+                            replyDraft = ""
+                        })
+                        Spacer(Modifier.weight(1f))
+                        MarkdownModeToggle(preview = replyPreview, onToggle = { replyPreview = !replyPreview })
                     }
                 }
             }
@@ -1374,7 +1598,9 @@ private fun CommentsTab(
             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
             mentions = mentionItems,
             commands = commands,
+            onTaskRef = onTaskRef,
             fieldTag = TestTags.TASK_COMMENT_INPUT,
+            previewOverride = draftPreview,
         )
         // Dry-run the draft against the backend's parser instead of re-implementing
         // it here: the hint can never disagree with what will actually happen.
@@ -1387,12 +1613,16 @@ private fun CommentsTab(
             CommandPreviewStrip(preview, previewCustom)
         }
         Spacer(Modifier.height(8.dp))
-        TButton("Отправить", modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
-            if (draft.isNotBlank()) {
-                vm.postComment(draft, members)
-                draft = ""
-            }
-        })
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TButton("Отправить", modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
+                if (draft.isNotBlank()) {
+                    vm.postComment(draft, members)
+                    draft = ""
+                }
+            })
+            Spacer(Modifier.weight(1f))
+            MarkdownModeToggle(preview = draftPreview, onToggle = { draftPreview = !draftPreview })
+        }
     }
 }
 

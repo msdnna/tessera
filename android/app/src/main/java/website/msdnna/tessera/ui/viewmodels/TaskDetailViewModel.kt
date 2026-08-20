@@ -262,9 +262,10 @@ class TaskDetailViewModel(
 
     // ── comments ─────────────────────────────────────────────────────────────
 
-    fun postComment(body: String, members: List<Member>) = mutate {
+    /** Posts a comment; [parentId] set makes it a reply into that thread. */
+    fun postComment(body: String, members: List<Member>, parentId: String? = null) = mutate {
         if (body.isBlank()) return@mutate
-        val res = taskRepo.addComment(taskId, body, detectMentions(body, members))
+        val res = taskRepo.addComment(taskId, body, detectMentions(body, members), parentId)
         _state.update {
             it.copy(comments = taskRepo.comments(taskId), changed = true, commandPreview = emptyList(), commandCustom = emptyList())
         }
@@ -382,9 +383,31 @@ class TaskDetailViewModel(
 
     fun clearError() = _state.update { it.copy(error = null) }
 
-    /** Matches `@Name` substrings against known members, longest names first. */
+    /**
+     * Resolves a «#N» link to a task id, or null when the workspace has no such
+     * number. Resolved lazily on tap (a description can name many tasks and most
+     * are never tapped) and cached for the session — the same chip gets tapped
+     * again and again.
+     */
+    fun resolveTaskNumber(number: Int, onResult: (String?) -> Unit) {
+        numberCache[number]?.let { return onResult(it.ifBlank { null }) }
+        viewModelScope.launch {
+            val id = taskRepo.taskByNumber(workspaceId, number)?.id.orEmpty()
+            numberCache[number] = id
+            onResult(id.ifBlank { null })
+        }
+    }
+
+    private val numberCache = mutableMapOf<Int, String>()
+
+    /** Matches `@Name` substrings against known members. A member linked to GitLab
+     *  is written by their login (that is what the picker inserts, so GitLab
+     *  resolves the mention on write-back) — both spellings notify them. */
     private fun detectMentions(body: String, members: List<Member>): List<String> =
-        members.filter { it.name.isNotBlank() && body.contains("@${it.name}") }.map { it.userId }
+        members.filter { m ->
+            (m.name.isNotBlank() && body.contains("@${m.name}")) ||
+                (m.glUsername.isNotBlank() && body.contains("@${m.glUsername}"))
+        }.map { it.userId }
 
     private fun mutate(block: suspend () -> Unit) {
         viewModelScope.launch {

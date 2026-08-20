@@ -61,8 +61,16 @@ export function newCredentials(runId, suffix = '') {
   }
 }
 
-export async function register(creds) {
+// Every user the suite creates is registered seconds ago, i.e. exactly the
+// audience the Get Started guide opens itself for (#2753) — and its arrows and
+// dimming mask would land on top of whatever the spec is about to click. The
+// opt-out lives here, at the single point users are made, rather than in each
+// spec that happens to invite a second participant: those "mate" users are the
+// easiest ones to forget. get-started.spec.js passes { guide: true } to meet the
+// guide on purpose.
+export async function register(creds, { guide = false } = {}) {
   const res = await api.post('/auth/register', creds)
+  if (!guide) await skipTour(res.access_token)
   return { token: res.access_token, user: res.user }
 }
 
@@ -86,6 +94,14 @@ export async function seedBoard(token, label) {
   const board = await api.post(`/projects/${project.id}/boards`, { name: `Доска ${label}` }, token)
   const columns = await api.get(`/boards/${board.id}/columns`, token)
   return { ws, group, project, board, columns }
+}
+
+// Opt a user out of the Get Started guide. Same trap the What's-New modal fell
+// into in #2749, except the guide can't baseline itself silently (it *is* the
+// thing new users get), so the ack is written as "skipped". Called from
+// register() — see the note there.
+export async function skipTour(token) {
+  return api.post('/users/me/acknowledgements', { key: 'getstarted:skipped' }, token)
 }
 
 export async function createTask(token, boardId, columnId, title, extra = {}) {

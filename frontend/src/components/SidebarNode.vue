@@ -36,6 +36,7 @@ import {
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
+import { useTourStore } from '@/stores/tour'
 import ProjectRow from './ProjectRow.vue'
 import ProjectCreateModal from './ProjectCreateModal.vue'
 import ProjectIcon from './ProjectIcon.vue'
@@ -49,6 +50,7 @@ const props = defineProps({
 const store = useWorkspacesStore()
 const message = useMessage()
 const tree = useTreeExpand()
+const tour = useTourStore()
 
 // Persisted expand state; groups default open.
 const expanded = computed({
@@ -154,7 +156,14 @@ async function onAdd(key) {
     return
   }
   try {
-    await wsApi.createGroup(store.currentId, { name: 'Группа', parent_id: props.group.id })
+    // The new group is reported to the guide (as the project modal reports its
+    // project) so the steps that follow point at *this* group and not at the
+    // first one in the tree (#2778 rework).
+    const res = await wsApi.createGroup(store.currentId, {
+      name: 'Группа',
+      parent_id: props.group.id,
+    })
+    tour.noteCreated({ groupId: res.data?.id })
     await store.refresh()
     expanded.value = true
   } catch (e) {
@@ -193,9 +202,16 @@ async function commitRename() {
 </script>
 
 <template>
-  <div class="group-node">
+  <!-- data-tour-group is this group's identity for the Get Started guide, the
+       twin of data-tour-project on a project block (#2778): the steps about the
+       group the user just created scope their anchor to it, and it doubles as
+       the "address" a dragged project reports (its closest() group node), which
+       is how the guide tells an actual move from a mid-drag frame. On the node,
+       so a project in a subgroup reports the subgroup, not its parent. -->
+  <div class="group-node" :data-tour-group="group.id">
     <div
       class="row group-row"
+      data-tour="group-row"
       @contextmenu.prevent.stop="onCtx"
       @touchstart.passive="lp.start"
       @touchend="lp.cancel"

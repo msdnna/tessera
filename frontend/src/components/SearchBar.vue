@@ -90,7 +90,7 @@ function gotoDocument(d) {
 </script>
 
 <template>
-  <div class="search">
+  <div class="search" data-tour="ws-search">
     <n-input
       ref="inputRef"
       v-model:value="q"
