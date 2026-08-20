@@ -121,7 +121,11 @@ async function addAtRoot(key) {
     return
   }
   try {
-    await wsApi.createGroup(store.currentId, { name: 'Группа' })
+    // Same as onProjectCreated above: the guide's «Группа создана» and «перетащите
+    // проект в группу» steps have to point at the group this click just made, not
+    // at whichever group happens to be first in the tree (#2778 rework).
+    const res = await wsApi.createGroup(store.currentId, { name: 'Группа' })
+    tour.noteCreated({ groupId: res.data?.id })
     await store.refresh()
   } catch (e) {
     message.error(e.message)

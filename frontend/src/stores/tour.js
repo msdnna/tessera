@@ -29,6 +29,7 @@ import { isBrandNewAccount } from '@/utils/account'
 //       count: 'project-row',         // …or more elements match this anchor
 //                                     //    than when the step opened, or
 //       set: '[data-tour="tm-due"][data-tour-set]',  // …anything matches at all
+//       moved: { el, within, by },    // …or the element changed container
 //     },
 //   }
 //
@@ -46,6 +47,18 @@ import { isBrandNewAccount } from '@/utils/account'
 // value, and the step ends as soon as it matches. Deliberately baseline-free —
 // a count baseline would deadlock the step on a task whose field was already
 // filled, and only «Пропустить» would get the user out.
+//
+// `moved` is the drag-and-drop rule (#2778). A drag can't be caught by a click or
+// by a field carrying a value, and `count` would lie: "the column now holds one
+// more card" is equally true when the user *created* a card there instead of
+// dragging one in. So the view reports an *address* — the container the tracked
+// element currently sits in — and the step ends once that address changes:
+//
+//   moved: { el: '<what is dragged>', within: '<container>', by: '<attribute>' }
+//   address = document.querySelector(el)?.closest(within)?.getAttribute(by)
+//
+// One rule covers both DnD surfaces: for a card the address is the column name,
+// for a project row the id of the group whose list it lives in.
 
 export const TOUR_PREFIX = 'getstarted:'
 export const TOUR_DONE = TOUR_PREFIX + 'done'
@@ -58,20 +71,23 @@ export const useTourStore = defineStore('tour', () => {
   const steps = ref([])
   const index = ref(-1)
   const active = ref(false)
-  // Ids of the project/board the user creates while walking the guide, so the
-  // steps that follow can point at *that* row rather than the first one in the
-  // tree (#2753 rework). Anchors reference them with `{project}` / `{board}`
-  // tokens, expanded by resolve() below.
+  // Ids of the project/board/group the user creates while walking the guide, so
+  // the steps that follow can point at *that* row rather than the first one in
+  // the tree (#2753 rework, extended to groups by the #2778 rework — a tree that
+  // already had groups got the mask on the wrong one). Anchors reference them
+  // with `{project}` / `{board}` / `{group}` tokens, expanded by resolve() below.
   const ctx = ref({})
 
-  // Expand `{project}` / `{board}` tokens in an anchor selector. A token with no
-  // id yet collapses to an empty attribute value that matches nothing, so the
-  // step simply waits for the entity instead of grabbing a stray element.
+  // Expand `{project}` / `{board}` / `{group}` tokens in an anchor selector. A
+  // token with no id yet collapses to an empty attribute value that matches
+  // nothing, so the step simply waits for the entity instead of grabbing a stray
+  // element.
   function resolve(sel) {
     if (typeof sel !== 'string') return sel
     return sel
       .replace(/\{project\}/g, ctx.value.projectId || '')
       .replace(/\{board\}/g, ctx.value.boardId || '')
+      .replace(/\{group\}/g, ctx.value.groupId || '')
   }
 
   // Sidebar reports the entity it just created (project modal / inline board
@@ -96,6 +112,10 @@ export const useTourStore = defineStore('tour', () => {
   // Same idea for advanceOn.count, except the baseline can only be taken from
   // the first report the view makes after the step opened (the store has no DOM).
   let entryCount = null
+  // …and for advanceOn.moved, where the baseline is the address the tracked
+  // element started at. `undefined` means "no report yet"; `null` is a legitimate
+  // baseline (a project sitting at the root of the tree has no group above it).
+  let entryPlace
 
   function persist(step) {
     try {
@@ -110,6 +130,7 @@ export const useTourStore = defineStore('tour', () => {
     const step = steps.value[index.value] || null
     entry = step?.advanceOn?.snapshot?.() ?? null
     entryCount = null
+    entryPlace = undefined
     persist(step)
   }
 
@@ -166,6 +187,7 @@ export const useTourStore = defineStore('tour', () => {
     steps.value = []
     entry = null
     entryCount = null
+    entryPlace = undefined
     ctx.value = {}
     persist(null)
   }
@@ -242,6 +264,27 @@ export const useTourStore = defineStore('tour', () => {
     if (n > entryCount) next()
   }
 
+  // Where the element an advanceOn.moved step tracks currently lives, as reported
+  // by the view (see the note on `moved` above). The first report after the step
+  // opened is the baseline; the step ends once the address is a *different* one.
+  //
+  // An empty address is never an ending: mid-drag SortableJS lifts the node out
+  // of its list for a frame, so closest() finds nothing and the report comes back
+  // null — advancing on that would close the step while the card is still in the
+  // air, before it ever reached a column.
+  function located(stepId, place) {
+    const step = current.value
+    if (!active.value || step?.id !== stepId || step.mode !== 'action') return
+    if (!step.advanceOn?.moved) return
+    const at = place || null
+    if (entryPlace === undefined) {
+      entryPlace = at
+      return
+    }
+    if (at === null) return
+    if (at !== entryPlace) next()
+  }
+
   // Entity-based advancement: re-checked whenever anything when() reads changes.
   watchEffect(() => {
     const step = current.value
@@ -268,6 +311,7 @@ export const useTourStore = defineStore('tour', () => {
     finish,
     clicked,
     counted,
+    located,
     anchorMissing,
   }
 })

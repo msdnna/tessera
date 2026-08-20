@@ -124,10 +124,28 @@ export function cardsIn(page, columnName) {
 // the card then snaps back and the spec fails with a very unhelpful "card not in
 // the target column".
 export async function dragCard(page, card, targetColumn) {
-  const from = await card.boundingBox()
   const dropZone = targetColumn.locator('.drop')
   await expect(dropZone).toBeVisible()
-  const to = await dropZone.boundingBox()
+  await dragOnto(page, card, dropZone)
+}
+
+// dragRow moves a sidebar project row onto another row (#2778). The sidebar tree
+// runs on the same vuedraggable/SortableJS as the board, with the same 160ms
+// delay, so the pointer sequence is shared with dragCard.
+//
+// Aim at an occupied row, not at a group's empty project list: that list only
+// gets its 6px droppable height *during* a drag (`.sb-dragging .sb-dropzone` in
+// main.css), and a 6px target is not something a synthetic mouse path hits
+// reliably. Dropping next to a project that is already in the group puts the
+// dragged one in the same list, which is what the guide is asking for anyway.
+export async function dragRow(page, row, targetRow) {
+  await expect(targetRow).toBeVisible()
+  await dragOnto(page, row, targetRow)
+}
+
+async function dragOnto(page, source, target) {
+  const from = await source.boundingBox()
+  const to = await target.boundingBox()
   if (!from || !to) throw new Error('drag source or target is not visible')
 
   const sx = from.x + from.width / 2

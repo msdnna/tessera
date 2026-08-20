@@ -37,6 +37,17 @@ export const PANEL_SEL = [
 // free to sit *inside* a modal (naming a project, filling a task field).
 export const SURFACE_SEL = ['.n-modal', '.n-drawer'].join(',')
 
+// The container an advanceOn.moved spec's element currently sits in, read as a
+// plain string so the store can compare "before" with "now" without holding on
+// to DOM nodes — the board re-renders its card list after every drop, so a node
+// reference would go stale exactly when it matters.
+export function placeOf(spec) {
+  if (!spec?.el || !spec.within || !spec.by) return null
+  const el = document.querySelector(anchorSelector(spec.el))
+  const box = el?.closest(anchorSelector(spec.within))
+  return box?.getAttribute(spec.by) ?? null
+}
+
 function boxOf(el) {
   const r = el.getBoundingClientRect()
   // Elements that are in the DOM but not laid out (display:none, a collapsed
@@ -72,11 +83,19 @@ function boxOf(el) {
  *                                  watch — the DOM is what there is). Counted on
  *                                  the same mutation pass, so it costs one extra
  *                                  querySelectorAll per frame that already ran.
+ * @param placeFn   () => spec     reactive getter for an advanceOn.moved spec
+ *                                  ({ el, within, by }, selectors already
+ *                                  resolved). Reports the *address* of the
+ *                                  container `el` currently sits in, so the
+ *                                  caller can tell a drag actually landed
+ *                                  somewhere else (#2778). Read on the same
+ *                                  pass — one more querySelector per frame.
  */
-export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {}) {
+export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn, placeFn } = {}) {
   const rects = ref([])
   const els = ref([])
   const count = ref(0)
+  const place = ref(null)
   const panels = ref([])
   const surfaces = ref([])
   let frame = 0
@@ -93,6 +112,7 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
     rects.value = nextRects
     const countSel = anchorSelector(countFn?.())
     count.value = countSel ? document.querySelectorAll(countSel).length : 0
+    place.value = placeOf(placeFn?.())
     panels.value = [...document.querySelectorAll(PANEL_SEL)].map(boxOf).filter(Boolean)
     surfaces.value = [...document.querySelectorAll(SURFACE_SEL)].map(boxOf).filter(Boolean)
     if (ro) {
@@ -129,7 +149,9 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
   window.addEventListener('scroll', refresh, true)
 
   watch(
-    () => [keysFn(), countFn?.()],
+    // The moved-spec is serialised: it's rebuilt on every read, so passing the
+    // object itself would re-measure on every unrelated reactive tick.
+    () => [keysFn(), countFn?.(), JSON.stringify(placeFn?.() ?? null)],
     ([keys]) => {
       measure() // synchronous so the first paint already has a box
       armMissing(keys || [])
@@ -146,5 +168,5 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
     if (frame) cancelAnimationFrame(frame)
   })
 
-  return { rects, els, count, panels, surfaces, refresh }
+  return { rects, els, count, place, panels, surfaces, refresh }
 }

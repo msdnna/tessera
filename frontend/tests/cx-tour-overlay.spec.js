@@ -10,6 +10,8 @@ vi.mock('@/api', () => apiMock)
 
 import TourOverlay from '@/components/TourOverlay.vue'
 import { useTourStore } from '@/stores/tour'
+import { sidebarDragging } from '@/composables/useSidebarDnd'
+import { boardDragging } from '@/composables/useBoardDragScroll'
 
 // jsdom lays nothing out, so anchors get a hand-made box — the overlay treats a
 // 0×0 element as "not there yet" (a collapsed drawer, a display:none section).
@@ -86,6 +88,9 @@ afterEach(() => {
   wrapper = null
   document.body.innerHTML = ''
   localStorage.clear()
+  // Module-level flags — a test that leaves one set would fade the next one out.
+  sidebarDragging.value = false
+  boardDragging.value = false
 })
 
 describe('TourOverlay', () => {
@@ -163,6 +168,49 @@ describe('TourOverlay', () => {
     const holes = document.querySelectorAll('#tr-hole rect[fill="black"]')
     expect(holes).toHaveLength(2)
     expect(document.querySelector('.tr-dim')).not.toBe(null)
+  })
+
+  it('cuts around the group the guide created, not the first one in the tree', async () => {
+    // #2778 rework: `cut` went to the DOM with its {group} token unexpanded-ish
+    // — it never went through resolve() at all — so a workspace that already had
+    // groups got the bright hole (and the arrow's clearance) on someone else's.
+    const groupNode = (id, box) => {
+      const node = document.createElement('div')
+      node.setAttribute('data-tour-group', id)
+      const row = document.createElement('div')
+      row.setAttribute('data-tour', 'group-row')
+      row.getBoundingClientRect = () => ({
+        ...box,
+        right: box.left + box.width,
+        bottom: box.top + box.height,
+      })
+      node.appendChild(row)
+      document.body.appendChild(node)
+      return row
+    }
+    groupNode('g-old', { left: 10, top: 10, width: 120, height: 24 })
+    groupNode('g-new', { left: 10, top: 300, width: 120, height: 24 })
+    anchor('project-row', { left: 10, top: 500, width: 120, height: 24 })
+
+    const tour = useTourStore()
+    tour.start([
+      {
+        id: 'dnd-project',
+        anchor: 'project-row',
+        cut: ['[data-tour-group="{group}"] [data-tour="group-row"]'],
+        title: 'Перетащите проект',
+        mode: 'action',
+      },
+    ])
+    tour.noteCreated({ groupId: 'g-new' })
+    await render()
+
+    // One hole for the step's own anchor, one for the cut — and the cut sits on
+    // the created group's row (y 300), not on the pre-existing one (y 10).
+    const holes = [...document.querySelectorAll('#tr-hole rect[fill="black"]')]
+    expect(holes).toHaveLength(2)
+    expect(holes.map((h) => h.getAttribute('y'))).toContain('294')
+    expect(holes.map((h) => h.getAttribute('y'))).not.toContain('4')
   })
 
   it('omits the mask when the step opts out', async () => {
@@ -315,6 +363,117 @@ describe('TourOverlay', () => {
     await render()
     // One hole for the field anchor, one for the open panel.
     expect(document.querySelectorAll('#tr-hole rect[fill="black"]')).toHaveLength(2)
+  })
+
+  it('advances a moved-step once the tracked element lands in another container', async () => {
+    // #2778: the overlay reports where the card currently lives (the column's
+    // data-column-name), the store compares it with the address on step entry.
+    const from = document.createElement('div')
+    from.setAttribute('data-column-name', 'К работе')
+    const to = document.createElement('div')
+    to.setAttribute('data-column-name', 'В процессе')
+    document.body.append(from, to)
+    const card = document.createElement('div')
+    card.setAttribute('data-testid', 'task-card')
+    from.appendChild(card)
+    anchor('board-composer') // something for the arrow to point at
+
+    const tour = useTourStore()
+    tour.start([
+      {
+        id: 'dnd-card',
+        anchor: 'board-composer',
+        mode: 'action',
+        advanceOn: {
+          moved: {
+            el: '[data-testid="task-card"]',
+            within: '[data-column-name]',
+            by: 'data-column-name',
+          },
+        },
+      },
+      INFO,
+    ])
+    anchor('ws-switch')
+    await render()
+    expect(tour.current.id).toBe('dnd-card')
+
+    // Mid-drag: SortableJS has the node out of any list for a frame.
+    card.remove()
+    await new Promise((r) => requestAnimationFrame(r))
+    await nextTick()
+    expect(tour.current.id).toBe('dnd-card')
+
+    to.appendChild(card)
+    await new Promise((r) => requestAnimationFrame(r))
+    await nextTick()
+    expect(tour.current.id).toBe('workspaces')
+  })
+
+  it('survives the board re-rendering the card it tracks after the drop', async () => {
+    // The board reloads and rebuilds its card list right after a drop, so the
+    // tracked node is replaced by a different element in the target column. The
+    // address is read off the container's attribute, not from a node reference.
+    const from = document.createElement('div')
+    from.setAttribute('data-column-name', 'К работе')
+    const to = document.createElement('div')
+    to.setAttribute('data-column-name', 'В процессе')
+    document.body.append(from, to)
+    const card = document.createElement('div')
+    card.setAttribute('data-testid', 'task-card')
+    from.appendChild(card)
+    anchor('board-composer')
+
+    const tour = useTourStore()
+    tour.start([
+      {
+        id: 'dnd-card',
+        anchor: 'board-composer',
+        mode: 'action',
+        advanceOn: {
+          moved: {
+            el: '[data-testid="task-card"]',
+            within: '[data-column-name]',
+            by: 'data-column-name',
+          },
+        },
+      },
+      INFO,
+    ])
+    anchor('ws-switch')
+    await render()
+
+    card.remove()
+    const rebuilt = document.createElement('div')
+    rebuilt.setAttribute('data-testid', 'task-card')
+    to.appendChild(rebuilt)
+    await new Promise((r) => requestAnimationFrame(r))
+    await nextTick()
+    expect(tour.current.id).toBe('workspaces')
+  })
+
+  it('fades out while a drag is in progress, on either surface', async () => {
+    // #2778: the layer never blocked the pointer, but an arrow over the drag
+    // ghost and a mask shading the target both read as "the guide is in the way".
+    anchor('ws-switch')
+    const tour = useTourStore()
+    tour.start([INFO])
+    await render()
+    const layer = () => document.querySelector('.tr-layer')
+    expect(layer().classList.contains('dragging')).toBe(false)
+
+    boardDragging.value = true
+    await nextTick()
+    expect(layer().classList.contains('dragging')).toBe(true)
+
+    boardDragging.value = false
+    sidebarDragging.value = true
+    await nextTick()
+    expect(layer().classList.contains('dragging')).toBe(true)
+
+    sidebarDragging.value = false
+    await nextTick()
+    expect(layer().classList.contains('dragging')).toBe(false)
   })
 
   it('flags the elements it points at, so hover-only buttons stay visible', async () => {
