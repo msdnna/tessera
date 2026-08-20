@@ -23,6 +23,7 @@
     "e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@sentry/vue": "^10.70.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
