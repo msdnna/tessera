@@ -91,6 +91,7 @@ import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.MarkdownEditor
+import website.msdnna.tessera.ui.components.MarkdownModeToggle
 import website.msdnna.tessera.ui.components.RichContent
 import website.msdnna.tessera.ui.components.SourceBadge
 import website.msdnna.tessera.ui.components.TButton
@@ -1335,6 +1336,8 @@ private fun CommentRow(
     editing: Boolean,
     editBody: String,
     onEditBody: (String) -> Unit,
+    editPreview: Boolean,
+    onToggleEditPreview: () -> Unit,
     onStartEdit: () -> Unit,
     onEndEdit: () -> Unit,
     actions: @Composable () -> Unit,
@@ -1373,15 +1376,18 @@ private fun CommentRow(
                     minHeight = 56.dp,
                     mentions = mentionItems,
                     onTaskRef = onTaskRef,
+                    previewOverride = editPreview,
                 )
                 Spacer(Modifier.height(6.dp))
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     TButton("Сохранить", onClick = {
                         vm.editComment(cm.id, editBody)
                         onEndEdit()
                     }, modifier = Modifier.height(34.dp))
                     Spacer(Modifier.width(6.dp))
                     TButton("Отмена", kind = TButtonKind.Secondary, onClick = onEndEdit, modifier = Modifier.height(34.dp))
+                    Spacer(Modifier.weight(1f))
+                    MarkdownModeToggle(preview = editPreview, onToggle = onToggleEditPreview)
                 }
             } else {
                 val own = cm.authorId != null && cm.authorId == meId
@@ -1453,13 +1459,18 @@ private fun CommentsTab(
 ) {
     val c = Tessera.colors
     var draft by remember { mutableStateOf("") }
+    // Each composer's Написать/Просмотр state (the toggle sits by its Send/Cancel
+    // buttons, not in the editor's top row — web parity, #2754).
+    var draftPreview by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
     var editBody by remember { mutableStateOf("") }
+    var editPreview by remember { mutableStateOf(false) }
     // Local-only UI state: threads start expanded, and at most one reply
     // composer is open (the root it answers, plus its draft).
     var collapsed by remember { mutableStateOf(emptySet<String>()) }
     var replyingTo by remember { mutableStateOf<String?>(null) }
     var replyDraft by remember { mutableStateOf("") }
+    var replyPreview by remember { mutableStateOf(false) }
     val mentionItems = buildMentionItems(members, gitlabMembers)
     // The API list is flat (each row carries parent_id) — assemble the threads.
     val threads = groupThreads(comments)
@@ -1469,6 +1480,7 @@ private fun CommentsTab(
     // reply-to-reply; the answered author is the one pre-mentioned).
     fun startReply(rootId: String, target: Comment) {
         replyingTo = rootId
+        replyPreview = false
         val handle = mentionHandle(target, gitlabMembers)
         replyDraft = if (handle.isNotBlank()) "@$handle, " else ""
         // Answering a collapsed thread with the answers hidden is writing blind.
@@ -1491,9 +1503,12 @@ private fun CommentsTab(
                 editing = editingId == t.root.id,
                 editBody = editBody,
                 onEditBody = { editBody = it },
+                editPreview = editPreview,
+                onToggleEditPreview = { editPreview = !editPreview },
                 onStartEdit = {
                     editingId = t.root.id
                     editBody = t.root.body
+                    editPreview = false
                 },
                 onEndEdit = { editingId = null },
             ) {
@@ -1519,9 +1534,12 @@ private fun CommentsTab(
                             editing = editingId == r.id,
                             editBody = editBody,
                             onEditBody = { editBody = it },
+                            editPreview = editPreview,
+                            onToggleEditPreview = { editPreview = !editPreview },
                             onStartEdit = {
                                 editingId = r.id
                                 editBody = r.body
+                                editPreview = false
                             },
                             onEndEdit = { editingId = null },
                         ) {
@@ -1541,9 +1559,10 @@ private fun CommentsTab(
                         mentions = mentionItems,
                         onTaskRef = onTaskRef,
                         fieldTag = TestTags.TASK_REPLY_INPUT,
+                        previewOverride = replyPreview,
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         TButton(
                             "Ответить",
                             modifier = Modifier.height(34.dp).testTag(TestTags.TASK_REPLY_SUBMIT),
@@ -1560,6 +1579,8 @@ private fun CommentsTab(
                             replyingTo = null
                             replyDraft = ""
                         })
+                        Spacer(Modifier.weight(1f))
+                        MarkdownModeToggle(preview = replyPreview, onToggle = { replyPreview = !replyPreview })
                     }
                 }
             }
@@ -1579,6 +1600,7 @@ private fun CommentsTab(
             commands = commands,
             onTaskRef = onTaskRef,
             fieldTag = TestTags.TASK_COMMENT_INPUT,
+            previewOverride = draftPreview,
         )
         // Dry-run the draft against the backend's parser instead of re-implementing
         // it here: the hint can never disagree with what will actually happen.
@@ -1591,12 +1613,16 @@ private fun CommentsTab(
             CommandPreviewStrip(preview, previewCustom)
         }
         Spacer(Modifier.height(8.dp))
-        TButton("Отправить", modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
-            if (draft.isNotBlank()) {
-                vm.postComment(draft, members)
-                draft = ""
-            }
-        })
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TButton("Отправить", modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
+                if (draft.isNotBlank()) {
+                    vm.postComment(draft, members)
+                    draft = ""
+                }
+            })
+            Spacer(Modifier.weight(1f))
+            MarkdownModeToggle(preview = draftPreview, onToggle = { draftPreview = !draftPreview })
+        }
     }
 }
 

@@ -93,6 +93,7 @@ object Ion {
     const val ARCHIVE = "archive"
     const val GIT_MERGE = "git_merge"
     const val PENCIL = "pencil"
+    const val EYE = "eye"
     const val SEND = "send"
     const val LINK = "link"
     const val GITLAB = "gitlab"

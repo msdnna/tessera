@@ -53,9 +53,9 @@ class TaskModalE2eTest {
         compose.onNodeWithTag(TestTags.TASK_TITLE).performTextClearance()
         compose.onNodeWithTag(TestTags.TASK_TITLE).performTextInput(newTitle)
         // The description lives in the modal's first tab, which is the one open on
-        // load (#2754) — no tab switch needed here. The editor opens on its
-        // «Написать» tab only while the description is empty; a seeded task has
-        // none, so the text area is composed right away.
+        // load (#2754) — no tab switch needed here. The editor opens in write mode
+        // (not preview) while the description is empty; a seeded task has none, so
+        // the text area is composed right away.
         compose.onNodeWithTag(TestTags.TASK_DESCRIPTION).performScrollTo().performTextInput(description)
         // No scroll for the footer: it is pinned below the scrolling body, so
         // `performScrollTo` there fails on «no parent with a Scroll action».

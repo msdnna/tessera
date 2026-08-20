@@ -9,7 +9,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -41,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,14 +63,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import website.msdnna.tessera.ui.theme.AccentGradientStrengthSubtle
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
-import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.MdEdit
@@ -123,12 +122,20 @@ fun MarkdownEditor(
     // Offer the fullscreen split editor (web parity). False inside that dialog
     // itself, which reuses this composable and must not offer to reopen itself.
     allowFullscreen: Boolean = true,
+    // Controlled preview mode: when non-null the host owns the Написать/Просмотр
+    // flag and renders the eye/pencil toggle itself (the comment composers place it
+    // next to Send/Cancel). Null → the editor keeps its own state and shows the
+    // toggle in its top row (the task description). Also used with `false` inside the
+    // fullscreen dialog, whose separate preview pane makes an in-editor toggle moot.
+    previewOverride: Boolean? = null,
 ) {
     val c = Tessera.colors
     // Saveable, not plain remember: inside the task modal the editor lives in a tab
     // that leaves the composition when another tab is shown (#2754) — the chosen
     // Написать/Просмотр mode has to survive coming back, and a rotation with it.
-    var preview by rememberSaveable { mutableStateOf(startInPreview) }
+    var previewInternal by rememberSaveable { mutableStateOf(startInPreview) }
+    val controlled = previewOverride != null
+    val preview = previewOverride ?: previewInternal
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var uploading by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
@@ -173,10 +180,10 @@ fun MarkdownEditor(
     }
 
     Column(modifier.fillMaxWidth()) {
+        // A single right-aligned control row (the old Написать/Просмотр tabs are gone,
+        // replaced by the eye/pencil toggle): insert actions in write mode, then the
+        // mode toggle next to the fullscreen button — matching the web editor.
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            EditorTab("Написать", active = !preview) { preview = false }
-            Spacer(Modifier.width(16.dp))
-            EditorTab("Просмотр", active = preview) { preview = true }
             Spacer(Modifier.weight(1f))
             if (!preview) {
                 if (uploadImage != null) {
@@ -197,7 +204,14 @@ fun MarkdownEditor(
                     tint = c.text2,
                 )
             }
+            // Controlled editors (comments) hide the toggle — the host renders it by
+            // its Send/Cancel buttons; the fullscreen dialog has its own preview pane.
+            if (!controlled) {
+                Spacer(Modifier.width(2.dp))
+                MarkdownModeToggle(preview = preview, onToggle = { previewInternal = !preview })
+            }
             if (allowFullscreen) {
+                Spacer(Modifier.width(2.dp))
                 IonIconButton(
                     Ion.EXPAND,
                     onClick = { fullscreen = true },
@@ -345,6 +359,28 @@ private fun MarkdownFullscreenDialog(
 ) {
     val c = Tessera.colors
     val wide = LocalConfiguration.current.screenWidthDp >= 600
+    // The two panes carry their own scroll, kept lined up as either is dragged (web
+    // parity for long descriptions). Proportional — the panes differ in height — and
+    // cross-guarded on isScrollInProgress so the follower's programmatic scroll can't
+    // feed back into a loop.
+    val editorScroll = rememberScrollState()
+    val previewScroll = rememberScrollState()
+    LaunchedEffect(editorScroll, previewScroll) {
+        snapshotFlow { editorScroll.value }.collect { v ->
+            if (editorScroll.isScrollInProgress && !previewScroll.isScrollInProgress) {
+                val room = editorScroll.maxValue
+                if (room > 0) previewScroll.scrollTo((v.toFloat() / room * previewScroll.maxValue).roundToInt())
+            }
+        }
+    }
+    LaunchedEffect(editorScroll, previewScroll) {
+        snapshotFlow { previewScroll.value }.collect { v ->
+            if (previewScroll.isScrollInProgress && !editorScroll.isScrollInProgress) {
+                val room = previewScroll.maxValue
+                if (room > 0) editorScroll.scrollTo((v.toFloat() / room * editorScroll.maxValue).roundToInt())
+            }
+        }
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(c.bg).systemBarsPadding().imePadding()) {
             Row(
@@ -355,7 +391,7 @@ private fun MarkdownFullscreenDialog(
                 IonIconButton(Ion.CLOSE, onClick = onDismiss, boxSize = 34.dp, iconSize = 18.dp, tint = c.text2)
             }
             val panes: @Composable (Modifier, Modifier) -> Unit = { editorMod, previewMod ->
-                Box(editorMod.padding(horizontal = 12.dp).verticalScroll(rememberScrollState())) {
+                Box(editorMod.padding(horizontal = 12.dp).verticalScroll(editorScroll)) {
                     MarkdownEditor(
                         value = value,
                         onValueChange = onValueChange,
@@ -365,6 +401,9 @@ private fun MarkdownFullscreenDialog(
                         onTaskRef = onTaskRef,
                         uploadImage = uploadImage,
                         allowFullscreen = false,
+                        // Always the editing pane — the preview lives in its own box
+                        // beside/below it, so no in-editor toggle.
+                        previewOverride = false,
                     )
                 }
                 Box(
@@ -373,7 +412,7 @@ private fun MarkdownFullscreenDialog(
                         .clip(RoundedCornerShape(RadiusMd))
                         .background(c.surfaceAlt)
                         .padding(12.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .verticalScroll(previewScroll),
                 ) {
                     if (value.isBlank()) {
                         Text("Предпросмотр", color = c.placeholder, fontSize = 13.sp)
@@ -538,33 +577,22 @@ private fun CommandSuggestions(items: List<CommandItem>, onPick: (CommandItem) -
     }
 }
 
+/**
+ * The eye/pencil preview toggle (web parity — it replaces the old Написать/Просмотр
+ * tabs). An eye while editing (tap → preview), a pencil while previewing (tap →
+ * edit). Hosted in the editor's top row for the description, and next to the
+ * Send/Cancel buttons for the comment composers.
+ */
 @Composable
-private fun EditorTab(label: String, active: Boolean, onClick: () -> Unit) {
-    val c = Tessera.colors
-    // IntrinsicSize.Max sizes the column to the label width, so the fillMaxWidth
-    // underline spans exactly the text (not the whole row, and not zero).
-    Column(Modifier.width(IntrinsicSize.Max).clickableNoRipple(onClick = onClick)) {
-        Text(
-            label,
-            color = if (active) c.primary else c.text2,
-            fontSize = 13.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-            style = if (active) TextStyle(brush = accentGradient(c.primary, AccentGradientStrengthSubtle)) else TextStyle.Default,
-            modifier = Modifier.padding(vertical = 4.dp),
-        )
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .then(
-                    if (active) {
-                        Modifier.background(accentGradient(c.primary, AccentGradientStrengthSubtle))
-                    } else {
-                        Modifier
-                    },
-                ),
-        )
-    }
+fun MarkdownModeToggle(preview: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    IonIconButton(
+        if (preview) Ion.PENCIL else Ion.EYE,
+        onClick = onToggle,
+        boxSize = 30.dp,
+        iconSize = 17.dp,
+        tint = Tessera.colors.text2,
+        modifier = modifier,
+    )
 }
 
 // ── Markdown text transforms (selection-aware) ───────────────────────────────
