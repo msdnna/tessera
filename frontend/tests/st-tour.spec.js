@@ -9,7 +9,7 @@ vi.mock('@/api', () => apiMock)
 
 import { useTourStore, TOUR_DONE, TOUR_SKIPPED, TOUR_STEP_KEY } from '@/stores/tour'
 import { anchorSelector } from '@/composables/useTourAnchor'
-import { arcPath, arcPathBowed, headPoints, layoutArrow } from '@/utils/tourArrow'
+import { arcPath, arcPathBowed, tourArc, headPoints, layoutArrow } from '@/utils/tourArrow'
 
 const STEPS = [
   { id: 'workspaces', anchor: 'ws-switch', title: 'Пространства', mode: 'info' },
@@ -348,6 +348,19 @@ describe('tour arrow geometry', () => {
     expect(Math.abs(c[3] - 200)).toBeGreaterThan(4)
     // starts and ends exactly on the endpoints
     expect(d.endsWith('260 200')).toBe(true)
+  })
+
+  it('makes the tour arrow arrive along the popover side (head points at target)', () => {
+    // #2753 rework: for a target far off to the side, the head must point square
+    // at it (up when the popover is below), not skid in diagonally. tourArc puts
+    // the end control point straight out from the tip along the side axis.
+    const from = { x: 680, y: 340 } // popover top edge, centred
+    const to = { x: 250, y: 60 } // target far up-left (the layout switch)
+    const c = tourArc(from, to, 'bottom').split('C ')[1].split(/[ ,]+/).map(Number)
+    expect(c[2]).toBe(to.x) // c2.x == tip.x → vertical final approach → head up
+    expect(c[3]).toBeGreaterThan(to.y)
+    // but it still leaves the popover bowed off the chord (visible, non-degenerate)
+    expect(c[0]).not.toBe(from.x)
   })
 
   it('builds a triangle around the tip', () => {

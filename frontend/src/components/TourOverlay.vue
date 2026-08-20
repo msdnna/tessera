@@ -4,13 +4,7 @@ import { NIcon } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
 import { useTourStore } from '@/stores/tour'
 import { useTourAnchor, anchorSelector } from '@/composables/useTourAnchor'
-import {
-  layoutArrow,
-  arcPathBowed,
-  ARROW_HEAD,
-  unionRect,
-  choosePlacement,
-} from '@/utils/tourArrow'
+import { layoutArrow, tourArc, ARROW_HEAD, unionRect, choosePlacement } from '@/utils/tourArrow'
 
 // The Get Started guide's viewport layer (#2753): a dimming mask with a cut-out
 // around the element in play, one curved arrow per anchor, and the popover.
@@ -46,12 +40,25 @@ const { rects, els, count, panels, surfaces } = useTourAnchor(() => tour.anchors
 })
 
 const target = computed(() => rects.value[0] || null)
-// The dimming mask is suppressed entirely while an overlay surface (a modal or
-// drawer the user opened) is on screen: that surface brings its own backdrop, so
-// adding the tour's dim on top only double-darkened it and left an ugly ring
-// around the card. With the mask off, the modal looks exactly as it would
-// outside the tour (#2753 rework). The arrows/popover still show.
-const masked = computed(() => step.value?.mask !== false && surfaces.value.length === 0)
+
+// A surface the user opened *off-script* — a modal/drawer that holds none of the
+// step's anchors (the create-workspace modal, the board-settings drawer). The
+// tour's dim is switched off entirely while one of these is up, so it looks
+// exactly as it would outside the tour. A *guided* modal (the project/task modal
+// the step points into) is NOT off-script — it keeps the dim, and the mask's
+// holes highlight the row the user has to act on (#2753 rework).
+function rectContains(outer, inner, m = 4) {
+  return (
+    inner.left >= outer.left - m &&
+    inner.right <= outer.right + m &&
+    inner.top >= outer.top - m &&
+    inner.bottom <= outer.bottom + m
+  )
+}
+const offScriptSurface = computed(() =>
+  surfaces.value.some((s) => !rects.value.some((a) => a && rectContains(s, a))),
+)
+const masked = computed(() => step.value?.mask !== false && !offScriptSurface.value)
 const isAction = computed(() => step.value?.mode === 'action')
 // A picker (calendar, priority/tags/assignee popover) is open. Used to keep the
 // popover clear of it and to hold a `set`-step until it's closed (#2753 rework).
@@ -151,7 +158,9 @@ function place() {
     arrows.value = rects.value.map((r, i) => {
       const el = arrowEls.value[i]
       if (!r || !el) return { len: 0, head: '' }
-      return layoutArrow(el, arrowOrigin(p, r), arrowTip(r), ARROW_HEAD, arcPathBowed)
+      return layoutArrow(el, arrowOrigin(p, r), arrowTip(r), ARROW_HEAD, (f, t) =>
+        tourArc(f, t, popSide.value),
+      )
     })
   })
 }

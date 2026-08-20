@@ -168,6 +168,40 @@ export function arcPathBowed(from, to) {
   return `M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`
 }
 
+// Hybrid of the two above, keyed on the side the popover sits on: it *leaves* the
+// popover with arcPathBowed's gentle perpendicular bow (so the line is a visible
+// curve, never a degenerate zero-width vertical), but *arrives* at the target
+// along that side's axis — the end control point sits straight out from the tip —
+// so the arrowhead points square at the element instead of skidding in sideways
+// when the target is far off to one side (a toolbar item vs a centred popover,
+// #2753 rework).
+export function tourArc(from, to, side) {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const len = Math.hypot(dx, dy) || 1
+  const nx = -dy / len // perpendicular to the chord, for the leaving bow
+  const ny = dx / len
+  const bow = Math.min(28, len * 0.16)
+  const c1x = from.x + dx / 3 + nx * bow
+  const c1y = from.y + dy / 3 + ny * bow
+  const k = Math.min(52, len * 0.36) // how straight the final approach runs
+  let c2x, c2y
+  if (side === 'bottom') {
+    c2x = to.x
+    c2y = to.y + k
+  } else if (side === 'top') {
+    c2x = to.x
+    c2y = to.y - k
+  } else if (side === 'right') {
+    c2x = to.x + k
+    c2y = to.y
+  } else {
+    c2x = to.x - k
+    c2y = to.y
+  }
+  return `M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`
+}
+
 // Triangle spanning the last `head` px of the path, pointing at `tip`.
 export function headPoints(tip, base, halfW = HALF_W) {
   const ang = Math.atan2(tip.y - base.y, tip.x - base.x)

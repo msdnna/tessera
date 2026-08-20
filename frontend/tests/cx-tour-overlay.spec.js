@@ -174,15 +174,32 @@ describe('TourOverlay', () => {
     expect(pop()).not.toBe(null)
   })
 
-  it('switches the mask off while a modal/drawer is open (no double-dim)', async () => {
+  it('switches the mask off while an off-script modal/drawer is open (no double-dim)', async () => {
+    // The surface holds none of the step's anchors → the user opened it off the
+    // tour (create-workspace), so the tour must not dim it.
     anchor('ws-switch')
-    surface('n-modal')
+    surface('n-modal') // default box is far from the anchor
     const tour = useTourStore()
     tour.start([INFO])
     await render()
     // Popover/arrows still show, but the page is not dimmed by the tour.
     expect(pop()).not.toBe(null)
     expect(document.querySelector('.tr-mask')).toBe(null)
+  })
+
+  it('keeps the mask (with the row highlighted) for a guided modal', async () => {
+    // The surface *contains* the step's anchor (the project/task modal the step
+    // points into) → dim it, but cut a hole around the action row.
+    anchor('project-name', { left: 100, top: 100, width: 200, height: 30 })
+    surface('n-modal', { left: 40, top: 40, width: 500, height: 400 }) // wraps the field
+    const tour = useTourStore()
+    tour.start([
+      { id: 'project-create', anchor: 'project-name', title: 'Назовите', mode: 'action' },
+    ])
+    await render()
+    expect(document.querySelector('.tr-mask')).not.toBe(null)
+    // one hole for the field row
+    expect(document.querySelectorAll('#tr-hole rect[fill="black"]')).toHaveLength(1)
   })
 
   it('draws one arrow per anchor', async () => {
