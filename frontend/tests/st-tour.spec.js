@@ -9,7 +9,7 @@ vi.mock('@/api', () => apiMock)
 
 import { useTourStore, TOUR_DONE, TOUR_SKIPPED, TOUR_STEP_KEY } from '@/stores/tour'
 import { anchorSelector } from '@/composables/useTourAnchor'
-import { arcPath, headPoints, layoutArrow } from '@/utils/tourArrow'
+import { arcPath, arcPathBowed, headPoints, layoutArrow } from '@/utils/tourArrow'
 
 const STEPS = [
   { id: 'workspaces', anchor: 'ws-switch', title: 'Пространства', mode: 'info' },
@@ -335,6 +335,19 @@ describe('tour arrow geometry', () => {
     const bowOf = (d, y) => Math.abs(parseFloat(d.split('C ')[1].split(' ')[1]) - y)
     expect(bowOf(below, 900)).toBeCloseTo(20)
     expect(bowOf(above, 40)).toBeCloseTo(20)
+  })
+
+  it('bows the tour arrow off the chord even when it is horizontal', () => {
+    // #2753 rework: a straight horizontal stub read as "an arrowhead from
+    // nowhere". arcPathBowed curves it off the chord so it's a visible line.
+    const d = arcPathBowed({ x: 100, y: 200 }, { x: 260, y: 200 })
+    expect(d).toMatch(/^M 100 200 C /)
+    // control points sit off the y=200 chord (perpendicular bow)
+    const c = d.split('C ')[1].split(/[ ,]+/).map(Number)
+    expect(Math.abs(c[1] - 200)).toBeGreaterThan(4)
+    expect(Math.abs(c[3] - 200)).toBeGreaterThan(4)
+    // starts and ends exactly on the endpoints
+    expect(d.endsWith('260 200')).toBe(true)
   })
 
   it('builds a triangle around the tip', () => {

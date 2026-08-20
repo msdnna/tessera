@@ -174,7 +174,9 @@ export const GET_STARTED = [
   {
     id: 'tm-tabs',
     anchor: '[data-name="comments"]',
-    extra: ['[data-name="subtasks"]', '[data-name="relations"]', '[data-name="history"]'],
+    // «История» намеренно без стрелки: таб уезжает за правый край строки табов
+    // (её не видно), а по смыслу указывать на неё необязательно (#2753 rework).
+    extra: ['[data-name="subtasks"]', '[data-name="relations"]'],
     title: 'Комментарии, подзадачи, связи',
     body: 'Здесь же — обсуждение, дерево подзадач, связи с другими задачами и полная история изменений.',
     mode: 'info',

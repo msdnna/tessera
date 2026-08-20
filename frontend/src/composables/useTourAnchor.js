@@ -36,6 +36,11 @@ function boxOf(el) {
   // drawer) measure 0×0 — treat them as "not there yet" so the step waits for
   // the real thing instead of drawing an arrow into the corner.
   if (!r.width && !r.height) return null
+  // Fully off-screen (a tab scrolled past the strip's edge, a row below the
+  // fold) — don't point at something the user can't see (#2753 rework).
+  if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) {
+    return null
+  }
   return {
     left: r.left,
     top: r.top,

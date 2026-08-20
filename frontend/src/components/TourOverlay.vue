@@ -4,7 +4,13 @@ import { NIcon } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
 import { useTourStore } from '@/stores/tour'
 import { useTourAnchor, anchorSelector } from '@/composables/useTourAnchor'
-import { layoutArrow, ARROW_HEAD } from '@/utils/tourArrow'
+import {
+  layoutArrow,
+  arcPathBowed,
+  ARROW_HEAD,
+  unionRect,
+  choosePlacement,
+} from '@/utils/tourArrow'
 
 // The Get Started guide's viewport layer (#2753): a dimming mask with a cut-out
 // around the element in play, one curved arrow per anchor, and the popover.
@@ -15,7 +21,11 @@ import { layoutArrow, ARROW_HEAD } from '@/utils/tourArrow'
 // purely visual: nothing is actually blocked, so a wrong turn can't trap anyone.
 
 const POP_W = 260
-const GAP = 22 // popover-to-group breathing room
+// Distance from the group of anchors to the popover. Kept generous so the arrow
+// is a real curved *line* reaching across, not a stub — the author preferred the
+// long lined arrows (#2753 rework). Shrunk down this ladder only when nothing
+// fits at the preferred distance.
+const GAP_LADDER = [92, 60, 32]
 const PAD = 6 // mask cut-out padding around the target
 const EDGE = 16 // keep the popover this far from the viewport edge
 
@@ -55,93 +65,51 @@ function readRect(el) {
   }
 }
 
+// Rects for the step's declared `cut` selectors (a modal's «Создать» button and
+// the like): bright in the mask AND kept clear of the popover, so the user is
+// never left with a greyed-out or covered control they're meant to press.
+function getCutRects() {
+  const out = []
+  for (const sel of step.value?.cut || []) {
+    const el = document.querySelector(anchorSelector(sel))
+    const r = el && readRect(el)
+    if (r) out.push(r)
+  }
+  return out
+}
+
 // Everything the mask punches a bright hole in: the step's anchors, any open
 // picker panel (so the guide never dims the control it just pointed at), and the
-// step's declared `cut` extras (e.g. a modal's «Создать» button).
+// step's declared `cut` extras.
 const holes = computed(() => {
   const out = []
   for (const r of rects.value) if (r) out.push(r)
   if (masked.value) {
     for (const p of panels.value) out.push(p)
-    for (const sel of step.value?.cut || []) {
-      const el = document.querySelector(anchorSelector(sel))
-      const r = el && readRect(el)
-      if (r) out.push(r)
-    }
+    out.push(...getCutRects())
   }
   return out
 })
 
-function rectsUnion(rs) {
-  const f = rs.filter(Boolean)
-  if (!f.length) return null
-  let l = Infinity,
-    t = Infinity,
-    r = -Infinity,
-    b = -Infinity
-  for (const x of f) {
-    l = Math.min(l, x.left)
-    t = Math.min(t, x.top)
-    r = Math.max(r, x.right)
-    b = Math.max(b, x.bottom)
-  }
-  return { left: l, top: t, right: r, bottom: b, width: r - l, height: b - t }
-}
-
-function intersects(a, b, m = 0) {
-  return (
-    a.left < b.right + m && a.right > b.left - m && a.top < b.bottom + m && a.bottom > b.top - m
-  )
-}
-
 const clampN = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
-// Park the popover beside the *whole group* of anchors (not just the first), on
-// the side with the most room that doesn't cover any anchor or open picker. This
-// is what keeps the arrows from crossing the card/tabs and stops the popover
-// sitting on top of the calendar (#2753 rework).
+// Park the popover beside the whole group of anchors. The side/gap decision is a
+// pure function (choosePlacement) so it can be unit-tested against real layouts;
+// here we just feed it the live boxes and the things it must not cover.
 function placePopover() {
   const anchors = rects.value.filter(Boolean)
-  const u = rectsUnion(anchors)
+  const u = unionRect(anchors)
   if (!u) return
-  const popH = pop.value?.offsetHeight || 140
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const avoid = [...anchors, ...panels.value]
-  // A wide, short group (a row of pills/tabs/tools) reads best with the popover
-  // below or above it; a tall or single target with it to the side.
-  const order =
-    u.width >= u.height ? ['bottom', 'top', 'right', 'left'] : ['right', 'left', 'bottom', 'top']
-
-  function cand(side) {
-    if (side === 'bottom' || side === 'top') {
-      const left = clampN(u.left + u.width / 2 - POP_W / 2, EDGE, vw - POP_W - EDGE)
-      const top = side === 'bottom' ? u.bottom + GAP : u.top - GAP - popH
-      return { left, top, side }
-    }
-    const top = clampN(u.top + u.height / 2 - popH / 2, EDGE, vh - popH - EDGE)
-    const left = side === 'right' ? u.right + GAP : u.left - GAP - POP_W
-    return { left, top, side }
-  }
-  function fits(c) {
-    if (c.left < EDGE || c.top < EDGE || c.left + POP_W > vw - EDGE || c.top + popH > vh - EDGE) {
-      return false
-    }
-    const box = { left: c.left, top: c.top, right: c.left + POP_W, bottom: c.top + popH }
-    return !avoid.some((a) => intersects(box, a, 4))
-  }
-
-  let chosen = order.map(cand).find(fits)
-  if (!chosen) {
-    // Nothing clears — take the side with the most free space and clamp in.
-    const space = { bottom: vh - u.bottom, top: u.top, right: vw - u.right, left: u.left }
-    const side = order.reduce((a, b) => (space[b] > space[a] ? b : a), order[0])
-    chosen = cand(side)
-    chosen.left = clampN(chosen.left, EDGE, vw - POP_W - EDGE)
-    chosen.top = clampN(chosen.top, EDGE, vh - popH - EDGE)
-  }
-  popSide.value = chosen.side
-  popStyle.value = { left: Math.round(chosen.left) + 'px', top: Math.round(chosen.top) + 'px' }
+  const p = choosePlacement(u, anchors, [...anchors, ...panels.value, ...getCutRects()], {
+    popW: POP_W,
+    popH: pop.value?.offsetHeight || 140,
+    vw: window.innerWidth,
+    vh: window.innerHeight,
+    gaps: GAP_LADDER,
+    edge: EDGE,
+  })
+  popSide.value = p.side
+  popStyle.value = { left: Math.round(p.left) + 'px', top: Math.round(p.top) + 'px' }
 }
 
 // Where each arrow leaves the popover: the edge facing the group, at the point
@@ -176,7 +144,7 @@ function place() {
     arrows.value = rects.value.map((r, i) => {
       const el = arrowEls.value[i]
       if (!r || !el) return { len: 0, head: '' }
-      return layoutArrow(el, arrowOrigin(p, r), arrowTip(r))
+      return layoutArrow(el, arrowOrigin(p, r), arrowTip(r), ARROW_HEAD, arcPathBowed)
     })
   })
 }
