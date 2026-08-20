@@ -4,14 +4,20 @@ package website.msdnna.tessera.util
  * "What's New" + spotlight bookkeeping — the pure half of the feature (web
  * `stores/whatsNew.js`), kept out of the ViewModel so it is testable on the JVM.
  *
- * Both clients write into the SAME per-user acknowledgement keys, so a release
- * dismissed on the web is not shown again on the phone and vice versa — the keys
- * are the contract, not the UI:
- *   whatsnew:<version>  — the changelog card for a release was dismissed
- *   spotlight:<navKey>  — the hint pointing at a sidebar item was dismissed
+ * Both clients share ONE per-user acknowledgement store, so the keys are the
+ * contract, not the UI:
+ *   whatsnew:android:<version>  — a release card was dismissed on THIS client
+ *   spotlight:<navKey>          — the hint pointing at a sidebar item was dismissed
  *
- * Versions are Android's own (`android/VERSION`), independent of the web's, so
- * the *entries* differ between clients even though the key format doesn't.
+ * The changelog key is namespaced per client because versions are each
+ * component's own (`android/VERSION` vs the web's), independent numbers living in
+ * one comparison space: a shared `whatsnew:<version>` let the web's far-higher
+ * versions raise this client's baseline above every Android release, hiding the
+ * card for good. Legacy un-namespaced keys are still honoured, but only for a
+ * version we actually ship (see [whatsNewVersion]) — so the web's numbers, once
+ * written under the bare prefix, no longer leak in. Spotlights stay shared: a
+ * `navKey` names the same sidebar feature on both clients, so dismissing the
+ * arrow on one is meant to settle it on the other.
  */
 
 /** A one-shot hint pointing at a sidebar nav item ([navKey] matches `activeNav`). */
@@ -28,7 +34,25 @@ data class WhatsNewEntry(
 )
 
 const val WHATSNEW_PREFIX = "whatsnew:"
+
+/** This client's changelog namespace — writes and primary reads go here. */
+const val WHATSNEW_ANDROID_PREFIX = WHATSNEW_PREFIX + "android:"
 const val SPOTLIGHT_PREFIX = "spotlight:"
+
+/**
+ * The release version an ack [key] vouches for on Android, or null if it does not
+ * count here. This client's own `whatsnew:android:<v>` keys always count; a legacy
+ * bare `whatsnew:<v>` counts only for a version we actually ship ([ownVersions]),
+ * so the web's independent numbers — written under the same bare prefix before the
+ * split — no longer raise our baseline. Any other client's namespace is ignored.
+ */
+fun whatsNewVersion(key: String, ownVersions: Set<String>): String? {
+    if (key.startsWith(WHATSNEW_ANDROID_PREFIX)) return key.removePrefix(WHATSNEW_ANDROID_PREFIX)
+    if (!key.startsWith(WHATSNEW_PREFIX)) return null
+    val rest = key.removePrefix(WHATSNEW_PREFIX)
+    if (rest.contains(':')) return null // another client's namespace, e.g. whatsnew:web:*
+    return rest.takeIf { it in ownVersions } // legacy bare key — only for our own releases
+}
 
 /**
  * What to surface this session. [baseline] is set instead of the two lists when
@@ -55,10 +79,11 @@ fun compareVersions(a: String, b: String): Int {
 /**
  * Decides which release cards and spotlights this user still has coming.
  *
- * The baseline is the highest already-acknowledged `whatsnew:` version — anything
- * newer than that and not newer than the running build is shown, newest first. A
- * user with no acks at all has baseline `0.0.0`, so a first run surfaces the whole
- * curated list once (and clearing the acks makes it show again — testable by hand).
+ * The baseline is the highest already-acknowledged version that counts for this
+ * client ([whatsNewVersion]) — anything newer than that and not newer than the
+ * running build is shown, newest first. A user with no such acks has baseline
+ * `0.0.0`, so a first run surfaces the whole curated list once (and clearing the
+ * acks makes it show again — testable by hand).
  *
  * [buildAtMillis] is when THIS build landed on the device (`lastUpdateTime`), the
  * Android stand-in for the web bundle's build date: an account created after that
@@ -72,9 +97,10 @@ fun planWhatsNew(
     accountCreatedAt: String?,
     buildAtMillis: Long,
 ): WhatsNewPlan {
-    val ackedVersions = acked.filter { it.startsWith(WHATSNEW_PREFIX) }.map { it.removePrefix(WHATSNEW_PREFIX) }
+    val ownVersions = entries.mapTo(mutableSetOf()) { it.version }
+    val ackedVersions = acked.mapNotNull { whatsNewVersion(it, ownVersions) }
     if (ackedVersions.isEmpty() && isBrandNewAccount(accountCreatedAt, buildAtMillis)) {
-        return WhatsNewPlan(baseline = WHATSNEW_PREFIX + currentVersion)
+        return WhatsNewPlan(baseline = WHATSNEW_ANDROID_PREFIX + currentVersion)
     }
     val highest = ackedVersions.fold("0.0.0") { max, v -> if (compareVersions(v, max) > 0) v else max }
     val releases = entries

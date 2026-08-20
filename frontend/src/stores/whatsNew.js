@@ -7,14 +7,35 @@ import { WHATS_NEW } from '@/data/whatsNew'
 
 // Per-user "seen once" state for the What's-New modal and the sidebar spotlight
 // hints (#2749), backed by the generic acknowledgements endpoint. Keys:
-//   whatsnew:<version>   — the changelog modal for a release was dismissed
-//   spotlight:<navKey>   — an arrow hint pointing at a sidebar item was dismissed
+//   whatsnew:web:<version>  — the changelog modal for a release was dismissed here
+//   spotlight:<navKey>      — an arrow hint pointing at a sidebar item was dismissed
+//
+// The changelog key is namespaced per client: web and Android version
+// independently, so a shared `whatsnew:<version>` let one client's far-higher
+// numbers raise the other's baseline and hide its card for good (see Android's
+// util/WhatsNew.kt). Legacy bare keys are still honoured, but only for a version
+// this build actually ships (whatsNewVersion), so the other client's numbers no
+// longer leak in. Spotlights stay shared — a navKey names the same sidebar feature
+// on both, so dismissing the arrow once is meant to settle it everywhere.
 //
 // The running web build is __APP_VERSION__; highlights are only ever shown up to
 // that version (never for a release the loaded bundle predates).
 
 const WHATSNEW_PREFIX = 'whatsnew:'
+const WHATSNEW_WEB_PREFIX = 'whatsnew:web:'
 const SPOTLIGHT_PREFIX = 'spotlight:'
+
+// The release version an ack key vouches for on web, or null if it doesn't count
+// here. Mirrors Android's whatsNewVersion: web-namespaced keys always count; a
+// legacy bare `whatsnew:<v>` counts only for a version we ship (ownVersions);
+// another client's namespace (whatsnew:android:*) is ignored.
+function whatsNewVersion(key, ownVersions) {
+  if (key.startsWith(WHATSNEW_WEB_PREFIX)) return key.slice(WHATSNEW_WEB_PREFIX.length)
+  if (!key.startsWith(WHATSNEW_PREFIX)) return null
+  const rest = key.slice(WHATSNEW_PREFIX.length)
+  if (rest.includes(':')) return null // another client's namespace
+  return ownVersions.has(rest) ? rest : null // legacy bare key — only for our releases
+}
 
 // Numeric semver compare for simple x.y.z strings. Returns >0 if a>b.
 function cmp(a, b) {
@@ -85,14 +106,15 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
     }
     loaded.value = true
 
+    const ownVersions = new Set(WHATS_NEW.map((e) => e.version))
     const ackedVersions = [...acked.value]
-      .filter((k) => k.startsWith(WHATSNEW_PREFIX))
-      .map((k) => k.slice(WHATSNEW_PREFIX.length))
+      .map((k) => whatsNewVersion(k, ownVersions))
+      .filter((v) => v !== null)
 
     // Brand-new sign-ups (no acks yet, account created on/after this build) get
     // baselined silently — nothing to catch up on, nothing to interrupt them with.
     if (ackedVersions.length === 0 && isBrandNewAccount()) {
-      await ack(WHATSNEW_PREFIX + currentVersion)
+      await ack(WHATSNEW_WEB_PREFIX + currentVersion)
       return true
     }
 
@@ -116,9 +138,9 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
   // advance the baseline to the current build. The spotlight queue is untouched
   // and starts showing once the modal is gone.
   async function dismissModal() {
-    const keys = pendingRaw.value.map((e) => WHATSNEW_PREFIX + e.version)
+    const keys = pendingRaw.value.map((e) => WHATSNEW_WEB_PREFIX + e.version)
     pendingRaw.value = []
-    await Promise.all([...keys, WHATSNEW_PREFIX + currentVersion].map(ack))
+    await Promise.all([...keys, WHATSNEW_WEB_PREFIX + currentVersion].map(ack))
   }
 
   // The spotlight to show right now: the head of the queue, but only once the

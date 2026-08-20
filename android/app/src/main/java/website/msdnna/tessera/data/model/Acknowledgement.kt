@@ -4,7 +4,7 @@ import com.google.gson.annotations.SerializedName
 
 /**
  * One per-user "seen once" flag (`GET/POST users/me/acknowledgements`). The key is
- * opaque to the server — the clients own its shape (`whatsnew:<version>`,
+ * opaque to the server — the clients own its shape (`whatsnew:android:<version>`,
  * `spotlight:<navKey>`, `getstarted:<step>`) and share it across web and Android.
  */
 data class Acknowledgement(

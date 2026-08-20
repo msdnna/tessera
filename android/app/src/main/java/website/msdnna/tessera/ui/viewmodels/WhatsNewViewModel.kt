@@ -15,7 +15,7 @@ import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.update.WhatsNewEntries
 import website.msdnna.tessera.update.WhatsNewRepository
 import website.msdnna.tessera.util.SPOTLIGHT_PREFIX
-import website.msdnna.tessera.util.WHATSNEW_PREFIX
+import website.msdnna.tessera.util.WHATSNEW_ANDROID_PREFIX
 import website.msdnna.tessera.util.WhatsNewEntry
 import website.msdnna.tessera.util.WhatsNewSpotlight
 import website.msdnna.tessera.util.planWhatsNew
@@ -80,7 +80,7 @@ class WhatsNewViewModel(app: Application) : AndroidViewModel(app) {
     /** "Понятно" on the card: every shown release is seen, and the baseline moves
      *  to the running build so a later downgrade doesn't replay the backlog. */
     fun dismissCard() {
-        val keys = _releases.value.map { WHATSNEW_PREFIX + it.version } + (WHATSNEW_PREFIX + BuildConfig.VERSION_NAME)
+        val keys = _releases.value.map { WHATSNEW_ANDROID_PREFIX + it.version } + (WHATSNEW_ANDROID_PREFIX + BuildConfig.VERSION_NAME)
         _releases.value = emptyList()
         viewModelScope.launch { keys.forEach { ack(it) } }
     }

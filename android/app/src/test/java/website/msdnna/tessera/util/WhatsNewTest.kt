@@ -51,11 +51,29 @@ class WhatsNewTest {
     }
 
     @Test
-    fun `an ack from the web counts here too`() {
-        // Keys are shared between clients: only the versions differ per component,
-        // and a higher ack simply raises the baseline.
+    fun `this client's own namespaced ack raises the baseline`() {
+        val plan = planWhatsNew(entries, setOf("whatsnew:android:0.69.0"), "0.70.0", oldAccount, buildAt)
+        assertThat(plan.releases.map { it.version }).containsExactly("0.70.0")
+    }
+
+    @Test
+    fun `a legacy bare ack still counts for a version we ship`() {
+        // Written before the per-client split; 0.69.0 is one of our releases, so it
+        // keeps its meaning and a returning user is not shown it again.
         val plan = planWhatsNew(entries, setOf("whatsnew:0.69.0"), "0.70.0", oldAccount, buildAt)
         assertThat(plan.releases.map { it.version }).containsExactly("0.70.0")
+    }
+
+    @Test
+    fun `the web's independent version does not raise our baseline`() {
+        // The regression this fix is about: the web runs far-higher numbers and its
+        // acks share the store. A bare (or web-namespaced) key for a version we do
+        // not ship must be ignored, or it would hide every Android card for good.
+        val bare = planWhatsNew(entries, setOf("whatsnew:0.173.0"), "0.70.0", oldAccount, buildAt)
+        assertThat(bare.releases.map { it.version }).containsExactly("0.70.0", "0.69.0", "0.68.0")
+
+        val namespaced = planWhatsNew(entries, setOf("whatsnew:web:0.173.0"), "0.70.0", oldAccount, buildAt)
+        assertThat(namespaced.releases).hasSize(3)
     }
 
     @Test
@@ -80,7 +98,7 @@ class WhatsNewTest {
         // Registered after this build landed — it never updated into anything.
         val created = millisToUtcIso(buildAt + 60_000)
         val plan = planWhatsNew(entries, emptySet(), "0.70.0", created, buildAt)
-        assertThat(plan.baseline).isEqualTo("whatsnew:0.70.0")
+        assertThat(plan.baseline).isEqualTo("whatsnew:android:0.70.0")
         assertThat(plan.releases).isEmpty()
     }
 
@@ -121,7 +139,7 @@ class WhatsNewTest {
         // No package info (Robolectric, or a package manager that refused): we
         // cannot prove the user updated into this build, so baseline and move on.
         val plan = planWhatsNew(entries, emptySet(), "0.70.0", oldAccount, 0L)
-        assertThat(plan.baseline).isEqualTo("whatsnew:0.70.0")
+        assertThat(plan.baseline).isEqualTo("whatsnew:android:0.70.0")
         assertThat(plan.releases).isEmpty()
     }
 
