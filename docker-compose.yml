@@ -56,6 +56,16 @@ services:
       # Set CONVERTER_URL=http://converter:3000 in .env and start the stack with
       # `--profile documents` to turn it on (see the converter service below).
       - CONVERTER_URL=${CONVERTER_URL:-}
+      # Error tracking. All empty = off: no SDK on the server, none in the
+      # browser. A Sentry running on the host is host.docker.internal from here —
+      # if HTTP_PROXY is set below, add that name to NO_PROXY, or the tunnel's
+      # forward goes to the proxy and comes back 502 (the CIDRs don't cover a
+      # hostname).
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_FRONTEND_DSN=${SENTRY_FRONTEND_DSN:-}
+      - SENTRY_ENV=${SENTRY_ENV:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-}
+      - SENTRY_FRONTEND_TRACES_SAMPLE_RATE=${SENTRY_FRONTEND_TRACES_SAMPLE_RATE:-}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}

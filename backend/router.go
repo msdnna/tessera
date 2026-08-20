@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,6 +39,11 @@ const (
 	// never got to explain. Found while adding the import route (#2733).
 	routeDocAssets = "/api/documents/:id/assets"
 	routeDocImport = "/api/workspaces/:id/documents/import"
+	// Browser Sentry envelopes. Pinned to the handler's own ceiling rather than
+	// left on the blanket JSON budget so that an operator tightening
+	// MAX_BODY_BYTES doesn't silently start dropping crash reports at the
+	// transport, where nothing would report the loss.
+	routeSentryTunnel = "/api/sentry-tunnel"
 )
 
 // authRateRules throttles the unauthenticated auth surface — the routes where a
@@ -64,6 +70,11 @@ func authRateRules() map[string]middleware.RateRule {
 		"/api/auth/verify-email":   token,
 		"/api/auth/refresh":        rotate,
 		"/api/auth/logout":         rotate,
+		// The Sentry tunnel is public and unauthenticated, and forwarding costs
+		// an outbound request. A burst allowance is deliberate: a page that
+		// breaks badly emits a cluster of events at once, and throttling those
+		// away would hide the very failure worth seeing.
+		routeSentryTunnel: {Every: time.Second, Burst: 30},
 	}
 }
 
@@ -89,6 +100,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	go rooms.Run()
 	wsHandler := handlers.NewWSHandler(hub, rooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
+	// Reports itself disabled when no frontend DSN is configured, so the two
+	// routes below stay wired in every install and simply answer "off".
+	sentryConfigHandler := handlers.NewSentryConfigHandler(cfg.SentryFrontendDSN, cfg.SentryEnv, cfg.SentryFrontendTracesRate)
 	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL, cfg.FCMCredentialsFile)
 	rh.WireDocRooms(rooms)
 	// Document import/export sidecar (#2733). converter.New tolerates an empty
@@ -103,7 +117,15 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// log stream. gin.New with Recovery + AccessLog keeps panic recovery and the
 	// access trace but redacts those secrets (see middleware/accesslog.go).
 	r := gin.New()
-	r.Use(middleware.RequestID(), middleware.Metrics(metrics), middleware.AccessLog(), gin.Recovery())
+	// Ordering here is load-bearing. sentrygin opens the request-scoped hub (and
+	// a performance transaction) and re-panics with Repanic, so it has to sit
+	// *before* gin.Recovery() — behind it, Recovery would turn the panic into a
+	// 500 and Sentry would never see it. SentryReport needs the hub sentrygin
+	// installed, so it follows. Both are no-ops when no DSN is configured.
+	r.Use(middleware.RequestID(), middleware.Metrics(metrics), middleware.AccessLog())
+	r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
+	r.Use(middleware.SentryReport())
+	r.Use(gin.Recovery())
 	trusted := cfg.TrustedProxies
 	if len(trusted) == 0 {
 		trusted = []string{"127.0.0.1", "::1"}
@@ -133,6 +155,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
 		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
 		routeWS:          middleware.NoBodyLimit,
+
+		routeSentryTunnel: handlers.MaxEnvelopeBytes,
 	}))
 	if cfg.RateLimitEnabled {
 		r.Use(middleware.RateLimit(authRateRules()))
@@ -144,6 +168,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		api.GET("/health", healthHandler)
 		api.GET("/health/ready", rh.ReadyHandler)
 		api.GET("/version", versionHandler.Get)
+		// Browser runtime config + the Sentry event tunnel. Both are public: the
+		// frontend reads its telemetry config before it has a token, and an
+		// error on the login screen still has to be reportable.
+		api.GET("/client-config", sentryConfigHandler.ClientConfig)
+		api.POST("/sentry-tunnel", sentryConfigHandler.Tunnel)
 		api.POST("/auth/register", authHandler.Register)
 		api.POST("/auth/login", authHandler.Login)
 		api.POST("/auth/refresh", authHandler.Refresh)

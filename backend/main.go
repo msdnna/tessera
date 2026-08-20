@@ -20,6 +20,7 @@ import (
 	"tessera/internal/database"
 	"tessera/internal/db"
 	"tessera/internal/mail"
+	"tessera/internal/observability"
 	"tessera/internal/realtime"
 )
 
@@ -51,6 +52,11 @@ func main() {
 	setupLogging()
 
 	cfg := config.New()
+
+	// Optional error/performance telemetry. No-op unless SENTRY_DSN is set; the
+	// deferred flush drains buffered events so a crash-on-shutdown still lands.
+	flushSentry := observability.InitSentry(cfg.SentryDSN, cfg.SentryEnv, "tessera-backend@"+appVersion, cfg.SentryTracesRate)
+	defer flushSentry()
 
 	// Cancelled on SIGINT/SIGTERM; every background worker hangs off it, so a
 	// deploy stops them at a tick boundary instead of mid-write.
