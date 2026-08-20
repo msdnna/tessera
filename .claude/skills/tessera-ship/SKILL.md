@@ -73,6 +73,28 @@ make changelog-release ONLY=backend,frontend
 `CHANGELOG.md` (android → `## x.y.z — ДАТА` в `android/CHANGELOG.md`), удаляет фрагменты.
 Затем:
 
+### Frontend: обновить «Что нового» (whatsNew.js)
+
+**Если бампнулась web-версия — добавь запись в `frontend/src/data/whatsNew.js`** (новейшая
+первой, `version` = новый web `VERSION`). Это НЕ копия CHANGELOG: только то, что **заметит
+пользователь** (новые фичи, видимые улучшения, заметные фиксы), человеческим языком, без
+деталей для разработчика (внутренние рефакторы, тесты, CI, детали реализации — пропускаем).
+Коротко — пара буллетов на релиз. Если пользователю в этом релизе замечать нечего
+(только внутренние `chore`/`refactor`/`test`) — записи не делаем.
+
+Форма записи описана в шапке `whatsNew.js` (`version`/`date`/`title`/`items`/`spotlight`).
+
+**Крупную фичу дополни `spotlight`-поповером** (указатель + подсказка на пункт сайдбара):
+новый раздел сайдбара, заметно изменённый вид, перенос привычных кнопок/элементов
+управления. `spotlight: { navKey, title, body }`, где `navKey` совпадает с nav-пунктом
+сайдбара (напр. `'documents'`) — работает **только** для пунктов навигации сайдбара, не для
+произвольных элементов. Показывается один раз после закрытия модалки, гасится ключом
+`spotlight:<navKey>`.
+
+Highlights бери из собранной секции `CHANGELOG.md` (шаг выше) — переформулируй под
+пользователя. `corepack yarn eslint src/data/whatsNew.js` перед коммитом. Правку клади в
+тот же `chore(release)`-коммит.
+
 ```bash
 git diff                          # проверить вставку и бамп
 git add -A && git commit -m "chore(release): api <ver> / web <ver>"
@@ -82,5 +104,6 @@ git add -A && git commit -m "chore(release): api <ver> / web <ver>"
 - Фича-ветка: [ ] quality-gate зелёный · [ ] фрагмент в `changelog.d/<comp>/` · [ ]
   conventional-commit · [ ] VERSION/CHANGELOG.md НЕ тронуты · [ ] без push/tag ·
   [ ] миграция (если есть) — номер занят перед merge
-- develop: [ ] `make changelog-release` · [ ] diff проверен · [ ] `chore(release)`-коммит
+- develop: [ ] `make changelog-release` · [ ] diff проверен · [ ] если бампнулась web —
+  запись в `whatsNew.js` (user-facing; крупная фича → `spotlight`) · [ ] `chore(release)`-коммит
   без push/tag
