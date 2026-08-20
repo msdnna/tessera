@@ -109,6 +109,37 @@ test('шаг «Перетащите карточку» закрывается н
   await expect(pop).toContainText('Проекты тоже группируются')
 })
 
+test('шаг «Группа создана» подсвечивает созданную группу, а не первую в дереве', async ({
+  page,
+}) => {
+  // Ровно то, на чём споткнулся ревьюер (#2778 rework): в пространстве уже есть
+  // группа (её создаёт seedBoard), и до правки маска со стрелкой садились на
+  // неё — шаг искал просто первую строку группы в документе.
+  const { creds, token, id } = await freshUser('-tour-group')
+  const { group, board } = await seedBoard(token, `${id}-group`)
+
+  await signIn(page, creds)
+  await page.evaluate((k) => localStorage.setItem(k, 'group-add'), TOUR_STEP_KEY)
+  await openBoard(page, board.id)
+
+  const pop = page.getByTestId('tour-pop')
+  await expect(pop).toBeVisible({ timeout: 15000 })
+  await expect(pop).toContainText('Проекты тоже группируются')
+
+  await page.locator('[data-tour="proj-add"]').click()
+  await page.locator('[data-tour="menu-group"]').click()
+  await expect(pop).toContainText('Группа создана')
+
+  // Подсвечена (data-tour-active вешает оверлей на свои якоря) ровно одна строка
+  // группы — и это не засеянная, а только что созданная, с именем «Группа».
+  const lit = page.locator('[data-tour="group-row"][data-tour-active]')
+  await expect(lit).toHaveCount(1)
+  await expect(lit).toContainText('Группа')
+  expect(
+    await lit.evaluate((el) => el.closest('[data-tour-group]').getAttribute('data-tour-group')),
+  ).not.toBe(group.id)
+})
+
 test('перенос проекта в группу меняет адрес строки, который читает шаг dnd-project', async ({
   page,
 }) => {

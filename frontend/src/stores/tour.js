@@ -71,20 +71,23 @@ export const useTourStore = defineStore('tour', () => {
   const steps = ref([])
   const index = ref(-1)
   const active = ref(false)
-  // Ids of the project/board the user creates while walking the guide, so the
-  // steps that follow can point at *that* row rather than the first one in the
-  // tree (#2753 rework). Anchors reference them with `{project}` / `{board}`
-  // tokens, expanded by resolve() below.
+  // Ids of the project/board/group the user creates while walking the guide, so
+  // the steps that follow can point at *that* row rather than the first one in
+  // the tree (#2753 rework, extended to groups by the #2778 rework — a tree that
+  // already had groups got the mask on the wrong one). Anchors reference them
+  // with `{project}` / `{board}` / `{group}` tokens, expanded by resolve() below.
   const ctx = ref({})
 
-  // Expand `{project}` / `{board}` tokens in an anchor selector. A token with no
-  // id yet collapses to an empty attribute value that matches nothing, so the
-  // step simply waits for the entity instead of grabbing a stray element.
+  // Expand `{project}` / `{board}` / `{group}` tokens in an anchor selector. A
+  // token with no id yet collapses to an empty attribute value that matches
+  // nothing, so the step simply waits for the entity instead of grabbing a stray
+  // element.
   function resolve(sel) {
     if (typeof sel !== 'string') return sel
     return sel
       .replace(/\{project\}/g, ctx.value.projectId || '')
       .replace(/\{board\}/g, ctx.value.boardId || '')
+      .replace(/\{group\}/g, ctx.value.groupId || '')
   }
 
   // Sidebar reports the entity it just created (project modal / inline board

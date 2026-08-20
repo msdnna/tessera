@@ -170,6 +170,49 @@ describe('TourOverlay', () => {
     expect(document.querySelector('.tr-dim')).not.toBe(null)
   })
 
+  it('cuts around the group the guide created, not the first one in the tree', async () => {
+    // #2778 rework: `cut` went to the DOM with its {group} token unexpanded-ish
+    // — it never went through resolve() at all — so a workspace that already had
+    // groups got the bright hole (and the arrow's clearance) on someone else's.
+    const groupNode = (id, box) => {
+      const node = document.createElement('div')
+      node.setAttribute('data-tour-group', id)
+      const row = document.createElement('div')
+      row.setAttribute('data-tour', 'group-row')
+      row.getBoundingClientRect = () => ({
+        ...box,
+        right: box.left + box.width,
+        bottom: box.top + box.height,
+      })
+      node.appendChild(row)
+      document.body.appendChild(node)
+      return row
+    }
+    groupNode('g-old', { left: 10, top: 10, width: 120, height: 24 })
+    groupNode('g-new', { left: 10, top: 300, width: 120, height: 24 })
+    anchor('project-row', { left: 10, top: 500, width: 120, height: 24 })
+
+    const tour = useTourStore()
+    tour.start([
+      {
+        id: 'dnd-project',
+        anchor: 'project-row',
+        cut: ['[data-tour-group="{group}"] [data-tour="group-row"]'],
+        title: 'Перетащите проект',
+        mode: 'action',
+      },
+    ])
+    tour.noteCreated({ groupId: 'g-new' })
+    await render()
+
+    // One hole for the step's own anchor, one for the cut — and the cut sits on
+    // the created group's row (y 300), not on the pre-existing one (y 10).
+    const holes = [...document.querySelectorAll('#tr-hole rect[fill="black"]')]
+    expect(holes).toHaveLength(2)
+    expect(holes.map((h) => h.getAttribute('y'))).toContain('294')
+    expect(holes.map((h) => h.getAttribute('y'))).not.toContain('4')
+  })
+
   it('omits the mask when the step opts out', async () => {
     anchor('ws-switch')
     const tour = useTourStore()

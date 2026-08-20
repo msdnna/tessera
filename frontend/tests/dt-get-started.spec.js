@@ -40,7 +40,10 @@ const isRawSelector = (key) => /[[\].#\s>]/.test(key)
 function anchorKeys() {
   const keys = []
   for (const s of GET_STARTED) {
-    keys.push(s.anchor, ...(s.extra || []), s.advanceOn?.count, s.advanceOn?.set)
+    // `cut` is in here too: it selects real elements (the modal's «Создать», the
+    // target group's row), so a rename strands it exactly like an anchor —
+    // silently, since a cut that matches nothing just leaves the mask solid.
+    keys.push(s.anchor, ...(s.extra || []), ...(s.cut || []), s.advanceOn?.count, s.advanceOn?.set)
     keys.push(s.advanceOn?.moved?.el, s.advanceOn?.moved?.within)
     if (typeof s.advanceOn?.click === 'string') keys.push(s.advanceOn.click)
   }
@@ -184,6 +187,27 @@ describe('Get Started scenario', () => {
       expect(m.el && m.within && m.by, `${s.id}: incomplete moved spec`).toBeTruthy()
       expect(m.within, `${s.id}: within does not select on ${m.by}`).toContain(m.by)
       expect(markup, `${s.id}: nothing renders ${m.by}`).toMatch(new RegExp(`:?${m.by}=`))
+    }
+  })
+
+  it('has someone to fill every {token} its steps are scoped with', () => {
+    // Steps scoped to an entity the user creates mid-guide carry a token the
+    // store expands from the context a component reported. Miss either half and
+    // nothing fails loudly: the selector keeps its literal `{token}`, matches
+    // nothing, and the step falls back to a timeout — or, when it was written
+    // unscoped, points confidently at the first row in the tree, which is how
+    // the mask ended up on someone else's group (#2778 rework).
+    const store = readFileSync(resolve(root, 'src/stores/tour.js'), 'utf8')
+    const tokens = new Set()
+    for (const key of anchorKeys()) {
+      for (const [, t] of key.matchAll(/\{(\w+)\}/g)) tokens.add(t)
+    }
+    expect(tokens).toContain('group')
+    for (const t of tokens) {
+      expect(store, `resolve() leaves {${t}} unexpanded`).toContain(`{${t}}`)
+      expect(markup, `nothing reports ${t}Id to the guide`).toMatch(
+        new RegExp(`noteCreated\\(\\{\\s*${t}Id`),
+      )
     }
   })
 

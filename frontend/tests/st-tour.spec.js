@@ -121,6 +121,18 @@ describe('tour store', () => {
     expect(t.resolve('[data-tour-board="{board}"]')).toBe('[data-tour-board="b-7"]')
   })
 
+  it('scopes {group} the same way, for the group the guide had the user create', () => {
+    // #2778 rework: in a workspace that already had groups the «Группа создана»
+    // step highlighted whichever one came first in the tree.
+    const t = useTourStore()
+    const tokenised = '[data-tour-group="{group}"] [data-tour="group-row"]'
+    t.start([{ id: 'group-created', anchor: tokenised }])
+    expect(t.anchors).toEqual(['[data-tour-group=""] [data-tour="group-row"]'])
+
+    t.noteCreated({ groupId: 'g-9' })
+    expect(t.anchors).toEqual(['[data-tour-group="g-9"] [data-tour="group-row"]'])
+  })
+
   it('drops the created-entity context when the tour ends', () => {
     const t = useTourStore()
     t.start([{ id: 'board-add', anchor: 'x', mode: 'action' }])

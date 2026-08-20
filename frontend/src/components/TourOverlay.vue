@@ -105,7 +105,10 @@ function readRect(el) {
 function getCutRects() {
   const out = []
   for (const sel of step.value?.cut || []) {
-    const el = document.querySelector(anchorSelector(sel))
+    // resolve() as everywhere else: a cut scoped to the entity the user just
+    // created ({group}) has to land on that row, and an unexpanded token would
+    // silently punch the hole over the first matching one instead (#2778 rework).
+    const el = document.querySelector(anchorSelector(tour.resolve(sel)))
     const r = el && readRect(el)
     if (r) out.push(r)
   }
