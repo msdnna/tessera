@@ -196,6 +196,7 @@ async function commitRename() {
   <div class="group-node">
     <div
       class="row group-row"
+      data-tour="group-row"
       @contextmenu.prevent.stop="onCtx"
       @touchstart.passive="lp.start"
       @touchend="lp.cancel"
@@ -296,8 +297,13 @@ async function commitRename() {
           <SidebarNode :group="element" :depth="depth + 1" />
         </template>
       </draggable>
+      <!-- data-tour-group is the "address" of this group's project list: the Get
+           Started guide reads it off a row's closest() to tell that a project was
+           actually dragged into a group (#2778). It sits on the list itself, not
+           on the node, so a project in a subgroup reports the subgroup. -->
       <draggable
         :list="projModel"
+        :data-tour-group="group.id"
         group="sidebar-proj"
         item-key="id"
         ghost-class="sb-ghost"

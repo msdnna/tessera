@@ -20,6 +20,7 @@ const root = process.cwd()
 // selectors, checked separately.
 const MARKUP = [
   'src/components/Sidebar.vue',
+  'src/components/SidebarNode.vue',
   'src/components/ProjectRow.vue',
   'src/components/ProjectCreateModal.vue',
   'src/components/task/TaskCardPills.vue',
@@ -40,6 +41,7 @@ function anchorKeys() {
   const keys = []
   for (const s of GET_STARTED) {
     keys.push(s.anchor, ...(s.extra || []), s.advanceOn?.count, s.advanceOn?.set)
+    keys.push(s.advanceOn?.moved?.el, s.advanceOn?.moved?.within)
     if (typeof s.advanceOn?.click === 'string') keys.push(s.advanceOn.click)
   }
   return [...new Set(keys.filter((k) => k && typeof k === 'string'))]
@@ -78,7 +80,10 @@ describe('Get Started scenario', () => {
     for (const s of GET_STARTED) {
       if (s.mode === 'action') {
         const a = s.advanceOn || {}
-        expect(a.click || a.count || a.set || a.when, `${s.id} can never advance`).toBeTruthy()
+        expect(
+          a.click || a.count || a.set || a.when || a.moved,
+          `${s.id} can never advance`,
+        ).toBeTruthy()
       } else {
         // An info step advances on «Понятно»; an advanceOn there would be dead
         // config, since the store only consults it for action steps.
@@ -165,6 +170,20 @@ describe('Get Started scenario', () => {
       expect(modal, `${s.id}: no :data-tour-set beside data-tour="${key}"`).toMatch(
         new RegExp(`data-tour="${key}"[\\s\\S]{0,120}:data-tour-set=`),
       )
+    }
+  })
+
+  it('wires every moved-step to a container that really carries an address', () => {
+    // advanceOn.moved reads `by` off the nearest `within` container (#2778). Two
+    // ways to get that wrong silently: name a container that doesn't carry the
+    // attribute (closest() finds it, getAttribute returns null → the step never
+    // ends), or point at an attribute nothing renders any more.
+    for (const s of GET_STARTED) {
+      const m = s.advanceOn?.moved
+      if (!m) continue
+      expect(m.el && m.within && m.by, `${s.id}: incomplete moved spec`).toBeTruthy()
+      expect(m.within, `${s.id}: within does not select on ${m.by}`).toContain(m.by)
+      expect(markup, `${s.id}: nothing renders ${m.by}`).toMatch(new RegExp(`:?${m.by}=`))
     }
   })
 

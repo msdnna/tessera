@@ -4,6 +4,8 @@ import { NIcon } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
 import { useTourStore } from '@/stores/tour'
 import { useTourAnchor, anchorSelector } from '@/composables/useTourAnchor'
+import { sidebarDragging } from '@/composables/useSidebarDnd'
+import { boardDragging } from '@/composables/useBoardDragScroll'
 import { layoutArrow, tourArc, ARROW_HEAD, unionRect, choosePlacement } from '@/utils/tourArrow'
 
 // The Get Started guide's viewport layer (#2753): a dimming mask with a cut-out
@@ -34,10 +36,30 @@ const popStyle = ref({})
 const popSide = ref('right') // which side of the group the popover sits on
 const arrows = ref([]) // { len, head } per anchor, in `anchors` order
 
-const { rects, els, count, panels, surfaces } = useTourAnchor(() => tour.anchors, {
+// `place` is already the name of the popover's layout pass below, hence movedAt.
+const {
+  rects,
+  els,
+  count,
+  place: movedAt,
+  panels,
+  surfaces,
+} = useTourAnchor(() => tour.anchors, {
   onMissing: () => tour.anchorMissing(step.value?.id),
   countFn: () => step.value?.advanceOn?.count || step.value?.advanceOn?.set || '',
+  // resolve() expands the {project}/{board} tokens here too, so a moved-step can
+  // track the row the guide itself created rather than the first one in the tree.
+  placeFn: () => {
+    const m = step.value?.advanceOn?.moved
+    return m ? { el: tour.resolve(m.el), within: tour.resolve(m.within), by: m.by } : null
+  },
 })
+
+// The tour dims itself almost away while a drag is in progress (#2778): the
+// overlay never blocked the pointer (`pointer-events: none`), but an arrow drawn
+// over the drag ghost, and a mask shading the column the card is heading for,
+// both read as "the guide is in the way".
+const dragging = computed(() => sidebarDragging.value || boardDragging.value)
 
 const target = computed(() => rects.value[0] || null)
 
@@ -202,6 +224,17 @@ watch(
   { immediate: true, flush: 'post' },
 )
 
+// Drag-and-drop steps report the address of the element they track on every
+// mutation pass, same shape as the counter above; re-reporting on a step change
+// gives the store its baseline even when the address happens to be unchanged.
+watch(
+  [movedAt, () => step.value?.id],
+  ([p, id]) => {
+    if (id) tour.located(id, p)
+  },
+  { immediate: true, flush: 'post' },
+)
+
 // Some anchors are only revealed on hover (the sidebar's per-row buttons). Flag
 // the live ones so the rule in main.css can hold them visible while the guide
 // points at them — otherwise the arrow lands on an invisible target.
@@ -247,7 +280,7 @@ watch(
 
 <template>
   <teleport to="body">
-    <div v-if="step && target" ref="layer" class="tr-layer" :class="{ playing }">
+    <div v-if="step && target" ref="layer" class="tr-layer" :class="{ playing, dragging }">
       <!-- Dim the page with a bright hole per anchor/panel. An SVG <mask> (black
            holes on a white field) is used instead of an evenodd path so that
            holes for adjacent elements can overlap and still read as one clean
@@ -313,6 +346,13 @@ watch(
   inset: 0;
   z-index: 7000; /* above content, below the app loader/connection overlay */
   pointer-events: none;
+}
+/* Out of the way while the user is actually dragging — see `dragging` above.
+   Not display:none: the layer keeps measuring, so the step still ends the moment
+   the card lands, and the popover fades back in where it was. */
+.tr-layer.dragging {
+  opacity: 0.15;
+  transition: opacity 0.12s ease;
 }
 .tr-mask,
 .tr-arrows {

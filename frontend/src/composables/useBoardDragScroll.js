@@ -10,9 +10,18 @@ import { ref, onBeforeUnmount } from 'vue'
 // `dragging` is also the board's "hold everything" flag: it mutes realtime-driven
 // reloads and freezes card windowing, so SortableJS sees a stable DOM.
 //
+// `boardDragging` mirrors that flag at module scope, the same way the sidebar
+// exposes `sidebarDragging`: the Get Started overlay has to fade itself out while
+// a card is in the air (#2778) and it is nowhere near the board in the component
+// tree. The instance ref stays the one the board itself reads — a module-level
+// ref would be shared by two mounted boards, and the tour only needs "is *a* drag
+// happening", which is exactly what a shared flag says.
+//
 // - `scrollEl`  — ref to the horizontally scrolling column strip
 // - `colWidth`  — computed column width in px (stride = width + gap)
 // - `gap`       — px between columns
+export const boardDragging = ref(false)
+
 export function useBoardDragScroll({ scrollEl, colWidth, gap, edge = 72, stepCooldown = 600 }) {
   const dragging = ref(false) // any drag (column OR card): autoscroll, reload guard, reveal
   // Card-only drag: gates the per-card subtask nest dropzone hint. A column drag
@@ -77,6 +86,7 @@ export function useBoardDragScroll({ scrollEl, colWidth, gap, edge = 72, stepCoo
 
   function onDragStart() {
     dragging.value = true
+    boardDragging.value = true
     pointerX = null
     scrollIdx = null
     lastStep = 0
@@ -100,6 +110,7 @@ export function useBoardDragScroll({ scrollEl, colWidth, gap, edge = 72, stepCoo
 
   function onDragEnd() {
     dragging.value = false
+    boardDragging.value = false
     draggingCard.value = false
     pointerX = null
     const el = scrollEl.value

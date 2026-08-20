@@ -291,6 +291,97 @@ describe('tour store', () => {
       })
     })
 
+    describe('advanceOn.moved', () => {
+      const MOVED = {
+        el: '[data-testid="task-card"]',
+        within: '[data-column-name]',
+        by: 'data-column-name',
+      }
+      const MOVED_STEPS = [
+        { id: 'dnd-card', anchor: 'card', mode: 'action', advanceOn: { moved: MOVED } },
+        { id: 'after', anchor: 'ws-switch', mode: 'info' },
+      ]
+      const COUNT_ONLY = [
+        { id: 'create-board', anchor: 'board-name', mode: 'action', advanceOn: { count: 'row' } },
+        { id: 'after', anchor: 'ws-switch', mode: 'info' },
+      ]
+
+      it('takes the first address as the baseline and advances when it changes', () => {
+        const t = useTourStore()
+        t.start(MOVED_STEPS)
+        t.located('dnd-card', 'К работе')
+        expect(t.current.id).toBe('dnd-card')
+        // Same address again — the user picked the card up and put it back.
+        t.located('dnd-card', 'К работе')
+        expect(t.current.id).toBe('dnd-card')
+
+        t.located('dnd-card', 'В процессе')
+        expect(t.current.id).toBe('after')
+      })
+
+      it('ignores an empty address mid-drag', () => {
+        // SortableJS lifts the node out of its list for a frame, so closest()
+        // finds no container — advancing there would end the step while the card
+        // is still in the air.
+        const t = useTourStore()
+        t.start(MOVED_STEPS)
+        t.located('dnd-card', 'К работе')
+        t.located('dnd-card', null)
+        t.located('dnd-card', '')
+        expect(t.current.id).toBe('dnd-card')
+        t.located('dnd-card', 'В процессе')
+        expect(t.current.id).toBe('after')
+      })
+
+      it('treats "no container" as a legitimate baseline (a project at the root)', () => {
+        // The tree step starts with the project outside any group, i.e. with no
+        // address at all — moving it into one has to count.
+        const t = useTourStore()
+        t.start([
+          { id: 'dnd-project', anchor: 'row', mode: 'action', advanceOn: { moved: MOVED } },
+          MOVED_STEPS[1],
+        ])
+        t.located('dnd-project', null)
+        expect(t.current.id).toBe('dnd-project')
+        t.located('dnd-project', 'g-1')
+        expect(t.current.id).toBe('after')
+      })
+
+      it('re-baselines per step, so one report cannot advance two', () => {
+        const t = useTourStore()
+        t.start([
+          { ...MOVED_STEPS[0], id: 'one' },
+          { ...MOVED_STEPS[0], id: 'two' },
+          MOVED_STEPS[1],
+        ])
+        t.located('one', 'a')
+        t.located('one', 'b')
+        expect(t.current.id).toBe('two')
+        t.located('two', 'b')
+        expect(t.current.id).toBe('two')
+        t.located('two', 'c')
+        expect(t.current.id).toBe('after')
+      })
+
+      it('ignores reports for another step, and steps that do not wait on a move', () => {
+        const t = useTourStore()
+        t.start(MOVED_STEPS)
+        t.located('after', 'В процессе')
+        expect(t.current.id).toBe('dnd-card')
+
+        t.start(STEPS) // info step, no advanceOn at all
+        t.located('workspaces', 'a')
+        t.located('workspaces', 'b')
+        expect(t.current.id).toBe('workspaces')
+
+        // An action step that advances on something else must not move either.
+        t.start(COUNT_ONLY)
+        t.located('create-board', 'a')
+        t.located('create-board', 'b')
+        expect(t.current.id).toBe('create-board')
+      })
+    })
+
     it('skips a step whose anchor never showed up instead of hanging', () => {
       const t = useTourStore()
       t.start(STEPS)
