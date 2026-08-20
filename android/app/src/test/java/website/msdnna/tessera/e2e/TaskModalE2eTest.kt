@@ -90,6 +90,12 @@ class TaskModalE2eTest {
 
         compose.openTaskModal(e2e.fixture, task.id)
         compose.onNodeWithTag(TestTags.TASK_STATUS).performScrollTo().performClick()
+        // The picker is a focusable Popup with an appear animation, so it is a
+        // window of its own that is not in the tree the frame the tap lands —
+        // await it like any other post-click state instead of fetching straight
+        // away (the priority picker higher up the modal happens to make it in one
+        // frame, which is luck, not a rule).
+        compose.awaitTag(TestTags.taskStatusOption(target.id))
         compose.onNodeWithTag(TestTags.taskStatusOption(target.id)).performClick()
 
         val moved = compose.awaitServer("the task to land in ${target.name}") {
