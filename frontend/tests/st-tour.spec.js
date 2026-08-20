@@ -102,6 +102,35 @@ describe('tour store', () => {
     expect(t.anchors).toEqual(['card-priority', 'card-due', 'card-tags'])
   })
 
+  it('scopes {project}/{board} tokens to the entity the user just created', () => {
+    // #2753 rework: the board-add/board-open steps must point at the row the
+    // guide created, not the first one in the tree.
+    const t = useTourStore()
+    const tokenised = '[data-tour-project="{project}"] [data-tour="board-add"]'
+    t.start([{ id: 'board-add', anchor: tokenised, mode: 'action' }])
+
+    // No id yet → the token collapses to a selector that matches nothing, so the
+    // step waits instead of grabbing a stray element.
+    expect(t.anchors).toEqual(['[data-tour-project=""] [data-tour="board-add"]'])
+
+    t.noteCreated({ projectId: 'p-42' })
+    expect(t.anchors).toEqual(['[data-tour-project="p-42"] [data-tour="board-add"]'])
+    expect(t.resolve('[data-tour-board="{board}"]')).toBe('[data-tour-board=""]')
+
+    t.noteCreated({ boardId: 'b-7' })
+    expect(t.resolve('[data-tour-board="{board}"]')).toBe('[data-tour-board="b-7"]')
+  })
+
+  it('drops the created-entity context when the tour ends', () => {
+    const t = useTourStore()
+    t.start([{ id: 'board-add', anchor: 'x', mode: 'action' }])
+    t.noteCreated({ projectId: 'p-42' })
+    t.stop()
+    // A fresh run must not inherit the previous walk's project.
+    t.start([{ id: 'board-add', anchor: '[data-tour-project="{project}"]', mode: 'action' }])
+    expect(t.anchors).toEqual(['[data-tour-project=""]'])
+  })
+
   describe('advancing', () => {
     it('advances an action step on a click on its anchor', () => {
       const t = useTourStore()

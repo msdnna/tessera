@@ -25,6 +25,21 @@ function anchor(key, box = { left: 100, top: 60, width: 40, height: 24 }) {
   return el
 }
 
+// A stand-in for an open naive picker (calendar/priority/tags popover): the
+// overlay treats any visible .n-popover as a panel it must not dim or advance
+// over (#2753 rework).
+function panel(box = { left: 200, top: 200, width: 220, height: 260 }) {
+  const el = document.createElement('div')
+  el.className = 'n-popover'
+  el.getBoundingClientRect = () => ({
+    ...box,
+    right: box.left + box.width,
+    bottom: box.top + box.height,
+  })
+  document.body.appendChild(el)
+  return el
+}
+
 const INFO = { id: 'workspaces', anchor: 'ws-switch', title: 'Пространства', body: 'Тут они' }
 const ACTION = {
   id: 'open-menu',
@@ -129,11 +144,11 @@ describe('TourOverlay', () => {
     tour.start([{ id: 'card', anchor: 'card-priority', extra: ['card-due'], title: 'Поля' }])
     await render()
 
-    const d = document.querySelector('.tr-mask path').getAttribute('d')
-    // Outer viewport rect + one sub-path per anchor.
-    expect(d.match(/M /g)).toHaveLength(3)
-    expect(document.querySelector('.tr-mask').getAttribute('fill-rule')).toBe(null)
-    expect(document.querySelector('.tr-mask path').getAttribute('fill-rule')).toBe('evenodd')
+    // A <mask> with one black hole-rect per anchor (overlap-safe, unlike an
+    // evenodd path), over a single dimming rect.
+    const holes = document.querySelectorAll('#tr-hole rect[fill="black"]')
+    expect(holes).toHaveLength(2)
+    expect(document.querySelector('.tr-dim')).not.toBe(null)
   })
 
   it('omits the mask when the step opts out', async () => {
@@ -215,6 +230,49 @@ describe('TourOverlay', () => {
     await new Promise((r) => requestAnimationFrame(r))
     await nextTick()
     expect(tour.current.id).toBe('workspaces')
+  })
+
+  it('holds a set-step until the open picker is closed', async () => {
+    // #2753 rework: picking a date filled the field, so the guide jumped to the
+    // next step while the calendar was still open. Now it waits for the picker
+    // to close first.
+    const el = anchor('tm-due')
+    const p = panel()
+    const tour = useTourStore()
+    tour.start([
+      {
+        id: 'tm-due',
+        anchor: 'tm-due',
+        mode: 'action',
+        advanceOn: { set: '[data-tour="tm-due"][data-tour-set]' },
+      },
+      INFO,
+    ])
+    anchor('ws-switch')
+    await render()
+    expect(tour.current.id).toBe('tm-due')
+
+    // Field filled, but the picker is still open → stay put.
+    el.setAttribute('data-tour-set', '')
+    await new Promise((r) => requestAnimationFrame(r))
+    await nextTick()
+    expect(tour.current.id).toBe('tm-due')
+
+    // Picker closed → advance.
+    p.remove()
+    await new Promise((r) => requestAnimationFrame(r))
+    await nextTick()
+    expect(tour.current.id).toBe('workspaces')
+  })
+
+  it('cuts the open picker panel out of the mask too', async () => {
+    anchor('tm-due')
+    panel()
+    const tour = useTourStore()
+    tour.start([{ id: 'tm-due', anchor: 'tm-due', title: 'Срок', mode: 'action' }])
+    await render()
+    // One hole for the field anchor, one for the open panel.
+    expect(document.querySelectorAll('#tr-hole rect[fill="black"]')).toHaveLength(2)
   })
 
   it('flags the elements it points at, so hover-only buttons stay visible', async () => {

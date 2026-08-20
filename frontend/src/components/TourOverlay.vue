@@ -15,7 +15,7 @@ import { layoutArrow, ARROW_HEAD } from '@/utils/tourArrow'
 // purely visual: nothing is actually blocked, so a wrong turn can't trap anyone.
 
 const POP_W = 260
-const GAP = 76 // popover-to-target breathing room, matches SidebarSpotlight
+const GAP = 22 // popover-to-group breathing room
 const PAD = 6 // mask cut-out padding around the target
 const EDGE = 16 // keep the popover this far from the viewport edge
 
@@ -27,9 +27,10 @@ const layer = ref(null)
 const arrowEls = ref([])
 const playing = ref(false)
 const popStyle = ref({})
+const popSide = ref('right') // which side of the group the popover sits on
 const arrows = ref([]) // { len, head } per anchor, in `anchors` order
 
-const { rects, els, count } = useTourAnchor(() => tour.anchors, {
+const { rects, els, count, panels } = useTourAnchor(() => tour.anchors, {
   onMissing: () => tour.anchorMissing(step.value?.id),
   countFn: () => step.value?.advanceOn?.count || step.value?.advanceOn?.set || '',
 })
@@ -37,76 +38,145 @@ const { rects, els, count } = useTourAnchor(() => tour.anchors, {
 const target = computed(() => rects.value[0] || null)
 const masked = computed(() => step.value?.mask !== false)
 const isAction = computed(() => step.value?.mode === 'action')
+// A picker (calendar, priority/tags/assignee popover) is open. Used to keep the
+// popover clear of it and to hold a `set`-step until it's closed (#2753 rework).
+const hasPanel = computed(() => panels.value.length > 0)
 
-// Outer viewport rect + a rounded hole per anchor. fill-rule="evenodd" turns the
-// inner sub-paths into holes.
-const maskPath = computed(() => {
-  const w = window.innerWidth
-  const h = window.innerHeight
-  let d = `M 0 0 H ${w} V ${h} H 0 Z`
-  for (const r of rects.value) {
-    if (!r) continue
-    const x = r.left - PAD
-    const y = r.top - PAD
-    const rw = r.width + PAD * 2
-    const rh = r.height + PAD * 2
-    const rad = Math.min(10, rw / 2, rh / 2)
-    d +=
-      ` M ${x + rad} ${y} H ${x + rw - rad} A ${rad} ${rad} 0 0 1 ${x + rw} ${y + rad}` +
-      ` V ${y + rh - rad} A ${rad} ${rad} 0 0 1 ${x + rw - rad} ${y + rh}` +
-      ` H ${x + rad} A ${rad} ${rad} 0 0 1 ${x} ${y + rh - rad}` +
-      ` V ${y + rad} A ${rad} ${rad} 0 0 1 ${x + rad} ${y} Z`
+function readRect(el) {
+  const r = el.getBoundingClientRect()
+  if (!r.width && !r.height) return null
+  return {
+    left: r.left,
+    top: r.top,
+    width: r.width,
+    height: r.height,
+    right: r.right,
+    bottom: r.bottom,
   }
-  return d
-})
-
-// Park the popover beside the target: to its right when there's room, otherwise
-// left, and clamped into the viewport either way.
-function placePopover(t) {
-  const popH = pop.value?.offsetHeight || 140
-  let left = t.right + GAP
-  if (left + POP_W > window.innerWidth - EDGE) {
-    const leftSide = t.left - GAP - POP_W
-    left = leftSide >= EDGE ? leftSide : Math.max(EDGE, window.innerWidth - POP_W - EDGE)
-  }
-  let top = t.bottom + 4
-  if (top + popH > window.innerHeight - EDGE) top = Math.max(EDGE, t.top - popH - 4)
-  popStyle.value = { left: Math.round(left) + 'px', top: Math.round(top) + 'px' }
 }
 
-// Where the arrow leaves the popover: the corner facing the target, inset so the
-// stroke starts on the card rather than in mid-air.
+// Everything the mask punches a bright hole in: the step's anchors, any open
+// picker panel (so the guide never dims the control it just pointed at), and the
+// step's declared `cut` extras (e.g. a modal's «Создать» button).
+const holes = computed(() => {
+  const out = []
+  for (const r of rects.value) if (r) out.push(r)
+  if (masked.value) {
+    for (const p of panels.value) out.push(p)
+    for (const sel of step.value?.cut || []) {
+      const el = document.querySelector(anchorSelector(sel))
+      const r = el && readRect(el)
+      if (r) out.push(r)
+    }
+  }
+  return out
+})
+
+function rectsUnion(rs) {
+  const f = rs.filter(Boolean)
+  if (!f.length) return null
+  let l = Infinity,
+    t = Infinity,
+    r = -Infinity,
+    b = -Infinity
+  for (const x of f) {
+    l = Math.min(l, x.left)
+    t = Math.min(t, x.top)
+    r = Math.max(r, x.right)
+    b = Math.max(b, x.bottom)
+  }
+  return { left: l, top: t, right: r, bottom: b, width: r - l, height: b - t }
+}
+
+function intersects(a, b, m = 0) {
+  return (
+    a.left < b.right + m && a.right > b.left - m && a.top < b.bottom + m && a.bottom > b.top - m
+  )
+}
+
+const clampN = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+
+// Park the popover beside the *whole group* of anchors (not just the first), on
+// the side with the most room that doesn't cover any anchor or open picker. This
+// is what keeps the arrows from crossing the card/tabs and stops the popover
+// sitting on top of the calendar (#2753 rework).
+function placePopover() {
+  const anchors = rects.value.filter(Boolean)
+  const u = rectsUnion(anchors)
+  if (!u) return
+  const popH = pop.value?.offsetHeight || 140
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const avoid = [...anchors, ...panels.value]
+  // A wide, short group (a row of pills/tabs/tools) reads best with the popover
+  // below or above it; a tall or single target with it to the side.
+  const order =
+    u.width >= u.height ? ['bottom', 'top', 'right', 'left'] : ['right', 'left', 'bottom', 'top']
+
+  function cand(side) {
+    if (side === 'bottom' || side === 'top') {
+      const left = clampN(u.left + u.width / 2 - POP_W / 2, EDGE, vw - POP_W - EDGE)
+      const top = side === 'bottom' ? u.bottom + GAP : u.top - GAP - popH
+      return { left, top, side }
+    }
+    const top = clampN(u.top + u.height / 2 - popH / 2, EDGE, vh - popH - EDGE)
+    const left = side === 'right' ? u.right + GAP : u.left - GAP - POP_W
+    return { left, top, side }
+  }
+  function fits(c) {
+    if (c.left < EDGE || c.top < EDGE || c.left + POP_W > vw - EDGE || c.top + popH > vh - EDGE) {
+      return false
+    }
+    const box = { left: c.left, top: c.top, right: c.left + POP_W, bottom: c.top + popH }
+    return !avoid.some((a) => intersects(box, a, 4))
+  }
+
+  let chosen = order.map(cand).find(fits)
+  if (!chosen) {
+    // Nothing clears — take the side with the most free space and clamp in.
+    const space = { bottom: vh - u.bottom, top: u.top, right: vw - u.right, left: u.left }
+    const side = order.reduce((a, b) => (space[b] > space[a] ? b : a), order[0])
+    chosen = cand(side)
+    chosen.left = clampN(chosen.left, EDGE, vw - POP_W - EDGE)
+    chosen.top = clampN(chosen.top, EDGE, vh - popH - EDGE)
+  }
+  popSide.value = chosen.side
+  popStyle.value = { left: Math.round(chosen.left) + 'px', top: Math.round(chosen.top) + 'px' }
+}
+
+// Where each arrow leaves the popover: the edge facing the group, at the point
+// nearest *that* target — so several arrows fan out cleanly instead of crossing
+// from one shared corner.
 function arrowOrigin(p, t) {
-  const x = p.left + p.width / 2 > t.left + t.width / 2 ? p.left + 14 : p.right - 14
-  const y = p.top + p.height / 2 > t.top + t.height / 2 ? p.top + 8 : p.bottom - 8
-  return { x, y }
+  const tcx = t.left + t.width / 2
+  const tcy = t.top + t.height / 2
+  if (popSide.value === 'bottom') return { x: clampN(tcx, p.left + 14, p.right - 14), y: p.top + 2 }
+  if (popSide.value === 'top') return { x: clampN(tcx, p.left + 14, p.right - 14), y: p.bottom - 2 }
+  if (popSide.value === 'left') return { x: p.right - 2, y: clampN(tcy, p.top + 10, p.bottom - 10) }
+  return { x: p.left + 2, y: clampN(tcy, p.top + 10, p.bottom - 10) }
 }
 
 // Where it lands: just outside the target's edge that faces the popover, so the
 // head never covers the thing it's pointing at.
-function arrowTip(p, t) {
-  const pcx = p.left + p.width / 2
-  const pcy = p.top + p.height / 2
+function arrowTip(t) {
   const tcx = t.left + t.width / 2
   const tcy = t.top + t.height / 2
-  if (Math.abs(pcy - tcy) > Math.abs(pcx - tcx) * 1.5) {
-    return { x: tcx, y: pcy > tcy ? t.bottom + 12 : t.top - 12 }
-  }
-  return { x: pcx > tcx ? t.right + 12 : t.left - 12, y: tcy }
+  if (popSide.value === 'bottom') return { x: tcx, y: t.bottom + 12 }
+  if (popSide.value === 'top') return { x: tcx, y: t.top - 12 }
+  if (popSide.value === 'left') return { x: t.left - 12, y: tcy }
+  return { x: t.right + 12, y: tcy }
 }
 
 function place() {
-  const t = target.value
-  if (!t || !pop.value) return
-  placePopover(t)
+  if (!target.value || !pop.value) return
+  placePopover()
   nextTick(() => {
     if (!pop.value) return
     const p = pop.value.getBoundingClientRect()
-    const from = arrowOrigin(p, t)
     arrows.value = rects.value.map((r, i) => {
       const el = arrowEls.value[i]
       if (!r || !el) return { len: 0, head: '' }
-      return layoutArrow(el, from, arrowTip(p, r))
+      return layoutArrow(el, arrowOrigin(p, r), arrowTip(r))
     })
   })
 }
@@ -124,7 +194,8 @@ function onDocClick(e) {
   const s = step.value
   const key = s?.advanceOn?.click
   if (!key || !(e.target instanceof Element)) return
-  const sel = anchorSelector(key === true ? s.anchor : key)
+  // resolve() expands the {project}/{board} tokens the scoped anchors carry.
+  const sel = anchorSelector(tour.resolve(key === true ? s.anchor : key))
   if (sel && e.target.closest(sel)) tour.clicked(s.id)
 }
 document.addEventListener('click', onDocClick, true)
@@ -133,10 +204,19 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true))
 // Steps that wait for an entity to be created report the match count on every
 // mutation pass; re-reporting on a step change too gives the store its baseline
 // even when the new step happens to start on the same number.
-watch([count, () => step.value?.id], ([n, id]) => id && tour.counted(id, n), {
-  immediate: true,
-  flush: 'post',
-})
+//
+// A `set` step (fill a field in the task modal) is held while a picker is still
+// open: reporting 0 keeps it from advancing the instant a date is picked, so the
+// user closes the calendar first, then it moves on (#2753 rework).
+watch(
+  [count, () => step.value?.id, hasPanel],
+  ([n, id, panel]) => {
+    if (!id) return
+    const gated = !!step.value?.advanceOn?.set && panel
+    tour.counted(id, gated ? 0 : n)
+  },
+  { immediate: true, flush: 'post' },
+)
 
 // Some anchors are only revealed on hover (the sidebar's per-row buttons). Flag
 // the live ones so the rule in main.css can hold them visible while the guide
@@ -164,6 +244,9 @@ onBeforeUnmount(unmark)
 // layout pass has to run after the DOM is patched (on the step the layer mounts,
 // `pop` doesn't exist yet during the pre-flush pass).
 watch(rects, place, { deep: true, flush: 'post' })
+// A picker opening/closing shifts the free space around the group, so re-place
+// (and, for masked steps, re-cut) when the set of open panels changes.
+watch(panels, place, { deep: true, flush: 'post' })
 watch(
   () => (step.value && target.value ? step.value.id : null),
   async (id) => {
@@ -180,8 +263,27 @@ watch(
 <template>
   <teleport to="body">
     <div v-if="step && target" ref="layer" class="tr-layer" :class="{ playing }">
+      <!-- Dim the page with a bright hole per anchor/panel. An SVG <mask> (black
+           holes on a white field) is used instead of an evenodd path so that
+           holes for adjacent elements can overlap and still read as one clean
+           opening — with evenodd the overlap XORs back to dim (#2753 rework). -->
       <svg v-if="masked" class="tr-mask" aria-hidden="true">
-        <path :d="maskPath" fill-rule="evenodd" />
+        <defs>
+          <mask id="tr-hole" maskUnits="userSpaceOnUse" x="0" y="0" width="100000" height="100000">
+            <rect x="0" y="0" width="100000" height="100000" fill="white" />
+            <rect
+              v-for="(h, i) in holes"
+              :key="i"
+              :x="h.left - PAD"
+              :y="h.top - PAD"
+              :width="h.width + PAD * 2"
+              :height="h.height + PAD * 2"
+              :rx="Math.min(10, (h.width + PAD * 2) / 2, (h.height + PAD * 2) / 2)"
+              fill="black"
+            />
+          </mask>
+        </defs>
+        <rect class="tr-dim" x="0" y="0" width="100000" height="100000" mask="url(#tr-hole)" />
       </svg>
       <svg class="tr-arrows" aria-hidden="true">
         <!-- Reuses the app-wide accent gradient def from App.vue (theme-aware). -->
@@ -233,9 +335,15 @@ watch(
   inset: 0;
   width: 100%;
   height: 100%;
+}
+.tr-arrows {
   overflow: visible;
 }
-.tr-mask path {
+.tr-mask {
+  /* Clip the deliberately-oversized dim rect back to the viewport. */
+  overflow: hidden;
+}
+.tr-dim {
   /* Dim from the app background so the mask reads the same in both themes —
      a hard-coded rgba() would wash out the dark one. */
   fill: color-mix(in srgb, var(--t-bg) 72%, transparent);

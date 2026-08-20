@@ -32,6 +32,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
+import { useTourStore } from '@/stores/tour'
 import ConfirmByName from './ConfirmByName.vue'
 import ProjectCreateModal from './ProjectCreateModal.vue'
 import {
@@ -58,6 +59,7 @@ defineProps({
 
 const store = useWorkspacesStore()
 const auth = useAuthStore()
+const tour = useTourStore()
 const message = useMessage()
 const route = useRoute()
 const router = useRouter()
@@ -105,6 +107,13 @@ async function onWorkspaceChange(id) {
 // Projects are named in a modal (the name decides the URL address, which is
 // assigned once); groups keep the create-then-rename flow.
 const projModalShow = ref(false)
+
+// The project modal reports its new project so the Get Started guide can point
+// its next step («+» to add a board) at that row rather than the first (#2753).
+function onProjectCreated(project) {
+  tour.noteCreated({ projectId: project?.id })
+  store.refresh()
+}
 
 async function addAtRoot(key) {
   if (key === 'project') {
@@ -356,7 +365,7 @@ async function deleteWorkspace() {
 
     <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
 
-    <ProjectCreateModal v-model:show="projModalShow" @created="store.refresh()" />
+    <ProjectCreateModal v-model:show="projModalShow" @created="onProjectCreated" />
 
     <n-modal v-model:show="wsModal.show">
       <n-card title="Новое пространство" style="max-width: 360px" role="dialog">

@@ -58,6 +58,28 @@ export const useTourStore = defineStore('tour', () => {
   const steps = ref([])
   const index = ref(-1)
   const active = ref(false)
+  // Ids of the project/board the user creates while walking the guide, so the
+  // steps that follow can point at *that* row rather than the first one in the
+  // tree (#2753 rework). Anchors reference them with `{project}` / `{board}`
+  // tokens, expanded by resolve() below.
+  const ctx = ref({})
+
+  // Expand `{project}` / `{board}` tokens in an anchor selector. A token with no
+  // id yet collapses to an empty attribute value that matches nothing, so the
+  // step simply waits for the entity instead of grabbing a stray element.
+  function resolve(sel) {
+    if (typeof sel !== 'string') return sel
+    return sel
+      .replace(/\{project\}/g, ctx.value.projectId || '')
+      .replace(/\{board\}/g, ctx.value.boardId || '')
+  }
+
+  // Sidebar reports the entity it just created (project modal / inline board
+  // add) so the arrow lands on it. No-op unless the guide is running.
+  function noteCreated(next) {
+    if (!active.value || !next) return
+    ctx.value = { ...ctx.value, ...next }
+  }
 
   const current = computed(() => (active.value ? steps.value[index.value] || null : null))
   const isLast = computed(() => index.value >= steps.value.length - 1)
@@ -66,7 +88,7 @@ export const useTourStore = defineStore('tour', () => {
   const anchors = computed(() => {
     const step = current.value
     if (!step) return []
-    return [step.anchor, ...(step.extra || [])].filter(Boolean)
+    return [step.anchor, ...(step.extra || [])].filter(Boolean).map(resolve)
   })
 
   // Value captured when an action step became current, handed back to when().
@@ -144,6 +166,7 @@ export const useTourStore = defineStore('tour', () => {
     steps.value = []
     entry = null
     entryCount = null
+    ctx.value = {}
     persist(null)
   }
 
@@ -234,6 +257,8 @@ export const useTourStore = defineStore('tour', () => {
     current,
     isLast,
     anchors,
+    resolve,
+    noteCreated,
     start,
     startGuide,
     autoStart,

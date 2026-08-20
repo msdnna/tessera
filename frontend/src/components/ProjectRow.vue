@@ -43,6 +43,7 @@ import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { makeSlug } from '@/utils/slug'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useTourStore } from '@/stores/tour'
 import ProjectIcon from './ProjectIcon.vue'
 import TesseraIcon from './TesseraIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
@@ -61,6 +62,7 @@ const props = defineProps({
 })
 
 const store = useWorkspacesStore()
+const tour = useTourStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
@@ -501,7 +503,9 @@ async function addBoard() {
   addingBoard.value = false
   if (!n) return
   try {
-    await projApi.createBoard(props.project.id, { name: n })
+    const res = await projApi.createBoard(props.project.id, { name: n })
+    // Point the Get Started guide's next step at this exact board (#2753 rework).
+    tour.noteCreated({ boardId: res.data?.id })
     await store.loadBoards(props.project.id)
     expanded.value = true
   } catch (e) {
@@ -511,7 +515,7 @@ async function addBoard() {
 </script>
 
 <template>
-  <div class="project-block">
+  <div class="project-block" :data-tour-project="project.id">
     <div
       class="row project-row"
       data-tour="project-row"
@@ -613,6 +617,7 @@ async function addBoard() {
           :key="b.id"
           class="row board-row"
           data-tour="board-row"
+          :data-tour-board="b.id"
           :class="{
             active:
               route.params.projectSlug === project.slug &&

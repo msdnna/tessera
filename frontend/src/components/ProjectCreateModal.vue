@@ -121,6 +121,7 @@ async function submit() {
             size="small"
             :disabled="!canSubmit"
             :loading="busy"
+            data-tour="project-submit"
             @click="submit"
           >
             Создать

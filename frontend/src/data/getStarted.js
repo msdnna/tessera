@@ -58,6 +58,9 @@ export const GET_STARTED = [
     // The address checkbox is manager-only; when it isn't rendered the extra
     // arrow is simply skipped — only the primary anchor gates the step.
     extra: ['project-slug'],
+    // Un-dim the «Создать» button too, so the user isn't left staring at a
+    // greyed-out control they're supposed to press (#2753 rework).
+    cut: ['project-submit'],
     title: 'Назовите проект',
     body: 'Название решает и адрес проекта: /project/название. Адрес назначается один раз — если он важен, задайте его вручную.',
     mode: 'action',
@@ -65,11 +68,13 @@ export const GET_STARTED = [
   },
   {
     id: 'board-add',
-    anchor: 'board-add',
+    // Scoped to the project the user just created (`{project}` → its id), so the
+    // arrow lands on its «+» and not the first project's (#2753 rework).
+    anchor: '[data-tour-project="{project}"] [data-tour="board-add"]',
     title: 'Добавьте доску',
     body: 'Задачи живут на досках, у проекта их может быть несколько. Нажмите «+» у проекта.',
     mode: 'action',
-    advanceOn: { click: 'board-add' },
+    advanceOn: { click: '[data-tour-project="{project}"] [data-tour="board-add"]' },
   },
   {
     id: 'board-create',
@@ -81,11 +86,12 @@ export const GET_STARTED = [
   },
   {
     id: 'board-open',
-    anchor: 'board-row',
+    // The board just created (`{board}` → its id), not the first in the tree.
+    anchor: '[data-tour-board="{board}"]',
     title: 'Откройте доску',
     body: 'Нажмите на доску — откроется канбан.',
     mode: 'action',
-    advanceOn: { click: 'board-row' },
+    advanceOn: { click: '[data-tour-board="{board}"]' },
   },
   {
     id: 'task-create',

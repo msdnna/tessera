@@ -16,6 +16,20 @@ export function anchorSelector(key) {
   return /[[\].#\s>]/.test(key) ? key : `[data-tour="${key}"]`
 }
 
+// Currently-open naive floating panels (a date picker, a priority/tags popover,
+// a select menu). The guide needs their boxes so the mask can cut them out
+// instead of dimming the very control it just told the user to use, and so the
+// popover can be parked clear of them (#2753 rework). Tooltips are excluded —
+// they're transient hover noise, not something the user interacts with.
+export const PANEL_SEL = [
+  '.n-popover:not(.n-tooltip)',
+  '.n-date-panel',
+  '.n-dropdown-menu',
+  '.n-base-select-menu',
+  '.n-color-picker-panel',
+  '.n-cascader-menu',
+].join(',')
+
 function boxOf(el) {
   const r = el.getBoundingClientRect()
   // Elements that are in the DOM but not laid out (display:none, a collapsed
@@ -51,6 +65,7 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
   const rects = ref([])
   const els = ref([])
   const count = ref(0)
+  const panels = ref([])
   let frame = 0
   let missTimer = 0
   let ro = null
@@ -65,6 +80,7 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
     rects.value = nextRects
     const countSel = anchorSelector(countFn?.())
     count.value = countSel ? document.querySelectorAll(countSel).length : 0
+    panels.value = [...document.querySelectorAll(PANEL_SEL)].map(boxOf).filter(Boolean)
     if (ro) {
       ro.disconnect()
       nextEls.forEach((el) => el && ro.observe(el))
@@ -116,5 +132,5 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn } = {
     if (frame) cancelAnimationFrame(frame)
   })
 
-  return { rects, els, count, refresh }
+  return { rects, els, count, panels, refresh }
 }
