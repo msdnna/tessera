@@ -4,7 +4,18 @@ import configPrettier from 'eslint-config-prettier'
 import globals from 'globals'
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**', 'coverage/**'] },
+  // Generated output only. playwright-report/ and test-results/ are .gitignored
+  // like the rest, but were missing here — so a local e2e run left hundreds of
+  // lint errors from bundled vendor code in its trace viewer.
+  {
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'coverage/**',
+      'playwright-report/**',
+      'test-results/**',
+    ],
+  },
   js.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
   configPrettier,

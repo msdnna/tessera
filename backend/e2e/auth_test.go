@@ -95,6 +95,80 @@ func TestRefreshCookieSurvivesRestart(t *testing.T) {
 	}
 }
 
+// TestRefreshGraceSurvivesLostResponse is the reconnect scenario from #2750,
+// end to end: rotation revokes the presented token before the new pair is on the
+// wire, so a connection that drops in between leaves the client holding a dead
+// token and the next attempt used to land on the login screen. Presenting the
+// old cookie again inside the grace window must hand back a working pair — and
+// an explicit logout must still take effect immediately.
+func TestRefreshGraceSurvivesLostResponse(t *testing.T) {
+	srv := startServer(t, nil)
+	// No cookie jar: every call below states exactly which cookie it presents,
+	// including the one a browser would still be holding after a lost response.
+	client := &http.Client{Timeout: 20 * time.Second}
+	present := func(c *http.Cookie) http.Header {
+		return http.Header{
+			"X-Auth-Mode": []string{"cookie"},
+			"Cookie":      []string{c.Name + "=" + c.Value},
+		}
+	}
+
+	reg := srv.call(t, request{
+		Method: http.MethodPost, Path: "/auth/register", Client: client,
+		Header: http.Header{"X-Auth-Mode": []string{"cookie"}},
+		Body: map[string]any{
+			"email": "e2e-grace-" + runID + "@test.local", "name": "E2E Grace", "password": "password-123",
+		},
+	})
+	expect(t, reg, http.StatusOK)
+	first := findCookie(reg, refreshCookie)
+	if first == nil {
+		t.Fatalf("no %s cookie after registration: %v", refreshCookie, reg.Header)
+	}
+
+	// The rotation whose response we are about to pretend never arrived.
+	rot := srv.call(t, request{
+		Method: http.MethodPost, Path: "/auth/refresh", Client: client,
+		Header: present(first), Body: map[string]any{},
+	})
+	expect(t, rot, http.StatusOK)
+	second := findCookie(rot, refreshCookie)
+	if second == nil || second.Value == first.Value {
+		t.Fatalf("rotation did not issue a new cookie: %v", second)
+	}
+
+	// The client never saw that response, so it retries with the old cookie.
+	replay := srv.call(t, request{
+		Method: http.MethodPost, Path: "/auth/refresh", Client: client,
+		Header: present(first), Body: map[string]any{},
+	})
+	body := expect(t, replay, http.StatusOK)
+	access, _ := body["access_token"].(string)
+	if access == "" {
+		t.Fatalf("grace replay returned no access token: %s", replay.Body)
+	}
+	if regrant := findCookie(replay, refreshCookie); regrant == nil || regrant.Value == "" {
+		t.Fatal("grace replay handed back no usable refresh cookie")
+	}
+	// The recovered session is real, not just a 200.
+	expect(t, srv.get(t, "/auth/me", access), http.StatusOK)
+
+	// Signing out is immediate — the grace window must not keep a deliberately
+	// ended session alive for another half-minute.
+	out := srv.call(t, request{
+		Method: http.MethodPost, Path: "/auth/logout", Client: client,
+		Header: present(second), Body: map[string]any{},
+	})
+	expect(t, out, http.StatusNoContent)
+	after := srv.call(t, request{
+		Method: http.MethodPost, Path: "/auth/refresh", Client: client,
+		Header: present(second), Body: map[string]any{},
+	})
+	if after.Status != http.StatusUnauthorized {
+		t.Fatalf("refresh after logout: status %d, want 401\n%s", after.Status, after.Body)
+	}
+}
+
 // TestRefreshCookieIsSecureBehindTLS covers the nginx case: the request reaching
 // the process is plain http, so PUBLIC_URL is the only signal that the browser
 // spoke https. Get it wrong and the cookie goes out without Secure.

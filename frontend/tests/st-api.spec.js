@@ -225,6 +225,38 @@ describe('refresh-on-401', () => {
     window.removeEventListener('auth:expired', spy)
   })
 
+  // #2750: a dropped connection during the refresh used to be indistinguishable
+  // from "your session is over", so a brief network blip signed the user out.
+  it('keeps the session when the refresh call cannot reach the server', async () => {
+    setAccessToken('old')
+    localStorage.setItem('tessera_refresh_token', 'ref1')
+    localStorage.setItem('tessera_user', '{"id":"u"}')
+    instanceAdapter.mockImplementation((config) => fail(config, 401, { error: 'unauthorized' }))
+    globalAdapter.mockImplementation(() => Promise.reject(new Error('Network Error')))
+    const spy = vi.fn()
+    window.addEventListener('auth:expired', spy)
+
+    await expect(api.get('/protected')).rejects.toMatchObject({ offline: true })
+    expect(localStorage.getItem('tessera_refresh_token')).toBe('ref1')
+    expect(localStorage.getItem('tessera_user')).toBe('{"id":"u"}')
+    expect(spy).not.toHaveBeenCalled()
+    window.removeEventListener('auth:expired', spy)
+  })
+
+  it('keeps the session when the refresh call gets a 502', async () => {
+    setAccessToken('old')
+    localStorage.setItem('tessera_user', '{"id":"u"}')
+    instanceAdapter.mockImplementation((config) => fail(config, 401, { error: 'unauthorized' }))
+    globalAdapter.mockImplementation((config) => fail(config, 502, { error: 'bad gateway' }))
+    const spy = vi.fn()
+    window.addEventListener('auth:expired', spy)
+
+    await expect(api.get('/protected')).rejects.toThrow()
+    expect(localStorage.getItem('tessera_user')).toBe('{"id":"u"}')
+    expect(spy).not.toHaveBeenCalled()
+    window.removeEventListener('auth:expired', spy)
+  })
+
   it('does not attempt refresh for a 401 on the refresh endpoint itself', async () => {
     localStorage.setItem('tessera_refresh_token', 'ref1')
     // A direct call to the refresh URL through the instance returning 401 must not
@@ -274,16 +306,29 @@ describe('refresh-token delivery mode', () => {
     globalAdapter.mockImplementation((config) =>
       Promise.resolve(ok(config, { access_token: 'boot' })),
     )
-    await expect(restoreSession()).resolves.toBe('boot')
+    await expect(restoreSession()).resolves.toEqual({ token: 'boot', offline: false })
     expect(getAccessToken()).toBe('boot')
   })
 
-  it('restoreSession resolves null when there is no session to restore', async () => {
+  it('restoreSession reports no session (offline:false) on a 401', async () => {
     globalAdapter.mockImplementation((config) =>
       fail(config, 401, { error: 'invalid refresh token' }),
     )
-    await expect(restoreSession()).resolves.toBeNull()
+    await expect(restoreSession()).resolves.toEqual({ token: null, offline: false })
     expect(getAccessToken()).toBe('')
+  })
+
+  // #2750: the caller decides whether to end the session, and it can only decide
+  // correctly if "the server said no" and "the server said nothing" arrive as
+  // different answers.
+  it('restoreSession reports offline when the server is unreachable', async () => {
+    globalAdapter.mockImplementation(() => Promise.reject(new Error('Network Error')))
+    await expect(restoreSession()).resolves.toEqual({ token: null, offline: true })
+  })
+
+  it('restoreSession reports offline on a 5xx', async () => {
+    globalAdapter.mockImplementation((config) => fail(config, 502, { error: 'bad gateway' }))
+    await expect(restoreSession()).resolves.toEqual({ token: null, offline: true })
   })
 
   describe('desktop (Tauri, cross-origin)', () => {
