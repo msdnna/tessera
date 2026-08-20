@@ -353,6 +353,10 @@ watch(
 
 const title = ref('')
 const description = ref('')
+// Last persisted description. Only used to mark the field "filled" for the Get
+// Started guide (#2759): keying that off `description` would end the step on the
+// first keystroke and yank the popover away mid-sentence.
+const descSaved = ref('')
 const priority = ref(0)
 const dueTs = ref(null)
 const startTs = ref(null)
@@ -491,6 +495,7 @@ async function loadDetail() {
     task.value = t
     title.value = t.title
     description.value = t.description || ''
+    descSaved.value = description.value
     descInitialMode.value = t.description ? 'preview' : 'write'
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
@@ -1007,6 +1012,7 @@ async function toggleGlAssignee(m) {
 
 // ── rich description ──
 async function saveDesc() {
+  descSaved.value = description.value
   await applyMeta()
 }
 
@@ -1155,7 +1161,11 @@ async function onSubtaskChanged() {
           <div class="tm-col-left">
             <div class="props" :class="{ 'tm-ro': readonly }">
               <!-- priority -->
-              <div class="prow">
+              <!-- data-tour-set marks a filled field for the Get Started guide
+                   (#2759): its steps end when the user actually sets the value,
+                   not when the picker was opened. Absent (not empty) when unset,
+                   so [data-tour-set] alone selects the filled ones. -->
+              <div class="prow" data-tour="tm-priority" :data-tour-set="priority ? '' : null">
                 <span class="plabel"><n-icon :component="FlagOutline" :size="15" /> Приоритет</span>
                 <n-popover trigger="click" placement="bottom-start">
                   <template #trigger>
@@ -1185,7 +1195,7 @@ async function onSubtaskChanged() {
               </div>
 
               <!-- due -->
-              <div class="prow">
+              <div class="prow" data-tour="tm-due" :data-tour-set="dueTs ? '' : null">
                 <span class="plabel"
                   ><n-icon :component="CalendarClearOutline" :size="15" /> Срок</span
                 >
@@ -1351,7 +1361,11 @@ async function onSubtaskChanged() {
               </div>
 
               <!-- assignees -->
-              <div class="prow">
+              <div
+                class="prow"
+                data-tour="tm-assignees"
+                :data-tour-set="assigneeObjs.length || glAssignees.length ? '' : null"
+              >
                 <span class="plabel"
                   ><n-icon :component="PeopleOutline" :size="15" /> Исполнители</span
                 >
@@ -1420,7 +1434,7 @@ async function onSubtaskChanged() {
               </div>
 
               <!-- tags -->
-              <div class="prow">
+              <div class="prow" data-tour="tm-tags" :data-tour-set="tagObjs.length ? '' : null">
                 <span class="plabel"><n-icon :component="PricetagOutline" :size="15" /> Теги</span>
                 <n-popover trigger="click" placement="bottom-start">
                   <template #trigger>
@@ -1624,6 +1638,8 @@ async function onSubtaskChanged() {
               v-if="layout !== 'sidebar'"
               v-model="description"
               v-model:template-value="glTemplate"
+              data-tour="tm-description"
+              :data-tour-set="descSaved ? '' : null"
               :readonly="readonly"
               :members="mentionItems"
               :task-id="taskId"
@@ -1674,6 +1690,8 @@ async function onSubtaskChanged() {
                 <TaskDescriptionTab
                   v-model="description"
                   v-model:template-value="glTemplate"
+                  data-tour="tm-description"
+                  :data-tour-set="descSaved ? '' : null"
                   :readonly="readonly"
                   :members="mentionItems"
                   :task-id="taskId"
@@ -1874,7 +1892,7 @@ async function onSubtaskChanged() {
           </n-space>
           <n-space :wrap="false" :size="8">
             <n-button @click="close">Отмена</n-button>
-            <n-button type="primary" @click="save">Сохранить</n-button>
+            <n-button type="primary" data-tour="tm-save" @click="save">Сохранить</n-button>
           </n-space>
         </div>
       </template>

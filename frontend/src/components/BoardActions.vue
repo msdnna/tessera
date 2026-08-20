@@ -34,7 +34,7 @@ function onChanged() {
 </script>
 
 <template>
-  <div class="board-actions">
+  <div class="board-actions" data-tour="board-actions">
     <n-popover trigger="click" placement="bottom-end">
       <template #trigger>
         <n-button size="small" quaternary>

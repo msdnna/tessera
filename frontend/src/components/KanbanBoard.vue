@@ -1410,7 +1410,12 @@ async function restoreFromArchive(taskId) {
              chips + an add menu + the name search, all in one single-row bar.
              Each chip is pale until hovered; the right-side tools slide away only
              once the chips fill ≥75% of the bar. Sort chips are drag-reorderable. -->
-        <div ref="composerEl" class="composer" :class="{ 'has-clear': hasClearableFacets }">
+        <div
+          ref="composerEl"
+          class="composer"
+          :class="{ 'has-clear': hasClearableFacets }"
+          data-tour="board-composer"
+        >
           <!-- Scope chips: archive = amber tint, sprint = accent tint (no border). -->
           <span v-if="archivedMode" class="facet facet-archive" title="Архив — только чтение">
             <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
@@ -1539,6 +1544,7 @@ async function restoreFromArchive(taskId) {
                 quaternary
                 class="ngrad bar-btn"
                 :type="customizeOpen ? 'primary' : 'default'"
+                data-tour="board-customize"
                 @click="customizeOpen = true"
               >
                 <template #icon><n-icon :component="SettingsOutline" /></template>

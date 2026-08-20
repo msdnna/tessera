@@ -32,6 +32,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
+import { useTourStore } from '@/stores/tour'
 import ConfirmByName from './ConfirmByName.vue'
 import ProjectCreateModal from './ProjectCreateModal.vue'
 import {
@@ -58,6 +59,7 @@ defineProps({
 
 const store = useWorkspacesStore()
 const auth = useAuthStore()
+const tour = useTourStore()
 const message = useMessage()
 const route = useRoute()
 const router = useRouter()
@@ -105,6 +107,13 @@ async function onWorkspaceChange(id) {
 // Projects are named in a modal (the name decides the URL address, which is
 // assigned once); groups keep the create-then-rename flow.
 const projModalShow = ref(false)
+
+// The project modal reports its new project so the Get Started guide can point
+// its next step («+» to add a board) at that row rather than the first (#2753).
+function onProjectCreated(project) {
+  tour.noteCreated({ projectId: project?.id })
+  store.refresh()
+}
 
 async function addAtRoot(key) {
   if (key === 'project') {
@@ -192,7 +201,7 @@ async function deleteWorkspace() {
 
     <div v-if="collapsed" class="rail-sep" />
 
-    <div v-if="!collapsed" class="ws-switch">
+    <div v-if="!collapsed" class="ws-switch" data-tour="ws-switch">
       <n-select
         :value="store.currentId"
         :options="wsOptions"
@@ -276,8 +285,16 @@ async function deleteWorkspace() {
 
     <div v-if="!collapsed" class="proj-head">
       <n-text depth="3" strong>Проекты</n-text>
-      <n-dropdown trigger="click" :options="addOptions" @select="addAtRoot">
-        <n-button text size="small" title="Добавить">
+      <!-- node-props tags each option for the Get Started guide (#2753): naive
+           merges them into the option node, so the tour can anchor on a menu
+           item the same way it anchors on any other element. -->
+      <n-dropdown
+        trigger="click"
+        :options="addOptions"
+        :node-props="(o) => ({ 'data-tour': `menu-${o.key}` })"
+        @select="addAtRoot"
+      >
+        <n-button text size="small" title="Добавить" data-tour="proj-add">
           <n-icon :component="AddOutline" />
         </n-button>
       </n-dropdown>
@@ -348,7 +365,7 @@ async function deleteWorkspace() {
 
     <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
 
-    <ProjectCreateModal v-model:show="projModalShow" @created="store.refresh()" />
+    <ProjectCreateModal v-model:show="projModalShow" @created="onProjectCreated" />
 
     <n-modal v-model:show="wsModal.show">
       <n-card title="Новое пространство" style="max-width: 360px" role="dialog">

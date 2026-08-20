@@ -21,6 +21,8 @@ export default async function globalSetup() {
   // even when two land in the same millisecond.
   const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
   const creds = newCredentials(runId)
+  // register() also opts the user out of the Get Started guide, which would
+  // otherwise autostart over every spec — see the note there.
   const { token, user } = await register(creds)
   const seed = await seedBoard(token, runId)
 
