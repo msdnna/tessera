@@ -221,6 +221,13 @@ func fail(c *gin.Context, err error) {
 		"path", c.Request.URL.Path,
 		"request_id", middleware.GetRequestID(c),
 	)
+	// Hand the real cause to the middleware chain. Nothing renders c.Errors, so
+	// this stays invisible to the client; it is what lets middleware.SentryReport
+	// capture a typed exception instead of the generic "HTTP 500" message it
+	// would otherwise have to synthesise from the status line.
+	if err != nil {
+		_ = c.Error(err)
+	}
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 }
 
