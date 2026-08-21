@@ -11,7 +11,12 @@ import { useThemeStore } from '@/stores/theme'
 // script put in the index, so the table of contents links actually land.
 const props = defineProps({
   source: { type: String, default: '' },
+  // Rendered inside the contextual drawer (#2794) rather than on the help page:
+  // links to other articles stay in the drawer instead of navigating away.
+  inline: { type: Boolean, default: false },
 })
+
+const emit = defineEmits(['open-slug', 'navigate'])
 
 const router = useRouter()
 const theme = useThemeStore()
@@ -53,6 +58,14 @@ function onClick(e) {
   const href = a.getAttribute('href') || ''
   if (!href.startsWith('/')) return
   e.preventDefault()
+  // In the drawer a link to a neighbouring article swaps the drawer's content:
+  // the whole point of contextual help is not leaving the screen you are on.
+  // Anything else (a link into the app) does navigate, and the drawer closes.
+  if (props.inline && href.startsWith('/help/')) {
+    emit('open-slug', href.slice('/help/'.length).split('#')[0])
+    return
+  }
+  emit('navigate', href)
   router.push(href)
 }
 </script>

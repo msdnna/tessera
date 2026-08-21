@@ -16,6 +16,7 @@ import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
 import SidebarSpotlight from './SidebarSpotlight.vue'
 import TourOverlay from './TourOverlay.vue'
+import HelpDrawer from './help/HelpDrawer.vue'
 import VersionBadge from './VersionBadge.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
@@ -281,6 +282,10 @@ watch(
     <!-- Get Started guide (#2753). Inert until the tour store is started — the
          autostart / «Обучение» entry point is wired up separately. -->
     <TourOverlay />
+
+    <!-- Contextual help (#2794): one drawer for the whole app, opened by the «?»
+         hints and by the «Справка» results in global search. -->
+    <HelpDrawer />
   </div>
 </template>
 

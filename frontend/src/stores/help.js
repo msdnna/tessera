@@ -47,6 +47,13 @@ export const useHelpStore = defineStore('help', () => {
 
   const results = computed(() => (query.value.trim() ? search(query.value) : []))
 
+  // One-off search for callers with a query box of their own — global search
+  // (#2794) runs it while the help page's own `query` keeps whatever the reader
+  // last typed there.
+  function find(term, limit) {
+    return String(term || '').trim() ? search(term, limit) : []
+  }
+
   const meta = computed(() => ARTICLES.find((a) => a.slug === current.value) || null)
   const headings = computed(() => meta.value?.headings || [])
 
@@ -63,30 +70,48 @@ export const useHelpStore = defineStore('help', () => {
     return { prev: ARTICLES[i - 1] || null, next: ARTICLES[i + 1] || null }
   })
 
-  async function open(slug) {
+  // Two readers at once (#2794): the /help page and the contextual drawer that
+  // opens over a board. Each owns its own slug/body/loading/error, so opening a
+  // hint from the board does not rewrite the article the help page is showing —
+  // they share only the markdown cache, which is what actually costs anything.
+  const page = { current, body, loading, error }
+
+  const drawerSlug = ref('')
+  const drawerBody = ref('')
+  const drawerLoading = ref(false)
+  const drawerError = ref('')
+  const drawerShown = ref(false)
+  const drawer = {
+    current: drawerSlug,
+    body: drawerBody,
+    loading: drawerLoading,
+    error: drawerError,
+  }
+
+  async function load(slug, into) {
     const article = bySlug(slug)
     if (!article) {
-      current.value = slug
-      body.value = ''
-      error.value = 'Статья не найдена'
+      into.current.value = slug
+      into.body.value = ''
+      into.error.value = 'Статья не найдена'
       return
     }
-    current.value = slug
-    error.value = ''
+    into.current.value = slug
+    into.error.value = ''
     const cached = cache.value.get(slug)
     if (cached !== undefined) {
-      body.value = cached
+      into.body.value = cached
       return
     }
     const loader = RAW[RAW_PREFIX + article.path]
     if (!loader) {
       // The index and the files went out of sync — `make help-index` was not
       // re-run, or the file was deleted. Say so instead of rendering a blank.
-      error.value = 'Статья не найдена в сборке'
-      body.value = ''
+      into.error.value = 'Статья не найдена в сборке'
+      into.body.value = ''
       return
     }
-    loading.value = true
+    into.loading.value = true
     try {
       const raw = await loader()
       const md = String(raw).replace(FRONTMATTER_RE, '')
@@ -95,15 +120,33 @@ export const useHelpStore = defineStore('help', () => {
       cache.value = next
       // A slower load that finished after the reader moved on must not paint
       // over the article they are looking at now.
-      if (current.value === slug) body.value = md
+      if (into.current.value === slug) into.body.value = md
     } catch {
-      if (current.value === slug) {
-        error.value = 'Не удалось загрузить статью'
-        body.value = ''
+      if (into.current.value === slug) {
+        into.error.value = 'Не удалось загрузить статью'
+        into.body.value = ''
       }
     } finally {
-      loading.value = false
+      into.loading.value = false
     }
+  }
+
+  function open(slug) {
+    return load(slug, page)
+  }
+
+  const drawerMeta = computed(() => ARTICLES.find((a) => a.slug === drawerSlug.value) || null)
+
+  // Contextual help: show the panel first, then load. The article is a lazy
+  // chunk, so waiting for it before opening would look like the ? button did
+  // nothing on a cold cache.
+  function openDrawer(slug) {
+    drawerShown.value = true
+    return load(slug || defaultSlug.value, drawer)
+  }
+
+  function closeDrawer() {
+    drawerShown.value = false
   }
 
   return {
@@ -120,6 +163,15 @@ export const useHelpStore = defineStore('help', () => {
     neighbours,
     defaultSlug,
     bySlug,
+    find,
     open,
+    drawerShown,
+    drawerSlug,
+    drawerBody,
+    drawerLoading,
+    drawerError,
+    drawerMeta,
+    openDrawer,
+    closeDrawer,
   }
 })
