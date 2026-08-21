@@ -138,6 +138,22 @@ object TestTags {
      *  document», not «the second row», and a nesting regression is visible. */
     fun documentRow(id: String) = "document-row:$id"
 
+    // ── help centre (#2795) ────────────────────────────────────────────────
+
+    /** Root of the help section — the category navigation over the bundled manual. */
+    const val HELP_NAV = "help-nav"
+
+    /** Its search field, and one row per article (or per search hit), keyed by
+     *  slug: a spec asserts «this article», not «the third row», so a reordering
+     *  of the manual doesn't quietly rewrite what a test checks. */
+    const val HELP_SEARCH = "help-search"
+
+    fun helpRow(slug: String) = "help-row:$slug"
+
+    /** The article reader that slides over the navigation, present exactly while
+     *  an article is open. */
+    const val HELP_ARTICLE = "help-article"
+
     // ── what's new / spotlight (#2766) ──────────────────────────────────────
 
     /** The post-update changelog card and its «Понятно». Present only while the
