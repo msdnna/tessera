@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { NButton, NIcon, NPopover, NTooltip, NAvatar } from 'naive-ui'
 import {
+  HelpCircleOutline,
   LogOutOutline,
   SchoolOutline,
   SettingsOutline,
@@ -30,6 +31,9 @@ function openSettings() {
 }
 function openAdmin() {
   router.push('/admin')
+}
+function openHelp() {
+  router.push('/help')
 }
 
 // The Get Started guide's permanent entry point (#2753): the autostart only ever
@@ -77,6 +81,14 @@ function logout() {
         <n-button size="small" block data-tour="footer-tour" @click="startTour">
           <template #icon><n-icon :component="SchoolOutline" /></template>
           Обучение
+        </n-button>
+        <!-- Help sits next to the guide: both answer "how does this work?", one
+             by walking the UI, the other by reading. Only in this labelled menu —
+             the expanded footer row is already four icon buttons wide, and the
+             sidebar's «Помощь» item is visible in both sidebar states anyway. -->
+        <n-button size="small" block @click="openHelp">
+          <template #icon><n-icon :component="HelpCircleOutline" /></template>
+          Справка
         </n-button>
         <n-button v-if="isAdmin" size="small" block @click="openAdmin">
           <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>

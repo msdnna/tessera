@@ -20,6 +20,7 @@ import {
   DocumentsOutline,
   AlarmOutline,
   RibbonOutline,
+  HelpCircleOutline,
   AddOutline,
   FolderOutline,
   EllipsisHorizontalOutline,
@@ -282,6 +283,15 @@ async function deleteWorkspace() {
           </router-link>
         </template>
         Этапы
+      </n-tooltip>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <router-link to="/help" class="nav-link" data-nav="help">
+            <n-icon :component="HelpCircleOutline" :size="18" />
+            <span v-if="!collapsed">Помощь</span>
+          </router-link>
+        </template>
+        Помощь
       </n-tooltip>
     </nav>
 

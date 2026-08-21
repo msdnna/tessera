@@ -57,6 +57,10 @@ const routes = [
       // switched the record and the «Документы» item went dark (#2727).
       { path: 'documents/:slug?', component: () => import('@/views/DocumentsView.vue') },
       { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
+      // Help centre (#2792). One record with an optional param, same reason as
+      // documents above: as two records the sidebar item would go dark the
+      // moment an article is opened.
+      { path: 'help/:slug?', component: () => import('@/views/HelpView.vue') },
       { path: 'milestones', component: () => import('@/views/MilestonesView.vue') },
       { path: 'settings', component: () => import('@/views/SettingsView.vue') },
       {
