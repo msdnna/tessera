@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { renderMarkdown } from '@/utils/markdown'
 import { uniqueHeadingId } from '@/utils/helpSlug'
+import { resolveHelpImages } from '@/utils/helpAssets'
+import { useThemeStore } from '@/stores/theme'
 
 // Renders one help article (#2792). Markdown → sanitised HTML via the existing
 // renderMarkdown (marked + DOMPurify), then h2/h3 get the same ids the build
@@ -12,6 +14,7 @@ const props = defineProps({
 })
 
 const router = useRouter()
+const theme = useThemeStore()
 
 // Text of a heading as the TOC sees it: the builder slugifies the plain
 // Markdown text, so tags stripped and entities decoded must produce the same
@@ -29,11 +32,15 @@ function headingText(inner) {
 
 const html = computed(() => {
   const seen = new Map()
-  return renderMarkdown(props.source).replace(
+  const withAnchors = renderMarkdown(props.source).replace(
     /<h([23])>([\s\S]*?)<\/h\1>/g,
     (_, level, inner) =>
       `<h${level} id="${uniqueHeadingId(headingText(inner), seen)}">${inner}</h${level}>`,
   )
+  // Screenshots are `?raw` text as far as the bundler is concerned, so their
+  // links have to be pointed at the built assets here — and the dark reader gets
+  // the dark twin of each shot (utils/helpAssets.js).
+  return resolveHelpImages(withAnchors, theme.isDark)
 })
 
 // Cross-links between articles are written as ordinary Markdown links to

@@ -94,6 +94,12 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5174,
     proxy: apiProxy,
+    // The help centre (#2792/#2793) globs its articles and screenshots out of
+    // ../docs/help. Vite's workspace root is this directory (yarn.lock lives
+    // here, not at the repo root), so without this every one of those files is
+    // a "Denied ID" in dev — the bundled build is unaffected, which is why the
+    // dev server is the only place it shows up.
+    fs: { allow: [resolve(__dirname, '..')] },
   },
   preview: {
     host: '0.0.0.0',

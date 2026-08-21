@@ -15,6 +15,7 @@
 import { readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs'
 import { join, relative, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { format, resolveConfig } from 'prettier'
 import { uniqueHeadingId } from '../src/utils/helpSlug.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -159,8 +160,18 @@ export function buildIndex() {
   return { articles }
 }
 
-function serialize(index) {
-  return JSON.stringify(index, null, 2) + '\n'
+// The index is committed and `make lint-frontend` runs `prettier --check` over
+// the whole repo, so the generator has to emit exactly what prettier would.
+// Plain JSON.stringify puts every array item on its own line; prettier keeps a
+// short array inline. The two agreed by luck until an article turned up with a
+// `keywords` list short enough to collapse (#2793) — after that `make
+// help-index` and `make lint-frontend` disagreed about the same file.
+async function serialize(index) {
+  // resolveConfig, not just `filepath`: the programmatic API does not read
+  // .prettierrc on its own, and with the default printWidth of 80 (ours is 100)
+  // it would produce yet a third formatting of the same file.
+  const options = (await resolveConfig(OUT_FILE)) || {}
+  return format(JSON.stringify(index, null, 2), { ...options, parser: 'json' })
 }
 
 // CLI: `node build-help-index.mjs` writes the file, `--check` only verifies that
@@ -169,7 +180,7 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const check = process.argv.includes('--check')
   let next
   try {
-    next = serialize(buildIndex())
+    next = await serialize(buildIndex())
   } catch (err) {
     console.error(`help-index: ${err.message}`)
     process.exit(1)

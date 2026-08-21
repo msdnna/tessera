@@ -87,6 +87,10 @@ test-e2e-backend-docker: ## E2e including the image tier (docker build + run; se
 help-index: ## Rebuild the help-centre index from docs/help
 	cd frontend && node scripts/build-help-index.mjs
 
+.PHONY: help-shots
+help-shots: ## Re-take the help-centre screenshots into docs/help/assets (needs `make e2e-backend-up`)
+	cd frontend && corepack yarn build && corepack yarn docs:shots
+
 .PHONY: lint-frontend
 lint-frontend: ## Lint + format-check frontend
 	cd frontend && corepack yarn lint && corepack yarn format:check
