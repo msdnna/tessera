@@ -22,18 +22,14 @@
 # Волна 12 (готово): ошибки вызовов API — Errors (едут как UiText).
 # Волна 13 (готово): журнал синхронизации GitLab — GitLabJournalScreen,
 #                    GitlabJournalViewModel.
+# Волна 14 (готово): общие компоненты — Dialogs, Popups, MarkdownEditor,
+#                    ReminderDateTimePicker, IconColorPicker, ThemePicker,
+#                    BoardViewSelector.
 website/msdnna/tessera/ui/components/AccentGradientPreview.kt
-website/msdnna/tessera/ui/components/BoardViewSelector.kt
-website/msdnna/tessera/ui/components/Dialogs.kt
-website/msdnna/tessera/ui/components/IconColorPicker.kt
-website/msdnna/tessera/ui/components/MarkdownEditor.kt
-website/msdnna/tessera/ui/components/Popups.kt
-website/msdnna/tessera/ui/components/ReminderDateTimePicker.kt
 website/msdnna/tessera/ui/components/Spotlight.kt
 website/msdnna/tessera/ui/components/StatusViews.kt
 website/msdnna/tessera/ui/components/TaskCard.kt
 website/msdnna/tessera/ui/components/TaskCardPreview.kt
-website/msdnna/tessera/ui/components/ThemePicker.kt
 website/msdnna/tessera/ui/components/UpdateDialog.kt
 website/msdnna/tessera/ui/screens/ConflictResolver.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt

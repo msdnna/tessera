@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -67,6 +68,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -84,8 +86,11 @@ import website.msdnna.tessera.util.orderedListPrefix
 import website.msdnna.tessera.util.outdentLines
 import website.msdnna.tessera.util.toggleTaskMarker
 
-/** Snippet inserted by the mermaid toolbar button (matches the web editor). */
-private const val MERMAID_SNIPPET = "\n```mermaid\ngraph TD\n  A[Старт] --> B[Готово]\n```\n"
+/** Snippet inserted by the mermaid toolbar button (matches the web editor). The two
+ *  node captions are a starter the user edits, so they follow the interface language
+ *  at the moment of the insert — the graph syntax around them never changes. */
+private fun mermaidSnippet(start: String, done: String) =
+    "\n```mermaid\ngraph TD\n  A[$start] --> B[$done]\n```\n"
 
 /** "@query" right before the caret (mirrors the web editor's mention trigger). */
 private val MENTION_RE = Regex("(^|\\s)@([^\\s@]*)$")
@@ -196,9 +201,13 @@ fun MarkdownEditor(
                     )
                     Spacer(Modifier.width(2.dp))
                 }
+                val mermaid = mermaidSnippet(
+                    stringResource(R.string.md_mermaid_start),
+                    stringResource(R.string.md_mermaid_done),
+                )
                 IonIconButton(
                     Ion.BRANCH,
-                    onClick = { set(insert(tfv, MERMAID_SNIPPET)) },
+                    onClick = { set(insert(tfv, mermaid)) },
                     boxSize = 30.dp,
                     iconSize = 17.dp,
                     tint = c.text2,
@@ -387,7 +396,13 @@ private fun MarkdownFullscreenDialog(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Редактор", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.md_fullscreen_title),
+                    color = c.text1,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
                 IonIconButton(Ion.CLOSE, onClick = onDismiss, boxSize = 34.dp, iconSize = 18.dp, tint = c.text2)
             }
             val panes: @Composable (Modifier, Modifier) -> Unit = { editorMod, previewMod ->
@@ -415,7 +430,7 @@ private fun MarkdownFullscreenDialog(
                         .verticalScroll(previewScroll),
                 ) {
                     if (value.isBlank()) {
-                        Text("Предпросмотр", color = c.placeholder, fontSize = 13.sp)
+                        Text(stringResource(R.string.md_preview_empty), color = c.placeholder, fontSize = 13.sp)
                     } else {
                         RichContent(value, mentions = mentions, taskRefs = onTaskRef != null, onTaskRef = onTaskRef)
                     }
@@ -454,6 +469,10 @@ private fun smartTyping(prev: TextFieldValue, next: TextFieldValue): TextFieldVa
 /** The formatting buttons. Each applies a transform to the current value. */
 @Composable
 private fun FormatToolbar(onApply: ((TextFieldValue) -> TextFieldValue) -> Unit) {
+    // Read once here, not inside the click lambdas: those run outside composition.
+    val spoilerSummary = stringResource(R.string.md_spoiler_summary)
+    val spoilerPlaceholder = stringResource(R.string.md_spoiler_placeholder)
+    val linkPlaceholder = stringResource(R.string.md_link_placeholder)
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
@@ -469,8 +488,10 @@ private fun FormatToolbar(onApply: ((TextFieldValue) -> TextFieldValue) -> Unit)
         // a text ☑ is not in every system font.
         FmtButton({ Text("[ ]", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = it) }) { onApply { v -> linePrefix(v, "- [ ] ") } }
         FmtButton({ Text("❝", fontSize = 14.sp, color = it) }) { onApply { v -> linePrefix(v, "> ") } }
-        FmtButton({ IonIcon(Ion.CHEVRON_DOWN, size = 15.dp, tint = it) }) { onApply { v -> spoiler(v) } }
-        FmtButton({ IonIcon(Ion.LINK, size = 15.dp, tint = it) }) { onApply { v -> link(v) } }
+        FmtButton({ IonIcon(Ion.CHEVRON_DOWN, size = 15.dp, tint = it) }) {
+            onApply { v -> spoiler(v, spoilerSummary, spoilerPlaceholder) }
+        }
+        FmtButton({ IonIcon(Ion.LINK, size = 15.dp, tint = it) }) { onApply { v -> link(v, linkPlaceholder) } }
         // Indent / outdent are buttons because Android has no Tab: the soft keyboard
         // has no such key, and a hardware one is not something we can count on.
         FmtButton({ IonIcon(Ion.CHEVRON_FORWARD, Modifier.rotate(180f), size = 15.dp, tint = it) }) { onApply { v -> outdent(v) } }
@@ -570,7 +591,7 @@ private fun CommandSuggestions(items: List<CommandItem>, onPick: (CommandItem) -
                 )
                 if (!item.builtin) {
                     Spacer(Modifier.width(8.dp))
-                    Text("свои", color = c.text3, fontSize = 11.sp)
+                    Text(stringResource(R.string.md_custom_badge), color = c.text3, fontSize = 11.sp)
                 }
             }
         }
@@ -635,17 +656,17 @@ private fun outdent(v: TextFieldValue): TextFieldValue =
 
 /** Blank lines around the body are load-bearing: without them the markdown inside
  *  `<details>` is kept as raw HTML and never renders (same as on web). */
-private fun spoiler(v: TextFieldValue): TextFieldValue {
-    val sel = v.text.substring(v.selection.min, v.selection.max).ifEmpty { "Скрытый текст" }
-    return insert(v, "\n<details><summary>Подробнее</summary>\n\n$sel\n\n</details>\n")
+private fun spoiler(v: TextFieldValue, summary: String, placeholder: String): TextFieldValue {
+    val sel = v.text.substring(v.selection.min, v.selection.max).ifEmpty { placeholder }
+    return insert(v, "\n<details><summary>$summary</summary>\n\n$sel\n\n</details>\n")
 }
 
 /** Turns the selection (or empty caret) into `[text](url)`, selecting `url`. */
-private fun link(v: TextFieldValue): TextFieldValue {
+private fun link(v: TextFieldValue, placeholder: String): TextFieldValue {
     val start = v.selection.min
     val end = v.selection.max
     val t = v.text
-    val label = t.substring(start, end).ifEmpty { "текст" }
+    val label = t.substring(start, end).ifEmpty { placeholder }
     val urlAt = start + 1 + label.length + 2 // after "[" + label + "]("
     val text = t.substring(0, start) + "[" + label + "](url)" + t.substring(end)
     return TextFieldValue(text, androidx.compose.ui.text.TextRange(urlAt, urlAt + 3))

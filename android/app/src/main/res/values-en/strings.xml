@@ -941,4 +941,53 @@
     <string name="gljournal_push_issue_open">reopen the issue</string>
     <string name="gljournal_push_priority">priority → %1$s</string>
     <string name="gljournal_retry_queued">Queued for retry</string>
+
+    <!-- Shared dialogs (input, confirm, type-to-confirm) -->
+    <string name="dialog_confirm_by_name_hint">Type “%1$s” to confirm:</string>
+
+    <!-- Estimation dialog: the title depends on the scope (workspace or project),
+         the "Inherit" caption is built from the inherited unit. -->
+    <string name="est_dialog_title_workspace">Task estimation — default</string>
+    <string name="est_dialog_title_project">Task estimation — %1$s</string>
+    <string name="est_dialog_inherit">Inherit (%1$s)</string>
+    <string name="est_dialog_inherit_time">%1$s · %2$dh/day · %3$dd/week</string>
+    <string name="est_dialog_seg_time">Time</string>
+    <string name="est_dialog_seg_points">Points</string>
+    <string name="est_dialog_seg_custom">Custom</string>
+    <string name="est_dialog_hours_label">Hours in a working day</string>
+    <string name="est_dialog_days_label">Days in a working week</string>
+    <string name="est_dialog_scale_fibonacci">Fibonacci</string>
+    <string name="est_dialog_scale_tshirt">T-shirt</string>
+    <string name="est_dialog_scale_linear">Linear</string>
+    <string name="est_dialog_custom_label">Unit name</string>
+    <string name="est_dialog_custom_hint">e.g. pts</string>
+
+    <!-- Project / group colour and icon picker -->
+    <string name="picker_color">Colour</string>
+    <string name="picker_icon">Icon</string>
+    <string name="picker_icon_mode">What to colour</string>
+    <string name="picker_icon_mode_badge">Badge</string>
+    <string name="picker_icon_mode_icon">Icon</string>
+
+    <!-- Appearance picker: accent and dark mode -->
+    <string name="theme_picker_title">Appearance</string>
+    <string name="theme_picker_accent">Accent</string>
+    <string name="theme_picker_dark">Dark theme</string>
+
+    <!-- Board layout switch (segmented selector) -->
+    <string name="board_view_kanban">Board</string>
+    <string name="board_view_list">List</string>
+    <string name="board_view_calendar">Calendar</string>
+
+    <!-- Markdown editor. The placeholder captions ("text", "Hidden text") end up
+         inside the document itself: they are a starter written by the UI, so they
+         take the interface language of the moment they are inserted. -->
+    <string name="md_fullscreen_title">Editor</string>
+    <string name="md_preview_empty">Preview</string>
+    <string name="md_custom_badge">custom</string>
+    <string name="md_spoiler_summary">Details</string>
+    <string name="md_spoiler_placeholder">Hidden text</string>
+    <string name="md_link_placeholder">text</string>
+    <string name="md_mermaid_start">Start</string>
+    <string name="md_mermaid_done">Done</string>
 </resources>

@@ -967,4 +967,53 @@
     <string name="gljournal_push_issue_open">открыть issue</string>
     <string name="gljournal_push_priority">приоритет → %1$s</string>
     <string name="gljournal_retry_queued">Поставлено в очередь на повтор</string>
+
+    <!-- Общие диалоги (ввод, подтверждение, подтверждение вводом имени) -->
+    <string name="dialog_confirm_by_name_hint">Введите «%1$s» для подтверждения:</string>
+
+    <!-- Диалог оценки задач: заголовок зависит от области (пространство или проект),
+         подпись «Наследовать» собирается из единицы наследуемой настройки. -->
+    <string name="est_dialog_title_workspace">Оценка задач — по умолчанию</string>
+    <string name="est_dialog_title_project">Оценка задач — %1$s</string>
+    <string name="est_dialog_inherit">Наследовать (%1$s)</string>
+    <string name="est_dialog_inherit_time">%1$s · %2$dч/день · %3$dдн/неделя</string>
+    <string name="est_dialog_seg_time">Время</string>
+    <string name="est_dialog_seg_points">Поинты</string>
+    <string name="est_dialog_seg_custom">Свои</string>
+    <string name="est_dialog_hours_label">Часов в рабочем дне</string>
+    <string name="est_dialog_days_label">Дней в рабочей неделе</string>
+    <string name="est_dialog_scale_fibonacci">Фибоначчи</string>
+    <string name="est_dialog_scale_tshirt">Футболки</string>
+    <string name="est_dialog_scale_linear">Линейная</string>
+    <string name="est_dialog_custom_label">Название единицы</string>
+    <string name="est_dialog_custom_hint">напр. у.е.</string>
+
+    <!-- Выбор цвета и иконки проекта/группы -->
+    <string name="picker_color">Цвет</string>
+    <string name="picker_icon">Иконка</string>
+    <string name="picker_icon_mode">Что красить</string>
+    <string name="picker_icon_mode_badge">Бейдж</string>
+    <string name="picker_icon_mode_icon">Иконка</string>
+
+    <!-- Выбор оформления: акцент и тёмная тема -->
+    <string name="theme_picker_title">Оформление</string>
+    <string name="theme_picker_accent">Акцент</string>
+    <string name="theme_picker_dark">Тёмная тема</string>
+
+    <!-- Переключатель режима доски (сегментный селектор) -->
+    <string name="board_view_kanban">Доска</string>
+    <string name="board_view_list">Список</string>
+    <string name="board_view_calendar">Календарь</string>
+
+    <!-- Редактор Markdown. Подписи-заглушки («текст», «Скрытый текст») попадают
+         в сам документ: это заготовка от интерфейса, поэтому язык берётся тот же,
+         что у интерфейса в момент вставки. -->
+    <string name="md_fullscreen_title">Редактор</string>
+    <string name="md_preview_empty">Предпросмотр</string>
+    <string name="md_custom_badge">свои</string>
+    <string name="md_spoiler_summary">Подробнее</string>
+    <string name="md_spoiler_placeholder">Скрытый текст</string>
+    <string name="md_link_placeholder">текст</string>
+    <string name="md_mermaid_start">Старт</string>
+    <string name="md_mermaid_done">Готово</string>
 </resources>
