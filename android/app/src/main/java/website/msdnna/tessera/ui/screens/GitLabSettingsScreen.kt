@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -60,7 +61,6 @@ import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.dashedBorder
 import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.ConflictAmber
-import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -201,7 +201,7 @@ private fun completionOptions(): List<Pair<String, String>> = listOf(
 @Composable
 private fun priorityQualOptions(): List<Pair<String, String>> =
     listOf("" to stringResource(R.string.gitlab_priority_any)) +
-        PriorityLabels.mapIndexed { i, l -> i.toString() to l }
+        stringArrayResource(R.array.task_priority_labels).mapIndexed { i, l -> i.toString() to l }
 
 // The sensible default GitLab action for a freshly-picked trigger.
 private val DefaultActionForTrigger = mapOf(
@@ -713,7 +713,10 @@ private fun RuleCard(rule: EditRule, columns: List<String>, boards: List<Pair<St
             if (rule.action in MapActions) {
                 val targets: List<Pair<String, String>> = when (rule.action) {
                     "status" -> columns.map { it to it }
-                    "priority" -> PriorityLabels.mapIndexed { i, l -> i.toString() to l }
+
+                    "priority" -> stringArrayResource(R.array.task_priority_labels)
+                        .mapIndexed { i, l -> i.toString() to l }
+
                     else -> boards
                 }
                 Spacer(Modifier.height(8.dp))
@@ -931,7 +934,8 @@ private fun triggerSummary(b: EditBinding, columnName: String): String = when (b
         if (level == null) {
             stringResource(R.string.gitlab_sum_priority_any)
         } else {
-            stringResource(R.string.gitlab_sum_priority, PriorityLabels.getOrElse(level) { "?" })
+            val labels = stringArrayResource(R.array.task_priority_labels)
+            stringResource(R.string.gitlab_sum_priority, labels.getOrElse(level) { "?" })
         }
     }
 

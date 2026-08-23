@@ -30,9 +30,11 @@
 #                    (WhatsNewEntries) — это контент, они едут отдельной волной.
 # Волна 16 (готово): карточка задачи и состояния экрана — TaskCard,
 #                    TaskCardPreview (фикстуры помечены i18n-data), StatusViews.
+# Волна 17 (готово): сообщения вьюмоделей — GitlabViewModel, BoardViewModel,
+#                    WorkspaceViewModel (едут как UiText), BoardComposer.
+# Волна 18 (готово): поиск, разрешение конфликтов и подписи токенов —
+#                    SearchOverlay, ConflictResolver, Tokens (акценты через
+#                    @StringRes, приоритеты — в R.array.task_priority_labels).
 website/msdnna/tessera/ui/components/AccentGradientPreview.kt
-website/msdnna/tessera/ui/screens/ConflictResolver.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt
-website/msdnna/tessera/ui/screens/SearchOverlay.kt
-website/msdnna/tessera/ui/theme/Tokens.kt
 website/msdnna/tessera/update/WhatsNewEntries.kt

@@ -25,11 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.SearchNote
 import website.msdnna.tessera.data.model.SearchTask
 import website.msdnna.tessera.ui.components.IonIcon
@@ -77,7 +79,7 @@ fun SearchOverlay(
             TTextField(
                 value = state.query,
                 onValueChange = vm::onQueryChange,
-                placeholder = "Поиск задач и заметок",
+                placeholder = stringResource(R.string.search_placeholder),
                 modifier = Modifier.weight(1f).focusRequester(focus),
             )
         }
@@ -87,22 +89,22 @@ fun SearchOverlay(
                 TesseraLoader()
             }
 
-            state.query.isBlank() -> Hint("Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок")
+            state.query.isBlank() -> Hint(stringResource(R.string.search_hint))
 
-            state.results?.isEmpty == true -> Hint("Ничего не найдено")
+            state.results?.isEmpty == true -> Hint(stringResource(R.string.search_empty))
 
             else -> {
                 val results = state.results
                 if (results != null) {
                     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                         if (results.tasks.isNotEmpty()) {
-                            item { SectionHeader("ЗАДАЧИ") }
+                            item { SectionHeader(stringResource(R.string.search_section_tasks)) }
                             items(results.tasks, key = { "t-${it.id}" }) { task ->
                                 TaskResult(task, onClick = { onOpenTask(task.boardId, task.id) })
                             }
                         }
                         if (results.notes.isNotEmpty()) {
-                            item { SectionHeader("ЗАМЕТКИ") }
+                            item { SectionHeader(stringResource(R.string.search_section_notes)) }
                             items(results.notes, key = { "n-${it.id}" }) { note ->
                                 NoteResult(note, onClick = { onOpenNote(note.id) })
                             }
@@ -163,6 +165,11 @@ private fun NoteResult(note: SearchNote, onClick: () -> Unit) {
     ) {
         IonIcon(Ion.DOCUMENT_TEXT, size = 18.dp, tint = c.text3)
         Spacer(Modifier.width(10.dp))
-        Text(note.title.ifBlank { "Без названия" }, color = c.text1, fontSize = 14.sp, maxLines = 1)
+        Text(
+            note.title.ifBlank { stringResource(R.string.notes_untitled) },
+            color = c.text1,
+            fontSize = 14.sp,
+            maxLines = 1,
+        )
     }
 }

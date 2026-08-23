@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -203,7 +204,7 @@ private fun Workbench(dark: Boolean) {
             AccentThemes.chunked(2).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { a ->
-                        GradientPill(a.name, a.primary, AccentGradientStrength, a.onPrimary, Modifier.weight(1f))
+                        GradientPill(stringResource(a.nameRes), a.primary, AccentGradientStrength, a.onPrimary, Modifier.weight(1f))
                     }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }

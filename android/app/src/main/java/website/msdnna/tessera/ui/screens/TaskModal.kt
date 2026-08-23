@@ -60,6 +60,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -114,7 +115,6 @@ import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.PriorityColors
-import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -833,10 +833,10 @@ private fun PriorityValue(priority: Int, onPick: (Int) -> Unit) {
         ) {
             Box(Modifier.size(9.dp).clip(CircleShape).background(if (priority > 0) accentGradient(PriorityColors[priority]) else SolidColor(c.text3)))
             Spacer(Modifier.width(8.dp))
-            Text(PriorityLabels[priority], color = c.text1, fontSize = 14.sp)
+            Text(stringArrayResource(R.array.task_priority_labels)[priority], color = c.text1, fontSize = 14.sp)
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            PriorityLabels.forEachIndexed { i, label ->
+            stringArrayResource(R.array.task_priority_labels).forEachIndexed { i, label ->
                 Row(
                     Modifier.fillMaxWidth()
                         .testTag(TestTags.taskPriorityOption(i))

@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui.screens
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -36,19 +40,20 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.ConflictField
 import website.msdnna.tessera.data.model.GitlabConflict
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TTextField
-import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.ConflictsViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.diffSegments
+import website.msdnna.tessera.util.priorityLabel
 
 private val TheirsColor = Color(0xFFD03050) // GitLab (red)
 
@@ -87,7 +92,7 @@ fun ConflictResolverModal(vm: ConflictsViewModel, onDismiss: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Конфликт GitLab", color = c.text1, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.conflict_title), color = c.text1, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                     val num = selected.taskNumber?.let { "#$it · " } ?: ""
                     Text("$num${selected.taskTitle}", color = c.text3, fontSize = 12.sp, maxLines = 2)
                 }
@@ -95,7 +100,7 @@ fun ConflictResolverModal(vm: ConflictsViewModel, onDismiss: () -> Unit) {
             }
             if (conflicts.size > 1) {
                 Text(
-                    "Ещё конфликтов: ${conflicts.size - 1}",
+                    stringResource(R.string.conflict_more, conflicts.size - 1),
                     color = c.text3,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 2.dp),
@@ -113,22 +118,37 @@ fun ConflictResolverModal(vm: ConflictsViewModel, onDismiss: () -> Unit) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 if (manual) {
                     TButton(
-                        "Сохранить объединение",
+                        stringResource(R.string.conflict_save_merge),
                         onClick = { vm.resolve(selected, "manual", manualValues.toMap()) },
                         modifier = Modifier.fillMaxWidth(),
                         loading = state.resolving,
                     )
                     Spacer(Modifier.height(8.dp))
-                    TButton("Отмена", kind = TButtonKind.Secondary, onClick = { manual = false }, modifier = Modifier.fillMaxWidth())
+                    TButton(
+                        stringResource(R.string.common_cancel),
+                        kind = TButtonKind.Secondary,
+                        onClick = { manual = false },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TButton("Принять моё", onClick = { vm.resolve(selected, "ours") }, modifier = Modifier.weight(1f), loading = state.resolving)
-                        TButton("Принять GitLab", kind = TButtonKind.Secondary, onClick = { vm.resolve(selected, "theirs") }, modifier = Modifier.weight(1f))
+                        TButton(
+                            stringResource(R.string.conflict_take_ours),
+                            onClick = { vm.resolve(selected, "ours") },
+                            modifier = Modifier.weight(1f),
+                            loading = state.resolving,
+                        )
+                        TButton(
+                            stringResource(R.string.conflict_take_theirs),
+                            kind = TButtonKind.Secondary,
+                            onClick = { vm.resolve(selected, "theirs") },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                     if (selected.manualAllowed) {
                         Spacer(Modifier.height(8.dp))
                         TButton(
-                            "Объединить вручную…",
+                            stringResource(R.string.conflict_merge_manually),
                             kind = TButtonKind.Ghost,
                             onClick = {
                                 selected.fields.forEach { manualValues[it.field] = it.theirs }
@@ -150,8 +170,10 @@ private fun FieldBlock(
     manualValues: androidx.compose.runtime.snapshots.SnapshotStateMap<String, String>,
 ) {
     val c = Tessera.colors
+    val res = LocalContext.current.resources
+    val label = fieldLabelRes(f.field)?.let { stringResource(it) } ?: f.field
     Column(Modifier.fillMaxWidth()) {
-        Text(fieldLabel(f.field).uppercase(), color = c.text3, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text(label.uppercase(), color = c.text3, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         if (manual) {
             TTextField(
@@ -161,20 +183,26 @@ private fun FieldBlock(
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
-            ValueCard("Было", displayValue(f.field, f.base), borderColor = c.border, textColor = c.text3)
+            ValueCard(
+                stringResource(R.string.conflict_side_base),
+                displayValue(res, f.field, f.base),
+                borderColor = c.border,
+                textColor = c.text3,
+            )
             Spacer(Modifier.height(6.dp))
             ValueCard(
+                // Сторона «GitLab» — имя сервиса, оно одинаково в обеих локалях.
                 "GitLab",
                 annotated = if (f.isText) diffAnnotated(f.base, f.theirs, TheirsColor) else null,
-                plain = if (f.isText) null else displayValue(f.field, f.theirs),
+                plain = if (f.isText) null else displayValue(res, f.field, f.theirs),
                 borderColor = TheirsColor,
                 textColor = c.text1,
             )
             Spacer(Modifier.height(6.dp))
             ValueCard(
-                "Моё",
+                stringResource(R.string.conflict_side_ours),
                 annotated = if (f.isText) diffAnnotated(f.base, f.ours, c.primary) else null,
-                plain = if (f.isText) null else displayValue(f.field, f.ours),
+                plain = if (f.isText) null else displayValue(res, f.field, f.ours),
                 borderColor = c.primary,
                 textColor = c.text1,
             )
@@ -217,19 +245,27 @@ private fun diffAnnotated(base: String, cur: String, hue: Color): AnnotatedStrin
     }
 }
 
-private fun fieldLabel(field: String): String = when (field) {
-    "due" -> "Срок"
-    "estimate" -> "Оценка"
-    "title" -> "Заголовок"
-    "description" -> "Описание"
-    "state" -> "Статус"
-    "priority" -> "Приоритет"
-    else -> field
+/** Подписи свойств общие с модалкой задачи и журналом — те же `task_prop_*`.
+ *  Null — свойство незнакомое, показываем его ключ как есть. */
+@StringRes
+private fun fieldLabelRes(field: String): Int? = when (field) {
+    "due" -> R.string.task_prop_due
+    "estimate" -> R.string.task_prop_estimate
+    "title" -> R.string.task_prop_title
+    "description" -> R.string.task_tab_description
+    "state" -> R.string.task_prop_status
+    "priority" -> R.string.task_prop_priority
+    else -> null
 }
 
-private fun displayValue(field: String, raw: String): String = when {
+private fun displayValue(res: Resources, field: String, raw: String): String = when {
     raw.isBlank() -> ""
-    field == "state" -> if (raw == "closed") "Закрыта" else "Открыта"
-    field == "priority" -> raw.toIntOrNull()?.let { PriorityLabels.getOrNull(it) } ?: raw
+
+    field == "state" -> res.getString(
+        if (raw == "closed") R.string.conflict_state_closed else R.string.conflict_state_open,
+    )
+
+    field == "priority" -> raw.toIntOrNull()?.let { priorityLabel(res, it) } ?: raw
+
     else -> raw
 }

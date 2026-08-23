@@ -1043,4 +1043,43 @@
     <string name="loading_caption_slow">This is taking a bit longer than expected…</string>
     <string name="loading_caption_still_trying">Still trying to reach the server…</string>
     <string name="error_retry_action">Try again</string>
+
+    <!-- Priority labels (index = priority 0..4). An array rather than five keys:
+         lookup is by index, and the locale-parity test guards its length. -->
+    <string-array name="task_priority_labels">
+        <item>No priority</item>
+        <item>Low</item>
+        <item>Normal</item>
+        <item>High</item>
+        <item>Urgent</item>
+    </string-array>
+
+    <!-- Names of the seven accent schemes of the design language -->
+    <string name="accent_purple">Purple</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_teal">Teal</string>
+    <string name="accent_green">Green</string>
+    <string name="accent_orange">Orange</string>
+    <string name="accent_red">Red</string>
+    <string name="accent_pink">Pink</string>
+
+    <!-- Full-screen search -->
+    <string name="search_placeholder">Search tasks and notes</string>
+    <string name="search_hint">Type a query — searches task titles and descriptions, note titles and text</string>
+    <string name="search_empty">Nothing found</string>
+    <string name="search_section_tasks">TASKS</string>
+    <string name="search_section_notes">NOTES</string>
+
+    <!-- GitLab write-back conflict resolver. Field labels come from task_prop_*;
+         the "GitLab" side is the service name and has no key. -->
+    <string name="conflict_title">GitLab conflict</string>
+    <string name="conflict_more">More conflicts: %1$d</string>
+    <string name="conflict_save_merge">Save merge</string>
+    <string name="conflict_take_ours">Keep mine</string>
+    <string name="conflict_take_theirs">Take GitLab</string>
+    <string name="conflict_merge_manually">Merge manually…</string>
+    <string name="conflict_side_base">Before</string>
+    <string name="conflict_side_ours">Mine</string>
+    <string name="conflict_state_closed">Closed</string>
+    <string name="conflict_state_open">Open</string>
 </resources>

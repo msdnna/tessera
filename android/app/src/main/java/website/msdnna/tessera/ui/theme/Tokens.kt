@@ -1,6 +1,8 @@
 package website.msdnna.tessera.ui.theme
 
+import androidx.annotation.StringRes
 import androidx.compose.ui.graphics.Color
+import website.msdnna.tessera.R
 
 /**
  * Neutral palette tokens, ported 1:1 from the web frontend
@@ -62,7 +64,9 @@ val DarkPalette = TesseraColors(
  * `COLOR_THEMES`. Default = purple.
  */
 data class AccentTheme(
-    val name: String,
+    /** Подпись схемы — ресурс, а не строка: список ниже вычисляется один раз при
+     *  загрузке класса, готовый текст застыл бы на языке первого обращения. */
+    @StringRes val nameRes: Int,
     val key: String,
     val primary: Color,
     val hover: Color,
@@ -74,13 +78,13 @@ data class AccentTheme(
 }
 
 val AccentThemes = listOf(
-    AccentTheme("Фиолетовый", "purple", Color(0xFF7C5CFF), Color(0xFF9277FF), Color(0xFF6344E0), Color(0xFF9277FF)),
-    AccentTheme("Синий", "blue", Color(0xFF2F80ED), Color(0xFF4F97F5), Color(0xFF1F64C7), Color(0xFF4F97F5)),
-    AccentTheme("Бирюзовый", "teal", Color(0xFF0EB0A9), Color(0xFF2CC1BA), Color(0xFF07877F), Color(0xFF2CC1BA)),
-    AccentTheme("Зелёный", "green", Color(0xFF18A058), Color(0xFF36AD6A), Color(0xFF0C7A43), Color(0xFF36AD6A)),
-    AccentTheme("Оранжевый", "orange", Color(0xFFF0A020), Color(0xFFFCB040), Color(0xFFC97C10), Color(0xFFFCB040)),
-    AccentTheme("Красный", "red", Color(0xFFE0533D), Color(0xFFEA6E5A), Color(0xFFC23C28), Color(0xFFEA6E5A)),
-    AccentTheme("Розовый", "pink", Color(0xFFEB2F96), Color(0xFFF759AB), Color(0xFFC41D7F), Color(0xFFF759AB)),
+    AccentTheme(R.string.accent_purple, "purple", Color(0xFF7C5CFF), Color(0xFF9277FF), Color(0xFF6344E0), Color(0xFF9277FF)),
+    AccentTheme(R.string.accent_blue, "blue", Color(0xFF2F80ED), Color(0xFF4F97F5), Color(0xFF1F64C7), Color(0xFF4F97F5)),
+    AccentTheme(R.string.accent_teal, "teal", Color(0xFF0EB0A9), Color(0xFF2CC1BA), Color(0xFF07877F), Color(0xFF2CC1BA)),
+    AccentTheme(R.string.accent_green, "green", Color(0xFF18A058), Color(0xFF36AD6A), Color(0xFF0C7A43), Color(0xFF36AD6A)),
+    AccentTheme(R.string.accent_orange, "orange", Color(0xFFF0A020), Color(0xFFFCB040), Color(0xFFC97C10), Color(0xFFFCB040)),
+    AccentTheme(R.string.accent_red, "red", Color(0xFFE0533D), Color(0xFFEA6E5A), Color(0xFFC23C28), Color(0xFFEA6E5A)),
+    AccentTheme(R.string.accent_pink, "pink", Color(0xFFEB2F96), Color(0xFFF759AB), Color(0xFFC41D7F), Color(0xFFF759AB)),
 )
 
 fun accentByKey(key: String): AccentTheme = AccentThemes.find { it.key == key } ?: AccentThemes[0]
@@ -94,7 +98,9 @@ val PriorityColors = listOf(
     Color(0xFFE0533D), // 4 urgent
 )
 
-val PriorityLabels = listOf("Без приоритета", "Низкий", "Обычный", "Высокий", "Срочный")
+/* Подписи приоритета — в `R.array.task_priority_labels` (тот же индекс, что здесь);
+ * доступ через util/Priority.kt. Списком в коде их держать нельзя: он вычислился бы
+ * один раз при загрузке класса и не пережил бы смену языка в профиле. */
 
 /** Destructive-action red (web `--t-danger`). Theme-neutral; readable on both. */
 val TesseraDanger = Color(0xFFE0533D)

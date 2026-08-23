@@ -57,6 +57,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -80,7 +81,6 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.dashedBorder
 import website.msdnna.tessera.ui.theme.ConflictAmber
-import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -229,7 +229,7 @@ fun BoardComposerBar(
             SortChips(state, vm, sortDrag, enabled = expanded)
             f.priorities.sorted().forEach { p ->
                 FacetChip(
-                    PriorityLabels.getOrElse(p) { "—" },
+                    stringArrayResource(R.array.task_priority_labels).getOrElse(p) { "—" },
                     icon = Ion.FLAG,
                     onRemove = { vm.setFilter(f.copy(priorities = f.priorities - p)) },
                 )
@@ -473,7 +473,7 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
 
                 "fp" -> {
                     BackRow { category = null }
-                    PriorityLabels.forEachIndexed { i, label ->
+                    stringArrayResource(R.array.task_priority_labels).forEachIndexed { i, label ->
                         if (i !in f.priorities) {
                             TMenuItem(label, onClick = {
                                 vm.setFilter(f.copy(priorities = f.priorities + i))

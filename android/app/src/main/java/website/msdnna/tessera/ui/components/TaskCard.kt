@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -67,7 +68,6 @@ import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.PriorityColors
-import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -797,7 +797,7 @@ private fun PriorityPill(task: Task, vm: BoardViewModel, stacked: Boolean = fals
     Box {
         if (stacked) {
             StackField(Ion.FLAG, color, gradient = on, onClick = { menu = true }) {
-                StackValue(if (on) PriorityLabels[task.priority] else "")
+                StackValue(if (on) stringArrayResource(R.array.task_priority_labels)[task.priority] else "")
             }
         } else {
             // Icon-only flag, tinted by priority (no text) — like the web.
@@ -806,7 +806,7 @@ private fun PriorityPill(task: Task, vm: BoardViewModel, stacked: Boolean = fals
             }
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            PriorityLabels.forEachIndexed { i, label ->
+            stringArrayResource(R.array.task_priority_labels).forEachIndexed { i, label ->
                 Row(
                     Modifier.fillMaxWidth().clickableNoRipple {
                         menu = false

@@ -48,7 +48,6 @@ import website.msdnna.tessera.ui.components.TCard
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.resolve
-import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -56,6 +55,7 @@ import website.msdnna.tessera.ui.viewmodels.GitlabJournalViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.dueLabel
 import website.msdnna.tessera.util.localDateTimeLabel
+import website.msdnna.tessera.util.priorityLabel
 
 private val OK = Color(0xFF18A058)
 private val WARN = Color(0xFFF0A020)
@@ -386,7 +386,7 @@ internal fun fmtVal(res: Resources, key: String, el: com.google.gson.JsonElement
     val raw = if (el.isJsonPrimitive) el.asString else el.toString()
     if (raw.isBlank()) return "—"
     return when (key) {
-        "priority" -> PriorityLabels.getOrNull(raw.toDoubleOrNull()?.toInt() ?: -1) ?: raw
+        "priority" -> priorityLabel(res, raw.toDoubleOrNull()?.toInt() ?: -1) ?: raw
         "completed" -> res.getString(if (raw == "true") R.string.task_status_completed else R.string.task_status_active)
         "due", "start" -> dueLabel(res, raw)
         else -> raw
@@ -402,7 +402,7 @@ internal fun pushPayloadText(res: Resources, detail: JsonObject): String {
 
         "priority" -> res.getString(
             R.string.gljournal_push_priority,
-            PriorityLabels.getOrNull(p.str("priority").toDoubleOrNull()?.toInt() ?: -1) ?: p.str("priority"),
+            priorityLabel(res, p.str("priority").toDoubleOrNull()?.toInt() ?: -1) ?: p.str("priority"),
         )
 
         "comment" -> p.str("body")

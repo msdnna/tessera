@@ -1070,4 +1070,43 @@
     <string name="loading_caption_slow">Это занимает чуть больше времени, чем ожидалось…</string>
     <string name="loading_caption_still_trying">Всё ещё пробуем достучаться до сервера…</string>
     <string name="error_retry_action">Попробовать ещё раз</string>
+
+    <!-- Подписи приоритета (индекс = priority 0..4). Массив, а не пять ключей:
+         обращение идёт по индексу, и длину массива сторожит тест паритета локалей. -->
+    <string-array name="task_priority_labels">
+        <item>Без приоритета</item>
+        <item>Низкий</item>
+        <item>Обычный</item>
+        <item>Высокий</item>
+        <item>Срочный</item>
+    </string-array>
+
+    <!-- Названия семи акцентных схем дизайн-языка (ключ схемы — в accent, не здесь) -->
+    <string name="accent_purple">Фиолетовый</string>
+    <string name="accent_blue">Синий</string>
+    <string name="accent_teal">Бирюзовый</string>
+    <string name="accent_green">Зелёный</string>
+    <string name="accent_orange">Оранжевый</string>
+    <string name="accent_red">Красный</string>
+    <string name="accent_pink">Розовый</string>
+
+    <!-- Полноэкранный поиск -->
+    <string name="search_placeholder">Поиск задач и заметок</string>
+    <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок</string>
+    <string name="search_empty">Ничего не найдено</string>
+    <string name="search_section_tasks">ЗАДАЧИ</string>
+    <string name="search_section_notes">ЗАМЕТКИ</string>
+
+    <!-- Разрешение конфликтов обратной записи GitLab. Подписи полей берутся из
+         task_prop_*, а сторона «GitLab» остаётся именем сервиса и ключа не имеет. -->
+    <string name="conflict_title">Конфликт GitLab</string>
+    <string name="conflict_more">Ещё конфликтов: %1$d</string>
+    <string name="conflict_save_merge">Сохранить объединение</string>
+    <string name="conflict_take_ours">Принять моё</string>
+    <string name="conflict_take_theirs">Принять GitLab</string>
+    <string name="conflict_merge_manually">Объединить вручную…</string>
+    <string name="conflict_side_base">Было</string>
+    <string name="conflict_side_ours">Моё</string>
+    <string name="conflict_state_closed">Закрыта</string>
+    <string name="conflict_state_open">Открыта</string>
 </resources>
