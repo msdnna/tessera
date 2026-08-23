@@ -1,1 +1,95 @@
-{}
+{
+  "journal": {
+    "empty": "The journal is empty — no sync has run yet",
+    "noActions": "No recorded actions",
+    "selectAction": "Pick an action to see its details",
+    "more": "Show more",
+    "queuedForRetry": "Queued for a retry",
+    "retry": "Retry",
+    "openInGitLab": "Open in GitLab",
+    "deliveryFailed": "Delivery failed",
+    "action": "Action",
+    "tags": "Tags",
+    "newComments": "New comments ({n})",
+    "assignees": "Assignees (GitLab)",
+    "relations": "Links",
+    "relationsAdded": "+{n} link | +{n} links",
+    "relationsRemoved": "−{n} removed",
+    "relationsDeferred": "{n} deferred",
+    "runningFor": "running for {elapsed}",
+    "deliveries": "{n} deliv.",
+    "noChanges": "no changes",
+    "direction": {
+      "pull": "GitLab → Tessera",
+      "push": "Tessera → GitLab"
+    },
+    "field": {
+      "title": "Title",
+      "description": "Description",
+      "priority": "Priority",
+      "column": "Column",
+      "completed": "State",
+      "due": "Due",
+      "start": "Start"
+    },
+    "value": {
+      "completed": "Done",
+      "notCompleted": "Not done"
+    },
+    "status": {
+      "running": "running",
+      "ok": "success",
+      "partial": "partial",
+      "error": "error",
+      "fail": "error"
+    },
+    "trigger": {
+      "manual": "manual",
+      "auto": "auto"
+    },
+    "push": {
+      "closeIssue": "close the issue",
+      "openIssue": "reopen the issue",
+      "priority": "priority → {to}"
+    }
+  },
+  "conflicts": {
+    "title": "GitLab write-back conflicts",
+    "empty": "No open conflicts",
+    "select": "Pick a conflict on the left",
+    "loading": "Loading conflicts…",
+    "resolved": "Conflict resolved",
+    "taskFallback": "Task",
+    "hint": "Both you and GitLab changed this since the last sync. Choose whose value to keep.",
+    "hintManual": "Both you and GitLab changed this since the last sync. Choose whose value to keep, or merge them by hand.",
+    "colBase": "Before (base)",
+    "colTheirs": "GitLab",
+    "colOurs": "Mine (Tessera)",
+    "merged": "Merged value",
+    "mergedPlaceholder": "Enter the final value",
+    "emptyValue": "— empty —",
+    "acceptOurs": "Keep mine",
+    "acceptTheirs": "Keep GitLab",
+    "mergeManual": "Merge by hand…",
+    "saveMerge": "Save the merge",
+    "field": {
+      "title": "Title",
+      "description": "Description",
+      "due": "Due (YYYY-MM-DD)",
+      "estimate": "Estimate (minutes)",
+      "state": "State",
+      "priority": "Priority"
+    },
+    "kind": {
+      "title_desc": "Title and description",
+      "due": "Due",
+      "estimate": "Estimate",
+      "state": "State",
+      "priority": "Priority"
+    },
+    "state": {
+      "open": "Open",
+      "closed": "Closed"
+    }
+  }
+}

@@ -312,5 +312,26 @@
     "archiveBoth": "Archive together",
     "detachSubtasks": "Detach the subtasks",
     "archiveWithSubs": "The task has subtasks — what should happen to them?"
+  },
+  "journal": {
+    "created": "created the task",
+    "renamed": "renamed it to “{to}”",
+    "description": "changed the description",
+    "priority": "changed the priority to {to}",
+    "dueSet": "set the due date",
+    "dueCleared": "cleared the due date",
+    "completed": "marked it done",
+    "reopened": "reopened it",
+    "recurred": "rescheduled the repeat",
+    "moved": "moved it",
+    "movedTo": "moved it to “{to}”",
+    "assigned": "assigned an owner",
+    "unassigned": "removed the owner",
+    "archived": "archived it",
+    "restored": "restored it from the archive",
+    "comment": "left a comment",
+    "relation": "linked it to #{ref}",
+    "attachment": "attached a file",
+    "attachmentNamed": "attached the file “{name}”"
   }
 }

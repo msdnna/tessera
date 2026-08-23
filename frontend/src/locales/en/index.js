@@ -9,6 +9,18 @@ import documents from './documents.json'
 import settings from './settings.json'
 import notifications from './notifications.json'
 import gitlab from './gitlab.json'
+import jobs from './jobs.json'
 import errors from './errors.json'
 
-export default { common, board, task, project, documents, settings, notifications, gitlab, errors }
+export default {
+  common,
+  board,
+  task,
+  project,
+  documents,
+  settings,
+  notifications,
+  gitlab,
+  jobs,
+  errors,
+}

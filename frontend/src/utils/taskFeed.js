@@ -1,7 +1,8 @@
 // Formatting for the task's activity feed — comment timestamps and journal lines.
 // Extracted from TaskModal so the comments and history tabs share one implementation
 // (and so the journal wording is unit-testable without mounting the modal).
-import { PRIORITY_LABELS } from '@/styles/tokens'
+import { i18n } from '@/i18n'
+import { PRIORITY_KEYS, priorityLabel } from '@/utils/priority'
 import { defaultFormatters } from '@/utils/format'
 
 // Short "12 янв., 14:03" stamp used on comment and journal rows. `fmt` is a
@@ -41,41 +42,57 @@ export function groupThreads(comments) {
 }
 
 // Human sentence for a journal event, appended after the actor's name.
+//
+// Called from render code but living outside a setup context, so the catalog is
+// reached through `i18n.global.t`. The lookup is per call — a component that
+// renders the feed re-runs this when the language flips (#2799).
+//
+// Two events come in a "with target" and a "bare" flavour: `moved` and
+// `attachment` only name the destination/file when the journal recorded one.
+// That is two separate keys rather than an interpolated suffix, because the
+// wording around the name is not the same in every language.
 export function eventText(e) {
+  const t = i18n.global.t
   const d = e.data || {}
   switch (e.kind) {
     case 'created':
-      return 'создал(а) задачу'
+      return t('task.journal.created')
     case 'renamed':
-      return `переименовал(а) → «${d.to ?? ''}»`
+      return t('task.journal.renamed', { to: d.to ?? '' })
     case 'description':
-      return 'изменил(а) описание'
+      return t('task.journal.description')
+    // An out-of-range level keeps printing the raw value: a number the user can
+    // quote back is more useful than silently calling it "no priority".
     case 'priority':
-      return `изменил(а) приоритет → ${PRIORITY_LABELS[d.to] ?? d.to}`
+      return t('task.journal.priority', {
+        to: PRIORITY_KEYS[Number(d.to)] === undefined ? d.to : priorityLabel(d.to),
+      })
     case 'due':
-      return d.set ? 'установил(а) срок' : 'убрал(а) срок'
+      return d.set ? t('task.journal.dueSet') : t('task.journal.dueCleared')
     case 'completed':
-      return 'отметил(а) выполненной'
+      return t('task.journal.completed')
     case 'reopened':
-      return 'вернул(а) в работу'
+      return t('task.journal.reopened')
     case 'recurred':
-      return 'перенёс(ла) повтор задачи'
+      return t('task.journal.recurred')
     case 'moved':
-      return `переместил(а)${d.to ? ` → «${d.to}»` : ''}`
+      return d.to ? t('task.journal.movedTo', { to: d.to }) : t('task.journal.moved')
     case 'assigned':
-      return 'назначил(а) исполнителя'
+      return t('task.journal.assigned')
     case 'unassigned':
-      return 'снял(а) исполнителя'
+      return t('task.journal.unassigned')
     case 'archived':
-      return 'отправил(а) в архив'
+      return t('task.journal.archived')
     case 'restored':
-      return 'восстановил(а) из архива'
+      return t('task.journal.restored')
     case 'comment':
-      return 'оставил(а) комментарий'
+      return t('task.journal.comment')
     case 'relation':
-      return `добавил(а) связь с #${d.related ?? ''}`
+      return t('task.journal.relation', { ref: d.related ?? '' })
     case 'attachment':
-      return `прикрепил(а) файл${d.filename ? ` «${d.filename}»` : ''}`
+      return d.filename
+        ? t('task.journal.attachmentNamed', { name: d.filename })
+        : t('task.journal.attachment')
     default:
       return e.kind
   }

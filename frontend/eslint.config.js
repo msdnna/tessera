@@ -79,6 +79,10 @@ export default [
             // Σ prefixes a rolled-up subtask estimate; @ prefixes a login.
             'Σ',
             '@',
+            // The created/updated counter shorthand shared by the sync journal
+            // and the background-jobs panel: "+3 / ~7". Signs, not words.
+            '~',
+            '/ ~',
             // A URL path shown verbatim next to the slug input — it is the
             // address the browser will open, not prose, and never translates.
             '/project/',

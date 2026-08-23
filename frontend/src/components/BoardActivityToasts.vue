@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import {
   AddCircleOutline,
@@ -18,6 +19,7 @@ import UserAvatar from './UserAvatar.vue'
 // Deliberately NOT the bell notification centre — this only mirrors live board
 // activity and never persists. KanbanBoard feeds it via the exposed push().
 const emit = defineEmits(['open'])
+const { t } = useI18n()
 
 const DISMISS_MS = 6500
 const CAP = 3
@@ -25,12 +27,20 @@ let seq = 0
 
 const toasts = ref([])
 
+// Icon and colour per verb — the only frozen part. The wording is NOT stored on
+// the entry: a toast lives for 6.5 s but the stack itself lives as long as the
+// board, so a label captured at push() time would survive a language switch
+// (pitfall 1 of the #2799 plan). The template resolves it per render instead.
 const VERBS = {
-  created: { text: 'создал(а) задачу', icon: AddCircleOutline, color: '#7c5cff' },
-  completed: { text: 'завершил(а) задачу', icon: CheckmarkCircleOutline, color: '#18a058' },
-  reopened: { text: 'вернул(а) в работу', icon: ArrowForwardCircleOutline, color: '#e0922f' },
-  moved: { text: 'переместил(а) задачу', icon: ArrowForwardCircleOutline, color: '#2f80ed' },
-  updated: { text: 'изменил(а) задачу', icon: CreateOutline, color: '#2f80ed' },
+  created: { icon: AddCircleOutline, color: '#7c5cff' },
+  completed: { icon: CheckmarkCircleOutline, color: '#18a058' },
+  reopened: { icon: ArrowForwardCircleOutline, color: '#e0922f' },
+  moved: { icon: ArrowForwardCircleOutline, color: '#2f80ed' },
+  updated: { icon: CreateOutline, color: '#2f80ed' },
+}
+
+function verbText(verb) {
+  return t(`board.activity.verb.${verb in VERBS ? verb : 'updated'}`)
 }
 
 // activity: { id, number, title, verb, actorId, actorName, avatar, self }
@@ -43,21 +53,21 @@ function push(activity) {
   entry.timer = setTimeout(() => dismiss(id), DISMISS_MS)
 }
 function dismiss(key) {
-  const i = toasts.value.findIndex((t) => t.key === key)
+  const i = toasts.value.findIndex((x) => x.key === key)
   if (i < 0) return
   clearTimeout(toasts.value[i].timer)
   toasts.value.splice(i, 1)
 }
-function open(t) {
-  dismiss(t.key)
-  emit('open', t.id)
+function open(toast) {
+  dismiss(toast.key)
+  emit('open', toast.id)
 }
-async function copyLink(t) {
-  const num = t.number ?? t.id
+async function copyLink(toast) {
+  const num = toast.number ?? toast.id
   const url = `${location.origin}${location.pathname}?task=${num}`
   await copyText(url)
-  t.copied = true
-  setTimeout(() => (t.copied = false), 1600)
+  toast.copied = true
+  setTimeout(() => (toast.copied = false), 1600)
 }
 
 defineExpose({ push })
@@ -66,36 +76,47 @@ defineExpose({ push })
 <template>
   <div class="activity-stack">
     <transition-group name="toast">
-      <div v-for="t in toasts" :key="t.key" class="toast">
+      <!-- `toast`, not `t`: the loop variable would otherwise shadow the
+           translation function for the whole template. -->
+      <div v-for="toast in toasts" :key="toast.key" class="toast">
         <div class="t-ava">
           <UserAvatar
-            v-if="t.actorId || t.avatar"
+            v-if="toast.actorId || toast.avatar"
             class="ava"
-            :user-id="t.actorId"
-            :src="t.avatar"
-            :name="t.actorName"
+            :user-id="toast.actorId"
+            :src="toast.avatar"
+            :name="toast.actorName"
           />
-          <n-icon v-else :component="t.meta.icon" :size="22" :style="{ color: t.meta.color }" />
+          <n-icon
+            v-else
+            :component="toast.meta.icon"
+            :size="22"
+            :style="{ color: toast.meta.color }"
+          />
         </div>
         <div class="t-body">
           <div class="t-head">
-            <n-icon :component="t.meta.icon" :size="14" :style="{ color: t.meta.color }" />
-            <span class="t-who">{{ t.self ? 'Вы' : t.actorName || 'Кто-то' }}</span>
-            <span class="t-verb">{{ t.meta.text }}</span>
+            <n-icon :component="toast.meta.icon" :size="14" :style="{ color: toast.meta.color }" />
+            <span class="t-who">{{
+              toast.self
+                ? $t('board.activity.you')
+                : toast.actorName || $t('board.activity.someone')
+            }}</span>
+            <span class="t-verb">{{ verbText(toast.verb) }}</span>
           </div>
-          <div class="t-title">{{ t.title }}</div>
+          <div class="t-title">{{ toast.title }}</div>
           <div class="t-actions">
-            <button class="t-btn primary" @click="open(t)">
-              <n-icon :component="OpenOutline" :size="13" />Открыть
+            <button class="t-btn primary" @click="open(toast)">
+              <n-icon :component="OpenOutline" :size="13" />{{ $t('board.activity.open') }}
             </button>
-            <button class="t-btn" @click="copyLink(t)">
+            <button class="t-btn" @click="copyLink(toast)">
               <n-icon :component="LinkOutline" :size="13" />{{
-                t.copied ? 'Скопировано' : 'Ссылка'
+                toast.copied ? $t('board.activity.copied') : $t('board.activity.link')
               }}
             </button>
           </div>
         </div>
-        <button class="t-close" title="Скрыть" @click="dismiss(t.key)">
+        <button class="t-close" :title="$t('board.activity.hide')" @click="dismiss(toast.key)">
           <n-icon :component="CloseOutline" :size="15" />
         </button>
       </div>

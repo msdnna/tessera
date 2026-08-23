@@ -1,0 +1,48 @@
+{
+  "title": "Background jobs",
+  "refresh": "Refresh",
+  "empty": "No background jobs",
+  "select": "Pick a job",
+  "journal": "journal",
+  "started": "Started",
+  "cancelling": "Cancelling…",
+  "run": "Run now",
+  "cancel": "Stop",
+  "nextRunPrefix": "· next run {when}",
+  "status": {
+    "running": "running",
+    "pending": "queued",
+    "done": "done",
+    "failed": "error"
+  },
+  "kind": {
+    "worker": "worker",
+    "sync": "sync"
+  },
+  "mode": {
+    "incremental": "incremental",
+    "full": "full"
+  },
+  "trigger": {
+    "manual": "manual",
+    "auto": "scheduled"
+  },
+  "next": {
+    "soon": "any moment",
+    "inMinutes": "in {m} min {s} s",
+    "inSeconds": "in {s} s"
+  },
+  "fact": {
+    "status": "Status",
+    "purpose": "Purpose",
+    "lastActivity": "Last activity",
+    "nextRun": "Next run",
+    "mode": "Mode",
+    "trigger": "Trigger",
+    "startedAt": "Started",
+    "finishedAt": "Finished",
+    "duration": "Duration",
+    "createdUpdated": "Created / updated",
+    "error": "Error"
+  }
+}

@@ -33,7 +33,7 @@ import GitLabJournalPanel from '@/components/GitLabJournalPanel.vue'
 import ConflictResolverPanel from '@/components/ConflictResolverPanel.vue'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { PRIORITY_LABELS } from '@/styles/tokens'
+import { priorityLabel, priorityOptions } from '@/utils/priority'
 import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
@@ -257,7 +257,7 @@ const defaultActionOptions = [
 // Target options for a rule's value-map, by action.
 function mapTargetOptions(action) {
   if (action === 'status') return columnOptions.value
-  if (action === 'priority') return priorityLevelOptions
+  if (action === 'priority') return priorityLevelOptions.value
   if (action === 'board') return boardOptions.value
   return []
 }
@@ -273,10 +273,15 @@ const startSourceOptions = [
   { label: 'Начало Milestone', value: 'milestone' },
   { label: 'Не синхронизировать', value: 'off' },
 ]
-const priorityLevelOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+// Computed, not a module constant: the level names come from the catalog, so a
+// frozen array would keep the language of the first render (#2799).
+const priorityLevelOptions = computed(() => priorityOptions())
 // Priority qualifier for a binding trigger (null = any level). Declared here so it
 // follows priorityLevelOptions (avoids a temporal-dead-zone reference).
-const priorityQualOptions = [{ label: 'Любой приоритет', value: null }, ...priorityLevelOptions]
+const priorityQualOptions = computed(() => [
+  { label: 'Любой приоритет', value: null },
+  ...priorityLevelOptions.value,
+])
 
 const lastSyncedText = computed(() =>
   lastSynced.value
@@ -521,7 +526,7 @@ function bindingTriggerText(b) {
     case 'column':
       return `Перенос → «${columnNameById.value[t.column_id] || t.column_name || '?'}»`
     case 'priority':
-      return t.priority == null ? 'Приоритет (любой)' : `Приоритет: ${PRIORITY_LABELS[t.priority]}`
+      return t.priority == null ? 'Приоритет (любой)' : `Приоритет: ${priorityLabel(t.priority)}`
     case 'completion':
       return t.completed == null
         ? 'Флаг «Выполнено»'

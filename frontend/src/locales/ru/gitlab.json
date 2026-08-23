@@ -1,1 +1,95 @@
-{}
+{
+  "journal": {
+    "empty": "Журнал пуст — синхронизация ещё не запускалась",
+    "noActions": "Нет записанных действий",
+    "selectAction": "Выберите действие, чтобы увидеть детали",
+    "more": "Показать ещё",
+    "queuedForRetry": "Поставлено в очередь на повтор",
+    "retry": "Повторить",
+    "openInGitLab": "Открыть в GitLab",
+    "deliveryFailed": "Ошибка доставки",
+    "action": "Действие",
+    "tags": "Теги",
+    "newComments": "Новые комментарии ({n})",
+    "assignees": "Исполнители (GitLab)",
+    "relations": "Связи",
+    "relationsAdded": "+{n} связь | +{n} связи | +{n} связей",
+    "relationsRemoved": "−{n} удалено",
+    "relationsDeferred": "{n} отложено",
+    "runningFor": "идёт {elapsed}",
+    "deliveries": "{n} дост.",
+    "noChanges": "без изменений",
+    "direction": {
+      "pull": "GitLab → Tessera",
+      "push": "Tessera → GitLab"
+    },
+    "field": {
+      "title": "Заголовок",
+      "description": "Описание",
+      "priority": "Приоритет",
+      "column": "Колонка",
+      "completed": "Статус",
+      "due": "Срок",
+      "start": "Начало"
+    },
+    "value": {
+      "completed": "Выполнено",
+      "notCompleted": "Не выполнено"
+    },
+    "status": {
+      "running": "выполняется",
+      "ok": "успех",
+      "partial": "частично",
+      "error": "ошибка",
+      "fail": "ошибка"
+    },
+    "trigger": {
+      "manual": "вручную",
+      "auto": "авто"
+    },
+    "push": {
+      "closeIssue": "закрыть issue",
+      "openIssue": "открыть issue",
+      "priority": "приоритет → {to}"
+    }
+  },
+  "conflicts": {
+    "title": "Конфликты обратной записи GitLab",
+    "empty": "Открытых конфликтов нет",
+    "select": "Выберите конфликт слева",
+    "loading": "Загрузка конфликтов…",
+    "resolved": "Конфликт разрешён",
+    "taskFallback": "Задача",
+    "hint": "И вы, и GitLab изменили это с момента последней синхронизации. Выберите, чьё значение оставить.",
+    "hintManual": "И вы, и GitLab изменили это с момента последней синхронизации. Выберите, чьё значение оставить, или объедините вручную.",
+    "colBase": "Было (база)",
+    "colTheirs": "GitLab",
+    "colOurs": "Моё (Tessera)",
+    "merged": "Объединённое значение",
+    "mergedPlaceholder": "Введите итоговое значение",
+    "emptyValue": "— пусто —",
+    "acceptOurs": "Принять моё",
+    "acceptTheirs": "Принять GitLab",
+    "mergeManual": "Объединить вручную…",
+    "saveMerge": "Сохранить объединение",
+    "field": {
+      "title": "Заголовок",
+      "description": "Описание",
+      "due": "Срок (ГГГГ-ММ-ДД)",
+      "estimate": "Оценка (минуты)",
+      "state": "Статус",
+      "priority": "Приоритет"
+    },
+    "kind": {
+      "title_desc": "Заголовок и описание",
+      "due": "Срок",
+      "estimate": "Оценка",
+      "state": "Статус",
+      "priority": "Приоритет"
+    },
+    "state": {
+      "open": "Открыта",
+      "closed": "Закрыта"
+    }
+  }
+}

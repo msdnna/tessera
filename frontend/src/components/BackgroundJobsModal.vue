@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NModal, NButton, NIcon, NTooltip, useMessage } from 'naive-ui'
 import { PlayOutline, StopOutline, ServerOutline, SyncOutline } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
@@ -10,6 +11,7 @@ import { useFormat } from '@/composables/useFormat'
 const props = defineProps({ show: { type: Boolean, default: false } })
 const emit = defineEmits(['update:show'])
 const message = useMessage()
+const { t } = useI18n()
 const { formatTime } = useFormat()
 
 const jobs = ref([])
@@ -66,7 +68,7 @@ onBeforeUnmount(stop)
 async function runJob(key) {
   try {
     await adminApi.runJob(key)
-    message.info('Запущено')
+    message.info(t('jobs.started'))
     await load()
   } catch (e) {
     message.error(e.message)
@@ -75,28 +77,35 @@ async function runJob(key) {
 async function cancelJob(key) {
   try {
     await adminApi.cancelJob(key)
-    message.info('Отменяется…')
+    message.info(t('jobs.cancelling'))
     await load()
   } catch (e) {
     message.error(e.response?.data?.error || e.message)
   }
 }
 
-const STATUS = {
-  running: { label: 'выполняется', color: '#3b9c5a' },
-  pending: { label: 'в очереди', color: '#e0922f' },
-  done: { label: 'готово', color: 'var(--t-text3)' },
-  failed: { label: 'ошибка', color: '#d9534f' },
+// Only the dot colour is frozen here — the wording is looked up per call, so a
+// language switch reaches it (pitfall 1 of the #2799 plan). A status the backend
+// adds later shows raw rather than as a missing translation.
+const STATUS_COLOR = {
+  running: '#3b9c5a',
+  pending: '#e0922f',
+  done: 'var(--t-text3)',
+  failed: '#d9534f',
 }
-const statusMeta = (s) => STATUS[s] || { label: s, color: 'var(--t-text3)' }
+const statusMeta = (s) => ({
+  label: s in STATUS_COLOR ? t(`jobs.status.${s}`) : s,
+  color: STATUS_COLOR[s] || 'var(--t-text3)',
+})
 const isWorker = (j) => j.kind === 'worker'
-// "worker" stays in English (no good Russian equivalent); a discrete run is a
-// «синхронизация».
-const kindLabel = (j) => (isWorker(j) ? 'worker' : 'синхронизация')
-const MODE = { incremental: 'инкрементальная', full: 'полная' }
-const modeLabel = (j) => MODE[j.mode] || j.mode || ''
-const TRIGGER = { manual: 'вручную', auto: 'по расписанию' }
-const triggerLabel = (j) => TRIGGER[j.trigger] || j.trigger || ''
+// "worker" is a term of art and stays as it is in every locale; a discrete run
+// is a sync.
+const kindLabel = (j) => t(isWorker(j) ? 'jobs.kind.worker' : 'jobs.kind.sync')
+const MODES = ['incremental', 'full']
+const modeLabel = (j) => (MODES.includes(j.mode) ? t(`jobs.mode.${j.mode}`) : j.mode || '')
+const TRIGGERS = ['manual', 'auto']
+const triggerLabel = (j) =>
+  TRIGGERS.includes(j.trigger) ? t(`jobs.trigger.${j.trigger}`) : j.trigger || ''
 // "run now" is only for the tick-loop workers; a per-integration sync is started
 // from the GitLab modal, so on-demand run here targets workers only.
 const canRun = (j) => isWorker(j)
@@ -114,8 +123,10 @@ function nextRunText(j) {
   if (!isWorker(j) || !j.last_tick_at || !j.interval_sec) return ''
   const next = new Date(j.last_tick_at).getTime() + j.interval_sec * 1000
   const delta = Math.round((next - now.value) / 1000)
-  if (delta <= 0) return 'вот-вот'
-  return delta >= 60 ? `через ${Math.floor(delta / 60)} мин ${delta % 60} с` : `через ${delta} с`
+  if (delta <= 0) return t('jobs.next.soon')
+  return delta >= 60
+    ? t('jobs.next.inMinutes', { m: Math.floor(delta / 60), s: delta % 60 })
+    : t('jobs.next.inSeconds', { s: delta })
 }
 function fmtTime(iso) {
   return iso ? formatTime(iso, { second: '2-digit' }) : '—'
@@ -136,7 +147,7 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
     <template #header>
       <div class="bj-head">
         <n-icon :component="ServerOutline" class="grad-icon" />
-        <span>Фоновые задания</span>
+        <span>{{ $t('jobs.title') }}</span>
         <n-tooltip>
           <template #trigger>
             <n-button
@@ -150,7 +161,7 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
               <template #icon><n-icon :component="SyncOutline" /></template>
             </n-button>
           </template>
-          Обновить
+          {{ $t('jobs.refresh') }}
         </n-tooltip>
       </div>
     </template>
@@ -158,7 +169,7 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
     <div class="bj-panes">
       <!-- Left: job list -->
       <div class="bj-list t-hoverscroll">
-        <EmptyState v-if="!jobs.length" :icon="ServerOutline" text="Нет фоновых заданий" />
+        <EmptyState v-if="!jobs.length" :icon="ServerOutline" :text="$t('jobs.empty')" />
         <button
           v-for="j in jobs"
           :key="j.key"
@@ -172,9 +183,9 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
             <div class="bj-row-sub">
               <span class="bj-dot" :style="{ background: statusMeta(j.status).color }" />
               {{ statusMeta(j.status).label }}
-              <span v-if="isWorker(j) && nextRunText(j)" class="bj-op"
-                >· след. запуск {{ nextRunText(j) }}</span
-              >
+              <span v-if="isWorker(j) && nextRunText(j)" class="bj-op">{{
+                $t('jobs.nextRunPrefix', { when: nextRunText(j) })
+              }}</span>
               <span v-else-if="j.current_op" class="bj-op">· {{ j.current_op }}</span>
             </div>
           </div>
@@ -185,50 +196,52 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
 
       <!-- Right: details -->
       <div class="bj-detail">
-        <EmptyState v-if="!selected" :icon="ServerOutline" text="Выберите задание" />
+        <EmptyState v-if="!selected" :icon="ServerOutline" :text="$t('jobs.select')" />
         <template v-else>
           <div class="bj-detail-head">
             <span class="bj-dot" :style="{ background: statusMeta(selected.status).color }" />
             <span class="bj-detail-name">{{ selected.name }}</span>
             <span class="bj-kind">{{ kindLabel(selected) }}</span>
-            <span v-if="selected.persisted" class="bj-kind bj-journal">журнал</span>
+            <span v-if="selected.persisted" class="bj-kind bj-journal">{{
+              $t('jobs.journal')
+            }}</span>
           </div>
 
           <dl class="bj-facts">
-            <dt>Статус</dt>
+            <dt>{{ $t('jobs.fact.status') }}</dt>
             <dd>{{ statusMeta(selected.status).label }}</dd>
             <template v-if="isWorker(selected)">
               <template v-if="selected.current_op">
-                <dt>Назначение</dt>
+                <dt>{{ $t('jobs.fact.purpose') }}</dt>
                 <dd>{{ selected.current_op }}</dd>
               </template>
-              <dt>Последняя активность</dt>
+              <dt>{{ $t('jobs.fact.lastActivity') }}</dt>
               <dd>{{ fmtTime(selected.last_tick_at) }}</dd>
               <template v-if="nextRunText(selected)">
-                <dt>Следующий запуск</dt>
+                <dt>{{ $t('jobs.fact.nextRun') }}</dt>
                 <dd>{{ nextRunText(selected) }}</dd>
               </template>
             </template>
             <template v-else>
               <template v-if="modeLabel(selected)">
-                <dt>Режим</dt>
+                <dt>{{ $t('jobs.fact.mode') }}</dt>
                 <dd>{{ modeLabel(selected) }}</dd>
               </template>
               <template v-if="triggerLabel(selected)">
-                <dt>Запуск</dt>
+                <dt>{{ $t('jobs.fact.trigger') }}</dt>
                 <dd>{{ triggerLabel(selected) }}</dd>
               </template>
-              <dt>Начато</dt>
+              <dt>{{ $t('jobs.fact.startedAt') }}</dt>
               <dd>{{ fmtTime(selected.started_at) }}</dd>
-              <dt>Завершено</dt>
+              <dt>{{ $t('jobs.fact.finishedAt') }}</dt>
               <dd>{{ selected.finished_at ? fmtTime(selected.finished_at) : '—' }}</dd>
-              <dt>Длительность</dt>
+              <dt>{{ $t('jobs.fact.duration') }}</dt>
               <dd>{{ processingText(selected) || '—' }}</dd>
-              <dt>Создано / обновлено</dt>
+              <dt>{{ $t('jobs.fact.createdUpdated') }}</dt>
               <dd>+{{ selected.created }} / ~{{ selected.updated }}</dd>
             </template>
             <template v-if="selected.error">
-              <dt>Ошибка</dt>
+              <dt>{{ $t('jobs.fact.error') }}</dt>
               <dd class="bj-err">{{ selected.error }}</dd>
             </template>
           </dl>
@@ -236,7 +249,7 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
           <div class="bj-actions">
             <n-button v-if="canRun(selected)" size="small" secondary @click="runJob(selected.key)">
               <template #icon><n-icon :component="PlayOutline" /></template>
-              Запустить сейчас
+              {{ $t('jobs.run') }}
             </n-button>
             <n-button
               v-if="canCancel(selected)"
@@ -246,7 +259,7 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
               @click="cancelJob(selected.key)"
             >
               <template #icon><n-icon :component="StopOutline" /></template>
-              Остановить
+              {{ $t('jobs.cancel') }}
             </n-button>
           </div>
         </template>

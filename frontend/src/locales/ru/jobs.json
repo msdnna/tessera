@@ -1,0 +1,48 @@
+{
+  "title": "Фоновые задания",
+  "refresh": "Обновить",
+  "empty": "Нет фоновых заданий",
+  "select": "Выберите задание",
+  "journal": "журнал",
+  "started": "Запущено",
+  "cancelling": "Отменяется…",
+  "run": "Запустить сейчас",
+  "cancel": "Остановить",
+  "nextRunPrefix": "· след. запуск {when}",
+  "status": {
+    "running": "выполняется",
+    "pending": "в очереди",
+    "done": "готово",
+    "failed": "ошибка"
+  },
+  "kind": {
+    "worker": "worker",
+    "sync": "синхронизация"
+  },
+  "mode": {
+    "incremental": "инкрементальная",
+    "full": "полная"
+  },
+  "trigger": {
+    "manual": "вручную",
+    "auto": "по расписанию"
+  },
+  "next": {
+    "soon": "вот-вот",
+    "inMinutes": "через {m} мин {s} с",
+    "inSeconds": "через {s} с"
+  },
+  "fact": {
+    "status": "Статус",
+    "purpose": "Назначение",
+    "lastActivity": "Последняя активность",
+    "nextRun": "Следующий запуск",
+    "mode": "Режим",
+    "trigger": "Запуск",
+    "startedAt": "Начато",
+    "finishedAt": "Завершено",
+    "duration": "Длительность",
+    "createdUpdated": "Создано / обновлено",
+    "error": "Ошибка"
+  }
+}
