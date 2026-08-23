@@ -1,10 +1,13 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover } from 'naive-ui'
 import TesseraIcon from '@/components/TesseraIcon.vue'
 import { toolbarGroups, lineHeightLabel } from '@/utils/docToolbar'
-import { FONT_FAMILIES, FONT_SIZES } from '@/utils/docSchema'
+import { fontFamilies, FONT_SIZES } from '@/utils/docSchema'
 import { LINE_HEIGHTS } from '@/utils/docExtensions/blockStyle'
+
+const { t } = useI18n()
 
 const props = defineProps({
   editor: { type: Object, default: null },
@@ -88,49 +91,61 @@ function setLineHeight(v) {
 // own glyph: "14" and "1,5" sitting side by side as bare numbers read as one
 // undifferentiated pair, which is exactly the complaint this rework answers —
 // the letter and the line marks say which is which before the number is read.
-const pickers = computed(() => [
-  {
-    key: 'font',
-    title: `Шрифт: ${FONT_FAMILIES.find((f) => f.value === fontFamily.value)?.label || 'по умолчанию'}`,
-    glyph: 'Аа',
-    glyphCls: 'font',
-    style: fontFamily.value ? { fontFamily: fontFamily.value } : {},
-    value: fontFamily.value,
-    options: FONT_FAMILIES.map((f) => ({
-      label: f.label,
-      value: f.value,
-      style: f.value ? { fontFamily: f.value } : {},
-    })),
-    apply: setFontFamily,
-  },
-  {
-    key: 'size',
-    title: `Кегль: ${fontSize.value ? fontSize.value.replace('px', '') : 'по умолчанию'}`,
-    glyph: 'A',
-    glyphCls: 'size',
-    style: {},
-    valueText: fontSize.value ? fontSize.value.replace('px', '') : '',
-    value: fontSize.value,
-    options: [
-      { label: 'По умолчанию', value: null },
-      ...FONT_SIZES.map((v) => ({ label: v.replace('px', ''), value: v })),
-    ],
-    apply: setFontSize,
-  },
-  {
-    key: 'line',
-    title: `Межстрочный интервал: ${lineHeight.value ? lineHeightLabel(lineHeight.value) : 'по умолчанию'}`,
-    vicon: 'line-height',
-    style: {},
-    valueText: lineHeight.value ? lineHeightLabel(lineHeight.value) : '',
-    value: lineHeight.value,
-    options: [
-      { label: 'По умолчанию', value: null },
-      ...LINE_HEIGHTS.map((v) => ({ label: lineHeightLabel(v), value: v })),
-    ],
-    apply: setLineHeight,
-  },
-])
+const pickers = computed(() => {
+  const fonts = fontFamilies()
+  const fallback = t('documents.toolbar.picker.defaultValue')
+  return [
+    {
+      key: 'font',
+      title: t('documents.toolbar.picker.font', {
+        value: fonts.find((f) => f.value === fontFamily.value)?.label || fallback,
+      }),
+      // The glyph is a sample of the alphabet the reader writes in, so it is a
+      // translated string ("Аа" / "Aa"), not a fixed pair of letters.
+      glyph: t('documents.toolbar.picker.fontGlyph'),
+      glyphCls: 'font',
+      style: fontFamily.value ? { fontFamily: fontFamily.value } : {},
+      value: fontFamily.value,
+      options: fonts.map((f) => ({
+        label: f.label,
+        value: f.value,
+        style: f.value ? { fontFamily: f.value } : {},
+      })),
+      apply: setFontFamily,
+    },
+    {
+      key: 'size',
+      title: t('documents.toolbar.picker.size', {
+        value: fontSize.value ? fontSize.value.replace('px', '') : fallback,
+      }),
+      glyph: 'A',
+      glyphCls: 'size',
+      style: {},
+      valueText: fontSize.value ? fontSize.value.replace('px', '') : '',
+      value: fontSize.value,
+      options: [
+        { label: t('documents.toolbar.picker.default'), value: null },
+        ...FONT_SIZES.map((v) => ({ label: v.replace('px', ''), value: v })),
+      ],
+      apply: setFontSize,
+    },
+    {
+      key: 'line',
+      title: t('documents.toolbar.picker.lineHeight', {
+        value: lineHeight.value ? lineHeightLabel(lineHeight.value) : fallback,
+      }),
+      vicon: 'line-height',
+      style: {},
+      valueText: lineHeight.value ? lineHeightLabel(lineHeight.value) : '',
+      value: lineHeight.value,
+      options: [
+        { label: t('documents.toolbar.picker.default'), value: null },
+        ...LINE_HEIGHTS.map((v) => ({ label: lineHeightLabel(v), value: v })),
+      ],
+      apply: setLineHeight,
+    },
+  ]
+})
 
 // One popover open at a time, and it closes on pick: naive's own click trigger
 // would leave the list hanging open over the text after a value is chosen.
@@ -195,19 +210,19 @@ function pick(picker, value) {
         <!-- mousedown.prevent keeps the selection inside ProseMirror: without it
              the button steals focus and the command applies to an empty range. -->
         <button
-          v-for="t in g.items"
-          :key="t.key"
+          v-for="cmd in g.items"
+          :key="cmd.key"
           type="button"
           class="doc-tbtn"
-          :class="[t.cls, { on: t.isActive() }]"
-          :title="t.title"
-          :data-tbtn="t.key"
-          :disabled="t.disabled ? t.disabled() : false"
-          @mousedown.prevent="t.run()"
+          :class="[cmd.cls, { on: cmd.isActive() }]"
+          :title="cmd.title"
+          :data-tbtn="cmd.key"
+          :disabled="cmd.disabled ? cmd.disabled() : false"
+          @mousedown.prevent="cmd.run()"
         >
-          <n-icon v-if="t.icon" :component="t.icon" :size="15" />
-          <tessera-icon v-else-if="t.vicon" :name="t.vicon" :size="15" />
-          <template v-else>{{ t.text }}</template>
+          <n-icon v-if="cmd.icon" :component="cmd.icon" :size="15" />
+          <tessera-icon v-else-if="cmd.vicon" :name="cmd.vicon" :size="15" />
+          <template v-else>{{ cmd.text }}</template>
         </button>
       </template>
     </div>

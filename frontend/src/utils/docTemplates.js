@@ -1,4 +1,5 @@
 import { markdownToDoc } from './docImport'
+import { i18n } from '@/i18n'
 
 // Starter templates that ship with the app (#2734).
 //
@@ -12,85 +13,25 @@ import { markdownToDoc } from './docImport'
 // The bodies are Markdown, converted on use through the same importer that
 // reads uploaded .md files. Writing them as ProseMirror JSON would be four
 // times the lines and a second thing to keep in step with the schema.
-
+//
+// Title, description AND body live in the locale bundles (#2799): a starter
+// skeleton is text the app writes for the reader, so an English document should
+// not open with Russian headings. Only the key and the emoji stay here.
+//
+// Watch the pipes in the "spec" body: `|` is vue-i18n's plural separator, so a
+// Markdown table written plainly in a message compiles into plural branches and
+// t() returns just the first one — an empty line. They are escaped as {'|'} in
+// the JSON, which is why the tables there look the way they do.
 export const BUILTIN_TEMPLATES = [
-  {
-    key: 'meeting',
-    title: 'Протокол совещания',
-    description: 'Участники, повестка, решения и задачи по итогам',
-    icon: '📋',
-    markdown: `# Протокол совещания
-
-**Дата:**
-**Участники:**
-
-## Повестка
-
-1.
-2.
-
-## Обсуждение
-
-## Решения
-
-- [ ] Решение — ответственный, срок
-
-## Задачи по итогам
-
-- [ ]
-`,
-  },
-  {
-    key: 'spec',
-    title: 'Техническое задание',
-    description: 'Задача, объём работ, критерии приёмки и риски',
-    icon: '📐',
-    markdown: `# Техническое задание
-
-## Постановка задачи
-
-## Что входит в объём
-
--
-
-## Что не входит
-
--
-
-## Критерии приёмки
-
-- [ ]
-
-## Риски и открытые вопросы
-
-| Вопрос | Кто отвечает |
-|---|---|
-|  |  |
-`,
-  },
-  {
-    key: 'retro',
-    title: 'Ретроспектива',
-    description: 'Что получилось, что мешало, что меняем',
-    icon: '🔄',
-    markdown: `# Ретроспектива
-
-**Период:**
-
-## Что получилось
-
--
-
-## Что мешало
-
--
-
-## Что меняем
-
-- [ ] Действие — ответственный
-`,
-  },
+  { key: 'meeting', icon: '📋' },
+  { key: 'spec', icon: '📐' },
+  { key: 'retro', icon: '🔄' },
 ]
+
+/** The built-in's Markdown body in the current language. */
+function templateMarkdown(key) {
+  return i18n.global.t(`documents.templates.${key}.body`)
+}
 
 /**
  * Builds the body of a built-in template.
@@ -104,22 +45,22 @@ export const BUILTIN_TEMPLATES = [
  */
 export function builtinContent(key) {
   const tpl = BUILTIN_TEMPLATES.find((t) => t.key === key)
-  return tpl ? markdownToDoc(tpl.markdown) : null
+  return tpl ? markdownToDoc(templateMarkdown(tpl.key)) : null
 }
 
 /**
  * Shapes a built-in for the gallery so it renders next to saved templates
  * without the component having to know which is which.
- * @param {object} t entry of BUILTIN_TEMPLATES
+ * @param {object} tpl entry of BUILTIN_TEMPLATES
  */
-export function builtinCard(t) {
+export function builtinCard(tpl) {
   return {
-    id: `builtin:${t.key}`,
+    id: `builtin:${tpl.key}`,
     builtin: true,
-    key: t.key,
-    title: t.title,
-    description: t.description,
-    icon: t.icon,
+    key: tpl.key,
+    title: i18n.global.t(`documents.templates.${tpl.key}.title`),
+    description: i18n.global.t(`documents.templates.${tpl.key}.description`),
+    icon: tpl.icon,
     preview: '',
   }
 }

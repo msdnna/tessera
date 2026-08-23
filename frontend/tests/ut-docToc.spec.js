@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  UNTITLED_HEADING,
+  untitledHeading,
   docHeadings,
   docOutline,
   headingForBlock,
@@ -51,7 +51,7 @@ describe('docHeadings', () => {
     // the first character would make the outline jump under the cursor.
     const rows = docHeadings({ type: 'doc', content: [h('h1', 1)] })
     expect(rows).toHaveLength(1)
-    expect(headingLabel(rows[0])).toBe(UNTITLED_HEADING)
+    expect(headingLabel(rows[0])).toBe(untitledHeading())
   })
 
   it('ignores a heading with no block id, since nothing could link to it', () => {

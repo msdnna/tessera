@@ -24,6 +24,11 @@ export const ALLOWLIST = [
   // Transliteration table mirroring the server's internal/slug (Go). Not UI —
   // it maps Cyrillic input to ASCII slugs and has to keep the alphabet inline.
   'src/utils/slug.js',
+  // Slash-menu typing aliases ("/таблица", "/table"). The menu's own labels are
+  // in the catalogue; these are search keys, and both alphabets have to answer
+  // in either language — an English interface still has Russian-speaking hands
+  // typing at it.
+  'src/utils/docSlash.js',
 ]
 
 // Strips comments before looking for Cyrillic, so a Russian word inside an

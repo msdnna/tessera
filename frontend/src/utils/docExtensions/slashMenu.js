@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import { SLASH_ITEMS, filterSlashItems } from '../docSlash'
+import { slashItems, filterSlashItems } from '../docSlash'
 
 export const slashKey = new PluginKey('slashMenu')
 
@@ -139,7 +139,7 @@ export const SlashMenu = Extension.create({
             // is already part of the text must not.
             if (!prev.active && !tr.docChanged) return prev
 
-            const items = filterSlashItems(SLASH_ITEMS, range.query)
+            const items = filterSlashItems(slashItems(), range.query)
             if (!items.length) return { ...CLOSED }
             const same = prev.active && prev.from === range.from
             return {

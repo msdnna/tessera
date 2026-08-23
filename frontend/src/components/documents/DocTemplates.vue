@@ -27,8 +27,8 @@ const query = ref('')
 const shown = computed(() => {
   const q = query.value.trim().toLowerCase()
   if (!q) return props.templates
-  return props.templates.filter((t) =>
-    `${t.title} ${t.description || ''}`.toLowerCase().includes(q),
+  return props.templates.filter((tpl) =>
+    `${tpl.title} ${tpl.description || ''}`.toLowerCase().includes(q),
   )
 })
 
@@ -49,66 +49,70 @@ function onFile(e) {
   <n-modal :show="show" transform-origin="center" @update:show="(v) => emit('update:show', v)">
     <n-card class="tpl-card" :bordered="false" role="dialog" aria-modal="true">
       <div class="tpl-head">
-        <span class="tpl-title">Шаблоны документов</span>
+        <span class="tpl-title">{{ $t('documents.templates.title') }}</span>
         <n-input
           v-model:value="query"
           size="small"
           clearable
-          placeholder="Поиск"
+          :placeholder="$t('documents.templates.search')"
           class="tpl-search"
         />
         <n-button size="small" data-testid="tpl-upload" @click="pickFile">
           <template #icon><n-icon :component="CloudUploadOutline" /></template>
-          Загрузить
+          {{ $t('documents.templates.upload') }}
         </n-button>
       </div>
       <n-text v-if="error" type="error" class="tpl-error">{{ error }}</n-text>
 
       <n-spin v-if="loading" size="small" />
       <div v-else-if="shown.length" class="tpl-grid">
+        <!-- `tpl`, not `t`: the loop variable would shadow the translation
+             function and every $t() inside the tile would call a template. -->
         <div
-          v-for="t in shown"
-          :key="t.id"
+          v-for="tpl in shown"
+          :key="tpl.id"
           class="tpl-tile"
-          :class="{ builtin: t.builtin }"
+          :class="{ builtin: tpl.builtin }"
           data-testid="tpl-tile"
-          :data-tpl="t.id"
+          :data-tpl="tpl.id"
         >
           <div class="tile-head">
-            <span v-if="t.icon" class="tpl-emoji">{{ t.icon }}</span>
+            <span v-if="tpl.icon" class="tpl-emoji">{{ tpl.icon }}</span>
             <n-icon v-else :component="DocumentTextOutline" :size="16" />
-            <span class="tile-title">{{ t.title }}</span>
+            <span class="tile-title">{{ tpl.title }}</span>
           </div>
-          <p class="tile-desc">{{ t.description || t.preview || 'Без описания' }}</p>
+          <p class="tile-desc">
+            {{ tpl.description || tpl.preview || $t('documents.templates.noDescription') }}
+          </p>
           <div class="tile-foot">
-            <span class="tile-origin">{{ t.builtin ? 'Встроенный' : t.author_name || '' }}</span>
+            <span class="tile-origin">{{
+              tpl.builtin ? $t('documents.templates.builtin') : tpl.author_name || ''
+            }}</span>
             <span class="tile-actions">
-              <n-popconfirm v-if="!t.builtin" @positive-click="emit('remove', t)">
+              <n-popconfirm v-if="!tpl.builtin" @positive-click="emit('remove', tpl)">
                 <template #trigger>
-                  <n-button quaternary size="tiny" title="Удалить шаблон">
+                  <n-button quaternary size="tiny" :title="$t('documents.templates.removeTitle')">
                     <template #icon><n-icon :component="TrashOutline" /></template>
                   </n-button>
                 </template>
-                Удалить шаблон? Документы, созданные по нему, останутся.
+                {{ $t('documents.templates.removeConfirm') }}
               </n-popconfirm>
               <n-button
                 size="tiny"
                 type="primary"
-                :loading="busy === t.id"
+                :loading="busy === tpl.id"
                 :disabled="!!busy"
                 data-testid="tpl-use"
-                @click="emit('use', t)"
+                @click="emit('use', tpl)"
               >
-                Создать
+                {{ $t('documents.templates.use') }}
               </n-button>
             </span>
           </div>
         </div>
       </div>
       <p v-else class="tpl-empty">
-        Ничего не нашлось. Сохраните документ как шаблон или загрузите файл ({{
-          IMPORT_EXTENSIONS.join(', ')
-        }}).
+        {{ $t('documents.templates.empty', { formats: IMPORT_EXTENSIONS.join(', ') }) }}
       </p>
 
       <input
