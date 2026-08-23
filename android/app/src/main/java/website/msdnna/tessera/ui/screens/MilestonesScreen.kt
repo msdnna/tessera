@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -148,7 +149,9 @@ fun MilestonesScreen(
                         items(rows, key = { it.id }) { m ->
                             MilestoneRow(
                                 m = m,
-                                estimateText = Estimation.format(m.estimateSum, estimationFor(m.projectId)),
+                                estimateText = Estimation.format(
+                                    LocalResources.current, m.estimateSum, estimationFor(m.projectId),
+                                ),
                                 onClick = { onOpenMilestone(m.projectId, m.id) },
                             )
                         }

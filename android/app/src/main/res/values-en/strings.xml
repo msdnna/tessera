@@ -855,4 +855,21 @@
     <string name="notif_panel_empty">Nothing yet</string>
     <string name="notif_test_sent">Test sent</string>
     <string name="notif_saved">Saved</string>
+
+    <!-- Estimates: compact suffixes ("3d 6h"), unit names and input hints -->
+    <string name="est_unit_week">%1$dw</string>
+    <string name="est_unit_day">%1$dd</string>
+    <string name="est_unit_hour">%1$dh</string>
+    <string name="est_unit_minute">%1$dm</string>
+    <string name="est_points_value">%1$s SP</string>
+    <string name="est_custom_value">%1$s %2$s</string>
+    <string name="est_unit_time">Time</string>
+    <string name="est_unit_points">Story points</string>
+    <string name="est_unit_custom">Units</string>
+    <string name="est_hint_points">e.g. 5</string>
+    <string name="est_hint_custom">e.g. 8</string>
+    <string name="est_hint_time">e.g. 3d 4h, 90m, 1w</string>
+
+    <!-- Tag prefix grouping: the bucket for tags without a prefix -->
+    <string name="tag_group_none">Ungrouped</string>
 </resources>

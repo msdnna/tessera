@@ -17,6 +17,7 @@
 # Волна 9 (готово): строки вне Compose — DeviceNotifier, ReminderNotifications,
 #                   ReminderReceiver, NotificationViewModel,
 #                   NotificationSettingsViewModel, NotificationsPanel.
+# Волна 10 (готово): util-слой — Estimation, Mentions, TagGroups.
 website/msdnna/tessera/ui/components/AccentGradientPreview.kt
 website/msdnna/tessera/ui/components/BoardViewSelector.kt
 website/msdnna/tessera/ui/components/Dialogs.kt
@@ -44,7 +45,4 @@ website/msdnna/tessera/ui/viewmodels/WorkspaceViewModel.kt
 website/msdnna/tessera/update/WhatsNewEntries.kt
 website/msdnna/tessera/util/Dates.kt
 website/msdnna/tessera/util/Errors.kt
-website/msdnna/tessera/util/Estimation.kt
-website/msdnna/tessera/util/Mentions.kt
 website/msdnna/tessera/util/Milestones.kt
-website/msdnna/tessera/util/TagGroups.kt

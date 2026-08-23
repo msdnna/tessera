@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -156,10 +157,11 @@ fun EstimationDialog(
     var label by remember { mutableStateOf(current?.customLabel.orEmpty()) }
 
     val title = if (scope == "workspace") "Оценка задач — по умолчанию" else "Оценка задач — $name"
+    val res = LocalResources.current
     val inheritLabel = if (inherited.unit == "time") {
-        "${Estimation.unitName(inherited)} · ${(inherited.hoursPerDay ?: 8.0).toInt()}ч/день · ${(inherited.daysPerWeek ?: 5.0).toInt()}дн/неделя"
+        "${Estimation.unitName(res, inherited)} · ${(inherited.hoursPerDay ?: 8.0).toInt()}ч/день · ${(inherited.daysPerWeek ?: 5.0).toInt()}дн/неделя"
     } else {
-        Estimation.unitName(inherited)
+        Estimation.unitName(res, inherited)
     }
 
     fun build(): EstimationConfig? = if (inherit) {

@@ -1,12 +1,24 @@
 package website.msdnna.tessera.util
 
+import android.content.Context
+import android.content.res.Resources
+import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import website.msdnna.tessera.data.model.EstimationConfig
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.Workspace
 
+@RunWith(RobolectricTestRunner::class)
 class EstimationTest {
+    /** Ресурсы на конкретном языке: подписи берутся из профиля, а не из локали устройства. */
+    private fun res(language: String): Resources =
+        ApplicationProvider.getApplicationContext<Context>().withLanguage(language).resources
+
+    private val ru: Resources get() = res("ru")
+
     private val time = EstimationConfig(unit = "time", hoursPerDay = 8.0, daysPerWeek = 5.0)
     private val fib = EstimationConfig(unit = "points", pointsScale = "fibonacci")
     private val tshirt = EstimationConfig(unit = "points", pointsScale = "tshirt")
@@ -91,35 +103,46 @@ class EstimationTest {
     // ── format ───────────────────────────────────────────────────────────────
     @Test
     fun `format null or non-positive is empty`() {
-        assertThat(Estimation.format(null, time)).isEmpty()
-        assertThat(Estimation.format(0.0, time)).isEmpty()
-        assertThat(Estimation.format(-1.0, time)).isEmpty()
+        assertThat(Estimation.format(ru, null, time)).isEmpty()
+        assertThat(Estimation.format(ru, 0.0, time)).isEmpty()
+        assertThat(Estimation.format(ru, -1.0, time)).isEmpty()
     }
 
     @Test
     fun `format time compresses to working units`() {
         // 30h with 8h day = 3d 6h → but per week roll: 30h=1800m; mpw=2400, mpd=480
-        assertThat(Estimation.format(1800.0, time)).isEqualTo("3д 6ч")
-        assertThat(Estimation.format(90.0, time)).isEqualTo("1ч 30м")
-        assertThat(Estimation.format(2400.0, time)).isEqualTo("1н")
+        assertThat(Estimation.format(ru, 1800.0, time)).isEqualTo("3д 6ч")
+        assertThat(Estimation.format(ru, 90.0, time)).isEqualTo("1ч 30м")
+        assertThat(Estimation.format(ru, 2400.0, time)).isEqualTo("1н")
+    }
+
+    /** Суффиксы единиц — не просто перевод: на английском их читает обратно [Estimation.parse]. */
+    @Test
+    fun `format time speaks the profile language`() {
+        val en = res("en")
+        assertThat(Estimation.format(en, 1800.0, time)).isEqualTo("3d 6h")
+        assertThat(Estimation.format(en, 2400.0, time)).isEqualTo("1w")
+        assertThat(Estimation.parse(Estimation.format(en, 1800.0, time), time)).isEqualTo(1800.0)
     }
 
     @Test
     fun `format tshirt maps back to label`() {
-        assertThat(Estimation.format(5.0, tshirt)).isEqualTo("L")
-        assertThat(Estimation.format(4.0, tshirt)).isEqualTo("4") // no exact label
+        assertThat(Estimation.format(ru, 5.0, tshirt)).isEqualTo("L")
+        assertThat(Estimation.format(ru, 4.0, tshirt)).isEqualTo("4") // no exact label
     }
 
     @Test
     fun `format points has SP suffix`() {
-        assertThat(Estimation.format(5.0, fib)).isEqualTo("5 SP")
-        assertThat(Estimation.format(2.5, fib)).isEqualTo("2.5 SP")
+        assertThat(Estimation.format(ru, 5.0, fib)).isEqualTo("5 SP")
+        assertThat(Estimation.format(ru, 2.5, fib)).isEqualTo("2.5 SP")
     }
 
     @Test
     fun `format custom uses label`() {
-        assertThat(Estimation.format(3.0, custom)).isEqualTo("3 тикетов")
-        assertThat(Estimation.format(3.0, EstimationConfig(unit = "custom", customLabel = ""))).isEqualTo("3")
+        assertThat(Estimation.format(ru, 3.0, custom)).isEqualTo("3 тикетов")
+        // Своя единица — пользовательский текст: он остаётся как введён на любом языке.
+        assertThat(Estimation.format(res("en"), 3.0, custom)).isEqualTo("3 тикетов")
+        assertThat(Estimation.format(ru, 3.0, EstimationConfig(unit = "custom", customLabel = ""))).isEqualTo("3")
     }
 
     // ── scaleOptions ─────────────────────────────────────────────────────────
@@ -136,17 +159,20 @@ class EstimationTest {
     // ── unitName / placeholder ───────────────────────────────────────────────
     @Test
     fun `unitName per unit`() {
-        assertThat(Estimation.unitName(time)).isEqualTo("Время")
-        assertThat(Estimation.unitName(fib)).isEqualTo("Стори-поинты")
-        assertThat(Estimation.unitName(custom)).isEqualTo("тикетов")
-        assertThat(Estimation.unitName(EstimationConfig(unit = "custom", customLabel = " "))).isEqualTo("Единицы")
+        assertThat(Estimation.unitName(ru, time)).isEqualTo("Время")
+        assertThat(Estimation.unitName(ru, fib)).isEqualTo("Стори-поинты")
+        assertThat(Estimation.unitName(ru, custom)).isEqualTo("тикетов")
+        assertThat(Estimation.unitName(ru, EstimationConfig(unit = "custom", customLabel = " ")))
+            .isEqualTo("Единицы")
+        assertThat(Estimation.unitName(res("en"), fib)).isEqualTo("Story points")
     }
 
     @Test
     fun `placeholder per unit`() {
-        assertThat(Estimation.placeholder(fib)).isEqualTo("напр. 5")
-        assertThat(Estimation.placeholder(custom)).isEqualTo("напр. 8")
-        assertThat(Estimation.placeholder(time)).contains("3д 4ч")
+        assertThat(Estimation.placeholder(ru, fib)).isEqualTo("напр. 5")
+        assertThat(Estimation.placeholder(ru, custom)).isEqualTo("напр. 8")
+        assertThat(Estimation.placeholder(ru, time)).contains("3д 4ч")
+        assertThat(Estimation.placeholder(res("en"), time)).contains("3d 4h")
     }
 
     // ── toDays ───────────────────────────────────────────────────────────────

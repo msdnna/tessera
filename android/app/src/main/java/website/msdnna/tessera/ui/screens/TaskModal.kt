@@ -615,7 +615,11 @@ private fun PropertyGrid(
             EstimateValue(
                 estimate = estimate,
                 cfg = estimation,
-                rollupText = if (rollup != null) website.msdnna.tessera.util.Estimation.format(rollup, estimation) else "",
+                rollupText = if (rollup != null) {
+                    website.msdnna.tessera.util.Estimation.format(LocalResources.current, rollup, estimation)
+                } else {
+                    ""
+                },
                 onSet = { vm.setEstimate(it) },
             )
         }
@@ -910,9 +914,10 @@ private fun EstimateValue(
     onSet: (Double?) -> Unit,
 ) {
     val c = Tessera.colors
+    val res = LocalResources.current
     val scaleOptions = website.msdnna.tessera.util.Estimation.scaleOptions(cfg)
     val isPoints = scaleOptions.isNotEmpty()
-    val label = website.msdnna.tessera.util.Estimation.format(estimate, cfg)
+    val label = website.msdnna.tessera.util.Estimation.format(res, estimate, cfg)
     var menu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf(false) }
     Box {
@@ -958,7 +963,7 @@ private fun EstimateValue(
         TInputDialog(
             title = stringResource(R.string.task_prop_estimate),
             initial = label,
-            placeholder = website.msdnna.tessera.util.Estimation.placeholder(cfg),
+            placeholder = website.msdnna.tessera.util.Estimation.placeholder(res, cfg),
             onConfirm = {
                 dialog = false
                 onSet(website.msdnna.tessera.util.Estimation.parse(it, cfg))
@@ -1152,7 +1157,7 @@ private fun TagsValue(
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             // Group the chips by tag prefix; show headers only with >1 group (web parity).
             // GitLab meta-labels (status/priority/…) are hidden from the ADD picker.
-            val groups = buildTagGroups(tags, prefixNames, metaTagPrefixes)
+            val groups = buildTagGroups(LocalResources.current, tags, prefixNames, metaTagPrefixes)
             val headers = groups.size > 1
             groups.forEach { g ->
                 if (headers) {

@@ -55,6 +55,7 @@ import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -352,16 +353,17 @@ private fun authorLabel(id: String, state: BoardUiState): String {
 private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     // Distinct namespaces present in the tags, labelled by their friendly name and
     // sorted by that label (web `tagPrefixOptions`).
-    val namespaces = remember(state.tagList, state.prefixNames) {
+    val res = LocalResources.current
+    val namespaces = remember(state.tagList, state.prefixNames, res) {
         state.tagList.mapNotNull { tagNamespace(it.name).ifEmpty { null } }.distinct()
-            .map { it to prefixLabel(it, state.prefixNames) }
+            .map { it to prefixLabel(res, it, state.prefixNames) }
             .sortedBy { it.second.lowercase() }
     }
     // Assignee / no-grouping are only meaningful on the swimlane (timeline/Gantt) views.
     val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
     val label = when (state.groupMode) {
         "tag" -> stringResource(R.string.composer_group_tag) +
-            (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(state.tagPrefix, state.prefixNames)}" else "")
+            (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(res, state.tagPrefix, state.prefixNames)}" else "")
 
         "milestone" -> stringResource(R.string.composer_group_milestone)
 
@@ -560,7 +562,10 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                     // when more than one group exists (web «Фильтр: тег»). GitLab
                     // meta-labels (status/priority/…) are hidden from the picker.
                     val groups = buildTagGroups(
-                        state.tagList.filter { it.id !in f.tagIds }, state.prefixNames, state.metaTagPrefixes,
+                        LocalResources.current,
+                        state.tagList.filter { it.id !in f.tagIds },
+                        state.prefixNames,
+                        state.metaTagPrefixes,
                     )
                     val headers = groups.size > 1
                     groups.forEach { g ->

@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -96,7 +97,7 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
             if (state.tagList.isEmpty()) {
                 Text(stringResource(R.string.tags_empty), color = c.text3, fontSize = 13.sp)
             } else {
-                val groups = buildTagGroups(state.tagList, state.prefixNames)
+                val groups = buildTagGroups(LocalResources.current, state.tagList, state.prefixNames)
                 val showHeaders = groups.size > 1
                 Column(Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())) {
                     groups.forEach { g ->

@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.TextStyle
@@ -736,7 +737,7 @@ private fun EstimatePill(task: Task, state: BoardUiState, stacked: Boolean = fal
         state.subtasks.filter { it.parentId == task.id }.map { it.estimate },
     )
     val value = own ?: rollup
-    val text = website.msdnna.tessera.util.Estimation.format(value, state.estimation)
+    val text = website.msdnna.tessera.util.Estimation.format(LocalResources.current, value, state.estimation)
     val isRollup = own == null && rollup != null
     if (stacked) {
         StackField(Ion.TIME, c.text2) { StackValue(if (text.isBlank()) "" else (if (isRollup) "Σ " else "") + text) }
@@ -881,7 +882,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             // Group the chips by tag prefix; headers only with >1 group (web parity).
-            val groups = buildTagGroups(state.tagList, state.prefixNames)
+            val groups = buildTagGroups(LocalResources.current, state.tagList, state.prefixNames)
             val headers = groups.size > 1
             groups.forEach { g ->
                 if (headers) {

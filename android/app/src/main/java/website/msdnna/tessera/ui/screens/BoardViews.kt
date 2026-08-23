@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
+import android.content.res.Resources
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.activity.compose.BackHandler
@@ -98,6 +99,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringArrayResource
@@ -498,9 +500,10 @@ fun KanbanView(
                                     // Σ estimate of the milestone's cards (web parity: shown
                                     // only when grouped «По этапам», in the board's unit).
                                     if (state.groupByMilestone) {
-                                        val eff = remember(lane.tasks, state.estimation) {
+                                        val res = LocalResources.current
+                                        val eff = remember(lane.tasks, state.estimation, res) {
                                             Estimation.sum(lane.tasks.map { it.estimate })
-                                                ?.let { Estimation.format(it, state.estimation).ifBlank { null } }
+                                                ?.let { Estimation.format(res, it, state.estimation).ifBlank { null } }
                                         }
                                         if (eff != null) {
                                             Text(
@@ -1537,9 +1540,9 @@ private data class TlLaneHeaderRow(val lane: TLane) : TlBodyRow
 private data class TlTaskRow(val task: Task) : TlBodyRow
 
 /** Summed estimate of a lane's tasks, formatted in the board's unit, or null when none set. */
-private fun laneEffort(lane: TLane, state: BoardUiState): String? {
+private fun laneEffort(res: Resources, lane: TLane, state: BoardUiState): String? {
     val total = website.msdnna.tessera.util.Estimation.sum(lane.tasks.map { it.estimate }) ?: return null
-    return website.msdnna.tessera.util.Estimation.format(total, state.estimation).ifBlank { null }
+    return website.msdnna.tessera.util.Estimation.format(res, total, state.estimation).ifBlank { null }
 }
 
 @Composable
@@ -2587,7 +2590,7 @@ private fun LazyListScope.timelineBodyItems(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
-                        laneEffort(lane, state)?.let { eff ->
+                        laneEffort(LocalResources.current, lane, state)?.let { eff ->
                             Spacer(Modifier.width(6.dp))
                             IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
                             Spacer(Modifier.width(3.dp))
@@ -2641,7 +2644,7 @@ private fun LazyListScope.timelineBodyItems(
                         ) {
                             Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
                             Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
-                                val lbl = Estimation.format(t.estimate, state.estimation)
+                                val lbl = Estimation.format(LocalResources.current, t.estimate, state.estimation)
                                 GhostBar(barLeft, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
                             }
                             Box(
