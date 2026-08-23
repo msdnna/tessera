@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NModal,
   NCard,
@@ -15,9 +16,9 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { DEFAULT_ESTIMATION, unitName, formatEstimate } from '@/utils/estimation'
 
 // Editor for the two-level task-estimation config. `scope` is 'workspace' (the
-// default every project inherits) or 'project' (an override). "Наследовать"
-// stores null — the workspace falls back to the built-in default, a project to
-// its workspace.
+// default every project inherits) or 'project' (an override). The "inherit"
+// switch stores null — the workspace falls back to the built-in default, a
+// project to its workspace.
 const props = defineProps({
   show: { type: Boolean, default: false },
   scope: { type: String, default: 'project' }, // 'workspace' | 'project'
@@ -32,6 +33,7 @@ const emit = defineEmits(['update:show'])
 
 const store = useWorkspacesStore()
 const message = useMessage()
+const { t } = useI18n()
 const saving = ref(false)
 
 const inherit = ref(true)
@@ -41,16 +43,20 @@ const daysPerWeek = ref(5)
 const pointsScale = ref('fibonacci')
 const customLabel = ref('')
 
-const unitOptions = [
-  { label: 'Время', value: 'time' },
-  { label: 'Стори-поинты', value: 'points' },
-  { label: 'Свои единицы', value: 'custom' },
-]
-const scaleOptionList = [
-  { label: 'Фибоначчи (1, 2, 3, 5, 8, 13)', value: 'fibonacci' },
-  { label: 'Футболки (XS…XXL)', value: 'tshirt' },
-  { label: 'Линейная (1…10)', value: 'linear' },
-]
+// Computed, not constants — a module-level list of labels would freeze at the
+// language of the first render (pitfall 1 of #2799).
+const unitOptions = computed(() =>
+  ['time', 'points', 'custom'].map((value) => ({
+    label: t(`task.estimate.config.unitOption.${value}`),
+    value,
+  })),
+)
+const scaleOptionList = computed(() =>
+  ['fibonacci', 'tshirt', 'linear'].map((value) => ({
+    label: t(`task.estimate.config.scaleOption.${value}`),
+    value,
+  })),
+)
 
 // Seed the form from the stored value whenever the modal opens.
 watch(
@@ -72,12 +78,18 @@ const inheritLabel = computed(() => {
   const cfg = props.inherited || DEFAULT_ESTIMATION
   const u = unitName(cfg)
   if (cfg.unit === 'time')
-    return `${u} · ${cfg.hours_per_day || 8}ч/день · ${cfg.days_per_week || 5}дн/неделя`
+    return t('task.estimate.config.inheritTime', {
+      unit: u,
+      hours: cfg.hours_per_day || 8,
+      days: cfg.days_per_week || 5,
+    })
   return u
 })
 
 const title = computed(() =>
-  props.scope === 'workspace' ? 'Оценка задач — по умолчанию' : `Оценка задач — ${props.name}`,
+  props.scope === 'workspace'
+    ? t('task.estimate.config.titleWorkspace')
+    : t('task.estimate.config.titleProject', { name: props.name }),
 )
 
 // A small live example of how a value renders under the chosen unit.
@@ -131,46 +143,54 @@ async function save() {
       <div class="est-form">
         <label class="est-inherit">
           <n-switch :value="inherit" @update:value="inherit = $event" />
-          <span>Наследовать ({{ inheritLabel }})</span>
+          <span>{{ t('task.estimate.config.inherit', { value: inheritLabel }) }}</span>
         </label>
 
         <template v-if="!inherit">
           <div class="est-field">
-            <span class="est-flabel">Единица</span>
+            <span class="est-flabel">{{ t('task.estimate.config.unitField') }}</span>
             <n-select v-model:value="unit" :options="unitOptions" />
           </div>
 
           <template v-if="unit === 'time'">
             <div class="est-field">
-              <span class="est-flabel">Часов в рабочем дне</span>
+              <span class="est-flabel">{{ t('task.estimate.config.hoursPerDay') }}</span>
               <n-input-number v-model:value="hoursPerDay" :min="1" :max="24" />
             </div>
             <div class="est-field">
-              <span class="est-flabel">Дней в рабочей неделе</span>
+              <span class="est-flabel">{{ t('task.estimate.config.daysPerWeek') }}</span>
               <n-input-number v-model:value="daysPerWeek" :min="1" :max="7" />
             </div>
           </template>
 
           <div v-else-if="unit === 'points'" class="est-field">
-            <span class="est-flabel">Шкала</span>
+            <span class="est-flabel">{{ t('task.estimate.config.scale') }}</span>
             <n-select v-model:value="pointsScale" :options="scaleOptionList" />
           </div>
 
           <div v-else class="est-field">
-            <span class="est-flabel">Название единицы</span>
-            <n-input v-model:value="customLabel" placeholder="напр. у.е." :maxlength="24" />
+            <span class="est-flabel">{{ t('task.estimate.config.customLabel') }}</span>
+            <n-input
+              v-model:value="customLabel"
+              :placeholder="t('task.estimate.config.customPlaceholder')"
+              :maxlength="24"
+            />
           </div>
 
           <div class="est-preview">
-            Пример: <b>{{ preview }}</b>
+            {{ t('task.estimate.config.example') }} <b>{{ preview }}</b>
           </div>
         </template>
       </div>
 
       <template #footer>
         <div class="est-foot">
-          <n-button tertiary @click="$emit('update:show', false)">Отмена</n-button>
-          <n-button type="primary" :loading="saving" @click="save">Сохранить</n-button>
+          <n-button tertiary @click="$emit('update:show', false)">{{
+            t('common.action.cancel')
+          }}</n-button>
+          <n-button type="primary" :loading="saving" @click="save">{{
+            t('common.action.save')
+          }}</n-button>
         </div>
       </template>
     </n-card>

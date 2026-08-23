@@ -1,0 +1,63 @@
+{
+  "menu": {
+    "addBoard": "New board",
+    "rename": "Rename",
+    "estimation": "Task estimation…",
+    "slug": "Change the address…",
+    "milestones": "Milestones…",
+    "treeMode": "Show in the tree",
+    "treeBoards": "Boards",
+    "treeMilestones": "Milestones",
+    "treeBoth": "Boards and milestones",
+    "showClosedMilestones": "Show closed milestones",
+    "transfer": "Move to another workspace",
+    "delete": "Delete the project"
+  },
+  "board": {
+    "add": "Add a board",
+    "namePlaceholder": "Board name",
+    "empty": "no boards",
+    "open": "Open",
+    "rename": "Rename",
+    "delete": "Delete the board",
+    "deleteConfirm": "Delete the board “{name}” with all its tasks?"
+  },
+  "milestone": {
+    "backlog": "Backlog",
+    "empty": "no milestones",
+    "noBoard": "The project has no board to show the milestone on"
+  },
+  "slug": {
+    "title": "Project address",
+    "current": "Current address:",
+    "placeholder": "project-address",
+    "next": "New address:",
+    "warning": "Links to this project's boards and tasks shared earlier {strong} Open tabs will switch to the new address.",
+    "warningStrong": "will stop working.",
+    "submit": "Change the address",
+    "taken": "That address is taken — pick another one",
+    "changed": "The project address has been changed"
+  },
+  "transfer": {
+    "title": "Move to another workspace",
+    "warning": "The project “{name}” will be moved to the chosen workspace {strong} In the new workspace it will have no group. Assignees who are not members of the target workspace will be removed from the tasks.",
+    "warningStrong": "with all its boards, tasks, tags and notes.",
+    "placeholder": "Pick a workspace",
+    "empty": "No other workspaces — create one first.",
+    "submit": "Move",
+    "done": "The project has been moved to another workspace",
+    "doneStripped": "The project has been moved. Assignees removed (not workspace members): {n}"
+  },
+  "remove": {
+    "title": "Delete the project",
+    "message": "The project will be deleted with all its boards and tasks. This cannot be undone."
+  },
+  "create": {
+    "title": "New project",
+    "namePlaceholder": "Project name",
+    "manualSlug": "Set the address manually",
+    "slugPlaceholder": "project-address",
+    "address": "Address:",
+    "auto": "will be assigned automatically"
+  }
+}

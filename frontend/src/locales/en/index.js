@@ -4,10 +4,11 @@
 import common from './common.json'
 import board from './board.json'
 import task from './task.json'
+import project from './project.json'
 import documents from './documents.json'
 import settings from './settings.json'
 import notifications from './notifications.json'
 import gitlab from './gitlab.json'
 import errors from './errors.json'
 
-export default { common, board, task, documents, settings, notifications, gitlab, errors }
+export default { common, board, task, project, documents, settings, notifications, gitlab, errors }

@@ -73,6 +73,12 @@ export default [
             '‹',
             '›',
             '＋',
+            // Σ prefixes a rolled-up subtask estimate; @ prefixes a login.
+            'Σ',
+            '@',
+            // A URL path shown verbatim next to the slug input — it is the
+            // address the browser will open, not prose, and never translates.
+            '/project/',
             'Tessera',
             'tessera',
             // Another brand name that is spelled the same in every locale (it

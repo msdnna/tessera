@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, nextTick, watch, onBeforeUnmount, h } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import {
   NIcon,
@@ -66,6 +67,7 @@ const tour = useTourStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
+const { t } = useI18n()
 const tree = useTreeExpand()
 
 // Persisted expand state; projects default closed.
@@ -158,7 +160,7 @@ const msBoard = computed(() => boards.value[0] || null)
 function openMilestone(m) {
   const b = msBoard.value
   if (!b) {
-    message.warning('В проекте нет доски для отображения этапа')
+    message.warning(t('project.milestone.noBoard'))
     return
   }
   router.push({
@@ -260,32 +262,32 @@ const pcX = ref(0)
 const pcY = ref(0)
 const pcOptions = computed(() => {
   const opts = [
-    { label: 'Новая доска', key: 'add-board', icon: menuIcon(AddOutline) },
+    { label: t('project.menu.addBoard'), key: 'add-board', icon: menuIcon(AddOutline) },
     { type: 'divider', key: 'd1' },
-    { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
-    { label: 'Оценка задач…', key: 'estimation', icon: menuIcon(TimerOutline) },
+    { label: t('project.menu.rename'), key: 'rename', icon: menuIcon(CreateOutline) },
+    { label: t('project.menu.estimation'), key: 'estimation', icon: menuIcon(TimerOutline) },
     // Manager-only — hidden for members, and refused server-side regardless.
     ...(store.canManage
-      ? [{ label: 'Изменить адрес…', key: 'slug', icon: menuIcon(LinkOutline) }]
+      ? [{ label: t('project.menu.slug'), key: 'slug', icon: menuIcon(LinkOutline) }]
       : []),
-    { label: 'Этапы…', key: 'milestones', icon: menuIcon(RibbonOutline) },
+    { label: t('project.menu.milestones'), key: 'milestones', icon: menuIcon(RibbonOutline) },
     {
-      label: 'Показывать в дереве',
+      label: t('project.menu.treeMode'),
       key: 'tree-mode',
       icon: menuIcon(GitBranchOutline),
       children: [
         {
-          label: 'Доски',
+          label: t('project.menu.treeBoards'),
           key: 'tm-boards',
           icon: treeMode.value === 'boards' ? primIcon(CheckmarkOutline) : undefined,
         },
         {
-          label: 'Этапы',
+          label: t('project.menu.treeMilestones'),
           key: 'tm-milestones',
           icon: treeMode.value === 'milestones' ? primIcon(CheckmarkOutline) : undefined,
         },
         {
-          label: 'Доски и этапы',
+          label: t('project.menu.treeBoth'),
           key: 'tm-both',
           icon: treeMode.value === 'both' ? primIcon(CheckmarkOutline) : undefined,
         },
@@ -294,20 +296,20 @@ const pcOptions = computed(() => {
   ]
   if (showMilestones.value) {
     opts.push({
-      label: 'Показывать закрытые этапы',
+      label: t('project.menu.showClosedMilestones'),
       key: 'toggle-closed',
       icon: primIcon(showClosedSprints.value ? CheckboxOutline : SquareOutline),
     })
   }
   opts.push({ type: 'divider', key: 'd2' })
   opts.push({
-    label: 'Перенести в другое пространство',
+    label: t('project.menu.transfer'),
     key: 'transfer',
     icon: warnIcon(SwapHorizontalOutline),
     props: { style: 'color:#f0a020' },
   })
   opts.push({
-    label: 'Удалить проект',
+    label: t('project.menu.delete'),
     key: 'delete',
     icon: dangerIcon(TrashOutline),
     props: { style: 'color:#e0533d' },
@@ -371,9 +373,9 @@ async function doSetSlug() {
       })
     }
     await store.refresh()
-    message.success('Адрес проекта изменён')
+    message.success(t('project.slug.changed'))
   } catch (e) {
-    if (e.status === 409) slugError.value = 'Такой адрес уже занят — выберите другой'
+    if (e.status === 409) slugError.value = t('project.slug.taken')
     else message.error(e.message)
   } finally {
     slugBusy.value = false
@@ -402,8 +404,8 @@ async function doTransfer() {
     const stripped = res.data?.stripped_assignees || 0
     message.success(
       stripped > 0
-        ? `Проект перенесён. Снято исполнителей (не участников пространства): ${stripped}`
-        : 'Проект перенесён в другое пространство',
+        ? t('project.transfer.doneStripped', { n: stripped })
+        : t('project.transfer.done'),
     )
     // The project just left the current workspace — if a board of it is open,
     // it no longer belongs here, so return home. Then refresh the tree.
@@ -416,7 +418,7 @@ async function doTransfer() {
   }
 }
 
-// Milestones («Этап») manager for this project.
+// Milestone manager for this project.
 const msShow = ref(false)
 
 // Estimation override editor for this project (inherits the workspace default).
@@ -427,16 +429,18 @@ const bcShow = ref(false)
 const bcX = ref(0)
 const bcY = ref(0)
 const bcTarget = ref(null)
-const bcOptions = [
-  { label: 'Открыть', key: 'open', icon: menuIcon(OpenOutline) },
-  { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+// Computed, not a constant: a module-scope array would keep the labels of the
+// language the sidebar first rendered in (pitfall 1 of #2799).
+const bcOptions = computed(() => [
+  { label: t('project.board.open'), key: 'open', icon: menuIcon(OpenOutline) },
+  { label: t('project.board.rename'), key: 'rename', icon: menuIcon(CreateOutline) },
   {
-    label: 'Удалить доску',
+    label: t('project.board.delete'),
     key: 'delete',
     icon: dangerIcon(TrashOutline),
     props: { style: 'color:#e0533d' },
   },
-]
+])
 function onBoardCtx(e, b) {
   bcTarget.value = b
   bcShow.value = false
@@ -547,7 +551,7 @@ async function addBoard() {
         class="hover-btn"
         text
         size="tiny"
-        title="Добавить доску"
+        :title="t('project.board.add')"
         data-tour="board-add"
         @click.stop="startAddBoard"
       >
@@ -573,11 +577,11 @@ async function addBoard() {
           <div class="action-row">
             <n-button type="primary" ghost size="small" @click="startRename">
               <template #icon><n-icon :component="CreateOutline" /></template>
-              Переименовать
+              {{ t('project.menu.rename') }}
             </n-button>
             <n-button type="error" ghost size="small" @click="remove">
               <template #icon><n-icon :component="TrashOutline" /></template>
-              Удалить
+              {{ t('common.action.delete') }}
             </n-button>
           </div>
         </div>
@@ -586,7 +590,8 @@ async function addBoard() {
 
     <div v-if="expanded" class="boards">
       <!-- Sprint (milestone) nodes: a navigation overlay over the project's board.
-           Shown when tree mode includes milestones. "Бэклог" = tasks with no sprint. -->
+           Shown when tree mode includes milestones. The backlog node = tasks with
+           no sprint. -->
       <template v-if="showMilestones">
         <div
           v-for="m in displayMilestones"
@@ -606,9 +611,11 @@ async function addBoard() {
         >
           <span class="chev-spacer" />
           <span class="bicon"><n-icon :component="GitBranchOutline" /></span>
-          <span class="name">Бэклог</span>
+          <span class="name">{{ t('project.milestone.backlog') }}</span>
         </div>
-        <n-text v-if="!displayMilestones.length" depth="3" class="empty">нет этапов</n-text>
+        <n-text v-if="!displayMilestones.length" depth="3" class="empty">{{
+          t('project.milestone.empty')
+        }}</n-text>
       </template>
 
       <template v-if="showBoards">
@@ -676,20 +683,20 @@ async function addBoard() {
             <div class="action-col" @click.stop>
               <n-button size="small" block @click="startBoardRename(b)">
                 <template #icon><n-icon :component="CreateOutline" /></template>
-                Переименовать
+                {{ t('project.board.rename') }}
               </n-button>
               <n-popconfirm
                 :positive-button-props="{ type: 'error' }"
-                positive-text="Удалить"
+                :positive-text="t('common.action.delete')"
                 @positive-click="removeBoard(b)"
               >
                 <template #trigger>
                   <n-button type="error" ghost size="small" block>
                     <template #icon><n-icon :component="TrashOutline" /></template>
-                    Удалить доску
+                    {{ t('project.board.delete') }}
                   </n-button>
                 </template>
-                Удалить доску «{{ b.name }}» со всеми задачами?
+                {{ t('project.board.deleteConfirm', { name: b.name }) }}
               </n-popconfirm>
             </div>
           </n-popover>
@@ -699,13 +706,15 @@ async function addBoard() {
             ref="boardInput"
             v-model:value="newBoardName"
             size="tiny"
-            placeholder="Название доски"
+            :placeholder="t('project.board.namePlaceholder')"
             data-tour="board-name"
             @keyup.enter="addBoard"
             @blur="addBoard"
           />
         </div>
-        <n-text v-if="!boards.length && !addingBoard" depth="3" class="empty">нет досок</n-text>
+        <n-text v-if="!boards.length && !addingBoard" depth="3" class="empty">{{
+          t('project.board.empty')
+        }}</n-text>
       </template>
     </div>
 
@@ -733,38 +742,49 @@ async function addBoard() {
     <ConfirmByName
       v-model:show="confirmDelete"
       :name="project.name"
-      title="Удалить проект"
-      message="Проект будет удалён со всеми досками и задачами. Действие необратимо."
+      :title="t('project.remove.title')"
+      :message="t('project.remove.message')"
       @confirm="doRemove"
     />
 
     <n-modal v-model:show="slugShow">
-      <n-card title="Адрес проекта" style="max-width: 420px" role="dialog" :bordered="false">
+      <n-card
+        :title="t('project.slug.title')"
+        style="max-width: 420px"
+        role="dialog"
+        :bordered="false"
+      >
         <div class="slug-body">
           <n-text depth="3" class="slug-hint">
-            Текущий адрес: <span class="slug-url">/project/{{ project.slug }}</span>
+            {{ t('project.slug.current') }}
+            <span class="slug-url">/project/{{ project.slug }}</span>
           </n-text>
           <n-input
             v-model:value="slugInput"
-            placeholder="адрес-проекта"
+            :placeholder="t('project.slug.placeholder')"
             :status="slugError ? 'error' : undefined"
             :disabled="slugBusy"
             @keyup.enter="doSetSlug"
           />
           <n-text v-if="slugError" type="error" class="slug-hint">{{ slugError }}</n-text>
           <n-text depth="3" class="slug-hint">
-            Новый адрес:
+            {{ t('project.slug.next') }}
             <span v-if="slugPreview" class="slug-url">/project/{{ slugPreview }}</span>
             <span v-else>—</span>
           </n-text>
-          <p class="slug-warn">
-            Ссылки на доски и задачи этого проекта, отправленные раньше,
-            <strong>перестанут работать</strong>. Открытые вкладки переключатся на новый адрес.
-          </p>
+          <!-- i18n-t, not three concatenated spans: the emphasised half sits in
+               different places in different languages. -->
+          <i18n-t keypath="project.slug.warning" tag="p" class="slug-warn" scope="global">
+            <template #strong
+              ><strong>{{ t('project.slug.warningStrong') }}</strong></template
+            >
+          </i18n-t>
         </div>
         <template #footer>
           <div class="slug-actions">
-            <n-button size="small" :disabled="slugBusy" @click="slugShow = false">Отмена</n-button>
+            <n-button size="small" :disabled="slugBusy" @click="slugShow = false">{{
+              t('common.action.cancel')
+            }}</n-button>
             <n-button
               type="primary"
               size="small"
@@ -772,7 +792,7 @@ async function addBoard() {
               :loading="slugBusy"
               @click="doSetSlug"
             >
-              Изменить адрес
+              {{ t('project.slug.submit') }}
             </n-button>
           </div>
         </template>
@@ -781,32 +801,32 @@ async function addBoard() {
 
     <n-modal v-model:show="transferShow">
       <n-card
-        title="Перенести в другое пространство"
+        :title="t('project.transfer.title')"
         style="max-width: 440px"
         role="dialog"
         :bordered="false"
       >
         <div class="transfer-body">
-          <p class="transfer-warn">
-            Проект «{{ project.name }}» будет перенесён в выбранное пространство
-            <strong>со всеми досками, задачами, тегами и заметками</strong>. В новом пространстве
-            проект окажется без группы. Исполнители, не состоящие в целевом пространстве, будут
-            сняты с задач.
-          </p>
+          <i18n-t keypath="project.transfer.warning" tag="p" class="transfer-warn" scope="global">
+            <template #name>{{ project.name }}</template>
+            <template #strong
+              ><strong>{{ t('project.transfer.warningStrong') }}</strong></template
+            >
+          </i18n-t>
           <n-select
             v-model:value="transferTarget"
             :options="transferOptions"
-            placeholder="Выберите пространство"
+            :placeholder="t('project.transfer.placeholder')"
             :disabled="transferBusy"
           />
           <n-text v-if="!transferOptions.length" depth="3" class="transfer-empty">
-            Нет других пространств — сначала создайте ещё одно.
+            {{ t('project.transfer.empty') }}
           </n-text>
         </div>
         <template #footer>
           <div class="transfer-actions">
             <n-button size="small" :disabled="transferBusy" @click="transferShow = false">
-              Отмена
+              {{ t('common.action.cancel') }}
             </n-button>
             <n-button
               type="warning"
@@ -816,7 +836,7 @@ async function addBoard() {
               @click="doTransfer"
             >
               <template #icon><n-icon :component="SwapHorizontalOutline" /></template>
-              Перенести
+              {{ t('project.transfer.submit') }}
             </n-button>
           </div>
         </template>
