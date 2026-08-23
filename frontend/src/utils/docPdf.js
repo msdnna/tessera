@@ -13,6 +13,8 @@
 // arithmetic below unit-testable without a canvas, and keeps the documents route
 // from paying for pdf.js on every open.
 
+import { i18n } from '@/i18n'
+
 export const PDF_EXTENSION = '.pdf'
 export const PDF_MIME = 'application/pdf'
 
@@ -47,12 +49,12 @@ export function isPdfFile(name) {
  */
 export function pdfBlockNode(pdf) {
   const src = String(pdf?.src || '')
-  if (!src) throw new Error('Сервер не вернул ссылку на файл')
+  if (!src) throw new Error(i18n.global.t('documents.pdf.noLink'))
   return {
     type: 'pdfEmbed',
     attrs: {
       src,
-      name: String(pdf?.name || 'документ.pdf'),
+      name: String(pdf?.name || i18n.global.t('documents.doc.pdfFallbackName')),
       size: Number(pdf?.size) || 0,
     },
   }
@@ -67,14 +69,18 @@ export function pdfDocument(pdf) {
 }
 
 /**
- * Human-readable byte count. Russian abbreviations, because the whole section
- * is in Russian and "12.4 MB" next to "12,4 МБ" elsewhere reads as a bug.
+ * Human-readable byte count in the reader's language (#2799).
+ *
+ * Both halves are locale business, not ours: the unit comes from the catalogue,
+ * and the decimal separator from Intl — writing the comma by hand was right for
+ * Russian and wrong everywhere the point stays a point.
+ *
  * @param {number} bytes
  */
 export function formatFileSize(bytes) {
   const n = Number(bytes)
   if (!Number.isFinite(n) || n <= 0) return ''
-  const units = ['Б', 'КБ', 'МБ', 'ГБ']
+  const units = ['b', 'kb', 'mb', 'gb']
   let value = n
   let unit = 0
   while (value >= 1024 && unit < units.length - 1) {
@@ -83,8 +89,10 @@ export function formatFileSize(bytes) {
   }
   // Whole bytes never want a decimal point; anything scaled reads better with
   // one significant fraction digit.
-  const text = unit === 0 ? String(Math.round(value)) : value.toFixed(1).replace(/\.0$/, '')
-  return `${text.replace('.', ',')} ${units[unit]}`
+  const text = new Intl.NumberFormat(i18n.global.locale.value, {
+    maximumFractionDigits: unit === 0 ? 0 : 1,
+  }).format(value)
+  return `${text} ${i18n.global.t(`documents.pdf.unit.${units[unit]}`)}`
 }
 
 /**

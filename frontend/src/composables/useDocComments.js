@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { documents as docsApi } from '@/api'
+import { i18n } from '@/i18n'
 import {
   blockIdsInOrder,
   buildThreads,
@@ -72,7 +73,7 @@ export function useDocComments() {
       comments.value = res.data || []
       error.value = ''
     } catch (e) {
-      error.value = e.message || 'Не удалось загрузить комментарии'
+      error.value = e.message || i18n.global.t('documents.comments.error.load')
     } finally {
       loading.value = false
     }

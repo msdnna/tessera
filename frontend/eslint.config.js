@@ -73,6 +73,9 @@ export default [
             '‹',
             '›',
             '＋',
+            // A lone ellipsis standing in for a spinner in the panel headers —
+            // it says "working", and there is nothing in it to translate.
+            '…',
             // Σ prefixes a rolled-up subtask estimate; @ prefixes a login.
             'Σ',
             '@',

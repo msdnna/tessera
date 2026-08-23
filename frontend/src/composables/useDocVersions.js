@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { documents as docsApi } from '@/api'
 import { diffDocs, diffSummary } from '@/utils/docDiff'
+import { i18n } from '@/i18n'
 
 /**
  * Version journal of one open document (#2731).
@@ -90,7 +91,7 @@ export function useDocVersions() {
         selectedId.value = ''
       }
     } catch (e) {
-      error.value = e.message || 'Не удалось загрузить историю'
+      error.value = e.message || i18n.global.t('documents.history.error.load')
     } finally {
       loading.value = false
     }
@@ -113,7 +114,7 @@ export function useDocVersions() {
       await Promise.all([body(selectedId.value), body(baseline.value?.id)])
       error.value = ''
     } catch (e) {
-      error.value = e.message || 'Не удалось загрузить версию'
+      error.value = e.message || i18n.global.t('documents.history.error.version')
     }
   }
 

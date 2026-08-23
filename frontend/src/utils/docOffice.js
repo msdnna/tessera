@@ -1,6 +1,7 @@
 import { htmlToDoc } from './docImport'
 import { normalizeOfficeHtml } from './docOfficeHtml'
-import { PDF_EXTENSION, isPdfFile, pdfDocument } from './docPdf'
+import { PDF_EXTENSION, formatFileSize, isPdfFile, pdfDocument } from './docPdf'
+import { i18n } from '@/i18n'
 
 // Office import/export (#2733). The conversion itself happens in a LibreOffice
 // sidecar the backend talks to; this module owns the two halves that belong in
@@ -88,12 +89,16 @@ export function importAccept(extra = ['.md', '.markdown', '.json']) {
  * @returns {Promise<{document: object, imagesDropped: number, imagesDroppedReason: string}>}
  */
 export async function importOfficeFile(api, wsId, file, opts = {}) {
-  if (!file) throw new Error('Файл не выбран')
+  if (!file) throw new Error(i18n.global.t('documents.file.notPicked'))
   if (!isOfficeFile(file.name)) {
-    throw new Error(`Поддерживаются ${OFFICE_EXTENSIONS.join(', ')}`)
+    throw new Error(
+      i18n.global.t('documents.file.supportedFormats', { formats: OFFICE_EXTENSIONS.join(', ') }),
+    )
   }
   if (file.size > MAX_OFFICE_BYTES) {
-    throw new Error('Файл больше 20 МБ')
+    throw new Error(
+      i18n.global.t('documents.file.tooLarge', { limit: formatFileSize(MAX_OFFICE_BYTES) }),
+    )
   }
   const form = new FormData()
   form.append('file', file)
@@ -101,7 +106,7 @@ export async function importOfficeFile(api, wsId, file, opts = {}) {
 
   const res = await api.importFile(wsId, form)
   const doc = res.data?.document
-  if (!doc?.id) throw new Error('Сервер не вернул документ')
+  if (!doc?.id) throw new Error(i18n.global.t('documents.file.noDocument'))
 
   // A PDF comes back as a stored file rather than as HTML — there is nothing to
   // parse, and the body is the single block that points at it.
@@ -132,7 +137,7 @@ export async function importOfficeFile(api, wsId, file, opts = {}) {
  * @returns {string}
  */
 export function exportFileName(title, format) {
-  const base = String(title || '').trim() || 'Документ'
+  const base = String(title || '').trim() || i18n.global.t('documents.file.exportName')
   // Only the characters that break a file name on some platform are replaced —
   // Cyrillic and spaces are fine and stripping them would mangle every title.
   return base.replace(/[\\/:*?"<>|]/g, '_') + '.' + format

@@ -1,16 +1,17 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton, NIcon, NInput, NPopconfirm, NPopover, NSelect, NText } from 'naive-ui'
 import { CheckmarkCircleOutline, CloseOutline, LinkOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import { useFormat } from '@/composables/useFormat'
 import {
-  APPROVAL_STATUS_LABEL,
-  STEP_STATUS_LABEL,
   approvalProgress,
+  approvalStatusLabel,
   canDecideNow,
   orderedSteps,
   stepState,
+  stepStatusLabel,
 } from '@/utils/docApprovals'
 
 // Task links and approval protocols of the open document (#2732). Both belong in
@@ -33,6 +34,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['link', 'unlink', 'raise', 'decide', 'cancel', 'close', 'open-task'])
 const { formatDate } = useFormat()
+const { t } = useI18n()
 
 // ── linking a task ──
 const picking = ref(false)
@@ -61,16 +63,19 @@ function openPicker() {
 const linkedIds = computed(() => new Set(props.links.map((l) => l.task_id)))
 const candidates = computed(() => {
   const q = query.value.trim().toLowerCase()
+  // Named `task`, not `t`: `t` is the translation function in this file now.
   return tasks.value
-    .filter((t) => t.number != null && !linkedIds.value.has(t.id))
-    .filter((t) => !q || `#${t.number}`.includes(q) || (t.title || '').toLowerCase().includes(q))
+    .filter((task) => task.number != null && !linkedIds.value.has(task.id))
+    .filter(
+      (task) => !q || `#${task.number}`.includes(q) || (task.title || '').toLowerCase().includes(q),
+    )
     .slice(0, 50)
 })
 
-function chooseTask(t) {
+function chooseTask(task) {
   picking.value = false
   query.value = ''
-  emit('link', { taskId: t.id, blockId: props.anchorBlockId, quote: props.anchorQuote })
+  emit('link', { taskId: task.id, blockId: props.anchorBlockId, quote: props.anchorQuote })
 }
 
 // ── raising a route ──
@@ -80,10 +85,13 @@ const routeMode = ref('sequential')
 const routeApprovers = ref([])
 const members = ref([])
 
-const modeOptions = [
-  { label: 'По очереди', value: 'sequential' },
-  { label: 'Одновременно', value: 'parallel' },
-]
+// A function, not a constant: a module-level table of options is built once and
+// would keep the language of the first render after the user switches (#2799).
+// The values are the wire format and stay put.
+const modeOptions = computed(() => [
+  { label: t('documents.links.mode.sequential'), value: 'sequential' },
+  { label: t('documents.links.mode.parallel'), value: 'parallel' },
+])
 
 const memberOptions = computed(() =>
   members.value.map((m) => ({ label: m.name || m.email, value: m.user_id })),
@@ -137,12 +145,22 @@ function mayDecide(approval) {
 
 function progressLabel(approval) {
   const { signed, total } = approvalProgress(approval)
-  return `${signed} из ${total}`
+  return t('documents.links.progress', { signed, total })
 }
 
 function fmtDate(v) {
   if (!v) return ''
   return formatDate(v, { day: 'numeric', month: 'short' })
+}
+
+// One sentence rather than three interpolations in the template: which order the
+// revision, the author and the date read in is the translation's business.
+function approvalMeta(a) {
+  return t('documents.links.meta', {
+    revision: a.version_revision,
+    author: a.created_by_name || t('documents.links.unknownAuthor'),
+    date: fmtDate(a.created_at),
+  })
 }
 </script>
 
@@ -150,41 +168,43 @@ function fmtDate(v) {
   <aside class="doc-links" data-testid="doc-links">
     <div class="panel-head">
       <n-icon :component="LinkOutline" :size="16" />
-      <span class="panel-title">Связи и согласование</span>
+      <span class="panel-title">{{ $t('documents.links.title') }}</span>
       <n-text v-if="loading" depth="3">…</n-text>
       <span class="grow" />
-      <n-button quaternary size="tiny" @click="emit('close')">Закрыть</n-button>
+      <n-button quaternary size="tiny" @click="emit('close')">
+        {{ $t('common.action.close') }}
+      </n-button>
     </div>
 
     <n-text v-if="error" type="error" class="empty">{{ error }}</n-text>
 
     <div class="panel-body">
-      <n-text depth="3" class="section-title">Задачи</n-text>
+      <n-text depth="3" class="section-title">{{ $t('documents.links.tasks') }}</n-text>
       <p v-if="!links.length && !loading" class="empty">
-        Связанных задач нет. Связь можно поставить на весь документ или на выбранный блок.
+        {{ $t('documents.links.empty') }}
       </p>
 
       <div v-for="l in links" :key="l.id" class="link" data-testid="doc-link">
         <button type="button" class="link-main" @click="emit('open-task', l)">
-          <span class="link-title">{{ l.task_title || 'Задача' }}</span>
+          <span class="link-title">{{ l.task_title || $t('documents.links.task') }}</span>
           <!-- The quote is what says *which* clause the task hangs on once that
                clause has been rewritten; without it an anchored link degrades to
                a link on the document. -->
           <span v-if="l.block_id" class="anchor" :title="l.quote">
-            {{ l.quote || 'фрагмент документа' }}
+            {{ l.quote || $t('documents.links.fragment') }}
           </span>
         </button>
         <n-popconfirm
           :positive-button-props="{ type: 'error' }"
-          positive-text="Убрать"
+          :positive-text="$t('documents.links.unlink')"
           @positive-click="emit('unlink', l.id)"
         >
           <template #trigger>
-            <button class="act" title="Убрать связь">
+            <button class="act" :title="$t('documents.links.unlinkTitle')">
               <n-icon :component="CloseOutline" />
             </button>
           </template>
-          Убрать связь с задачей?
+          {{ $t('documents.links.unlinkConfirm') }}
         </n-popconfirm>
       </div>
 
@@ -198,33 +218,33 @@ function fmtDate(v) {
         <template #trigger>
           <n-button size="tiny" block data-testid="doc-link-add" @click="openPicker">
             <template #icon><n-icon :component="LinkOutline" /></template>
-            {{ anchorBlockId ? 'Связать блок с задачей' : 'Связать задачу' }}
+            {{ anchorBlockId ? $t('documents.links.linkBlock') : $t('documents.links.linkTask') }}
           </n-button>
         </template>
         <div class="picker">
           <n-input
             v-model:value="query"
             size="tiny"
-            placeholder="№ или название"
+            :placeholder="$t('documents.links.searchPlaceholder')"
             data-testid="doc-link-query"
           />
-          <p v-if="!candidates.length" class="empty">Ничего не найдено</p>
+          <p v-if="!candidates.length" class="empty">{{ $t('documents.links.nothingFound') }}</p>
           <button
-            v-for="t in candidates"
-            :key="t.id"
+            v-for="task in candidates"
+            :key="task.id"
             type="button"
             class="pick"
-            @click="chooseTask(t)"
+            @click="chooseTask(task)"
           >
-            <span class="pick-num">#{{ t.number }}</span>
-            <span class="pick-title">{{ t.title }}</span>
+            <span class="pick-num">#{{ task.number }}</span>
+            <span class="pick-title">{{ task.title }}</span>
           </button>
         </div>
       </n-popover>
 
-      <n-text depth="3" class="section-title">Протоколы согласования</n-text>
+      <n-text depth="3" class="section-title">{{ $t('documents.links.approvals') }}</n-text>
       <p v-if="!approvals.length && !loading" class="empty">
-        Документ на согласование не отправлялся.
+        {{ $t('documents.links.noApprovals') }}
       </p>
 
       <!-- Newest first, as the server returns them: the open route is the one
@@ -237,22 +257,19 @@ function fmtDate(v) {
         data-testid="doc-approval"
       >
         <div class="approval-head">
-          <span class="status">{{ APPROVAL_STATUS_LABEL[a.status] || a.status }}</span>
+          <span class="status">{{ approvalStatusLabel(a.status) }}</span>
           <span class="progress">{{ progressLabel(a) }}</span>
         </div>
         <span v-if="a.title" class="approval-title">{{ a.title }}</span>
         <!-- Which text is being agreed. A protocol that cannot name its revision
              is a signature on a moving target. -->
-        <span class="meta">
-          Версия {{ a.version_revision }} · {{ a.created_by_name || 'неизвестно' }} ·
-          {{ fmtDate(a.created_at) }}
-        </span>
+        <span class="meta">{{ approvalMeta(a) }}</span>
 
         <div class="steps">
           <div v-for="s in orderedSteps(a)" :key="s.id" class="step" :class="stepState(a, s)">
             <n-icon v-if="s.status === 'approved'" :component="CheckmarkCircleOutline" :size="13" />
             <span class="step-name">{{ s.approver_name }}</span>
-            <span class="step-status">{{ STEP_STATUS_LABEL[s.status] || s.status }}</span>
+            <span class="step-status">{{ stepStatusLabel(s.status) }}</span>
             <span v-if="s.comment" class="step-comment">{{ s.comment }}</span>
           </div>
         </div>
@@ -265,7 +282,7 @@ function fmtDate(v) {
             data-testid="doc-approval-sign"
             @click="startDecide(a.id)"
           >
-            Подписать
+            {{ $t('documents.links.sign') }}
           </n-button>
           <template v-else>
             <n-input
@@ -273,7 +290,7 @@ function fmtDate(v) {
               size="tiny"
               type="textarea"
               :rows="2"
-              placeholder="Комментарий (необязательно)"
+              :placeholder="$t('documents.links.commentPlaceholder')"
               data-testid="doc-approval-comment"
             />
             <div class="row">
@@ -283,21 +300,25 @@ function fmtDate(v) {
                 data-testid="doc-approval-approve"
                 @click="submitDecision(a, 'approved')"
               >
-                Согласовать
+                {{ $t('documents.links.approve') }}
               </n-button>
               <n-button size="tiny" type="error" ghost @click="submitDecision(a, 'rejected')">
-                Отклонить
+                {{ $t('documents.links.reject') }}
               </n-button>
-              <n-button size="tiny" quaternary @click="startDecide(a.id)">Отмена</n-button>
+              <n-button size="tiny" quaternary @click="startDecide(a.id)">
+                {{ $t('common.action.cancel') }}
+              </n-button>
             </div>
           </template>
         </div>
 
         <n-popconfirm v-if="a.status === 'pending'" @positive-click="emit('cancel', a.id)">
           <template #trigger>
-            <n-button size="tiny" quaternary block>Отозвать</n-button>
+            <n-button size="tiny" quaternary block>
+              {{ $t('documents.links.cancelRoute') }}
+            </n-button>
           </template>
-          Маршрут закроется, подписи останутся в протоколе.
+          {{ $t('documents.links.cancelConfirm') }}
         </n-popconfirm>
       </div>
 
@@ -307,17 +328,17 @@ function fmtDate(v) {
           size="tiny"
           block
           :disabled="!canRaise"
-          :title="canRaise ? '' : 'Документ уже на согласовании'"
+          :title="canRaise ? '' : $t('documents.links.raiseDisabled')"
           data-testid="doc-approval-raise"
           @click="openRaise"
         >
-          Отправить на согласование
+          {{ $t('documents.links.raise') }}
         </n-button>
         <template v-else>
           <n-input
             v-model:value="routeTitle"
             size="tiny"
-            placeholder="Что согласуем"
+            :placeholder="$t('documents.links.routeTitlePlaceholder')"
             data-testid="doc-approval-title"
           />
           <n-select v-model:value="routeMode" size="tiny" :options="modeOptions" />
@@ -328,7 +349,7 @@ function fmtDate(v) {
             multiple
             filterable
             size="tiny"
-            placeholder="Согласующие"
+            :placeholder="$t('documents.links.approversPlaceholder')"
             data-testid="doc-approval-approvers"
             :options="memberOptions"
           />
@@ -340,9 +361,11 @@ function fmtDate(v) {
               data-testid="doc-approval-submit"
               @click="submitRoute"
             >
-              Отправить
+              {{ $t('documents.links.submit') }}
             </n-button>
-            <n-button size="tiny" quaternary @click="raising = false">Отмена</n-button>
+            <n-button size="tiny" quaternary @click="raising = false">
+              {{ $t('common.action.cancel') }}
+            </n-button>
           </div>
         </template>
       </div>

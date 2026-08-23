@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { EditorContent, Editor } from '@tiptap/vue-3'
 import { NButton, NIcon, NInput, NSelect, useMessage } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import {
   AddOutline,
   ChatbubbleEllipsesOutline,
@@ -28,13 +29,16 @@ import { applyBlockComments } from '@/utils/docExtensions/blockComments'
 import { quoteFromBlock } from '@/utils/docComments'
 import { scrollToBlockId } from '@/utils/docExtensions/internalLink'
 import { docOutline, headingLabel, internalHref, internalTargetId } from '@/utils/docToc'
-import { MAX_PDF_BYTES } from '@/utils/docPdf'
+import { MAX_PDF_BYTES, formatFileSize } from '@/utils/docPdf'
 import DocToolbar from './DocToolbar.vue'
 
 const props = defineProps({
   modelValue: { type: Object, default: null },
   editable: { type: Boolean, default: true },
-  placeholder: { type: String, default: 'Начните писать…' },
+  // Empty by default on purpose: docExtensions falls back to the catalogue's
+  // documents.doc.placeholder, and a literal here would win over it in every
+  // language (#2799).
+  placeholder: { type: String, default: '' },
   // Uploads a File and resolves to the URL to embed. Injected rather than
   // imported so the editor stays free of API knowledge (and testable offline).
   uploadImage: { type: Function, default: null },
@@ -60,6 +64,7 @@ const emit = defineEmits([
 ])
 
 const message = useMessage()
+const { t } = useI18n()
 const editor = shallowRef(null)
 const surface = ref(null)
 const fileInput = ref(null)
@@ -97,7 +102,7 @@ function build() {
     extensions: docExtensions({
       placeholder: props.placeholder,
       uploadImage: (file) => props.uploadImage?.(file),
-      onUploadError: (err) => message.error(err?.message || 'Не удалось загрузить изображение'),
+      onUploadError: (err) => message.error(err?.message || t('documents.editor.error.image')),
       // The "Изображение" entry of the slash menu opens the picker below; the
       // menu itself has no business knowing about file inputs.
       // The menu hands back the item it chose; which picker opens is this
@@ -231,7 +236,7 @@ async function onPdfFile(e) {
   e.target.value = ''
   if (!file || !props.uploadPdf) return
   if (file.size > MAX_PDF_BYTES) {
-    message.error('Файл больше 20 МБ')
+    message.error(t('documents.file.tooLarge', { limit: formatFileSize(MAX_PDF_BYTES) }))
     return
   }
   uploading.value = true
@@ -239,7 +244,7 @@ async function onPdfFile(e) {
     const pdf = await props.uploadPdf(file)
     if (pdf?.src) editor.value?.chain().focus().insertPdf(pdf).run()
   } catch (err) {
-    message.error(err.message || 'Не удалось загрузить PDF')
+    message.error(err.message || t('documents.editor.error.pdf'))
   } finally {
     uploading.value = false
   }
@@ -254,7 +259,7 @@ async function onFile(e) {
     const url = await props.uploadImage(file)
     if (url) editor.value?.chain().focus().setImage({ src: url, alt: file.name }).run()
   } catch (err) {
-    message.error(err.message || 'Не удалось загрузить изображение')
+    message.error(err.message || t('documents.editor.error.image'))
   } finally {
     uploading.value = false
   }
@@ -528,7 +533,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
       <n-input
         v-model:value="linkValue"
         size="small"
-        placeholder="https://… или раздел документа"
+        :placeholder="$t('documents.editor.link.placeholder')"
         data-testid="doc-link-href"
         @keyup.enter="applyLink"
       />
@@ -537,7 +542,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
         class="link-heading"
         size="small"
         clearable
-        placeholder="Раздел…"
+        :placeholder="$t('documents.editor.link.heading')"
         :options="headings"
         :value="internalTargetId(linkValue) ? linkValue : null"
         data-testid="doc-link-heading"
@@ -546,13 +551,18 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
       <n-button
         size="small"
         quaternary
-        title="Применить"
+        :title="$t('documents.editor.link.apply')"
         data-testid="doc-link-apply"
         @click="applyLink"
       >
         <template #icon><n-icon :component="CheckmarkOutline" /></template>
       </n-button>
-      <n-button size="small" quaternary title="Отмена" @click="linkOpen = false">
+      <n-button
+        size="small"
+        quaternary
+        :title="$t('common.action.cancel')"
+        @click="linkOpen = false"
+      >
         <template #icon><n-icon :component="CloseOutline" /></template>
       </n-button>
     </div>
@@ -575,7 +585,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
         <button
           type="button"
           class="gutter-btn"
-          title="Вставить блок ниже"
+          :title="$t('documents.editor.gutter.insert')"
           @mousedown.prevent="insertBelow"
         >
           <n-icon :component="AddOutline" :size="16" />
@@ -583,7 +593,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
         <button
           type="button"
           class="gutter-btn"
-          title="Обсудить блок"
+          :title="$t('documents.editor.gutter.comment')"
           data-testid="doc-block-comment"
           @mousedown.prevent="annotateBlock"
         >
@@ -593,7 +603,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
           type="button"
           class="gutter-btn grip"
           draggable="true"
-          title="Перетащить блок"
+          :title="$t('documents.editor.gutter.drag')"
           @dragstart="onHandleDragStart"
           @dragend="onHandleDragEnd"
           @click="selectBlock"

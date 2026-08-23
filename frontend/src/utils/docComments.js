@@ -6,6 +6,8 @@
 // rules (orphans, ordering, counts), and it is worth testing without an editor,
 // a socket or a mounted component.
 
+import { i18n } from '@/i18n'
+
 /**
  * Collects the ids of every block currently in the document.
  *
@@ -224,5 +226,5 @@ export function authorLabel(comment) {
   if (name) return name
   const email = comment?.author_email || ''
   const local = email.split('@')[0]
-  return local || 'Участник'
+  return local || i18n.global.t('documents.comments.someone')
 }

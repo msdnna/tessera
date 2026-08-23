@@ -121,7 +121,7 @@ defineExpose({ cardAnchors })
   <aside class="doc-comments">
     <div class="panel-head">
       <n-icon :component="ChatbubbleEllipsesOutline" :size="16" />
-      <span class="panel-title">Обсуждение</span>
+      <span class="panel-title">{{ $t('documents.comments.title') }}</span>
       <n-text v-if="loading" depth="3">…</n-text>
     </div>
 
@@ -130,7 +130,7 @@ defineExpose({ cardAnchors })
       <template v-for="section in ['anchored', 'document', 'detached']" :key="section">
         <div v-if="groups[section] && groups[section].length" class="section">
           <n-text v-if="section === 'document'" depth="3" class="section-title">
-            К документу
+            {{ $t('documents.comments.sectionDocument') }}
           </n-text>
           <!-- Detached threads are kept deliberately: a paragraph being rewritten
                is the normal course of a review, and deleting the discussion that
@@ -141,42 +141,49 @@ defineExpose({ cardAnchors })
             class="section-title"
             data-testid="doc-comment-detached"
           >
-            Блок удалён
+            {{ $t('documents.comments.sectionDetached') }}
           </n-text>
 
           <div
-            v-for="t in groups[section]"
-            :key="t.id"
+            v-for="th in groups[section]"
+            :key="th.id"
             class="thread"
-            :data-thread-id="t.id"
-            :data-block-id="t.block_id || ''"
-            :data-resolved="t.resolved_at ? '1' : ''"
-            :class="{ active: t.block_id && t.block_id === activeBlockId, done: !!t.resolved_at }"
-            @click="t.block_id && emit('select', t.block_id)"
+            :data-thread-id="th.id"
+            :data-block-id="th.block_id || ''"
+            :data-resolved="th.resolved_at ? '1' : ''"
+            :class="{
+              active: th.block_id && th.block_id === activeBlockId,
+              done: !!th.resolved_at,
+            }"
+            @click="th.block_id && emit('select', th.block_id)"
           >
-            <p v-if="t.quote" class="quote">{{ t.quote }}</p>
+            <p v-if="th.quote" class="quote">{{ th.quote }}</p>
 
             <div class="comment">
               <div class="meta">
-                <span class="author">{{ authorLabel(t) }}</span>
-                <span class="time">{{ fmtTime(t.created_at) }}</span>
+                <span class="author">{{ authorLabel(th) }}</span>
+                <span class="time">{{ fmtTime(th.created_at) }}</span>
               </div>
               <n-input
-                v-if="editing[t.id] !== undefined"
-                :value="editing[t.id]"
+                v-if="editing[th.id] !== undefined"
+                :value="editing[th.id]"
                 type="textarea"
                 size="small"
                 :autosize="{ minRows: 2 }"
-                @update:value="editing = { ...editing, [t.id]: $event }"
+                @update:value="editing = { ...editing, [th.id]: $event }"
               />
-              <p v-else class="body">{{ t.body }}</p>
-              <div v-if="editing[t.id] !== undefined" class="row">
-                <n-button size="tiny" type="primary" @click="submitEdit(t.id)">Сохранить</n-button>
-                <n-button size="tiny" quaternary @click="cancelEdit(t.id)">Отмена</n-button>
+              <p v-else class="body">{{ th.body }}</p>
+              <div v-if="editing[th.id] !== undefined" class="row">
+                <n-button size="tiny" type="primary" @click="submitEdit(th.id)">
+                  {{ $t('common.action.save') }}
+                </n-button>
+                <n-button size="tiny" quaternary @click="cancelEdit(th.id)">
+                  {{ $t('common.action.cancel') }}
+                </n-button>
               </div>
             </div>
 
-            <div v-for="r in t.replies" :key="r.id" class="comment reply">
+            <div v-for="r in th.replies" :key="r.id" class="comment reply">
               <div class="meta">
                 <span class="author">{{ authorLabel(r) }}</span>
                 <span class="time">{{ fmtTime(r.created_at) }}</span>
@@ -193,25 +200,32 @@ defineExpose({ cardAnchors })
               <div class="row">
                 <template v-if="editing[r.id] !== undefined">
                   <n-button size="tiny" type="primary" @click="submitEdit(r.id)">
-                    Сохранить
+                    {{ $t('common.action.save') }}
                   </n-button>
-                  <n-button size="tiny" quaternary @click="cancelEdit(r.id)">Отмена</n-button>
+                  <n-button size="tiny" quaternary @click="cancelEdit(r.id)">
+                    {{ $t('common.action.cancel') }}
+                  </n-button>
                 </template>
                 <template v-else-if="mine(r)">
-                  <n-button size="tiny" quaternary title="Изменить" @click="startEdit(r)">
+                  <n-button
+                    size="tiny"
+                    quaternary
+                    :title="$t('common.action.edit')"
+                    @click="startEdit(r)"
+                  >
                     <template #icon><n-icon :component="CreateOutline" /></template>
                   </n-button>
                   <n-popconfirm
                     :positive-button-props="{ type: 'error' }"
-                    positive-text="Удалить"
+                    :positive-text="$t('common.action.delete')"
                     @positive-click="emit('remove', r.id)"
                   >
                     <template #trigger>
-                      <n-button size="tiny" quaternary title="Удалить">
+                      <n-button size="tiny" quaternary :title="$t('common.action.delete')">
                         <template #icon><n-icon :component="TrashOutline" /></template>
                       </n-button>
                     </template>
-                    Удалить комментарий?
+                    {{ $t('documents.comments.removeConfirm') }}
                   </n-popconfirm>
                 </template>
               </div>
@@ -222,57 +236,66 @@ defineExpose({ cardAnchors })
                    handled remark is the point of a review, and waiting for its
                    author to come back is how threads pile up forever. -->
               <n-button
-                v-if="!t.resolved_at"
+                v-if="!th.resolved_at"
                 size="tiny"
                 quaternary
-                title="Пометить решённым"
+                :title="$t('documents.comments.resolveTitle')"
                 data-testid="doc-comment-resolve"
-                @click="emit('resolve', { id: t.id, resolved: true })"
+                @click="emit('resolve', { id: th.id, resolved: true })"
               >
                 <template #icon><n-icon :component="CheckmarkCircleOutline" /></template>
-                Решено
+                {{ $t('documents.comments.resolve') }}
               </n-button>
               <n-button
                 v-else
                 size="tiny"
                 quaternary
-                title="Вернуть в работу"
-                @click="emit('resolve', { id: t.id, resolved: false })"
+                :title="$t('documents.comments.reopenTitle')"
+                @click="emit('resolve', { id: th.id, resolved: false })"
               >
                 <template #icon><n-icon :component="RefreshOutline" /></template>
-                Вернуть
+                {{ $t('documents.comments.reopen') }}
               </n-button>
               <span class="grow" />
-              <template v-if="mine(t) && editing[t.id] === undefined">
-                <n-button size="tiny" quaternary title="Изменить" @click="startEdit(t)">
+              <template v-if="mine(th) && editing[th.id] === undefined">
+                <n-button
+                  size="tiny"
+                  quaternary
+                  :title="$t('common.action.edit')"
+                  @click="startEdit(th)"
+                >
                   <template #icon><n-icon :component="CreateOutline" /></template>
                 </n-button>
                 <n-popconfirm
                   :positive-button-props="{ type: 'error' }"
-                  positive-text="Удалить"
-                  @positive-click="emit('remove', t.id)"
+                  :positive-text="$t('common.action.delete')"
+                  @positive-click="emit('remove', th.id)"
                 >
                   <template #trigger>
-                    <n-button size="tiny" quaternary title="Удалить тред">
+                    <n-button
+                      size="tiny"
+                      quaternary
+                      :title="$t('documents.comments.removeThreadTitle')"
+                    >
                       <template #icon><n-icon :component="TrashOutline" /></template>
                     </n-button>
                   </template>
-                  <template v-if="t.replies.length">
-                    Удалить тред вместе с ответами ({{ t.replies.length }})?
+                  <template v-if="th.replies.length">
+                    {{ $t('documents.comments.removeThreadConfirm', { count: th.replies.length }) }}
                   </template>
-                  <template v-else>Удалить комментарий?</template>
+                  <template v-else>{{ $t('documents.comments.removeConfirm') }}</template>
                 </n-popconfirm>
               </template>
             </div>
 
-            <div v-if="!t.resolved_at" class="row">
+            <div v-if="!th.resolved_at" class="row">
               <n-input
-                :value="draft(t.id)"
+                :value="draft(th.id)"
                 size="small"
-                placeholder="Ответить…"
+                :placeholder="$t('documents.comments.replyPlaceholder')"
                 data-testid="doc-comment-reply"
-                @update:value="setDraft(t.id, $event)"
-                @keyup.enter="submitReply(t)"
+                @update:value="setDraft(th.id, $event)"
+                @keyup.enter="submitReply(th)"
               />
             </div>
           </div>
@@ -283,7 +306,7 @@ defineExpose({ cardAnchors })
         v-if="!groups.anchored?.length && !groups.document?.length && !groups.detached?.length"
         class="empty"
       >
-        Комментариев пока нет. Выделите блок и нажмите на значок в поле слева, чтобы обсудить его.
+        {{ $t('documents.comments.empty') }}
       </p>
     </div>
 
@@ -291,9 +314,16 @@ defineExpose({ cardAnchors })
       <!-- What the draft is armed against. Without it "Отправить" is a coin
            toss between annotating a block and commenting on the document. -->
       <div v-if="pendingBlock" class="anchor">
-        <span class="anchor-text">{{ pendingQuote || 'выбранный блок' }}</span>
-        <n-button size="tiny" quaternary title="Снять привязку" @click="emit('clear-anchor')">
-          Открепить
+        <span class="anchor-text">{{
+          pendingQuote || $t('documents.comments.anchorFallback')
+        }}</span>
+        <n-button
+          size="tiny"
+          quaternary
+          :title="$t('documents.comments.unpinTitle')"
+          @click="emit('clear-anchor')"
+        >
+          {{ $t('documents.comments.unpin') }}
         </n-button>
       </div>
       <n-input
@@ -301,7 +331,9 @@ defineExpose({ cardAnchors })
         type="textarea"
         size="small"
         :autosize="{ minRows: 2, maxRows: 5 }"
-        :placeholder="pendingBlock ? 'Комментарий к блоку…' : 'Комментарий к документу…'"
+        :placeholder="
+          pendingBlock ? $t('documents.comments.draftBlock') : $t('documents.comments.draftDoc')
+        "
         data-testid="doc-comment-draft"
         :data-armed="pendingBlock ? 'block' : 'doc'"
         @update:value="setDraft('', $event)"
@@ -313,7 +345,7 @@ defineExpose({ cardAnchors })
         data-testid="doc-comment-send"
         @click="submitRoot"
       >
-        Отправить
+        {{ $t('documents.comments.send') }}
       </n-button>
     </div>
   </aside>

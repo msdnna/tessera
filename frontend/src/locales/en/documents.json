@@ -40,7 +40,18 @@
     "error": {
       "image": "Could not upload the image",
       "file": "Could not upload the file",
-      "attachments": "Could not load the file list"
+      "attachments": "Could not load the file list",
+      "pdf": "Could not upload the PDF"
+    },
+    "link": {
+      "placeholder": "https://… or a section of the document",
+      "heading": "Section…",
+      "apply": "Apply"
+    },
+    "gutter": {
+      "insert": "Insert a block below",
+      "comment": "Discuss this block",
+      "drag": "Drag the block"
     }
   },
   "doc": {
@@ -140,5 +151,184 @@
       "description": "What went well, what got in the way, what we change",
       "body": "# Retrospective\n\n**Period:**\n\n## What went well\n\n-\n\n## What got in the way\n\n-\n\n## What we change\n\n- [ ] Action — owner\n"
     }
+  },
+  "view": {
+    "crumbRoot": "Documents",
+    "import": "Import",
+    "importHint": "Import a document (docx, odt, rtf, pdf, md, json)",
+    "importHintLimited": "Import a document (pdf, md, json) — {reason}",
+    "converterOff": "office format conversion is unavailable",
+    "fromTemplate": "From template",
+    "create": "New document",
+    "untitled": "Untitled",
+    "emptyPreview": "Empty document",
+    "nestedCount": "nested: {count}",
+    "empty": "No documents yet",
+    "back": "Back to list",
+    "viewerEditing": "{name} — editing",
+    "viewerViewing": "{name} — reading",
+    "comments": { "show": "Show the discussion", "hide": "Hide the discussion" },
+    "toc": { "show": "Outline", "hide": "Hide the outline" },
+    "history": { "show": "Version history", "hide": "Hide the history" },
+    "links": { "show": "Links and approval", "hide": "Hide the links" },
+    "saveTemplate": "Save as a template",
+    "export": "Export the document",
+    "actions": "Actions",
+    "state": {
+      "saving": "Saving…",
+      "dirty": "Unsaved changes",
+      "saved": "All changes saved"
+    },
+    "conflict": "The document changed elsewhere — your latest edits were not saved.",
+    "reload": "Load the current version",
+    "titlePlaceholder": "Title",
+    "nestedTitle": "Nested documents",
+    "action": {
+      "nested": "Nested document",
+      "children": "Show nested ({count})",
+      "remove": "Delete the document"
+    },
+    "remove": {
+      "title": "Delete the document?",
+      "withChildren": "The document will be deleted together with its nested ones ({count}).",
+      "single": "The document will be deleted."
+    },
+    "toast": {
+      "restoredFromHistory": "The document was restored from history",
+      "blockLocked": "{name} is editing this block",
+      "someone": "Someone else",
+      "blockLinked": "The block is linked to the task",
+      "taskLinked": "The task is linked",
+      "sentForApproval": "The document was sent for approval",
+      "signed": "Signed",
+      "declined": "Rejected",
+      "routeCancelled": "The route was withdrawn",
+      "versionSaved": "The version was saved",
+      "restored": "The document was restored",
+      "templateSaved": "The template was saved",
+      "imported": "The document was imported",
+      "importedImagesDropped": "Document imported, images skipped: {count}",
+      "importedImagesDroppedWhy": "Document imported, images skipped: {count} ({reason})"
+    },
+    "importedTitle": "Imported document",
+    "error": {
+      "notFound": "Document not found",
+      "converterOff": "Office format conversion is unavailable",
+      "exportUnavailable": "The document conversion service is unavailable",
+      "exportFailed": "Could not convert the document",
+      "exportGeneric": "Could not export the document",
+      "save": "Could not save"
+    }
+  },
+  "comments": {
+    "title": "Discussion",
+    "sectionDocument": "On the document",
+    "sectionDetached": "Block deleted",
+    "removeThreadTitle": "Delete the thread",
+    "removeConfirm": "Delete the comment?",
+    "removeThreadConfirm": "Delete the thread together with its replies ({count})?",
+    "resolveTitle": "Mark as resolved",
+    "resolve": "Resolved",
+    "reopenTitle": "Reopen",
+    "reopen": "Reopen",
+    "replyPlaceholder": "Reply…",
+    "empty": "No comments yet. Select a block and click the icon in the left margin to discuss it.",
+    "anchorFallback": "the selected block",
+    "unpinTitle": "Remove the anchor",
+    "unpin": "Unpin",
+    "draftBlock": "Comment on the block…",
+    "draftDoc": "Comment on the document…",
+    "send": "Send",
+    "someone": "Member",
+    "error": { "load": "Could not load the comments" }
+  },
+  "history": {
+    "title": "History",
+    "snapshot": "Save a version",
+    "labelPlaceholder": "For example: approved wording",
+    "empty": "The history appears once the document has been saved.",
+    "revision": "Version {n}",
+    "unknownAuthor": "Unknown author",
+    "compare": "Compared with version {revision}",
+    "restore": "Restore",
+    "restoreConfirm": "The document will return to this version. The current state stays in the history.",
+    "loadingVersion": "Loading the version…",
+    "identical": "The versions are identical.",
+    "added": "+{count} block | +{count} blocks",
+    "removed": "−{count} block | −{count} blocks",
+    "changed": "changed: {count}",
+    "moved": "moved: {count}",
+    "status": {
+      "added": "added",
+      "removed": "removed",
+      "changed": "changed",
+      "moved": "moved"
+    },
+    "diffImage": "[image]",
+    "error": { "load": "Could not load the history", "version": "Could not load the version" }
+  },
+  "links": {
+    "title": "Links and approval",
+    "tasks": "Tasks",
+    "empty": "No linked tasks. A link can be made to the whole document or to the selected block.",
+    "task": "Task",
+    "fragment": "a fragment of the document",
+    "unlinkTitle": "Remove the link",
+    "unlinkConfirm": "Remove the link to the task?",
+    "unlink": "Remove",
+    "linkBlock": "Link the block to a task",
+    "linkTask": "Link a task",
+    "searchPlaceholder": "Number or title",
+    "nothingFound": "Nothing found",
+    "approvals": "Approval routes",
+    "noApprovals": "The document was never sent for approval.",
+    "meta": "Version {revision} · {author} · {date}",
+    "unknownAuthor": "unknown",
+    "progress": "{signed} of {total}",
+    "sign": "Sign",
+    "commentPlaceholder": "Comment (optional)",
+    "approve": "Approve",
+    "reject": "Reject",
+    "cancelRoute": "Withdraw",
+    "cancelConfirm": "The route will close, the signatures stay in the protocol.",
+    "raise": "Send for approval",
+    "raiseDisabled": "The document is already under approval",
+    "routeTitlePlaceholder": "What is being approved",
+    "approversPlaceholder": "Approvers",
+    "submit": "Send",
+    "mode": { "sequential": "One by one", "parallel": "All at once" },
+    "error": { "load": "Could not load the links" }
+  },
+  "approval": {
+    "status": {
+      "pending": "Under approval",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "cancelled": "Withdrawn"
+    },
+    "step": { "pending": "waiting", "approved": "signed", "rejected": "rejected" }
+  },
+  "pdf": {
+    "prevPage": "Previous page",
+    "nextPage": "Next page",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "download": "Download",
+    "page": "Page {n}",
+    "openFailed": "Could not open the PDF",
+    "openFailedReason": "Could not open the PDF: {reason}",
+    "noSrc": "the block carries no file link",
+    "noLink": "The server returned no file link",
+    "unit": { "b": "B", "kb": "KB", "mb": "MB", "gb": "GB" }
+  },
+  "file": {
+    "notPicked": "No file selected",
+    "notJson": "The file is not valid JSON",
+    "noTessera": "The file holds no Tessera document",
+    "onlyFormats": "Only {formats} are supported",
+    "supportedFormats": "{formats} are supported",
+    "tooLarge": "The file is larger than {limit}",
+    "noDocument": "The server returned no document",
+    "exportName": "Document"
   }
 }

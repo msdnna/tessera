@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton, NIcon, NInput, NPopconfirm, NText } from 'naive-ui'
 import { BookmarkOutline, TimeOutline } from '@vicons/ionicons5'
 import { DIFF_ADDED, DIFF_CHANGED, DIFF_MOVED, DIFF_REMOVED } from '@/utils/docDiff'
@@ -22,6 +23,7 @@ defineProps({
 })
 const emit = defineEmits(['select', 'snapshot', 'restore', 'close'])
 const { formatDate, formatTime } = useFormat()
+const { t } = useI18n()
 
 const label = ref('')
 const naming = ref(false)
@@ -37,21 +39,31 @@ function submitSnapshot() {
 function span(v) {
   const from = new Date(v.created_at)
   const to = new Date(v.updated_at)
-  const t = (d) => formatTime(d)
+  // Named `at` rather than `t`: `t` is the translation function in this file
+  // now, and shadowing it inside a helper is how a label quietly stops moving
+  // with the language.
+  const at = (d) => formatTime(d)
   const day = formatDate(from, { day: 'numeric', month: 'short' })
-  if (t(from) === t(to)) return `${day}, ${t(from)}`
-  return `${day}, ${t(from)}–${t(to)}`
+  if (at(from) === at(to)) return `${day}, ${at(from)}`
+  return `${day}, ${at(from)}–${at(to)}`
 }
 
 function author(v) {
-  return v.author_name || v.author_email || 'Неизвестный автор'
+  return v.author_name || v.author_email || t('documents.history.unknownAuthor')
 }
 
-const STATUS_LABEL = {
-  [DIFF_ADDED]: 'добавлено',
-  [DIFF_REMOVED]: 'удалено',
-  [DIFF_CHANGED]: 'изменено',
-  [DIFF_MOVED]: 'перемещено',
+// Read per call, not baked into a table at setup: a map built once keeps the
+// language of the first render for the rest of the session (#2799).
+const DIFF_KEY = {
+  [DIFF_ADDED]: 'added',
+  [DIFF_REMOVED]: 'removed',
+  [DIFF_CHANGED]: 'changed',
+  [DIFF_MOVED]: 'moved',
+}
+
+function statusLabel(status) {
+  const key = DIFF_KEY[status]
+  return key ? t(`documents.history.status.${key}`) : status
 }
 </script>
 
@@ -59,22 +71,24 @@ const STATUS_LABEL = {
   <aside class="doc-history">
     <div class="panel-head">
       <n-icon :component="TimeOutline" :size="16" />
-      <span class="panel-title">История</span>
+      <span class="panel-title">{{ $t('documents.history.title') }}</span>
       <n-text v-if="loading" depth="3">…</n-text>
       <span class="grow" />
-      <n-button quaternary size="tiny" @click="emit('close')">Закрыть</n-button>
+      <n-button quaternary size="tiny" @click="emit('close')">
+        {{ $t('common.action.close') }}
+      </n-button>
     </div>
 
     <div class="panel-foot">
       <n-button v-if="!naming" size="tiny" block data-testid="doc-snapshot" @click="naming = true">
         <template #icon><n-icon :component="BookmarkOutline" /></template>
-        Сохранить версию
+        {{ $t('documents.history.snapshot') }}
       </n-button>
       <template v-else>
         <n-input
           v-model:value="label"
           size="tiny"
-          placeholder="Например: согласованная редакция"
+          :placeholder="$t('documents.history.labelPlaceholder')"
           data-testid="doc-snapshot-label"
           @keyup.enter="submitSnapshot"
         />
@@ -85,9 +99,11 @@ const STATUS_LABEL = {
             data-testid="doc-snapshot-save"
             @click="submitSnapshot"
           >
-            Сохранить
+            {{ $t('common.action.save') }}
           </n-button>
-          <n-button size="tiny" quaternary @click="naming = false">Отмена</n-button>
+          <n-button size="tiny" quaternary @click="naming = false">
+            {{ $t('common.action.cancel') }}
+          </n-button>
         </div>
       </template>
     </div>
@@ -96,7 +112,7 @@ const STATUS_LABEL = {
 
     <div class="panel-body">
       <p v-if="!versions.length && !loading" class="empty">
-        История появится, когда документ будет сохранён.
+        {{ $t('documents.history.empty') }}
       </p>
       <!-- Newest first, as the server returns them: the question a journal
            answers most often is "что изменилось с тех пор". -->
@@ -110,12 +126,12 @@ const STATUS_LABEL = {
       >
         <div class="entry-head">
           <n-icon v-if="v.manual" :component="BookmarkOutline" :size="13" />
-          <span class="rev">Версия {{ v.revision }}</span>
+          <span class="rev">{{ $t('documents.history.revision', { n: v.revision }) }}</span>
           <span class="time">{{ span(v) }}</span>
         </div>
         <span v-if="v.label" class="label">{{ v.label }}</span>
         <span class="author">{{ author(v) }}</span>
-        <p class="preview">{{ v.preview || 'Пустой документ' }}</p>
+        <p class="preview">{{ v.preview || $t('documents.view.emptyPreview') }}</p>
       </button>
     </div>
 
@@ -125,7 +141,7 @@ const STATUS_LABEL = {
     <div v-if="selectedId" class="diff">
       <div class="diff-head">
         <n-text depth="3" class="section-title">
-          Сравнение с версией {{ baseline?.revision ?? '—' }}
+          {{ $t('documents.history.compare', { revision: baseline?.revision ?? '—' }) }}
         </n-text>
         <n-popconfirm
           :positive-button-props="{ 'data-testid': 'doc-restore-confirm' }"
@@ -133,25 +149,37 @@ const STATUS_LABEL = {
         >
           <template #trigger>
             <n-button size="tiny" type="primary" ghost data-testid="doc-restore">
-              Восстановить
+              {{ $t('documents.history.restore') }}
             </n-button>
           </template>
-          Документ вернётся к этой версии. Текущее состояние останется в истории.
+          {{ $t('documents.history.restoreConfirm') }}
         </n-popconfirm>
       </div>
 
-      <n-text v-if="!ready" depth="3" class="empty">Загрузка версии…</n-text>
-      <n-text v-else-if="summary.identical" depth="3" class="empty"> Версии совпадают. </n-text>
+      <n-text v-if="!ready" depth="3" class="empty">
+        {{ $t('documents.history.loadingVersion') }}
+      </n-text>
+      <n-text v-else-if="summary.identical" depth="3" class="empty">
+        {{ $t('documents.history.identical') }}
+      </n-text>
       <template v-else>
         <n-text depth="3" class="counts">
-          <span v-if="summary.added">+{{ summary.added }} блоков</span>
-          <span v-if="summary.removed">−{{ summary.removed }} блоков</span>
-          <span v-if="summary.changed">изменено: {{ summary.changed }}</span>
-          <span v-if="summary.moved">перемещено: {{ summary.moved }}</span>
+          <span v-if="summary.added">
+            {{ $t('documents.history.added', summary.added, { count: summary.added }) }}
+          </span>
+          <span v-if="summary.removed">
+            {{ $t('documents.history.removed', summary.removed, { count: summary.removed }) }}
+          </span>
+          <span v-if="summary.changed">
+            {{ $t('documents.history.changed', { count: summary.changed }) }}
+          </span>
+          <span v-if="summary.moved">
+            {{ $t('documents.history.moved', { count: summary.moved }) }}
+          </span>
         </n-text>
         <div class="diff-body">
           <div v-for="(row, i) in rows" :key="i" class="block" :class="row.status">
-            <span v-if="row.status !== 'same'" class="badge">{{ STATUS_LABEL[row.status] }}</span>
+            <span v-if="row.status !== 'same'" class="badge">{{ statusLabel(row.status) }}</span>
             <!-- The previous wording of an edited block is kept next to the new
                  one: "изменено" without the old text asks the reader to
                  remember what they came here to look up. -->
