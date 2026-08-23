@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NInput,
@@ -15,6 +16,7 @@ import { reminders as remApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import { useFormat } from '@/composables/useFormat'
 
+const { t } = useI18n()
 const { firstDayOfWeek, dateTimePattern: dateTimeFormat, formatDateTime } = useFormat()
 const message = useMessage()
 const list = ref([])
@@ -32,7 +34,7 @@ async function load() {
 
 async function add() {
   if (!newMessage.value.trim() || !newAt.value) {
-    message.warning('Укажите текст и время')
+    message.warning(t('reminders.required'))
     return
   }
   try {
@@ -80,7 +82,11 @@ onMounted(load)
   <div class="reminders">
     <n-card size="small" class="add-card">
       <div class="add-row">
-        <n-input v-model:value="newMessage" placeholder="О чём напомнить?" @keyup.enter="add" />
+        <n-input
+          v-model:value="newMessage"
+          :placeholder="$t('reminders.messagePlaceholder')"
+          @keyup.enter="add"
+        />
         <n-date-picker
           v-model:value="newAt"
           type="datetime"
@@ -88,7 +94,7 @@ onMounted(load)
           :first-day-of-week="firstDayOfWeek"
           :format="dateTimeFormat"
         />
-        <n-button type="primary" @click="add">Добавить</n-button>
+        <n-button type="primary" @click="add">{{ $t('reminders.add') }}</n-button>
       </div>
     </n-card>
 
@@ -96,14 +102,14 @@ onMounted(load)
       <div v-for="r in list" :key="r.id" class="rem" :class="{ done: r.done, overdue: overdue(r) }">
         <n-checkbox :checked="r.done" @update:checked="toggle(r)" />
         <div class="rem-body">
-          <div class="rem-msg">{{ r.message || 'Напоминание' }}</div>
+          <div class="rem-msg">{{ r.message || $t('reminders.untitled') }}</div>
           <div class="rem-at">
-            {{ fmt(r.remind_at) }}<span v-if="overdue(r)"> · просрочено</span>
+            {{ fmt(r.remind_at) }}<span v-if="overdue(r)"> · {{ $t('reminders.overdue') }}</span>
           </div>
         </div>
         <n-popconfirm
           :positive-button-props="{ type: 'error' }"
-          positive-text="Удалить"
+          :positive-text="$t('common.action.delete')"
           @positive-click="remove(r)"
         >
           <template #trigger>
@@ -111,10 +117,10 @@ onMounted(load)
               <n-icon :component="TrashOutline" />
             </n-button>
           </template>
-          Удалить напоминание?
+          {{ $t('reminders.deleteConfirm') }}
         </n-popconfirm>
       </div>
-      <empty-state v-if="!list.length" :icon="AlarmOutline" text="Напоминаний пока нет" />
+      <empty-state v-if="!list.length" :icon="AlarmOutline" :text="$t('reminders.empty')" />
     </div>
   </div>
 </template>

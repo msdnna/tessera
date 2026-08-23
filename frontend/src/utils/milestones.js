@@ -1,5 +1,11 @@
 // Shared milestone helpers (used by the card chip, the task picker and the manager).
 import { defaultFormatters } from '@/utils/format'
+import { i18n } from '@/i18n'
+
+// Resolved per call, never cached at module level: this module is imported
+// outside any setup context, so a table built at import time would freeze on the
+// language of the first render (#2799).
+const t = (key, ...rest) => i18n.global.t(key, ...rest)
 
 // The reserved ?milestone= value for "tasks without a milestone".
 export const BACKLOG_SCOPE = 'backlog'
@@ -35,7 +41,7 @@ export function milestoneRange(m, fmt = defaultFormatters()) {
   const s = fmtDate(m.start_date, fmt)
   const d = fmtDate(m.due_date, fmt)
   if (s && d) return `${s} – ${d}`
-  if (d) return `до ${d}`
-  if (s) return `с ${s}`
+  if (d) return t('milestones.range.until', { date: d })
+  if (s) return t('milestones.range.from', { date: s })
   return ''
 }

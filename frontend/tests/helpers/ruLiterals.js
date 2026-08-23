@@ -33,6 +33,11 @@ export const ALLOWLIST = [
   // server in Russian ("К работе", "На рассмотрении"), so this table matches
   // what the rows are actually called — translating it would stop it matching.
   'src/utils/columnStatus.js',
+  // Estimate-input unit aliases ("3д 4ч" next to "3d 4h"). Every label this
+  // module renders already comes from the catalogue; what is left is the single
+  // letter a user may type, and both alphabets have to keep answering in either
+  // language — the same rule as the slash-menu keys above.
+  'src/utils/estimation.js',
 ]
 
 // Strips comments before looking for Cyrillic, so a Russian word inside an

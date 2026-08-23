@@ -8,6 +8,9 @@ import board from './board.json'
 import task from './task.json'
 import project from './project.json'
 import documents from './documents.json'
+import notes from './notes.json'
+import reminders from './reminders.json'
+import milestones from './milestones.json'
 import settings from './settings.json'
 import notifications from './notifications.json'
 import gitlab from './gitlab.json'
@@ -21,6 +24,9 @@ export default {
   task,
   project,
   documents,
+  notes,
+  reminders,
+  milestones,
   settings,
   notifications,
   gitlab,

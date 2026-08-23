@@ -106,5 +106,22 @@
     "server": "Server address",
     "themeLight": "Light theme",
     "themeDark": "Dark theme"
+  },
+  "home": {
+    "greeting": "Hi, {name} 👋",
+    "friend": "friend",
+    "card": {
+      "me": "My tasks",
+      "all": "All active",
+      "overdue": "Overdue",
+      "today": "Today",
+      "week": "This week",
+      "completed": "Completed"
+    },
+    "empty": "Nothing here yet"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "text": "There is no such page, or it has been moved."
   }
 }

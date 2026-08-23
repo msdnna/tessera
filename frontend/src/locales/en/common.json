@@ -57,10 +57,54 @@
       "noAccount": "No account?",
       "register": "Sign up"
     },
+    "register": {
+      "title": "Sign up",
+      "name": "Name",
+      "namePlaceholder": "Your name",
+      "passwordPlaceholder": "at least 8 characters",
+      "submit": "Create account",
+      "gitlab": "Continue with GitLab",
+      "haveAccount": "Already have an account?",
+      "login": "Sign in"
+    },
+    "forgot": {
+      "title": "Password recovery",
+      "submit": "Send the link",
+      "sent": "If an account with this address exists, we have sent it a password reset link.",
+      "back": "Back to sign-in"
+    },
+    "reset": {
+      "title": "New password",
+      "noToken": "This link is invalid — the token is missing.",
+      "done": "Password changed. Redirecting to sign-in…",
+      "password": "New password (≥ 8)",
+      "confirm": "Repeat the password",
+      "submit": "Save password",
+      "toLogin": "To sign-in"
+    },
+    "verify": {
+      "title": "Confirmation",
+      "pending": "Confirming…",
+      "ok": "Email confirmed. Thank you!",
+      "fail": "This link is invalid or has expired."
+    },
+    "invite": {
+      "title": "Invitation",
+      "pending": "Accepting the invitation…",
+      "ok": "Done! You have joined the workspace.",
+      "fail": "The invitation is invalid, has expired or was meant for another address."
+    },
+    "oauth": {
+      "title": "Sign in with GitLab",
+      "finishing": "Finishing the sign-in…"
+    },
+    "toHome": "Go to Home",
     "validation": {
       "emailRequired": "Enter your email",
       "emailInvalid": "Enter a valid email",
-      "passwordRequired": "Enter your password"
+      "passwordRequired": "Enter your password",
+      "nameRequired": "Enter your name",
+      "passwordTooShort": "At least 8 characters"
     },
     "oauthError": {
       "generic": "Could not sign in with GitLab.",

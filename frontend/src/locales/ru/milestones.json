@@ -1,0 +1,32 @@
+{
+  "title": "Этапы",
+  "filter": {
+    "active": "Активные",
+    "all": "Все"
+  },
+  "emptyActive": "Активных этапов нет — создайте их в проекте или переключитесь на «Все»",
+  "empty": "Этапов пока нет — создайте первый из контекстного меню проекта",
+  "manage": "Управление этапами проекта",
+  "glSynced": "Синхронизируется с GitLab",
+  "noTasks": "нет задач",
+  "range": {
+    "until": "до {date}",
+    "from": "с {date}"
+  },
+  "manager": {
+    "title": "Этапы — {project}",
+    "empty": "Этапов пока нет — создайте первый ниже",
+    "startPlaceholder": "Начало",
+    "duePlaceholder": "Конец",
+    "titlePlaceholder": "Название этапа",
+    "glSyncedHint": "Синхронизируется с GitLab — правьте в GitLab",
+    "pushHint": "Создать этот этап в GitLab",
+    "push": "В GitLab",
+    "pushed": "Этап создан в GitLab",
+    "openInGitlab": "Открыть в GitLab",
+    "reopen": "Открыть",
+    "close": "Закрыть",
+    "deleteLinked": "Удалить этап в Tessera? В GitLab он останется (связь будет снята).",
+    "deleteConfirm": "Удалить этап «{title}»? Задачи останутся, но потеряют этап."
+  }
+}

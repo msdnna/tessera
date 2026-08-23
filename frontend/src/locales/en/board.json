@@ -58,6 +58,9 @@
     "noMilestone": "No milestone",
     "noTags": "No tags"
   },
+  "tag": {
+    "ungrouped": "Ungrouped"
+  },
   "toast": {
     "gitlabConflict": "GitLab write-back conflict — open the GitLab settings to resolve it",
     "restored": "Task restored from the archive"

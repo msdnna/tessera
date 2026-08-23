@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NModal,
   NCard,
@@ -32,6 +33,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:show', 'changed'])
 
+const { t } = useI18n()
 const message = useMessage()
 const list = ref([])
 const loading = ref(false)
@@ -84,7 +86,7 @@ async function pushToGitlab(m) {
     await msApi.pushToGitlab(m.id)
     await load()
     emit('changed')
-    message.success('Этап создан в GitLab')
+    message.success(t('milestones.manager.pushed'))
   } catch (e) {
     message.error(e.response?.data?.error || e.message)
   } finally {
@@ -188,7 +190,8 @@ watch(
       <n-card class="m-card" style="width: 620px; max-width: 96vw" role="dialog">
         <template #header>
           <span class="m-title">
-            <n-icon :component="RibbonOutline" class="grad-icon" /> Этапы — {{ projectName }}
+            <n-icon :component="RibbonOutline" class="grad-icon" />
+            {{ $t('milestones.manager.title', { project: projectName }) }}
           </span>
         </template>
 
@@ -197,7 +200,7 @@ watch(
             v-if="!loading && !list.length"
             size="small"
             :icon="RibbonOutline"
-            text="Этапов пока нет — создайте первый ниже"
+            :text="$t('milestones.manager.empty')"
           />
           <div
             v-for="m in list"
@@ -212,26 +215,28 @@ watch(
                 type="date"
                 size="small"
                 clearable
-                placeholder="Начало"
+                :placeholder="$t('milestones.manager.startPlaceholder')"
               />
               <n-date-picker
                 v-model:value="editBuf.due_date"
                 type="date"
                 size="small"
                 clearable
-                placeholder="Конец"
+                :placeholder="$t('milestones.manager.duePlaceholder')"
               />
               <n-button size="tiny" type="primary" @click="saveEdit(m)">
                 <template #icon><n-icon :component="CheckmarkOutline" /></template>
               </n-button>
-              <n-button size="tiny" tertiary @click="cancelEdit">Отмена</n-button>
+              <n-button size="tiny" tertiary @click="cancelEdit">{{
+                $t('common.action.cancel')
+              }}</n-button>
             </template>
             <template v-else>
               <n-tooltip v-if="isLinked(m)" :disabled="false">
                 <template #trigger>
                   <span class="m-name linked">{{ m.title }}</span>
                 </template>
-                Синхронизируется с GitLab — правьте в GitLab
+                {{ $t('milestones.manager.glSyncedHint') }}
               </n-tooltip>
               <span v-else class="m-name" @click="startEdit(m)">{{ m.title }}</span>
               <span v-if="fmtRange(m)" class="m-due">{{ fmtRange(m) }}</span>
@@ -242,11 +247,11 @@ watch(
                 size="tiny"
                 tertiary
                 :loading="pushing === m.id"
-                title="Создать этот этап в GitLab"
+                :title="$t('milestones.manager.pushHint')"
                 @click="pushToGitlab(m)"
               >
                 <template #icon><n-icon :component="LogoGitlab" /></template>
-                В GitLab
+                {{ $t('milestones.manager.push') }}
               </n-button>
               <!-- open the linked GitLab milestone (a button by the delete one) -->
               <n-button
@@ -257,7 +262,7 @@ watch(
                 :href="m.gl_url"
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Открыть в GitLab"
+                :title="$t('milestones.manager.openInGitlab')"
               >
                 <template #icon><n-icon :component="LogoGitlab" /></template>
               </n-button>
@@ -266,7 +271,11 @@ watch(
                 v-if="!isLinked(m)"
                 size="tiny"
                 tertiary
-                :title="m.state === 'closed' ? 'Открыть' : 'Закрыть'"
+                :title="
+                  m.state === 'closed'
+                    ? $t('milestones.manager.reopen')
+                    : $t('milestones.manager.close')
+                "
                 @click="toggleState(m)"
               >
                 <template #icon
@@ -281,8 +290,8 @@ watch(
                 </template>
                 {{
                   isLinked(m)
-                    ? 'Удалить этап в Tessera? В GitLab он останется (связь будет снята).'
-                    : 'Удалить этап «' + m.title + '»? Задачи останутся, но потеряют этап.'
+                    ? $t('milestones.manager.deleteLinked')
+                    : $t('milestones.manager.deleteConfirm', { title: m.title })
                 }}
               </n-popconfirm>
             </template>
@@ -293,7 +302,7 @@ watch(
           <n-input
             v-model:value="newTitle"
             size="small"
-            placeholder="Название этапа"
+            :placeholder="$t('milestones.manager.titlePlaceholder')"
             @keydown.enter.prevent="create"
           />
           <n-date-picker
@@ -301,14 +310,14 @@ watch(
             type="date"
             size="small"
             clearable
-            placeholder="Начало"
+            :placeholder="$t('milestones.manager.startPlaceholder')"
           />
           <n-date-picker
             v-model:value="newDue"
             type="date"
             size="small"
             clearable
-            placeholder="Конец"
+            :placeholder="$t('milestones.manager.duePlaceholder')"
           />
           <n-button
             size="small"
@@ -318,7 +327,7 @@ watch(
             @click="create"
           >
             <template #icon><n-icon :component="AddOutline" /></template>
-            Создать
+            {{ $t('common.action.create') }}
           </n-button>
         </div>
       </n-card>

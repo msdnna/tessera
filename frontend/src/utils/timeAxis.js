@@ -9,24 +9,20 @@
 // time means a real time-of-day. This mirrors useDateLocale (web) and
 // Dates.isUtcMidnight (Android) — the same signal already used for labels.
 
+import { defaultFormatters } from '@/utils/format'
+
 export const DAY_MS = 86400000
 export const HOUR_MS = 3600000
 
-export const MONTHS = [
-  'янв',
-  'фев',
-  'мар',
-  'апр',
-  'май',
-  'июн',
-  'июл',
-  'авг',
-  'сен',
-  'окт',
-  'ноя',
-  'дек',
-]
-export const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
+// Weekday and month names come from Intl, not from a table of Russian
+// abbreviations (#2799): the axis has to speak the user's language, and the
+// table would have had to grow a column per locale.
+//
+// Both are read in the BROWSER timezone (`timeZone: null`), because the axis is
+// laid out on local calendar days — the same rule the cursor label follows.
+const weekdayShort = (ms, fmt) => fmt.formatDate(ms, { weekday: 'short', timeZone: null })
+const monthYear = (ms, fmt) =>
+  fmt.formatDate(ms, { month: 'short', year: 'numeric', timeZone: null })
 
 export const startOfDay = (ms) => {
   const d = new Date(ms)
@@ -97,8 +93,9 @@ export function anchorMs(startMs, tier) {
   return tier === 'hours' && !isAllDayMs(startMs) ? startMs : startOfDay(startMs)
 }
 
-// Day cells for the day/hours band.
-export function buildDays(rangeStart, count, todayMs) {
+// Day cells for the day/hours band. `fmt` is a formatter set from useFormat();
+// callers outside a component (tests) fall back to the default preferences.
+export function buildDays(rangeStart, count, todayMs, fmt = defaultFormatters()) {
   const out = []
   for (let i = 0; i < count; i++) {
     const ms = rangeStart + i * DAY_MS
@@ -107,7 +104,7 @@ export function buildDays(rangeStart, count, todayMs) {
     out.push({
       ms,
       day: d.getDate(),
-      dow: WD[dow],
+      dow: weekdayShort(ms, fmt),
       weekend: dow === 0 || dow === 6,
       isToday: startOfDay(ms) === todayMs,
     })
@@ -116,21 +113,21 @@ export function buildDays(rangeStart, count, todayMs) {
 }
 
 // Month header bands: runs of consecutive same-month days.
-export function buildMonthBands(days) {
+export function buildMonthBands(days, fmt = defaultFormatters()) {
   const out = []
   for (const d of days) {
     const dt = new Date(d.ms)
     const key = `${dt.getFullYear()}-${dt.getMonth()}`
     const last = out[out.length - 1]
     if (last && last.key === key) last.span++
-    else out.push({ key, label: `${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`, span: 1 })
+    else out.push({ key, label: monthYear(d.ms, fmt), span: 1 })
   }
   return out
 }
 
 // Week header bands (weeks tier): break on Monday; the first band may be partial.
 // Label = the band's day-of-month RANGE ("29–4"); the month is already shown by the
-// band above, and a date+month label ("6 фев") overflows the narrow cell.
+// band above, and a date+month label would overflow the narrow cell.
 export function buildWeekBands(days) {
   const out = []
   for (const d of days) {

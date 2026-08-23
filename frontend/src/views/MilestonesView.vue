@@ -27,7 +27,7 @@ const list = ref([])
 const loading = ref(false)
 const stateFilter = ref('active') // 'active' | 'all'
 
-// Per-project «Управление этапами» modal (reuses the existing manager).
+// Per-project milestone-management modal (reuses the existing manager).
 const mgr = ref({ show: false, projectId: null, projectName: '' })
 
 async function load() {
@@ -105,7 +105,8 @@ onMounted(load)
   <div class="ms-screen">
     <header class="ms-head">
       <h1 class="ms-title">
-        <n-icon :component="RibbonOutline" class="grad-icon" :size="22" /> Этапы
+        <n-icon :component="RibbonOutline" class="grad-icon" :size="22" />
+        {{ $t('milestones.title') }}
       </h1>
       <div class="ms-seg">
         <n-button
@@ -114,7 +115,7 @@ onMounted(load)
           :tertiary="stateFilter !== 'active'"
           @click="stateFilter = 'active'"
         >
-          Активные
+          {{ $t('milestones.filter.active') }}
         </n-button>
         <n-button
           size="small"
@@ -122,7 +123,7 @@ onMounted(load)
           :tertiary="stateFilter !== 'all'"
           @click="stateFilter = 'all'"
         >
-          Все
+          {{ $t('milestones.filter.all') }}
         </n-button>
       </div>
     </header>
@@ -132,11 +133,7 @@ onMounted(load)
     <empty-state
       v-if="!loading && !total"
       :icon="RibbonOutline"
-      :text="
-        stateFilter === 'active'
-          ? 'Активных этапов нет — создайте их в проекте или переключитесь на «Все»'
-          : 'Этапов пока нет — создайте первый из контекстного меню проекта'
-      "
+      :text="stateFilter === 'active' ? $t('milestones.emptyActive') : $t('milestones.empty')"
     />
 
     <div v-else-if="total" class="ms-groups">
@@ -151,7 +148,7 @@ onMounted(load)
                 <n-icon :component="SettingsOutline" />
               </n-button>
             </template>
-            Управление этапами проекта
+            {{ $t('milestones.manage') }}
           </n-tooltip>
         </div>
 
@@ -177,7 +174,7 @@ onMounted(load)
                     <n-icon :component="LogoGitlab" />
                   </a>
                 </template>
-                Синхронизируется с GitLab
+                {{ $t('milestones.glSynced') }}
               </n-tooltip>
               <span v-if="milestoneRange(m, formatters)" class="ms-range">{{
                 milestoneRange(m, formatters)
@@ -193,7 +190,7 @@ onMounted(load)
                   {{ m.done_count }}/{{ m.task_count }}
                 </span>
               </template>
-              <span v-else class="ms-stat muted">нет задач</span>
+              <span v-else class="ms-stat muted">{{ $t('milestones.noTasks') }}</span>
               <span v-if="estimateLabel(m)" class="ms-est">Σ {{ estimateLabel(m) }}</span>
             </div>
           </div>

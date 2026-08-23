@@ -1,0 +1,9 @@
+{
+  "new": "New note",
+  "empty": "No notes yet",
+  "back": "Back to the list",
+  "titlePlaceholder": "Title",
+  "bodyPlaceholder": "Note text…",
+  "deleteConfirm": "Delete this note?",
+  "pick": "Pick a note or create a new one"
+}
