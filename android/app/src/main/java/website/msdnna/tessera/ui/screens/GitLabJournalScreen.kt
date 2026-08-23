@@ -29,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +38,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.GitlabSyncAction
 import website.msdnna.tessera.data.model.GitlabSyncRun
 import website.msdnna.tessera.ui.components.IonIcon
@@ -60,10 +63,21 @@ private val ERR = Color(0xFFD03050)
 private val PULL = Color(0xFF2B6CB0)
 private val PUSH = Color(0xFF805AD5)
 
-private val TriggerLabel = mapOf("manual" to "вручную", "auto" to "авто")
+private val TriggerLabels = mapOf(
+    "manual" to R.string.gljournal_trigger_manual,
+    "auto" to R.string.gljournal_trigger_auto,
+)
+
+/** Подписи полей диффа — те же свойства задачи, что показывает её модалка, поэтому
+ *  ключи общие (`task_prop_*`), а не свои на те же слова. */
 private val FieldLabels = mapOf(
-    "title" to "Заголовок", "description" to "Описание", "priority" to "Приоритет",
-    "column" to "Колонка", "completed" to "Статус", "due" to "Срок", "start" to "Начало",
+    "title" to R.string.task_prop_title,
+    "description" to R.string.task_tab_description,
+    "priority" to R.string.task_prop_priority,
+    "column" to R.string.task_prop_column,
+    "completed" to R.string.task_prop_status,
+    "due" to R.string.task_prop_due,
+    "start" to R.string.task_prop_start,
 )
 private val FieldOrder = listOf("title", "description", "priority", "column", "completed", "due", "start")
 
@@ -88,13 +102,13 @@ fun GitLabJournalScreen(workspaceId: String, vm: GitlabJournalViewModel = viewMo
         }
         state.message?.let {
             Spacer(Modifier.height(10.dp))
-            Text(it, color = c.primary, fontSize = 13.sp)
+            Text(it.resolve(), color = c.primary, fontSize = 13.sp)
         }
         Spacer(Modifier.height(12.dp))
 
         if (state.runs.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Журнал пуст — синхронизация ещё не запускалась", color = c.text3, fontSize = 14.sp)
+                Text(stringResource(R.string.gljournal_empty), color = c.text3, fontSize = 14.sp)
             }
             return
         }
@@ -128,6 +142,9 @@ private fun RunRow(
     onAction: (GitlabSyncAction) -> Unit,
 ) {
     val c = Tessera.colors
+    // Дату, подпись триггера и счётчики собирают обычные функции — ресурсы берём из
+    // композиции, где их уже подменил AppLocale на язык профиля.
+    val res = LocalResources.current
     Column {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusSm)).clickableNoRipple(onClick = onToggle)
@@ -137,9 +154,9 @@ private fun RunRow(
             KindChip(run.kind)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(localDateTimeLabel(LocalResources.current, run.startedAt), color = c.text1, fontSize = 13.sp)
+                Text(localDateTimeLabel(res, run.startedAt), color = c.text1, fontSize = 13.sp)
                 Text(
-                    "${TriggerLabel[run.trigger] ?: run.trigger} · ${runCounts(run)}",
+                    res.getString(R.string.gljournal_run_meta, triggerLabel(res, run.trigger), runCounts(res, run)),
                     color = c.text3, fontSize = 11.sp,
                 )
             }
@@ -148,9 +165,12 @@ private fun RunRow(
         if (expanded) {
             Column(Modifier.padding(start = 14.dp, bottom = 6.dp)) {
                 when {
-                    loadingActions -> Text("Загрузка…", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(6.dp))
+                    loadingActions -> Text(stringResource(R.string.common_loading), color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(6.dp))
 
-                    actions.isNullOrEmpty() -> Text("Нет записанных действий", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(6.dp))
+                    actions.isNullOrEmpty() -> Text(
+                        stringResource(R.string.gljournal_no_actions),
+                        color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(6.dp),
+                    )
 
                     else -> actions.forEach { a ->
                         Row(
@@ -208,7 +228,7 @@ private fun ActionDetailDialog(
                     orderedKeys(fields).forEach { k ->
                         val f = fields.objOrNull(k) ?: return@forEach
                         Row(Modifier.padding(vertical = 3.dp)) {
-                            Text(FieldLabels[k] ?: k, color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
+                            Text(fieldLabel(res, k), color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
                             Text(fmtVal(res, k, f.get("before")), color = ERR, fontSize = 12.5.sp)
                             Text(" → ", color = c.text3, fontSize = 12.5.sp)
                             Text(fmtVal(res, k, f.get("after")), color = c.text1, fontSize = 12.5.sp)
@@ -221,7 +241,7 @@ private fun ActionDetailDialog(
                 DetailSection {
                     orderedKeys(after).forEach { k ->
                         Row(Modifier.padding(vertical = 3.dp)) {
-                            Text(FieldLabels[k] ?: k, color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
+                            Text(fieldLabel(res, k), color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
                             Text(fmtVal(res, k, after.get(k)), color = c.text1, fontSize = 12.5.sp)
                         }
                     }
@@ -230,7 +250,7 @@ private fun ActionDetailDialog(
             // tags
             detail.objOrNull("tags")?.let { tags ->
                 DetailSection {
-                    Text("Теги", color = c.text3, fontSize = 12.sp)
+                    Text(stringResource(R.string.task_prop_tags), color = c.text3, fontSize = 12.sp)
                     Spacer(Modifier.height(4.dp))
                     tags.strList("added").forEach { Text("+ $it", color = OK, fontSize = 12.5.sp) }
                     tags.strList("removed").forEach { Text("− $it", color = ERR, fontSize = 12.5.sp) }
@@ -241,7 +261,7 @@ private fun ActionDetailDialog(
                 val added = com.get("added")?.takeUnless { it.isJsonNull }?.asInt ?: 0
                 if (added > 0) {
                     DetailSection {
-                        Text("Новые комментарии ($added)", color = c.text3, fontSize = 12.sp)
+                        Text(stringResource(R.string.gljournal_comments_new, added), color = c.text3, fontSize = 12.sp)
                         com.strList("new").forEach {
                             Spacer(Modifier.height(4.dp))
                             Text(
@@ -261,11 +281,16 @@ private fun ActionDetailDialog(
                 val deferred = rel.int("deferred")
                 if (added > 0 || removed > 0 || deferred > 0) {
                     DetailSection {
-                        Text("Связи", color = c.text3, fontSize = 12.sp)
+                        Text(stringResource(R.string.task_tab_relations), color = c.text3, fontSize = 12.sp)
                         Spacer(Modifier.height(4.dp))
-                        if (added > 0) Text("+$added связей", color = OK, fontSize = 12.5.sp)
-                        if (removed > 0) Text("−$removed удалено", color = ERR, fontSize = 12.5.sp)
-                        if (deferred > 0) Text("$deferred отложено", color = c.text2, fontSize = 12.5.sp)
+                        if (added > 0) {
+                            Text(
+                                pluralStringResource(R.plurals.gljournal_relations_added, added, added),
+                                color = OK, fontSize = 12.5.sp,
+                            )
+                        }
+                        if (removed > 0) Text(stringResource(R.string.gljournal_relations_removed, removed), color = ERR, fontSize = 12.5.sp)
+                        if (deferred > 0) Text(stringResource(R.string.gljournal_relations_deferred, deferred), color = c.text2, fontSize = 12.5.sp)
                     }
                 }
             }
@@ -273,12 +298,12 @@ private fun ActionDetailDialog(
             if (isPush) {
                 DetailSection {
                     Row(Modifier.padding(vertical = 3.dp)) {
-                        Text("Действие", color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
-                        Text(pushPayloadText(detail), color = c.text1, fontSize = 12.5.sp)
+                        Text(stringResource(R.string.gitlab_add_action), color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
+                        Text(pushPayloadText(res, detail), color = c.text1, fontSize = 12.5.sp)
                     }
                     if (action.status == "fail") {
                         Text(
-                            action.error.ifBlank { detail.str("error").ifBlank { "Ошибка доставки" } },
+                            action.error.ifBlank { detail.str("error").ifBlank { stringResource(R.string.gljournal_delivery_failed) } },
                             color = ERR, fontSize = 12.5.sp,
                             modifier = Modifier.background(ERR.copy(alpha = 0.1f), RoundedCornerShape(RadiusSm)).padding(7.dp).fillMaxWidth(),
                         )
@@ -290,9 +315,12 @@ private fun ActionDetailDialog(
 
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TButton("Закрыть", onClick = onDismiss, kind = TButtonKind.Secondary, modifier = Modifier.weight(1f))
+                TButton(stringResource(R.string.common_close), onClick = onDismiss, kind = TButtonKind.Secondary, modifier = Modifier.weight(1f))
                 if (canRetry) {
-                    TButton("Повторить", onClick = onRetry, loading = retrying, icon = Ion.REFRESH, modifier = Modifier.weight(1f))
+                    TButton(
+                        stringResource(R.string.common_retry),
+                        onClick = onRetry, loading = retrying, icon = Ion.REFRESH, modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -334,35 +362,51 @@ private fun opColor(op: String) = when (op) {
     else -> Color(0xFF8A8A8A)
 }
 
-private fun runCounts(run: GitlabSyncRun): String {
-    if (run.kind == "push") return "${run.actionCount} дост."
+/** Подпись триггера прогона; незнакомое значение показываем как есть — оно с сервера. */
+internal fun triggerLabel(res: Resources, trigger: String): String =
+    TriggerLabels[trigger]?.let { res.getString(it) } ?: trigger
+
+/** Подпись поля в диффе; незнакомый ключ показываем как есть (поле добавили на бэке). */
+internal fun fieldLabel(res: Resources, key: String): String =
+    FieldLabels[key]?.let { res.getString(it) } ?: key
+
+internal fun runCounts(res: Resources, run: GitlabSyncRun): String {
+    if (run.kind == "push") return res.getString(R.string.gljournal_push_count, run.actionCount)
     val parts = buildList {
         if (run.createdCount > 0) add("+${run.createdCount}")
         if (run.updatedCount > 0) add("~${run.updatedCount}")
     }
-    return parts.joinToString(" ").ifBlank { "без изменений" }
+    return parts.joinToString(" ").ifBlank { res.getString(R.string.gljournal_no_changes) }
 }
 
 private fun orderedKeys(obj: JsonObject): List<String> = FieldOrder.filter { obj.has(it) }
 
-private fun fmtVal(res: Resources, key: String, el: com.google.gson.JsonElement?): String {
+internal fun fmtVal(res: Resources, key: String, el: com.google.gson.JsonElement?): String {
     if (el == null || el.isJsonNull) return "—"
     val raw = if (el.isJsonPrimitive) el.asString else el.toString()
     if (raw.isBlank()) return "—"
     return when (key) {
         "priority" -> PriorityLabels.getOrNull(raw.toDoubleOrNull()?.toInt() ?: -1) ?: raw
-        "completed" -> if (raw == "true") "Выполнено" else "Не выполнено"
+        "completed" -> res.getString(if (raw == "true") R.string.task_status_completed else R.string.task_status_active)
         "due", "start" -> dueLabel(res, raw)
         else -> raw
     }
 }
 
-private fun pushPayloadText(detail: JsonObject): String {
+internal fun pushPayloadText(res: Resources, detail: JsonObject): String {
     val p = detail.objOrNull("payload") ?: JsonObject()
     return when (detail.str("change_kind")) {
-        "state" -> if (p.str("state") == "closed") "закрыть issue" else "открыть issue"
-        "priority" -> "приоритет → " + (PriorityLabels.getOrNull(p.str("priority").toDoubleOrNull()?.toInt() ?: -1) ?: p.str("priority"))
+        "state" -> res.getString(
+            if (p.str("state") == "closed") R.string.gljournal_push_issue_close else R.string.gljournal_push_issue_open,
+        )
+
+        "priority" -> res.getString(
+            R.string.gljournal_push_priority,
+            PriorityLabels.getOrNull(p.str("priority").toDoubleOrNull()?.toInt() ?: -1) ?: p.str("priority"),
+        )
+
         "comment" -> p.str("body")
+
         else -> p.toString()
     }
 }

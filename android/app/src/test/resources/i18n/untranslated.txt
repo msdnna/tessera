@@ -20,6 +20,8 @@
 # Волна 10 (готово): util-слой — Estimation, Mentions, TagGroups.
 # Волна 11 (готово): даты — Dates, Milestones.
 # Волна 12 (готово): ошибки вызовов API — Errors (едут как UiText).
+# Волна 13 (готово): журнал синхронизации GitLab — GitLabJournalScreen,
+#                    GitlabJournalViewModel.
 website/msdnna/tessera/ui/components/AccentGradientPreview.kt
 website/msdnna/tessera/ui/components/BoardViewSelector.kt
 website/msdnna/tessera/ui/components/Dialogs.kt
@@ -34,13 +36,11 @@ website/msdnna/tessera/ui/components/TaskCardPreview.kt
 website/msdnna/tessera/ui/components/ThemePicker.kt
 website/msdnna/tessera/ui/components/UpdateDialog.kt
 website/msdnna/tessera/ui/screens/ConflictResolver.kt
-website/msdnna/tessera/ui/screens/GitLabJournalScreen.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt
 website/msdnna/tessera/ui/screens/SearchOverlay.kt
 website/msdnna/tessera/ui/screens/WhatsNewSheet.kt
 website/msdnna/tessera/ui/theme/Tokens.kt
 website/msdnna/tessera/ui/viewmodels/BoardViewModel.kt
-website/msdnna/tessera/ui/viewmodels/GitlabJournalViewModel.kt
 website/msdnna/tessera/ui/viewmodels/GitlabViewModel.kt
 website/msdnna/tessera/ui/viewmodels/UpdateViewModel.kt
 website/msdnna/tessera/ui/viewmodels/WorkspaceViewModel.kt

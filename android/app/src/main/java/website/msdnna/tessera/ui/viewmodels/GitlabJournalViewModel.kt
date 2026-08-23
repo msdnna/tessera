@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.GitlabSyncAction
 import website.msdnna.tessera.data.model.GitlabSyncRun
 import website.msdnna.tessera.data.repository.GitlabRepository
@@ -16,7 +17,9 @@ import website.msdnna.tessera.util.errorMessage
 data class GitlabJournalUiState(
     val loading: Boolean = true,
     val error: UiText? = null,
-    val message: String? = null,
+    /** Тоже [UiText]: сообщение живёт в состоянии до закрытия экрана и на готовой
+     *  строке застыло бы на языке, который стоял в момент повтора. */
+    val message: UiText? = null,
     val runs: List<GitlabSyncRun> = emptyList(),
     val expandedRunId: String? = null,
     /** runId → its loaded actions (lazily fetched on first expand). */
@@ -77,7 +80,7 @@ class GitlabJournalViewModel : ViewModel() {
             _state.update { it.copy(retrying = true, error = null) }
             try {
                 repo.retryWriteback(workspaceId, sel.first.id, sel.second.id)
-                _state.update { it.copy(retrying = false, message = "Поставлено в очередь на повтор") }
+                _state.update { it.copy(retrying = false, message = UiText.Res(R.string.gljournal_retry_queued)) }
             } catch (e: Exception) {
                 _state.update { it.copy(retrying = false, error = errorMessage(e)) }
             }

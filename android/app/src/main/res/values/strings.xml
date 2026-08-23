@@ -119,6 +119,8 @@
     <string name="common_nothing_found">Ничего не найдено</string>
     <string name="common_edit">Изменить</string>
     <string name="common_done">Готово</string>
+    <string name="common_close">Закрыть</string>
+    <string name="common_retry">Повторить</string>
 
     <!-- Навигация в боковой панели -->
     <string name="nav_home">Моя работа</string>
@@ -199,6 +201,11 @@
     <string name="task_prop_milestone">Этап</string>
     <string name="task_prop_status">Статус</string>
     <string name="task_prop_parent">Родитель</string>
+    <string name="task_prop_title">Заголовок</string>
+    <string name="task_prop_column">Колонка</string>
+    <string name="task_prop_start">Начало</string>
+    <string name="task_status_completed">Выполнено</string>
+    <string name="task_status_active">Не выполнено</string>
     <string name="task_due_unset">Не задан</string>
     <string name="task_estimate_unset">Не задана</string>
     <string name="task_assignees_none">Никто</string>
@@ -935,4 +942,29 @@
     <string name="err_value_too_long">Значение слишком длинное</string>
     <string name="err_check_fields">Проверьте правильность заполнения полей</string>
     <string name="err_offline">Нет связи с сервером. Проверьте подключение.</string>
+
+    <!-- Журнал синхронизации GitLab: список прогонов и диалог diff'а действия.
+         Подписи полей берутся из task_prop_* — журнал диффает те же свойства
+         задачи, что показывает модалка. -->
+    <string name="gljournal_empty">Журнал пуст — синхронизация ещё не запускалась</string>
+    <string name="gljournal_no_actions">Нет записанных действий</string>
+    <string name="gljournal_trigger_manual">вручную</string>
+    <string name="gljournal_trigger_auto">авто</string>
+    <string name="gljournal_run_meta">%1$s · %2$s</string>
+    <string name="gljournal_push_count">%1$d дост.</string>
+    <string name="gljournal_no_changes">без изменений</string>
+    <string name="gljournal_comments_new">Новые комментарии (%1$d)</string>
+    <plurals name="gljournal_relations_added">
+        <item quantity="one">+%1$d связь</item>
+        <item quantity="few">+%1$d связи</item>
+        <item quantity="many">+%1$d связей</item>
+        <item quantity="other">+%1$d связи</item>
+    </plurals>
+    <string name="gljournal_relations_removed">−%1$d удалено</string>
+    <string name="gljournal_relations_deferred">%1$d отложено</string>
+    <string name="gljournal_delivery_failed">Ошибка доставки</string>
+    <string name="gljournal_push_issue_close">закрыть issue</string>
+    <string name="gljournal_push_issue_open">открыть issue</string>
+    <string name="gljournal_push_priority">приоритет → %1$s</string>
+    <string name="gljournal_retry_queued">Поставлено в очередь на повтор</string>
 </resources>

@@ -115,6 +115,8 @@
     <string name="common_nothing_found">Nothing found</string>
     <string name="common_edit">Edit</string>
     <string name="common_done">Done</string>
+    <string name="common_close">Close</string>
+    <string name="common_retry">Retry</string>
 
     <!-- Sidebar navigation -->
     <string name="nav_home">My work</string>
@@ -193,6 +195,11 @@
     <string name="task_prop_milestone">Milestone</string>
     <string name="task_prop_status">Status</string>
     <string name="task_prop_parent">Parent</string>
+    <string name="task_prop_title">Title</string>
+    <string name="task_prop_column">Column</string>
+    <string name="task_prop_start">Start</string>
+    <string name="task_status_completed">Completed</string>
+    <string name="task_status_active">Not completed</string>
     <string name="task_due_unset">Not set</string>
     <string name="task_estimate_unset">Not set</string>
     <string name="task_assignees_none">Nobody</string>
@@ -911,4 +918,27 @@
     <string name="err_value_too_long">The value is too long</string>
     <string name="err_check_fields">Check the fields for errors</string>
     <string name="err_offline">No connection to the server. Check your network.</string>
+
+    <!-- GitLab sync journal: the run list and the per-action diff dialog. Field
+         labels come from task_prop_* — the journal diffs the same task properties
+         the task modal shows. -->
+    <string name="gljournal_empty">The journal is empty — sync has not run yet</string>
+    <string name="gljournal_no_actions">No recorded actions</string>
+    <string name="gljournal_trigger_manual">manual</string>
+    <string name="gljournal_trigger_auto">auto</string>
+    <string name="gljournal_run_meta">%1$s · %2$s</string>
+    <string name="gljournal_push_count">%1$d sent</string>
+    <string name="gljournal_no_changes">no changes</string>
+    <string name="gljournal_comments_new">New comments (%1$d)</string>
+    <plurals name="gljournal_relations_added">
+        <item quantity="one">+%1$d relation</item>
+        <item quantity="other">+%1$d relations</item>
+    </plurals>
+    <string name="gljournal_relations_removed">−%1$d removed</string>
+    <string name="gljournal_relations_deferred">%1$d deferred</string>
+    <string name="gljournal_delivery_failed">Delivery failed</string>
+    <string name="gljournal_push_issue_close">close the issue</string>
+    <string name="gljournal_push_issue_open">reopen the issue</string>
+    <string name="gljournal_push_priority">priority → %1$s</string>
+    <string name="gljournal_retry_queued">Queued for retry</string>
 </resources>
