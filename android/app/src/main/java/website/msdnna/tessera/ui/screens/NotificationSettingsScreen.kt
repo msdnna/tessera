@@ -53,6 +53,7 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.dashedBorder
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
@@ -154,7 +155,7 @@ fun NotificationSettingsScreen(
         }
         state.message?.let {
             Spacer(Modifier.height(8.dp))
-            Text(it, color = c.primary, fontSize = 13.sp)
+            Text(it.resolve(), color = c.primary, fontSize = 13.sp)
         }
         Spacer(Modifier.height(16.dp))
 

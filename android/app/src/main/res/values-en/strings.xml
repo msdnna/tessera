@@ -833,4 +833,26 @@
     <string name="views_save_current">Save the current view</string>
     <string name="views_name_hint">Name</string>
     <string name="views_delete_confirm">Delete the view “%1$s”?</string>
+
+    <!-- System notifications: channels, reminders and push titles -->
+    <string name="notif_channel_device_name">Notifications</string>
+    <string name="notif_channel_device_desc">Task notifications</string>
+    <string name="notif_channel_reminders_name">Reminders</string>
+    <string name="notif_channel_reminders_desc">Task reminder alarms</string>
+    <string name="reminder_push_title">Reminder</string>
+    <string name="reminder_push_default_body">Time to get to the task</string>
+    <string name="push_title_assigned">Task assigned</string>
+    <string name="push_title_comment">New comment</string>
+    <string name="push_title_mention">You were mentioned</string>
+    <string name="push_title_updated">Task updated</string>
+    <string name="push_title_moved">Task moved</string>
+    <string name="push_title_archived">Task archived</string>
+    <string name="push_title_due_soon">Due soon</string>
+    <string name="push_title_reminder">Reminder</string>
+
+    <!-- Notification panel (bell) and settings replies -->
+    <string name="notif_panel_mark_all">Mark all read</string>
+    <string name="notif_panel_empty">Nothing yet</string>
+    <string name="notif_test_sent">Test sent</string>
+    <string name="notif_saved">Saved</string>
 </resources>

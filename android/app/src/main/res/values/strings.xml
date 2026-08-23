@@ -852,4 +852,27 @@
     <string name="views_save_current">Сохранить текущий вид</string>
     <string name="views_name_hint">Название</string>
     <string name="views_delete_confirm">Удалить представление «%1$s»?</string>
+
+    <!-- Системные уведомления: каналы, напоминания и заголовки пушей.
+         Резолвятся вне Compose — контекстом на языке профиля (Context.withLanguage). -->
+    <string name="notif_channel_device_name">Уведомления</string>
+    <string name="notif_channel_device_desc">Уведомления о задачах</string>
+    <string name="notif_channel_reminders_name">Напоминания</string>
+    <string name="notif_channel_reminders_desc">Срабатывания напоминаний по задачам</string>
+    <string name="reminder_push_title">Напоминание</string>
+    <string name="reminder_push_default_body">Пора заняться задачей</string>
+    <string name="push_title_assigned">Назначена задача</string>
+    <string name="push_title_comment">Новый комментарий</string>
+    <string name="push_title_mention">Вас упомянули</string>
+    <string name="push_title_updated">Задача изменена</string>
+    <string name="push_title_moved">Задача перемещена</string>
+    <string name="push_title_archived">Задача архивирована</string>
+    <string name="push_title_due_soon">Скоро дедлайн</string>
+    <string name="push_title_reminder">Напоминание</string>
+
+    <!-- Панель уведомлений (колокольчик) и ответы настроек -->
+    <string name="notif_panel_mark_all">Прочитать все</string>
+    <string name="notif_panel_empty">Пока тихо</string>
+    <string name="notif_test_sent">Тест отправлен</string>
+    <string name="notif_saved">Сохранено</string>
 </resources>

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.ChannelRequest
 import website.msdnna.tessera.data.model.NotificationChannel
 import website.msdnna.tessera.data.model.NotificationPrefs
@@ -14,12 +15,14 @@ import website.msdnna.tessera.data.model.NotificationRoute
 import website.msdnna.tessera.data.model.RouteRequest
 import website.msdnna.tessera.data.model.Workspace
 import website.msdnna.tessera.data.repository.NotificationSettingsRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class NotifSettingsUiState(
     val loading: Boolean = true,
     val error: String? = null,
-    val message: String? = null,
+    /** Ответ на действие: свой текст ресурсом, серверное предупреждение — как есть. */
+    val message: UiText? = null,
     val channels: List<NotificationChannel> = emptyList(),
     val routes: List<NotificationRoute> = emptyList(),
     val prefs: NotificationPrefs = NotificationPrefs(),
@@ -95,9 +98,8 @@ class NotificationSettingsViewModel : ViewModel() {
             _state.update { it.copy(testingId = id, error = null, message = null) }
             try {
                 val r = repo.testChannel(id)
-                _state.update {
-                    it.copy(testingId = null, message = r.warning ?: "Тест отправлен")
-                }
+                val message = r.warning?.let { w -> UiText.Raw(w) } ?: UiText.Res(R.string.notif_test_sent)
+                _state.update { it.copy(testingId = null, message = message) }
                 reload()
             } catch (e: Exception) {
                 _state.update { it.copy(testingId = null, error = errorMessage(e)) }
@@ -135,7 +137,7 @@ class NotificationSettingsViewModel : ViewModel() {
             _state.update { it.copy(saving = true, error = null) }
             try {
                 val saved = repo.savePrefs(p)
-                _state.update { it.copy(saving = false, prefs = saved, message = "Сохранено") }
+                _state.update { it.copy(saving = false, prefs = saved, message = UiText.Res(R.string.notif_saved)) }
             } catch (e: Exception) {
                 _state.update { it.copy(saving = false, error = errorMessage(e)) }
             }

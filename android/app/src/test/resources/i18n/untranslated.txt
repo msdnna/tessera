@@ -14,9 +14,9 @@
 # Волна 7 (готово): MilestonesScreen, BoardScreen, BoardSecondary,
 #                   BoardCustomizePanel.
 # Волна 8 (готово): DueDateTimePicker, BoardComposer.
-website/msdnna/tessera/data/realtime/DeviceNotifier.kt
-website/msdnna/tessera/reminders/ReminderNotifications.kt
-website/msdnna/tessera/reminders/ReminderReceiver.kt
+# Волна 9 (готово): строки вне Compose — DeviceNotifier, ReminderNotifications,
+#                   ReminderReceiver, NotificationViewModel,
+#                   NotificationSettingsViewModel, NotificationsPanel.
 website/msdnna/tessera/ui/components/AccentGradientPreview.kt
 website/msdnna/tessera/ui/components/BoardViewSelector.kt
 website/msdnna/tessera/ui/components/Dialogs.kt
@@ -33,15 +33,12 @@ website/msdnna/tessera/ui/components/UpdateDialog.kt
 website/msdnna/tessera/ui/screens/ConflictResolver.kt
 website/msdnna/tessera/ui/screens/GitLabJournalScreen.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt
-website/msdnna/tessera/ui/screens/NotificationsPanel.kt
 website/msdnna/tessera/ui/screens/SearchOverlay.kt
 website/msdnna/tessera/ui/screens/WhatsNewSheet.kt
 website/msdnna/tessera/ui/theme/Tokens.kt
 website/msdnna/tessera/ui/viewmodels/BoardViewModel.kt
 website/msdnna/tessera/ui/viewmodels/GitlabJournalViewModel.kt
 website/msdnna/tessera/ui/viewmodels/GitlabViewModel.kt
-website/msdnna/tessera/ui/viewmodels/NotificationSettingsViewModel.kt
-website/msdnna/tessera/ui/viewmodels/NotificationViewModel.kt
 website/msdnna/tessera/ui/viewmodels/UpdateViewModel.kt
 website/msdnna/tessera/ui/viewmodels/WorkspaceViewModel.kt
 website/msdnna/tessera/update/WhatsNewEntries.kt

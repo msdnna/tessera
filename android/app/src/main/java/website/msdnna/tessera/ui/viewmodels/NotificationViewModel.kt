@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.viewmodels
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonObject
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Notification
 import website.msdnna.tessera.data.push.PushTokens
@@ -123,20 +125,8 @@ class NotificationViewModel(
             // Carry the notification id so a push copy of the same notification
             // redraws this entry instead of stacking a second one.
             val id = n.get("id")?.takeUnless { it.isJsonNull }?.asString
-            _devicePush.tryEmit(DevicePush(titleForKind(kind), text, taskId, id))
+            _devicePush.tryEmit(DevicePush("", text, taskId, id, titleResForKind(kind)))
         }
-    }
-
-    private fun titleForKind(kind: String): String = when (kind) {
-        "assigned" -> "Назначена задача"
-        "comment" -> "Новый комментарий"
-        "mention" -> "Вас упомянули"
-        "updated" -> "Задача изменена"
-        "moved" -> "Задача перемещена"
-        "archived" -> "Задача архивирована"
-        "due_soon" -> "Скоро дедлайн"
-        "reminder" -> "Напоминание"
-        else -> "Tessera"
     }
 
     override fun onCleared() {
@@ -161,4 +151,23 @@ class NotificationViewModel(
         // real timestamp.
         const val NOW_SENTINEL = "now"
     }
+}
+
+/**
+ * Заголовок системного уведомления по виду события — идентификатором ресурса, а не
+ * строкой: ViewModel не видит `LocalResources`, а готовый текст застыл бы на языке,
+ * который стоял в момент прихода события (пуш может ждать показа сколько угодно).
+ * Незнакомый вид — имя приложения, как и раньше.
+ */
+@StringRes
+internal fun titleResForKind(kind: String): Int = when (kind) {
+    "assigned" -> R.string.push_title_assigned
+    "comment" -> R.string.push_title_comment
+    "mention" -> R.string.push_title_mention
+    "updated" -> R.string.push_title_updated
+    "moved" -> R.string.push_title_moved
+    "archived" -> R.string.push_title_archived
+    "due_soon" -> R.string.push_title_due_soon
+    "reminder" -> R.string.push_title_reminder
+    else -> R.string.app_name
 }
