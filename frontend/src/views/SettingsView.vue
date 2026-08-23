@@ -372,7 +372,7 @@ async function resendVerify() {
             class="swatch"
             :class="{ active: theme.activeTheme.key === ct.key }"
             :style="{ background: ct.primary }"
-            :title="ct.name || ct.key"
+            :title="t(`settings.appearance.color.${ct.key}`)"
             @click="theme.selectColor(ct)"
           />
         </div>

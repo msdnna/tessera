@@ -5,10 +5,12 @@ import { DARK, LIGHT } from '@/styles/tokens'
 import { users, getAccessToken } from '@/api'
 import { normalizeDatePreset, DEFAULT_PREFS } from '@/utils/format'
 
-// Multi-color accent schemes. Default = purple.
+// Multi-color accent schemes. Default = purple. The palette is a token; the
+// human name of a scheme is not, so it lives in the catalogue under
+// `settings.appearance.color.<key>` and is resolved where it is drawn (#2799) —
+// the same split the priority labels went through in wave 6.
 export const COLOR_THEMES = [
   {
-    name: 'Фиолетовый',
     key: 'purple',
     primary: '#7c5cff',
     hover: '#9277ff',
@@ -16,7 +18,6 @@ export const COLOR_THEMES = [
     suppl: '#9277ff',
   },
   {
-    name: 'Синий',
     key: 'blue',
     primary: '#2f80ed',
     hover: '#4f97f5',
@@ -24,7 +25,6 @@ export const COLOR_THEMES = [
     suppl: '#4f97f5',
   },
   {
-    name: 'Бирюзовый',
     key: 'teal',
     primary: '#0eb0a9',
     hover: '#2cc1ba',
@@ -32,7 +32,6 @@ export const COLOR_THEMES = [
     suppl: '#2cc1ba',
   },
   {
-    name: 'Зелёный',
     key: 'green',
     primary: '#18a058',
     hover: '#36ad6a',
@@ -40,7 +39,6 @@ export const COLOR_THEMES = [
     suppl: '#36ad6a',
   },
   {
-    name: 'Оранжевый',
     key: 'orange',
     primary: '#f0a020',
     hover: '#fcb040',
@@ -48,7 +46,6 @@ export const COLOR_THEMES = [
     suppl: '#fcb040',
   },
   {
-    name: 'Красный',
     key: 'red',
     primary: '#e0533d',
     hover: '#ea6e5a',
@@ -56,7 +53,6 @@ export const COLOR_THEMES = [
     suppl: '#ea6e5a',
   },
   {
-    name: 'Розовый',
     key: 'pink',
     primary: '#eb2f96',
     hover: '#f759ab',

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watchEffect, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NInput, NButton, NText, NIcon, NPopconfirm, NSwitch, useMessage } from 'naive-ui'
 import { TrashOutline } from '@vicons/ionicons5'
 import { projects as projectsApi } from '@/api'
@@ -8,6 +9,7 @@ import { buildTagGroups } from '@/utils/tagGroups'
 import { useThemeStore } from '@/stores/theme'
 import TagPill from './TagPill.vue'
 
+const { t } = useI18n()
 const theme = useThemeStore()
 
 const props = defineProps({
@@ -69,32 +71,32 @@ const swatches = [
   '#9aa0aa',
 ]
 
-function startEdit(t) {
-  editingId.value = t.id
-  nameEdit.value = t.name
+function startEdit(tag) {
+  editingId.value = tag.id
+  nameEdit.value = tag.name
   nextTick(() => nameInput.value?.focus?.())
 }
 // blur/enter: save if changed, else just close (no accidental reset)
-async function saveName(t) {
+async function saveName(tag) {
   const n = nameEdit.value.trim()
   editingId.value = null
-  if (!n || n === t.name) return
-  await patch(t, { name: n })
+  if (!n || n === tag.name) return
+  await patch(tag, { name: n })
 }
-async function setColor(t, c) {
-  await patch(t, { color: c })
+async function setColor(tag, c) {
+  await patch(tag, { color: c })
 }
-async function patch(t, fields) {
+async function patch(tag, fields) {
   try {
-    await projectsApi.updateTag(t.id, { name: t.name, color: t.color || '', ...fields })
+    await projectsApi.updateTag(tag.id, { name: tag.name, color: tag.color || '', ...fields })
     emit('changed')
   } catch (e) {
     message.error(e.message)
   }
 }
-async function remove(t) {
+async function remove(tag) {
   try {
-    await projectsApi.deleteTag(t.id)
+    await projectsApi.deleteTag(tag.id)
     emit('changed')
   } catch (e) {
     message.error(e.message)
@@ -115,82 +117,88 @@ async function add() {
 
 <template>
   <div class="tagmgr">
-    <n-text depth="3" class="head">Теги проекта</n-text>
+    <n-text depth="3" class="head">{{ t('project.tags.head') }}</n-text>
     <div class="list">
       <template v-for="g in groups" :key="g.key">
         <n-text v-if="showHeaders" depth="3" class="grp-head">{{ g.label }}</n-text>
-        <div v-for="t in g.tags" :key="t.id" class="tag-block">
+        <!-- `tag`, not `t`: the loop variable would shadow the translate fn. -->
+        <div v-for="tag in g.tags" :key="tag.id" class="tag-block">
           <div class="tag-row">
             <n-input
-              v-if="editingId === t.id"
+              v-if="editingId === tag.id"
               :ref="(el) => el && (nameInput = el)"
               v-model:value="nameEdit"
               size="tiny"
-              placeholder="Имя тега"
-              @keyup.enter="saveName(t)"
-              @blur="saveName(t)"
+              :placeholder="t('project.tags.namePlaceholder')"
+              @keyup.enter="saveName(tag)"
+              @blur="saveName(tag)"
             />
             <TagPill
               v-else
               class="chip"
-              :title="`${t.name} · двойной клик — переименовать`"
-              :tag="t"
+              :title="t('project.tags.renameHint', { name: tag.name })"
+              :tag="tag"
               :prefix-names="prefixNames"
               variant="ghost"
               :scope-mode="showHeaders ? 'hide' : 'auto'"
-              @dblclick="startEdit(t)"
+              @dblclick="startEdit(tag)"
             />
             <n-popconfirm
               :positive-button-props="{ type: 'error' }"
-              positive-text="Удалить"
-              @positive-click="remove(t)"
+              :positive-text="t('common.action.delete')"
+              @positive-click="remove(tag)"
             >
               <template #trigger>
                 <n-button text size="tiny" type="error">
                   <n-icon :component="TrashOutline" />
                 </n-button>
               </template>
-              Удалить тег? Он снимется со всех задач.
+              {{ t('project.tags.deleteConfirm') }}
             </n-popconfirm>
           </div>
-          <div v-if="editingId === t.id" class="swatches">
+          <div v-if="editingId === tag.id" class="swatches">
             <button
               v-for="s in swatches"
               :key="s"
               class="sw"
-              :class="{ active: s === t.color }"
+              :class="{ active: s === tag.color }"
               :style="{ backgroundImage: hueGrad(s) }"
               @mousedown.prevent
-              @click="setColor(t, s)"
+              @click="setColor(tag, s)"
             />
           </div>
         </div>
       </template>
-      <n-text v-if="!tags.length" depth="3" class="empty">Тегов пока нет.</n-text>
+      <n-text v-if="!tags.length" depth="3" class="empty">{{ t('project.tags.empty') }}</n-text>
     </div>
     <div class="add">
-      <n-input v-model:value="newName" size="tiny" placeholder="Новый тег" @keyup.enter="add" />
-      <n-button type="primary" size="tiny" @click="add">Добавить</n-button>
+      <n-input
+        v-model:value="newName"
+        size="tiny"
+        :placeholder="t('project.tags.newPlaceholder')"
+        @keyup.enter="add"
+      />
+      <n-button type="primary" size="tiny" @click="add">{{ t('project.tags.add') }}</n-button>
     </div>
 
     <template v-if="prefixGroups.length">
       <div class="pfx-mode">
-        <n-text depth="3" class="head pfx-head">Короткие префиксы</n-text>
+        <n-text depth="3" class="head pfx-head">{{ t('project.tags.prefixMode') }}</n-text>
         <n-switch
           size="small"
           :value="theme.tagPrefixMode === 'raw'"
-          title="Показывать сырой префикс (напр. «T») вместо понятного имени"
+          :title="t('project.tags.prefixModeHint')"
           @update:value="(v) => theme.setTagPrefixMode(v ? 'raw' : 'name')"
         />
       </div>
-      <n-text depth="3" class="head pfx-head">Имена префиксов</n-text>
+      <n-text depth="3" class="head pfx-head">{{ t('project.tags.prefixNames') }}</n-text>
       <div class="pfx-list">
         <div v-for="g in prefixGroups" :key="g.key" class="pfx-row">
           <span class="pfx-key">{{ g.prefix.trim() }}</span>
           <n-input
             v-model:value="labelEdits[g.key]"
             size="tiny"
-            placeholder="напр. Статус"
+            :placeholder="t('project.tags.prefixPlaceholder')"
             @keyup.enter="savePrefixes"
             @blur="savePrefixes"
           />

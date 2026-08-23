@@ -43,6 +43,15 @@
       "system": "System",
       "light": "Light",
       "dark": "Dark"
+    },
+    "color": {
+      "purple": "Purple",
+      "blue": "Blue",
+      "teal": "Teal",
+      "green": "Green",
+      "orange": "Orange",
+      "red": "Red",
+      "pink": "Pink"
     }
   },
   "localization": {
@@ -64,7 +73,8 @@
     "weekStart": {
       "monday": "Monday",
       "sunday": "Sunday"
-    }
+    },
+    "countryFallback": "Russia"
   },
   "app": {
     "title": "Application",

@@ -59,5 +59,36 @@
     "slugPlaceholder": "project-address",
     "address": "Address:",
     "auto": "will be assigned automatically"
+  },
+  "tags": {
+    "head": "Project tags",
+    "namePlaceholder": "Tag name",
+    "renameHint": "{name} · double-click to rename",
+    "deleteConfirm": "Delete the tag? It will be removed from every task.",
+    "empty": "No tags yet.",
+    "newPlaceholder": "New tag",
+    "add": "Add",
+    "prefixMode": "Short prefixes",
+    "prefixModeHint": "Show the raw prefix (e.g. “T”) instead of the friendly name",
+    "prefixNames": "Prefix names",
+    "prefixPlaceholder": "e.g. Status"
+  },
+  "icon": {
+    "search": "Find an icon",
+    "upload": "Upload SVG / PNG",
+    "more": "More icons: search or upload",
+    "onlySvgPng": "Only SVG or PNG are supported",
+    "tooLarge": "The file is broken or too large (max {limit})",
+    "folderDefault": "Folder (default)",
+    "kanbanDefault": "Kanban (default)",
+    "initials": "Initials",
+    "noBackground": "No background",
+    "paintWhat": "What to colour",
+    "badge": "Badge",
+    "glyph": "Glyph",
+    "collection": "Icon from the collection",
+    "searchPlaceholder": "Search by name: home, code, rocket…",
+    "loading": "Loading the collection…",
+    "notFound": "Nothing found"
   }
 }

@@ -1,0 +1,115 @@
+{
+  "aria": "Guide",
+  "gotIt": "Got it",
+  "skip": "Skip",
+  "steps": {
+    "workspaces": {
+      "title": "Workspaces",
+      "body": "This is where you switch workspaces: each has its own projects, members and tags. A new one is created right next to it — but let's start with the personal one."
+    },
+    "tree-add": {
+      "title": "The project tree",
+      "body": "Projects live on the left. Press “+” to add the first one."
+    },
+    "menu-project": {
+      "title": "Pick “Project”",
+      "body": "A group will come in handy later, once there are many projects."
+    },
+    "project-create": {
+      "title": "Name the project",
+      "body": "The name also decides the project address: /project/name. The address is assigned once — if it matters to you, set it by hand."
+    },
+    "board-add": {
+      "title": "Add a board",
+      "body": "Tasks live on boards, and a project may have several. Press “+” next to the project."
+    },
+    "board-create": {
+      "title": "Name the board",
+      "body": "Type a name and press Enter — the board appears in the tree with four columns."
+    },
+    "board-open": {
+      "title": "Open the board",
+      "body": "Click the board — the kanban opens."
+    },
+    "task-create": {
+      "title": "Create a task",
+      "body": "Press “Create task” in the «К работе» column, type a name and press Enter."
+    },
+    "card-fields": {
+      "title": "Right on the card",
+      "body": "Priority, due date, tags and assignees are edited without opening the task — just click the icon on the card."
+    },
+    "card-open": {
+      "title": "Open the task",
+      "body": "Click the card — the full task form opens."
+    },
+    "tm-due": {
+      "title": "Due date",
+      "body": "Set a due date — the calendar is also where repetition and reminders are configured."
+    },
+    "tm-assignees": {
+      "title": "Assignees",
+      "body": "Choose who runs the task. While you are alone in the workspace — assign yourself."
+    },
+    "tm-priority": {
+      "title": "Priority",
+      "body": "Priority colours the dot on the card, and the board can be sorted by it."
+    },
+    "tm-tags": {
+      "title": "Tags",
+      "body": "A tag is created right here. The board can group into columns by tags — that is the main way to arrange tasks your own way."
+    },
+    "tm-description": {
+      "title": "Description",
+      "body": "Describe the task: Markdown, attachments and {'@'} mentions are supported."
+    },
+    "tm-tabs": {
+      "title": "Comments, subtasks, relations",
+      "body": "The same place holds the discussion, the subtask tree, relations to other tasks and the full change history."
+    },
+    "tm-save": {
+      "title": "Save the task",
+      "body": "Press “Save” — the modal closes and the changes show up on the card."
+    },
+    "board-tools": {
+      "title": "Board views and tools",
+      "body": "On the left — kanban, list, calendar and Gantt: the same tasks in different cuts. In the middle — search across the whole workspace, on the right — tags, milestones and the archive."
+    },
+    "board-composer": {
+      "title": "Grouping, sorting, filters",
+      "body": "The “+” on this bar adds grouping (including by tag), sorting and filters, and on the right is the card layout setting."
+    },
+    "dnd-card": {
+      "title": "Drag the card",
+      "body": "A task moves between columns by dragging — that is how its status changes on the board. Drag the card into «В процессе»."
+    },
+    "group-add": {
+      "title": "Projects group up too",
+      "body": "Once there are many projects, they go into groups. Press “+” above the tree once more."
+    },
+    "menu-group": {
+      "title": "Pick “Group”",
+      "body": "Now the second menu item comes in handy."
+    },
+    "group-created": {
+      "title": "The group is created",
+      "body": "It is called “Group” — double-click the name to rename it."
+    },
+    "dnd-project": {
+      "title": "Drag the project into the group",
+      "body": "The project tree drags the same way: pick a project up and drop it into a group."
+    },
+    "nav-sections": {
+      "title": "Notes, documents, reminders",
+      "body": "Besides boards, a workspace holds notes, collaborative documents and reminders."
+    },
+    "nav-footer": {
+      "title": "Settings and notifications",
+      "body": "At the bottom — your profile and settings, next to them the bell with notifications."
+    },
+    "done": {
+      "title": "All set",
+      "body": "That is everything you need to start. The guide can be restarted from the same place, at the bottom of the sidebar."
+    }
+  }
+}

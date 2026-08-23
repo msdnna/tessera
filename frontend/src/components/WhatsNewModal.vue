@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NModal, NCard, NButton, NIcon } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
 import { renderMarkdown } from '@/utils/markdown'
@@ -8,6 +9,7 @@ import { useWhatsNewStore } from '@/stores/whatsNew'
 // "What's New" after an update (#2749): a modal listing the curated highlights of
 // every release the user has just updated into. Self-contained — it reads the
 // store's `pending` list and clears it (marking each version seen) on dismiss.
+const { t } = useI18n()
 const store = useWhatsNewStore()
 
 const show = computed({
@@ -29,12 +31,12 @@ function close() {
 
 <template>
   <n-modal v-model:show="show">
-    <n-card class="wn-card" :bordered="false" role="dialog" aria-label="Что нового">
+    <n-card class="wn-card" :bordered="false" role="dialog" :aria-label="t('app.whatsNew.title')">
       <div class="wn-head">
         <div class="wn-badge"><n-icon :component="SparklesOutline" :size="20" /></div>
         <div>
-          <div class="wn-title">Что нового</div>
-          <div class="wn-sub">Обновление применено — вот что изменилось</div>
+          <div class="wn-title">{{ t('app.whatsNew.title') }}</div>
+          <div class="wn-sub">{{ t('app.whatsNew.sub') }}</div>
         </div>
       </div>
 
@@ -50,7 +52,7 @@ function close() {
       </div>
 
       <div class="wn-foot">
-        <n-button type="primary" @click="close">Понятно</n-button>
+        <n-button type="primary" @click="close">{{ t('app.whatsNew.gotIt') }}</n-button>
       </div>
     </n-card>
   </n-modal>

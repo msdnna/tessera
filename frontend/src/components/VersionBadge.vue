@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NTooltip } from 'naive-ui'
 import { useVersionInfo } from '@/composables/useVersionInfo'
 import { useFormat } from '@/composables/useFormat'
@@ -16,6 +17,7 @@ defineProps({
   mode: { type: String, default: 'row' },
 })
 
+const { t } = useI18n()
 const { web, api } = useVersionInfo()
 const { formatDateTime } = useFormat()
 
@@ -30,14 +32,17 @@ function fmtDate(iso) {
 function lines(label, info) {
   if (!info || !info.version) return null
   const out = [`${label} ${info.version}`]
-  if (info.commit) out.push(`коммит ${info.commit}`)
+  if (info.commit) out.push(t('app.version.commit', { commit: info.commit }))
   const built = fmtDate(info.builtAt)
-  if (built) out.push(`сборка ${built}`)
+  if (built) out.push(t('app.version.built', { date: built }))
   return out
 }
 
-const webLines = computed(() => lines('Клиент', web))
-const apiLines = computed(() => lines('Сервер', api.value))
+// Both computed: the labels come from the catalogue, so the tooltip is
+// re-rendered in the new language after a switch instead of keeping the one it
+// was first built in.
+const webLines = computed(() => lines(t('app.version.web'), web))
+const apiLines = computed(() => lines(t('app.version.api'), api.value))
 const rowText = computed(() => {
   const parts = []
   if (web.version) parts.push(`web ${web.version}`)

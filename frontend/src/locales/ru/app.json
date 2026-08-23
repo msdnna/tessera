@@ -1,0 +1,49 @@
+{
+  "download": {
+    "title": "Скачать приложение",
+    "forPlatform": "Загрузить для {platform}",
+    "otherPlatforms": "Другие платформы",
+    "recommended": "рекоменд.",
+    "versionTag": "v{version}",
+    "format": {
+      "appimage": "AppImage",
+      "deb": ".deb (Debian / Ubuntu)",
+      "rpm": ".rpm (Fedora / openSUSE)",
+      "exe": "Установщик (.exe)",
+      "apk": "APK"
+    }
+  },
+  "update": {
+    "title": "Доступно обновление",
+    "text": "Загружена новая версия Tessera",
+    "reload": "Обновить",
+    "reloading": "Обновляем…",
+    "postpone": "Отложить"
+  },
+  "version": {
+    "web": "Клиент",
+    "api": "Сервер",
+    "commit": "коммит {commit}",
+    "built": "сборка {date}"
+  },
+  "connection": {
+    "loading": "Загрузка",
+    "offlineTitle": "Нет связи с сервером",
+    "offlineSub": "Проверьте подключение к интернету и попробуйте снова.",
+    "retry": "Попробовать ещё раз"
+  },
+  "whatsNew": {
+    "title": "Что нового",
+    "sub": "Обновление применено — вот что изменилось",
+    "gotIt": "Понятно"
+  },
+  "device": {
+    "desktop": "Настольное приложение ({os})",
+    "desktopOs": "десктоп",
+    "browser": "Браузер ({browser})",
+    "browserName": "браузер"
+  },
+  "loader": {
+    "default": "Загружаем…"
+  }
+}

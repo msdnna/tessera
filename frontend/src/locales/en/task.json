@@ -188,7 +188,8 @@
       "b": "{n} B",
       "kb": "{n} KB",
       "mb": "{n} MB"
-    }
+    },
+    "downloadFailed": "Could not download the file"
   },
   "docs": {
     "empty": "No linked documents",
@@ -333,5 +334,8 @@
     "relation": "linked it to #{ref}",
     "attachment": "attached a file",
     "attachmentNamed": "attached the file “{name}”"
+  },
+  "ref": {
+    "notFound": "Task #{number} not found"
   }
 }

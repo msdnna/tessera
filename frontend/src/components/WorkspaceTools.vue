@@ -45,9 +45,8 @@ const router = useRouter()
 // label — suppress them there.
 const { isMobile } = useResponsive()
 const { formatTime, formatters } = useFormat()
-// Kept as one object rather than destructured: a bare `t` here would shadow the
-// `v-for="t in COLOR_THEMES"` loop variable in the template below.
-const i18n = useI18n()
+// A bare `t` is safe here again: the colour-swatch loop below is `ct`, not `t`.
+const { t, te } = useI18n()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
@@ -80,7 +79,7 @@ const glLabel = () =>
 const integrationOptions = computed(() => [
   { label: glLabel, key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
   {
-    label: i18n.t('shell.tools.estimation'),
+    label: t('shell.tools.estimation'),
     key: 'estimation',
     icon: () => h(NIcon, null, { default: () => h(TimerOutline) }),
   },
@@ -89,7 +88,7 @@ const integrationOptions = computed(() => [
   ...(ws.commandsCanManage
     ? [
         {
-          label: i18n.t('shell.tools.commands'),
+          label: t('shell.tools.commands'),
           key: 'commands',
           icon: () => h(NIcon, null, { default: () => h(TerminalOutline) }),
         },
@@ -119,7 +118,7 @@ function fmtTime(d) {
 // The feed line is rendered from the notification's payload, so switching the
 // language re-renders the whole feed — including rows fetched minutes ago.
 function noteText(n) {
-  return notificationText(n, { t: i18n.t, te: i18n.te, formatters: formatters.value })
+  return notificationText(n, { t, te, formatters: formatters.value })
 }
 </script>
 
@@ -132,13 +131,13 @@ function noteText(n) {
           quaternary
           circle
           size="small"
-          :aria-label="i18n.t('shell.tools.members')"
+          :aria-label="t('shell.tools.members')"
           @click="showMembers = true"
         >
           <n-icon :component="PeopleOutline" />
         </n-button>
       </template>
-      {{ i18n.t('shell.tools.members') }}
+      {{ t('shell.tools.members') }}
     </n-tooltip>
 
     <!-- Integrations -->
@@ -150,7 +149,7 @@ function noteText(n) {
     >
       <n-tooltip :disabled="isMobile">
         <template #trigger>
-          <n-button quaternary circle size="small" :aria-label="i18n.t('shell.tools.integrations')">
+          <n-button quaternary circle size="small" :aria-label="t('shell.tools.integrations')">
             <n-badge
               :value="conflicts.count"
               :max="9"
@@ -164,8 +163,8 @@ function noteText(n) {
         </template>
         {{
           conflicts.count
-            ? i18n.t('shell.tools.integrationsConflicts', { count: conflicts.count })
-            : i18n.t('shell.tools.integrations')
+            ? t('shell.tools.integrationsConflicts', { count: conflicts.count })
+            : t('shell.tools.integrations')
         }}
       </n-tooltip>
     </n-dropdown>
@@ -177,13 +176,13 @@ function noteText(n) {
           quaternary
           circle
           size="small"
-          :aria-label="i18n.t('shell.tools.jobs')"
+          :aria-label="t('shell.tools.jobs')"
           @click="showJobs = true"
         >
           <n-icon :component="ServerOutline" />
         </n-button>
       </template>
-      {{ i18n.t('shell.tools.jobs') }}
+      {{ t('shell.tools.jobs') }}
     </n-tooltip>
 
     <!-- Notifications -->
@@ -193,7 +192,7 @@ function noteText(n) {
           quaternary
           circle
           size="small"
-          :aria-label="i18n.t('shell.tools.notifications')"
+          :aria-label="t('shell.tools.notifications')"
           class="bell-btn"
           data-tour="footer-notifications"
         >
@@ -204,7 +203,7 @@ function noteText(n) {
       </template>
       <div class="feed">
         <div class="feed-head">
-          <span>{{ i18n.t('shell.tools.notifications') }}</span>
+          <span>{{ t('shell.tools.notifications') }}</span>
           <n-button
             v-if="notes.unread"
             text
@@ -213,7 +212,7 @@ function noteText(n) {
             class="ngrad"
             @click="notes.markAllRead()"
           >
-            {{ i18n.t('shell.tools.markAllRead') }}
+            {{ t('shell.tools.markAllRead') }}
           </n-button>
         </div>
         <button
@@ -229,7 +228,7 @@ function noteText(n) {
         <empty-state
           v-if="!notes.items.length"
           :icon="NotificationsOutline"
-          :text="i18n.t('shell.tools.feedEmpty')"
+          :text="t('shell.tools.feedEmpty')"
           size="small"
         />
       </div>
@@ -240,16 +239,16 @@ function noteText(n) {
       <template #trigger>
         <n-tooltip :disabled="isMobile">
           <template #trigger>
-            <n-button quaternary circle size="small" :aria-label="i18n.t('shell.tools.appearance')">
+            <n-button quaternary circle size="small" :aria-label="t('shell.tools.appearance')">
               <n-icon :component="ColorPaletteOutline" />
             </n-button>
           </template>
-          {{ i18n.t('shell.tools.appearance') }}
+          {{ t('shell.tools.appearance') }}
         </n-tooltip>
       </template>
       <div class="appearance">
         <div class="row">
-          <n-text depth="2">{{ i18n.t('shell.tools.darkTheme') }}</n-text>
+          <n-text depth="2">{{ t('shell.tools.darkTheme') }}</n-text>
           <n-switch :value="theme.isDark" @update:value="theme.toggle()">
             <template #checked-icon><n-icon :component="MoonOutline" /></template>
             <template #unchecked-icon><n-icon :component="SunnyOutline" /></template>
@@ -257,13 +256,13 @@ function noteText(n) {
         </div>
         <div class="swatches">
           <button
-            v-for="t in COLOR_THEMES"
-            :key="t.key"
+            v-for="ct in COLOR_THEMES"
+            :key="ct.key"
             class="swatch-btn"
-            :class="{ active: t.key === theme.activeTheme.key }"
-            :style="{ backgroundImage: hueGrad(t.primary) }"
-            :title="t.name"
-            @click="theme.selectColor(t)"
+            :class="{ active: ct.key === theme.activeTheme.key }"
+            :style="{ backgroundImage: hueGrad(ct.primary) }"
+            :title="t(`settings.appearance.color.${ct.key}`)"
+            @click="theme.selectColor(ct)"
           />
         </div>
       </div>

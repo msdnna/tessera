@@ -116,5 +116,10 @@
       "browserOpen": "Could not open the browser to sign in with GitLab.",
       "noReturn": "Could not return to the app. Check that tessera:// links open in Tessera."
     }
+  },
+  "secret": {
+    "clearedPlaceholder": "will be cleared on save",
+    "undoClear": "Undo the clearing",
+    "clear": "Clear the stored value"
   }
 }

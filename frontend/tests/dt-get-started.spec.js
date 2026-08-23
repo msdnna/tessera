@@ -7,6 +7,8 @@ import process from 'node:process'
 import { NButton, NInput, NCheckbox, NDropdown } from 'naive-ui'
 
 import { GET_STARTED } from '@/data/getStarted'
+import ru from '@/locales/ru'
+import en from '@/locales/en'
 
 // The scenario is declarative data walked by stores/tour.js, so nothing in the
 // app breaks loudly when a step is malformed — it just quietly does nothing, or
@@ -71,12 +73,28 @@ describe('Get Started scenario', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('gives every step an anchor, a title and a body', () => {
+  it('gives every step an anchor, and a title and body in every locale', () => {
+    // The wording moved into the catalogue (#2799), keyed by step id, so the
+    // failure this guards against changed shape: a step is no longer missing a
+    // field — it renders the raw key path at the user. Both locales are checked,
+    // since `ru` alone would let an English run fall back to Russian silently.
     for (const s of GET_STARTED) {
       expect(s.anchor, s.id).toBeTruthy()
-      expect(s.title, s.id).toBeTruthy()
-      expect(s.body, s.id).toBeTruthy()
+      for (const [locale, bundle] of [
+        ['ru', ru],
+        ['en', en],
+      ]) {
+        const entry = bundle.tour.steps[s.id]
+        expect(entry, `${s.id} has no ${locale} entry`).toBeTruthy()
+        expect(entry.title, `${s.id}.title (${locale})`).toBeTruthy()
+        expect(entry.body, `${s.id}.body (${locale})`).toBeTruthy()
+      }
     }
+  })
+
+  it('has no catalogue entry left over from a removed step', () => {
+    const ids = new Set(GET_STARTED.map((s) => s.id))
+    expect(Object.keys(ru.tour.steps).filter((id) => !ids.has(id))).toEqual([])
   })
 
   it('gives every action step a way to advance, and info steps none', () => {

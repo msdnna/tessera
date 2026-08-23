@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
 import { useTourStore } from '@/stores/tour'
@@ -25,8 +26,14 @@ const GAP_LADDER = [92, 60, 32]
 const PAD = 6 // mask cut-out padding around the target
 const EDGE = 16 // keep the popover this far from the viewport edge
 
+const { t } = useI18n()
 const tour = useTourStore()
 const step = computed(() => tour.current)
+
+// Step wording is looked up by id on every render rather than carried on the
+// step: the store snapshots the scenario when the guide starts, so text stored
+// there would stay in the language it started in for the whole run (#2799).
+const stepText = (part) => (step.value ? t(`tour.steps.${step.value.id}.${part}`) : '')
 
 const pop = ref(null)
 const layer = ref(null)
@@ -99,7 +106,7 @@ function readRect(el) {
   }
 }
 
-// Rects for the step's declared `cut` selectors (a modal's «Создать» button and
+// Rects for the step's declared `cut` selectors (a modal's submit button and
 // the like): bright in the mask AND kept clear of the popover, so the user is
 // never left with a greyed-out or covered control they're meant to press.
 function getCutRects() {
@@ -324,19 +331,21 @@ watch(
         class="tr-pop"
         :style="popStyle"
         role="dialog"
-        aria-label="Обучение"
+        :aria-label="t('tour.aria')"
         data-testid="tour-pop"
       >
         <div class="tr-title">
           <n-icon :component="SparklesOutline" :size="15" class="tr-spark" />
-          {{ step.title }}
+          {{ stepText('title') }}
         </div>
-        <div class="tr-body">{{ step.body }}</div>
+        <div class="tr-body">{{ stepText('body') }}</div>
         <div class="tr-actions">
           <button v-if="!isAction" class="tr-btn" data-testid="tour-next" @click="tour.next()">
-            Понятно
+            {{ t('tour.gotIt') }}
           </button>
-          <button class="tr-skip" data-testid="tour-skip" @click="tour.skip()">Пропустить</button>
+          <button class="tr-skip" data-testid="tour-skip" @click="tour.skip()">
+            {{ t('tour.skip') }}
+          </button>
         </div>
       </div>
     </div>
