@@ -517,6 +517,19 @@
         <item>вс</item>
     </string-array>
 
+    <!-- Даты: относительные подписи и сборка. Порядок «день месяц год» задан
+         самой строкой — в английской локали он переставлен на «месяц день, год». -->
+    <string name="dates_today">сегодня</string>
+    <string name="dates_tomorrow">завтра</string>
+    <string name="dates_yesterday">вчера</string>
+    <string name="dates_short">%1$d %2$s</string>
+    <string name="dates_short_year">%1$d %2$s %3$d</string>
+    <string name="dates_long">%1$d %2$s. %3$d г.</string>
+    <string name="dates_full">%1$d %2$s %3$d</string>
+    <string name="dates_at_time">%1$s, %2$s</string>
+    <string name="dates_with_time">%1$s %2$s</string>
+    <string name="dates_clock">%1$02d:%2$02d</string>
+
     <!-- Уведомления: шапка и разделы -->
     <string name="notif_title">Уведомления</string>
     <string name="notif_subtitle">Внутренние уведомления приходят всегда. Здесь — внешние каналы и правила доставки.</string>
@@ -741,6 +754,9 @@
     <string name="milestones_date_start">Начало</string>
     <string name="milestones_date_due">Срок</string>
     <string name="milestones_date_clear">Очистить</string>
+    <string name="milestones_range">%1$s – %2$s</string>
+    <string name="milestones_range_until">до %1$s</string>
+    <string name="milestones_range_from">с %1$s</string>
 
     <!-- Выбор срока: вкладки начала/срока -->
     <string name="due_picker_tab_start">Начало</string>

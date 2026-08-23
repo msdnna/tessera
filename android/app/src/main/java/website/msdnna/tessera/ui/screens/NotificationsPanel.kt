@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -137,7 +138,7 @@ private fun NotificationItem(item: Notification, onClick: () -> Unit) {
                 fontSize = 13.sp,
                 fontWeight = if (item.isUnread) FontWeight.SemiBold else FontWeight.Normal,
             )
-            val time = whenLabel(item.createdAt)
+            val time = whenLabel(LocalResources.current, item.createdAt)
             if (time.isNotEmpty()) {
                 Spacer(Modifier.padding(top = 2.dp))
                 Text(time, color = c.text3, fontSize = 11.sp)

@@ -1187,7 +1187,7 @@ private fun MatrixCard(
                 overflow = TextOverflow.Ellipsis,
                 textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
             )
-            val due = shortDate(task.dueDate)
+            val due = shortDate(LocalResources.current, task.dueDate)
             if (task.number != null || due.isNotEmpty() || subs.isNotEmpty()) {
                 Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     task.number?.let {

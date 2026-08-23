@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
@@ -238,7 +239,7 @@ fun DueDateTimePicker(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TargetTab(
                     label = stringResource(R.string.due_picker_tab_start),
-                    value = dueShort(startMillis()?.let { millisToUtcIso(it) })
+                    value = dueShort(LocalResources.current, startMillis()?.let { millisToUtcIso(it) })
                         .ifBlank { stringResource(R.string.due_picker_start_unset) },
                     active = editTarget == "start",
                     modifier = Modifier.weight(1f),
@@ -246,7 +247,7 @@ fun DueDateTimePicker(
                 Text("→", color = c.text3, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 6.dp))
                 TargetTab(
                     label = stringResource(R.string.due_picker_tab_due),
-                    value = dueShort(dueMillis()?.let { millisToUtcIso(it) })
+                    value = dueShort(LocalResources.current, dueMillis()?.let { millisToUtcIso(it) })
                         .ifBlank { stringResource(R.string.due_picker_due_unset) },
                     active = editTarget == "due",
                     modifier = Modifier.weight(1f),

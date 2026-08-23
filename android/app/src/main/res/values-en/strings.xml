@@ -507,6 +507,19 @@
         <item>Sun</item>
     </string-array>
 
+    <!-- Dates: relative labels and assembly. English puts the month first and
+         separates the year with a comma, hence the reordered arguments. -->
+    <string name="dates_today">today</string>
+    <string name="dates_tomorrow">tomorrow</string>
+    <string name="dates_yesterday">yesterday</string>
+    <string name="dates_short">%2$s %1$d</string>
+    <string name="dates_short_year">%2$s %1$d, %3$d</string>
+    <string name="dates_long">%2$s %1$d, %3$d</string>
+    <string name="dates_full">%2$s %1$d, %3$d</string>
+    <string name="dates_at_time">%1$s, %2$s</string>
+    <string name="dates_with_time">%1$s %2$s</string>
+    <string name="dates_clock">%1$02d:%2$02d</string>
+
     <!-- Notifications: header and sections -->
     <string name="notif_title">Notifications</string>
     <string name="notif_subtitle">In-app notifications always arrive. Here you set up external channels and delivery rules.</string>
@@ -731,6 +744,9 @@
     <string name="milestones_date_start">Start</string>
     <string name="milestones_date_due">Due</string>
     <string name="milestones_date_clear">Clear</string>
+    <string name="milestones_range">%1$s – %2$s</string>
+    <string name="milestones_range_until">until %1$s</string>
+    <string name="milestones_range_from">from %1$s</string>
 
     <!-- Due picker: start/due tabs -->
     <string name="due_picker_tab_start">Start</string>

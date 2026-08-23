@@ -942,7 +942,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
 private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val due = dueShort(task.dueDate)
+    val due = dueShort(LocalResources.current, task.dueDate)
     // Overdue (past due, not done) → red tint, like the web.
     val overdue = !task.isCompleted && isOverdue(task.dueDate)
     val overdueColor = Color(0xFFE0533D)
@@ -1166,7 +1166,7 @@ private fun SubtaskRow(
             textDecoration = if (sub.isCompleted) TextDecoration.LineThrough else null,
             modifier = Modifier.weight(1f),
         )
-        val due = shortDate(sub.dueDate)
+        val due = shortDate(LocalResources.current, sub.dueDate)
         if (due.isNotBlank()) Text(due, color = c.text3, fontSize = 11.sp)
         // This child ran ahead of (or behind) its parent — mark it with the
         // column's own colour. Just the marker: a row this narrow has no space

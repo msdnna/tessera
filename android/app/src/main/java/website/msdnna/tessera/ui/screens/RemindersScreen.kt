@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -81,7 +82,8 @@ fun RemindersScreen() {
                     IonIcon(Ion.TIME, size = 16.dp, tint = c.text3)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        pickedIso?.let { localDateTimeLabel(it) } ?: stringResource(R.string.reminders_pick_time),
+                        pickedIso?.let { localDateTimeLabel(LocalResources.current, it) }
+                            ?: stringResource(R.string.reminders_pick_time),
                         color = if (pickedIso != null) c.text1 else c.placeholder,
                         fontSize = 14.sp,
                     )
@@ -173,7 +175,7 @@ private fun ReminderRow(reminder: Reminder, onToggle: () -> Unit, onDelete: () -
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                localDateTimeLabel(reminder.remindAt),
+                localDateTimeLabel(LocalResources.current, reminder.remindAt),
                 color = if (overdue) TesseraDanger else c.text3,
                 fontSize = 12.sp,
             )

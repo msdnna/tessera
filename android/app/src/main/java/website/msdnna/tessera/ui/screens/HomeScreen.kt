@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -200,7 +201,7 @@ private fun TaskRow(task: WorkspaceTask, state: HomeUiState, onClick: () -> Unit
                     if (task.dueDate != null) {
                         ColorDot(if (overdue) Color(0xFFE0533D) else c.text3, sizeDp = 6)
                         Text(
-                            shortDate(task.dueDate),
+                            shortDate(LocalResources.current, task.dueDate),
                             color = if (overdue) Color(0xFFE0533D) else c.text3,
                             fontSize = 11.sp,
                         )

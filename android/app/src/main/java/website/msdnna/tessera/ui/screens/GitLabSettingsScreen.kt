@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -396,7 +397,8 @@ private fun BindingRow(
             Text(
                 stringResource(
                     R.string.gitlab_last_sync,
-                    integ.lastSyncedAt?.let { localDateTimeLabel(it) }.takeUnless { it.isNullOrBlank() } ?: "—",
+                    integ.lastSyncedAt?.let { localDateTimeLabel(LocalResources.current, it) }
+                        .takeUnless { it.isNullOrBlank() } ?: "—",
                 ),
                 color = c.text3, fontSize = 12.sp,
             )

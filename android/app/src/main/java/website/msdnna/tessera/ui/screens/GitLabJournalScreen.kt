@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
+import android.content.res.Resources
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -134,7 +136,7 @@ private fun RunRow(
             KindChip(run.kind)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(localDateTimeLabel(run.startedAt), color = c.text1, fontSize = 13.sp)
+                Text(localDateTimeLabel(LocalResources.current, run.startedAt), color = c.text1, fontSize = 13.sp)
                 Text(
                     "${TriggerLabel[run.trigger] ?: run.trigger} · ${runCounts(run)}",
                     color = c.text3, fontSize = 11.sp,
@@ -180,6 +182,9 @@ private fun ActionDetailDialog(
     onDismiss: () -> Unit,
 ) {
     val c = Tessera.colors
+    // Даты в журнале рисует обычная функция — ресурсы берём из композиции, где их
+    // уже подменил AppLocale на язык профиля.
+    val res = LocalResources.current
     val isPush = action.direction == "push"
     val canRetry = isPush && action.status == "fail"
     val detail = action.detail ?: JsonObject()
@@ -203,9 +208,9 @@ private fun ActionDetailDialog(
                         val f = fields.objOrNull(k) ?: return@forEach
                         Row(Modifier.padding(vertical = 3.dp)) {
                             Text(FieldLabels[k] ?: k, color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
-                            Text(fmtVal(k, f.get("before")), color = ERR, fontSize = 12.5.sp)
+                            Text(fmtVal(res, k, f.get("before")), color = ERR, fontSize = 12.5.sp)
                             Text(" → ", color = c.text3, fontSize = 12.5.sp)
-                            Text(fmtVal(k, f.get("after")), color = c.text1, fontSize = 12.5.sp)
+                            Text(fmtVal(res, k, f.get("after")), color = c.text1, fontSize = 12.5.sp)
                         }
                     }
                 }
@@ -216,7 +221,7 @@ private fun ActionDetailDialog(
                     orderedKeys(after).forEach { k ->
                         Row(Modifier.padding(vertical = 3.dp)) {
                             Text(FieldLabels[k] ?: k, color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
-                            Text(fmtVal(k, after.get(k)), color = c.text1, fontSize = 12.5.sp)
+                            Text(fmtVal(res, k, after.get(k)), color = c.text1, fontSize = 12.5.sp)
                         }
                     }
                 }
@@ -339,14 +344,14 @@ private fun runCounts(run: GitlabSyncRun): String {
 
 private fun orderedKeys(obj: JsonObject): List<String> = FieldOrder.filter { obj.has(it) }
 
-private fun fmtVal(key: String, el: com.google.gson.JsonElement?): String {
+private fun fmtVal(res: Resources, key: String, el: com.google.gson.JsonElement?): String {
     if (el == null || el.isJsonNull) return "—"
     val raw = if (el.isJsonPrimitive) el.asString else el.toString()
     if (raw.isBlank()) return "—"
     return when (key) {
         "priority" -> PriorityLabels.getOrNull(raw.toDoubleOrNull()?.toInt() ?: -1) ?: raw
         "completed" -> if (raw == "true") "Выполнено" else "Не выполнено"
-        "due", "start" -> dueLabel(raw)
+        "due", "start" -> dueLabel(res, raw)
         else -> raw
     }
 }
