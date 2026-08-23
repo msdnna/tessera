@@ -4,6 +4,7 @@
 # относительно app/src/main/java, по одному на строку.
 #
 # Волна 0 (готово): AppRoot, AuthScreen, ProfileScreen.
+# Волна 1 (готово): Sidebar.
 website/msdnna/tessera/data/realtime/DeviceNotifier.kt
 website/msdnna/tessera/reminders/ReminderNotifications.kt
 website/msdnna/tessera/reminders/ReminderReceiver.kt
@@ -15,7 +16,6 @@ website/msdnna/tessera/ui/components/IconColorPicker.kt
 website/msdnna/tessera/ui/components/MarkdownEditor.kt
 website/msdnna/tessera/ui/components/Popups.kt
 website/msdnna/tessera/ui/components/ReminderDateTimePicker.kt
-website/msdnna/tessera/ui/components/Sidebar.kt
 website/msdnna/tessera/ui/components/Spotlight.kt
 website/msdnna/tessera/ui/components/StatusViews.kt
 website/msdnna/tessera/ui/components/TaskCard.kt

@@ -108,6 +108,68 @@
     <string name="week_start_monday">Понедельник</string>
     <string name="week_start_sunday">Воскресенье</string>
 
+    <!-- Общие подписи действий (переиспользуются экранами) -->
+    <string name="common_create">Создать</string>
+    <string name="common_cancel">Отмена</string>
+    <string name="common_delete">Удалить</string>
+    <string name="common_rename">Переименовать</string>
+    <string name="common_loading">Загрузка…</string>
+
+    <!-- Навигация в боковой панели -->
+    <string name="nav_home">Моя работа</string>
+    <string name="nav_milestones">Этапы</string>
+    <string name="nav_reminders">Напоминания</string>
+    <string name="nav_notes">Заметки</string>
+    <string name="nav_documents">Документы</string>
+    <string name="nav_admin">Администрирование</string>
+
+    <!-- Боковая панель: пространства -->
+    <string name="sidebar_estimation">Оценка задач…</string>
+    <string name="sidebar_ws_new_title">Новое пространство</string>
+    <string name="sidebar_ws_name_hint">Название</string>
+    <string name="sidebar_ws_delete">Удалить пространство</string>
+    <string name="sidebar_ws_delete_message">Пространство «%1$s» и все его проекты, доски и задачи будут удалены безвозвратно. Введите название для подтверждения.</string>
+
+    <!-- Боковая панель: дерево проектов -->
+    <string name="sidebar_projects_header">ПРОЕКТЫ</string>
+    <string name="sidebar_add_project">Проект</string>
+    <string name="sidebar_add_group">Группа</string>
+    <string name="sidebar_group_name_hint">Название группы</string>
+    <string name="sidebar_project_name_hint">Название проекта</string>
+    <string name="sidebar_board_name_hint">Название доски</string>
+    <string name="sidebar_empty_tree">Нет проектов. Нажмите +, чтобы создать.</string>
+    <string name="sidebar_no_boards">Нет досок</string>
+    <string name="sidebar_backlog">Бэклог</string>
+
+    <!-- Боковая панель: меню группы -->
+    <string name="sidebar_group_add_project">Добавить проект</string>
+    <string name="sidebar_group_add_subgroup">Добавить подгруппу</string>
+    <string name="sidebar_group_delete_message">Удалить «%1$s»? Подгруппы вложатся выше, проекты станут без группы.</string>
+
+    <!-- Боковая панель: меню проекта и доски -->
+    <string name="sidebar_project_add_board">Добавить доску</string>
+    <string name="sidebar_project_tree_mode">Показывать в дереве</string>
+    <string name="sidebar_tree_mode_boards">Доски</string>
+    <string name="sidebar_tree_mode_milestones">Этапы</string>
+    <string name="sidebar_tree_mode_both">Доски и этапы</string>
+    <string name="sidebar_show_closed_milestones">Показывать закрытые этапы</string>
+    <string name="sidebar_project_delete_title">Удалить проект</string>
+    <string name="sidebar_project_delete_message">Проект «%1$s» будет удалён со всеми досками и задачами. Действие необратимо.</string>
+    <string name="sidebar_board_delete_message">Удалить доску «%1$s»?</string>
+
+    <!-- Боковая панель: перенос проекта между пространствами -->
+    <string name="sidebar_project_transfer">Перенести в другое пространство</string>
+    <string name="sidebar_transfer_title">Перенести проект</string>
+    <string name="sidebar_transfer_message">Проект «%1$s» переедет в выбранное пространство со всеми досками, задачами, тегами и заметками. В новом пространстве он окажется без группы. Исполнители, не состоящие в целевом пространстве, будут сняты с задач.</string>
+    <string name="sidebar_transfer_confirm">Перенести</string>
+    <string name="sidebar_project_transferred">Проект перенесён</string>
+    <string name="sidebar_project_transferred_stripped">Проект перенесён · снято исполнителей: %1$d</string>
+
+    <!-- Боковая панель: подвал и обновление -->
+    <string name="sidebar_update_available">Доступно обновление</string>
+    <string name="sidebar_update_action">Обновить</string>
+    <string name="sidebar_user_fallback">Пользователь</string>
+
     <!-- Карточка задачи -->
     <plurals name="task_subtasks_filtered">
         <item quantity="one">%1$d из %2$d подзадачи — остальные скрыты фильтром</item>

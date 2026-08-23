@@ -104,6 +104,68 @@
     <string name="week_start_monday">Monday</string>
     <string name="week_start_sunday">Sunday</string>
 
+    <!-- Shared action labels (reused across screens) -->
+    <string name="common_create">Create</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_rename">Rename</string>
+    <string name="common_loading">Loading…</string>
+
+    <!-- Sidebar navigation -->
+    <string name="nav_home">My work</string>
+    <string name="nav_milestones">Milestones</string>
+    <string name="nav_reminders">Reminders</string>
+    <string name="nav_notes">Notes</string>
+    <string name="nav_documents">Documents</string>
+    <string name="nav_admin">Administration</string>
+
+    <!-- Sidebar: workspaces -->
+    <string name="sidebar_estimation">Task estimation…</string>
+    <string name="sidebar_ws_new_title">New workspace</string>
+    <string name="sidebar_ws_name_hint">Name</string>
+    <string name="sidebar_ws_delete">Delete workspace</string>
+    <string name="sidebar_ws_delete_message">Workspace “%1$s” and all of its projects, boards and tasks will be deleted permanently. Type the name to confirm.</string>
+
+    <!-- Sidebar: project tree -->
+    <string name="sidebar_projects_header">PROJECTS</string>
+    <string name="sidebar_add_project">Project</string>
+    <string name="sidebar_add_group">Group</string>
+    <string name="sidebar_group_name_hint">Group name</string>
+    <string name="sidebar_project_name_hint">Project name</string>
+    <string name="sidebar_board_name_hint">Board name</string>
+    <string name="sidebar_empty_tree">No projects yet. Tap + to create one.</string>
+    <string name="sidebar_no_boards">No boards</string>
+    <string name="sidebar_backlog">Backlog</string>
+
+    <!-- Sidebar: group menu -->
+    <string name="sidebar_group_add_project">Add project</string>
+    <string name="sidebar_group_add_subgroup">Add subgroup</string>
+    <string name="sidebar_group_delete_message">Delete “%1$s”? Subgroups move one level up, projects are left without a group.</string>
+
+    <!-- Sidebar: project and board menus -->
+    <string name="sidebar_project_add_board">Add board</string>
+    <string name="sidebar_project_tree_mode">Show in the tree</string>
+    <string name="sidebar_tree_mode_boards">Boards</string>
+    <string name="sidebar_tree_mode_milestones">Milestones</string>
+    <string name="sidebar_tree_mode_both">Boards and milestones</string>
+    <string name="sidebar_show_closed_milestones">Show closed milestones</string>
+    <string name="sidebar_project_delete_title">Delete project</string>
+    <string name="sidebar_project_delete_message">Project “%1$s” will be deleted with all of its boards and tasks. This cannot be undone.</string>
+    <string name="sidebar_board_delete_message">Delete board “%1$s”?</string>
+
+    <!-- Sidebar: transferring a project between workspaces -->
+    <string name="sidebar_project_transfer">Move to another workspace</string>
+    <string name="sidebar_transfer_title">Move project</string>
+    <string name="sidebar_transfer_message">Project “%1$s” will move to the selected workspace with all of its boards, tasks, tags and notes. In the new workspace it will have no group. Assignees who are not members of the target workspace will be removed from tasks.</string>
+    <string name="sidebar_transfer_confirm">Move</string>
+    <string name="sidebar_project_transferred">Project moved</string>
+    <string name="sidebar_project_transferred_stripped">Project moved · assignees removed: %1$d</string>
+
+    <!-- Sidebar: footer and update -->
+    <string name="sidebar_update_available">Update available</string>
+    <string name="sidebar_update_action">Update</string>
+    <string name="sidebar_user_fallback">User</string>
+
     <!-- Task card -->
     <plurals name="task_subtasks_filtered">
         <item quantity="one">%1$d of %2$d subtask — the rest are hidden by the filter</item>
