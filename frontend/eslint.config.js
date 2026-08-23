@@ -91,6 +91,17 @@ export default [
             // Another brand name that is spelled the same in every locale (it
             // labels integration rows and chips, not prose about them).
             'GitLab',
+            // GitLab's own identifiers, shown verbatim in the integration modal:
+            // the two PAT scope names, the shape of a project path and of a token,
+            // the example instance URL, and the path issue templates live at. They
+            // are what the user types or what GitLab prints — translating any of
+            // them would make the hint wrong, not localised.
+            'api',
+            'read_api',
+            'group/project',
+            'glpat-…',
+            'https://gitlab.example.com',
+            '.gitlab/issue_templates/*.md',
           ],
           // Defaults, plus `placeholder` on any element: the UI is built on
           // Naive UI, so nearly every placeholder sits on `<n-input>` rather

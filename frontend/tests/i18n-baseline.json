@@ -7,7 +7,6 @@
   "src/components/ConfirmByName.vue",
   "src/components/DownloadAppButton.vue",
   "src/components/DownloadMenu.vue",
-  "src/components/GitLabModal.vue",
   "src/components/IconColorPicker.vue",
   "src/components/LoaderOverlay.vue",
   "src/components/MembersModal.vue",
