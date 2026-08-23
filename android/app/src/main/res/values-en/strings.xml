@@ -1012,6 +1012,15 @@
     <string name="board_view_kanban">Board</string>
     <string name="board_view_list">List</string>
     <string name="board_view_calendar">Calendar</string>
+    <string name="board_view_timeline">Timeline</string>
+    <string name="board_view_gantt">Gantt</string>
+    <string name="board_view_matrix">Matrix</string>
+
+    <!-- App shell: top bar, board menu, Back-to-exit -->
+    <string name="main_boards_of_project">PROJECT BOARDS</string>
+    <string name="main_board_menu_archive">Board archive</string>
+    <string name="main_provider_soon">%1$s · soon</string>
+    <string name="main_back_again_to_exit">Press Back again to exit</string>
 
     <!-- App update and release highlights. The "Update available" caption and the
          "Update" action are shared by the dialog and the sidebar footer. -->

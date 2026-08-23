@@ -35,6 +35,9 @@
 # Волна 18 (готово): поиск, разрешение конфликтов и подписи токенов —
 #                    SearchOverlay, ConflictResolver, Tokens (акценты через
 #                    @StringRes, приоритеты — в R.array.task_priority_labels).
-website/msdnna/tessera/ui/components/AccentGradientPreview.kt
-website/msdnna/tessera/ui/screens/MainScreen.kt
+# Волна 19 (готово): оболочка приложения — MainScreen (заголовки экранов едут
+#                    как UiText, сегменты вида собираются в композиции).
+#                    AccentGradientPreview — мастерская для Studio, её подписи
+#                    в приложение не попадают: помечены i18n-data, как фикстуры
+#                    TaskCardPreview в волне 16.
 website/msdnna/tessera/update/WhatsNewEntries.kt

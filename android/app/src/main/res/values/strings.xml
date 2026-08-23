@@ -1039,6 +1039,15 @@
     <string name="board_view_kanban">Доска</string>
     <string name="board_view_list">Список</string>
     <string name="board_view_calendar">Календарь</string>
+    <string name="board_view_timeline">Таймлайн</string>
+    <string name="board_view_gantt">Гант</string>
+    <string name="board_view_matrix">Матрица</string>
+
+    <!-- Оболочка приложения: шапка, меню доски, выход по «Назад» -->
+    <string name="main_boards_of_project">ДОСКИ ПРОЕКТА</string>
+    <string name="main_board_menu_archive">Архив доски</string>
+    <string name="main_provider_soon">%1$s · скоро</string>
+    <string name="main_back_again_to_exit">Нажмите «Назад» ещё раз для выхода</string>
 
     <!-- Обновление приложения и «Что нового». Подпись «Доступно обновление» и
          действие «Обновить» общие у диалога и подвала боковой панели. -->

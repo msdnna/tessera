@@ -57,7 +57,18 @@ import website.msdnna.tessera.ui.theme.accentGradientTint
  *
  * Pipette check: the exact centre of any gradient button equals its flat base
  * colour — that is the design contract, verify it here.
+ *
+ * Каждая функция здесь `private` и вызывается только из `@Preview`: ни одна
+ * подпись этой мастерской в приложение не попадает. Это макетный текст, а не
+ * интерфейс, — поэтому строки помечены `i18n-data`, а не вынесены в ресурсы
+ * (иначе `strings.xml` и перевод на английский обросли бы мёртвыми ключами).
  */
+
+/** Заголовок блока мастерской — один стиль на все подписи. */
+@Composable
+private fun Caption(text: String) {
+    Text(text, color = Tessera.colors.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+}
 
 /** A standalone gradient pill, independent of [TButton], for the strength sweep. */
 @Composable
@@ -146,7 +157,7 @@ private fun TrashGlyph(color: Color) = Canvas(Modifier.size(18.dp)) {
 @Composable
 private fun TabsDemo(strength: Float) {
     val c = Tessera.colors
-    val tabs = listOf("Комментарии", "Подзадачи", "Связи")
+    val tabs = listOf("Комментарии", "Подзадачи", "Связи") // i18n-data
     Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
         tabs.forEachIndexed { i, t ->
             val active = i == 0
@@ -186,7 +197,7 @@ private fun Workbench(dark: Boolean) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Сила градиента (центр = базовый цвет)", color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Caption("Сила градиента (центр = базовый цвет)") // i18n-data
             StrengthSweep.forEach { s ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -195,12 +206,12 @@ private fun Workbench(dark: Boolean) {
                         fontSize = 11.sp,
                         modifier = Modifier.width(56.dp),
                     )
-                    GradientPill("Кнопка", c.primary, s, c.onPrimary, Modifier.weight(1f))
+                    GradientPill("Кнопка", c.primary, s, c.onPrimary, Modifier.weight(1f)) // i18n-data
                 }
             }
 
             Spacer(Modifier.height(4.dp))
-            Text("Все акценты @ %.2f".format(AccentGradientStrength), color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Caption("Все акценты @ %.2f".format(AccentGradientStrength)) // i18n-data
             AccentThemes.chunked(2).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { a ->
@@ -211,7 +222,7 @@ private fun Workbench(dark: Boolean) {
             }
 
             Spacer(Modifier.height(4.dp))
-            Text("Элементы @ %.2f".format(AccentGradientStrength), color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Caption("Элементы @ %.2f".format(AccentGradientStrength)) // i18n-data
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Initials avatar
                 Box(
@@ -226,22 +237,22 @@ private fun Workbench(dark: Boolean) {
                 // Chip (filled accent)
                 Box(
                     Modifier.clip(RoundedCornerShape(4.dp)).background(accentGradient(c.primary)).padding(horizontal = 8.dp, vertical = 3.dp),
-                ) { Text("чип", color = c.onPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium) }
+                ) { Text("чип", color = c.onPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium) } // i18n-data
             }
             // Tab underline
             Box(Modifier.width(80.dp).height(2.dp).background(accentGradient(c.primary)))
 
             Spacer(Modifier.height(4.dp))
-            Text("Ghost-кнопки — бордер+иконка+текст одним градиентом", color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Caption("Ghost-кнопки — бордер+иконка+текст одним градиентом") // i18n-data
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 GhostButton(null, c.primary, AccentGradientStrength) { StarGlyph(it) }
                 GhostButton(null, TesseraDanger, AccentGradientStrength) { TrashGlyph(it) }
-                GhostButton("В архив", c.primary, AccentGradientStrength) { StarGlyph(it) }
-                GhostButton("Удалить", TesseraDanger, AccentGradientStrength) { TrashGlyph(it) }
+                GhostButton("В архив", c.primary, AccentGradientStrength) { StarGlyph(it) } // i18n-data
+                GhostButton("Удалить", TesseraDanger, AccentGradientStrength) { TrashGlyph(it) } // i18n-data
             }
 
             Spacer(Modifier.height(4.dp))
-            Text("Табы с текстом — активная как одно целое", color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Caption("Табы с текстом — активная как одно целое") // i18n-data
             TabsDemo(AccentGradientStrength)
         }
     }
@@ -264,14 +275,14 @@ private fun GhostAndTabs(dark: Boolean) {
             Modifier.width(340.dp).background(c.bg).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Ghost-кнопки — бордер+иконка+текст одним градиентом", color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Caption("Ghost-кнопки — бордер+иконка+текст одним градиентом") // i18n-data
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 GhostButton(null, c.primary, AccentGradientStrength) { StarGlyph(it) }
                 GhostButton(null, TesseraDanger, AccentGradientStrength) { TrashGlyph(it) }
-                GhostButton("В архив", c.primary, AccentGradientStrength) { StarGlyph(it) }
-                GhostButton("Удалить", TesseraDanger, AccentGradientStrength) { TrashGlyph(it) }
+                GhostButton("В архив", c.primary, AccentGradientStrength) { StarGlyph(it) } // i18n-data
+                GhostButton("Удалить", TesseraDanger, AccentGradientStrength) { TrashGlyph(it) } // i18n-data
             }
-            Text("Табы с текстом — активная как одно целое", color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Caption("Табы с текстом — активная как одно целое") // i18n-data
             TabsDemo(AccentGradientStrength)
         }
     }
