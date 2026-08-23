@@ -86,7 +86,6 @@
   "src/composables/useTaskMenu.js",
   "src/data/getStarted.js",
   "src/data/whatsNew.js",
-  "src/stores/notifications.js",
   "src/stores/theme.js",
   "src/styles/tokens.js",
   "src/utils/device.js",

@@ -337,15 +337,16 @@ type Note struct {
 }
 
 type Notification struct {
-	ID          uuid.UUID  `json:"id"`
-	UserID      uuid.UUID  `json:"user_id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	TaskID      *uuid.UUID `json:"task_id"`
-	ActorID     *uuid.UUID `json:"actor_id"`
-	Kind        string     `json:"kind"`
-	Text        string     `json:"text"`
-	ReadAt      *time.Time `json:"read_at"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          uuid.UUID       `json:"id"`
+	UserID      uuid.UUID       `json:"user_id"`
+	WorkspaceID uuid.UUID       `json:"workspace_id"`
+	TaskID      *uuid.UUID      `json:"task_id"`
+	ActorID     *uuid.UUID      `json:"actor_id"`
+	Kind        string          `json:"kind"`
+	Text        string          `json:"text"`
+	ReadAt      *time.Time      `json:"read_at"`
+	CreatedAt   time.Time       `json:"created_at"`
+	Payload     json.RawMessage `json:"payload"`
 }
 
 type NotificationChannel struct {

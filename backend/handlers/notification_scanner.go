@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -135,7 +133,7 @@ func (h *API) scanDueTasks(ctx context.Context) {
 			if !dueShouldFire(now, *t.DueDate, lead, repeat, prior) {
 				continue
 			}
-			h.deliverNotification(ctx, uid, wsID, &t.ID, nil, "due_soon", dueText(t))
+			h.deliverNotification(ctx, uid, wsID, &t.ID, nil, "due_soon", dueMsg(t))
 			soft(ctx, "UpsertDueNotificationState", h.q.UpsertDueNotificationState(ctx, db.UpsertDueNotificationStateParams{
 				TaskID: t.ID, UserID: uid, FiredDue: *t.DueDate,
 			}))
@@ -180,10 +178,11 @@ func (h *API) dueRecipients(ctx context.Context, t db.Task) []uuid.UUID {
 	return out
 }
 
-// dueText is the default sentence for a due-date notification (templates can
-// reformat it via the channel template).
-func dueText(t db.Task) string {
-	return fmt.Sprintf("Приближается срок задачи #%s «%s»", taskRef(t.Number), t.Title)
+// dueMsg is the content of a due-date notification: the structured payload plus
+// the default Russian sentence (templates can reformat the latter via the
+// channel template).
+func dueMsg(t db.Task) notifyMsg {
+	return msgDueSoon(t.Number, t.Title)
 }
 
 // scanReminders routes reminders whose time has come to the user's channels (once,
@@ -200,11 +199,8 @@ func (h *API) scanReminders(ctx context.Context) {
 			p = defaultPrefs(r.UserID)
 		}
 		if p.ReminderEnabled {
-			text := strings.TrimSpace(r.Message)
-			if text == "" {
-				text = "Напоминание"
-			}
-			h.deliverNotification(ctx, r.UserID, h.reminderWorkspace(ctx, r), r.TaskID, nil, "reminder", text)
+			h.deliverNotification(ctx, r.UserID, h.reminderWorkspace(ctx, r), r.TaskID, nil,
+				"reminder", msgReminder(r.Message))
 		}
 		soft(ctx, "MarkReminderNotified", h.q.MarkReminderNotified(ctx, r.ID))
 	}

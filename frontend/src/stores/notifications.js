@@ -3,20 +3,7 @@ import { ref, computed } from 'vue'
 import { notifications as api } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
-
-// Human title for a native (OS) notification, by kind.
-const KIND_TITLE = {
-  assigned: 'Назначена задача',
-  comment: 'Новый комментарий',
-  mention: 'Вас упомянули',
-  updated: 'Задача изменена',
-  moved: 'Задача перемещена',
-  archived: 'Задача архивирована',
-  due_soon: 'Скоро дедлайн',
-  reminder: 'Напоминание',
-  // Provider-neutral: emitted by any integration's background sync, not just GitLab.
-  integration_sync: 'Синхронизация завершена',
-}
+import { notificationText, notificationTitle } from '@/utils/notificationText'
 
 // notifications store — persistent, server-backed feed for the bell (feature
 // #3). New notifications also arrive live over the workspace socket.
@@ -56,7 +43,10 @@ export const useNotificationsStore = defineStore('notifications', () => {
   async function maybeNotifyDevice(targets, n) {
     try {
       if (!Array.isArray(targets) || !targets.includes(getDeviceId())) return
-      const title = KIND_TITLE[n.kind] || 'Tessera'
+      // Title and body are rendered from the payload in the user's language; a
+      // pre-payload row still delivers its stored sentence (see notificationText).
+      const title = notificationTitle(n.kind)
+      const body = notificationText(n)
       if (isTauri()) {
         const { isPermissionGranted, requestPermission, sendNotification } =
           await import('@tauri-apps/plugin-notification')
@@ -65,14 +55,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
         if (granted)
           sendNotification({
             title,
-            body: n.text,
+            body,
             // Carried back on click for deep-linking (see useDesktopDeepLink).
             extra: { task_board_id: n.task_board_id, task_number: n.task_number },
           })
         return
       }
       if (!notificationsSupported() || Notification.permission !== 'granted') return
-      void new Notification(title, { body: n.text, tag: n.id })
+      void new Notification(title, { body, tag: n.id })
     } catch {
       /* notifications unavailable — ignore */
     }

@@ -610,25 +610,26 @@ func (h *API) notifySyncFinished(ctx context.Context, integ db.GitlabIntegration
 	}
 	// The originating request is long gone; keep the context alive for the write.
 	ctx = context.WithoutCancel(ctx)
-	label := "GitLab · " + integ.ProjectPath
-	took := fmtSyncDuration(time.Since(j.startedAt))
-	var text string
+	elapsed := time.Since(j.startedAt)
+	counts := syncCounts{
+		label:   "GitLab · " + integ.ProjectPath,
+		created: created,
+		updated: updated,
+		took:    fmtSyncDuration(elapsed),
+		seconds: int(elapsed.Round(time.Second).Seconds()),
+	}
+	var msg notifyMsg
 	switch {
 	case err != nil || j.status == "error":
-		reason := j.errText
+		counts.reason = j.errText
 		if err != nil {
-			reason = err.Error()
+			counts.reason = err.Error()
 		}
-		if reason == "" {
-			reason = "неизвестная ошибка"
-		}
-		text = fmt.Sprintf("%s: синхронизация не удалась — %s (за %s)", label, reason, took)
-	case j.status == "partial":
-		text = fmt.Sprintf("%s: +%d новых, ~%d обновлено, за %s (часть действий с ошибками)", label, created, updated, took)
+		msg = msgSyncFailed(counts)
 	default:
-		text = fmt.Sprintf("%s: +%d новых, ~%d обновлено, за %s", label, created, updated, took)
+		msg = msgSyncDone(counts, j.status == "partial")
 	}
-	h.deliverNotification(ctx, *j.actorID, integ.WorkspaceID, nil, nil, "integration_sync", text)
+	h.deliverNotification(ctx, *j.actorID, integ.WorkspaceID, nil, nil, "integration_sync", msg)
 	payload := gin.H{
 		"provider": "gitlab", "integration_id": integ.ID, "status": j.status,
 		"created": created, "updated": updated,

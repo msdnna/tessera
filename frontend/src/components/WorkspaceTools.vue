@@ -15,6 +15,8 @@ import {
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { notificationText } from '@/utils/notificationText'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -42,7 +44,10 @@ const router = useRouter()
 // On touch (mobile) tooltips fire on tap and overlap the dropdown/popover they
 // label — suppress them there.
 const { isMobile } = useResponsive()
-const { formatTime } = useFormat()
+const { formatTime, formatters } = useFormat()
+// Kept as one object rather than destructured: a bare `t` here would shadow the
+// `v-for="t in COLOR_THEMES"` loop variable in the template below.
+const i18n = useI18n()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
@@ -110,6 +115,11 @@ function openNotification(n) {
 }
 function fmtTime(d) {
   return formatTime(d)
+}
+// The feed line is rendered from the notification's payload, so switching the
+// language re-renders the whole feed — including rows fetched minutes ago.
+function noteText(n) {
+  return notificationText(n, { t: i18n.t, te: i18n.te, formatters: formatters.value })
 }
 </script>
 
@@ -203,7 +213,7 @@ function fmtTime(d) {
           :class="{ unread: !it.read_at }"
           @click="openNotification(it)"
         >
-          <span class="ft">{{ it.text }}</span>
+          <span class="ft">{{ noteText(it) }}</span>
           <span class="fa">{{ fmtTime(it.created_at) }}</span>
         </button>
         <empty-state

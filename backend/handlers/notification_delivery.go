@@ -66,11 +66,13 @@ func (s emailSender) Send(_ context.Context, ch notify.Channel, msg notify.Messa
 
 // deliverNotification persists a notification, pushes it live over the workspace
 // socket, and routes it to the user's external channels. actorID is nil for
-// system-generated notifications (the due/reminder scanner). Best-effort — used
-// both on the request path (via notify) and off it (the scanner).
-func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, taskID, actorID *uuid.UUID, kind, text string) {
+// system-generated notifications (the due/reminder scanner). msg carries both the
+// structured payload the client renders from and the legacy Russian text (#2801).
+// Best-effort — used both on the request path (via notify) and off it (the scanner).
+func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, taskID, actorID *uuid.UUID, kind string, msg notifyMsg) {
 	n, err := h.q.CreateNotification(ctx, db.CreateNotificationParams{
-		UserID: userID, WorkspaceID: wsID, TaskID: taskID, ActorID: actorID, Kind: kind, Text: text,
+		UserID: userID, WorkspaceID: wsID, TaskID: taskID, ActorID: actorID,
+		Kind: kind, Text: msg.text, Payload: msg.json(),
 	})
 	if err != nil {
 		return
@@ -83,7 +85,7 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 	obj := gin.H{
 		"id": n.ID, "user_id": n.UserID, "workspace_id": n.WorkspaceID,
 		"task_id": n.TaskID, "actor_id": n.ActorID, "kind": n.Kind,
-		"text": n.Text, "read_at": n.ReadAt, "created_at": n.CreatedAt,
+		"text": n.Text, "payload": n.Payload, "read_at": n.ReadAt, "created_at": n.CreatedAt,
 	}
 	if taskID != nil {
 		if t, terr := h.q.GetTask(ctx, *taskID); terr == nil {

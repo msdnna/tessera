@@ -250,7 +250,7 @@ func (q *Queries) GetDeviceChannel(ctx context.Context, arg GetDeviceChannelPara
 
 const getNotification = `-- name: GetNotification :one
 
-SELECT id, user_id, workspace_id, task_id, actor_id, kind, text, read_at, created_at FROM notifications WHERE id = $1
+SELECT id, user_id, workspace_id, task_id, actor_id, kind, text, read_at, created_at, payload FROM notifications WHERE id = $1
 `
 
 // ── Notification fetch (for delivery) ──────────────────────
@@ -267,6 +267,7 @@ func (q *Queries) GetNotification(ctx context.Context, id uuid.UUID) (Notificati
 		&i.Text,
 		&i.ReadAt,
 		&i.CreatedAt,
+		&i.Payload,
 	)
 	return i, err
 }
