@@ -117,6 +117,7 @@
     <string name="common_loading">Загрузка…</string>
     <string name="common_error">Ошибка</string>
     <string name="common_nothing_found">Ничего не найдено</string>
+    <string name="common_edit">Изменить</string>
 
     <!-- Навигация в боковой панели -->
     <string name="nav_home">Моя работа</string>
@@ -278,4 +279,147 @@
     <!-- Модалка задачи: перенос в другую доску -->
     <string name="task_transfer_title">Перенести в доску</string>
     <string name="task_transfer_no_projects">Нет проектов</string>
+
+    <!-- Настройки GitLab: аккаунт и список привязок -->
+    <string name="gitlab_section_account">Аккаунт</string>
+    <string name="gitlab_disconnect">Отключить</string>
+    <string name="gitlab_url_label">URL GitLab</string>
+    <string name="gitlab_token_label">Токен (PAT, scope read_api)</string>
+    <string name="gitlab_connect">Подключить</string>
+    <string name="gitlab_section_bindings">Привязки GitLab</string>
+    <string name="gitlab_bindings_empty">Привязок пока нет.</string>
+    <string name="gitlab_add_binding">Привязка</string>
+    <string name="gitlab_connect_hint">Подключите аккаунт GitLab, чтобы синхронизировать.</string>
+    <string name="gitlab_journal">Журнал синхронизации</string>
+    <string name="gitlab_conflicts">Конфликты обратной записи: %1$d</string>
+
+    <!-- Настройки GitLab: карточка привязки -->
+    <string name="gitlab_binding_off">выкл.</string>
+    <string name="gitlab_last_sync">Синхронизация: %1$s</string>
+    <string name="gitlab_tile_sync">Синхр.</string>
+    <string name="gitlab_tile_full">Полная</string>
+    <string name="gitlab_binding_delete_title">Удалить привязку</string>
+    <string name="gitlab_binding_delete_message">Удалить привязку «%1$s»? Связи задач с GitLab будут разорваны.</string>
+
+    <!-- Настройки GitLab: редактор привязки -->
+    <string name="gitlab_field_name">Название</string>
+    <string name="gitlab_name_placeholder">напр. Основной</string>
+    <string name="gitlab_field_project">Проект GitLab</string>
+    <string name="gitlab_field_board">Доска назначения</string>
+    <string name="gitlab_board_placeholder">Выберите доску</string>
+    <string name="gitlab_field_scope">Область импорта</string>
+    <string name="gitlab_field_closed">Закрытые задачи</string>
+    <string name="gitlab_field_interval">Автосинхронизация</string>
+    <string name="gitlab_field_full_interval">Полная синхронизация</string>
+    <string name="gitlab_field_due_source">Источник срока</string>
+    <string name="gitlab_field_start_source">Источник начала</string>
+    <string name="gitlab_field_relations">Синхронизировать связи</string>
+    <string name="gitlab_relations_hint">Импорт связанных задач из GitLab во вкладку «Связи».</string>
+    <string name="gitlab_field_enabled">Включена</string>
+
+    <!-- Настройки GitLab: варианты интервалов и источников -->
+    <string name="gitlab_interval_off">Вручную (выкл.)</string>
+    <string name="gitlab_interval_5m">Каждые 5 минут</string>
+    <string name="gitlab_interval_15m">Каждые 15 минут</string>
+    <string name="gitlab_interval_1h">Каждый час</string>
+    <string name="gitlab_full_off">Не форсировать (только вручную)</string>
+    <string name="gitlab_full_6h">Раз в 6 часов</string>
+    <string name="gitlab_full_12h">Раз в 12 часов</string>
+    <string name="gitlab_full_1d">Раз в сутки</string>
+    <string name="gitlab_full_2d">Раз в 2 суток</string>
+    <string name="gitlab_full_1w">Раз в неделю</string>
+    <string name="gitlab_source_off">Не синхронизировать</string>
+    <string name="gitlab_due_issue_milestone">Issue, иначе Milestone</string>
+    <string name="gitlab_due_issue">Только Issue</string>
+    <string name="gitlab_due_milestone">Только Milestone</string>
+    <string name="gitlab_start_created">Дата создания</string>
+    <string name="gitlab_start_milestone">Начало Milestone</string>
+    <string name="gitlab_scope_assigned">Только назначенные мне</string>
+    <string name="gitlab_scope_all">Все задачи проекта</string>
+    <string name="gitlab_closed_all">Импортировать все</string>
+    <string name="gitlab_closed_archive">Архивировать закрытые этапы</string>
+    <string name="gitlab_closed_period">Только за период</string>
+
+    <!-- Настройки GitLab: обратная запись -->
+    <string name="gitlab_section_writeback">Обратная запись в GitLab</string>
+    <string name="gitlab_field_writeback_enabled">Включить запись</string>
+    <string name="gitlab_writeback_hint">Каждое действие связывает событие в задаче Tessera с действием на issue GitLab (под сервис-токеном инстанса или токеном владельца, scope «api»). По умолчанию набор повторяет прежнее поведение записи.</string>
+    <string name="gitlab_add_action">Действие</string>
+    <string name="gitlab_bind_trigger">Действие в Tessera</string>
+    <string name="gitlab_bind_column">Целевая колонка</string>
+    <string name="gitlab_bind_column_placeholder">Выберите колонку</string>
+    <string name="gitlab_bind_priority">Приоритет</string>
+    <string name="gitlab_bind_condition">Условие</string>
+    <string name="gitlab_bind_date_kind">Тип срока</string>
+    <string name="gitlab_bind_action">Действие в GitLab</string>
+    <string name="gitlab_bind_label">Метка</string>
+    <string name="gitlab_bind_label_placeholder">напр. S: In Progress</string>
+    <string name="gitlab_bind_clear_prefix">Снимать метки того же префикса</string>
+    <string name="gitlab_bind_state">Состояние issue</string>
+    <string name="gitlab_bind_add_marker">Добавлять маркер Tessera</string>
+
+    <!-- Настройки GitLab: варианты триггеров и действий обратной записи -->
+    <string name="gitlab_trigger_column">Перемещение в колонку</string>
+    <string name="gitlab_trigger_completion">Флаг «Выполнено»</string>
+    <string name="gitlab_trigger_priority">Изменение приоритета</string>
+    <string name="gitlab_trigger_due">Изменение срока</string>
+    <string name="gitlab_trigger_assignees">Изменение исполнителей</string>
+    <string name="gitlab_trigger_estimate">Изменение оценки</string>
+    <string name="gitlab_trigger_milestone">Изменение этапа</string>
+    <string name="gitlab_trigger_title_desc">Заголовок / описание</string>
+    <string name="gitlab_trigger_labels">Изменение тегов</string>
+    <string name="gitlab_trigger_comment">Новый комментарий</string>
+    <string name="gitlab_action_set_label">Установить метку</string>
+    <string name="gitlab_action_set_state">Закрыть / открыть issue</string>
+    <string name="gitlab_action_set_due">Установить срок</string>
+    <string name="gitlab_action_set_assignees">Установить исполнителей</string>
+    <string name="gitlab_action_set_estimate">Установить оценку</string>
+    <string name="gitlab_action_set_milestone">Установить этап</string>
+    <string name="gitlab_action_set_title_desc">Обновить заголовок/описание</string>
+    <string name="gitlab_action_reconcile_labels">Синхронизировать теги</string>
+    <string name="gitlab_action_post_comment">Написать комментарий</string>
+    <string name="gitlab_state_from_flag">Из флага «Выполнено»</string>
+    <string name="gitlab_state_closed">Закрыть issue</string>
+    <string name="gitlab_state_opened">Открыть issue</string>
+    <string name="gitlab_date_due">Срок (due)</string>
+    <string name="gitlab_date_start">Начало (start) — для issue игнорируется</string>
+    <string name="gitlab_completion_any">Любое изменение</string>
+    <string name="gitlab_completion_true">Стало «Выполнено»</string>
+    <string name="gitlab_completion_false">Снято «Выполнено»</string>
+    <string name="gitlab_priority_any">Любой приоритет</string>
+
+    <!-- Настройки GitLab: сводка привязки в шапке карточки -->
+    <string name="gitlab_sum_column">Перенос → «%1$s»</string>
+    <string name="gitlab_sum_priority">Приоритет: %1$s</string>
+    <string name="gitlab_sum_priority_any">Приоритет (любой)</string>
+    <string name="gitlab_sum_start_change">Изменение начала</string>
+    <string name="gitlab_sum_label">метка «%1$s»</string>
+    <string name="gitlab_sum_state_closed">закрыть issue</string>
+    <string name="gitlab_sum_state_opened">открыть issue</string>
+    <string name="gitlab_sum_state_any">закрыть/открыть issue</string>
+    <string name="gitlab_sum_comment">комментарий</string>
+    <string name="gitlab_sum_comment_marker">комментарий (+маркер)</string>
+
+    <!-- Настройки GitLab: правила меток -->
+    <string name="gitlab_section_rules">Правила меток</string>
+    <string name="gitlab_field_default_column">Колонка по умолчанию</string>
+    <string name="gitlab_field_default_action">Прочие метки</string>
+    <string name="gitlab_field_tag_keep_prefix">Сохранять префикс тега</string>
+    <string name="gitlab_add_rule">Правило</string>
+    <!-- Кавычки не декоративные: без них Android срезал бы хвостовой пробел плейсхолдера -->
+    <string name="gitlab_rule_match_placeholder">"S: либо ^(T|C): "</string>
+    <string name="gitlab_rule_label">Понятное имя</string>
+    <string name="gitlab_rule_label_placeholder">напр. Статус</string>
+    <string name="gitlab_rule_keep_prefix">Сохранять префикс</string>
+    <string name="gitlab_rule_map_value">значение GitLab</string>
+    <string name="gitlab_rule_add_value">значение</string>
+    <string name="gitlab_match_prefix">Префикс</string>
+    <string name="gitlab_match_regex">Regex</string>
+    <string name="gitlab_default_action_tag">Создавать тег</string>
+    <string name="gitlab_rule_action_status">Статус → колонка</string>
+    <string name="gitlab_rule_action_priority">Приоритет</string>
+    <string name="gitlab_rule_action_board">Доска</string>
+    <string name="gitlab_rule_action_tag">Тег</string>
+    <string name="gitlab_rule_action_group">Группировка</string>
+    <string name="gitlab_rule_action_ignore">Игнорировать</string>
 </resources>

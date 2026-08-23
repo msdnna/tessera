@@ -113,6 +113,7 @@
     <string name="common_loading">Loading…</string>
     <string name="common_error">Error</string>
     <string name="common_nothing_found">Nothing found</string>
+    <string name="common_edit">Edit</string>
 
     <!-- Sidebar navigation -->
     <string name="nav_home">My work</string>
@@ -270,4 +271,147 @@
     <!-- Task modal: move to another board -->
     <string name="task_transfer_title">Move to a board</string>
     <string name="task_transfer_no_projects">No projects</string>
+
+    <!-- GitLab settings: account and binding list -->
+    <string name="gitlab_section_account">Account</string>
+    <string name="gitlab_disconnect">Disconnect</string>
+    <string name="gitlab_url_label">GitLab URL</string>
+    <string name="gitlab_token_label">Token (PAT, scope read_api)</string>
+    <string name="gitlab_connect">Connect</string>
+    <string name="gitlab_section_bindings">GitLab bindings</string>
+    <string name="gitlab_bindings_empty">No bindings yet.</string>
+    <string name="gitlab_add_binding">Binding</string>
+    <string name="gitlab_connect_hint">Connect a GitLab account to sync.</string>
+    <string name="gitlab_journal">Sync log</string>
+    <string name="gitlab_conflicts">Write-back conflicts: %1$d</string>
+
+    <!-- GitLab settings: binding card -->
+    <string name="gitlab_binding_off">off</string>
+    <string name="gitlab_last_sync">Synced: %1$s</string>
+    <string name="gitlab_tile_sync">Sync</string>
+    <string name="gitlab_tile_full">Full</string>
+    <string name="gitlab_binding_delete_title">Delete binding</string>
+    <string name="gitlab_binding_delete_message">Delete the “%1$s” binding? Task links to GitLab will be broken.</string>
+
+    <!-- GitLab settings: binding editor -->
+    <string name="gitlab_field_name">Name</string>
+    <string name="gitlab_name_placeholder">e.g. Main</string>
+    <string name="gitlab_field_project">GitLab project</string>
+    <string name="gitlab_field_board">Target board</string>
+    <string name="gitlab_board_placeholder">Pick a board</string>
+    <string name="gitlab_field_scope">Import scope</string>
+    <string name="gitlab_field_closed">Closed issues</string>
+    <string name="gitlab_field_interval">Auto-sync</string>
+    <string name="gitlab_field_full_interval">Full sync</string>
+    <string name="gitlab_field_due_source">Due date source</string>
+    <string name="gitlab_field_start_source">Start date source</string>
+    <string name="gitlab_field_relations">Sync relations</string>
+    <string name="gitlab_relations_hint">Import related issues from GitLab into the “Relations” tab.</string>
+    <string name="gitlab_field_enabled">Enabled</string>
+
+    <!-- GitLab settings: interval and source options -->
+    <string name="gitlab_interval_off">Manually (off)</string>
+    <string name="gitlab_interval_5m">Every 5 minutes</string>
+    <string name="gitlab_interval_15m">Every 15 minutes</string>
+    <string name="gitlab_interval_1h">Every hour</string>
+    <string name="gitlab_full_off">Do not force (manual only)</string>
+    <string name="gitlab_full_6h">Every 6 hours</string>
+    <string name="gitlab_full_12h">Every 12 hours</string>
+    <string name="gitlab_full_1d">Once a day</string>
+    <string name="gitlab_full_2d">Every 2 days</string>
+    <string name="gitlab_full_1w">Once a week</string>
+    <string name="gitlab_source_off">Do not sync</string>
+    <string name="gitlab_due_issue_milestone">Issue, else Milestone</string>
+    <string name="gitlab_due_issue">Issue only</string>
+    <string name="gitlab_due_milestone">Milestone only</string>
+    <string name="gitlab_start_created">Creation date</string>
+    <string name="gitlab_start_milestone">Milestone start</string>
+    <string name="gitlab_scope_assigned">Assigned to me only</string>
+    <string name="gitlab_scope_all">All project issues</string>
+    <string name="gitlab_closed_all">Import all</string>
+    <string name="gitlab_closed_archive">Archive closed milestones</string>
+    <string name="gitlab_closed_period">Selected period only</string>
+
+    <!-- GitLab settings: write-back -->
+    <string name="gitlab_section_writeback">Write-back to GitLab</string>
+    <string name="gitlab_field_writeback_enabled">Enable write-back</string>
+    <string name="gitlab_writeback_hint">Each action ties an event on a Tessera task to an action on a GitLab issue (under the instance service token or the owner token, scope “api”). By default the set repeats the previous write-back behaviour.</string>
+    <string name="gitlab_add_action">Action</string>
+    <string name="gitlab_bind_trigger">Event in Tessera</string>
+    <string name="gitlab_bind_column">Target column</string>
+    <string name="gitlab_bind_column_placeholder">Pick a column</string>
+    <string name="gitlab_bind_priority">Priority</string>
+    <string name="gitlab_bind_condition">Condition</string>
+    <string name="gitlab_bind_date_kind">Date kind</string>
+    <string name="gitlab_bind_action">Action in GitLab</string>
+    <string name="gitlab_bind_label">Label</string>
+    <string name="gitlab_bind_label_placeholder">e.g. S: In Progress</string>
+    <string name="gitlab_bind_clear_prefix">Clear labels with the same prefix</string>
+    <string name="gitlab_bind_state">Issue state</string>
+    <string name="gitlab_bind_add_marker">Add a Tessera marker</string>
+
+    <!-- GitLab settings: write-back trigger and action options -->
+    <string name="gitlab_trigger_column">Move to column</string>
+    <string name="gitlab_trigger_completion">“Done” flag</string>
+    <string name="gitlab_trigger_priority">Priority change</string>
+    <string name="gitlab_trigger_due">Due date change</string>
+    <string name="gitlab_trigger_assignees">Assignee change</string>
+    <string name="gitlab_trigger_estimate">Estimate change</string>
+    <string name="gitlab_trigger_milestone">Milestone change</string>
+    <string name="gitlab_trigger_title_desc">Title / description</string>
+    <string name="gitlab_trigger_labels">Tag change</string>
+    <string name="gitlab_trigger_comment">New comment</string>
+    <string name="gitlab_action_set_label">Set a label</string>
+    <string name="gitlab_action_set_state">Close / reopen the issue</string>
+    <string name="gitlab_action_set_due">Set the due date</string>
+    <string name="gitlab_action_set_assignees">Set assignees</string>
+    <string name="gitlab_action_set_estimate">Set the estimate</string>
+    <string name="gitlab_action_set_milestone">Set the milestone</string>
+    <string name="gitlab_action_set_title_desc">Update title/description</string>
+    <string name="gitlab_action_reconcile_labels">Reconcile tags</string>
+    <string name="gitlab_action_post_comment">Post a comment</string>
+    <string name="gitlab_state_from_flag">From the “Done” flag</string>
+    <string name="gitlab_state_closed">Close the issue</string>
+    <string name="gitlab_state_opened">Reopen the issue</string>
+    <string name="gitlab_date_due">Due date (due)</string>
+    <string name="gitlab_date_start">Start date (start) — ignored for issues</string>
+    <string name="gitlab_completion_any">Any change</string>
+    <string name="gitlab_completion_true">Became “Done”</string>
+    <string name="gitlab_completion_false">“Done” cleared</string>
+    <string name="gitlab_priority_any">Any priority</string>
+
+    <!-- GitLab settings: binding summary in the card header -->
+    <string name="gitlab_sum_column">Move → “%1$s”</string>
+    <string name="gitlab_sum_priority">Priority: %1$s</string>
+    <string name="gitlab_sum_priority_any">Priority (any)</string>
+    <string name="gitlab_sum_start_change">Start date change</string>
+    <string name="gitlab_sum_label">label “%1$s”</string>
+    <string name="gitlab_sum_state_closed">close the issue</string>
+    <string name="gitlab_sum_state_opened">reopen the issue</string>
+    <string name="gitlab_sum_state_any">close/reopen the issue</string>
+    <string name="gitlab_sum_comment">comment</string>
+    <string name="gitlab_sum_comment_marker">comment (+marker)</string>
+
+    <!-- GitLab settings: label rules -->
+    <string name="gitlab_section_rules">Label rules</string>
+    <string name="gitlab_field_default_column">Default column</string>
+    <string name="gitlab_field_default_action">Other labels</string>
+    <string name="gitlab_field_tag_keep_prefix">Keep the tag prefix</string>
+    <string name="gitlab_add_rule">Rule</string>
+    <!-- Quotes are load-bearing: without them Android would strip the trailing space -->
+    <string name="gitlab_rule_match_placeholder">"S: or ^(T|C): "</string>
+    <string name="gitlab_rule_label">Friendly name</string>
+    <string name="gitlab_rule_label_placeholder">e.g. Status</string>
+    <string name="gitlab_rule_keep_prefix">Keep the prefix</string>
+    <string name="gitlab_rule_map_value">GitLab value</string>
+    <string name="gitlab_rule_add_value">value</string>
+    <string name="gitlab_match_prefix">Prefix</string>
+    <string name="gitlab_match_regex">Regex</string>
+    <string name="gitlab_default_action_tag">Create a tag</string>
+    <string name="gitlab_rule_action_status">Status → column</string>
+    <string name="gitlab_rule_action_priority">Priority</string>
+    <string name="gitlab_rule_action_board">Board</string>
+    <string name="gitlab_rule_action_tag">Tag</string>
+    <string name="gitlab_rule_action_group">Grouping</string>
+    <string name="gitlab_rule_action_ignore">Ignore</string>
 </resources>

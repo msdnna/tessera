@@ -28,12 +28,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.GitlabBindAction
 import website.msdnna.tessera.data.model.GitlabBindTrigger
 import website.msdnna.tessera.data.model.GitlabBinding
@@ -67,68 +69,137 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.canonPrefix
 import website.msdnna.tessera.util.localDateTimeLabel
 
-private val IntervalOptions = listOf(
-    0 to "Вручную (выкл.)", 300 to "Каждые 5 минут", 900 to "Каждые 15 минут", 3600 to "Каждый час",
+private val MapActions = setOf("status", "priority", "board")
+
+// ── подписи вариантов ────────────────────────────────────────────────────────
+// Все списки собираются на вызов, а не в module-level `val`: значения там
+// вычислились бы один раз при загрузке класса и застыли бы на языке первого
+// рендера — переключение языка эти меню уже не тронуло бы.
+
+@Composable
+private fun intervalOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.gitlab_interval_off),
+    300 to stringResource(R.string.gitlab_interval_5m),
+    900 to stringResource(R.string.gitlab_interval_15m),
+    3600 to stringResource(R.string.gitlab_interval_1h),
 )
 
 // Periodic FULL sweep (catches deletes/drift an incremental pull can't see). 0 = off
-// — a full sync then runs only on the very first sync or via «Полная».
-private val FullIntervalOptions = listOf(
-    0 to "Не форсировать (только вручную)", 21600 to "Раз в 6 часов", 43200 to "Раз в 12 часов",
-    86400 to "Раз в сутки", 172800 to "Раз в 2 суток", 604800 to "Раз в неделю",
+// — a full sync then runs only on the very first sync or via the «Полная» tile.
+@Composable
+private fun fullIntervalOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.gitlab_full_off),
+    21600 to stringResource(R.string.gitlab_full_6h),
+    43200 to stringResource(R.string.gitlab_full_12h),
+    86400 to stringResource(R.string.gitlab_full_1d),
+    172800 to stringResource(R.string.gitlab_full_2d),
+    604800 to stringResource(R.string.gitlab_full_1w),
 )
-private val DueSourceOptions = listOf(
-    "issue_milestone" to "Issue, иначе Milestone", "issue" to "Только Issue",
-    "milestone" to "Только Milestone", "off" to "Не синхронизировать",
+
+@Composable
+private fun dueSourceOptions(): List<Pair<String, String>> = listOf(
+    "issue_milestone" to stringResource(R.string.gitlab_due_issue_milestone),
+    "issue" to stringResource(R.string.gitlab_due_issue),
+    "milestone" to stringResource(R.string.gitlab_due_milestone),
+    "off" to stringResource(R.string.gitlab_source_off),
 )
-private val StartSourceOptions = listOf(
-    "created" to "Дата создания", "milestone" to "Начало Milestone", "off" to "Не синхронизировать",
+
+@Composable
+private fun startSourceOptions(): List<Pair<String, String>> = listOf(
+    "created" to stringResource(R.string.gitlab_start_created),
+    "milestone" to stringResource(R.string.gitlab_start_milestone),
+    "off" to stringResource(R.string.gitlab_source_off),
 )
-private val ActionOptions = listOf(
-    "status" to "Статус → колонка", "priority" to "Приоритет", "board" to "Доска",
-    "tag" to "Тег", "group" to "Группировка", "ignore" to "Игнорировать",
+
+@Composable
+private fun actionOptions(): List<Pair<String, String>> = listOf(
+    "status" to stringResource(R.string.gitlab_rule_action_status),
+    "priority" to stringResource(R.string.gitlab_rule_action_priority),
+    "board" to stringResource(R.string.gitlab_rule_action_board),
+    "tag" to stringResource(R.string.gitlab_rule_action_tag),
+    "group" to stringResource(R.string.gitlab_rule_action_group),
+    "ignore" to stringResource(R.string.gitlab_rule_action_ignore),
 )
-private val MatchTypeOptions = listOf("prefix" to "Префикс", "regex" to "Regex")
-private val DefaultActionOptions = listOf("tag" to "Создавать тег", "ignore" to "Игнорировать")
-private val MapActions = setOf("status", "priority", "board")
-private val ScopeOptions = listOf(
-    "assigned" to "Только назначенные мне", "all" to "Все задачи проекта",
+
+@Composable
+private fun matchTypeOptions(): List<Pair<String, String>> = listOf(
+    "prefix" to stringResource(R.string.gitlab_match_prefix),
+    "regex" to stringResource(R.string.gitlab_match_regex),
 )
-private val ClosedPolicyOptions = listOf(
-    "all" to "Импортировать все", "archive_closed_sprints" to "Архивировать закрытые этапы",
-    "period" to "Только за период",
+
+@Composable
+private fun defaultActionOptions(): List<Pair<String, String>> = listOf(
+    "tag" to stringResource(R.string.gitlab_default_action_tag),
+    "ignore" to stringResource(R.string.gitlab_rule_action_ignore),
+)
+
+@Composable
+private fun scopeOptions(): List<Pair<String, String>> = listOf(
+    "assigned" to stringResource(R.string.gitlab_scope_assigned),
+    "all" to stringResource(R.string.gitlab_scope_all),
+)
+
+@Composable
+private fun closedPolicyOptions(): List<Pair<String, String>> = listOf(
+    "all" to stringResource(R.string.gitlab_closed_all),
+    "archive_closed_sprints" to stringResource(R.string.gitlab_closed_archive),
+    "period" to stringResource(R.string.gitlab_closed_period),
 )
 
 // ── write-back binding option lists (mirror web GitLabModal) ─────────────────
-private val TriggerTypeOptions = listOf(
-    "column" to "Перемещение в колонку", "completion" to "Флаг «Выполнено»",
-    "priority" to "Изменение приоритета", "due" to "Изменение срока",
-    "assignees" to "Изменение исполнителей", "estimate" to "Изменение оценки",
-    "milestone" to "Изменение этапа", "title_desc" to "Заголовок / описание",
-    "labels" to "Изменение тегов", "comment" to "Новый комментарий",
+@Composable
+private fun triggerTypeOptions(): List<Pair<String, String>> = listOf(
+    "column" to stringResource(R.string.gitlab_trigger_column),
+    "completion" to stringResource(R.string.gitlab_trigger_completion),
+    "priority" to stringResource(R.string.gitlab_trigger_priority),
+    "due" to stringResource(R.string.gitlab_trigger_due),
+    "assignees" to stringResource(R.string.gitlab_trigger_assignees),
+    "estimate" to stringResource(R.string.gitlab_trigger_estimate),
+    "milestone" to stringResource(R.string.gitlab_trigger_milestone),
+    "title_desc" to stringResource(R.string.gitlab_trigger_title_desc),
+    "labels" to stringResource(R.string.gitlab_trigger_labels),
+    "comment" to stringResource(R.string.gitlab_trigger_comment),
 )
-private val ActionTypeOptions = listOf(
-    "set_label" to "Установить метку", "set_state" to "Закрыть / открыть issue",
-    "set_due" to "Установить срок", "set_assignees" to "Установить исполнителей",
-    "set_estimate" to "Установить оценку", "set_milestone" to "Установить этап",
-    "set_title_desc" to "Обновить заголовок/описание", "reconcile_labels" to "Синхронизировать теги",
-    "post_comment" to "Написать комментарий",
+
+@Composable
+private fun actionTypeOptions(): List<Pair<String, String>> = listOf(
+    "set_label" to stringResource(R.string.gitlab_action_set_label),
+    "set_state" to stringResource(R.string.gitlab_action_set_state),
+    "set_due" to stringResource(R.string.gitlab_action_set_due),
+    "set_assignees" to stringResource(R.string.gitlab_action_set_assignees),
+    "set_estimate" to stringResource(R.string.gitlab_action_set_estimate),
+    "set_milestone" to stringResource(R.string.gitlab_action_set_milestone),
+    "set_title_desc" to stringResource(R.string.gitlab_action_set_title_desc),
+    "reconcile_labels" to stringResource(R.string.gitlab_action_reconcile_labels),
+    "post_comment" to stringResource(R.string.gitlab_action_post_comment),
 )
-private val StateOptions = listOf(
-    "" to "Из флага «Выполнено»", "closed" to "Закрыть issue", "opened" to "Открыть issue",
+
+@Composable
+private fun stateOptions(): List<Pair<String, String>> = listOf(
+    "" to stringResource(R.string.gitlab_state_from_flag),
+    "closed" to stringResource(R.string.gitlab_state_closed),
+    "opened" to stringResource(R.string.gitlab_state_opened),
 )
-private val DateKindOptions = listOf(
-    "due" to "Срок (due)", "start" to "Начало (start) — для issue игнорируется",
+
+@Composable
+private fun dateKindOptions(): List<Pair<String, String>> = listOf(
+    "due" to stringResource(R.string.gitlab_date_due),
+    "start" to stringResource(R.string.gitlab_date_start),
 )
 
 // completion qualifier: "" = any change, "true"/"false" = became/cleared done.
-private val CompletionOptions = listOf(
-    "" to "Любое изменение", "true" to "Стало «Выполнено»", "false" to "Снято «Выполнено»",
+@Composable
+private fun completionOptions(): List<Pair<String, String>> = listOf(
+    "" to stringResource(R.string.gitlab_completion_any),
+    "true" to stringResource(R.string.gitlab_completion_true),
+    "false" to stringResource(R.string.gitlab_completion_false),
 )
 
 // priority qualifier: "" = any level, "0".."4" = a specific level.
-private val PriorityQualOptions =
-    listOf("" to "Любой приоритет") + PriorityLabels.mapIndexed { i, l -> i.toString() to l }
+@Composable
+private fun priorityQualOptions(): List<Pair<String, String>> =
+    listOf("" to stringResource(R.string.gitlab_priority_any)) +
+        PriorityLabels.mapIndexed { i, l -> i.toString() to l }
 
 // The sensible default GitLab action for a freshly-picked trigger.
 private val DefaultActionForTrigger = mapOf(
@@ -192,7 +263,7 @@ fun GitLabSettingsScreen(
                 IonIcon(Ion.GIT_NETWORK, size = 17.dp, tint = ConflictAmber)
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "Конфликты обратной записи: $conflictCount",
+                    stringResource(R.string.gitlab_conflicts, conflictCount),
                     color = c.text1,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
@@ -208,7 +279,7 @@ fun GitLabSettingsScreen(
 @Composable
 private fun AccountCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUiState, vm: GitlabViewModel, workspaceId: String) {
     val c = Tessera.colors
-    SectionLabel("Аккаунт")
+    SectionLabel(stringResource(R.string.gitlab_section_account))
     TCard {
         if (state.connected) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -216,18 +287,22 @@ private fun AccountCard(state: website.msdnna.tessera.ui.viewmodels.GitlabUiStat
                     Text("@${state.glUsername}", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Text(state.baseUrl, color = c.text3, fontSize = 12.sp)
                 }
-                TButton("Отключить", onClick = { vm.disconnect() }, kind = TButtonKind.Secondary)
+                TButton(stringResource(R.string.gitlab_disconnect), onClick = { vm.disconnect() }, kind = TButtonKind.Secondary)
             }
         } else {
             var base by remember { mutableStateOf("") }
             var token by remember { mutableStateOf("") }
             Column {
-                TTextField(base, { base = it }, label = "URL GitLab", placeholder = "https://gitlab.example.com")
+                TTextField(base, { base = it }, label = stringResource(R.string.gitlab_url_label), placeholder = "https://gitlab.example.com")
                 Spacer(Modifier.height(10.dp))
-                TTextField(token, { token = it }, label = "Токен (PAT, scope read_api)", placeholder = "glpat-…", isPassword = true)
+                TTextField(
+                    token, { token = it },
+                    label = stringResource(R.string.gitlab_token_label),
+                    placeholder = "glpat-…", isPassword = true,
+                )
                 Spacer(Modifier.height(12.dp))
                 TButton(
-                    "Подключить",
+                    stringResource(R.string.gitlab_connect),
                     onClick = { if (base.isNotBlank() && token.isNotBlank()) vm.connect(workspaceId, base, token) },
                     loading = state.connecting,
                     modifier = Modifier.fillMaxWidth(),
@@ -256,7 +331,7 @@ private fun BindingsSection(
         vm.prepareEditor(binding)
     }
 
-    SectionLabel("Привязки GitLab")
+    SectionLabel(stringResource(R.string.gitlab_section_bindings))
     if (editing) {
         IntegrationEditor(
             binding = editTarget,
@@ -272,7 +347,7 @@ private fun BindingsSection(
     }
 
     if (state.integrations.isEmpty()) {
-        Text("Привязок пока нет.", color = c.text3, fontSize = 13.sp)
+        Text(stringResource(R.string.gitlab_bindings_empty), color = c.text3, fontSize = 13.sp)
         Spacer(Modifier.height(8.dp))
     } else {
         state.integrations.forEach { integ ->
@@ -281,13 +356,13 @@ private fun BindingsSection(
         }
     }
     if (state.isAdmin) {
-        DashedAddButton("Привязка", onClick = { openEditor(null) })
+        DashedAddButton(stringResource(R.string.gitlab_add_binding), onClick = { openEditor(null) })
     } else if (!state.serviceConfigured && !state.connected) {
-        Text("Подключите аккаунт GitLab, чтобы синхронизировать.", color = c.text3, fontSize = 12.sp)
+        Text(stringResource(R.string.gitlab_connect_hint), color = c.text3, fontSize = 12.sp)
     }
     Spacer(Modifier.height(12.dp))
     TButton(
-        "Журнал синхронизации",
+        stringResource(R.string.gitlab_journal),
         onClick = onOpenJournal,
         kind = TButtonKind.Ghost,
         icon = Ion.TIME,
@@ -315,12 +390,14 @@ private fun BindingRow(
                     Text(integ.name.ifBlank { integ.projectPath }, color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Text("${integ.projectPath} → $boardLabel", color = c.text3, fontSize = 12.sp)
                 }
-                if (!integ.enabled) Text("выкл.", color = c.text3, fontSize = 11.sp)
+                if (!integ.enabled) Text(stringResource(R.string.gitlab_binding_off), color = c.text3, fontSize = 11.sp)
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Синхронизация: " +
-                    (integ.lastSyncedAt?.let { localDateTimeLabel(it) }.takeUnless { it.isNullOrBlank() } ?: "—"),
+                stringResource(
+                    R.string.gitlab_last_sync,
+                    integ.lastSyncedAt?.let { localDateTimeLabel(it) }.takeUnless { it.isNullOrBlank() } ?: "—",
+                ),
                 color = c.text3, fontSize = 12.sp,
             )
             Spacer(Modifier.height(8.dp))
@@ -329,21 +406,22 @@ private fun BindingRow(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 integ.id?.let { id ->
                     ActionTile(
-                        "Синхр.", Ion.REFRESH, Modifier.weight(1f), onClick = { vm.sync(workspaceId, id) },
+                        stringResource(R.string.gitlab_tile_sync), Ion.REFRESH, Modifier.weight(1f),
+                        onClick = { vm.sync(workspaceId, id) },
                         loading = syncing && !state.syncingFull, enabled = !syncing,
                     )
                     // Full sweep: also re-checks issues an incremental pull skips, so
                     // deletes and drift in GitLab reach the board.
                     ActionTile(
-                        "Полная", Ion.REPEAT, Modifier.weight(1f),
+                        stringResource(R.string.gitlab_tile_full), Ion.REPEAT, Modifier.weight(1f),
                         onClick = { vm.sync(workspaceId, id, full = true) },
                         loading = syncing && state.syncingFull, enabled = !syncing,
                     )
                 }
                 if (state.isAdmin) {
-                    ActionTile("Изменить", Ion.PENCIL, Modifier.weight(1f), onClick = onEdit)
+                    ActionTile(stringResource(R.string.common_edit), Ion.PENCIL, Modifier.weight(1f), onClick = onEdit)
                     ActionTile(
-                        "Удалить", Ion.TRASH, Modifier.weight(1f),
+                        stringResource(R.string.common_delete), Ion.TRASH, Modifier.weight(1f),
                         onClick = { confirmDelete = true }, danger = true,
                     )
                 }
@@ -352,9 +430,9 @@ private fun BindingRow(
     }
     if (confirmDelete) {
         TConfirmDialog(
-            title = "Удалить привязку",
-            message = "Удалить привязку «${integ.name.ifBlank { integ.projectPath }}»? Связи задач с GitLab будут разорваны.",
-            confirmText = "Удалить",
+            title = stringResource(R.string.gitlab_binding_delete_title),
+            message = stringResource(R.string.gitlab_binding_delete_message, integ.name.ifBlank { integ.projectPath }),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 integ.id?.let { vm.deleteIntegration(workspaceId, it) }
                 confirmDelete = false
@@ -446,11 +524,15 @@ private fun IntegrationEditor(
         rules.forEach { r -> if (r.matchType == "prefix") r.label = state.prefixNames[canonPrefix(r.match)] ?: "" }
     }
 
-    Field("Название") { TTextField(name, { name = it }, placeholder = "напр. Основной") }
-    Field("Проект GitLab") { TTextField(projectPath, { projectPath = it }, placeholder = "group/project") }
-    Field("Доска назначения") {
+    Field(stringResource(R.string.gitlab_field_name)) {
+        TTextField(name, { name = it }, placeholder = stringResource(R.string.gitlab_name_placeholder))
+    }
+    Field(stringResource(R.string.gitlab_field_project)) {
+        TTextField(projectPath, { projectPath = it }, placeholder = "group/project")
+    }
+    Field(stringResource(R.string.gitlab_field_board)) {
         TSelect(
-            value = state.boards.find { it.id == boardId }?.label ?: "Выберите доску",
+            value = state.boards.find { it.id == boardId }?.label ?: stringResource(R.string.gitlab_board_placeholder),
             options = state.boards.map { it.id to it.label },
             onSelect = {
                 boardId = it
@@ -459,48 +541,52 @@ private fun IntegrationEditor(
             },
         )
     }
-    Field("Область импорта") {
-        TSelect(ScopeOptions.find { it.first == scope }?.second ?: "—", ScopeOptions) { scope = it }
+    Field(stringResource(R.string.gitlab_field_scope)) {
+        val opts = scopeOptions()
+        TSelect(opts.find { it.first == scope }?.second ?: "—", opts) { scope = it }
     }
-    Field("Закрытые задачи") {
-        TSelect(ClosedPolicyOptions.find { it.first == closedPolicy }?.second ?: "—", ClosedPolicyOptions) { closedPolicy = it }
+    Field(stringResource(R.string.gitlab_field_closed)) {
+        val opts = closedPolicyOptions()
+        TSelect(opts.find { it.first == closedPolicy }?.second ?: "—", opts) { closedPolicy = it }
     }
-    Field("Автосинхронизация") {
+    Field(stringResource(R.string.gitlab_field_interval)) {
+        val opts = intervalOptions()
         TSelect(
-            value = IntervalOptions.find { it.first == interval }?.second ?: "—",
-            options = IntervalOptions.map { it.first.toString() to it.second },
+            value = opts.find { it.first == interval }?.second ?: "—",
+            options = opts.map { it.first.toString() to it.second },
         ) { interval = it.toInt() }
     }
-    Field("Полная синхронизация") {
+    Field(stringResource(R.string.gitlab_field_full_interval)) {
+        val opts = fullIntervalOptions()
         TSelect(
-            value = FullIntervalOptions.find { it.first == fullInterval }?.second ?: "—",
-            options = FullIntervalOptions.map { it.first.toString() to it.second },
+            value = opts.find { it.first == fullInterval }?.second ?: "—",
+            options = opts.map { it.first.toString() to it.second },
         ) { fullInterval = it.toInt() }
     }
-    Field("Источник срока") {
-        TSelect(DueSourceOptions.find { it.first == dueSource }?.second ?: "—", DueSourceOptions) { dueSource = it }
+    Field(stringResource(R.string.gitlab_field_due_source)) {
+        val opts = dueSourceOptions()
+        TSelect(opts.find { it.first == dueSource }?.second ?: "—", opts) { dueSource = it }
     }
-    Field("Источник начала") {
-        TSelect(StartSourceOptions.find { it.first == startSource }?.second ?: "—", StartSourceOptions) { startSource = it }
+    Field(stringResource(R.string.gitlab_field_start_source)) {
+        val opts = startSourceOptions()
+        TSelect(opts.find { it.first == startSource }?.second ?: "—", opts) { startSource = it }
     }
-    Field("Синхронизировать связи") { TSwitch(relationsSync, { relationsSync = it }) }
+    Field(stringResource(R.string.gitlab_field_relations)) { TSwitch(relationsSync, { relationsSync = it }) }
     Text(
-        "Импорт связанных задач из GitLab во вкладку «Связи».",
+        stringResource(R.string.gitlab_relations_hint),
         color = c.text3, fontSize = 12.sp,
     )
     Spacer(Modifier.height(8.dp))
-    Field("Включена") { TSwitch(enabled, { enabled = it }) }
+    Field(stringResource(R.string.gitlab_field_enabled)) { TSwitch(enabled, { enabled = it }) }
 
     // Write-back (Tessera → GitLab): customizable trigger→action bindings (web GitLabModal).
     Spacer(Modifier.height(14.dp))
-    SectionLabel("Обратная запись в GitLab")
-    Field("Включить запись") { TSwitch(wbEnabled, { wbEnabled = it }) }
+    SectionLabel(stringResource(R.string.gitlab_section_writeback))
+    Field(stringResource(R.string.gitlab_field_writeback_enabled)) { TSwitch(wbEnabled, { wbEnabled = it }) }
     if (wbEnabled) {
         Spacer(Modifier.height(4.dp))
         Text(
-            "Каждое действие связывает событие в задаче Tessera с действием на issue " +
-                "GitLab (под сервис-токеном инстанса или токеном владельца, scope «api»). " +
-                "По умолчанию набор повторяет прежнее поведение записи.",
+            stringResource(R.string.gitlab_writeback_hint),
             color = c.text3, fontSize = 12.sp,
         )
         Spacer(Modifier.height(8.dp))
@@ -508,33 +594,34 @@ private fun IntegrationEditor(
             BindingCard(b, state.columnOptions, onRemove = { bindings.removeAt(i) })
             Spacer(Modifier.height(8.dp))
         }
-        DashedAddButton("Действие", onClick = {
+        DashedAddButton(stringResource(R.string.gitlab_add_action), onClick = {
             bindings.add(EditBinding(GitlabBinding(action = GitlabBindAction(type = "set_label", clearPrefix = true))))
         })
     }
 
     Spacer(Modifier.height(14.dp))
-    SectionLabel("Правила меток")
-    Field("Колонка по умолчанию") {
+    SectionLabel(stringResource(R.string.gitlab_section_rules))
+    Field(stringResource(R.string.gitlab_field_default_column)) {
         TSelect(defaultColumn.ifBlank { "—" }, state.columns.map { it to it }) { defaultColumn = it }
     }
-    Field("Прочие метки") {
-        TSelect(DefaultActionOptions.find { it.first == defaultAction }?.second ?: "—", DefaultActionOptions) { defaultAction = it }
+    Field(stringResource(R.string.gitlab_field_default_action)) {
+        val opts = defaultActionOptions()
+        TSelect(opts.find { it.first == defaultAction }?.second ?: "—", opts) { defaultAction = it }
     }
-    Field("Сохранять префикс тега") { TSwitch(tagKeepPrefix, { tagKeepPrefix = it }) }
+    Field(stringResource(R.string.gitlab_field_tag_keep_prefix)) { TSwitch(tagKeepPrefix, { tagKeepPrefix = it }) }
 
     Spacer(Modifier.height(8.dp))
     rules.forEachIndexed { i, rule ->
         RuleCard(rule, state.columns, state.boards.map { it.id to it.label }, onRemove = { rules.removeAt(i) })
         Spacer(Modifier.height(8.dp))
     }
-    DashedAddButton("Правило", onClick = { rules.add(EditRule(GitlabRule())) })
+    DashedAddButton(stringResource(R.string.gitlab_add_rule), onClick = { rules.add(EditRule(GitlabRule())) })
 
     Spacer(Modifier.height(16.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        TButton("Отмена", onClick = onClose, kind = TButtonKind.Ghost, modifier = Modifier.weight(1f))
+        TButton(stringResource(R.string.common_cancel), onClick = onClose, kind = TButtonKind.Ghost, modifier = Modifier.weight(1f))
         TButton(
-            if (binding == null) "Создать" else "Сохранить",
+            stringResource(if (binding == null) R.string.common_create else R.string.common_save),
             onClick = {
                 val bid = boardId
                 if (projectPath.isNotBlank() && bid != null) {
@@ -584,29 +671,39 @@ private fun RuleCard(rule: EditRule, columns: List<String>, boards: List<Pair<St
     TCard {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TTextField(rule.match, { rule.match = it }, placeholder = "S: либо ^(T|C): ", modifier = Modifier.weight(1f))
+                TTextField(
+                    rule.match, { rule.match = it },
+                    placeholder = stringResource(R.string.gitlab_rule_match_placeholder),
+                    modifier = Modifier.weight(1f),
+                )
                 Spacer(Modifier.width(6.dp))
                 IonIcon(Ion.TRASH, size = 16.dp, tint = c.text3, modifier = Modifier.clickableNoRipple(onClick = onRemove))
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.weight(1f)) {
-                    val mt = MatchTypeOptions.find { it.first == rule.matchType }?.second ?: "—"
-                    TSelect(mt, MatchTypeOptions) { rule.matchType = it }
+                    val matchTypes = matchTypeOptions()
+                    val mt = matchTypes.find { it.first == rule.matchType }?.second ?: "—"
+                    TSelect(mt, matchTypes) { rule.matchType = it }
                 }
                 Box(Modifier.weight(1f)) {
-                    val act = ActionOptions.find { it.first == rule.action }?.second ?: "—"
-                    TSelect(act, ActionOptions) { rule.action = it }
+                    val actions = actionOptions()
+                    val act = actions.find { it.first == rule.action }?.second ?: "—"
+                    TSelect(act, actions) { rule.action = it }
                 }
             }
             if (rule.matchType == "prefix") {
                 Spacer(Modifier.height(8.dp))
-                TTextField(rule.label, { rule.label = it }, label = "Понятное имя", placeholder = "напр. Статус")
+                TTextField(
+                    rule.label, { rule.label = it },
+                    label = stringResource(R.string.gitlab_rule_label),
+                    placeholder = stringResource(R.string.gitlab_rule_label_placeholder),
+                )
             }
             if (rule.action == "tag") {
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Сохранять префикс", color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.gitlab_rule_keep_prefix), color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     TSwitch(rule.keepPrefix, { rule.keepPrefix = it })
                 }
             }
@@ -619,7 +716,11 @@ private fun RuleCard(rule: EditRule, columns: List<String>, boards: List<Pair<St
                 Spacer(Modifier.height(8.dp))
                 rule.map.forEachIndexed { mi, m ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        TTextField(m.k, { m.k = it }, placeholder = "значение GitLab", modifier = Modifier.weight(1f))
+                        TTextField(
+                            m.k, { m.k = it },
+                            placeholder = stringResource(R.string.gitlab_rule_map_value),
+                            modifier = Modifier.weight(1f),
+                        )
                         Spacer(Modifier.width(6.dp))
                         Box(Modifier.weight(1f)) { TSelect(targets.find { it.first == m.v }?.second ?: "→", targets) { m.v = it } }
                         Spacer(Modifier.width(6.dp))
@@ -627,7 +728,7 @@ private fun RuleCard(rule: EditRule, columns: List<String>, boards: List<Pair<St
                     }
                     Spacer(Modifier.height(6.dp))
                 }
-                DashedAddButton("значение", onClick = { rule.map.add(MapEntry("", "")) })
+                DashedAddButton(stringResource(R.string.gitlab_rule_add_value), onClick = { rule.map.add(MapEntry("", "")) })
             }
         }
     }
@@ -747,23 +848,28 @@ private fun BindingCard(b: EditBinding, columnOptions: List<Pair<String, String>
                 IonIcon(Ion.TRASH, size = 16.dp, tint = c.text3, modifier = Modifier.clickableNoRipple(onClick = onRemove))
             }
             Spacer(Modifier.height(6.dp))
-            Field("Действие в Tessera") {
-                TSelect(TriggerTypeOptions.find { it.first == b.triggerType }?.second ?: "—", TriggerTypeOptions) { b.onTrigger(it) }
+            Field(stringResource(R.string.gitlab_bind_trigger)) {
+                val triggers = triggerTypeOptions()
+                TSelect(triggers.find { it.first == b.triggerType }?.second ?: "—", triggers) { b.onTrigger(it) }
             }
             when (b.triggerType) {
-                "column" -> Field("Целевая колонка") {
-                    TSelect(columnName.ifBlank { "Выберите колонку" }, columnOptions) { b.columnId = it }
+                "column" -> Field(stringResource(R.string.gitlab_bind_column)) {
+                    TSelect(columnName.ifBlank { stringResource(R.string.gitlab_bind_column_placeholder) }, columnOptions) {
+                        b.columnId = it
+                    }
                 }
 
-                "priority" -> Field("Приоритет") {
+                "priority" -> Field(stringResource(R.string.gitlab_bind_priority)) {
+                    val quals = priorityQualOptions()
                     TSelect(
-                        PriorityQualOptions.find { it.first == (b.priority?.toString() ?: "") }?.second ?: "—",
-                        PriorityQualOptions,
+                        quals.find { it.first == (b.priority?.toString() ?: "") }?.second ?: "—",
+                        quals,
                     ) { b.priority = it.toIntOrNull() }
                 }
 
-                "completion" -> Field("Условие") {
-                    TSelect(CompletionOptions.find { it.first == completedKey(b.completed) }?.second ?: "—", CompletionOptions) {
+                "completion" -> Field(stringResource(R.string.gitlab_bind_condition)) {
+                    val conditions = completionOptions()
+                    TSelect(conditions.find { it.first == completedKey(b.completed) }?.second ?: "—", conditions) {
                         b.completed = when (it) {
                             "true" -> true
                             "false" -> false
@@ -772,28 +878,34 @@ private fun BindingCard(b: EditBinding, columnOptions: List<Pair<String, String>
                     }
                 }
 
-                "due" -> Field("Тип срока") {
-                    TSelect(DateKindOptions.find { it.first == b.triggerDateKind }?.second ?: "—", DateKindOptions) { b.triggerDateKind = it }
+                "due" -> Field(stringResource(R.string.gitlab_bind_date_kind)) {
+                    val kinds = dateKindOptions()
+                    TSelect(kinds.find { it.first == b.triggerDateKind }?.second ?: "—", kinds) { b.triggerDateKind = it }
                 }
             }
-            Field("Действие в GitLab") {
-                TSelect(ActionTypeOptions.find { it.first == b.actionType }?.second ?: "—", ActionTypeOptions) { b.onAction(it) }
+            Field(stringResource(R.string.gitlab_bind_action)) {
+                val actions = actionTypeOptions()
+                TSelect(actions.find { it.first == b.actionType }?.second ?: "—", actions) { b.onAction(it) }
             }
             when (b.actionType) {
                 "set_label" -> {
-                    Field("Метка") { TTextField(b.label, { b.label = it }, placeholder = "напр. S: In Progress") }
-                    Field("Снимать метки того же префикса") { TSwitch(b.clearPrefix, { b.clearPrefix = it }) }
+                    Field(stringResource(R.string.gitlab_bind_label)) {
+                        TTextField(b.label, { b.label = it }, placeholder = stringResource(R.string.gitlab_bind_label_placeholder))
+                    }
+                    Field(stringResource(R.string.gitlab_bind_clear_prefix)) { TSwitch(b.clearPrefix, { b.clearPrefix = it }) }
                 }
 
-                "set_state" -> Field("Состояние issue") {
-                    TSelect(StateOptions.find { it.first == b.state }?.second ?: "—", StateOptions) { b.state = it }
+                "set_state" -> Field(stringResource(R.string.gitlab_bind_state)) {
+                    val states = stateOptions()
+                    TSelect(states.find { it.first == b.state }?.second ?: "—", states) { b.state = it }
                 }
 
-                "set_due" -> Field("Тип срока") {
-                    TSelect(DateKindOptions.find { it.first == b.actionDateKind }?.second ?: "—", DateKindOptions) { b.actionDateKind = it }
+                "set_due" -> Field(stringResource(R.string.gitlab_bind_date_kind)) {
+                    val kinds = dateKindOptions()
+                    TSelect(kinds.find { it.first == b.actionDateKind }?.second ?: "—", kinds) { b.actionDateKind = it }
                 }
 
-                "post_comment" -> Field("Добавлять маркер Tessera") { TSwitch(b.addMarker, { b.addMarker = it }) }
+                "post_comment" -> Field(stringResource(R.string.gitlab_bind_add_marker)) { TSwitch(b.addMarker, { b.addMarker = it }) }
             }
         }
     }
@@ -805,34 +917,53 @@ private fun completedKey(v: Boolean?): String = when (v) {
     null -> ""
 }
 
+/** Сводка триггера в шапке карточки. Композабл, а не обычная функция: подписи
+ *  приходят из ресурсов и обязаны пересчитаться на смене языка. */
+@Composable
 private fun triggerSummary(b: EditBinding, columnName: String): String = when (b.triggerType) {
-    "column" -> "Перенос → «${columnName.ifBlank { "?" }}»"
+    "column" -> stringResource(R.string.gitlab_sum_column, columnName.ifBlank { "?" })
 
-    "priority" -> b.priority?.let { "Приоритет: ${PriorityLabels.getOrElse(it) { "?" }}" } ?: "Приоритет (любой)"
+    "priority" -> {
+        val level = b.priority
+        if (level == null) {
+            stringResource(R.string.gitlab_sum_priority_any)
+        } else {
+            stringResource(R.string.gitlab_sum_priority, PriorityLabels.getOrElse(level) { "?" })
+        }
+    }
 
     "completion" -> when (b.completed) {
-        null -> "Флаг «Выполнено»"
-        true -> "Стало «Выполнено»"
-        false -> "Снято «Выполнено»"
+        null -> stringResource(R.string.gitlab_trigger_completion)
+        true -> stringResource(R.string.gitlab_completion_true)
+        false -> stringResource(R.string.gitlab_completion_false)
     }
 
-    "due" -> if (b.triggerDateKind == "start") "Изменение начала" else "Изменение срока"
+    "due" -> if (b.triggerDateKind == "start") {
+        stringResource(R.string.gitlab_sum_start_change)
+    } else {
+        stringResource(R.string.gitlab_trigger_due)
+    }
 
-    else -> TriggerTypeOptions.find { it.first == b.triggerType }?.second ?: b.triggerType
+    else -> triggerTypeOptions().find { it.first == b.triggerType }?.second ?: b.triggerType
 }
 
+@Composable
 private fun actionSummary(b: EditBinding): String = when (b.actionType) {
-    "set_label" -> "метка «${b.label.ifBlank { "?" }}»"
+    "set_label" -> stringResource(R.string.gitlab_sum_label, b.label.ifBlank { "?" })
 
     "set_state" -> when (b.state) {
-        "closed" -> "закрыть issue"
-        "opened" -> "открыть issue"
-        else -> "закрыть/открыть issue"
+        "closed" -> stringResource(R.string.gitlab_sum_state_closed)
+        "opened" -> stringResource(R.string.gitlab_sum_state_opened)
+        else -> stringResource(R.string.gitlab_sum_state_any)
     }
 
-    "post_comment" -> if (b.addMarker) "комментарий (+маркер)" else "комментарий"
+    "post_comment" -> if (b.addMarker) {
+        stringResource(R.string.gitlab_sum_comment_marker)
+    } else {
+        stringResource(R.string.gitlab_sum_comment)
+    }
 
-    else -> (ActionTypeOptions.find { it.first == b.actionType }?.second ?: b.actionType).lowercase()
+    else -> (actionTypeOptions().find { it.first == b.actionType }?.second ?: b.actionType).lowercase()
 }
 
 /** Compose-observable editable binding (like [EditRule]). [toBinding] strips it to

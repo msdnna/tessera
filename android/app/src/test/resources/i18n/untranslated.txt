@@ -6,6 +6,7 @@
 # Волна 0 (готово): AppRoot, AuthScreen, ProfileScreen.
 # Волна 1 (готово): Sidebar.
 # Волна 2 (готово): TaskModal, CommentThreads.
+# Волна 3 (готово): GitLabSettingsScreen.
 website/msdnna/tessera/data/realtime/DeviceNotifier.kt
 website/msdnna/tessera/reminders/ReminderNotifications.kt
 website/msdnna/tessera/reminders/ReminderReceiver.kt
@@ -32,7 +33,6 @@ website/msdnna/tessera/ui/screens/BoardViews.kt
 website/msdnna/tessera/ui/screens/ConflictResolver.kt
 website/msdnna/tessera/ui/screens/DocumentsScreen.kt
 website/msdnna/tessera/ui/screens/GitLabJournalScreen.kt
-website/msdnna/tessera/ui/screens/GitLabSettingsScreen.kt
 website/msdnna/tessera/ui/screens/HomeScreen.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt
 website/msdnna/tessera/ui/screens/MembersModal.kt
