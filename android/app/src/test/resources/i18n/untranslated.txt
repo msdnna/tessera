@@ -9,6 +9,8 @@
 # Волна 3 (готово): GitLabSettingsScreen.
 # Волна 4 (готово): BoardViews.
 # Волна 5 (готово): NotificationSettingsScreen.
+# Волна 6 (готово): AdminScreen, HomeScreen, NotesScreen, RemindersScreen,
+#                   DocumentsScreen, MembersModal.
 website/msdnna/tessera/data/realtime/DeviceNotifier.kt
 website/msdnna/tessera/reminders/ReminderNotifications.kt
 website/msdnna/tessera/reminders/ReminderReceiver.kt
@@ -26,21 +28,15 @@ website/msdnna/tessera/ui/components/TaskCard.kt
 website/msdnna/tessera/ui/components/TaskCardPreview.kt
 website/msdnna/tessera/ui/components/ThemePicker.kt
 website/msdnna/tessera/ui/components/UpdateDialog.kt
-website/msdnna/tessera/ui/screens/AdminScreen.kt
 website/msdnna/tessera/ui/screens/BoardComposer.kt
 website/msdnna/tessera/ui/screens/BoardCustomizePanel.kt
 website/msdnna/tessera/ui/screens/BoardScreen.kt
 website/msdnna/tessera/ui/screens/BoardSecondary.kt
 website/msdnna/tessera/ui/screens/ConflictResolver.kt
-website/msdnna/tessera/ui/screens/DocumentsScreen.kt
 website/msdnna/tessera/ui/screens/GitLabJournalScreen.kt
-website/msdnna/tessera/ui/screens/HomeScreen.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt
-website/msdnna/tessera/ui/screens/MembersModal.kt
 website/msdnna/tessera/ui/screens/MilestonesScreen.kt
-website/msdnna/tessera/ui/screens/NotesScreen.kt
 website/msdnna/tessera/ui/screens/NotificationsPanel.kt
-website/msdnna/tessera/ui/screens/RemindersScreen.kt
 website/msdnna/tessera/ui/screens/SearchOverlay.kt
 website/msdnna/tessera/ui/screens/WhatsNewSheet.kt
 website/msdnna/tessera/ui/theme/Tokens.kt

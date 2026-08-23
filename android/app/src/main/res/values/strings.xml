@@ -591,4 +591,87 @@
     <string name="notif_digest_15m">15 минут</string>
     <string name="notif_digest_30m">30 минут</string>
     <string name="notif_digest_1h">Раз в час</string>
+
+    <!-- Моя работа (домашний экран) -->
+    <string name="home_greeting">Привет, %1$s 👋</string>
+    <string name="home_greeting_fallback">коллега</string>
+    <string name="home_stat_me">Мои задачи</string>
+    <string name="home_stat_all">Все активные</string>
+    <string name="home_stat_overdue">Просрочено</string>
+    <string name="home_stat_today">Сегодня</string>
+    <string name="home_stat_week">На неделе</string>
+    <string name="home_stat_completed">Выполнено</string>
+    <string name="home_empty">Задач нет</string>
+
+    <!-- Заметки -->
+    <string name="notes_new">Новая заметка</string>
+    <string name="notes_empty">Заметок пока нет</string>
+    <string name="notes_untitled">Без названия</string>
+    <string name="notes_editor_title">Заметка</string>
+    <string name="notes_delete_confirm">Удалить заметку?</string>
+    <string name="notes_title_placeholder">Заголовок</string>
+    <string name="notes_body_placeholder">Текст заметки…</string>
+
+    <!-- Напоминания -->
+    <string name="reminders_message_placeholder">О чём напомнить?</string>
+    <string name="reminders_pick_time">Выбрать время</string>
+    <string name="reminders_add">Добавить</string>
+    <string name="reminders_empty">Напоминаний пока нет</string>
+    <string name="reminders_untitled">Напоминание</string>
+    <string name="reminders_delete_confirm">Удалить напоминание?</string>
+
+    <!-- Документы -->
+    <string name="docs_empty">Документов пока нет</string>
+    <string name="docs_empty_hint">Создать документ можно в веб-версии</string>
+    <string name="docs_untitled">Без названия</string>
+    <string name="docs_reader_untitled">Документ</string>
+    <string name="docs_reader_empty">Документ пуст</string>
+    <string name="docs_image_alt">Изображение документа</string>
+
+    <!-- Участники пространства -->
+    <string name="members_title">Участники</string>
+    <string name="members_invitations">Приглашения</string>
+    <string name="members_invite_title">Пригласить по email</string>
+    <string name="members_invite_action">Пригласить</string>
+    <string name="members_invite_hint">Зарегистрированного добавим сразу; нового — приглашение по ссылке.</string>
+    <string name="members_copy_link">Копировать</string>
+    <string name="members_done">Готово</string>
+    <string name="members_remove_confirm">Убрать участника?</string>
+    <string name="members_remove">Убрать</string>
+    <string name="members_role_owner">Владелец</string>
+    <string name="members_role_admin">Админ</string>
+    <string name="members_role_member">Участник</string>
+
+    <!-- Администрирование: список аккаунтов -->
+    <string name="admin_users_count">Пользователи экземпляра — %1$d</string>
+    <string name="admin_search_placeholder">Поиск по имени или почте</string>
+    <string name="admin_load_failed">Не удалось загрузить пользователей</string>
+    <string name="admin_nobody_found">Никого не найдено</string>
+    <string name="admin_reset_link_copied">Ссылка для сброса пароля скопирована</string>
+    <string name="admin_badge_you">вы</string>
+    <string name="admin_badge_inactive">деактивирован</string>
+    <string name="admin_badge_unverified">не подтверждён</string>
+    <string name="admin_reset_password">Сброс пароля</string>
+    <string name="admin_demote">Снять админа</string>
+    <string name="admin_promote">Сделать админом</string>
+    <string name="admin_deactivate">Деактивировать</string>
+    <string name="admin_activate">Активировать</string>
+    <string name="admin_demote_title">Снять администратора</string>
+    <string name="admin_demote_message">Снять права администратора у %1$s?</string>
+    <string name="admin_demote_confirm">Снять</string>
+    <string name="admin_deactivate_title">Деактивировать аккаунт</string>
+    <string name="admin_deactivate_message">Деактивировать %1$s? Пользователь не сможет войти.</string>
+
+    <!-- Администрирование: карточка OAuth -->
+    <string name="admin_oauth_title">Вход через GitLab (OAuth)</string>
+    <string name="admin_oauth_badge_on">включён</string>
+    <string name="admin_oauth_load_failed">Не удалось загрузить настройки OAuth</string>
+    <string name="admin_oauth_save_failed">Не удалось сохранить настройки</string>
+    <string name="admin_oauth_orgmap_invalid">org_map: ожидается JSON-объект</string>
+    <string name="admin_oauth_saved">Настройки OAuth сохранены</string>
+    <string name="admin_oauth_secret_stored">(сохранён — введите, чтобы заменить)</string>
+    <string name="admin_oauth_service_token">Сервис-токен (PAT, инстанс-широкий)</string>
+    <string name="admin_oauth_enabled">Включён</string>
+    <string name="admin_oauth_org_map">org_map (JSON: путь-группы → {workspace_id, admins, users})</string>
+    <string name="admin_oauth_callback_hint">Callback URL (укажите в OAuth-приложении GitLab):</string>
 </resources>

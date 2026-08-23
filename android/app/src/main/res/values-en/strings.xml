@@ -581,4 +581,87 @@
     <string name="notif_digest_15m">15 minutes</string>
     <string name="notif_digest_30m">30 minutes</string>
     <string name="notif_digest_1h">Hourly</string>
+
+    <!-- Home screen -->
+    <string name="home_greeting">Hi, %1$s 👋</string>
+    <string name="home_greeting_fallback">there</string>
+    <string name="home_stat_me">My tasks</string>
+    <string name="home_stat_all">All active</string>
+    <string name="home_stat_overdue">Overdue</string>
+    <string name="home_stat_today">Today</string>
+    <string name="home_stat_week">This week</string>
+    <string name="home_stat_completed">Completed</string>
+    <string name="home_empty">No tasks</string>
+
+    <!-- Notes -->
+    <string name="notes_new">New note</string>
+    <string name="notes_empty">No notes yet</string>
+    <string name="notes_untitled">Untitled</string>
+    <string name="notes_editor_title">Note</string>
+    <string name="notes_delete_confirm">Delete note?</string>
+    <string name="notes_title_placeholder">Title</string>
+    <string name="notes_body_placeholder">Note text…</string>
+
+    <!-- Reminders -->
+    <string name="reminders_message_placeholder">What should we remind you about?</string>
+    <string name="reminders_pick_time">Pick a time</string>
+    <string name="reminders_add">Add</string>
+    <string name="reminders_empty">No reminders yet</string>
+    <string name="reminders_untitled">Reminder</string>
+    <string name="reminders_delete_confirm">Delete reminder?</string>
+
+    <!-- Documents -->
+    <string name="docs_empty">No documents yet</string>
+    <string name="docs_empty_hint">Documents are created in the web app</string>
+    <string name="docs_untitled">Untitled</string>
+    <string name="docs_reader_untitled">Document</string>
+    <string name="docs_reader_empty">This document is empty</string>
+    <string name="docs_image_alt">Document image</string>
+
+    <!-- Workspace members -->
+    <string name="members_title">Members</string>
+    <string name="members_invitations">Invitations</string>
+    <string name="members_invite_title">Invite by email</string>
+    <string name="members_invite_action">Invite</string>
+    <string name="members_invite_hint">An existing account is added right away; a new one gets an invite link.</string>
+    <string name="members_copy_link">Copy</string>
+    <string name="members_done">Done</string>
+    <string name="members_remove_confirm">Remove member?</string>
+    <string name="members_remove">Remove</string>
+    <string name="members_role_owner">Owner</string>
+    <string name="members_role_admin">Admin</string>
+    <string name="members_role_member">Member</string>
+
+    <!-- Admin: account list -->
+    <string name="admin_users_count">Accounts on this instance — %1$d</string>
+    <string name="admin_search_placeholder">Search by name or email</string>
+    <string name="admin_load_failed">Could not load the account list</string>
+    <string name="admin_nobody_found">Nobody found</string>
+    <string name="admin_reset_link_copied">Password-reset link copied</string>
+    <string name="admin_badge_you">you</string>
+    <string name="admin_badge_inactive">deactivated</string>
+    <string name="admin_badge_unverified">unverified</string>
+    <string name="admin_reset_password">Reset password</string>
+    <string name="admin_demote">Revoke admin</string>
+    <string name="admin_promote">Make admin</string>
+    <string name="admin_deactivate">Deactivate</string>
+    <string name="admin_activate">Activate</string>
+    <string name="admin_demote_title">Revoke admin rights</string>
+    <string name="admin_demote_message">Revoke admin rights from %1$s?</string>
+    <string name="admin_demote_confirm">Revoke</string>
+    <string name="admin_deactivate_title">Deactivate account</string>
+    <string name="admin_deactivate_message">Deactivate %1$s? They will not be able to sign in.</string>
+
+    <!-- Admin: OAuth card -->
+    <string name="admin_oauth_title">Sign in with GitLab (OAuth)</string>
+    <string name="admin_oauth_badge_on">on</string>
+    <string name="admin_oauth_load_failed">Could not load the OAuth settings</string>
+    <string name="admin_oauth_save_failed">Could not save the settings</string>
+    <string name="admin_oauth_orgmap_invalid">org_map: a JSON object is expected</string>
+    <string name="admin_oauth_saved">OAuth settings saved</string>
+    <string name="admin_oauth_secret_stored">(stored — type to replace)</string>
+    <string name="admin_oauth_service_token">Service token (PAT, instance-wide)</string>
+    <string name="admin_oauth_enabled">Enabled</string>
+    <string name="admin_oauth_org_map">org_map (JSON: group path → {workspace_id, admins, users})</string>
+    <string name="admin_oauth_callback_hint">Callback URL (set it in the GitLab OAuth app):</string>
 </resources>

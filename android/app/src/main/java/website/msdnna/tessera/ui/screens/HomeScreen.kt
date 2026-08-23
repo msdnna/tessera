@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -27,11 +28,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.ui.components.ColorDot
 import website.msdnna.tessera.ui.components.ErrorState
@@ -48,15 +51,23 @@ import website.msdnna.tessera.ui.viewmodels.HomeViewModel
 import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.shortDate
 
-private data class StatCard(val filter: HomeFilter, val label: String, val color: Color, val count: (HomeUiState) -> Int)
+private data class StatCard(
+    val filter: HomeFilter,
+    @param:StringRes val labelRes: Int,
+    val color: Color,
+    val count: (HomeUiState) -> Int,
+)
 
+// Список остаётся значением уровня файла: в нём лежит id ресурса, а не готовый
+// текст, — иначе подписи вычислились бы один раз при загрузке класса и застыли
+// бы на языке первого рендера. Строка разрешается в месте отрисовки.
 private val StatCards = listOf(
-    StatCard(HomeFilter.Me, "Мои задачи", Color(0xFF7C5CFF)) { it.summary.assigned },
-    StatCard(HomeFilter.All, "Все активные", Color(0xFF6B7280)) { it.summary.active },
-    StatCard(HomeFilter.Overdue, "Просрочено", Color(0xFFE0533D)) { it.summary.overdue },
-    StatCard(HomeFilter.Today, "Сегодня", Color(0xFFE0A418)) { it.summary.dueToday },
-    StatCard(HomeFilter.Week, "На неделе", Color(0xFF2F80ED)) { it.summary.dueWeek },
-    StatCard(HomeFilter.Completed, "Выполнено", Color(0xFF18A058)) { it.summary.completed },
+    StatCard(HomeFilter.Me, R.string.home_stat_me, Color(0xFF7C5CFF)) { it.summary.assigned },
+    StatCard(HomeFilter.All, R.string.home_stat_all, Color(0xFF6B7280)) { it.summary.active },
+    StatCard(HomeFilter.Overdue, R.string.home_stat_overdue, Color(0xFFE0533D)) { it.summary.overdue },
+    StatCard(HomeFilter.Today, R.string.home_stat_today, Color(0xFFE0A418)) { it.summary.dueToday },
+    StatCard(HomeFilter.Week, R.string.home_stat_week, Color(0xFF2F80ED)) { it.summary.dueWeek },
+    StatCard(HomeFilter.Completed, R.string.home_stat_completed, Color(0xFF18A058)) { it.summary.completed },
 )
 
 /** Home / "Моя работа": a greeting, summary stat cards and a filtered task list. */
@@ -77,7 +88,7 @@ fun HomeScreen(
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
         Text(
-            "Привет, ${userName.ifBlank { "коллега" }} 👋",
+            stringResource(R.string.home_greeting, userName.ifBlank { stringResource(R.string.home_greeting_fallback) }),
             color = c.text1,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
@@ -101,7 +112,7 @@ fun HomeScreen(
             state.loading -> LoadingState()
 
             state.error != null -> ErrorState(
-                message = state.error ?: "Ошибка",
+                message = state.error ?: stringResource(R.string.common_error),
                 onRetry = { vm.load(workspaceId, userId) },
             )
 
@@ -109,7 +120,7 @@ fun HomeScreen(
                 val tasks = state.visibleTasks
                 if (tasks.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Задач нет", color = c.text3, fontSize = 14.sp)
+                        Text(stringResource(R.string.home_empty), color = c.text3, fontSize = 14.sp)
                     }
                 } else {
                     LazyColumn(
@@ -139,7 +150,7 @@ private fun StatCardView(card: StatCard, count: Int, selected: Boolean, onClick:
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Text(count.toString(), color = card.color, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text(card.label, color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(stringResource(card.labelRes), color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 

@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
@@ -100,9 +102,9 @@ fun DocumentsScreen(workspaceId: String) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     IonIcon(Ion.BOOK, size = 40.dp, tint = c.text3)
                     Spacer(Modifier.height(10.dp))
-                    Text("Документов пока нет", color = c.text3, fontSize = 14.sp)
+                    Text(stringResource(R.string.docs_empty), color = c.text3, fontSize = 14.sp)
                     Spacer(Modifier.height(4.dp))
-                    Text("Создать документ можно в веб-версии", color = c.placeholder, fontSize = 12.sp)
+                    Text(stringResource(R.string.docs_empty_hint), color = c.placeholder, fontSize = 12.sp)
                 }
             }
 
@@ -155,7 +157,7 @@ private fun DocumentRow(row: DocTreeRow, onClick: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                row.doc.title.ifBlank { "Без названия" },
+                row.doc.title.ifBlank { stringResource(R.string.docs_untitled) },
                 color = c.text1,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -196,7 +198,7 @@ private fun DocumentReader(
                 Spacer(Modifier.width(6.dp))
             }
             Text(
-                title.ifBlank { "Документ" },
+                title.ifBlank { stringResource(R.string.docs_reader_untitled) },
                 color = c.text1,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -210,7 +212,7 @@ private fun DocumentReader(
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
 
             blocks.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Документ пуст", color = c.text3, fontSize = 14.sp)
+                Text(stringResource(R.string.docs_reader_empty), color = c.text3, fontSize = 14.sp)
             }
 
             else -> LazyColumn(
@@ -316,7 +318,7 @@ private fun DocImageView(block: DocImage) {
     Column(Modifier.fillMaxWidth()) {
         AsyncImage(
             model = model,
-            contentDescription = block.alt.ifBlank { "Изображение документа" },
+            contentDescription = block.alt.ifBlank { stringResource(R.string.docs_image_alt) },
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusMd)),
         )
         if (block.alt.isNotBlank()) {
