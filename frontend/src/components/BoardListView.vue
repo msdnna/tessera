@@ -1,6 +1,8 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { NDropdown, NPopconfirm } from 'naive-ui'
-import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
+import { PRIORITY_COLORS } from '@/styles/tokens'
+import { priorityLabel } from '@/utils/priority'
 import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
@@ -20,6 +22,8 @@ const props = defineProps({
 })
 const emit = defineEmits(['open', 'changed'])
 
+const { t } = useI18n()
+
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
@@ -27,8 +31,12 @@ const menu = useTaskMenu({
 })
 
 const { formatDue: fmtDue } = useDateLocale()
-function isOverdue(t) {
-  return t.due_date && !t.completed_at && new Date(t.due_date) < new Date(new Date().toDateString())
+function isOverdue(task) {
+  return (
+    task.due_date &&
+    !task.completed_at &&
+    new Date(task.due_date) < new Date(new Date().toDateString())
+  )
 }
 </script>
 
@@ -45,24 +53,24 @@ function isOverdue(t) {
       </header>
 
       <div
-        v-for="t in lists[col.key] || []"
-        :key="t.id"
+        v-for="task in lists[col.key] || []"
+        :key="task.id"
         class="lv-row"
-        :class="{ done: t.completed_at }"
-        @click="$emit('open', t.id)"
-        @contextmenu.prevent.stop="menu.open($event, t)"
+        :class="{ done: task.completed_at }"
+        @click="$emit('open', task.id)"
+        @contextmenu.prevent.stop="menu.open($event, task)"
       >
         <span
           class="lv-pr"
-          :style="{ background: hueGrad(PRIORITY_COLORS[t.priority || 0]) }"
-          :title="PRIORITY_LABELS[t.priority || 0]"
+          :style="{ background: hueGrad(PRIORITY_COLORS[task.priority || 0]) }"
+          :title="priorityLabel(task.priority)"
         />
-        <span v-if="t.number" class="lv-num">#{{ t.number }}</span>
-        <span class="lv-title">{{ t.title }}</span>
+        <span v-if="task.number" class="lv-num">#{{ task.number }}</span>
+        <span class="lv-title">{{ task.title }}</span>
 
         <span class="lv-tags">
           <TagPill
-            v-for="tid in (t.tag_ids || []).filter((id) => tagsMap[id])"
+            v-for="tid in (task.tag_ids || []).filter((id) => tagsMap[id])"
             :key="tid"
             class="lv-tag"
             :style="{ borderColor: tagsMap[tid].color || 'var(--t-border)' }"
@@ -72,13 +80,13 @@ function isOverdue(t) {
           />
         </span>
 
-        <span v-if="t.due_date" class="lv-due" :class="{ overdue: isOverdue(t) }">
-          {{ fmtDue(t.due_date) }}
+        <span v-if="task.due_date" class="lv-due" :class="{ overdue: isOverdue(task) }">
+          {{ fmtDue(task.due_date) }}
         </span>
 
         <span class="lv-ava-row">
           <UserAvatar
-            v-for="uid in t.assignee_ids || []"
+            v-for="uid in task.assignee_ids || []"
             :key="uid"
             class="lv-ava"
             :user-id="uid"
@@ -88,7 +96,7 @@ function isOverdue(t) {
         </span>
       </div>
 
-      <div v-if="!(lists[col.key] || []).length" class="lv-empty">— пусто —</div>
+      <div v-if="!(lists[col.key] || []).length" class="lv-empty">{{ t('board.list.empty') }}</div>
     </section>
 
     <n-dropdown
@@ -106,23 +114,23 @@ function isOverdue(t) {
       :x="menu.x.value"
       :y="menu.y.value"
       :positive-button-props="{ type: 'error' }"
-      positive-text="Удалить"
+      :positive-text="t('task.confirm.deleteYes')"
       @positive-click="menu.confirmDelete()"
       @clickoutside="menu.deleteConfirmShow.value = false"
     >
       <template #trigger><span /></template>
-      Удалить безвозвратно? Это действие необратимо.
+      {{ t('task.confirm.delete') }}
     </n-popconfirm>
     <n-popconfirm
       v-model:show="menu.archiveConfirmShow.value"
       :x="menu.x.value"
       :y="menu.y.value"
-      positive-text="В архив"
+      :positive-text="t('task.confirm.archiveYes')"
       @positive-click="menu.confirmArchive()"
       @clickoutside="menu.archiveConfirmShow.value = false"
     >
       <template #trigger><span /></template>
-      Перенести задачу в архив?
+      {{ t('task.confirm.archive') }}
     </n-popconfirm>
   </div>
 </template>

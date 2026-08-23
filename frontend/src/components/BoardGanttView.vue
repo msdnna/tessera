@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, toRef, onBeforeUnmount, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
@@ -19,6 +20,8 @@ import ChartTaskRow from './chart/ChartTaskRow.vue'
 import ChartUnscheduled from './chart/ChartUnscheduled.vue'
 import ChartTaskMenu from './chart/ChartTaskMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
+
+const { t } = useI18n()
 
 const wsStore = useWorkspacesStore()
 
@@ -158,10 +161,23 @@ const overdueCount = computed(
 const counters = computed(() => {
   const out = []
   if (overdueCount.value)
-    out.push({ key: 'overdue', text: `${overdueCount.value} просрочено`, overdue: true })
-  if (deps.value.length) out.push({ key: 'deps', text: `${deps.value.length} связей` })
+    out.push({
+      key: 'overdue',
+      text: t('board.chart.counter.overdue', { n: overdueCount.value }),
+      overdue: true,
+    })
+  // Plural, not a frozen «связей»: Russian needs three forms (1 связь · 2 связи ·
+  // 5 связей) and the old template literal got two of them wrong.
+  if (deps.value.length)
+    out.push({
+      key: 'deps',
+      text: t('board.chart.counter.deps', deps.value.length, { named: { n: deps.value.length } }),
+    })
   if (unscheduled.value.length)
-    out.push({ key: 'unsched', text: `${unscheduled.value.length} без дат` })
+    out.push({
+      key: 'unsched',
+      text: t('board.chart.counter.unscheduled', { n: unscheduled.value.length }),
+    })
   return out
 })
 
@@ -360,7 +376,7 @@ onBeforeUnmount(() => {
       :zoom-idx="zoomIdx"
       :zoom-count="ZOOM.length"
       :left-collapsed="leftCollapsed"
-      hint="Тяните от правого края задачи к другой, чтобы создать зависимость"
+      :hint="t('board.chart.linkHint')"
       :counters="counters"
       @today="centerToday"
       @zoom-in="zoomIn()"
@@ -472,9 +488,7 @@ onBeforeUnmount(() => {
           </svg>
         </div>
 
-        <div v-if="!lanes.length" class="tl-empty">
-          Нет задач со сроками. Задайте срок или начало в карточке.
-        </div>
+        <div v-if="!lanes.length" class="tl-empty">{{ t('board.chart.empty') }}</div>
       </div>
     </div>
 

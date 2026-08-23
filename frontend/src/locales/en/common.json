@@ -12,6 +12,13 @@
     "retry": "Retry",
     "search": "Search"
   },
+  "priority": {
+    "none": "No priority",
+    "low": "Low",
+    "normal": "Normal",
+    "high": "High",
+    "urgent": "Urgent"
+  },
   "state": {
     "loading": "Loading…",
     "empty": "Empty",

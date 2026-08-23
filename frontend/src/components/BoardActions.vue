@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NPopover, NIcon } from 'naive-ui'
 import { PricetagsOutline, ArchiveOutline, RibbonOutline } from '@vicons/ionicons5'
@@ -8,6 +9,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import TagManager from './TagManager.vue'
 import MilestoneManager from './MilestoneManager.vue'
 
+const { t } = useI18n()
 const store = useBoardViewStore()
 const wsStore = useWorkspacesStore()
 const route = useRoute()
@@ -39,7 +41,7 @@ function onChanged() {
       <template #trigger>
         <n-button size="small" quaternary>
           <template #icon><n-icon :component="PricetagsOutline" /></template>
-          Теги
+          {{ t('board.actions.tags') }}
         </n-button>
       </template>
       <TagManager
@@ -52,7 +54,7 @@ function onChanged() {
 
     <n-button size="small" quaternary @click="msShow = true">
       <template #icon><n-icon :component="RibbonOutline" /></template>
-      Этапы
+      {{ t('board.actions.milestones') }}
     </n-button>
 
     <n-button
@@ -63,7 +65,7 @@ function onChanged() {
       @click="isArchive ? null : openArchive()"
     >
       <template #icon><n-icon :component="ArchiveOutline" /></template>
-      Архив
+      {{ t('board.actions.archive') }}
     </n-button>
 
     <MilestoneManager

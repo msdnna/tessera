@@ -1,1 +1,18 @@
-{}
+{
+  "fallbackTitle": "Task",
+  "menu": {
+    "open": "Open",
+    "complete": "Mark as done",
+    "uncomplete": "Mark as not done",
+    "priority": "Priority",
+    "move": "Move to a column",
+    "archive": "Archive",
+    "delete": "Delete"
+  },
+  "confirm": {
+    "delete": "Delete permanently? This cannot be undone.",
+    "deleteYes": "Delete",
+    "archive": "Move the task to the archive?",
+    "archiveYes": "Archive"
+  }
+}

@@ -154,7 +154,9 @@ async function submit() {
       </n-button>
     </n-form>
     <template v-if="gitlabEnabled">
-      <div class="auth-or"><span>{{ t('common.auth.login.or') }}</span></div>
+      <div class="auth-or">
+        <span>{{ t('common.auth.login.or') }}</span>
+      </div>
       <n-button block class="gl-oauth-btn" :loading="glWaiting" @click="loginWithGitlab">
         <template #icon><n-icon :component="LogoGitlab" /></template>
         {{ glWaiting ? t('common.auth.login.gitlabWaiting') : t('common.auth.login.gitlab') }}

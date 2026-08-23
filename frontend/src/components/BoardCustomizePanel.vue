@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NDrawer,
   NDrawerContent,
@@ -40,32 +41,40 @@ const props = defineProps({
 })
 const emit = defineEmits(['set-field', 'add-facet', 'remove-chip', 'chip-click', 'update-board'])
 
+const { t } = useI18n()
+
 const boardInitials = computed(() => (boardName.value || '?').trim().slice(0, 2).toUpperCase())
 
-const FIELDS = [
-  { key: 'priority', label: 'Приоритет' },
-  { key: 'due', label: 'Срок' },
-  { key: 'assignee', label: 'Исполнитель' },
-  { key: 'tags', label: 'Теги' },
-  { key: 'estimate', label: 'Оценка' },
-  { key: 'milestone', label: 'Этап' },
-  { key: 'description', label: 'Описание' },
-  { key: 'number', label: 'Номер (#)' },
-  { key: 'gitlab', label: 'GitLab' },
+// Only the field order is fixed here — the labels are looked up per render, or
+// switching the language would leave this list on the language of the first one
+// (pitfall 1 of the #2799 plan).
+const FIELD_KEYS = [
+  'priority',
+  'due',
+  'assignee',
+  'tags',
+  'estimate',
+  'milestone',
+  'description',
+  'number',
+  'gitlab',
 ]
+const fields = computed(() =>
+  FIELD_KEYS.map((key) => ({ key, label: t(`board.customize.field.${key}`) })),
+)
 const fieldOn = (k) => props.fieldVis?.[k] !== false
 </script>
 
 <template>
   <n-drawer v-model:show="show" :width="340" placement="right">
-    <n-drawer-content title="Настроить вид" closable :native-scrollbar="false">
+    <n-drawer-content :title="t('board.customize.title')" closable :native-scrollbar="false">
       <!-- Board: name, then icon + colour (like projects/groups) -->
       <div class="sec">
-        <div class="sec-lbl">Доска</div>
+        <div class="sec-lbl">{{ t('board.customize.board') }}</div>
         <n-input
           v-model:value="boardName"
           size="small"
-          placeholder="Название доски"
+          :placeholder="t('board.customize.boardName')"
           @blur="emit('update-board', { name: boardName })"
           @keyup.enter="emit('update-board', { name: boardName })"
         />
@@ -88,11 +97,11 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
 
       <!-- Card size -->
       <div class="sec">
-        <div class="sec-lbl">Размер карточек</div>
+        <div class="sec-lbl">{{ t('board.customize.cardSize') }}</div>
         <n-radio-group v-model:value="cardSize" size="small">
-          <n-radio-button value="compact">Компактно</n-radio-button>
-          <n-radio-button value="medium">Средне</n-radio-button>
-          <n-radio-button value="large">Расширенно</n-radio-button>
+          <n-radio-button value="compact">{{ t('board.customize.sizeCompact') }}</n-radio-button>
+          <n-radio-button value="medium">{{ t('board.customize.sizeMedium') }}</n-radio-button>
+          <n-radio-button value="large">{{ t('board.customize.sizeLarge') }}</n-radio-button>
         </n-radio-group>
       </div>
 
@@ -100,17 +109,17 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
 
       <!-- Fields on the card -->
       <div class="sec">
-        <div class="sec-lbl">Поля</div>
+        <div class="sec-lbl">{{ t('board.customize.fields') }}</div>
         <div class="row">
-          <span>Стек (в столбик)</span>
+          <span>{{ t('board.customize.stack') }}</span>
           <n-switch v-model:value="stackFields" size="small" />
         </div>
         <div class="row">
-          <span>Показывать пустые поля</span>
+          <span>{{ t('board.customize.showEmpty') }}</span>
           <n-switch v-model:value="showEmpty" size="small" />
         </div>
         <div class="flds">
-          <label v-for="f in FIELDS" :key="f.key" class="fld">
+          <label v-for="f in fields" :key="f.key" class="fld">
             <span>{{ f.label }}</span>
             <n-switch
               :value="fieldOn(f.key)"
@@ -125,9 +134,9 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
 
       <!-- Columns -->
       <div class="sec">
-        <div class="sec-lbl">Колонки</div>
+        <div class="sec-lbl">{{ t('board.customize.columns') }}</div>
         <div class="row">
-          <span>Сворачивать пустые колонки</span>
+          <span>{{ t('board.customize.autoCollapse') }}</span>
           <n-switch v-model:value="autoCollapseEmpty" size="small" />
         </div>
       </div>
@@ -136,7 +145,7 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
 
       <!-- Group / sort / filter (reuse composer) + subtasks -->
       <div class="sec">
-        <div class="sec-lbl">Группировка · сортировка · фильтр</div>
+        <div class="sec-lbl">{{ t('board.customize.facets') }}</div>
         <div class="chips">
           <span
             v-for="(c, ci) in facetChips"
@@ -157,13 +166,16 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
             :options="addOptions"
             @select="(k) => emit('add-facet', k)"
           >
-            <button class="pchip-add" title="Добавить группировку / сортировку / фильтр">
+            <button class="pchip-add" :title="t('board.composer.add')">
               <n-icon :component="AddOutline" :size="14" />
             </button>
           </n-dropdown>
         </div>
         <div class="row">
-          <span><n-icon :component="GitBranchOutline" :size="14" /> Раскрыть подзадачи</span>
+          <span
+            ><n-icon :component="GitBranchOutline" :size="14" />
+            {{ t('board.customize.subtasks') }}</span
+          >
           <n-switch v-model:value="subtasksExpanded" size="small" />
         </div>
       </div>
@@ -172,14 +184,16 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
 
       <!-- Views -->
       <div class="sec">
-        <div class="sec-lbl">Представления</div>
+        <div class="sec-lbl">{{ t('board.customize.views') }}</div>
         <div class="row">
-          <span>Автосохранение{{ currentViewName ? `: ${currentViewName}` : '' }}</span>
+          <span>{{
+            currentViewName
+              ? t('board.customize.autosaveNamed', { name: currentViewName })
+              : t('board.customize.autosave')
+          }}</span>
           <n-switch v-model:value="autosaveView" size="small" :disabled="!currentViewName" />
         </div>
-        <div class="hint">
-          Сохранение и загрузка представлений — кнопки папки и дискеты на панели доски.
-        </div>
+        <div class="hint">{{ t('board.customize.viewsHint') }}</div>
       </div>
     </n-drawer-content>
   </n-drawer>

@@ -138,7 +138,7 @@ export function isDateOnly(date) {
 // carry a capital. Capitalize only when the string starts with a letter, so
 // "31 дек." (starts with a digit) is left alone — the old blanket cap() helper
 // was a no-op there and a source of confusion.
-function capitalizeFirst(s) {
+export function capitalizeFirst(s) {
   if (!s) return s
   const first = s.charAt(0)
   return first.toLowerCase() === first.toUpperCase() ? s : first.toUpperCase() + s.slice(1)

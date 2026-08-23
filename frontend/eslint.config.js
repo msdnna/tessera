@@ -64,6 +64,13 @@ export default [
             '—',
             '−',
             '→',
+            // Glyphs used as icons in their own right — a close cross, the
+            // month-stepper chevrons and the full-width plus on "add" buttons.
+            // They are drawn, not read, and stay the same in every locale.
+            '×',
+            '‹',
+            '›',
+            '＋',
             'Tessera',
             'tessera',
           ],

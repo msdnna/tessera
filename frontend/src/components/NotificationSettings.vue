@@ -115,9 +115,7 @@ const REPEAT_OPTIONS = computed(() =>
 const DIGEST_OPTIONS = computed(() =>
   DIGEST_VALUES.map((value) => ({ value, label: t(`settings.notifications.digest.${value}`) })),
 )
-const kindOptions = computed(() =>
-  EVENT_KINDS.map((value) => ({ value, label: kindLabel(value) })),
-)
+const kindOptions = computed(() => EVENT_KINDS.map((value) => ({ value, label: kindLabel(value) })))
 
 const wsOptions = computed(() => (wsStore.list || []).map((w) => ({ value: w.id, label: w.name })))
 const channelOptions = computed(() =>

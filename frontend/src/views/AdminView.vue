@@ -45,7 +45,9 @@ async function toggleActive(u) {
   try {
     await admin.setActive(u.id, !u.active)
     u.active = !u.active
-    message.success(u.active ? t('settings.admin.msg.activated') : t('settings.admin.msg.deactivated'))
+    message.success(
+      u.active ? t('settings.admin.msg.activated') : t('settings.admin.msg.deactivated'),
+    )
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -58,7 +60,9 @@ async function toggleAdmin(u) {
   try {
     await admin.setAdmin(u.id, !u.is_admin)
     u.is_admin = !u.is_admin
-    message.success(u.is_admin ? t('settings.admin.msg.adminGranted') : t('settings.admin.msg.adminRevoked'))
+    message.success(
+      u.is_admin ? t('settings.admin.msg.adminGranted') : t('settings.admin.msg.adminRevoked'),
+    )
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -89,7 +93,8 @@ async function copyResetLink(u) {
 // as bare template text the no-bare-strings rule would (rightly) flag them.
 const SCOPE_READ_API = 'read_api'
 const SCOPE_API = 'api'
-const ORG_MAP_SAMPLE = '{ "group/path": { "workspace_id": "uuid", "admins": ["login"], "users": true } }'
+const ORG_MAP_SAMPLE =
+  '{ "group/path": { "workspace_id": "uuid", "admins": ["login"], "users": true } }'
 
 const oauth = ref({
   gl_base_url: '',
@@ -190,8 +195,12 @@ onMounted(() => {
         <p class="oauth-hint">
           <b>{{ t('settings.admin.oauth.hint.loginLabel') }}</b>
           <i18n-t keypath="settings.admin.oauth.hint.login" tag="span" scope="global">
-            <template #scope><code>{{ SCOPE_READ_API }}</code></template>
-            <template #redirect><code>{{ callbackUrl }}</code></template>
+            <template #scope
+              ><code>{{ SCOPE_READ_API }}</code></template
+            >
+            <template #redirect
+              ><code>{{ callbackUrl }}</code></template
+            >
             <template #toggle
               ><b>{{ t('settings.admin.oauth.hint.toggle') }}</b></template
             >
@@ -202,7 +211,9 @@ onMounted(() => {
             <template #token
               ><b>{{ t('settings.admin.oauth.hint.serviceToken') }}</b></template
             >
-            <template #api><code>{{ SCOPE_API }}</code></template>
+            <template #api
+              ><code>{{ SCOPE_API }}</code></template
+            >
           </i18n-t>
         </p>
         <div class="oauth-grid">

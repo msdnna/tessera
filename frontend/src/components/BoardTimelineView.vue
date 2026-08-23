@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, toRef, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { TimerOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
@@ -23,6 +24,8 @@ import ChartUnscheduled from './chart/ChartUnscheduled.vue'
 import ChartTaskMenu from './chart/ChartTaskMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
 import UserAvatar from './UserAvatar.vue'
+
+const { t } = useI18n()
 
 const wsStore = useWorkspacesStore()
 
@@ -149,9 +152,16 @@ const overdueCount = computed(
 const counters = computed(() => {
   const out = []
   if (overdueCount.value)
-    out.push({ key: 'overdue', text: `${overdueCount.value} просрочено`, overdue: true })
+    out.push({
+      key: 'overdue',
+      text: t('board.chart.counter.overdue', { n: overdueCount.value }),
+      overdue: true,
+    })
   if (unscheduled.value.length)
-    out.push({ key: 'unsched', text: `${unscheduled.value.length} без дат` })
+    out.push({
+      key: 'unsched',
+      text: t('board.chart.counter.unscheduled', { n: unscheduled.value.length }),
+    })
   return out
 })
 
@@ -317,9 +327,7 @@ const hoverEstimateRange = computed(() =>
           <div class="tl-vspacer" :style="{ height: `${vwindow.bottom}px` }" />
         </div>
 
-        <div v-if="!lanes.length" class="tl-empty">
-          Нет задач со сроками. Задайте срок или начало в карточке.
-        </div>
+        <div v-if="!lanes.length" class="tl-empty">{{ t('board.chart.empty') }}</div>
       </div>
     </div>
 
