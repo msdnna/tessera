@@ -73,6 +73,18 @@ private val DateFormats = listOf(
     "dd.MM.yyyy" to "31.12.2026", "yyyy-MM-dd" to "2026-12-31",
     "MM/dd/yyyy" to "12/31/2026", "dd/MM/yyyy" to "31/12/2026",
 )
+
+/**
+ * Label of the option matching [value], or the first option's when nothing matches.
+ *
+ * A preference value can come from another client: since #2798 the web writes named
+ * date presets ("short", "medium", …) into `date_format`, which is not in [DateFormats].
+ * `first { }` threw NoSuchElementException on those and took the whole screen down —
+ * an unknown value must degrade to a default label, not to a crash. Android moves to
+ * the same presets in stage 7 of #2796.
+ */
+private fun <T> labelOf(options: List<Pair<T, String>>, value: T): String =
+    options.firstOrNull { it.first == value }?.second ?: options.first().second
 private val WeekStarts = listOf(1 to "Понедельник", 0 to "Воскресенье")
 
 /**
@@ -306,10 +318,10 @@ private fun LocalizationCard(p: Preferences, repo: ProfileRepository, scope: kot
     TCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Локализация и форматы", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            SelectRow("Язык", Languages.first { it.first == p.language }.second, Languages) { save(p.copy(language = it)) }
-            SelectRow("Начало недели", WeekStarts.first { it.first == p.weekStart }.second, WeekStarts) { save(p.copy(weekStart = it)) }
-            SelectRow("Формат времени", TimeFormats.first { it.first == p.timeFormat }.second, TimeFormats) { save(p.copy(timeFormat = it)) }
-            SelectRow("Формат даты", DateFormats.first { it.first == p.dateFormat }.second, DateFormats) { save(p.copy(dateFormat = it)) }
+            SelectRow("Язык", labelOf(Languages, p.language), Languages) { save(p.copy(language = it)) }
+            SelectRow("Начало недели", labelOf(WeekStarts, p.weekStart), WeekStarts) { save(p.copy(weekStart = it)) }
+            SelectRow("Формат времени", labelOf(TimeFormats, p.timeFormat), TimeFormats) { save(p.copy(timeFormat = it)) }
+            SelectRow("Формат даты", labelOf(DateFormats, p.dateFormat), DateFormats) { save(p.copy(dateFormat = it)) }
             val tzOptions = remember { timezoneOptions() }
             val countryOpts = remember(p.language) { countryOptions(p.language) }
             SearchableSelectRow("Часовой пояс", p.timezone, tzOptions, "Europe/Moscow") { save(p.copy(timezone = it)) }
