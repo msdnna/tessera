@@ -72,14 +72,4 @@ class CommentThreadsTest {
     fun `empty list`() {
         assertThat(groupThreads(emptyList())).isEmpty()
     }
-
-    @Test
-    fun `replyCountLabel picks the Russian plural form`() {
-        assertThat(replyCountLabel(1)).isEqualTo("1 ответ")
-        assertThat(replyCountLabel(2)).isEqualTo("2 ответа")
-        assertThat(replyCountLabel(5)).isEqualTo("5 ответов")
-        assertThat(replyCountLabel(11)).isEqualTo("11 ответов")
-        assertThat(replyCountLabel(21)).isEqualTo("21 ответ")
-        assertThat(replyCountLabel(112)).isEqualTo("112 ответов")
-    }
 }

@@ -1,6 +1,7 @@
 package website.msdnna.tessera.ui.screens
 
 import android.content.Intent
+import android.content.res.Resources
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -56,7 +57,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +77,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.BoardColumn
@@ -132,7 +137,6 @@ import website.msdnna.tessera.util.nextColumn
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
-import website.msdnna.tessera.util.replyCountLabel
 import website.msdnna.tessera.util.shortDate
 import website.msdnna.tessera.util.siblingNeighbors
 import website.msdnna.tessera.util.sortedColumns
@@ -140,25 +144,34 @@ import website.msdnna.tessera.util.sourceMeta
 import website.msdnna.tessera.util.toggleTaskMarker
 import website.msdnna.tessera.util.whenLabel
 
-private val RelKindLabels = mapOf(
-    "relates" to "связана с",
-    "blocks" to "блокирует",
-    "blocked_by" to "заблокирована",
-    "duplicates" to "дублирует",
-)
+/**
+ * Подпись вида связи. Именно функция, а не `Map` уровня файла: карта со строками
+ * вычислилась бы один раз при загрузке класса и застыла бы на языке первого
+ * рендера — переключение языка её бы уже не тронуло.
+ */
+@Composable
+private fun relKindLabel(kind: String): String = when (kind) {
+    "relates" -> stringResource(R.string.task_relation_relates)
+    "blocks" -> stringResource(R.string.task_relation_blocks)
+    "blocked_by" -> stringResource(R.string.task_relation_blocked_by)
+    "duplicates" -> stringResource(R.string.task_relation_duplicates)
+    else -> kind
+}
 
 /** Red used for destructive ghost actions (matches the web `--t-danger`). */
 private val DangerRed = Color(0xFFE0533D)
 
-/** Opens a downloaded attachment via the system, sharing it through our FileProvider. */
-private fun openDownloadedFile(ctx: android.content.Context, file: java.io.File, mime: String?) {
+/** Opens a downloaded attachment via the system, sharing it through our FileProvider.
+ *  [chooserTitle] приходит из композиции: диалог показывается уже вне неё, а
+ *  `ctx.getString` дал бы системную локаль вместо языка профиля. */
+private fun openDownloadedFile(ctx: android.content.Context, file: java.io.File, mime: String?, chooserTitle: String) {
     val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
     val type = mime?.takeIf { it.isNotBlank() } ?: "*/*"
     val view = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
         setDataAndType(uri, type)
         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
     }
-    val chooser = android.content.Intent.createChooser(view, "Открыть «${file.name}»")
+    val chooser = android.content.Intent.createChooser(view, chooserTitle)
         .apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
     runCatching { ctx.startActivity(chooser) }
 }
@@ -205,6 +218,9 @@ fun TaskModal(
     // and result can differ (a recurring task bounces straight out of the done
     // column), so echo its own wording rather than the click.
     val toastCtx = LocalContext.current
+    // Тосты показываются вне композиции, поэтому строки берём из ресурсов, которые
+    // подменил AppLocale, а не из LocalContext — он остаётся на системной локали.
+    val res = LocalResources.current
 
     // A tapped «#N» opens that task right here (the modal already navigates by id,
     // as the subtask and relation tabs do). A number nobody owns just says so —
@@ -215,7 +231,7 @@ fun TaskModal(
                 currentId = id
             } else {
                 android.widget.Toast
-                    .makeText(toastCtx, "Задача #$number не найдена", android.widget.Toast.LENGTH_SHORT)
+                    .makeText(toastCtx, res.getString(R.string.task_ref_not_found, number), android.widget.Toast.LENGTH_SHORT)
                     .show()
             }
         }
@@ -225,7 +241,10 @@ fun TaskModal(
         val applied = summary.applied.orEmpty().map { it.summary.ifBlank { "/${it.key}" } }
         val failed = summary.errors.orEmpty().map { "/${it.key}: ${it.error}" }
         val text = (
-            listOfNotNull(applied.takeIf { it.isNotEmpty() }?.joinToString("; ")?.let { "Применено: $it" }) + failed
+            listOfNotNull(
+                applied.takeIf { it.isNotEmpty() }?.joinToString("; ")
+                    ?.let { res.getString(R.string.task_commands_applied, it) },
+            ) + failed
             ).joinToString("\n")
         if (text.isNotBlank()) android.widget.Toast.makeText(toastCtx, text, android.widget.Toast.LENGTH_LONG).show()
         vm.consumeCommandNotice()
@@ -293,7 +312,10 @@ fun TaskModal(
                 Box(Modifier.weight(1f).fillMaxWidth()) { LoadingState() }
             } else if (state.error != null && detail == null) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    ErrorState(message = state.error ?: "Ошибка", onRetry = { vm.load(currentId, workspaceId, projectId) })
+                    ErrorState(
+                        message = state.error ?: stringResource(R.string.common_error),
+                        onRetry = { vm.load(currentId, workspaceId, projectId) },
+                    )
                 }
             } else {
                 Column(
@@ -344,12 +366,34 @@ fun TaskModal(
                         Spacer(Modifier.height(18.dp))
                         UnderlineTabs(
                             tabs = listOf(
-                                TabItem("Описание", testTag = TestTags.taskTab(TestTags.TASK_TAB_DESCRIPTION)),
-                                TabItem("Комментарии", state.comments.size, TestTags.taskTab(TestTags.TASK_TAB_COMMENTS)),
-                                TabItem("Подзадачи", detail.subtasks.size, TestTags.taskTab(TestTags.TASK_TAB_SUBTASKS)),
-                                TabItem("Связи", state.relations.size, TestTags.taskTab(TestTags.TASK_TAB_RELATIONS)),
-                                TabItem("Файлы", state.attachments.size, TestTags.taskTab(TestTags.TASK_TAB_FILES)),
-                                TabItem("История", testTag = TestTags.taskTab(TestTags.TASK_TAB_HISTORY)),
+                                TabItem(
+                                    stringResource(R.string.task_tab_description),
+                                    testTag = TestTags.taskTab(TestTags.TASK_TAB_DESCRIPTION),
+                                ),
+                                TabItem(
+                                    stringResource(R.string.task_tab_comments),
+                                    state.comments.size,
+                                    TestTags.taskTab(TestTags.TASK_TAB_COMMENTS),
+                                ),
+                                TabItem(
+                                    stringResource(R.string.task_tab_subtasks),
+                                    detail.subtasks.size,
+                                    TestTags.taskTab(TestTags.TASK_TAB_SUBTASKS),
+                                ),
+                                TabItem(
+                                    stringResource(R.string.task_tab_relations),
+                                    state.relations.size,
+                                    TestTags.taskTab(TestTags.TASK_TAB_RELATIONS),
+                                ),
+                                TabItem(
+                                    stringResource(R.string.task_tab_files),
+                                    state.attachments.size,
+                                    TestTags.taskTab(TestTags.TASK_TAB_FILES),
+                                ),
+                                TabItem(
+                                    stringResource(R.string.task_tab_history),
+                                    testTag = TestTags.taskTab(TestTags.TASK_TAB_HISTORY),
+                                ),
                             ),
                             selected = tab,
                             onSelect = { tab = it },
@@ -429,8 +473,8 @@ fun TaskModal(
                     GhostIconButton(Ion.ARCHIVE, c.primary) { confirmArchive = true }
                     TConfirmPopover(
                         expanded = confirmArchive,
-                        message = "Архивировать задачу?",
-                        confirmText = "В архив",
+                        message = stringResource(R.string.task_archive_confirm),
+                        confirmText = stringResource(R.string.task_archive_action),
                         danger = false,
                         onConfirm = {
                             confirmArchive = false
@@ -444,8 +488,8 @@ fun TaskModal(
                     GhostIconButton(Ion.TRASH, DangerRed) { confirmDelete = true }
                     TConfirmPopover(
                         expanded = confirmDelete,
-                        message = "Удалить задачу? Это действие необратимо.",
-                        confirmText = "Удалить",
+                        message = stringResource(R.string.task_delete_confirm),
+                        confirmText = stringResource(R.string.common_delete),
                         onConfirm = {
                             confirmDelete = false
                             vm.delete { close() }
@@ -454,9 +498,9 @@ fun TaskModal(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                TButton("Отмена", kind = TButtonKind.Secondary, onClick = { close() })
+                TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = { close() })
                 Spacer(Modifier.width(8.dp))
-                TButton("Сохранить", modifier = Modifier.testTag(TestTags.TASK_SAVE), onClick = {
+                TButton(stringResource(R.string.common_save), modifier = Modifier.testTag(TestTags.TASK_SAVE), onClick = {
                     vm.saveCore(title, description)
                     onClose(true)
                 })
@@ -500,7 +544,14 @@ private fun TitleField(title: String, onChange: (String) -> Unit) {
         cursorBrush = SolidColor(c.primary),
         modifier = Modifier.fillMaxWidth().testTag(TestTags.TASK_TITLE),
         decorationBox = { inner ->
-            if (title.isEmpty()) Text("Название задачи", color = c.placeholder, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            if (title.isEmpty()) {
+                Text(
+                    stringResource(R.string.task_title_placeholder),
+                    color = c.placeholder,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             inner()
         },
     )
@@ -551,15 +602,15 @@ private fun PropertyGrid(
         else -> null
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        PropRow(Ion.FLAG, "Приоритет") { PriorityValue(priority) { vm.setPriority(it) } }
-        PropRow(Ion.CALENDAR, "Срок") {
+        PropRow(Ion.FLAG, stringResource(R.string.task_prop_priority)) { PriorityValue(priority) { vm.setPriority(it) } }
+        PropRow(Ion.CALENDAR, stringResource(R.string.task_prop_due)) {
             DueValue(
                 dueIso, startIso, recurrence, columns, notifyEnabled, notifyLead, notifyRepeat,
                 onApply = { iso, start, rec -> vm.setDueAndRecurrence(iso, start, rec) },
                 onNotify = { lead, repeat, enabled -> vm.setDueNotify(lead, repeat, enabled) },
             )
         }
-        PropRow(Ion.TIME, "Оценка") {
+        PropRow(Ion.TIME, stringResource(R.string.task_prop_estimate)) {
             val rollup = website.msdnna.tessera.util.Estimation.sum(subtasks.map { it.estimate })
             EstimateValue(
                 estimate = estimate,
@@ -569,7 +620,7 @@ private fun PropertyGrid(
             )
         }
         if (authorName != null) {
-            PropRow(Ion.PERSON_ADD, "Автор") {
+            PropRow(Ion.PERSON_ADD, stringResource(R.string.task_prop_author)) {
                 AuthorValue(
                     authorName,
                     gl = gitlab?.author?.takeIf { it.isNotBlank() },
@@ -578,17 +629,17 @@ private fun PropertyGrid(
                 )
             }
         }
-        PropRow(Ion.PEOPLE, "Исполнители") {
+        PropRow(Ion.PEOPLE, stringResource(R.string.task_prop_assignees)) {
             AssigneesValue(assignees, gitlabAssignees, members, gitlabMembers, { vm.toggleAssignee(it) }, { vm.toggleGitlabAssignee(it) })
         }
         if (gitlab != null) {
             PropRow(Ion.GITLAB, "GitLab") { GitlabLinkValue(gitlab) }
         }
-        PropRow(Ion.PRICETAG, "Теги") {
+        PropRow(Ion.PRICETAG, stringResource(R.string.task_prop_tags)) {
             TagsValue(taskTagIds, tags, prefixNames, metaTagPrefixes, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} })
         }
         if (milestones.isNotEmpty() || milestoneId != null) {
-            PropRow(Ion.ROCKET, "Этап") {
+            PropRow(Ion.ROCKET, stringResource(R.string.task_prop_milestone)) {
                 MilestoneValue(
                     milestoneId = milestoneId,
                     milestones = milestones,
@@ -606,7 +657,7 @@ private fun PropertyGrid(
         fun neighboursFor(target: String) =
             moveNeighbors(taskId, parentId, target, siblings, parentCandidates)
         val doneCol = doneTarget(columns, doneColumnId)
-        PropRow(Ion.CHECK, "Статус") {
+        PropRow(Ion.CHECK, stringResource(R.string.task_prop_status)) {
             StatusValue(
                 columns = columns,
                 columnId = columnId,
@@ -625,7 +676,7 @@ private fun PropertyGrid(
                 },
             )
         }
-        PropRow(Ion.GIT_MERGE, "Родитель") {
+        PropRow(Ion.GIT_MERGE, stringResource(R.string.task_prop_parent)) {
             ParentValue(parentId, parentCandidates, onAttach = { vm.attachToParent(it) }, onDetach = { vm.detachFromParent() })
         }
     }
@@ -825,7 +876,7 @@ private fun DueValue(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            label.ifBlank { "Не задан" },
+            label.ifBlank { stringResource(R.string.task_due_unset) },
             color = if (label.isBlank()) c.text3 else c.text1,
             fontSize = 14.sp,
         )
@@ -870,7 +921,7 @@ private fun EstimateValue(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                label.ifBlank { "Не задана" },
+                label.ifBlank { stringResource(R.string.task_estimate_unset) },
                 color = if (label.isBlank()) c.text3 else c.text1,
                 fontSize = 14.sp,
             )
@@ -890,7 +941,7 @@ private fun EstimateValue(
         }
         if (isPoints) {
             TDropdown(expanded = menu, onDismiss = { menu = false }) {
-                EstOptionRow("Не задана") {
+                EstOptionRow(stringResource(R.string.task_estimate_unset)) {
                     menu = false
                     onSet(null)
                 }
@@ -905,7 +956,7 @@ private fun EstimateValue(
     }
     if (dialog) {
         TInputDialog(
-            title = "Оценка",
+            title = stringResource(R.string.task_prop_estimate),
             initial = label,
             placeholder = website.msdnna.tessera.util.Estimation.placeholder(cfg),
             onConfirm = {
@@ -943,7 +994,7 @@ private fun AssigneesValue(
     Box {
         Row(Modifier.clickableNoRipple { menu = true }, verticalAlignment = Alignment.CenterVertically) {
             if (chosen.isEmpty() && gitlabAssignees.isEmpty()) {
-                Text("Никто", color = c.text3, fontSize = 14.sp)
+                Text(stringResource(R.string.task_assignees_none), color = c.text3, fontSize = 14.sp)
             } else {
                 chosen.forEach { m ->
                     MemberAvatar(24.dp, m.name, userId = m.userId)
@@ -1091,7 +1142,7 @@ private fun TagsValue(
     Box {
         Box(Modifier.fillMaxWidth().clickableNoRipple { menu = true }) {
             if (chosen.isEmpty()) {
-                Text("Нет", color = c.text3, fontSize = 14.sp)
+                Text(stringResource(R.string.task_tags_none), color = c.text3, fontSize = 14.sp)
             } else {
                 // As many whole chips as fit on one line; the rest collapse to a "+N"
                 // chip (web tag-fit) — no clipping a tag name.
@@ -1141,7 +1192,7 @@ private fun TagsValue(
                 }
             }
             Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).width(250.dp)) {
-                InlineEnterField("Новый тег, Enter") {
+                InlineEnterField(stringResource(R.string.task_tag_new_hint)) {
                     onCreate(it)
                     menu = false
                 }
@@ -1156,11 +1207,16 @@ private fun ParentValue(parentId: String?, candidates: List<Task>, onAttach: (St
     var menu by remember { mutableStateOf(false) }
     if (parentId != null) {
         // Plain value-text style, matching «Сделать подзадачей…» (web 0.113.6).
-        Text("Открепить", color = c.text3, fontSize = 14.sp, modifier = Modifier.clickableNoRipple { onDetach() })
+        Text(
+            stringResource(R.string.task_parent_detach),
+            color = c.text3,
+            fontSize = 14.sp,
+            modifier = Modifier.clickableNoRipple { onDetach() },
+        )
     } else {
         Box {
             Text(
-                "Сделать подзадачей…",
+                stringResource(R.string.task_parent_attach),
                 color = c.text3,
                 fontSize = 14.sp,
                 modifier = Modifier.clickableNoRipple { menu = true },
@@ -1168,7 +1224,7 @@ private fun ParentValue(parentId: String?, candidates: List<Task>, onAttach: (St
             TDropdown(expanded = menu, onDismiss = { menu = false }) {
                 if (candidates.isEmpty()) {
                     Text(
-                        "Нет других задач",
+                        stringResource(R.string.task_parent_empty),
                         color = c.text3,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1203,7 +1259,7 @@ private fun MilestoneValue(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (chosen == null) {
-                Text("Без этапа", color = c.text3, fontSize = 14.sp)
+                Text(stringResource(R.string.task_milestone_none), color = c.text3, fontSize = 14.sp)
             } else {
                 val range = website.msdnna.tessera.util.Milestones.range(chosen.startDate, chosen.dueDate)
                 Box(Modifier.alpha(if (chosen.isClosed) 0.6f else 1f)) {
@@ -1218,7 +1274,7 @@ private fun MilestoneValue(
             }
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
-            TMenuItem("Без этапа", onClick = {
+            TMenuItem(stringResource(R.string.task_milestone_none), onClick = {
                 menu = false
                 onSet(null)
             }, trailing = {
@@ -1235,7 +1291,7 @@ private fun MilestoneValue(
                 })
             }
             Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).width(250.dp)) {
-                InlineEnterField("Новый этап, Enter") {
+                InlineEnterField(stringResource(R.string.task_milestone_new_hint)) {
                     onCreate(it)
                     menu = false
                 }
@@ -1280,7 +1336,7 @@ private fun CommandPreviewStrip(
         }
         if (custom.isNotEmpty()) {
             Text(
-                custom.joinToString(", ") { "/$it" } + " — останется текстом",
+                stringResource(R.string.task_commands_custom, custom.joinToString(", ") { "/$it" }),
                 color = c.text3,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 2.dp),
@@ -1310,7 +1366,7 @@ private fun DescriptionTab(
     MarkdownEditor(
         value = value,
         onValueChange = onValueChange,
-        placeholder = "Добавьте описание…",
+        placeholder = stringResource(R.string.task_description_placeholder),
         startInPreview = startInPreview,
         onBlur = onBlur,
         uploadImage = uploadImage,
@@ -1354,7 +1410,12 @@ private fun CommentRow(
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(cm.displayName ?: "Кто-то", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    cm.displayName ?: stringResource(R.string.task_someone),
+                    color = c.text1,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 if (cm.isGitlab) {
                     Spacer(Modifier.width(5.dp))
                     Text("· GitLab", color = c.text3, fontSize = 11.sp)
@@ -1372,7 +1433,7 @@ private fun CommentRow(
                 MarkdownEditor(
                     value = editBody,
                     onValueChange = onEditBody,
-                    placeholder = "Комментарий…",
+                    placeholder = stringResource(R.string.task_comment_edit_placeholder),
                     minHeight = 56.dp,
                     mentions = mentionItems,
                     onTaskRef = onTaskRef,
@@ -1380,12 +1441,17 @@ private fun CommentRow(
                 )
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TButton("Сохранить", onClick = {
+                    TButton(stringResource(R.string.common_save), onClick = {
                         vm.editComment(cm.id, editBody)
                         onEndEdit()
                     }, modifier = Modifier.height(34.dp))
                     Spacer(Modifier.width(6.dp))
-                    TButton("Отмена", kind = TButtonKind.Secondary, onClick = onEndEdit, modifier = Modifier.height(34.dp))
+                    TButton(
+                        stringResource(R.string.common_cancel),
+                        kind = TButtonKind.Secondary,
+                        onClick = onEndEdit,
+                        modifier = Modifier.height(34.dp),
+                    )
                     Spacer(Modifier.weight(1f))
                     MarkdownModeToggle(preview = editPreview, onToggle = onToggleEditPreview)
                 }
@@ -1489,7 +1555,12 @@ private fun CommentsTab(
 
     Column(Modifier.fillMaxWidth()) {
         if (comments.isEmpty()) {
-            Text("Комментариев пока нет", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+            Text(
+                stringResource(R.string.task_comments_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
         }
         threads.forEach { t ->
             val hidden = t.root.id in collapsed
@@ -1513,9 +1584,16 @@ private fun CommentsTab(
                 onEndEdit = { editingId = null },
             ) {
                 Row {
-                    CommentLink("Ответить") { startReply(t.root.id, t.root) }
+                    CommentLink(stringResource(R.string.task_comment_reply)) { startReply(t.root.id, t.root) }
                     if (t.replies.isNotEmpty()) {
-                        CommentLink(if (hidden) replyCountLabel(t.replies.size) else "Свернуть ответы") {
+                        // Число ответов — через plurals: русские формы (1 ответ /
+                        // 2 ответа / 5 ответов) считает система, а не наш when.
+                        val label = if (hidden) {
+                            pluralStringResource(R.plurals.task_comment_replies, t.replies.size, t.replies.size)
+                        } else {
+                            stringResource(R.string.task_comment_collapse)
+                        }
+                        CommentLink(label) {
                             collapsed = if (hidden) collapsed - t.root.id else collapsed + t.root.id
                         }
                     }
@@ -1543,7 +1621,7 @@ private fun CommentsTab(
                             },
                             onEndEdit = { editingId = null },
                         ) {
-                            CommentLink("Ответить") { startReply(t.root.id, r) }
+                            CommentLink(stringResource(R.string.task_comment_reply)) { startReply(t.root.id, r) }
                         }
                     }
                 }
@@ -1553,7 +1631,7 @@ private fun CommentsTab(
                     MarkdownEditor(
                         value = replyDraft,
                         onValueChange = { replyDraft = it },
-                        placeholder = "Ответить… (@ — упоминание)",
+                        placeholder = stringResource(R.string.task_reply_placeholder),
                         minHeight = 56.dp,
                         uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
                         mentions = mentionItems,
@@ -1564,7 +1642,7 @@ private fun CommentsTab(
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TButton(
-                            "Ответить",
+                            stringResource(R.string.task_comment_reply),
                             modifier = Modifier.height(34.dp).testTag(TestTags.TASK_REPLY_SUBMIT),
                             onClick = {
                                 if (replyDraft.isNotBlank()) {
@@ -1575,10 +1653,15 @@ private fun CommentsTab(
                             },
                         )
                         Spacer(Modifier.width(6.dp))
-                        TButton("Отмена", kind = TButtonKind.Secondary, modifier = Modifier.height(34.dp), onClick = {
-                            replyingTo = null
-                            replyDraft = ""
-                        })
+                        TButton(
+                            stringResource(R.string.common_cancel),
+                            kind = TButtonKind.Secondary,
+                            modifier = Modifier.height(34.dp),
+                            onClick = {
+                                replyingTo = null
+                                replyDraft = ""
+                            },
+                        )
                         Spacer(Modifier.weight(1f))
                         MarkdownModeToggle(preview = replyPreview, onToggle = { replyPreview = !replyPreview })
                     }
@@ -1590,9 +1673,9 @@ private fun CommentsTab(
             value = draft,
             onValueChange = { draft = it },
             placeholder = if (commands.isEmpty()) {
-                "Написать комментарий… (@ — упоминание)"
+                stringResource(R.string.task_comment_placeholder)
             } else {
-                "Написать комментарий… (@ — упоминание, / — команда)"
+                stringResource(R.string.task_comment_placeholder_commands)
             },
             minHeight = 56.dp,
             uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
@@ -1614,7 +1697,7 @@ private fun CommentsTab(
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TButton("Отправить", modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
+            TButton(stringResource(R.string.task_comment_send), modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
                 if (draft.isNotBlank()) {
                     vm.postComment(draft, members)
                     draft = ""
@@ -1637,7 +1720,12 @@ private fun SubtasksTab(
     val c = Tessera.colors
     Column(Modifier.fillMaxWidth()) {
         if (subtasks.isEmpty()) {
-            Text("Подзадач пока нет", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+            Text(
+                stringResource(R.string.task_subtasks_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
         }
         subtasks.forEach { sub ->
             Row(
@@ -1680,7 +1768,7 @@ private fun SubtasksTab(
             }
             Spacer(Modifier.height(6.dp))
         }
-        InlineEnterField("+ подзадача (Enter)") { vm.addSubtask(columnId, it) }
+        InlineEnterField(stringResource(R.string.task_subtask_new_hint)) { vm.addSubtask(columnId, it) }
     }
 }
 
@@ -1706,11 +1794,16 @@ private fun RelationsTab(
 
     Column(Modifier.fillMaxWidth()) {
         if (relations.isEmpty()) {
-            Text("Связей пока нет", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+            Text(
+                stringResource(R.string.task_relations_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
         }
         relations.forEach { r ->
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(RelKindLabels[r.kind] ?: r.kind, color = c.text3, fontSize = 12.sp, modifier = Modifier.width(90.dp))
+                Text(relKindLabel(r.kind), color = c.text3, fontSize = 12.sp, modifier = Modifier.width(90.dp))
                 if (isExternalSource(r.source)) {
                     SourceBadge(sourceMeta(r.source))
                     Spacer(Modifier.width(6.dp))
@@ -1735,9 +1828,9 @@ private fun RelationsTab(
                     TConfirmPopover(
                         expanded = confirmRemove == r.id,
                         message = if (isExternalSource(r.source)) {
-                            "Эта связь вернётся при следующем синке ${sourceMeta(r.source).label}. Удалить?"
+                            stringResource(R.string.task_relation_remove_external, sourceMeta(r.source).label)
                         } else {
-                            "Убрать связь?"
+                            stringResource(R.string.task_relation_remove_confirm)
                         },
                         onConfirm = {
                             vm.removeRelation(r.id)
@@ -1758,13 +1851,13 @@ private fun RelationsTab(
                         .clickableNoRipple { kindMenu = true }.padding(horizontal = 10.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(RelKindLabels[kind] ?: kind, color = c.text1, fontSize = 13.sp)
+                    Text(relKindLabel(kind), color = c.text1, fontSize = 13.sp)
                     Spacer(Modifier.width(4.dp))
                     IonIcon(Ion.CHEVRON_DOWN, size = 14.dp, tint = c.text3)
                 }
                 TDropdown(expanded = kindMenu, onDismiss = { kindMenu = false }) {
                     RelKindOrder.forEach { k ->
-                        TMenuItem(RelKindLabels[k] ?: k, onClick = {
+                        TMenuItem(relKindLabel(k), onClick = {
                             kind = k
                             kindMenu = false
                         })
@@ -1785,7 +1878,13 @@ private fun RelationsTab(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     modifier = Modifier.fillMaxWidth(),
                     decorationBox = { inner ->
-                        if (query.isEmpty()) Text("Найти задачу: #№ или название", color = c.placeholder, fontSize = 14.sp)
+                        if (query.isEmpty()) {
+                            Text(
+                                stringResource(R.string.task_relation_search_hint),
+                                color = c.placeholder,
+                                fontSize = 14.sp,
+                            )
+                        }
                         inner()
                     },
                 )
@@ -1801,7 +1900,12 @@ private fun RelationsTab(
                 .toList()
             Spacer(Modifier.height(6.dp))
             if (matches.isEmpty()) {
-                Text("Ничего не найдено", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+                Text(
+                    stringResource(R.string.common_nothing_found),
+                    color = c.text3,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
             } else {
                 matches.forEach { t ->
                     Row(
@@ -1829,6 +1933,9 @@ private fun FilesTab(vm: TaskDetailViewModel, attachments: List<website.msdnna.t
     val c = Tessera.colors
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    // Заголовок системного диалога «чем открыть» собирается здесь: сам диалог
+    // показывается вне композиции, где ресурсы уже системные, а не из профиля.
+    val res = LocalResources.current
     val picker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent(),
     ) { uri ->
@@ -1845,19 +1952,35 @@ private fun FilesTab(vm: TaskDetailViewModel, attachments: List<website.msdnna.t
     }
     Column(Modifier.fillMaxWidth()) {
         if (attachments.isEmpty()) {
-            Text("Файлов пока нет", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+            Text(
+                stringResource(R.string.task_files_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
         }
         attachments.forEach { a ->
             AttachmentRow(
                 attachment = a,
                 onDownload = {
-                    vm.downloadAttachment(ctx.cacheDir, a.id, a.filename) { file -> openDownloadedFile(ctx, file, a.contentType) }
+                    vm.downloadAttachment(ctx.cacheDir, a.id, a.filename) { file ->
+                        openDownloadedFile(
+                            ctx,
+                            file,
+                            a.contentType,
+                            res.getString(R.string.task_file_open_chooser, file.name),
+                        )
+                    }
                 },
                 onDelete = { vm.removeAttachment(a.id) },
             )
         }
         Spacer(Modifier.height(8.dp))
-        TButton("Прикрепить файл", kind = TButtonKind.Secondary, onClick = { picker.launch("*/*") })
+        TButton(
+            stringResource(R.string.task_file_attach),
+            kind = TButtonKind.Secondary,
+            onClick = { picker.launch("*/*") },
+        )
     }
 }
 
@@ -1868,13 +1991,14 @@ private fun AttachmentRow(
     onDelete: () -> Unit,
 ) {
     val c = Tessera.colors
+    val res = LocalResources.current
     var confirmDelete by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IonIcon(Ion.ATTACH, size = 16.dp, tint = c.text3)
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(attachment.filename, color = c.text1, fontSize = 13.sp, maxLines = 2)
-            Text(fmtSize(attachment.size), color = c.text3, fontSize = 11.sp)
+            Text(fmtSize(res, attachment.size), color = c.text3, fontSize = 11.sp)
         }
         Spacer(Modifier.width(6.dp))
         IonIconButton(Ion.DOWNLOAD, onDownload, boxSize = 44.dp, iconSize = 20.dp, tint = c.text2)
@@ -1882,7 +2006,7 @@ private fun AttachmentRow(
             IonIconButton(Ion.TRASH, { confirmDelete = true }, boxSize = 44.dp, iconSize = 20.dp, tint = c.text2)
             TConfirmPopover(
                 expanded = confirmDelete,
-                message = "Удалить вложение?",
+                message = stringResource(R.string.task_attachment_delete_confirm),
                 onConfirm = {
                     confirmDelete = false
                     onDelete()
@@ -1898,7 +2022,12 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
     val c = Tessera.colors
     Column(Modifier.fillMaxWidth()) {
         if (events.isEmpty()) {
-            Text("История пуста", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+            Text(
+                stringResource(R.string.task_history_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
         }
         events.forEach { e ->
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1906,12 +2035,9 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
                     Text(initials(e.actorName ?: "?"), color = c.text2, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(8.dp))
+                val actor = e.actorName ?: stringResource(R.string.task_someone)
                 Text(
-                    buildString {
-                        append(e.actorName ?: "Кто-то")
-                        append(' ')
-                        append(eventText(e.kind))
-                    },
+                    "$actor ${eventText(e.kind)}",
                     color = c.text2,
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f),
@@ -2008,14 +2134,23 @@ private fun TransferBoardPicker(workspaceId: String, onPick: (String) -> Unit, o
         Column(
             Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(18.dp),
         ) {
-            Text("Перенести в доску", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.task_transfer_title),
+                color = c.text1,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             Spacer(Modifier.height(12.dp))
             when {
                 loading -> Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
                     TesseraLoader()
                 }
 
-                projects.isEmpty() -> Text("Нет проектов", color = c.text3, fontSize = 13.sp)
+                projects.isEmpty() -> Text(
+                    stringResource(R.string.task_transfer_no_projects),
+                    color = c.text3,
+                    fontSize = 13.sp,
+                )
 
                 else -> Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                     projects.forEach { p ->
@@ -2047,9 +2182,19 @@ private fun TransferBoardPicker(workspaceId: String, onPick: (String) -> Unit, o
                         if (expanded == p.id) {
                             val list = boards[p.id]
                             if (list == null) {
-                                Text("Загрузка…", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 30.dp, bottom = 6.dp))
+                                Text(
+                                    stringResource(R.string.common_loading),
+                                    color = c.text3,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(start = 30.dp, bottom = 6.dp),
+                                )
                             } else if (list.isEmpty()) {
-                                Text("Нет досок", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 30.dp, bottom = 6.dp))
+                                Text(
+                                    stringResource(R.string.sidebar_no_boards),
+                                    color = c.text3,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(start = 30.dp, bottom = 6.dp),
+                                )
                             } else {
                                 list.forEach { b ->
                                     Row(
@@ -2069,16 +2214,26 @@ private fun TransferBoardPicker(workspaceId: String, onPick: (String) -> Unit, o
             }
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TButton("Отмена", kind = TButtonKind.Ghost, onClick = onDismiss)
+                TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onDismiss)
             }
         }
     }
 }
 
-private fun fmtSize(bytes: Long): String = when {
-    bytes >= 1 shl 20 -> String.format(java.util.Locale.US, "%.1f МБ", bytes / (1 shl 20).toDouble())
-    bytes >= 1 shl 10 -> String.format(java.util.Locale.US, "%.0f КБ", bytes / (1 shl 10).toDouble())
-    else -> "$bytes Б"
+/** Размер вложения: число форматируем сами, единицу берём из ресурсов —
+ *  [res] приходит из композиции, чтобы «МБ»/«MB» шли за языком профиля. */
+private fun fmtSize(res: Resources, bytes: Long): String = when {
+    bytes >= 1 shl 20 -> res.getString(
+        R.string.task_file_size_mb,
+        String.format(java.util.Locale.US, "%.1f", bytes / (1 shl 20).toDouble()),
+    )
+
+    bytes >= 1 shl 10 -> res.getString(
+        R.string.task_file_size_kb,
+        String.format(java.util.Locale.US, "%.0f", bytes / (1 shl 10).toDouble()),
+    )
+
+    else -> res.getString(R.string.task_file_size_b, bytes)
 }
 
 private fun fileName(ctx: android.content.Context, uri: android.net.Uri): String? = runCatching {
@@ -2088,22 +2243,25 @@ private fun fileName(ctx: android.content.Context, uri: android.net.Uri): String
     }
 }.getOrNull()
 
+/** Формулировка события истории. Неизвестный вид (бэкенд ушёл вперёд клиента)
+ *  показываем сырым ключом — так же, как было до перевода на ресурсы. */
+@Composable
 private fun eventText(kind: String): String = when (kind) {
-    "created" -> "создал(а) задачу"
-    "renamed" -> "переименовал(а) задачу"
-    "description" -> "изменил(а) описание"
-    "priority" -> "сменил(а) приоритет"
-    "due" -> "изменил(а) срок"
-    "completed" -> "завершил(а) задачу"
-    "reopened" -> "вернул(а) в работу"
-    "recurred" -> "перенёс(ла) повтор задачи"
-    "moved" -> "переместил(а) задачу"
-    "assigned" -> "назначил(а) исполнителя"
-    "unassigned" -> "снял(а) исполнителя"
-    "comment" -> "оставил(а) комментарий"
-    "relation" -> "добавил(а) связь"
-    "attachment" -> "прикрепил(а) файл"
-    "archived" -> "архивировал(а) задачу"
-    "restored" -> "восстановил(а) задачу"
+    "created" -> stringResource(R.string.task_event_created)
+    "renamed" -> stringResource(R.string.task_event_renamed)
+    "description" -> stringResource(R.string.task_event_description)
+    "priority" -> stringResource(R.string.task_event_priority)
+    "due" -> stringResource(R.string.task_event_due)
+    "completed" -> stringResource(R.string.task_event_completed)
+    "reopened" -> stringResource(R.string.task_event_reopened)
+    "recurred" -> stringResource(R.string.task_event_recurred)
+    "moved" -> stringResource(R.string.task_event_moved)
+    "assigned" -> stringResource(R.string.task_event_assigned)
+    "unassigned" -> stringResource(R.string.task_event_unassigned)
+    "comment" -> stringResource(R.string.task_event_comment)
+    "relation" -> stringResource(R.string.task_event_relation)
+    "attachment" -> stringResource(R.string.task_event_attachment)
+    "archived" -> stringResource(R.string.task_event_archived)
+    "restored" -> stringResource(R.string.task_event_restored)
     else -> kind
 }

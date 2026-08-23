@@ -5,6 +5,7 @@
 #
 # Волна 0 (готово): AppRoot, AuthScreen, ProfileScreen.
 # Волна 1 (готово): Sidebar.
+# Волна 2 (готово): TaskModal, CommentThreads.
 website/msdnna/tessera/data/realtime/DeviceNotifier.kt
 website/msdnna/tessera/reminders/ReminderNotifications.kt
 website/msdnna/tessera/reminders/ReminderReceiver.kt
@@ -41,7 +42,6 @@ website/msdnna/tessera/ui/screens/NotificationSettingsScreen.kt
 website/msdnna/tessera/ui/screens/NotificationsPanel.kt
 website/msdnna/tessera/ui/screens/RemindersScreen.kt
 website/msdnna/tessera/ui/screens/SearchOverlay.kt
-website/msdnna/tessera/ui/screens/TaskModal.kt
 website/msdnna/tessera/ui/screens/WhatsNewSheet.kt
 website/msdnna/tessera/ui/theme/Tokens.kt
 website/msdnna/tessera/ui/viewmodels/BoardViewModel.kt
@@ -52,7 +52,6 @@ website/msdnna/tessera/ui/viewmodels/NotificationViewModel.kt
 website/msdnna/tessera/ui/viewmodels/UpdateViewModel.kt
 website/msdnna/tessera/ui/viewmodels/WorkspaceViewModel.kt
 website/msdnna/tessera/update/WhatsNewEntries.kt
-website/msdnna/tessera/util/CommentThreads.kt
 website/msdnna/tessera/util/Dates.kt
 website/msdnna/tessera/util/Errors.kt
 website/msdnna/tessera/util/Estimation.kt

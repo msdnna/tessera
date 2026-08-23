@@ -113,7 +113,10 @@
     <string name="common_cancel">Отмена</string>
     <string name="common_delete">Удалить</string>
     <string name="common_rename">Переименовать</string>
+    <string name="common_save">Сохранить</string>
     <string name="common_loading">Загрузка…</string>
+    <string name="common_error">Ошибка</string>
+    <string name="common_nothing_found">Ничего не найдено</string>
 
     <!-- Навигация в боковой панели -->
     <string name="nav_home">Моя работа</string>
@@ -177,4 +180,102 @@
         <item quantity="many">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
         <item quantity="other">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
     </plurals>
+
+    <!-- Модалка задачи: шапка, футер, свойства -->
+    <string name="task_title_placeholder">Название задачи</string>
+    <string name="task_ref_not_found">Задача #%1$d не найдена</string>
+    <string name="task_commands_applied">Применено: %1$s</string>
+    <string name="task_archive_confirm">Архивировать задачу?</string>
+    <string name="task_archive_action">В архив</string>
+    <string name="task_delete_confirm">Удалить задачу? Это действие необратимо.</string>
+    <string name="task_prop_priority">Приоритет</string>
+    <string name="task_prop_due">Срок</string>
+    <string name="task_prop_estimate">Оценка</string>
+    <string name="task_prop_author">Автор</string>
+    <string name="task_prop_assignees">Исполнители</string>
+    <string name="task_prop_tags">Теги</string>
+    <string name="task_prop_milestone">Этап</string>
+    <string name="task_prop_status">Статус</string>
+    <string name="task_prop_parent">Родитель</string>
+    <string name="task_due_unset">Не задан</string>
+    <string name="task_estimate_unset">Не задана</string>
+    <string name="task_assignees_none">Никто</string>
+    <string name="task_tags_none">Нет</string>
+    <string name="task_tag_new_hint">Новый тег, Enter</string>
+    <string name="task_parent_detach">Открепить</string>
+    <string name="task_parent_attach">Сделать подзадачей…</string>
+    <string name="task_parent_empty">Нет других задач</string>
+    <string name="task_milestone_none">Без этапа</string>
+    <string name="task_milestone_new_hint">Новый этап, Enter</string>
+
+    <!-- Модалка задачи: вкладки -->
+    <string name="task_tab_description">Описание</string>
+    <string name="task_tab_comments">Комментарии</string>
+    <string name="task_tab_subtasks">Подзадачи</string>
+    <string name="task_tab_relations">Связи</string>
+    <string name="task_tab_files">Файлы</string>
+    <string name="task_tab_history">История</string>
+
+    <!-- Модалка задачи: описание и комментарии -->
+    <string name="task_description_placeholder">Добавьте описание…</string>
+    <string name="task_someone">Кто-то</string>
+    <string name="task_comments_empty">Комментариев пока нет</string>
+    <string name="task_comment_edit_placeholder">Комментарий…</string>
+    <string name="task_comment_reply">Ответить</string>
+    <string name="task_comment_collapse">Свернуть ответы</string>
+    <string name="task_reply_placeholder">Ответить… (@ — упоминание)</string>
+    <string name="task_comment_placeholder">Написать комментарий… (@ — упоминание)</string>
+    <string name="task_comment_placeholder_commands">Написать комментарий… (@ — упоминание, / — команда)</string>
+    <string name="task_comment_send">Отправить</string>
+    <string name="task_commands_custom">%1$s — останется текстом</string>
+    <plurals name="task_comment_replies">
+        <item quantity="one">%1$d ответ</item>
+        <item quantity="few">%1$d ответа</item>
+        <item quantity="many">%1$d ответов</item>
+        <item quantity="other">%1$d ответа</item>
+    </plurals>
+
+    <!-- Модалка задачи: подзадачи и связи -->
+    <string name="task_subtasks_empty">Подзадач пока нет</string>
+    <string name="task_subtask_new_hint">+ подзадача (Enter)</string>
+    <string name="task_relations_empty">Связей пока нет</string>
+    <string name="task_relation_relates">связана с</string>
+    <string name="task_relation_blocks">блокирует</string>
+    <string name="task_relation_blocked_by">заблокирована</string>
+    <string name="task_relation_duplicates">дублирует</string>
+    <string name="task_relation_remove_external">Эта связь вернётся при следующем синке %1$s. Удалить?</string>
+    <string name="task_relation_remove_confirm">Убрать связь?</string>
+    <string name="task_relation_search_hint">Найти задачу: #№ или название</string>
+
+    <!-- Модалка задачи: файлы -->
+    <string name="task_files_empty">Файлов пока нет</string>
+    <string name="task_file_attach">Прикрепить файл</string>
+    <string name="task_file_open_chooser">Открыть «%1$s»</string>
+    <string name="task_attachment_delete_confirm">Удалить вложение?</string>
+    <string name="task_file_size_mb">%1$s МБ</string>
+    <string name="task_file_size_kb">%1$s КБ</string>
+    <string name="task_file_size_b">%1$d Б</string>
+
+    <!-- Модалка задачи: история -->
+    <string name="task_history_empty">История пуста</string>
+    <string name="task_event_created">создал(а) задачу</string>
+    <string name="task_event_renamed">переименовал(а) задачу</string>
+    <string name="task_event_description">изменил(а) описание</string>
+    <string name="task_event_priority">сменил(а) приоритет</string>
+    <string name="task_event_due">изменил(а) срок</string>
+    <string name="task_event_completed">завершил(а) задачу</string>
+    <string name="task_event_reopened">вернул(а) в работу</string>
+    <string name="task_event_recurred">перенёс(ла) повтор задачи</string>
+    <string name="task_event_moved">переместил(а) задачу</string>
+    <string name="task_event_assigned">назначил(а) исполнителя</string>
+    <string name="task_event_unassigned">снял(а) исполнителя</string>
+    <string name="task_event_comment">оставил(а) комментарий</string>
+    <string name="task_event_relation">добавил(а) связь</string>
+    <string name="task_event_attachment">прикрепил(а) файл</string>
+    <string name="task_event_archived">архивировал(а) задачу</string>
+    <string name="task_event_restored">восстановил(а) задачу</string>
+
+    <!-- Модалка задачи: перенос в другую доску -->
+    <string name="task_transfer_title">Перенести в доску</string>
+    <string name="task_transfer_no_projects">Нет проектов</string>
 </resources>

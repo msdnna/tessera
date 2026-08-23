@@ -37,13 +37,3 @@ fun groupThreads(comments: List<Comment>): List<CommentThread> {
     }
     return out.map { (root, replies) -> CommentThread(root, replies) }
 }
-
-/** «3 ответа» — the reply count with the right Russian plural form. */
-fun replyCountLabel(n: Int): String {
-    val form = when {
-        n % 10 == 1 && n % 100 != 11 -> "ответ"
-        n % 10 in 2..4 && (n % 100 < 10 || n % 100 >= 20) -> "ответа"
-        else -> "ответов"
-    }
-    return "$n $form"
-}

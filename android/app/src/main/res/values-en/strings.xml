@@ -109,7 +109,10 @@
     <string name="common_cancel">Cancel</string>
     <string name="common_delete">Delete</string>
     <string name="common_rename">Rename</string>
+    <string name="common_save">Save</string>
     <string name="common_loading">Loading…</string>
+    <string name="common_error">Error</string>
+    <string name="common_nothing_found">Nothing found</string>
 
     <!-- Sidebar navigation -->
     <string name="nav_home">My work</string>
@@ -171,4 +174,100 @@
         <item quantity="one">%1$d of %2$d subtask — the rest are hidden by the filter</item>
         <item quantity="other">%1$d of %2$d subtasks — the rest are hidden by the filter</item>
     </plurals>
+
+    <!-- Task modal: header, footer, properties -->
+    <string name="task_title_placeholder">Task title</string>
+    <string name="task_ref_not_found">Task #%1$d not found</string>
+    <string name="task_commands_applied">Applied: %1$s</string>
+    <string name="task_archive_confirm">Archive this task?</string>
+    <string name="task_archive_action">Archive</string>
+    <string name="task_delete_confirm">Delete this task? This cannot be undone.</string>
+    <string name="task_prop_priority">Priority</string>
+    <string name="task_prop_due">Due</string>
+    <string name="task_prop_estimate">Estimate</string>
+    <string name="task_prop_author">Author</string>
+    <string name="task_prop_assignees">Assignees</string>
+    <string name="task_prop_tags">Tags</string>
+    <string name="task_prop_milestone">Milestone</string>
+    <string name="task_prop_status">Status</string>
+    <string name="task_prop_parent">Parent</string>
+    <string name="task_due_unset">Not set</string>
+    <string name="task_estimate_unset">Not set</string>
+    <string name="task_assignees_none">Nobody</string>
+    <string name="task_tags_none">None</string>
+    <string name="task_tag_new_hint">New tag, Enter</string>
+    <string name="task_parent_detach">Detach</string>
+    <string name="task_parent_attach">Make a subtask…</string>
+    <string name="task_parent_empty">No other tasks</string>
+    <string name="task_milestone_none">No milestone</string>
+    <string name="task_milestone_new_hint">New milestone, Enter</string>
+
+    <!-- Task modal: tabs -->
+    <string name="task_tab_description">Description</string>
+    <string name="task_tab_comments">Comments</string>
+    <string name="task_tab_subtasks">Subtasks</string>
+    <string name="task_tab_relations">Relations</string>
+    <string name="task_tab_files">Files</string>
+    <string name="task_tab_history">History</string>
+
+    <!-- Task modal: description and comments -->
+    <string name="task_description_placeholder">Add a description…</string>
+    <string name="task_someone">Someone</string>
+    <string name="task_comments_empty">No comments yet</string>
+    <string name="task_comment_edit_placeholder">Comment…</string>
+    <string name="task_comment_reply">Reply</string>
+    <string name="task_comment_collapse">Hide replies</string>
+    <string name="task_reply_placeholder">Reply… (@ — mention)</string>
+    <string name="task_comment_placeholder">Write a comment… (@ — mention)</string>
+    <string name="task_comment_placeholder_commands">Write a comment… (@ — mention, / — command)</string>
+    <string name="task_comment_send">Send</string>
+    <string name="task_commands_custom">%1$s — will stay as plain text</string>
+    <plurals name="task_comment_replies">
+        <item quantity="one">%1$d reply</item>
+        <item quantity="other">%1$d replies</item>
+    </plurals>
+
+    <!-- Task modal: subtasks and relations -->
+    <string name="task_subtasks_empty">No subtasks yet</string>
+    <string name="task_subtask_new_hint">+ subtask (Enter)</string>
+    <string name="task_relations_empty">No relations yet</string>
+    <string name="task_relation_relates">relates to</string>
+    <string name="task_relation_blocks">blocks</string>
+    <string name="task_relation_blocked_by">blocked by</string>
+    <string name="task_relation_duplicates">duplicates</string>
+    <string name="task_relation_remove_external">This relation will come back on the next %1$s sync. Delete it?</string>
+    <string name="task_relation_remove_confirm">Remove the relation?</string>
+    <string name="task_relation_search_hint">Find a task: #number or title</string>
+
+    <!-- Task modal: files -->
+    <string name="task_files_empty">No files yet</string>
+    <string name="task_file_attach">Attach a file</string>
+    <string name="task_file_open_chooser">Open “%1$s”</string>
+    <string name="task_attachment_delete_confirm">Delete this attachment?</string>
+    <string name="task_file_size_mb">%1$s MB</string>
+    <string name="task_file_size_kb">%1$s KB</string>
+    <string name="task_file_size_b">%1$d B</string>
+
+    <!-- Task modal: history -->
+    <string name="task_history_empty">No history yet</string>
+    <string name="task_event_created">created the task</string>
+    <string name="task_event_renamed">renamed the task</string>
+    <string name="task_event_description">edited the description</string>
+    <string name="task_event_priority">changed the priority</string>
+    <string name="task_event_due">changed the due date</string>
+    <string name="task_event_completed">completed the task</string>
+    <string name="task_event_reopened">reopened the task</string>
+    <string name="task_event_recurred">rescheduled the repeat</string>
+    <string name="task_event_moved">moved the task</string>
+    <string name="task_event_assigned">added an assignee</string>
+    <string name="task_event_unassigned">removed an assignee</string>
+    <string name="task_event_comment">left a comment</string>
+    <string name="task_event_relation">added a relation</string>
+    <string name="task_event_attachment">attached a file</string>
+    <string name="task_event_archived">archived the task</string>
+    <string name="task_event_restored">restored the task</string>
+
+    <!-- Task modal: move to another board -->
+    <string name="task_transfer_title">Move to a board</string>
+    <string name="task_transfer_no_projects">No projects</string>
 </resources>
