@@ -337,7 +337,11 @@ function onBlocked(held) {
   const now = Date.now()
   if (now - blockedAt < 2000) return
   blockedAt = now
-  message.warning(`Блок редактирует ${held?.name || 'другой участник'}`)
+  // The class is the e2e anchor: a toast has no element of ours to hang a
+  // data-testid on, and its wording moves into the locale files (#2799).
+  message.warning(`Блок редактирует ${held?.name || 'другой участник'}`, {
+    class: 'msg-block-locked',
+  })
 }
 
 function applyPreview(id, data) {
@@ -855,11 +859,23 @@ async function rename() {
 // now — with the delete confirmation moved to a dialog, because a menu item has
 // no anchor a popconfirm could hang off.
 const docActions = computed(() => {
-  const items = [{ key: 'nested', label: 'Вложенный документ' }]
+  // testid on every item: the e2e suite has to reach them by something other
+  // than their wording, which is about to move into the locale files (#2799).
+  const items = [
+    { key: 'nested', label: 'Вложенный документ', props: { 'data-testid': 'doc-action-nested' } },
+  ]
   if (childCount.value)
-    items.push({ key: 'children', label: `Показать вложенные (${childCount.value})` })
+    items.push({
+      key: 'children',
+      label: `Показать вложенные (${childCount.value})`,
+      props: { 'data-testid': 'doc-action-children' },
+    })
   items.push({ key: 'div', type: 'divider' })
-  items.push({ key: 'remove', label: 'Удалить документ' })
+  items.push({
+    key: 'remove',
+    label: 'Удалить документ',
+    props: { 'data-testid': 'doc-action-remove' },
+  })
   return items
 })
 
@@ -1197,7 +1213,7 @@ watch(
           <template #icon><n-icon :component="GridOutline" /></template>
           Из шаблона
         </n-button>
-        <n-button type="primary" size="small" @click="create">
+        <n-button type="primary" size="small" data-testid="doc-new" @click="create">
           <template #icon><n-icon :component="AddOutline" /></template>
           Новый документ
         </n-button>
@@ -1233,7 +1249,7 @@ watch(
            cases fall back to rendering here, in .head. -->
       <div class="head">
         <teleport to="#tb-slot-left" :disabled="!inTopbar">
-          <n-button quaternary size="small" @click="backToGrid">
+          <n-button quaternary size="small" data-testid="doc-back" @click="backToGrid">
             <template #icon><n-icon :component="ArrowBackOutline" /></template>
             К списку
           </n-button>
@@ -1280,6 +1296,7 @@ watch(
               quaternary
               size="tiny"
               :title="historyOpen ? 'Скрыть историю' : 'История версий'"
+              data-testid="doc-history-toggle"
               @click="toggleHistory"
             >
               <template #icon><n-icon :component="TimeOutline" /></template>
@@ -1318,14 +1335,20 @@ watch(
                 <template #icon><n-icon :component="EllipsisHorizontalOutline" /></template>
               </n-button>
             </n-dropdown>
-            <n-text v-if="saving" depth="3">Сохранение…</n-text>
-            <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
-            <n-text v-else depth="3">Все изменения сохранены</n-text>
+            <n-text v-if="saving" depth="3" data-testid="doc-save-state" data-state="saving">
+              Сохранение…
+            </n-text>
+            <n-text v-else-if="dirty" depth="3" data-testid="doc-save-state" data-state="dirty">
+              Есть несохранённые правки
+            </n-text>
+            <n-text v-else depth="3" data-testid="doc-save-state" data-state="saved">
+              Все изменения сохранены
+            </n-text>
           </span>
         </teleport>
       </div>
 
-      <n-alert v-if="conflict" type="warning" class="conflict">
+      <n-alert v-if="conflict" type="warning" class="conflict" data-testid="doc-conflict">
         Документ изменён в другом месте — ваши последние правки не сохранены.
         <n-button text size="small" @click="reload">Загрузить актуальную версию</n-button>
       </n-alert>

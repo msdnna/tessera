@@ -30,7 +30,7 @@ test('неверный пароль оставляет на странице в�
   await page.getByTestId('register-submit').click()
   await expect(page.getByTestId('sidebar')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Выйти' }).click()
+  await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
 
   await page.getByTestId('login-email').locator('input').fill(creds.email)
@@ -71,7 +71,7 @@ test('логаут разлогинивает и защищает приватн
   await page.getByTestId('register-submit').click()
   await expect(page.getByTestId('sidebar')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Выйти' }).click()
+  await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
 
   // The guard must hold after a fresh load too — logout revokes the refresh

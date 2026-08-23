@@ -66,7 +66,7 @@ const STATUS_LABEL = {
     </div>
 
     <div class="panel-foot">
-      <n-button v-if="!naming" size="tiny" block @click="naming = true">
+      <n-button v-if="!naming" size="tiny" block data-testid="doc-snapshot" @click="naming = true">
         <template #icon><n-icon :component="BookmarkOutline" /></template>
         Сохранить версию
       </n-button>
@@ -75,10 +75,18 @@ const STATUS_LABEL = {
           v-model:value="label"
           size="tiny"
           placeholder="Например: согласованная редакция"
+          data-testid="doc-snapshot-label"
           @keyup.enter="submitSnapshot"
         />
         <div class="row">
-          <n-button size="tiny" type="primary" @click="submitSnapshot">Сохранить</n-button>
+          <n-button
+            size="tiny"
+            type="primary"
+            data-testid="doc-snapshot-save"
+            @click="submitSnapshot"
+          >
+            Сохранить
+          </n-button>
           <n-button size="tiny" quaternary @click="naming = false">Отмена</n-button>
         </div>
       </template>
@@ -119,9 +127,14 @@ const STATUS_LABEL = {
         <n-text depth="3" class="section-title">
           Сравнение с версией {{ baseline?.revision ?? '—' }}
         </n-text>
-        <n-popconfirm @positive-click="emit('restore', selectedId)">
+        <n-popconfirm
+          :positive-button-props="{ 'data-testid': 'doc-restore-confirm' }"
+          @positive-click="emit('restore', selectedId)"
+        >
           <template #trigger>
-            <n-button size="tiny" type="primary" ghost>Восстановить</n-button>
+            <n-button size="tiny" type="primary" ghost data-testid="doc-restore">
+              Восстановить
+            </n-button>
           </template>
           Документ вернётся к этой версии. Текущее состояние останется в истории.
         </n-popconfirm>

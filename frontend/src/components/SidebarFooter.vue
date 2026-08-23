@@ -82,7 +82,7 @@ function logout() {
           <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>
           Администрирование
         </n-button>
-        <n-button size="small" block @click="logout">
+        <n-button size="small" block data-testid="logout" @click="logout">
           <template #icon><n-icon :component="LogOutOutline" /></template>
           Выйти
         </n-button>
@@ -138,7 +138,14 @@ function logout() {
       </n-tooltip>
       <n-tooltip>
         <template #trigger>
-          <n-button quaternary circle size="small" aria-label="Выйти" @click="logout">
+          <n-button
+            quaternary
+            circle
+            size="small"
+            aria-label="Выйти"
+            data-testid="logout"
+            @click="logout"
+          >
             <n-icon :component="LogOutOutline" />
           </n-button>
         </template>

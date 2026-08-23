@@ -27,7 +27,12 @@ async function unlink(id) {
 <template>
   <div class="docs">
     <div v-for="l in links" :key="l.id" class="docrow">
-      <button type="button" class="doc-link" @click="emit('open-document', l)">
+      <button
+        type="button"
+        class="doc-link"
+        data-testid="task-doc-link"
+        @click="emit('open-document', l)"
+      >
         <span v-if="l.document_icon" class="doc-emoji">{{ l.document_icon }}</span>
         <n-icon v-else :component="DocumentTextOutline" :size="14" />
         <span class="doc-title">{{ l.document_title || 'Без названия' }}</span>

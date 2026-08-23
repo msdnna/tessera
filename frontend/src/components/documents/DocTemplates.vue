@@ -72,6 +72,7 @@ function onFile(e) {
           class="tpl-tile"
           :class="{ builtin: t.builtin }"
           data-testid="tpl-tile"
+          :data-tpl="t.id"
         >
           <div class="tile-head">
             <span v-if="t.icon" class="tpl-emoji">{{ t.icon }}</span>

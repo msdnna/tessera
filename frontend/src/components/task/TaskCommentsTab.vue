@@ -484,7 +484,12 @@ async function onCommentCheck(c, i) {
                 @toggle="onCommentCheck(t.root, $event)"
               />
               <div class="c-thread-acts">
-                <button v-if="!readonly" class="c-link" @click="startReply(t.root.id, t.root)">
+                <button
+                  v-if="!readonly"
+                  class="c-link"
+                  data-testid="comment-reply"
+                  @click="startReply(t.root.id, t.root)"
+                >
                   Ответить
                 </button>
                 <button v-if="t.replies.length" class="c-link" @click="toggleCollapsed(t.root.id)">

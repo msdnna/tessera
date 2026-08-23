@@ -1846,7 +1846,14 @@ async function restoreFromArchive(taskId) {
             @keyup.esc="addingColumn = false"
             @blur="submitAddColumn"
           />
-          <n-button v-else dashed block class="add-btn" @click="startAddColumn">
+          <n-button
+            v-else
+            dashed
+            block
+            class="add-btn"
+            data-testid="add-column"
+            @click="startAddColumn"
+          >
             ＋ Создать колонку
           </n-button>
         </div>

@@ -58,6 +58,15 @@ export const CHIP_ICONS = {
   due: CalendarOutline,
 }
 
+// Anchors for the e2e suite on the entries it drives. Menu options are plain
+// objects, so the hook Playwright needs is `props`, not an attribute in a
+// template — and it has to be one that survives the labels being translated.
+const TESTID = {
+  group: { 'data-testid': 'facet-group' },
+  groupStatus: { 'data-testid': 'facet-group-status' },
+  groupTag: { 'data-testid': 'facet-group-tag' },
+}
+
 export const SORT_FIELD_OPTIONS = [
   { label: 'Приоритет', value: 'priority' },
   { label: 'Срок', value: 'due' },
@@ -378,8 +387,10 @@ export function useBoardFacets({
 
   const addOptions = computed(() => {
     const grouping = [
-      { label: 'По статусам', key: encodeGroup('status') },
-      { label: 'По тегам (все)', key: encodeGroup('tag') },
+      // testid rather than the wording: the e2e suite reaches these through the
+      // menu, and the labels are moving into the locale files (#2799).
+      { label: 'По статусам', key: encodeGroup('status'), props: TESTID.groupStatus },
+      { label: 'По тегам (все)', key: encodeGroup('tag'), props: TESTID.groupTag },
       ...tagPrefixOptions.value
         .filter((o) => o.value)
         .map((o) => ({
@@ -396,7 +407,7 @@ export function useBoardFacets({
       )
     }
     const opts = [
-      { label: 'Группировка', key: 'group', children: grouping },
+      { label: 'Группировка', key: 'group', children: grouping, props: TESTID.group },
       {
         label: 'Сортировка',
         key: 'sort',

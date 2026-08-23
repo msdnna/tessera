@@ -202,7 +202,12 @@ function fmtDate(v) {
           </n-button>
         </template>
         <div class="picker">
-          <n-input v-model:value="query" size="tiny" placeholder="№ или название" />
+          <n-input
+            v-model:value="query"
+            size="tiny"
+            placeholder="№ или название"
+            data-testid="doc-link-query"
+          />
           <p v-if="!candidates.length" class="empty">Ничего не найдено</p>
           <button
             v-for="t in candidates"
@@ -269,9 +274,15 @@ function fmtDate(v) {
               type="textarea"
               :rows="2"
               placeholder="Комментарий (необязательно)"
+              data-testid="doc-approval-comment"
             />
             <div class="row">
-              <n-button size="tiny" type="primary" @click="submitDecision(a, 'approved')">
+              <n-button
+                size="tiny"
+                type="primary"
+                data-testid="doc-approval-approve"
+                @click="submitDecision(a, 'approved')"
+              >
                 Согласовать
               </n-button>
               <n-button size="tiny" type="error" ghost @click="submitDecision(a, 'rejected')">
@@ -303,7 +314,12 @@ function fmtDate(v) {
           Отправить на согласование
         </n-button>
         <template v-else>
-          <n-input v-model:value="routeTitle" size="tiny" placeholder="Что согласуем" />
+          <n-input
+            v-model:value="routeTitle"
+            size="tiny"
+            placeholder="Что согласуем"
+            data-testid="doc-approval-title"
+          />
           <n-select v-model:value="routeMode" size="tiny" :options="modeOptions" />
           <!-- Order matters in a sequential route, so the picker keeps the order
                the names were added in — that list *is* the route. -->
@@ -321,6 +337,7 @@ function fmtDate(v) {
               size="tiny"
               type="primary"
               :disabled="!routeApprovers.length"
+              data-testid="doc-approval-submit"
               @click="submitRoute"
             >
               Отправить

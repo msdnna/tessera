@@ -20,7 +20,7 @@ function waitForSave(page) {
 async function newDocument(page, seed) {
   await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
   await page.goto('/documents')
-  await page.getByRole('button', { name: /Новый документ/ }).click()
+  await page.getByTestId('doc-new').click()
   const editor = page.locator('.ProseMirror')
   await expect(editor).toBeVisible()
   await editor.click()
@@ -118,13 +118,13 @@ test('документ: внутренняя ссылка на раздел ве
   await editor.locator('p', { hasText: /^Пункт 1$/ }).click()
   await page.keyboard.press('Home')
   await page.keyboard.press('Shift+End')
-  await page.locator('.doc-tbtn[title="Ссылка"]').click()
+  await page.locator('.doc-tbtn[data-tbtn="link"]').click()
   await page.getByTestId('doc-link-heading').click()
   await page.locator('.n-base-select-option', { hasText: 'Заключение' }).click()
   // The picker fills the URL field rather than applying straight away, so the
   // chosen target is visible before it is committed.
   await expect(page.getByTestId('doc-link-href').locator('input')).toHaveValue(/^#.+/)
-  await page.getByTitle('Применить').click()
+  await page.getByTestId('doc-link-apply').click()
 
   const link = editor.locator('a[href^="#"]').first()
   await expect(link).toBeVisible()

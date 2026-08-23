@@ -8,7 +8,7 @@ import { test, expect } from '../fixtures.js'
 async function newDocument(page, seed) {
   await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
   await page.goto('/documents')
-  await page.getByRole('button', { name: /Новый документ/ }).click()
+  await page.getByTestId('doc-new').click()
   const editor = page.locator('.ProseMirror')
   await expect(editor).toBeVisible()
   await editor.click()
@@ -201,7 +201,7 @@ test('документ: меню вставки сгруппировано и н
     'Загрузка',
   ])
 
-  const label = menu.locator('.slash-label').filter({ hasText: 'Маркированный список' })
+  const label = menu.locator('[data-slash="bulletList"] .slash-label')
   await expect(label).toBeVisible()
   const clipped = await label.evaluate((el) => el.scrollWidth > el.clientWidth + 1)
   expect(clipped).toBe(false)

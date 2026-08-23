@@ -201,6 +201,7 @@ function pick(picker, value) {
           class="doc-tbtn"
           :class="[t.cls, { on: t.isActive() }]"
           :title="t.title"
+          :data-tbtn="t.key"
           :disabled="t.disabled ? t.disabled() : false"
           @mousedown.prevent="t.run()"
         >

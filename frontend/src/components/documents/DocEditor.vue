@@ -543,7 +543,13 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
         data-testid="doc-link-heading"
         @update:value="pickHeading"
       />
-      <n-button size="small" quaternary title="Применить" @click="applyLink">
+      <n-button
+        size="small"
+        quaternary
+        title="Применить"
+        data-testid="doc-link-apply"
+        @click="applyLink"
+      >
         <template #icon><n-icon :component="CheckmarkOutline" /></template>
       </n-button>
       <n-button size="small" quaternary title="Отмена" @click="linkOpen = false">
@@ -578,6 +584,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
           type="button"
           class="gutter-btn"
           title="Обсудить блок"
+          data-testid="doc-block-comment"
           @mousedown.prevent="annotateBlock"
         >
           <n-icon :component="ChatbubbleEllipsesOutline" :size="16" />
@@ -616,6 +623,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
             type="button"
             class="slash-item"
             :class="{ on: slash.items.indexOf(item) === slash.index }"
+            :data-slash="item.key"
             @mousedown.prevent="runSlash(item)"
           >
             <n-icon :component="item.icon" :size="16" />

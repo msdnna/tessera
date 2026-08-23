@@ -135,7 +135,12 @@ defineExpose({ cardAnchors })
           <!-- Detached threads are kept deliberately: a paragraph being rewritten
                is the normal course of a review, and deleting the discussion that
                asked for the rewrite is not what anyone requested. -->
-          <n-text v-else-if="section === 'detached'" depth="3" class="section-title">
+          <n-text
+            v-else-if="section === 'detached'"
+            depth="3"
+            class="section-title"
+            data-testid="doc-comment-detached"
+          >
             Блок удалён
           </n-text>
 
@@ -221,6 +226,7 @@ defineExpose({ cardAnchors })
                 size="tiny"
                 quaternary
                 title="Пометить решённым"
+                data-testid="doc-comment-resolve"
                 @click="emit('resolve', { id: t.id, resolved: true })"
               >
                 <template #icon><n-icon :component="CheckmarkCircleOutline" /></template>
@@ -264,6 +270,7 @@ defineExpose({ cardAnchors })
                 :value="draft(t.id)"
                 size="small"
                 placeholder="Ответить…"
+                data-testid="doc-comment-reply"
                 @update:value="setDraft(t.id, $event)"
                 @keyup.enter="submitReply(t)"
               />
@@ -295,9 +302,17 @@ defineExpose({ cardAnchors })
         size="small"
         :autosize="{ minRows: 2, maxRows: 5 }"
         :placeholder="pendingBlock ? 'Комментарий к блоку…' : 'Комментарий к документу…'"
+        data-testid="doc-comment-draft"
+        :data-armed="pendingBlock ? 'block' : 'doc'"
         @update:value="setDraft('', $event)"
       />
-      <n-button size="small" type="primary" :disabled="!draft('').trim()" @click="submitRoot">
+      <n-button
+        size="small"
+        type="primary"
+        :disabled="!draft('').trim()"
+        data-testid="doc-comment-send"
+        @click="submitRoot"
+      >
         Отправить
       </n-button>
     </div>

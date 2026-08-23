@@ -26,7 +26,7 @@ test('документ: сохранение шаблона и создание 
   await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
   await page.goto('/documents')
 
-  await page.getByRole('button', { name: /Новый документ/ }).click()
+  await page.getByTestId('doc-new').click()
   await expect(page.locator('.ProseMirror')).toBeVisible()
   await typeAndSave(page, 'Повестка: сроки, риски, решения')
 
@@ -37,7 +37,7 @@ test('документ: сохранение шаблона и создание 
   )
   await page.getByTestId('doc-save-template').click()
   expect((await created).status()).toBe(201)
-  await page.getByRole('button', { name: /К списку/ }).click()
+  await page.getByTestId('doc-back').click()
 
   await page.getByTestId('doc-templates').click()
   const tiles = page.getByTestId('tpl-tile')
@@ -56,7 +56,7 @@ test('документ: сохранение шаблона и создание 
 
   // ...and it is a copy: editing it must not write back into the template.
   await typeAndSave(page, ' — дополнено в документе')
-  await page.getByRole('button', { name: /К списку/ }).click()
+  await page.getByTestId('doc-back').click()
   await page.getByTestId('doc-templates').click()
   await expect(
     page.getByTestId('tpl-tile').filter({ hasText: 'дополнено в документе' }),
@@ -72,7 +72,7 @@ test('документ: встроенный шаблон создаёт док�
   // browser and written right after the document is created. If that second
   // call were dropped, the document would open empty and look like a template
   // that "did not apply".
-  const builtin = page.getByTestId('tpl-tile').filter({ hasText: 'Протокол совещания' }).first()
+  const builtin = page.locator('[data-tpl="builtin:meeting"]').first()
   await builtin.getByTestId('tpl-use').click()
 
   await expect(page.locator('.ProseMirror')).toContainText('Повестка')

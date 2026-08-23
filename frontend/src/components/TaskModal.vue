@@ -1712,7 +1712,7 @@ async function onSubtaskChanged() {
 
               <n-tab-pane name="comments">
                 <template #tab>
-                  <span class="tab-lbl">
+                  <span class="tab-lbl" data-testid="tab-comments">
                     <n-icon
                       :component="ChatbubbleEllipsesOutline"
                       :size="15"
@@ -1814,7 +1814,7 @@ async function onSubtaskChanged() {
 
               <n-tab-pane name="documents">
                 <template #tab>
-                  <span class="tab-lbl">
+                  <span class="tab-lbl" data-testid="tab-documents">
                     <n-icon
                       :component="DocumentTextOutline"
                       :size="15"

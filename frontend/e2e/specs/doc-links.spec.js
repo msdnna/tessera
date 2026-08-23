@@ -40,7 +40,7 @@ test('документ: связь с задачей и протокол сог�
   try {
     await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
     await page.goto('/documents')
-    await page.getByRole('button', { name: /Новый документ/ }).click()
+    await page.getByTestId('doc-new').click()
     await expect(page.locator('.ProseMirror')).toBeVisible()
     await expect(page).toHaveURL(/\/documents\/[^/]+$/)
     const docURL = new URL(page.url()).pathname
@@ -52,7 +52,7 @@ test('документ: связь с задачей и протокол сог�
     await expect(panel).toContainText('Связанных задач нет')
 
     await panel.getByTestId('doc-link-add').click()
-    await page.getByPlaceholder('№ или название').fill(taskTitle)
+    await page.getByTestId('doc-link-query').locator('input').fill(taskTitle)
     await page.getByText(taskTitle, { exact: false }).last().click()
     await expect(panel.getByTestId('doc-link')).toHaveCount(1)
     await expect(panel).toContainText(taskTitle)
@@ -64,14 +64,14 @@ test('документ: связь с задачей и протокол сог�
     const modal = page.locator('.n-modal')
     // Naive's tabs are divs, not role="tab" — locate the label itself, scoped to
     // the modal so the sidebar's «Документы» nav link cannot match instead.
-    await modal.locator('.n-tabs-tab', { hasText: 'Документы' }).click()
-    await expect(modal.getByText('Без названия').first()).toBeVisible()
+    await modal.getByTestId('tab-documents').click()
+    await expect(modal.getByTestId('task-doc-link').first()).toBeVisible()
 
     // ── the approval route ──
     await page.goto(docURL)
     await page.getByTestId('doc-links-toggle').click()
     await panel.getByTestId('doc-approval-raise').click()
-    await page.getByPlaceholder('Что согласуем').fill('Редакция для правления')
+    await page.getByTestId('doc-approval-title').locator('input').fill('Редакция для правления')
     await page.getByTestId('doc-approval-approvers').click()
     // Exact: the document's author is named "E2E <runId>" and the approver
     // "E2E <runId>-links", so a substring match would pick the author — and a
@@ -80,7 +80,7 @@ test('документ: связь с задачей и протокол сог�
     await page.keyboard.press('Escape')
     // Scoped to the panel: the comments composer carries its own «Отправить»,
     // and an unscoped match resolves to both.
-    await panel.getByRole('button', { name: 'Отправить', exact: true }).click()
+    await panel.getByTestId('doc-approval-submit').click()
 
     const protocol = panel.getByTestId('doc-approval')
     await expect(protocol).toHaveCount(1)
@@ -98,8 +98,8 @@ test('документ: связь с задачей и протокол сог�
     await matePage.getByTestId('doc-links-toggle').click()
     const matePanel = matePage.getByTestId('doc-links')
     await matePanel.getByTestId('doc-approval-sign').click()
-    await matePage.getByPlaceholder('Комментарий (необязательно)').fill('Замечаний нет')
-    await matePage.getByRole('button', { name: 'Согласовать', exact: true }).click()
+    await matePage.getByTestId('doc-approval-comment').locator('textarea').fill('Замечаний нет')
+    await matePage.getByTestId('doc-approval-approve').click()
     await expect(matePanel.getByTestId('doc-approval')).toContainText('Согласовано')
 
     // No reload here — this is the whole point of the spec. The author's panel

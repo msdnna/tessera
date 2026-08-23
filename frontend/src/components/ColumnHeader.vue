@@ -198,12 +198,12 @@ async function removeCol() {
           {{ isDone ? 'Снять завершение' : 'Сделать завершающей' }}
         </n-button>
         <n-popconfirm
-          :positive-button-props="{ type: 'error' }"
+          :positive-button-props="{ type: 'error', 'data-testid': 'column-delete-confirm' }"
           positive-text="Удалить"
           @positive-click="removeCol"
         >
           <template #trigger>
-            <n-button type="error" ghost size="small" block>
+            <n-button type="error" ghost size="small" block data-testid="column-delete">
               <template #icon><n-icon :component="TrashOutline" /></template>
               Удалить колонку
             </n-button>
