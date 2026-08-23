@@ -19,6 +19,7 @@
 #                   NotificationSettingsViewModel, NotificationsPanel.
 # Волна 10 (готово): util-слой — Estimation, Mentions, TagGroups.
 # Волна 11 (готово): даты — Dates, Milestones.
+# Волна 12 (готово): ошибки вызовов API — Errors (едут как UiText).
 website/msdnna/tessera/ui/components/AccentGradientPreview.kt
 website/msdnna/tessera/ui/components/BoardViewSelector.kt
 website/msdnna/tessera/ui/components/Dialogs.kt
@@ -44,4 +45,3 @@ website/msdnna/tessera/ui/viewmodels/GitlabViewModel.kt
 website/msdnna/tessera/ui/viewmodels/UpdateViewModel.kt
 website/msdnna/tessera/ui/viewmodels/WorkspaceViewModel.kt
 website/msdnna/tessera/update/WhatsNewEntries.kt
-website/msdnna/tessera/util/Errors.kt

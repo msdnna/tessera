@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.viewmodels
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -8,11 +9,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.repository.AuthRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class AuthUiState(
     val loading: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val gitlabEnabled: Boolean = false,
 )
 
@@ -42,7 +44,8 @@ class AuthViewModel(
         }
     }
 
-    fun setError(message: String) = _state.update { it.copy(error = message) }
+    /** Экран отдаёт id ресурса, а не текст: строку резолвит сама композиция. */
+    fun setError(@StringRes message: Int) = _state.update { it.copy(error = UiText.Res(message)) }
 
     fun clearError() = _state.update { it.copy(error = null) }
 

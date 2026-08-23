@@ -67,6 +67,7 @@ import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.softShadow
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -186,7 +187,7 @@ fun BoardScreen(
                     state.loading -> LoadingState()
 
                     state.error != null -> ErrorState(
-                        message = state.error ?: stringResource(R.string.common_error),
+                        message = state.error?.resolve() ?: stringResource(R.string.common_error),
                         onRetry = { vm.load(board.id, workspaceId) },
                     )
 

@@ -89,6 +89,7 @@ import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.oauthErrorRes
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
@@ -118,16 +119,15 @@ fun AuthScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
 
-    // The deep link hands over a code; the text for it is resolved here, in the
-    // language of the profile (AppRoot wraps the tree in AppLocale).
-    val oauthErrorText = oauthErrorCode?.takeIf { it.isNotBlank() }?.let { stringResource(oauthErrorRes(it)) }
-    val browserFailed = stringResource(R.string.auth_browser_failed)
+    // The deep link hands over a code; во ViewModel уезжает id ресурса, а не готовая
+    // строка — состояние переживает смену языка, а резолв идёт при отрисовке.
+    val oauthErrorResId = oauthErrorCode?.takeIf { it.isNotBlank() }?.let { oauthErrorRes(it) }
 
     // Probe enabled OAuth providers once; surface any OAuth deep-link error.
     LaunchedEffect(Unit) { vm.loadProviders() }
-    LaunchedEffect(oauthErrorText) {
-        if (oauthErrorText != null) {
-            vm.setError(oauthErrorText)
+    LaunchedEffect(oauthErrorResId) {
+        if (oauthErrorResId != null) {
+            vm.setError(oauthErrorResId)
             onOAuthErrorShown()
         }
     }
@@ -135,7 +135,7 @@ fun AuthScreen(
     fun launchGitlabOAuth() {
         val url = RetrofitClient.apiBaseUrl(serverUrl) + "auth/gitlab/authorize?platform=android"
         runCatching { CustomTabsIntent.Builder().build().launchUrl(ctx, Uri.parse(url)) }
-            .onFailure { vm.setError(browserFailed) }
+            .onFailure { vm.setError(R.string.auth_browser_failed) }
     }
 
     // Logo height ~28% of screen width (~1.5× smaller than before). MtLogo is the
@@ -275,10 +275,10 @@ fun AuthScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
 
-            if (!state.error.isNullOrBlank()) {
+            state.error?.let { err ->
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    state.error!!,
+                    err.resolve(),
                     color = Color(0xFFFFD9D2),
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,

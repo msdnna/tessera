@@ -56,6 +56,7 @@ import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.DocumentsViewModel
@@ -121,7 +122,7 @@ fun DocumentsScreen(workspaceId: String) {
 
         state.error?.let { message ->
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
-                Text(message, color = c.text3, fontSize = 12.sp)
+                Text(message.resolve(), color = c.text3, fontSize = 12.sp)
             }
         }
 

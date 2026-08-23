@@ -58,6 +58,7 @@ import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -113,7 +114,7 @@ fun MilestonesScreen(
             state.loading -> LoadingState()
 
             state.error != null -> ErrorState(
-                message = state.error ?: stringResource(R.string.common_error),
+                message = state.error?.resolve() ?: stringResource(R.string.common_error),
                 onRetry = { vm.load(workspaceId) },
             )
 
@@ -328,7 +329,7 @@ private fun MilestoneManagerModal(
             }
             mgr.error?.let {
                 Text(
-                    it,
+                    it.resolve(),
                     color = website.msdnna.tessera.ui.theme.TesseraDanger,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),

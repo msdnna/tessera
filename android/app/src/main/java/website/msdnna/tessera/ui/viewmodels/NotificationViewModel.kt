@@ -23,11 +23,12 @@ import website.msdnna.tessera.data.realtime.DevicePush
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.repository.NotificationRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class NotificationUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val items: List<Notification> = emptyList(),
 ) {
     val unread: Int get() = items.count { it.isUnread }

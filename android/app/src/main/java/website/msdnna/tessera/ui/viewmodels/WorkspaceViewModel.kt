@@ -14,11 +14,12 @@ import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.Workspace
 import website.msdnna.tessera.data.repository.WorkspaceRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class WorkspaceUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val workspaces: List<Workspace> = emptyList(),
     val currentId: String = "",
     val groups: List<ProjectGroup> = emptyList(),
@@ -88,7 +89,8 @@ class WorkspaceViewModel(
      *  host can leave for Home. Refuses to delete the only workspace. */
     fun removeWorkspace(id: String, onGone: () -> Unit) = launchCatching {
         if (_state.value.workspaces.size <= 1) {
-            _state.update { it.copy(error = "Нельзя удалить единственное пространство") }
+            // Файл ещё в очереди на извлечение строк (#2803) — пока Raw.
+            _state.update { it.copy(error = UiText.Raw("Нельзя удалить единственное пространство")) }
             return@launchCatching
         }
         val wasCurrent = _state.value.currentId == id

@@ -44,6 +44,7 @@ import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TCard
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -83,7 +84,7 @@ fun GitLabJournalScreen(workspaceId: String, vm: GitlabJournalViewModel = viewMo
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         state.error?.let {
             Spacer(Modifier.height(10.dp))
-            Text(it, color = ERR, fontSize = 13.sp)
+            Text(it.resolve(), color = ERR, fontSize = 13.sp)
         }
         state.message?.let {
             Spacer(Modifier.height(10.dp))

@@ -888,4 +888,27 @@
 
     <!-- Tag prefix grouping: the bucket for tags without a prefix -->
     <string name="tag_group_none">Ungrouped</string>
+
+    <!-- API call errors. Assembled in util/Errors outside composition, so they travel
+         to the screen as UiText and resolve there. -->
+    <string name="err_http_code">Error %1$d</string>
+    <string name="err_no_connection">No connection to the server</string>
+    <string name="err_unknown">Unknown error</string>
+    <string name="err_invalid_credentials">Wrong email or password</string>
+    <string name="err_email_registered">This email is already registered</string>
+    <string name="err_email_in_use">This email is already in use</string>
+    <string name="err_user_exists">A user with this email already exists</string>
+    <string name="err_user_not_found">User not found</string>
+    <string name="err_link_invalid">The link is invalid or has expired</string>
+    <string name="err_link_expired">The link has expired</string>
+    <string name="err_account_deactivated">Account deactivated</string>
+    <string name="err_forbidden">Not enough permissions</string>
+    <string name="err_unauthorized">Please sign in again</string>
+    <string name="err_not_found">Not found</string>
+    <string name="err_invalid_email">Enter a valid email</string>
+    <string name="err_required_fields">Fill in all required fields</string>
+    <string name="err_value_too_short">The value is too short</string>
+    <string name="err_value_too_long">The value is too long</string>
+    <string name="err_check_fields">Check the fields for errors</string>
+    <string name="err_offline">No connection to the server. Check your network.</string>
 </resources>

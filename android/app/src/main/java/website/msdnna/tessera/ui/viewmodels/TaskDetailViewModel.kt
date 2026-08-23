@@ -21,6 +21,7 @@ import website.msdnna.tessera.data.model.TaskEvent
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.data.repository.TaskRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.MoveNeighbors
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.hasCommandLine
@@ -31,7 +32,7 @@ private val TagPalette = listOf(
 
 data class TaskDetailUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val detail: TaskDetail? = null,
     val comments: List<Comment> = emptyList(),
     val relations: List<Relation> = emptyList(),

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.repository.DocumentRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.DocBlock
 import website.msdnna.tessera.util.DocTreeRow
 import website.msdnna.tessera.util.documentTree
@@ -17,7 +18,7 @@ import website.msdnna.tessera.util.parseDocBlocks
 
 data class DocumentsUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val rows: List<DocTreeRow> = emptyList(),
     val openId: String? = null,
     // The body is a second request, so the reader opens before it arrives.

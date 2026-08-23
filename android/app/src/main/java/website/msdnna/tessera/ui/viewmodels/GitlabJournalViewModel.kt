@@ -10,11 +10,12 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.GitlabSyncAction
 import website.msdnna.tessera.data.model.GitlabSyncRun
 import website.msdnna.tessera.data.repository.GitlabRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class GitlabJournalUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val message: String? = null,
     val runs: List<GitlabSyncRun> = emptyList(),
     val expandedRunId: String? = null,

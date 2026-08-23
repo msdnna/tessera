@@ -20,7 +20,7 @@ import website.msdnna.tessera.util.errorMessage
 
 data class NotifSettingsUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     /** Ответ на действие: свой текст ресурсом, серверное предупреждение — как есть. */
     val message: UiText? = null,
     val channels: List<NotificationChannel> = emptyList(),
@@ -145,12 +145,13 @@ class NotificationSettingsViewModel : ViewModel() {
     }
 
     /** Renders [template] against sample data for the editor preview; returns
-     *  (text, error) via [onResult]. */
-    fun previewTemplate(template: String, onResult: (String?, String?) -> Unit) {
+     *  (text, error) via [onResult]. Ошибка разбора шаблона приходит с сервера —
+     *  переводить её нечем, поэтому [UiText.Raw]. */
+    fun previewTemplate(template: String, onResult: (String?, UiText?) -> Unit) {
         viewModelScope.launch {
             try {
                 val r = repo.previewTemplate(template)
-                if (r.ok) onResult(r.text, null) else onResult(null, r.error)
+                if (r.ok) onResult(r.text, null) else onResult(null, r.error?.let { UiText.Raw(it) })
             } catch (e: Exception) {
                 onResult(null, errorMessage(e))
             }

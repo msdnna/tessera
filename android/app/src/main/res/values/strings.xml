@@ -911,4 +911,28 @@
 
     <!-- Группировка тегов по префиксу: бакет для тегов без префикса -->
     <string name="tag_group_none">Вне группы</string>
+
+    <!-- Ошибки вызовов API. Собираются в util/Errors вне композиции, поэтому едут
+         до экрана как UiText и резолвятся уже там. Зеркалят карту веб-клиента
+         (frontend/src/utils/errors.js) — держать в синхроне. -->
+    <string name="err_http_code">Ошибка %1$d</string>
+    <string name="err_no_connection">Нет соединения с сервером</string>
+    <string name="err_unknown">Неизвестная ошибка</string>
+    <string name="err_invalid_credentials">Неверный email или пароль</string>
+    <string name="err_email_registered">Этот email уже зарегистрирован</string>
+    <string name="err_email_in_use">Этот email уже используется</string>
+    <string name="err_user_exists">Пользователь с таким email уже существует</string>
+    <string name="err_user_not_found">Пользователь не найден</string>
+    <string name="err_link_invalid">Ссылка недействительна или устарела</string>
+    <string name="err_link_expired">Срок действия ссылки истёк</string>
+    <string name="err_account_deactivated">Аккаунт деактивирован</string>
+    <string name="err_forbidden">Недостаточно прав</string>
+    <string name="err_unauthorized">Нужно войти заново</string>
+    <string name="err_not_found">Не найдено</string>
+    <string name="err_invalid_email">Введите корректный email</string>
+    <string name="err_required_fields">Заполните все обязательные поля</string>
+    <string name="err_value_too_short">Значение слишком короткое</string>
+    <string name="err_value_too_long">Значение слишком длинное</string>
+    <string name="err_check_fields">Проверьте правильность заполнения полей</string>
+    <string name="err_offline">Нет связи с сервером. Проверьте подключение.</string>
 </resources>

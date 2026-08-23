@@ -24,6 +24,7 @@ import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.repository.BoardRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.BoardFilter
 import website.msdnna.tessera.util.DueFilter
 import website.msdnna.tessera.util.FilterClock
@@ -66,7 +67,7 @@ data class BoardActivity(
 
 data class BoardUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val columns: List<BoardColumn> = emptyList(),
     val tasks: List<Task> = emptyList(),
     val subtasks: List<Task> = emptyList(),

@@ -12,11 +12,12 @@ import website.msdnna.tessera.data.model.GitlabIntegrationRequest
 import website.msdnna.tessera.data.model.TagPrefixEntry
 import website.msdnna.tessera.data.repository.BoardOption
 import website.msdnna.tessera.data.repository.GitlabRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class GitlabUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val message: String? = null,
     // connection (personal PAT — a fallback when no instance service token)
     val connected: Boolean = false,
@@ -221,7 +222,9 @@ class GitlabViewModel : ViewModel() {
                     if (run.status == "error") {
                         it.copy(
                             syncingId = null, syncingFull = false,
-                            error = "Синхронизация не удалась: ${run.error.ifBlank { "ошибка" }}",
+                            // Экран GitLab ещё ждёт своей волны (#2803): литерал пока
+                            // едет как Raw, вместе с `message` рядом уйдёт в ресурсы.
+                            error = UiText.Raw("Синхронизация не удалась: ${run.error.ifBlank { "ошибка" }}"),
                         )
                     } else {
                         it.copy(

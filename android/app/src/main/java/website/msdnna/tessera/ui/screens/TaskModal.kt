@@ -112,6 +112,7 @@ import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.UnderlineTabs
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
@@ -253,8 +254,10 @@ fun TaskModal(
     // A failed mutation on an open task was silent until now: `state.error` only
     // renders in place of a modal that has no detail to show. A comment whose
     // commands all fail is a 400 with nothing stored — the user has to hear it.
-    LaunchedEffect(state.error) {
-        val err = state.error ?: return@LaunchedEffect
+    // Текст резолвится здесь, в композиции: у эффекта нет доступа к ресурсам.
+    val errorText = state.error?.resolve()
+    LaunchedEffect(errorText) {
+        val err = errorText ?: return@LaunchedEffect
         if (state.detail == null) return@LaunchedEffect
         android.widget.Toast.makeText(toastCtx, err, android.widget.Toast.LENGTH_LONG).show()
         vm.clearError()
@@ -313,7 +316,7 @@ fun TaskModal(
             } else if (state.error != null && detail == null) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     ErrorState(
-                        message = state.error ?: stringResource(R.string.common_error),
+                        message = errorText ?: stringResource(R.string.common_error),
                         onRetry = { vm.load(currentId, workspaceId, projectId) },
                     )
                 }

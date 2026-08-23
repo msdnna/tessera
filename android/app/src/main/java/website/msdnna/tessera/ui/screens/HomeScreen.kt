@@ -42,6 +42,7 @@ import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.TagChip
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
@@ -113,7 +114,7 @@ fun HomeScreen(
             state.loading -> LoadingState()
 
             state.error != null -> ErrorState(
-                message = state.error ?: stringResource(R.string.common_error),
+                message = state.error?.resolve() ?: stringResource(R.string.common_error),
                 onRetry = { vm.load(workspaceId, userId) },
             )
 

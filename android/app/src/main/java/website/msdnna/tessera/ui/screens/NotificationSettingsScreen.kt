@@ -41,6 +41,7 @@ import website.msdnna.tessera.data.model.NotificationRoute
 import website.msdnna.tessera.data.model.RouteMatcher
 import website.msdnna.tessera.data.model.RouteOptions
 import website.msdnna.tessera.data.model.RouteRequest
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
@@ -371,7 +372,7 @@ private fun ChannelEditor(
 private fun TemplateEditor(edit: ChannelEdit, vm: NotificationSettingsViewModel) {
     val c = Tessera.colors
     var preview by remember { mutableStateOf<String?>(null) }
-    var previewErr by remember { mutableStateOf<String?>(null) }
+    var previewErr by remember { mutableStateOf<UiText?>(null) }
     Text(stringResource(R.string.notif_template_title), color = c.text2, fontSize = 13.sp)
     Spacer(Modifier.height(6.dp))
     TTextField(edit.template, { edit.template = it }, singleLine = false, placeholder = "{{.Text}}")
