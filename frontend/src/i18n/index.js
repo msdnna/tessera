@@ -18,12 +18,26 @@ const loaders = {
   en: () => import('@/locales/en'),
 }
 
+// Russian has three plural forms and vue-i18n only ships the two-form English
+// rule, so `1 правило | 2 правила | 5 правил` would otherwise pick the wrong
+// branch for everything past two. CLDR categories, in message order:
+// one (1, 21, 31…) · few (2–4, 22–24…) · many (0, 5–20, 25–30…).
+function russianPlural(choice) {
+  const n = Math.abs(Number(choice))
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 0
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 1
+  return 2
+}
+
 export const i18n = createI18n({
   legacy: false,
   globalInjection: true,
   locale: FALLBACK_LOCALE,
   fallbackLocale: FALLBACK_LOCALE,
   messages: { [FALLBACK_LOCALE]: ru },
+  pluralRules: { ru: russianPlural },
 })
 
 export function normalizeLocale(locale) {

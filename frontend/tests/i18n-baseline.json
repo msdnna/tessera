@@ -31,7 +31,6 @@
   "src/components/MarkdownFullscreenModal.vue",
   "src/components/MembersModal.vue",
   "src/components/MilestoneManager.vue",
-  "src/components/NotificationSettings.vue",
   "src/components/ProjectCreateModal.vue",
   "src/components/ProjectRow.vue",
   "src/components/RichContent.vue",
@@ -115,11 +114,9 @@
   "src/utils/tesseraLoader.js",
   "src/utils/timeAxis.js",
   "src/views/AcceptInviteView.vue",
-  "src/views/AdminView.vue",
   "src/views/DocumentsView.vue",
   "src/views/ForgotPasswordView.vue",
   "src/views/HomeView.vue",
-  "src/views/LoginView.vue",
   "src/views/MilestonesView.vue",
   "src/views/NotFoundView.vue",
   "src/views/NotesView.vue",
@@ -127,6 +124,5 @@
   "src/views/RegisterView.vue",
   "src/views/RemindersView.vue",
   "src/views/ResetPasswordView.vue",
-  "src/views/SettingsView.vue",
   "src/views/VerifyEmailView.vue"
 ]

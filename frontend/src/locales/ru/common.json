@@ -20,5 +20,39 @@
   "answer": {
     "yes": "Да",
     "no": "Нет"
+  },
+  "language": {
+    "ru": "Русский",
+    "en": "English"
+  },
+  "auth": {
+    "login": {
+      "title": "Вход",
+      "email": "Email",
+      "emailPlaceholder": "you@example.com",
+      "password": "Пароль",
+      "submit": "Войти",
+      "or": "или",
+      "gitlab": "Войти через GitLab",
+      "gitlabWaiting": "Ожидаем подтверждения в браузере…",
+      "forgot": "Забыли пароль?",
+      "noAccount": "Нет аккаунта?",
+      "register": "Регистрация"
+    },
+    "validation": {
+      "emailRequired": "Укажите email",
+      "emailInvalid": "Введите корректный email",
+      "passwordRequired": "Укажите пароль"
+    },
+    "oauthError": {
+      "generic": "Не удалось войти через GitLab.",
+      "state_mismatch": "Сессия входа устарела. Попробуйте ещё раз.",
+      "not_configured": "Вход через GitLab не настроен.",
+      "account_disabled": "Учётная запись деактивирована.",
+      "exchange_failed": "Не удалось авторизоваться в GitLab.",
+      "userinfo_failed": "Не удалось получить профиль GitLab.",
+      "browserOpen": "Не удалось открыть браузер для входа через GitLab.",
+      "noReturn": "Не удалось вернуться в приложение. Проверьте, что ссылки tessera:// открываются в Tessera."
+    }
   }
 }
