@@ -186,21 +186,26 @@ func (h *API) deliverGroup(ctx context.Context, ds []db.NotificationDelivery) er
 	if err != nil {
 		return notify.Permanent(err)
 	}
+	// One channel means one owner, so the whole digest is written in that user's
+	// language — looked up once, not per row.
+	lang := h.userLang(ctx, row.UserID)
 	parts := make([]string, 0, len(ds))
 	for _, d := range ds {
 		n, nerr := h.q.GetNotification(ctx, d.NotificationID)
 		if nerr != nil {
 			continue
 		}
-		if body, rerr := renderChannel(row.Template, h.templateData(ctx, n)); rerr == nil {
+		if body, rerr := renderChannel(row.Template, h.templateData(ctx, n, lang)); rerr == nil {
 			parts = append(parts, "• "+body)
 		}
 	}
 	if len(parts) == 0 {
 		return nil
 	}
-	combined := fmt.Sprintf("Сводка — %d уведомлений:\n\n%s", len(parts), strings.Join(parts, "\n\n"))
-	return sender.Send(ctx, ch, notify.Message{Kind: "digest", Title: "Сводка уведомлений", Body: combined, Link: h.publicURL})
+	combined := fmt.Sprintf("%s\n\n%s", notify.DigestHeader(len(parts), lang), strings.Join(parts, "\n\n"))
+	return sender.Send(ctx, ch, notify.Message{
+		Kind: "digest", Title: notify.DigestTitle(lang), Body: combined, Link: h.publicURL,
+	})
 }
 
 // deliverOne sends a single outbox row. A missing notification/channel or a
@@ -226,12 +231,13 @@ func (h *API) deliverOne(ctx context.Context, d db.NotificationDelivery) error {
 	if err != nil {
 		return notify.Permanent(err)
 	}
-	body, err := renderChannel(row.Template, h.templateData(ctx, n))
+	lang := h.userLang(ctx, n.UserID)
+	body, err := renderChannel(row.Template, h.templateData(ctx, n, lang))
 	if err != nil {
 		// A broken template can't fix itself between retries.
 		return notify.Permanent(fmt.Errorf("template render: %w", err))
 	}
-	msg := notify.Message{Kind: n.Kind, Title: notifyTitle(n.Kind), Body: body, Link: h.publicURL, ID: n.ID.String()}
+	msg := notify.Message{Kind: n.Kind, Title: notify.Title(n.Kind, lang), Body: body, Link: h.publicURL, ID: n.ID.String()}
 	if n.TaskID != nil {
 		msg.TaskID = n.TaskID.String()
 	}
@@ -275,9 +281,15 @@ func renderChannel(tmpl string, data notify.TemplateData) (string, error) {
 }
 
 // templateData enriches a notification into the data its channel templates render
-// against (task, actor and workspace looked up best-effort).
-func (h *API) templateData(ctx context.Context, n db.Notification) notify.TemplateData {
-	d := notify.TemplateData{Kind: n.Kind, Title: notifyTitle(n.Kind), Text: n.Text, Link: h.publicURL}
+// against (task, actor and workspace looked up best-effort). Text and Title are
+// written in lang: outside the app there is no client to translate them.
+func (h *API) templateData(ctx context.Context, n db.Notification, lang string) notify.TemplateData {
+	d := notify.TemplateData{
+		Kind:  n.Kind,
+		Title: notify.Title(n.Kind, lang),
+		Text:  notifySentence(n, lang),
+		Link:  h.publicURL,
+	}
 	if n.TaskID != nil {
 		if t, err := h.q.GetTask(ctx, *n.TaskID); err == nil {
 			d.TaskTitle = t.Title
@@ -313,30 +325,16 @@ func (h *API) channelFromRow(row db.NotificationChannel) (notify.Channel, error)
 	return notify.Channel{Type: row.Type, Label: row.Label, Config: cfg, Secret: secret}, nil
 }
 
-// notifyTitle maps a notification kind to a human subject line. No app-name
-// prefix — the channel is fully app-managed, so the source is implicit.
-func notifyTitle(kind string) string {
-	switch kind {
-	case "assigned":
-		return "Назначена задача"
-	case "comment":
-		return "Новый комментарий"
-	case "mention":
-		return "Вас упомянули"
-	case "updated":
-		return "Задача изменена"
-	case "moved":
-		return "Задача перемещена"
-	case "archived":
-		return "Задача архивирована"
-	case "due_soon":
-		return "Скоро дедлайн"
-	case "reminder":
-		return "Напоминание"
-	case "integration_sync":
-		// Provider-neutral: the core knows "an integration synced", not GitLab.
-		return "Синхронизация завершена"
-	default:
-		return "Уведомление"
+// notifySentence words a stored notification for a delivery that leaves the app.
+// It renders the structured payload (#2801) in the reader's language; a row
+// without a payload — written before migration 0065 — keeps the Russian sentence
+// the server composed back then, which is all that row has.
+func notifySentence(n db.Notification, lang string) string {
+	p := map[string]any{}
+	if len(n.Payload) > 0 {
+		if err := json.Unmarshal(n.Payload, &p); err != nil {
+			return n.Text
+		}
 	}
+	return notify.Sentence(p, lang, n.Text)
 }

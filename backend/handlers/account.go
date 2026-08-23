@@ -34,8 +34,10 @@ func (h *AuthHandler) sendVerification(c *gin.Context, user db.User) {
 		return
 	}
 	link := fmt.Sprintf("%s/verify-email?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
-	mail.SendAsync(h.mailer, user.Email, "Подтверждение почты — Tessera",
-		"Подтвердите адрес, перейдя по ссылке:\n\n"+link+"\n\nСсылка действует 48 часов.")
+	subject, body := mail.Compose(mail.KindVerify, h.userLang(c, user.ID), mail.Vars{
+		Link: link, TTLHours: int(verifyTokenTTL / time.Hour),
+	})
+	mail.SendAsync(h.mailer, user.Email, subject, body)
 }
 
 // acceptPendingInvitations applies any workspace invitations addressed to the
@@ -104,8 +106,10 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 				UserID: user.ID, Kind: "reset", TokenHash: hash, ExpiresAt: time.Now().Add(resetTokenTTL),
 			}); e == nil {
 				link := fmt.Sprintf("%s/recover?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
-				mail.SendAsync(h.mailer, user.Email, "Восстановление доступа — Tessera",
-					"Вы запросили восстановление доступа к аккаунту Tessera. Чтобы продолжить, перейдите по ссылке:\n\n"+link+"\n\nСсылка действует 1 час. Если вы не запрашивали восстановление — просто проигнорируйте это письмо.")
+				subject, body := mail.Compose(mail.KindReset, h.userLang(c, user.ID), mail.Vars{
+					Link: link, TTLHours: int(resetTokenTTL / time.Hour),
+				})
+				mail.SendAsync(h.mailer, user.Email, subject, body)
 			}
 		}
 	}

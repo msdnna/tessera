@@ -67,8 +67,10 @@ func (h *API) CreateInvitation(c *gin.Context) {
 		return
 	}
 	link := fmt.Sprintf("%s/invite?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
-	mail.SendAsync(h.mailer, inv.Email, "Приглашение в пространство — Tessera",
-		"Вас пригласили в рабочее пространство Tessera. Присоединиться:\n\n"+link+"\n\nСсылка действует 7 дней.")
+	subject, body := mail.Compose(mail.KindInvitation, emailLang(c, h.q, inv.Email), mail.Vars{
+		Link: link, TTLHours: int(invitationTTL / time.Hour),
+	})
+	mail.SendAsync(h.mailer, inv.Email, subject, body)
 	out := invitationDTO(inv)
 	out["link"] = link
 	c.JSON(http.StatusCreated, out)
