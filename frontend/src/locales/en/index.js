@@ -17,6 +17,7 @@ import gitlab from './gitlab.json'
 import tour from './tour.json'
 import jobs from './jobs.json'
 import errors from './errors.json'
+import whatsNew from './whatsNew.json'
 
 export default {
   common,
@@ -35,4 +36,5 @@ export default {
   tour,
   jobs,
   errors,
+  whatsNew,
 }

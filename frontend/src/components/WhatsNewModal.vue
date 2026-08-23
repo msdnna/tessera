@@ -19,9 +19,11 @@ const show = computed({
   },
 })
 
-function itemsHtml(items) {
-  // Render the bullet strings as one Markdown list (sanitized by renderMarkdown).
-  return renderMarkdown(items.map((i) => `- ${i}`).join('\n'))
+function itemsHtml(itemKeys) {
+  // Render the bullets as one Markdown list (sanitized by renderMarkdown). The
+  // entries carry catalogue keys, not text (#2800), so the notes follow the
+  // interface language.
+  return renderMarkdown(itemKeys.map((key) => `- ${t(key)}`).join('\n'))
 }
 
 function close() {
@@ -43,11 +45,11 @@ function close() {
       <div class="wn-body">
         <section v-for="rel in store.pending" :key="rel.version" class="wn-rel">
           <header class="wn-rel-head">
-            <span class="wn-rel-title">{{ rel.title }}</span>
+            <span class="wn-rel-title">{{ t(rel.titleKey) }}</span>
             <span class="wn-rel-ver">{{ rel.version }}</span>
           </header>
           <!-- eslint-disable-next-line vue/no-v-html -- sanitized by renderMarkdown -->
-          <div class="wn-md" v-html="itemsHtml(rel.items)" />
+          <div class="wn-md" v-html="itemsHtml(rel.itemKeys)" />
         </section>
       </div>
 

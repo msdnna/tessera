@@ -39,11 +39,6 @@ export const ALLOWLIST = [
   // same reason columnStatus.js is here — so the guide has to spell them the way
   // the board actually spells them.
   'src/data/getStarted.js',
-  // Release notes shown by the What's New modal. Editorial content about past
-  // releases, not interface: the modal's own chrome is in the catalogue, the
-  // notes stay as they were written. (Open question in #2799 — flip this if the
-  // author would rather have them translated.)
-  'src/data/whatsNew.js',
   // Estimate-input unit aliases ("3д 4ч" next to "3d 4h"). Every label this
   // module renders already comes from the catalogue; what is left is the single
   // letter a user may type, and both alphabets have to keep answering in either

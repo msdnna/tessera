@@ -28,9 +28,13 @@ vi.mock('@/data/whatsNew', () => ({
   WHATS_NEW: [
     {
       version: '0.9.0',
-      title: 'Релиз',
-      items: ['что-то новое'],
-      spotlight: { navKey: 'notes', text: 'Заметки переехали' },
+      titleKey: 'whatsNew.demo.title',
+      itemKeys: ['whatsNew.demo.item1'],
+      spotlight: {
+        navKey: 'notes',
+        titleKey: 'whatsNew.demo.spotlightTitle',
+        bodyKey: 'whatsNew.demo.spotlightBody',
+      },
     },
   ],
 }))

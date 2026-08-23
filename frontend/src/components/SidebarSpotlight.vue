@@ -142,9 +142,9 @@ onBeforeUnmount(() => {
       >
         <div class="sl-title">
           <n-icon :component="SparklesOutline" :size="15" class="sl-spark" />
-          {{ spot?.title }}
+          {{ spot?.titleKey ? t(spot.titleKey) : '' }}
         </div>
-        <div class="sl-body">{{ spot?.body }}</div>
+        <div class="sl-body">{{ spot?.bodyKey ? t(spot.bodyKey) : '' }}</div>
         <button class="sl-btn" @click="dismiss">{{ t('shell.spotlight.dismiss') }}</button>
       </div>
     </div>
