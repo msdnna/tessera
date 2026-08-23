@@ -206,10 +206,13 @@ private fun SpotlightCard(spot: WhatsNewSpotlight, onDismiss: () -> Unit) {
                 IonIcon(Ion.STAR, size = 12.dp, tint = c.onPrimary)
             }
             Spacer(Modifier.width(8.dp))
-            Text(spot.title, color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(spot.titleRes),
+                color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            )
         }
         Spacer(Modifier.size(5.dp))
-        Text(spot.body, color = c.text3, fontSize = 12.sp, lineHeight = 17.sp)
+        Text(stringResource(spot.bodyRes), color = c.text3, fontSize = 12.sp, lineHeight = 17.sp)
         Spacer(Modifier.size(10.dp))
         TButton(
             stringResource(R.string.common_got_it),

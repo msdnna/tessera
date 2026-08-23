@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -114,7 +115,7 @@ private fun ReleaseSection(release: WhatsNewEntry) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                release.title,
+                stringResource(release.titleRes),
                 color = c.text1,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -133,7 +134,7 @@ private fun ReleaseSection(release: WhatsNewEntry) {
             )
         }
         Spacer(Modifier.size(6.dp))
-        release.items.forEach { item ->
+        stringArrayResource(release.itemsRes).forEach { item ->
             Row(Modifier.padding(bottom = 4.dp)) {
                 Text("•", color = c.text3, fontSize = 13.sp)
                 Spacer(Modifier.width(8.dp))

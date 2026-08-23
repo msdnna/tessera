@@ -1091,4 +1091,24 @@
     <string name="conflict_side_ours">Mine</string>
     <string name="conflict_state_closed">Closed</string>
     <string name="conflict_state_open">Open</string>
+
+    <!-- "What's new" release highlights — one key per entry in update/WhatsNewEntries. -->
+    <string name="whatsnew_v0_70_0_title">Tasks, as on the web</string>
+    <string-array name="whatsnew_v0_70_0_items">
+        <item>The task description is the first tab now — comments and subtasks are one tap away.</item>
+        <item>Comment replies form a thread: indentation, collapsing, and “Reply” fills in the author.</item>
+        <item>Tapping an @mention opens that person’s card; tapping “#123” opens the task itself.</item>
+        <item>A description editor with a formatting bar, list continuation and a full-screen mode.</item>
+    </string-array>
+    <string name="whatsnew_v0_69_0_title">Workspace documents</string>
+    <string-array name="whatsnew_v0_69_0_items">
+        <item>The new “Documents” section: a tree of wiki pages with nesting, tables, checkboxes and images.</item>
+        <item>On the phone documents are read-only for now — editing stays on the web.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_documents_title">Take a look at “Documents”</string>
+    <string name="whatsnew_spotlight_documents_body">Your workspace wiki pages are available right from the phone.</string>
+    <string name="whatsnew_v0_68_0_title">Notifications while the app is closed</string>
+    <string-array name="whatsnew_v0_68_0_items">
+        <item>Notifications arrive even when the app is closed, and open the right task when tapped.</item>
+    </string-array>
 </resources>

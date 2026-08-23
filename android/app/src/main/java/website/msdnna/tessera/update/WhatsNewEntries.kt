@@ -1,5 +1,6 @@
 package website.msdnna.tessera.update
 
+import website.msdnna.tessera.R
 import website.msdnna.tessera.util.WhatsNewEntry
 import website.msdnna.tessera.util.WhatsNewSpotlight
 
@@ -11,6 +12,11 @@ import website.msdnna.tessera.util.WhatsNewSpotlight
  * only what is worth interrupting someone with after an update. A couple of short
  * bullets per release, visible features only, no Markdown — the card renders the
  * strings as-is.
+ *
+ * The texts live in `res/values` (and `values-en`) under `whatsnew_v<version>_` and
+ * arrive here as ids — this list is a top-level `val`, so a ready string would be
+ * built once at class load and stay in the language of that moment. A new entry
+ * needs its pair of keys in **both** locales (the parity test enforces it).
  *
  * The web keeps its own list (`frontend/src/data/whatsNew.js`) because the two
  * components version independently: the same feature ships under different
@@ -26,34 +32,24 @@ val WhatsNewEntries: List<WhatsNewEntry> = listOf(
     WhatsNewEntry(
         version = "0.70.0",
         date = "2026-08-20",
-        title = "Задачи — как в вебе",
-        items = listOf(
-            "Описание задачи вынесено первой вкладкой — до комментариев и подзадач теперь один тап.",
-            "Ответы в комментариях собираются веткой: отступ, сворачивание, «Ответить» подставляет автора.",
-            "Тап по @упоминанию открывает карточку человека, а по «#123» — саму задачу.",
-            "Редактор описаний с панелью форматирования, продолжением списков и полноэкранным режимом.",
-        ),
+        titleRes = R.string.whatsnew_v0_70_0_title,
+        itemsRes = R.array.whatsnew_v0_70_0_items,
     ),
     WhatsNewEntry(
         version = "0.69.0",
         date = "2026-08-17",
-        title = "Документы рабочего пространства",
-        items = listOf(
-            "Новый раздел «Документы»: дерево вики-страниц с вложенностью, таблицами, чекбоксами и картинками.",
-            "На телефоне документы пока только для чтения — редактирование остаётся в вебе.",
-        ),
+        titleRes = R.string.whatsnew_v0_69_0_title,
+        itemsRes = R.array.whatsnew_v0_69_0_items,
         spotlight = WhatsNewSpotlight(
             navKey = "documents",
-            title = "Загляните в «Документы»",
-            body = "Вики-страницы рабочего пространства доступны прямо с телефона.",
+            titleRes = R.string.whatsnew_spotlight_documents_title,
+            bodyRes = R.string.whatsnew_spotlight_documents_body,
         ),
     ),
     WhatsNewEntry(
         version = "0.68.0",
         date = "2026-08-12",
-        title = "Уведомления при закрытом приложении",
-        items = listOf(
-            "Уведомления доходят, даже когда приложение закрыто, и открывают нужную задачу по тапу.",
-        ),
+        titleRes = R.string.whatsnew_v0_68_0_title,
+        itemsRes = R.array.whatsnew_v0_68_0_items,
     ),
 )

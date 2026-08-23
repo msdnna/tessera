@@ -1118,4 +1118,27 @@
     <string name="conflict_side_ours">Моё</string>
     <string name="conflict_state_closed">Закрыта</string>
     <string name="conflict_state_open">Открыта</string>
+
+    <!-- Тексты карточки «Что нового»: по ключу на релиз из update/WhatsNewEntries.
+         Ключ содержит версию (whatsnew_v0_70_0_*) — так запись релиза и её текст
+         видно рядом, а выбывший из списка релиз видно, какие ключи забирает с
+         собой. Пункты едут string-array: их число своё у каждого релиза. -->
+    <string name="whatsnew_v0_70_0_title">Задачи — как в вебе</string>
+    <string-array name="whatsnew_v0_70_0_items">
+        <item>Описание задачи вынесено первой вкладкой — до комментариев и подзадач теперь один тап.</item>
+        <item>Ответы в комментариях собираются веткой: отступ, сворачивание, «Ответить» подставляет автора.</item>
+        <item>Тап по @упоминанию открывает карточку человека, а по «#123» — саму задачу.</item>
+        <item>Редактор описаний с панелью форматирования, продолжением списков и полноэкранным режимом.</item>
+    </string-array>
+    <string name="whatsnew_v0_69_0_title">Документы рабочего пространства</string>
+    <string-array name="whatsnew_v0_69_0_items">
+        <item>Новый раздел «Документы»: дерево вики-страниц с вложенностью, таблицами, чекбоксами и картинками.</item>
+        <item>На телефоне документы пока только для чтения — редактирование остаётся в вебе.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_documents_title">Загляните в «Документы»</string>
+    <string name="whatsnew_spotlight_documents_body">Вики-страницы рабочего пространства доступны прямо с телефона.</string>
+    <string name="whatsnew_v0_68_0_title">Уведомления при закрытом приложении</string>
+    <string-array name="whatsnew_v0_68_0_items">
+        <item>Уведомления доходят, даже когда приложение закрыто, и открывают нужную задачу по тапу.</item>
+    </string-array>
 </resources>

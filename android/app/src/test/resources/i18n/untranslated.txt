@@ -3,6 +3,11 @@
 # удаляется, как только файл переведён на stringResource. Формат: путь
 # относительно app/src/main/java, по одному на строку.
 #
+# СПИСОК ПУСТ — очередь разобрана (волна 20). Теперь любой русский литерал в
+# исходниках роняет храповик: новый текст идёт в res/values + values-en, а
+# кириллица, которая не интерфейс (шаблоны по данным с сервера, фикстуры превью),
+# помечается «i18n-data» на своей строке.
+#
 # Волна 0 (готово): AppRoot, AuthScreen, ProfileScreen.
 # Волна 1 (готово): Sidebar.
 # Волна 2 (готово): TaskModal, CommentThreads.
@@ -40,4 +45,6 @@
 #                    AccentGradientPreview — мастерская для Studio, её подписи
 #                    в приложение не попадают: помечены i18n-data, как фикстуры
 #                    TaskCardPreview в волне 16.
-website/msdnna/tessera/update/WhatsNewEntries.kt
+# Волна 20 (готово): тексты релизов — WhatsNewEntries. Заголовки и пункты уехали
+#                    в whatsnew_v*_* (string + string-array), спотлайт — в
+#                    whatsnew_spotlight_*; запись релиза держит id, а не строку.

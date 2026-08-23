@@ -23,6 +23,7 @@ import website.msdnna.tessera.ui.theme.accentByKey
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.UpdateState
+import website.msdnna.tessera.update.WhatsNewEntries
 import website.msdnna.tessera.util.WhatsNewEntry
 import website.msdnna.tessera.util.withLanguage
 
@@ -116,13 +117,40 @@ class ComponentLocaleTest {
         render("en") {
             WhatsNewSheet(
                 releases = listOf(
-                    WhatsNewEntry(version = "1.2.3", date = "2026-08-23", title = "Release", items = listOf("Item")),
+                    WhatsNewEntry(
+                        version = "1.2.3",
+                        date = "2026-08-23",
+                        titleRes = R.string.whats_new_title,
+                        itemsRes = R.array.task_priority_labels,
+                    ),
                 ),
                 onDismiss = {},
             )
         }
         compose.onNodeWithText("What's new").assertIsDisplayed()
         compose.onNodeWithText("Got it").assertIsDisplayed()
+    }
+
+    /** Волна 20: тексты релизов — тоже ресурсы. Рендерится настоящий
+     *  [WhatsNewEntries], а не фикстура: ошибка здесь — это забытый ключ в
+     *  `values-en` у реальной записи, а не в выдуманной. */
+    @Test
+    fun `release highlights come from resources in both locales`() {
+        render("en") { WhatsNewSheet(releases = WhatsNewEntries, onDismiss = {}) }
+        compose.onNodeWithText("Tasks, as on the web").assertIsDisplayed()
+        compose.onNodeWithText("Workspace documents").assertIsDisplayed()
+        compose.onNodeWithText(
+            "On the phone documents are read-only for now — editing stays on the web.",
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun `release highlights render in russian`() {
+        render("ru") { WhatsNewSheet(releases = WhatsNewEntries, onDismiss = {}) }
+        compose.onNodeWithText("Задачи — как в вебе").assertIsDisplayed()
+        compose.onNodeWithText(
+            "На телефоне документы пока только для чтения — редактирование остаётся в вебе.",
+        ).assertIsDisplayed()
     }
 
     private fun release() = LatestRelease(version = "1.2.3", versionCode = 123)
