@@ -12,9 +12,14 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.LatestRelease
 import website.msdnna.tessera.ui.AppLocale
+import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.ui.screens.WhatsNewSheet
 import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.theme.accentByKey
+import website.msdnna.tessera.ui.viewmodels.UpdateState
+import website.msdnna.tessera.util.WhatsNewEntry
 import website.msdnna.tessera.util.withLanguage
 
 /**
@@ -71,6 +76,54 @@ class ComponentLocaleTest {
         assertThat(ctx.withLanguage("ru").getString(R.string.dialog_confirm_by_name_hint, "Atlas"))
             .isEqualTo("Введите «Atlas» для подтверждения:")
     }
+
+    /** Волна 15: диалог обновления. Номер версии приезжает подстановкой `%1$s`, а
+     *  «Доступно обновление»/«Обновить» делятся ключом с подвалом боковой панели —
+     *  ровно та пара, которую легко разнести по двум разным ключам. */
+    @Test
+    fun `update dialog renders in english`() {
+        render("en") { UpdateDialog(state = available(), onUpdate = {}, onInstall = {}, onDismiss = {}) }
+        compose.onNodeWithText("Update available").assertIsDisplayed()
+        compose.onNodeWithText("Version 1.2.3").assertIsDisplayed()
+        compose.onNodeWithText("Later").assertIsDisplayed()
+        compose.onNodeWithText("Update").assertIsDisplayed()
+    }
+
+    @Test
+    fun `update dialog stays russian by default`() {
+        render("ru") { UpdateDialog(state = available(), onUpdate = {}, onInstall = {}, onDismiss = {}) }
+        compose.onNodeWithText("Доступно обновление").assertIsDisplayed()
+        compose.onNodeWithText("Версия 1.2.3").assertIsDisplayed()
+        compose.onNodeWithText("Позже").assertIsDisplayed()
+    }
+
+    /** Сбой скачивания рождается во ViewModel, где `Resources` нет: фолбэк едет
+     *  [website.msdnna.tessera.ui.UiText]'ом и резолвится уже здесь, на языке профиля. */
+    @Test
+    fun `download failure falls back to a localized message`() {
+        val failed = UpdateState.Failed(UiText.Res(R.string.update_download_failed), release())
+        render("en") { UpdateDialog(state = failed, onUpdate = {}, onInstall = {}, onDismiss = {}) }
+        compose.onNodeWithText("Download failed").assertIsDisplayed()
+        compose.onNodeWithText("Retry").assertIsDisplayed()
+    }
+
+    @Test
+    fun `whats new sheet renders in english`() {
+        render("en") {
+            WhatsNewSheet(
+                releases = listOf(
+                    WhatsNewEntry(version = "1.2.3", date = "2026-08-23", title = "Release", items = listOf("Item")),
+                ),
+                onDismiss = {},
+            )
+        }
+        compose.onNodeWithText("What's new").assertIsDisplayed()
+        compose.onNodeWithText("Got it").assertIsDisplayed()
+    }
+
+    private fun release() = LatestRelease(version = "1.2.3", versionCode = 123)
+
+    private fun available() = UpdateState.Available(release())
 
     @Test
     fun `theme picker renders in english`() {

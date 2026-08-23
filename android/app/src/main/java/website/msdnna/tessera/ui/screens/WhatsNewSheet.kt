@@ -26,9 +26,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
@@ -75,8 +77,14 @@ fun WhatsNewSheet(releases: List<WhatsNewEntry>, onDismiss: () -> Unit) {
                         }
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text("Что нового", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Обновление применено — вот что изменилось", color = c.text3, fontSize = 12.sp)
+                            Text(
+                                stringResource(R.string.whats_new_title),
+                                color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                stringResource(R.string.whats_new_subtitle),
+                                color = c.text3, fontSize = 12.sp,
+                            )
                         }
                     }
 
@@ -89,7 +97,11 @@ fun WhatsNewSheet(releases: List<WhatsNewEntry>, onDismiss: () -> Unit) {
                         releases.forEach { ReleaseSection(it) }
                     }
 
-                    TButton("Понятно", onClick = onDismiss, modifier = Modifier.fillMaxWidth().testTag(TestTags.WHATS_NEW_DISMISS))
+                    TButton(
+                        stringResource(R.string.common_got_it),
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().testTag(TestTags.WHATS_NEW_DISMISS),
+                    )
                 }
             }
         }

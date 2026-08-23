@@ -121,6 +121,7 @@
     <string name="common_done">Готово</string>
     <string name="common_close">Закрыть</string>
     <string name="common_retry">Повторить</string>
+    <string name="common_got_it">Понятно</string>
 
     <!-- Навигация в боковой панели -->
     <string name="nav_home">Моя работа</string>
@@ -172,9 +173,7 @@
     <string name="sidebar_project_transferred">Проект перенесён</string>
     <string name="sidebar_project_transferred_stripped">Проект перенесён · снято исполнителей: %1$d</string>
 
-    <!-- Боковая панель: подвал и обновление -->
-    <string name="sidebar_update_available">Доступно обновление</string>
-    <string name="sidebar_update_action">Обновить</string>
+    <!-- Боковая панель: подвал -->
     <string name="sidebar_user_fallback">Пользователь</string>
 
     <!-- Карточка задачи -->
@@ -1004,6 +1003,18 @@
     <string name="board_view_kanban">Доска</string>
     <string name="board_view_list">Список</string>
     <string name="board_view_calendar">Календарь</string>
+
+    <!-- Обновление приложения и «Что нового». Подпись «Доступно обновление» и
+         действие «Обновить» общие у диалога и подвала боковой панели. -->
+    <string name="update_available">Доступно обновление</string>
+    <string name="update_action">Обновить</string>
+    <string name="update_version">Версия %1$s</string>
+    <string name="update_downloading">Загрузка… %1$d%%</string>
+    <string name="update_install">Установить</string>
+    <string name="update_later">Позже</string>
+    <string name="update_download_failed">Не удалось загрузить</string>
+    <string name="whats_new_title">Что нового</string>
+    <string name="whats_new_subtitle">Обновление применено — вот что изменилось</string>
 
     <!-- Редактор Markdown. Подписи-заглушки («текст», «Скрытый текст») попадают
          в сам документ: это заготовка от интерфейса, поэтому язык берётся тот же,

@@ -1030,12 +1030,12 @@ private fun SidebarUpdateRow(version: String, onUpdate: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(R.string.sidebar_update_available),
+                stringResource(R.string.update_available),
                 color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1,
             )
             Text(version, color = c.text3, fontSize = 12.sp, maxLines = 1)
         }
-        TButton(stringResource(R.string.sidebar_update_action), onClick = onUpdate)
+        TButton(stringResource(R.string.update_action), onClick = onUpdate)
     }
 }
 

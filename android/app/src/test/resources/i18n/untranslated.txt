@@ -25,19 +25,18 @@
 # Волна 14 (готово): общие компоненты — Dialogs, Popups, MarkdownEditor,
 #                    ReminderDateTimePicker, IconColorPicker, ThemePicker,
 #                    BoardViewSelector.
+# Волна 15 (готово): обновление и «Что нового» — UpdateDialog, UpdateViewModel,
+#                    WhatsNewSheet, Spotlight. Тексты самих релизов
+#                    (WhatsNewEntries) — это контент, они едут отдельной волной.
 website/msdnna/tessera/ui/components/AccentGradientPreview.kt
-website/msdnna/tessera/ui/components/Spotlight.kt
 website/msdnna/tessera/ui/components/StatusViews.kt
 website/msdnna/tessera/ui/components/TaskCard.kt
 website/msdnna/tessera/ui/components/TaskCardPreview.kt
-website/msdnna/tessera/ui/components/UpdateDialog.kt
 website/msdnna/tessera/ui/screens/ConflictResolver.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt
 website/msdnna/tessera/ui/screens/SearchOverlay.kt
-website/msdnna/tessera/ui/screens/WhatsNewSheet.kt
 website/msdnna/tessera/ui/theme/Tokens.kt
 website/msdnna/tessera/ui/viewmodels/BoardViewModel.kt
 website/msdnna/tessera/ui/viewmodels/GitlabViewModel.kt
-website/msdnna/tessera/ui/viewmodels/UpdateViewModel.kt
 website/msdnna/tessera/ui/viewmodels/WorkspaceViewModel.kt
 website/msdnna/tessera/update/WhatsNewEntries.kt
