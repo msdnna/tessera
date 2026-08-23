@@ -4,6 +4,7 @@
 // label), so edits are published back through `update:relations`. Navigating to a
 // related task closes the modal, which only the modal can do — hence `open-related`.
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NInput, NButton, NSelect, NPopover, NPopconfirm, useMessage } from 'naive-ui'
 import { GitMergeOutline, CloseOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi, workspaces as wsApi } from '@/api'
@@ -18,15 +19,16 @@ const props = defineProps({
 const emit = defineEmits(['update:relations', 'changed', 'open-related'])
 
 const message = useMessage()
+const { t } = useI18n()
 
 const relNumber = ref(null)
 const relKind = ref('relates')
-const relKindOptions = [
-  { label: 'связана с', value: 'relates' },
-  { label: 'блокирует', value: 'blocks' },
-  { label: 'заблокирована', value: 'blocked_by' },
-  { label: 'дублирует', value: 'duplicates' },
-]
+// Kind labels are resolved per render (a plain array would freeze them at the
+// language the tab first mounted in — pitfall 1 of #2799).
+const REL_KINDS = ['relates', 'blocks', 'blocked_by', 'duplicates']
+const relKindOptions = computed(() =>
+  REL_KINDS.map((value) => ({ label: t(`task.relations.kind.${value}`), value })),
+)
 // Cross-board task autocomplete for linking relations.
 const relPickerOpen = ref(false)
 const relTasks = ref([]) // workspace tasks, lazily loaded
@@ -52,28 +54,28 @@ const relGroups = computed(() => {
     .toLowerCase()
   const out = []
   const index = {}
-  for (const t of relTasks.value) {
-    if (t.id === props.taskId || t.number == null) continue
-    if (q && !(`#${t.number}`.includes(q) || t.title.toLowerCase().includes(q))) continue
-    const pk = t.project_name || '—'
-    const bk = t.board_name || '—'
+  for (const rt of relTasks.value) {
+    if (rt.id === props.taskId || rt.number == null) continue
+    if (q && !(`#${rt.number}`.includes(q) || rt.title.toLowerCase().includes(q))) continue
+    const pk = rt.project_name || '—'
+    const bk = rt.board_name || '—'
     const key = `${pk} / ${bk}`
     if (!index[key]) {
       index[key] = { project: pk, board: bk, tasks: [] }
       out.push(index[key])
     }
-    index[key].tasks.push(t)
+    index[key].tasks.push(rt)
   }
   return out.slice(0, 50)
 })
-async function chooseRelTask(t) {
-  relNumber.value = t.number
+async function chooseRelTask(rt) {
+  relNumber.value = rt.number
   relPickerOpen.value = false
   await addRelation()
 }
 
 function relKindLabel(k) {
-  return relKindOptions.find((o) => o.value === k)?.label || k
+  return REL_KINDS.includes(k) ? t(`task.relations.kind.${k}`) : k
 }
 // Badge meta for a relation owned by an integration; null for hand-made ones (no
 // badge at all — "Tessera" on every row would be noise).
@@ -84,7 +86,9 @@ function relSource(r) {
 // it, so the confirm says so instead of promising a permanent removal.
 function relDeleteHint(r) {
   const src = relSource(r)
-  return src ? `Эта связь вернётся при следующем синке ${src.label}. Удалить?` : 'Убрать связь?'
+  return src
+    ? t('task.relations.deleteExternalConfirm', { source: src.label })
+    : t('task.relations.deleteConfirm')
 }
 async function addRelation() {
   const n = Number(relNumber.value)
@@ -131,11 +135,11 @@ async function removeRelation(id) {
       </button>
       <n-popconfirm
         :positive-button-props="{ type: 'error' }"
-        positive-text="Удалить"
+        :positive-text="t('common.action.delete')"
         @positive-click="removeRelation(r.id)"
       >
         <template #trigger>
-          <button class="c-act" title="Убрать связь">
+          <button class="c-act" :title="t('task.relations.unlink')">
             <n-icon :component="CloseOutline" />
           </button>
         </template>
@@ -146,7 +150,7 @@ async function removeRelation(id) {
       v-if="!relations.length"
       size="small"
       :icon="GitMergeOutline"
-      text="Связей пока нет"
+      :text="t('task.relations.empty')"
     />
     <div class="rel-add">
       <n-select
@@ -166,7 +170,7 @@ async function removeRelation(id) {
           <n-input
             v-model:value="relNumber"
             size="small"
-            placeholder="№ или название"
+            :placeholder="t('task.relations.searchPlaceholder')"
             style="width: 240px"
             @focus="openRelPicker"
             @keyup.enter="addRelation"
@@ -175,23 +179,25 @@ async function removeRelation(id) {
           </n-input>
         </template>
         <div class="rel-picker">
-          <div v-if="!relGroups.length" class="empty-hint">Ничего не найдено</div>
+          <div v-if="!relGroups.length" class="empty-hint">{{ t('task.relations.noMatches') }}</div>
           <div v-for="g in relGroups" :key="g.project + '/' + g.board" class="rp-group">
             <div class="rp-head">{{ g.project }} · {{ g.board }}</div>
             <button
-              v-for="t in g.tasks"
-              :key="t.id"
+              v-for="rt in g.tasks"
+              :key="rt.id"
               type="button"
               class="rp-item"
-              @click="chooseRelTask(t)"
+              @click="chooseRelTask(rt)"
             >
-              <span class="rp-num">#{{ t.number }}</span>
-              <span class="rp-title">{{ t.title }}</span>
+              <span class="rp-num">#{{ rt.number }}</span>
+              <span class="rp-title">{{ rt.title }}</span>
             </button>
           </div>
         </div>
       </n-popover>
-      <n-button size="small" class="rel-go" @click="addRelation">Связать</n-button>
+      <n-button size="small" class="rel-go" @click="addRelation">{{
+        t('task.relations.link')
+      }}</n-button>
     </div>
   </div>
 </template>

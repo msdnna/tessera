@@ -8,6 +8,7 @@
 // so the card passes that markup down through the `expanded` slot instead, and
 // the recursion stays where it already was, inside TaskCard.
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import { NIcon, NPopover } from 'naive-ui'
 import { CheckmarkCircle, EllipseOutline } from '@vicons/ionicons5'
@@ -44,6 +45,7 @@ const tagsMap = bv.tagsMap
 const membersMap = bv.membersMap
 const tagPrefixNames = bv.prefixNames
 const { formatDue } = useDateLocale()
+const { t } = useI18n()
 
 // Mutable mirror for drag-reorder of subtasks; resynced from the prop.
 const subModel = ref([])
@@ -156,7 +158,7 @@ async function toggleSubDone(s) {
                   v-if="subColumn(s)"
                   class="col-mark"
                   :style="{ background: subColumn(s).color }"
-                  :title="`Колонка: ${subColumn(s).name}`"
+                  :title="t('task.card.columnIs', { name: subColumn(s).name })"
                 />
               </div>
             </template>

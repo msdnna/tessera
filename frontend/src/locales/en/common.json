@@ -10,7 +10,8 @@
     "edit": "Edit",
     "delete": "Delete",
     "retry": "Retry",
-    "search": "Search"
+    "search": "Search",
+    "more": "More"
   },
   "priority": {
     "none": "No priority",

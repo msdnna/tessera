@@ -7,12 +7,138 @@
     "priority": "Priority",
     "move": "Move to a column",
     "archive": "Archive",
-    "delete": "Delete"
+    "delete": "Delete",
+    "addSubtask": "Add a subtask"
   },
   "confirm": {
     "delete": "Delete permanently? This cannot be undone.",
     "deleteYes": "Delete",
     "archive": "Move the task to the archive?",
     "archiveYes": "Archive"
+  },
+  "action": {
+    "restore": "Restore from the archive"
+  },
+  "field": {
+    "priority": "Priority",
+    "due": "Due date",
+    "estimate": "Estimate",
+    "milestone": "Milestone",
+    "tags": "Tags",
+    "assignee": "Assignee",
+    "recurring": "Recurring task"
+  },
+  "layout": {
+    "hint": "How to open a task",
+    "modal": "Modal window",
+    "fullscreen": "Full screen",
+    "sidebar": "Side panel"
+  },
+  "card": {
+    "columnIs": "Column: {name}",
+    "openIssue": "GitLab issue !{iid} — open",
+    "narrowed": "{shown} of {total} subtasks — the rest are hidden by the filter",
+    "subtaskPlaceholder": "Subtask title, Enter"
+  },
+  "pill": {
+    "conflict": "Conflict",
+    "conflictHint": "GitLab write-back conflict — click to resolve",
+    "hasDescription": "Has a description"
+  },
+  "estimate": {
+    "tooltip": "Estimate: {value}",
+    "rollupTooltip": "Sum of subtask estimates: {value}"
+  },
+  "milestone": {
+    "tooltip": "Milestone: {title}",
+    "tooltipClosed": "Milestone: {title} (closed)"
+  },
+  "tags": {
+    "newPlaceholder": "New tag, Enter"
+  },
+  "people": {
+    "author": "Author: {name}",
+    "assignee": "Assignee: {names}",
+    "none": "No assignee",
+    "noMatches": "Nobody found"
+  },
+  "tab": {
+    "description": "Description"
+  },
+  "desc": {
+    "template": "Issue template…",
+    "insertImage": "Insert an image",
+    "insertMermaid": "Insert a Mermaid diagram",
+    "fullscreen": "Open full screen",
+    "preview": "Preview",
+    "placeholder": "Add a description…",
+    "emptyMarkdown": "_No description_"
+  },
+  "comments": {
+    "someone": "Someone",
+    "placeholder": "Comment…",
+    "composerPlaceholder": "Write a comment… ({'@'} — mention, / — command, Ctrl+Enter — send)",
+    "replyPlaceholder": "Reply… (Esc — cancel, Ctrl+Enter — send)",
+    "reply": "Reply",
+    "collapse": "Collapse replies",
+    "replies": "{n} reply | {n} replies",
+    "deleteConfirm": "Delete the comment?",
+    "empty": "No comments yet",
+    "offlineComment": "Server unreachable — the comment was not sent",
+    "offlineReply": "Server unreachable — the reply was not sent",
+    "commandsApplied": "Applied: {list}",
+    "retrying": "No connection — retrying ({attempt}/{max})…",
+    "customCommands": "{list} — will stay as plain text"
+  },
+  "subtasks": {
+    "empty": "No subtasks yet",
+    "addPlaceholder": "+ subtask (Enter)",
+    "pushQueued": "The subtask has been queued for export to GitLab",
+    "glChild": "A child work item of the issue in GitLab",
+    "glDetached": "outside the hierarchy",
+    "glDetachedHint": "Issue !{iid} was created, but GitLab did not accept it into the hierarchy — retry",
+    "glAbsent": "not in GitLab",
+    "glAbsentHint": "The subtask has not been exported to GitLab yet — export it",
+    "parentNotGrouped": "The parent is not marked as a grouped task — subtasks will not reach GitLab.",
+    "markGrouped": "Mark it"
+  },
+  "relations": {
+    "empty": "No relations yet",
+    "link": "Link",
+    "unlink": "Remove the relation",
+    "searchPlaceholder": "№ or title",
+    "noMatches": "Nothing found",
+    "deleteConfirm": "Remove the relation?",
+    "deleteExternalConfirm": "This relation will come back on the next {source} sync. Delete it?",
+    "kind": {
+      "relates": "relates to",
+      "blocks": "blocks",
+      "blocked_by": "is blocked by",
+      "duplicates": "duplicates"
+    }
+  },
+  "files": {
+    "empty": "No files yet",
+    "attach": "Attach a file",
+    "download": "Download",
+    "saved": "File saved",
+    "deleteConfirm": "Delete the file “{name}”?",
+    "size": {
+      "b": "{n} B",
+      "kb": "{n} KB",
+      "mb": "{n} MB"
+    }
+  },
+  "docs": {
+    "empty": "No linked documents",
+    "untitled": "Untitled",
+    "fragment": "fragment",
+    "unlink": "Remove the link",
+    "unlinkYes": "Remove",
+    "unlinkConfirm": "Remove the link to the document?"
+  },
+  "history": {
+    "empty": "No history yet",
+    "someone": "Someone"
   }
 }

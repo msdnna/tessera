@@ -7,12 +7,138 @@
     "priority": "Приоритет",
     "move": "Переместить в колонку",
     "archive": "В архив",
-    "delete": "Удалить"
+    "delete": "Удалить",
+    "addSubtask": "Создать подзадачу"
   },
   "confirm": {
     "delete": "Удалить безвозвратно? Это действие необратимо.",
     "deleteYes": "Удалить",
     "archive": "Перенести задачу в архив?",
     "archiveYes": "В архив"
+  },
+  "action": {
+    "restore": "Вернуть из архива"
+  },
+  "field": {
+    "priority": "Приоритет",
+    "due": "Срок",
+    "estimate": "Оценка",
+    "milestone": "Этап",
+    "tags": "Теги",
+    "assignee": "Исполнитель",
+    "recurring": "Повторяемая задача"
+  },
+  "layout": {
+    "hint": "Как открывать задачу",
+    "modal": "Модальное окно",
+    "fullscreen": "Полный экран",
+    "sidebar": "Панель справа"
+  },
+  "card": {
+    "columnIs": "Колонка: {name}",
+    "openIssue": "GitLab issue !{iid} — открыть",
+    "narrowed": "{shown} из {total} подзадач — остальные скрыты фильтром",
+    "subtaskPlaceholder": "Название подзадачи, Enter"
+  },
+  "pill": {
+    "conflict": "Конфликт",
+    "conflictHint": "Конфликт обратной записи GitLab — нажмите, чтобы разрешить",
+    "hasDescription": "Есть описание"
+  },
+  "estimate": {
+    "tooltip": "Оценка: {value}",
+    "rollupTooltip": "Сумма оценок подзадач: {value}"
+  },
+  "milestone": {
+    "tooltip": "Этап: {title}",
+    "tooltipClosed": "Этап: {title} (закрыт)"
+  },
+  "tags": {
+    "newPlaceholder": "Новый тег, Enter"
+  },
+  "people": {
+    "author": "Автор: {name}",
+    "assignee": "Исполнитель: {names}",
+    "none": "Нет исполнителя",
+    "noMatches": "Никого не найдено"
+  },
+  "tab": {
+    "description": "Описание"
+  },
+  "desc": {
+    "template": "Шаблон issue…",
+    "insertImage": "Вставить изображение",
+    "insertMermaid": "Вставить Mermaid-диаграмму",
+    "fullscreen": "Открыть на весь экран",
+    "preview": "Предпросмотр",
+    "placeholder": "Добавьте описание…",
+    "emptyMarkdown": "_Нет описания_"
+  },
+  "comments": {
+    "someone": "Кто-то",
+    "placeholder": "Комментарий…",
+    "composerPlaceholder": "Написать комментарий… ({'@'} — упоминание, / — команда, Ctrl+Enter — отправить)",
+    "replyPlaceholder": "Ответить… (Esc — отмена, Ctrl+Enter — отправить)",
+    "reply": "Ответить",
+    "collapse": "Свернуть ответы",
+    "replies": "{n} ответ | {n} ответа | {n} ответов",
+    "deleteConfirm": "Удалить комментарий?",
+    "empty": "Комментариев пока нет",
+    "offlineComment": "Сервер недоступен — комментарий не отправлен",
+    "offlineReply": "Сервер недоступен — ответ не отправлен",
+    "commandsApplied": "Применено: {list}",
+    "retrying": "Нет связи — повтор попытки ({attempt}/{max})…",
+    "customCommands": "{list} — останется текстом"
+  },
+  "subtasks": {
+    "empty": "Подзадач пока нет",
+    "addPlaceholder": "+ подзадача (Enter)",
+    "pushQueued": "Выгрузка подзадачи в GitLab поставлена в очередь",
+    "glChild": "Дочерний элемент issue в GitLab",
+    "glDetached": "вне иерархии",
+    "glDetachedHint": "Issue !{iid} создан, но GitLab не принял его в иерархию — повторить",
+    "glAbsent": "не в GitLab",
+    "glAbsentHint": "Подзадача ещё не выгружена в GitLab — выгрузить",
+    "parentNotGrouped": "Родитель не помечен как сгруппированная задача — подзадачи не уедут в GitLab.",
+    "markGrouped": "Пометить"
+  },
+  "relations": {
+    "empty": "Связей пока нет",
+    "link": "Связать",
+    "unlink": "Убрать связь",
+    "searchPlaceholder": "№ или название",
+    "noMatches": "Ничего не найдено",
+    "deleteConfirm": "Убрать связь?",
+    "deleteExternalConfirm": "Эта связь вернётся при следующем синке {source}. Удалить?",
+    "kind": {
+      "relates": "связана с",
+      "blocks": "блокирует",
+      "blocked_by": "заблокирована",
+      "duplicates": "дублирует"
+    }
+  },
+  "files": {
+    "empty": "Файлов пока нет",
+    "attach": "Прикрепить файл",
+    "download": "Скачать",
+    "saved": "Файл сохранён",
+    "deleteConfirm": "Удалить файл «{name}»?",
+    "size": {
+      "b": "{n} Б",
+      "kb": "{n} КБ",
+      "mb": "{n} МБ"
+    }
+  },
+  "docs": {
+    "empty": "Связанных документов нет",
+    "untitled": "Без названия",
+    "fragment": "фрагмент",
+    "unlink": "Убрать связь",
+    "unlinkYes": "Убрать",
+    "unlinkConfirm": "Убрать связь с документом?"
+  },
+  "history": {
+    "empty": "История пуста",
+    "someone": "Кто-то"
   }
 }

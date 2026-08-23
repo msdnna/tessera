@@ -68,11 +68,16 @@ export default [
             // month-stepper chevrons and the full-width plus on "add" buttons.
             // They are drawn, not read, and stay the same in every locale.
             '×',
+            '✕',
+            '✎',
             '‹',
             '›',
             '＋',
             'Tessera',
             'tessera',
+            // Another brand name that is spelled the same in every locale (it
+            // labels integration rows and chips, not prose about them).
+            'GitLab',
           ],
           // Defaults, plus `placeholder` on any element: the UI is built on
           // Naive UI, so nearly every placeholder sits on `<n-input>` rather

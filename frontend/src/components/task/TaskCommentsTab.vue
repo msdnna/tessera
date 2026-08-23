@@ -12,6 +12,7 @@
 // the initial population has rendered, so a re-opened task doesn't fade in its whole
 // history.
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton, NSpace, NPopconfirm, useMessage } from 'naive-ui'
 import { ChatbubbleEllipsesOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
@@ -39,6 +40,7 @@ const props = defineProps({
 const emit = defineEmits(['update:comments', 'changed', 'reload-detail'])
 
 const message = useMessage()
+const { t } = useI18n()
 const { formatters } = useFormat()
 const auth = useAuthStore()
 const bv = useBoardViewStore()
@@ -154,15 +156,12 @@ function cancelReply() {
   replyBody.value = ''
 }
 
-function replyCount(t) {
-  const n = t.replies.length
-  const forms =
-    n % 10 === 1 && n % 100 !== 11
-      ? 'ответ'
-      : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)
-        ? 'ответа'
-        : 'ответов'
-  return `${n} ${forms}`
+// The hand-rolled Russian declension this used to do lives in the catalogue now:
+// vue-i18n picks the form (the CLDR rule for `ru` is registered in @/i18n), and
+// English gets its own two-form message rather than a transliterated third one.
+function replyCount(thread) {
+  const n = thread.replies.length
+  return t('task.comments.replies', n, { n })
 }
 
 // Members offered for @-mentions — and, via the same rows, resolved by the hover
@@ -315,7 +314,7 @@ async function postComment() {
         const backoff = RETRY_BACKOFFS[attempt]
         if (!e.offline || backoff == null) {
           retryInfo.value = null
-          message.error(e.offline ? 'Сервер недоступен — комментарий не отправлен' : e.message)
+          message.error(e.offline ? t('task.comments.offlineComment') : e.message)
           return
         }
         retryInfo.value = { attempt: attempt + 1, max: RETRY_BACKOFFS.length }
@@ -353,7 +352,7 @@ async function postReply(rootId) {
     const fresh = (c.data || []).find((x) => !known.has(x.id))
     if (fresh) await scrollToComment(fresh.id)
   } catch (e) {
-    message.error(e.offline ? 'Сервер недоступен — ответ не отправлен' : e.message)
+    message.error(e.offline ? t('task.comments.offlineReply') : e.message)
   } finally {
     replyingPost.value = false
   }
@@ -368,7 +367,8 @@ async function scrollToComment(id) {
 // recurring task bounces straight out of the done column), so we echo its text.
 function reportCommands(summary) {
   const applied = (summary.applied || []).map((o) => o.summary || `/${o.key}`)
-  if (applied.length) message.success(`Применено: ${applied.join('; ')}`)
+  if (applied.length)
+    message.success(t('task.comments.commandsApplied', { list: applied.join('; ') }))
   for (const err of summary.errors || []) {
     message.warning(`/${err.key}: ${err.error}`)
   }
@@ -424,76 +424,88 @@ async function onCommentCheck(c, i) {
            direct flex children of .c-list; only newly-posted comments
            fade in (no `appear`, so the initial list doesn't animate). -->
       <TransitionGroup :name="hydrated ? 'c-fade' : ''" tag="div" class="c-items">
-        <div v-for="t in threads" :key="t.root.id" class="c-thread">
-          <div class="comment" :data-comment-id="t.root.id">
+        <div v-for="th in threads" :key="th.root.id" class="c-thread">
+          <div class="comment" :data-comment-id="th.root.id">
             <UserAvatar
               class="c-ava"
-              :user-id="t.root.author_id || ''"
-              :src="t.root.gl_author_avatar_url"
-              :name="t.root.author_name || t.root.gl_author_name || '?'"
+              :user-id="th.root.author_id || ''"
+              :src="th.root.gl_author_avatar_url"
+              :name="th.root.author_name || th.root.gl_author_name || '?'"
             />
             <div class="c-body">
               <div class="c-head">
                 <span class="c-author">{{
-                  t.root.author_name || t.root.gl_author_name || 'Кто-то'
+                  th.root.author_name || th.root.gl_author_name || t('task.comments.someone')
                 }}</span>
-                <span v-if="!t.root.author_name && t.root.gl_author_name" class="c-gl">
+                <span v-if="!th.root.author_name && th.root.gl_author_name" class="c-gl">
                   · GitLab
                 </span>
-                <span class="c-when">{{ fmtWhen(t.root.created_at, formatters) }}</span>
-                <span v-if="t.root.author_id === meId" class="c-acts">
-                  <button class="c-act" title="Изменить" @click="startEditComment(t.root)">
+                <span class="c-when">{{ fmtWhen(th.root.created_at, formatters) }}</span>
+                <span v-if="th.root.author_id === meId" class="c-acts">
+                  <button
+                    class="c-act"
+                    :title="t('common.action.edit')"
+                    @click="startEditComment(th.root)"
+                  >
                     ✎
                   </button>
                   <n-popconfirm
                     :positive-button-props="{ type: 'error' }"
-                    positive-text="Удалить"
-                    @positive-click="deleteComment(t.root.id)"
+                    :positive-text="t('common.action.delete')"
+                    @positive-click="deleteComment(th.root.id)"
                   >
                     <template #trigger>
-                      <button class="c-act" title="Удалить">✕</button>
+                      <button class="c-act" :title="t('common.action.delete')">✕</button>
                     </template>
-                    Удалить комментарий?
+                    {{ t('task.comments.deleteConfirm') }}
                   </n-popconfirm>
                 </span>
               </div>
-              <template v-if="editingCommentId === t.root.id">
+              <template v-if="editingCommentId === th.root.id">
                 <MarkdownEditor
                   v-model="editingCommentBody"
                   variant="boxed"
                   :mention-items="mentionItems"
                   :attach-task-id="taskId"
                   :min-rows="2"
-                  placeholder="Комментарий…"
+                  :placeholder="t('task.comments.placeholder')"
                   @attachments-changed="emit('changed')"
                   @submit="saveComment"
                 />
                 <n-space :size="6" style="margin-top: 6px">
-                  <n-button size="tiny" type="primary" @click="saveComment">Сохранить</n-button>
-                  <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
+                  <n-button size="tiny" type="primary" @click="saveComment">{{
+                    t('common.action.save')
+                  }}</n-button>
+                  <n-button size="tiny" @click="editingCommentId = null">{{
+                    t('common.action.cancel')
+                  }}</n-button>
                 </n-space>
               </template>
               <RichContent
                 v-else
                 class="c-text"
-                :source="t.root.body"
+                :source="th.root.body"
                 :members="mentionItems"
                 mention-cards
                 task-refs
-                :interactive="t.root.author_id === meId"
-                @toggle="onCommentCheck(t.root, $event)"
+                :interactive="th.root.author_id === meId"
+                @toggle="onCommentCheck(th.root, $event)"
               />
               <div class="c-thread-acts">
                 <button
                   v-if="!readonly"
                   class="c-link"
                   data-testid="comment-reply"
-                  @click="startReply(t.root.id, t.root)"
+                  @click="startReply(th.root.id, th.root)"
                 >
-                  Ответить
+                  {{ t('task.comments.reply') }}
                 </button>
-                <button v-if="t.replies.length" class="c-link" @click="toggleCollapsed(t.root.id)">
-                  {{ collapsed.has(t.root.id) ? replyCount(t) : 'Свернуть ответы' }}
+                <button
+                  v-if="th.replies.length"
+                  class="c-link"
+                  @click="toggleCollapsed(th.root.id)"
+                >
+                  {{ collapsed.has(th.root.id) ? replyCount(th) : t('task.comments.collapse') }}
                 </button>
               </div>
             </div>
@@ -504,10 +516,10 @@ async function onCommentCheck(c, i) {
                non-neutral elements only. The grid-rows wrapper animates the
                collapse/expand smoothly (0fr ↔ 1fr). -->
           <Transition name="c-collapse">
-            <div v-if="t.replies.length && !collapsed.has(t.root.id)" class="c-collapse">
+            <div v-if="th.replies.length && !collapsed.has(th.root.id)" class="c-collapse">
               <div class="c-replies">
                 <div
-                  v-for="r in t.replies"
+                  v-for="r in th.replies"
                   :key="r.id"
                   class="comment c-reply"
                   :data-comment-id="r.id"
@@ -521,23 +533,27 @@ async function onCommentCheck(c, i) {
                   <div class="c-body">
                     <div class="c-head">
                       <span class="c-author">{{
-                        r.author_name || r.gl_author_name || 'Кто-то'
+                        r.author_name || r.gl_author_name || t('task.comments.someone')
                       }}</span>
                       <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
                       <span class="c-when">{{ fmtWhen(r.created_at, formatters) }}</span>
                       <span v-if="r.author_id === meId" class="c-acts">
-                        <button class="c-act" title="Изменить" @click="startEditComment(r)">
+                        <button
+                          class="c-act"
+                          :title="t('common.action.edit')"
+                          @click="startEditComment(r)"
+                        >
                           ✎
                         </button>
                         <n-popconfirm
                           :positive-button-props="{ type: 'error' }"
-                          positive-text="Удалить"
+                          :positive-text="t('common.action.delete')"
                           @positive-click="deleteComment(r.id)"
                         >
                           <template #trigger>
-                            <button class="c-act" title="Удалить">✕</button>
+                            <button class="c-act" :title="t('common.action.delete')">✕</button>
                           </template>
-                          Удалить комментарий?
+                          {{ t('task.comments.deleteConfirm') }}
                         </n-popconfirm>
                       </span>
                     </div>
@@ -548,15 +564,17 @@ async function onCommentCheck(c, i) {
                         :mention-items="mentionItems"
                         :attach-task-id="taskId"
                         :min-rows="2"
-                        placeholder="Комментарий…"
+                        :placeholder="t('task.comments.placeholder')"
                         @attachments-changed="emit('changed')"
                         @submit="saveComment"
                       />
                       <n-space :size="6" style="margin-top: 6px">
-                        <n-button size="tiny" type="primary" @click="saveComment"
-                          >Сохранить</n-button
-                        >
-                        <n-button size="tiny" @click="editingCommentId = null">Отмена</n-button>
+                        <n-button size="tiny" type="primary" @click="saveComment">{{
+                          t('common.action.save')
+                        }}</n-button>
+                        <n-button size="tiny" @click="editingCommentId = null">{{
+                          t('common.action.cancel')
+                        }}</n-button>
                       </n-space>
                     </template>
                     <RichContent
@@ -573,7 +591,9 @@ async function onCommentCheck(c, i) {
                       <!-- Replying to a reply targets the same root: threads are two
                        levels deep, and the backend collapses it anyway. The reply's
                        own author is the one pre-mentioned, though. -->
-                      <button class="c-link" @click="startReply(t.root.id, r)">Ответить</button>
+                      <button class="c-link" @click="startReply(th.root.id, r)">
+                        {{ t('task.comments.reply') }}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -581,7 +601,7 @@ async function onCommentCheck(c, i) {
             </div>
           </Transition>
 
-          <div v-if="replyingTo === t.root.id && !readonly" class="c-reply-add">
+          <div v-if="replyingTo === th.root.id && !readonly" class="c-reply-add">
             <!-- Function ref, not a string one: a string ref inside v-for
                  collects into an array, and getMentions() would be undefined.
                  Only one composer is open at a time, so a single slot is right. -->
@@ -595,9 +615,9 @@ async function onCommentCheck(c, i) {
               :command-items="commandItems"
               :attach-task-id="taskId"
               :min-rows="2"
-              placeholder="Ответить… (Esc — отмена, Ctrl+Enter — отправить)"
+              :placeholder="t('task.comments.replyPlaceholder')"
               @attachments-changed="emit('changed')"
-              @submit="postReply(t.root.id)"
+              @submit="postReply(th.root.id)"
               @cancel="cancelReply"
             />
           </div>
@@ -608,7 +628,7 @@ async function onCommentCheck(c, i) {
         class="c-empty"
         size="small"
         :icon="ChatbubbleEllipsesOutline"
-        text="Комментариев пока нет"
+        :text="t('task.comments.empty')"
       />
     </div>
     <div v-if="!readonly" class="comment-add">
@@ -622,7 +642,7 @@ async function onCommentCheck(c, i) {
         :command-items="commandItems"
         :attach-task-id="taskId"
         :min-rows="3"
-        placeholder="Написать комментарий… (@ — упоминание, / — команда, Ctrl+Enter — отправить)"
+        :placeholder="t('task.comments.composerPlaceholder')"
         @attachments-changed="emit('changed')"
         @submit="postComment"
       />
@@ -631,8 +651,10 @@ async function onCommentCheck(c, i) {
       <Transition name="retry-pop">
         <div v-if="retryInfo" class="retry-bar">
           <TesseraSpinner :size="14" />
-          <span>Нет связи — повтор попытки ({{ retryInfo.attempt }}/{{ retryInfo.max }})…</span>
-          <button class="retry-cancel" @click="cancelRetry">Отмена</button>
+          <span>{{
+            t('task.comments.retrying', { attempt: retryInfo.attempt, max: retryInfo.max })
+          }}</span>
+          <button class="retry-cancel" @click="cancelRetry">{{ t('common.action.cancel') }}</button>
         </div>
       </Transition>
       <!-- Dry-run hint: what the built-in commands in the draft will
@@ -643,7 +665,9 @@ async function onCommentCheck(c, i) {
           <span :class="{ err: c.error }">{{ c.error || c.summary }}</span>
         </span>
         <span v-if="cmdCustom.length" class="cmd-note">
-          {{ cmdCustom.map((k) => `/${k}`).join(', ') }} — останется текстом
+          {{
+            t('task.comments.customCommands', { list: cmdCustom.map((k) => `/${k}`).join(', ') })
+          }}
         </span>
       </div>
     </div>

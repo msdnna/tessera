@@ -1,6 +1,7 @@
 <script setup>
 // «История» tab of the task modal: the task's journal, newest entries as the
 // backend ordered them. Pure presentation — the modal owns loading.
+import { useI18n } from 'vue-i18n'
 import { TimeOutline } from '@vicons/ionicons5'
 import { fmtWhen, eventText } from '@/utils/taskFeed'
 import { useFormat } from '@/composables/useFormat'
@@ -11,6 +12,7 @@ defineProps({
   events: { type: Array, default: () => [] },
 })
 
+const { t } = useI18n()
 const { formatters } = useFormat()
 </script>
 
@@ -19,11 +21,16 @@ const { formatters } = useFormat()
     <div v-for="e in events" :key="e.id" class="histrow">
       <UserAvatar class="h-ava" :user-id="e.actor_id" :name="e.actor_name" />
       <span class="h-text">
-        <b>{{ e.actor_name || 'Кто-то' }}</b> {{ eventText(e) }}
+        <b>{{ e.actor_name || t('task.history.someone') }}</b> {{ eventText(e) }}
       </span>
       <span class="h-when">{{ fmtWhen(e.created_at, formatters) }}</span>
     </div>
-    <EmptyState v-if="!events.length" size="small" :icon="TimeOutline" text="История пуста" />
+    <EmptyState
+      v-if="!events.length"
+      size="small"
+      :icon="TimeOutline"
+      :text="t('task.history.empty')"
+    />
   </div>
 </template>
 
