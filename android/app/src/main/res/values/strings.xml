@@ -515,4 +515,80 @@
         <item>сб</item>
         <item>вс</item>
     </string-array>
+
+    <!-- Уведомления: шапка и разделы -->
+    <string name="notif_title">Уведомления</string>
+    <string name="notif_subtitle">Внутренние уведомления приходят всегда. Здесь — внешние каналы и правила доставки.</string>
+    <string name="notif_section_channels">Каналы</string>
+    <string name="notif_section_routes">Правила маршрутизации</string>
+    <string name="notif_routes_hint">Сверху вниз — срабатывает первое подходящее.</string>
+    <string name="notif_section_schedule">Дедлайны и напоминания</string>
+    <string name="notif_add_action">Добавить %1$s</string>
+    <string name="notif_add_channel">Канал</string>
+    <string name="notif_add_rule">Правило</string>
+
+    <!-- Уведомления: карточка канала -->
+    <string name="notif_type_device">Системные уведомления</string>
+    <string name="notif_type_shoutrrr_any">Shoutrrr (любой сервис)</string>
+    <string name="notif_channel_verified">проверен</string>
+    <string name="notif_channel_this_device">это устройство</string>
+
+    <!-- Уведомления: редактор канала -->
+    <string name="notif_field_type">Тип</string>
+    <string name="notif_field_label">Название</string>
+    <string name="notif_label_placeholder">Напр. «Мой телеграм»</string>
+    <string name="notif_field_address">Адрес</string>
+    <string name="notif_field_method">Метод</string>
+    <string name="notif_field_auth_optional">Authorization (необязательно)</string>
+    <string name="notif_secret_unchanged">пусто — не менять</string>
+    <string name="notif_device_hint">Это устройство/браузер. Системные уведомления приходят, когда приложение открыто.</string>
+    <string name="notif_channel_enabled">Включён</string>
+    <string name="notif_template_title">Шаблон сообщения (пусто = по умолчанию)</string>
+    <string name="notif_template_preview">Предпросмотр</string>
+
+    <!-- Уведомления: правило маршрутизации -->
+    <string name="notif_route_any_kinds">Любые события</string>
+    <string name="notif_route_muted">заглушено</string>
+    <string name="notif_route_no_channels">— каналы не выбраны</string>
+    <string name="notif_route_kinds">События (пусто = любые)</string>
+    <string name="notif_route_workspace">Пространство</string>
+    <string name="notif_route_all_workspaces">Все пространства</string>
+    <string name="notif_route_mute">Заглушить (не отправлять)</string>
+    <string name="notif_route_channels">Каналы доставки</string>
+
+    <!-- Уведомления: виды событий -->
+    <string name="notif_kind_assigned">Назначения</string>
+    <string name="notif_kind_comment">Комментарии</string>
+    <string name="notif_kind_mention">Упоминания</string>
+    <string name="notif_kind_updated">Изменения</string>
+    <string name="notif_kind_moved">Перемещения</string>
+    <string name="notif_kind_archived">Архивирование</string>
+    <string name="notif_kind_due_soon">Дедлайны</string>
+    <string name="notif_kind_reminder">Напоминания</string>
+
+    <!-- Уведомления: расписание дедлайнов и тихих часов -->
+    <string name="notif_due_enabled">Уведомлять о дедлайнах</string>
+    <string name="notif_field_lead">Напоминать</string>
+    <string name="notif_field_repeat">Повтор</string>
+    <string name="notif_reminder_external">Напоминания во внешние каналы</string>
+    <string name="notif_field_digest">Дайджест</string>
+    <string name="notif_quiet_hours">Тихие часы</string>
+    <string name="notif_quiet_from">С</string>
+    <string name="notif_quiet_to">До</string>
+    <string name="notif_lead_on_time">В срок</string>
+    <string name="notif_lead_15m">За 15 мин</string>
+    <string name="notif_lead_30m">За 30 мин</string>
+    <string name="notif_lead_1h">За час</string>
+    <string name="notif_lead_3h">За 3 часа</string>
+    <string name="notif_lead_1d">За день</string>
+    <string name="notif_repeat_once">Однократно</string>
+    <string name="notif_repeat_1h">Каждый час</string>
+    <string name="notif_repeat_3h">Каждые 3 часа</string>
+    <string name="notif_repeat_6h">Каждые 6 часов</string>
+    <string name="notif_repeat_1d">Каждый день</string>
+    <string name="notif_digest_off">Выключено</string>
+    <string name="notif_digest_5m">5 минут</string>
+    <string name="notif_digest_15m">15 минут</string>
+    <string name="notif_digest_30m">30 минут</string>
+    <string name="notif_digest_1h">Раз в час</string>
 </resources>

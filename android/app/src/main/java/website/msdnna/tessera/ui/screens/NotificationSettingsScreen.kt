@@ -27,12 +27,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.ChannelRequest
 import website.msdnna.tessera.data.model.NotificationChannel
 import website.msdnna.tessera.data.model.NotificationRoute
@@ -57,25 +59,62 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.NotificationSettingsViewModel
 import website.msdnna.tessera.util.Ion
 
-private val TYPE_LABELS = mapOf(
+// The option lists below carry UI text, so they are functions and not module-level
+// values: a `val` is computed once on class load and would keep the language of the
+// first render even after the profile switches.
+@Composable
+private fun typeLabels(): Map<String, String> = mapOf(
     "email" to "Email", "telegram" to "Telegram", "webhook" to "Webhook",
-    "shoutrrr" to "Shoutrrr", "device" to "Системные уведомления",
+    "shoutrrr" to "Shoutrrr", "device" to stringResource(R.string.notif_type_device),
 )
-private val ADDABLE_TYPES = listOf(
-    "email" to "Email", "telegram" to "Telegram", "webhook" to "Webhook", "shoutrrr" to "Shoutrrr (любой сервис)",
+
+@Composable
+private fun addableTypes(): List<Pair<String, String>> = listOf(
+    "email" to "Email", "telegram" to "Telegram", "webhook" to "Webhook",
+    "shoutrrr" to stringResource(R.string.notif_type_shoutrrr_any),
 )
-private val KIND_OPTIONS = listOf(
-    "assigned" to "Назначения", "comment" to "Комментарии", "mention" to "Упоминания",
-    "updated" to "Изменения", "moved" to "Перемещения", "archived" to "Архивирование",
-    "due_soon" to "Дедлайны", "reminder" to "Напоминания",
+
+@Composable
+private fun kindOptions(): List<Pair<String, String>> = listOf(
+    "assigned" to stringResource(R.string.notif_kind_assigned),
+    "comment" to stringResource(R.string.notif_kind_comment),
+    "mention" to stringResource(R.string.notif_kind_mention),
+    "updated" to stringResource(R.string.notif_kind_updated),
+    "moved" to stringResource(R.string.notif_kind_moved),
+    "archived" to stringResource(R.string.notif_kind_archived),
+    "due_soon" to stringResource(R.string.notif_kind_due_soon),
+    "reminder" to stringResource(R.string.notif_kind_reminder),
 )
-private val LEAD_OPTIONS = listOf(
-    0 to "В срок", 15 to "За 15 мин", 30 to "За 30 мин", 60 to "За час", 180 to "За 3 часа", 1440 to "За день",
+
+@Composable
+private fun leadOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.notif_lead_on_time),
+    15 to stringResource(R.string.notif_lead_15m),
+    30 to stringResource(R.string.notif_lead_30m),
+    60 to stringResource(R.string.notif_lead_1h),
+    180 to stringResource(R.string.notif_lead_3h),
+    1440 to stringResource(R.string.notif_lead_1d),
 )
-private val REPEAT_OPTIONS = listOf(
-    0 to "Однократно", 60 to "Каждый час", 180 to "Каждые 3 часа", 360 to "Каждые 6 часов", 1440 to "Каждый день",
+
+@Composable
+private fun repeatOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.notif_repeat_once),
+    60 to stringResource(R.string.notif_repeat_1h),
+    180 to stringResource(R.string.notif_repeat_3h),
+    360 to stringResource(R.string.notif_repeat_6h),
+    1440 to stringResource(R.string.notif_repeat_1d),
 )
-private val DIGEST_OPTIONS = listOf(0 to "Выключено", 5 to "5 минут", 15 to "15 минут", 30 to "30 минут", 60 to "Раз в час")
+
+@Composable
+private fun digestOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.notif_digest_off),
+    5 to stringResource(R.string.notif_digest_5m),
+    15 to stringResource(R.string.notif_digest_15m),
+    30 to stringResource(R.string.notif_digest_30m),
+    60 to stringResource(R.string.notif_digest_1h),
+)
+
+// Clock labels only — no text to translate, so this one stays a value.
 private val TIME_OPTIONS = (0 until 48).map { i ->
     val m = i * 30
     m to "%02d:%02d".format(m / 60, m % 60)
@@ -104,9 +143,9 @@ fun NotificationSettingsScreen(
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("Уведомления", color = c.text1, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.notif_title), color = c.text1, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text(
-            "Внутренние уведомления приходят всегда. Здесь — внешние каналы и правила доставки.",
+            stringResource(R.string.notif_subtitle),
             color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp),
         )
         state.error?.let {
@@ -120,7 +159,7 @@ fun NotificationSettingsScreen(
         Spacer(Modifier.height(16.dp))
 
         // ── Channels ──────────────────────────────────────────────────────────
-        SectionLabel("Каналы")
+        SectionLabel(stringResource(R.string.notif_section_channels))
         state.channels.forEach { ch ->
             ChannelRow(
                 ch = ch,
@@ -134,7 +173,7 @@ fun NotificationSettingsScreen(
             Spacer(Modifier.height(8.dp))
         }
         if (channelEdit == null) {
-            DashedAddButton("Канал") { channelEdit = ChannelEdit(null) }
+            DashedAddButton(stringResource(R.string.notif_add_channel)) { channelEdit = ChannelEdit(null) }
         } else {
             ChannelEditor(
                 edit = channelEdit!!,
@@ -148,9 +187,9 @@ fun NotificationSettingsScreen(
         Spacer(Modifier.height(20.dp))
 
         // ── Routes ────────────────────────────────────────────────────────────
-        SectionLabel("Правила маршрутизации")
+        SectionLabel(stringResource(R.string.notif_section_routes))
         Text(
-            "Сверху вниз — срабатывает первое подходящее.",
+            stringResource(R.string.notif_routes_hint),
             color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp),
         )
         state.routes.forEach { r ->
@@ -164,7 +203,9 @@ fun NotificationSettingsScreen(
             Spacer(Modifier.height(8.dp))
         }
         if (routeEdit == null) {
-            if (state.channels.isNotEmpty()) DashedAddButton("Правило") { routeEdit = RouteEdit(null) }
+            if (state.channels.isNotEmpty()) {
+                DashedAddButton(stringResource(R.string.notif_add_rule)) { routeEdit = RouteEdit(null) }
+            }
         } else {
             RouteEditor(
                 edit = routeEdit!!,
@@ -195,24 +236,25 @@ private fun ChannelRow(
     onDelete: () -> Unit,
 ) {
     val c = Tessera.colors
+    val types = typeLabels()
     TCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        ch.label.ifBlank { TYPE_LABELS[ch.type] ?: ch.type },
+                        ch.label.ifBlank { types[ch.type] ?: ch.type },
                         color = c.text1, fontSize = 14.sp, fontWeight = FontWeight.Medium,
                     )
                     if (ch.verified) {
                         Spacer(Modifier.width(6.dp))
-                        Pill("проверен", c.primary)
+                        Pill(stringResource(R.string.notif_channel_verified), c.primary)
                     }
                     if (isThisDevice) {
                         Spacer(Modifier.width(6.dp))
-                        Pill("это устройство", c.primary)
+                        Pill(stringResource(R.string.notif_channel_this_device), c.primary)
                     }
                 }
-                Text(TYPE_LABELS[ch.type] ?: ch.type, color = c.text3, fontSize = 12.sp)
+                Text(types[ch.type] ?: ch.type, color = c.text3, fontSize = 12.sp)
             }
             TSwitch(ch.enabled, { onToggle() })
             if (ch.type != "device") {
@@ -240,50 +282,63 @@ private fun ChannelEditor(
 ) {
     val c = Tessera.colors
     val isNew = edit.id == null
+    val addable = addableTypes()
+    val keepSecret = stringResource(R.string.notif_secret_unchanged)
     TCard {
         Column {
             if (isNew) {
-                Field("Тип") {
-                    LocalSelect(ADDABLE_TYPES.find { it.first == edit.type }?.second ?: "—", ADDABLE_TYPES) { edit.type = it }
+                Field(stringResource(R.string.notif_field_type)) {
+                    LocalSelect(addable.find { it.first == edit.type }?.second ?: "—", addable) { edit.type = it }
                 }
             } else {
-                Text(TYPE_LABELS[edit.type] ?: edit.type, color = c.text2, fontSize = 13.sp)
+                Text(typeLabels()[edit.type] ?: edit.type, color = c.text2, fontSize = 13.sp)
                 Spacer(Modifier.height(6.dp))
             }
-            TTextField(edit.label, { edit.label = it }, label = "Название", placeholder = "Напр. «Мой телеграм»")
+            TTextField(
+                edit.label, { edit.label = it },
+                label = stringResource(R.string.notif_field_label),
+                placeholder = stringResource(R.string.notif_label_placeholder),
+            )
             Spacer(Modifier.height(8.dp))
             when (edit.type) {
-                "email" -> TTextField(edit.address, { edit.address = it }, label = "Адрес", placeholder = "you@example.com")
+                "email" -> TTextField(
+                    edit.address, { edit.address = it },
+                    label = stringResource(R.string.notif_field_address), placeholder = "you@example.com",
+                )
 
                 "telegram" -> {
                     TTextField(edit.chatId, { edit.chatId = it }, label = "Chat ID", placeholder = "123456789")
                     Spacer(Modifier.height(8.dp))
                     TTextField(
                         edit.botToken, { edit.botToken = it }, label = "Bot token", isPassword = true,
-                        placeholder = if (isNew) "123456:ABC-…" else "пусто — не менять",
+                        placeholder = if (isNew) "123456:ABC-…" else keepSecret,
                     )
                 }
 
                 "webhook" -> {
                     TTextField(edit.url, { edit.url = it }, label = "URL", placeholder = "https://…")
                     Spacer(Modifier.height(8.dp))
-                    TTextField(edit.method, { edit.method = it }, label = "Метод", placeholder = "POST")
+                    TTextField(
+                        edit.method, { edit.method = it },
+                        label = stringResource(R.string.notif_field_method), placeholder = "POST",
+                    )
                     Spacer(Modifier.height(8.dp))
                     TTextField(
-                        edit.authHeader, { edit.authHeader = it }, label = "Authorization (необязательно)", isPassword = true,
-                        placeholder = if (isNew) "Bearer …" else "пусто — не менять",
+                        edit.authHeader, { edit.authHeader = it }, isPassword = true,
+                        label = stringResource(R.string.notif_field_auth_optional),
+                        placeholder = if (isNew) "Bearer …" else keepSecret,
                     )
                 }
 
                 "shoutrrr" -> {
                     TTextField(
                         edit.shoutrrrUrl, { edit.shoutrrrUrl = it }, label = "Service URL", isPassword = true,
-                        placeholder = if (isNew) "slack://… · discord://… · ntfy://…" else "пусто — не менять",
+                        placeholder = if (isNew) "slack://… · discord://… · ntfy://…" else keepSecret,
                     )
                 }
 
                 "device" -> Text(
-                    "Это устройство/браузер. Системные уведомления приходят, когда приложение открыто.",
+                    stringResource(R.string.notif_device_hint),
                     color = c.text3, fontSize = 12.sp,
                 )
             }
@@ -293,13 +348,19 @@ private fun ChannelEditor(
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Включён", color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.notif_channel_enabled),
+                    color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f),
+                )
                 TSwitch(edit.enabled, { edit.enabled = it })
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TButton("Отмена", onClick = onCancel, kind = TButtonKind.Secondary, modifier = Modifier.weight(1f))
-                TButton("Сохранить", onClick = onSave, loading = saving, modifier = Modifier.weight(1f))
+                TButton(
+                    stringResource(R.string.common_cancel), onClick = onCancel,
+                    kind = TButtonKind.Secondary, modifier = Modifier.weight(1f),
+                )
+                TButton(stringResource(R.string.common_save), onClick = onSave, loading = saving, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -310,7 +371,7 @@ private fun TemplateEditor(edit: ChannelEdit, vm: NotificationSettingsViewModel)
     val c = Tessera.colors
     var preview by remember { mutableStateOf<String?>(null) }
     var previewErr by remember { mutableStateOf<String?>(null) }
-    Text("Шаблон сообщения (пусто = по умолчанию)", color = c.text2, fontSize = 13.sp)
+    Text(stringResource(R.string.notif_template_title), color = c.text2, fontSize = 13.sp)
     Spacer(Modifier.height(6.dp))
     TTextField(edit.template, { edit.template = it }, singleLine = false, placeholder = "{{.Text}}")
     Spacer(Modifier.height(6.dp))
@@ -322,7 +383,7 @@ private fun TemplateEditor(edit: ChannelEdit, vm: NotificationSettingsViewModel)
     }
     Spacer(Modifier.height(8.dp))
     TButton(
-        "Предпросмотр", kind = TButtonKind.Secondary,
+        stringResource(R.string.notif_template_preview), kind = TButtonKind.Secondary,
         onClick = {
             vm.previewTemplate(edit.template) { text, err ->
                 preview = text
@@ -352,11 +413,18 @@ private fun RouteRow(
     onDelete: () -> Unit,
 ) {
     val c = Tessera.colors
+    val types = typeLabels()
+    val kindLabels = kindOptions()
     val kinds = r.matcher.kinds
-    val kindsLabel = if (kinds.isNullOrEmpty()) "Любые события" else kinds.joinToString(", ") { k -> KIND_OPTIONS.find { it.first == k }?.second ?: k }
-    val target = if (r.options.mute) "заглушено" else
-        r.channelIds.mapNotNull { id -> channels.find { it.id == id }?.let { it.label.ifBlank { TYPE_LABELS[it.type] ?: it.type } } }
-            .joinToString(", ").ifBlank { "— каналы не выбраны" }
+    val kindsLabel = if (kinds.isNullOrEmpty()) {
+        stringResource(R.string.notif_route_any_kinds)
+    } else {
+        kinds.joinToString(", ") { k -> kindLabels.find { it.first == k }?.second ?: k }
+    }
+    val noChannels = stringResource(R.string.notif_route_no_channels)
+    val target = if (r.options.mute) stringResource(R.string.notif_route_muted) else
+        r.channelIds.mapNotNull { id -> channels.find { it.id == id }?.let { it.label.ifBlank { types[it.type] ?: it.type } } }
+            .joinToString(", ").ifBlank { noChannels }
     TCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -382,42 +450,47 @@ private fun RouteEditor(
     onCancel: () -> Unit,
 ) {
     val c = Tessera.colors
+    val types = typeLabels()
+    val allWorkspaces = stringResource(R.string.notif_route_all_workspaces)
     TCard {
         Column {
-            Text("События (пусто = любые)", color = c.text2, fontSize = 13.sp)
+            Text(stringResource(R.string.notif_route_kinds), color = c.text2, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                KIND_OPTIONS.forEach { (k, label) ->
+                kindOptions().forEach { (k, label) ->
                     ToggleChip(label, edit.kinds.contains(k)) {
                         if (edit.kinds.contains(k)) edit.kinds.remove(k) else edit.kinds.add(k)
                     }
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Text("Пространство", color = c.text2, fontSize = 13.sp)
+            Text(stringResource(R.string.notif_route_workspace), color = c.text2, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            val wsOpts = listOf("" to "Все пространства") + workspaces
-            LocalSelect(wsOpts.find { it.first == (edit.workspaceId ?: "") }?.second ?: "Все пространства", wsOpts) {
+            val wsOpts = listOf("" to allWorkspaces) + workspaces
+            LocalSelect(wsOpts.find { it.first == (edit.workspaceId ?: "") }?.second ?: allWorkspaces, wsOpts) {
                 edit.workspaceId = it.ifBlank { null }
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Заглушить (не отправлять)", color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.notif_route_mute),
+                    color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f),
+                )
                 TSwitch(edit.mute, { edit.mute = it })
             }
             if (!edit.mute) {
                 Spacer(Modifier.height(10.dp))
-                Text("Каналы доставки", color = c.text2, fontSize = 13.sp)
+                Text(stringResource(R.string.notif_route_channels), color = c.text2, fontSize = 13.sp)
                 Spacer(Modifier.height(6.dp))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     channels.forEach { ch ->
-                        val name = ch.label.ifBlank { TYPE_LABELS[ch.type] ?: ch.type }
+                        val name = ch.label.ifBlank { types[ch.type] ?: ch.type }
                         ToggleChip(name, edit.channelIds.contains(ch.id)) {
                             if (edit.channelIds.contains(ch.id)) edit.channelIds.remove(ch.id) else edit.channelIds.add(ch.id)
                         }
@@ -426,8 +499,11 @@ private fun RouteEditor(
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TButton("Отмена", onClick = onCancel, kind = TButtonKind.Secondary, modifier = Modifier.weight(1f))
-                TButton("Сохранить", onClick = onSave, loading = saving, modifier = Modifier.weight(1f))
+                TButton(
+                    stringResource(R.string.common_cancel), onClick = onCancel,
+                    kind = TButtonKind.Secondary, modifier = Modifier.weight(1f),
+                )
+                TButton(stringResource(R.string.common_save), onClick = onSave, loading = saving, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -449,31 +525,40 @@ private fun ScheduleCard(
     var quietStart by remember(prefs) { mutableStateOf(prefs.quietStartMinutes) }
     var quietEnd by remember(prefs) { mutableStateOf(prefs.quietEndMinutes) }
 
-    SectionLabel("Дедлайны и напоминания")
+    SectionLabel(stringResource(R.string.notif_section_schedule))
     TCard {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Уведомлять о дедлайнах", color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.notif_due_enabled),
+                    color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f),
+                )
                 TSwitch(dueEnabled, { dueEnabled = it })
             }
-            IntSelect("Напоминать", lead, LEAD_OPTIONS) { lead = it }
-            IntSelect("Повтор", repeat, REPEAT_OPTIONS) { repeat = it }
+            IntSelect(stringResource(R.string.notif_field_lead), lead, leadOptions()) { lead = it }
+            IntSelect(stringResource(R.string.notif_field_repeat), repeat, repeatOptions()) { repeat = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Напоминания во внешние каналы", color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.notif_reminder_external),
+                    color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f),
+                )
                 TSwitch(reminderEnabled, { reminderEnabled = it })
             }
-            IntSelect("Дайджест", digest, DIGEST_OPTIONS) { digest = it }
+            IntSelect(stringResource(R.string.notif_field_digest), digest, digestOptions()) { digest = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Тихие часы", color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.notif_quiet_hours),
+                    color = c.text2, fontSize = 13.sp, modifier = Modifier.weight(1f),
+                )
                 TSwitch(quietEnabled, { quietEnabled = it })
             }
             if (quietEnabled) {
-                IntSelect("С", quietStart, TIME_OPTIONS) { quietStart = it }
-                IntSelect("До", quietEnd, TIME_OPTIONS) { quietEnd = it }
+                IntSelect(stringResource(R.string.notif_quiet_from), quietStart, TIME_OPTIONS) { quietStart = it }
+                IntSelect(stringResource(R.string.notif_quiet_to), quietEnd, TIME_OPTIONS) { quietEnd = it }
             }
             Spacer(Modifier.height(12.dp))
             TButton(
-                "Сохранить", loading = saving, modifier = Modifier.fillMaxWidth(),
+                stringResource(R.string.common_save), loading = saving, modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val tz = prefs.quietTz.ifBlank { java.util.TimeZone.getDefault().id }
                     onSave(
@@ -522,7 +607,10 @@ private fun DashedAddButton(label: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         IonIcon(Ion.ADD, size = 14.dp, tint = c.primary, gradient = true)
-        Text("Добавить $label", style = TextStyle(brush = accentGradient(c.primary)), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(
+            stringResource(R.string.notif_add_action, label),
+            style = TextStyle(brush = accentGradient(c.primary)), fontSize = 13.sp, fontWeight = FontWeight.Medium,
+        )
     }
 }
 

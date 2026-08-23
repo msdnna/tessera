@@ -505,4 +505,80 @@
         <item>Sat</item>
         <item>Sun</item>
     </string-array>
+
+    <!-- Notifications: header and sections -->
+    <string name="notif_title">Notifications</string>
+    <string name="notif_subtitle">In-app notifications always arrive. Here you set up external channels and delivery rules.</string>
+    <string name="notif_section_channels">Channels</string>
+    <string name="notif_section_routes">Routing rules</string>
+    <string name="notif_routes_hint">Top to bottom — the first matching rule wins.</string>
+    <string name="notif_section_schedule">Due dates and reminders</string>
+    <string name="notif_add_action">Add %1$s</string>
+    <string name="notif_add_channel">Channel</string>
+    <string name="notif_add_rule">Rule</string>
+
+    <!-- Notifications: channel row -->
+    <string name="notif_type_device">System notifications</string>
+    <string name="notif_type_shoutrrr_any">Shoutrrr (any service)</string>
+    <string name="notif_channel_verified">verified</string>
+    <string name="notif_channel_this_device">this device</string>
+
+    <!-- Notifications: channel editor -->
+    <string name="notif_field_type">Type</string>
+    <string name="notif_field_label">Name</string>
+    <string name="notif_label_placeholder">E.g. “My Telegram”</string>
+    <string name="notif_field_address">Address</string>
+    <string name="notif_field_method">Method</string>
+    <string name="notif_field_auth_optional">Authorization (optional)</string>
+    <string name="notif_secret_unchanged">empty — keep current</string>
+    <string name="notif_device_hint">This device/browser. System notifications arrive while the app is open.</string>
+    <string name="notif_channel_enabled">Enabled</string>
+    <string name="notif_template_title">Message template (empty = default)</string>
+    <string name="notif_template_preview">Preview</string>
+
+    <!-- Notifications: routing rule -->
+    <string name="notif_route_any_kinds">Any events</string>
+    <string name="notif_route_muted">muted</string>
+    <string name="notif_route_no_channels">— no channels selected</string>
+    <string name="notif_route_kinds">Events (empty = any)</string>
+    <string name="notif_route_workspace">Workspace</string>
+    <string name="notif_route_all_workspaces">All workspaces</string>
+    <string name="notif_route_mute">Mute (do not send)</string>
+    <string name="notif_route_channels">Delivery channels</string>
+
+    <!-- Notifications: event kinds -->
+    <string name="notif_kind_assigned">Assignments</string>
+    <string name="notif_kind_comment">Comments</string>
+    <string name="notif_kind_mention">Mentions</string>
+    <string name="notif_kind_updated">Updates</string>
+    <string name="notif_kind_moved">Moves</string>
+    <string name="notif_kind_archived">Archiving</string>
+    <string name="notif_kind_due_soon">Due dates</string>
+    <string name="notif_kind_reminder">Reminders</string>
+
+    <!-- Notifications: due date and quiet hours schedule -->
+    <string name="notif_due_enabled">Notify about due dates</string>
+    <string name="notif_field_lead">Remind</string>
+    <string name="notif_field_repeat">Repeat</string>
+    <string name="notif_reminder_external">Reminders to external channels</string>
+    <string name="notif_field_digest">Digest</string>
+    <string name="notif_quiet_hours">Quiet hours</string>
+    <string name="notif_quiet_from">From</string>
+    <string name="notif_quiet_to">To</string>
+    <string name="notif_lead_on_time">On time</string>
+    <string name="notif_lead_15m">15 min before</string>
+    <string name="notif_lead_30m">30 min before</string>
+    <string name="notif_lead_1h">1 hour before</string>
+    <string name="notif_lead_3h">3 hours before</string>
+    <string name="notif_lead_1d">1 day before</string>
+    <string name="notif_repeat_once">Once</string>
+    <string name="notif_repeat_1h">Every hour</string>
+    <string name="notif_repeat_3h">Every 3 hours</string>
+    <string name="notif_repeat_6h">Every 6 hours</string>
+    <string name="notif_repeat_1d">Every day</string>
+    <string name="notif_digest_off">Off</string>
+    <string name="notif_digest_5m">5 minutes</string>
+    <string name="notif_digest_15m">15 minutes</string>
+    <string name="notif_digest_30m">30 minutes</string>
+    <string name="notif_digest_1h">Hourly</string>
 </resources>
