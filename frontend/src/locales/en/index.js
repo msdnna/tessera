@@ -1,0 +1,13 @@
+// English bundle. Imported only through the dynamic import() in src/i18n —
+// that is what keeps it (and every future locale) out of the main chunk
+// instead of growing the initial bundle per language (#2797).
+import common from './common.json'
+import board from './board.json'
+import task from './task.json'
+import documents from './documents.json'
+import settings from './settings.json'
+import notifications from './notifications.json'
+import gitlab from './gitlab.json'
+import errors from './errors.json'
+
+export default { common, board, task, documents, settings, notifications, gitlab, errors }

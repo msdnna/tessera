@@ -1,0 +1,24 @@
+{
+  "app": {
+    "name": "Tessera"
+  },
+  "action": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "retry": "Retry",
+    "search": "Search"
+  },
+  "state": {
+    "loading": "Loading…",
+    "empty": "Empty",
+    "saved": "Saved"
+  },
+  "answer": {
+    "yes": "Yes",
+    "no": "No"
+  }
+}
