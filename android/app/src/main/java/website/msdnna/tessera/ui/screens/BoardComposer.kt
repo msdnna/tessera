@@ -56,6 +56,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +64,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
@@ -94,12 +96,14 @@ import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.prefixLabel
 import website.msdnna.tessera.util.tagNamespace
 
+// Карта уровня файла держит id ресурсов, а не готовые подписи: со строками фильтр
+// «срок» застыл бы на языке первого рендера и не пережил смену языка в профиле.
 private val DueChipLabels = mapOf(
-    DueFilter.Overdue to "Просроченные",
-    DueFilter.Today to "Сегодня",
-    DueFilter.Week to "Ближайшая неделя",
-    DueFilter.Has to "Со сроком",
-    DueFilter.None to "Без срока",
+    DueFilter.Overdue to R.string.due_filter_overdue,
+    DueFilter.Today to R.string.due_filter_today,
+    DueFilter.Week to R.string.due_filter_week,
+    DueFilter.Has to R.string.due_filter_has,
+    DueFilter.None to R.string.due_filter_none,
 )
 
 /**
@@ -194,7 +198,7 @@ fun BoardComposerBar(
             // both would claim a milestone filter that the archive listing doesn't apply.
             if (state.archivedMode) {
                 FacetChip(
-                    "Архив (только чтение)",
+                    stringResource(R.string.composer_scope_archive),
                     icon = Ion.ARCHIVE,
                     amber = true,
                     onRemove = onExitArchive,
@@ -265,14 +269,18 @@ fun BoardComposerBar(
             }
             f.milestoneIds.forEach { id ->
                 FacetChip(
-                    if (id == "__none__") "Без этапа" else state.milestonesMap[id]?.title ?: "—",
+                    if (id == "__none__") {
+                        stringResource(R.string.task_milestone_none)
+                    } else {
+                        state.milestonesMap[id]?.title ?: "—"
+                    },
                     icon = Ion.RIBBON,
                     onRemove = { vm.setFilter(f.copy(milestoneIds = f.milestoneIds - id)) },
                 )
             }
             if (f.due != DueFilter.All) {
                 FacetChip(
-                    DueChipLabels[f.due] ?: "",
+                    DueChipLabels[f.due]?.let { stringResource(it) } ?: "",
                     icon = Ion.CALENDAR,
                     onRemove = { vm.setFilter(f.copy(due = DueFilter.All)) },
                 )
@@ -324,9 +332,10 @@ private fun hasClearable(state: BoardUiState): Boolean = state.sortLevels.isNotE
     state.filter.due != DueFilter.All
 
 /** Label for the server-side sprint scope chip (web `milestoneScopeLabel`). */
+@Composable
 private fun milestoneScopeLabel(scope: String, state: BoardUiState): String = when (scope) {
-    "backlog" -> "Бэклог"
-    else -> state.milestonesMap[scope]?.title ?: "Этап"
+    "backlog" -> stringResource(R.string.sidebar_backlog)
+    else -> state.milestonesMap[scope]?.title ?: stringResource(R.string.composer_scope_milestone)
 }
 
 /** Display name for an author-facet value: a workspace member, a GitLab member, or —
@@ -351,11 +360,16 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     // Assignee / no-grouping are only meaningful on the swimlane (timeline/Gantt) views.
     val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
     val label = when (state.groupMode) {
-        "tag" -> "теги" + (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(state.tagPrefix, state.prefixNames)}" else "")
-        "milestone" -> "этапы"
-        "assignee" -> "исполнитель"
-        "none" -> "без"
-        else -> "статусы"
+        "tag" -> stringResource(R.string.composer_group_tag) +
+            (if (state.tagPrefix.isNotEmpty()) " · ${prefixLabel(state.tagPrefix, state.prefixNames)}" else "")
+
+        "milestone" -> stringResource(R.string.composer_group_milestone)
+
+        "assignee" -> stringResource(R.string.composer_group_assignee)
+
+        "none" -> stringResource(R.string.composer_group_none)
+
+        else -> stringResource(R.string.composer_group_status)
     }
     var menu by remember { mutableStateOf(false) }
     Box {
@@ -367,12 +381,16 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
             modifier = Modifier.testTag(TestTags.BOARD_GROUP),
         )
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
-            CheckRow("По статусам", selected = state.groupMode == "status", tag = TestTags.BOARD_GROUP_STATUS) {
+            CheckRow(
+                stringResource(R.string.composer_group_by_status),
+                selected = state.groupMode == "status",
+                tag = TestTags.BOARD_GROUP_STATUS,
+            ) {
                 menu = false
                 vm.setGrouping("status")
             }
             CheckRow(
-                "По тегам (все)",
+                stringResource(R.string.composer_group_by_tags_all),
                 selected = state.groupMode == "tag" && state.tagPrefix.isEmpty(),
                 tag = TestTags.BOARD_GROUP_TAGS,
             ) {
@@ -381,7 +399,7 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
             }
             namespaces.forEach { (ns, nsLabel) ->
                 CheckRow(
-                    "По тегам · $nsLabel",
+                    stringResource(R.string.composer_group_by_tags_prefix, nsLabel),
                     selected = state.groupMode == "tag" && state.tagPrefix == ns,
                     tag = TestTags.boardGroupTagPrefix(ns),
                 ) {
@@ -391,17 +409,23 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
             }
             // «По этапам» — only when the project actually has milestones.
             if (state.milestones.isNotEmpty()) {
-                CheckRow("По этапам", selected = state.groupMode == "milestone") {
+                CheckRow(
+                    stringResource(R.string.composer_group_by_milestone),
+                    selected = state.groupMode == "milestone",
+                ) {
                     menu = false
                     vm.setGrouping("milestone")
                 }
             }
             if (timelineLike) {
-                CheckRow("По исполнителю", selected = state.groupMode == "assignee") {
+                CheckRow(
+                    stringResource(R.string.composer_group_by_assignee),
+                    selected = state.groupMode == "assignee",
+                ) {
                     menu = false
                     vm.setGrouping("assignee")
                 }
-                CheckRow("Без группировки", selected = state.groupMode == "none") {
+                CheckRow(stringResource(R.string.composer_group_by_none), selected = state.groupMode == "none") {
                     menu = false
                     vm.setGrouping("none")
                 }
@@ -552,8 +576,8 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
 
                 "fd" -> {
                     BackRow { category = null }
-                    DueChipLabels.forEach { (due, label) ->
-                        TMenuItem(label, onClick = {
+                    DueChipLabels.forEach { (due, labelRes) ->
+                        TMenuItem(stringResource(labelRes), onClick = {
                             vm.setFilter(f.copy(due = due))
                             close()
                         })
@@ -582,7 +606,7 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                         })
                     }
                     if ("__none__" !in f.milestoneIds) {
-                        TMenuItem("Без этапа", onClick = {
+                        TMenuItem(stringResource(R.string.task_milestone_none), onClick = {
                             vm.addMilestoneFilter("__none__")
                             close()
                         })
@@ -590,14 +614,24 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                 }
 
                 else -> {
-                    if (sortFields.isNotEmpty()) ArrowRow("Сортировка") { category = "sort" }
-                    if (timeline && state.sortedColumns.isNotEmpty()) ArrowRow("Фильтр: статус") { category = "fs" }
-                    ArrowRow("Фильтр: приоритет") { category = "fp" }
-                    if (state.members.isNotEmpty()) ArrowRow("Фильтр: исполнитель") { category = "fa" }
-                    if (state.members.isNotEmpty()) ArrowRow("Фильтр: автор") { category = "fc" }
-                    if (state.tagList.isNotEmpty()) ArrowRow("Фильтр: тег") { category = "ft" }
-                    if (state.milestones.isNotEmpty()) ArrowRow("Фильтр: этап") { category = "fm" }
-                    ArrowRow("Фильтр: срок") { category = "fd" }
+                    if (sortFields.isNotEmpty()) {
+                        ArrowRow(stringResource(R.string.composer_add_sort)) { category = "sort" }
+                    }
+                    if (timeline && state.sortedColumns.isNotEmpty()) {
+                        ArrowRow(stringResource(R.string.composer_add_filter_status)) { category = "fs" }
+                    }
+                    ArrowRow(stringResource(R.string.composer_add_filter_priority)) { category = "fp" }
+                    if (state.members.isNotEmpty()) {
+                        ArrowRow(stringResource(R.string.composer_add_filter_assignee)) { category = "fa" }
+                        ArrowRow(stringResource(R.string.composer_add_filter_author)) { category = "fc" }
+                    }
+                    if (state.tagList.isNotEmpty()) {
+                        ArrowRow(stringResource(R.string.composer_add_filter_tag)) { category = "ft" }
+                    }
+                    if (state.milestones.isNotEmpty()) {
+                        ArrowRow(stringResource(R.string.composer_add_filter_milestone)) { category = "fm" }
+                    }
+                    ArrowRow(stringResource(R.string.composer_add_filter_due)) { category = "fd" }
                 }
             }
         }
@@ -640,7 +674,7 @@ private fun ArrowRow(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun BackRow(onClick: () -> Unit) {
-    TMenuItem("‹ Назад", onClick = onClick)
+    TMenuItem(stringResource(R.string.composer_back), onClick = onClick)
     TMenuDivider()
 }
 
@@ -867,7 +901,7 @@ private fun FacetChip(
 private fun CollapsedSearchLabel(query: String) {
     val c = Tessera.colors
     Text(
-        query.ifEmpty { "Поиск…" },
+        query.ifEmpty { stringResource(R.string.composer_search_hint) },
         color = if (query.isEmpty()) c.text3 else c.text1,
         fontSize = 13.sp,
         maxLines = 1,
@@ -881,6 +915,8 @@ private fun CollapsedSearchLabel(query: String) {
 @Composable
 private fun FlowRowScope.ComposerSearch(value: String, onValue: (String) -> Unit, modifier: Modifier) {
     val c = Tessera.colors
+    // decorationBox — обычная лямбда, а не композиция: подсказку берём заранее.
+    val hint = stringResource(R.string.composer_search_hint)
     BasicTextField(
         value = value,
         onValueChange = onValue,
@@ -892,7 +928,7 @@ private fun FlowRowScope.ComposerSearch(value: String, onValue: (String) -> Unit
             // Single line + ellipsis: a narrow leftover width (e.g. next to a wide
             // group chip) must truncate the hint, not wrap it and grow the bar.
             if (value.isEmpty()) {
-                Text("Поиск…", color = c.text3, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(hint, color = c.text3, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             inner()
         },
@@ -909,10 +945,13 @@ fun SavedViewsPopover(state: BoardUiState, vm: BoardViewModel, onClose: () -> Un
     val c = Tessera.colors
     var name by remember { mutableStateOf(state.currentViewName.orEmpty()) }
     Column(Modifier.width(290.dp).heightIn(max = 440.dp).verticalScroll(rememberScrollState()).padding(14.dp)) {
-        Text("Представления", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(
+            stringResource(R.string.views_title),
+            color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+        )
         Spacer(Modifier.height(8.dp))
         if (state.savedViews.isEmpty()) {
-            Text("Нет сохранённых представлений", color = c.text3, fontSize = 13.sp)
+            Text(stringResource(R.string.views_empty), color = c.text3, fontSize = 13.sp)
         } else {
             state.savedViews.forEach { view ->
                 SavedViewRow(view, state.currentViewName == view.name, vm, onClose)
@@ -921,15 +960,22 @@ fun SavedViewsPopover(state: BoardUiState, vm: BoardViewModel, onClose: () -> Un
         Spacer(Modifier.height(12.dp))
         HorizontalDivider(color = c.border)
         Spacer(Modifier.height(12.dp))
-        Text("Сохранить текущий вид", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(
+            stringResource(R.string.views_save_current),
+            color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+        )
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
-                TTextField(value = name, onValueChange = { name = it }, placeholder = "Название")
+                TTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = stringResource(R.string.views_name_hint),
+                )
             }
             Spacer(Modifier.width(8.dp))
             TButton(
-                "Сохранить",
+                stringResource(R.string.common_save),
                 enabled = name.isNotBlank(),
                 onClick = {
                     vm.saveView(name.trim())
@@ -963,7 +1009,7 @@ private fun SavedViewRow(view: BoardView, current: Boolean, vm: BoardViewModel, 
             IonIconButton(Ion.TRASH, onClick = { confirmDelete = true }, boxSize = 30.dp, iconSize = 15.dp, tint = c.text3)
             TConfirmPopover(
                 expanded = confirmDelete,
-                message = "Удалить представление «${view.name}»?",
+                message = stringResource(R.string.views_delete_confirm, view.name),
                 onConfirm = {
                     confirmDelete = false
                     vm.deleteView(view)

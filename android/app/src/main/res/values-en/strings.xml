@@ -483,7 +483,7 @@
         <item quantity="one">%1$d link</item>
         <item quantity="other">%1$d links</item>
     </plurals>
-    <string-array name="timeline_months_short">
+    <string-array name="dates_months_short">
         <item>Jan</item>
         <item>Feb</item>
         <item>Mar</item>
@@ -497,7 +497,7 @@
         <item>Nov</item>
         <item>Dec</item>
     </string-array>
-    <string-array name="timeline_weekdays_short">
+    <string-array name="dates_weekdays_short">
         <item>Mon</item>
         <item>Tue</item>
         <item>Wed</item>
@@ -731,4 +731,106 @@
     <string name="milestones_date_start">Start</string>
     <string name="milestones_date_due">Due</string>
     <string name="milestones_date_clear">Clear</string>
+
+    <!-- Due picker: start/due tabs -->
+    <string name="due_picker_tab_start">Start</string>
+    <string name="due_picker_tab_due">Due</string>
+    <string name="due_picker_start_unset">not set</string>
+    <string name="due_picker_due_unset">not set</string>
+    <string name="due_picker_clear_start">Clear start</string>
+    <string name="due_picker_clear_due">Clear due date</string>
+
+    <!-- Due picker: task recurrence -->
+    <string name="due_picker_repeat">Repeat task</string>
+    <string name="due_picker_every">every</string>
+    <string name="due_picker_custom_hint">Mark the repeat dates on the calendar above.</string>
+    <string name="due_picker_trigger">Event</string>
+    <string name="due_picker_trigger_column">Trigger column</string>
+    <string name="due_picker_trigger_column_hint">Pick a column</string>
+    <string name="due_picker_move_to">Move to</string>
+    <string name="due_picker_first_column">First column</string>
+    <string name="due_picker_duplicate">Create a duplicate</string>
+    <string name="due_picker_forever">Repeat forever</string>
+    <string name="due_picker_skip_weekends">Skip weekends</string>
+    <string name="recur_freq_none">None</string>
+    <string name="recur_freq_daily">Day</string>
+    <string name="recur_freq_weekly">Week</string>
+    <string name="recur_freq_monthly">Month</string>
+    <string name="recur_freq_yearly">Year</string>
+    <string name="recur_freq_custom">Custom</string>
+    <string name="recur_trigger_complete">On completion</string>
+    <string name="recur_trigger_column">On moving to a column</string>
+    <string name="recur_trigger_schedule">On schedule</string>
+    <plurals name="recur_unit_daily">
+        <item quantity="one">day</item>
+        <item quantity="other">days</item>
+    </plurals>
+    <plurals name="recur_unit_weekly">
+        <item quantity="one">week</item>
+        <item quantity="other">weeks</item>
+    </plurals>
+    <plurals name="recur_unit_monthly">
+        <item quantity="one">month</item>
+        <item quantity="other">months</item>
+    </plurals>
+    <plurals name="recur_unit_yearly">
+        <item quantity="one">year</item>
+        <item quantity="other">years</item>
+    </plurals>
+
+    <!-- Due picker: per-task notifications -->
+    <string name="due_notify_title">Notifications</string>
+    <string name="due_notify_lead">Remind</string>
+    <string name="due_notify_repeat">Reminder repeat</string>
+    <string name="due_notify_inherit">Default</string>
+    <string name="due_notify_on">On</string>
+    <string name="due_notify_off">Off</string>
+    <string name="due_notify_lead_0">At the due time</string>
+    <string name="due_notify_lead_15">15 minutes before</string>
+    <string name="due_notify_lead_60">An hour before</string>
+    <string name="due_notify_lead_180">3 hours before</string>
+    <string name="due_notify_lead_1440">A day before</string>
+    <string name="due_notify_repeat_0">Once</string>
+    <string name="due_notify_repeat_60">Every hour</string>
+    <string name="due_notify_repeat_180">Every 3 hours</string>
+    <string name="due_notify_repeat_1440">Every day</string>
+
+    <!-- Board composer: grouping chip -->
+    <string name="composer_scope_archive">Archive (read-only)</string>
+    <string name="composer_scope_milestone">Milestone</string>
+    <string name="composer_group_status">statuses</string>
+    <string name="composer_group_tag">tags</string>
+    <string name="composer_group_milestone">milestones</string>
+    <string name="composer_group_assignee">assignee</string>
+    <string name="composer_group_none">none</string>
+    <string name="composer_group_by_status">By status</string>
+    <string name="composer_group_by_tags_all">By tags (all)</string>
+    <string name="composer_group_by_tags_prefix">By tags · %1$s</string>
+    <string name="composer_group_by_milestone">By milestone</string>
+    <string name="composer_group_by_assignee">By assignee</string>
+    <string name="composer_group_by_none">No grouping</string>
+
+    <!-- Board composer: the «+» menu, filters and search -->
+    <string name="composer_add_sort">Sorting</string>
+    <string name="composer_add_filter_status">Filter: status</string>
+    <string name="composer_add_filter_priority">Filter: priority</string>
+    <string name="composer_add_filter_assignee">Filter: assignee</string>
+    <string name="composer_add_filter_author">Filter: author</string>
+    <string name="composer_add_filter_tag">Filter: tag</string>
+    <string name="composer_add_filter_milestone">Filter: milestone</string>
+    <string name="composer_add_filter_due">Filter: due date</string>
+    <string name="composer_back">‹ Back</string>
+    <string name="composer_search_hint">Search…</string>
+    <string name="due_filter_overdue">Overdue</string>
+    <string name="due_filter_today">Today</string>
+    <string name="due_filter_week">Next 7 days</string>
+    <string name="due_filter_has">With a due date</string>
+    <string name="due_filter_none">No due date</string>
+
+    <!-- Board composer: saved views -->
+    <string name="views_title">Views</string>
+    <string name="views_empty">No saved views</string>
+    <string name="views_save_current">Save the current view</string>
+    <string name="views_name_hint">Name</string>
+    <string name="views_delete_confirm">Delete the view “%1$s”?</string>
 </resources>

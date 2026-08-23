@@ -493,7 +493,7 @@
         <item quantity="many">%1$d связей</item>
         <item quantity="other">%1$d связи</item>
     </plurals>
-    <string-array name="timeline_months_short">
+    <string-array name="dates_months_short">
         <item>янв</item>
         <item>фев</item>
         <item>мар</item>
@@ -507,7 +507,7 @@
         <item>ноя</item>
         <item>дек</item>
     </string-array>
-    <string-array name="timeline_weekdays_short">
+    <string-array name="dates_weekdays_short">
         <item>пн</item>
         <item>вт</item>
         <item>ср</item>
@@ -741,4 +741,115 @@
     <string name="milestones_date_start">Начало</string>
     <string name="milestones_date_due">Срок</string>
     <string name="milestones_date_clear">Очистить</string>
+
+    <!-- Выбор срока: вкладки начала/срока -->
+    <string name="due_picker_tab_start">Начало</string>
+    <string name="due_picker_tab_due">Срок</string>
+    <string name="due_picker_start_unset">не задано</string>
+    <string name="due_picker_due_unset">не задан</string>
+    <string name="due_picker_clear_start">Очистить начало</string>
+    <string name="due_picker_clear_due">Очистить срок</string>
+
+    <!-- Выбор срока: повтор задачи -->
+    <string name="due_picker_repeat">Повтор задачи</string>
+    <string name="due_picker_every">каждые</string>
+    <string name="due_picker_custom_hint">Отметьте даты повтора в календаре выше.</string>
+    <string name="due_picker_trigger">Событие</string>
+    <string name="due_picker_trigger_column">Колонка-триггер</string>
+    <string name="due_picker_trigger_column_hint">Выберите колонку</string>
+    <string name="due_picker_move_to">Переносить в</string>
+    <string name="due_picker_first_column">Первая колонка</string>
+    <string name="due_picker_duplicate">Создавать дубликат</string>
+    <string name="due_picker_forever">Повторять всегда</string>
+    <string name="due_picker_skip_weekends">Пропускать выходные</string>
+    <string name="recur_freq_none">Нет</string>
+    <string name="recur_freq_daily">День</string>
+    <string name="recur_freq_weekly">Неделя</string>
+    <string name="recur_freq_monthly">Месяц</string>
+    <string name="recur_freq_yearly">Год</string>
+    <string name="recur_freq_custom">Выборочно</string>
+    <string name="recur_trigger_complete">При завершении</string>
+    <string name="recur_trigger_column">При переходе в колонку</string>
+    <string name="recur_trigger_schedule">По расписанию</string>
+    <!-- Единица интервала стоит после числа («каждые 2 недели») — винительный падеж -->
+    <plurals name="recur_unit_daily">
+        <item quantity="one">день</item>
+        <item quantity="few">дня</item>
+        <item quantity="many">дней</item>
+        <item quantity="other">дня</item>
+    </plurals>
+    <plurals name="recur_unit_weekly">
+        <item quantity="one">неделю</item>
+        <item quantity="few">недели</item>
+        <item quantity="many">недель</item>
+        <item quantity="other">недели</item>
+    </plurals>
+    <plurals name="recur_unit_monthly">
+        <item quantity="one">месяц</item>
+        <item quantity="few">месяца</item>
+        <item quantity="many">месяцев</item>
+        <item quantity="other">месяца</item>
+    </plurals>
+    <plurals name="recur_unit_yearly">
+        <item quantity="one">год</item>
+        <item quantity="few">года</item>
+        <item quantity="many">лет</item>
+        <item quantity="other">года</item>
+    </plurals>
+
+    <!-- Выбор срока: уведомления по задаче -->
+    <string name="due_notify_title">Уведомления</string>
+    <string name="due_notify_lead">Напоминать</string>
+    <string name="due_notify_repeat">Повтор уведомления</string>
+    <string name="due_notify_inherit">По умолчанию</string>
+    <string name="due_notify_on">Включены</string>
+    <string name="due_notify_off">Выключены</string>
+    <string name="due_notify_lead_0">В срок</string>
+    <string name="due_notify_lead_15">За 15 мин</string>
+    <string name="due_notify_lead_60">За час</string>
+    <string name="due_notify_lead_180">За 3 часа</string>
+    <string name="due_notify_lead_1440">За день</string>
+    <string name="due_notify_repeat_0">Однократно</string>
+    <string name="due_notify_repeat_60">Каждый час</string>
+    <string name="due_notify_repeat_180">Каждые 3 часа</string>
+    <string name="due_notify_repeat_1440">Каждый день</string>
+
+    <!-- Композер доски: чип группировки -->
+    <string name="composer_scope_archive">Архив (только чтение)</string>
+    <string name="composer_scope_milestone">Этап</string>
+    <string name="composer_group_status">статусы</string>
+    <string name="composer_group_tag">теги</string>
+    <string name="composer_group_milestone">этапы</string>
+    <string name="composer_group_assignee">исполнитель</string>
+    <string name="composer_group_none">без</string>
+    <string name="composer_group_by_status">По статусам</string>
+    <string name="composer_group_by_tags_all">По тегам (все)</string>
+    <string name="composer_group_by_tags_prefix">По тегам · %1$s</string>
+    <string name="composer_group_by_milestone">По этапам</string>
+    <string name="composer_group_by_assignee">По исполнителю</string>
+    <string name="composer_group_by_none">Без группировки</string>
+
+    <!-- Композер доски: меню «+», фильтры и поиск -->
+    <string name="composer_add_sort">Сортировка</string>
+    <string name="composer_add_filter_status">Фильтр: статус</string>
+    <string name="composer_add_filter_priority">Фильтр: приоритет</string>
+    <string name="composer_add_filter_assignee">Фильтр: исполнитель</string>
+    <string name="composer_add_filter_author">Фильтр: автор</string>
+    <string name="composer_add_filter_tag">Фильтр: тег</string>
+    <string name="composer_add_filter_milestone">Фильтр: этап</string>
+    <string name="composer_add_filter_due">Фильтр: срок</string>
+    <string name="composer_back">‹ Назад</string>
+    <string name="composer_search_hint">Поиск…</string>
+    <string name="due_filter_overdue">Просроченные</string>
+    <string name="due_filter_today">Сегодня</string>
+    <string name="due_filter_week">Ближайшая неделя</string>
+    <string name="due_filter_has">Со сроком</string>
+    <string name="due_filter_none">Без срока</string>
+
+    <!-- Композер доски: сохранённые представления -->
+    <string name="views_title">Представления</string>
+    <string name="views_empty">Нет сохранённых представлений</string>
+    <string name="views_save_current">Сохранить текущий вид</string>
+    <string name="views_name_hint">Название</string>
+    <string name="views_delete_confirm">Удалить представление «%1$s»?</string>
 </resources>

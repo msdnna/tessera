@@ -31,6 +31,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -38,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Calendar
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Preferences
@@ -54,54 +58,55 @@ import website.msdnna.tessera.util.millisToUtcIso
 import website.msdnna.tessera.util.occurrenceKeys
 import website.msdnna.tessera.util.parseInstantMillis
 
-private val MonthsFull = listOf(
-    "январь", "февраль", "март", "апрель", "май", "июнь",
-    "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
-)
-private val Weekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+/** Заголовки столбцов календаря — тот же строчный словарь, что у оси таймлайна. */
+@Composable
+private fun weekdayLabels(weekStart: Int): List<String> {
+    val days = stringArrayResource(R.array.dates_weekdays_short).toList()
+    return if (weekStart == 0) listOf(days.last()) + days.dropLast(1) else days
+}
 
-private fun weekdayLabels(weekStart: Int): List<String> =
-    if (weekStart == 0) listOf(Weekdays.last()) + Weekdays.dropLast(1) else Weekdays
-
+// Списки уровня файла держат id ресурсов, а не готовый текст: со строками они бы
+// застыли на языке первого рендера и не пережили смену языка в профиле.
 // Frequency chips (empty = no repeat).
 private val FreqChips = listOf(
-    "" to "Нет", "daily" to "День", "weekly" to "Неделя",
-    "monthly" to "Месяц", "yearly" to "Год", "custom" to "Выборочно",
+    "" to R.string.recur_freq_none, "daily" to R.string.recur_freq_daily, "weekly" to R.string.recur_freq_weekly,
+    "monthly" to R.string.recur_freq_monthly, "yearly" to R.string.recur_freq_yearly,
+    "custom" to R.string.recur_freq_custom,
 )
 private val TriggerOptions = listOf(
-    "complete" to "При завершении", "column" to "При переходе в колонку", "schedule" to "По расписанию",
+    "complete" to R.string.recur_trigger_complete,
+    "column" to R.string.recur_trigger_column,
+    "schedule" to R.string.recur_trigger_schedule,
 )
-private val NotifyEnabledOpts = listOf<Pair<String?, String>>(
-    "inherit" to "По умолчанию", "on" to "Включены", "off" to "Выключены",
+private val NotifyEnabledOpts = listOf<Pair<String?, Int>>(
+    "inherit" to R.string.due_notify_inherit, "on" to R.string.due_notify_on, "off" to R.string.due_notify_off,
 )
-private val NotifyLeadOpts = listOf<Pair<String?, String>>(
-    "-1" to "По умолчанию", "0" to "В срок", "15" to "За 15 мин", "60" to "За час", "180" to "За 3 часа", "1440" to "За день",
+private val NotifyLeadOpts = listOf<Pair<String?, Int>>(
+    "-1" to R.string.due_notify_inherit, "0" to R.string.due_notify_lead_0, "15" to R.string.due_notify_lead_15,
+    "60" to R.string.due_notify_lead_60, "180" to R.string.due_notify_lead_180,
+    "1440" to R.string.due_notify_lead_1440,
 )
-private val NotifyRepeatOpts = listOf<Pair<String?, String>>(
-    "-1" to "По умолчанию", "0" to "Однократно", "60" to "Каждый час", "180" to "Каждые 3 часа", "1440" to "Каждый день",
+private val NotifyRepeatOpts = listOf<Pair<String?, Int>>(
+    "-1" to R.string.due_notify_inherit, "0" to R.string.due_notify_repeat_0,
+    "60" to R.string.due_notify_repeat_60, "180" to R.string.due_notify_repeat_180,
+    "1440" to R.string.due_notify_repeat_1440,
 )
-private val UnitForms = mapOf(
-    "daily" to listOf("день", "дня", "дней"),
-    "weekly" to listOf("неделю", "недели", "недель"),
-    "monthly" to listOf("месяц", "месяца", "месяцев"),
-    "yearly" to listOf("год", "года", "лет"),
+private val UnitPlurals = mapOf(
+    "daily" to R.plurals.recur_unit_daily,
+    "weekly" to R.plurals.recur_unit_weekly,
+    "monthly" to R.plurals.recur_unit_monthly,
+    "yearly" to R.plurals.recur_unit_yearly,
 )
-
-private fun ruPlural(n: Int, forms: List<String>): String {
-    val m10 = n % 10
-    val m100 = n % 100
-    return when {
-        m10 == 1 && m100 != 11 -> forms[0]
-        m10 in 2..4 && (m100 < 10 || m100 >= 20) -> forms[1]
-        else -> forms[2]
-    }
-}
 
 // weekday index for the chips, 0=Sun..6=Sat, ordered by week-start.
 private fun weekdayOrder(weekStart: Int): List<Int> =
     if (weekStart == 0) listOf(0, 1, 2, 3, 4, 5, 6) else listOf(1, 2, 3, 4, 5, 6, 0)
 
-private val WeekdayShort = listOf("Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб")
+/** Чипы дней недели индексируются с воскресенья, а общий массив начинается с
+ *  понедельника — отсюда сдвиг, а не второй такой же список в ресурсах. */
+@Composable
+private fun weekdayChipLabel(day: Int): String =
+    stringArrayResource(R.array.calendar_weekdays_short)[(day + 6) % 7]
 
 /**
  * Due-date picker with a real time-of-day and a full recurrence rule. The chosen
@@ -232,15 +237,17 @@ fun DueDateTimePicker(
             // ── start / due target tabs ──
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TargetTab(
-                    label = "Начало",
-                    value = dueShort(startMillis()?.let { millisToUtcIso(it) }).ifBlank { "не задано" },
+                    label = stringResource(R.string.due_picker_tab_start),
+                    value = dueShort(startMillis()?.let { millisToUtcIso(it) })
+                        .ifBlank { stringResource(R.string.due_picker_start_unset) },
                     active = editTarget == "start",
                     modifier = Modifier.weight(1f),
                 ) { editTarget = "start" }
                 Text("→", color = c.text3, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 6.dp))
                 TargetTab(
-                    label = "Срок",
-                    value = dueShort(dueMillis()?.let { millisToUtcIso(it) }).ifBlank { "не задан" },
+                    label = stringResource(R.string.due_picker_tab_due),
+                    value = dueShort(dueMillis()?.let { millisToUtcIso(it) })
+                        .ifBlank { stringResource(R.string.due_picker_due_unset) },
                     active = editTarget == "due",
                     modifier = Modifier.weight(1f),
                 ) { editTarget = "due" }
@@ -252,7 +259,7 @@ fun DueDateTimePicker(
                 NavBtn(double = true, forward = false) { active.year-- }
                 NavBtn(double = false, forward = false) { stepMonth(-1) }
                 Text(
-                    "${MonthsFull[active.month]} ${active.year}",
+                    "${stringArrayResource(R.array.calendar_months)[active.month]} ${active.year}",
                     color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center, modifier = Modifier.weight(1f),
                 )
@@ -326,15 +333,22 @@ fun DueDateTimePicker(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IonIcon(Ion.REPEAT, size = 14.dp, tint = c.text3)
                 Spacer(Modifier.width(6.dp))
-                Text("Повтор задачи", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    stringResource(R.string.due_picker_repeat),
+                    color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                )
             }
             Spacer(Modifier.height(8.dp))
             // Frequency chips wrap onto two rows.
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 FreqChips.chunked(3).forEach { rowChips ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        rowChips.forEach { (value, label) ->
-                            RecurChip(label = label, selected = freq == value, modifier = Modifier.weight(1f)) { freq = value }
+                        rowChips.forEach { (value, labelRes) ->
+                            RecurChip(
+                                label = stringResource(labelRes),
+                                selected = freq == value,
+                                modifier = Modifier.weight(1f),
+                            ) { freq = value }
                         }
                     }
                 }
@@ -344,11 +358,16 @@ fun DueDateTimePicker(
                 if (freq != "custom") {
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("каждые", color = c.text3, fontSize = 13.sp)
+                        Text(stringResource(R.string.due_picker_every), color = c.text3, fontSize = 13.sp)
                         Spacer(Modifier.width(10.dp))
                         IntervalStepper(value = interval, onChange = { interval = it.coerceIn(1, 99) })
                         Spacer(Modifier.width(10.dp))
-                        Text(ruPlural(interval, UnitForms.getValue(freq)), color = c.text3, fontSize = 13.sp)
+                        // Форму единицы («2 недели» / «5 недель») выбирает сам Android:
+                        // ручной ruPlural здесь дал бы русские правила и на английском.
+                        Text(
+                            pluralStringResource(UnitPlurals.getValue(freq), interval),
+                            color = c.text3, fontSize = 13.sp,
+                        )
                     }
                 }
                 if (freq == "weekly") {
@@ -356,7 +375,7 @@ fun DueDateTimePicker(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         weekdayOrder(ws).forEach { d ->
                             RecurChip(
-                                label = WeekdayShort[d],
+                                label = weekdayChipLabel(d),
                                 selected = weekdaySet.contains(d),
                                 modifier = Modifier.weight(1f),
                             ) { if (weekdaySet.contains(d)) weekdaySet.remove(d) else weekdaySet.add(d) }
@@ -365,34 +384,39 @@ fun DueDateTimePicker(
                 }
                 if (freq == "custom") {
                     Spacer(Modifier.height(8.dp))
-                    Text("Отметьте даты повтора в календаре выше.", color = c.text3, fontSize = 12.sp)
+                    Text(stringResource(R.string.due_picker_custom_hint), color = c.text3, fontSize = 12.sp)
                 }
 
                 Spacer(Modifier.height(12.dp))
-                SelectField("Событие", TriggerOptions, trigger) { trigger = it ?: "complete" }
+                SelectField(
+                    stringResource(R.string.due_picker_trigger),
+                    TriggerOptions.map { (v, res) -> v as String? to stringResource(res) },
+                    trigger,
+                ) { trigger = it ?: "complete" }
 
                 if (trigger == "column") {
                     Spacer(Modifier.height(8.dp))
                     SelectField(
-                        "Колонка-триггер",
+                        stringResource(R.string.due_picker_trigger_column),
                         columns.map { it.id as String? to it.name },
                         triggerColumn,
-                        placeholder = "Выберите колонку",
+                        placeholder = stringResource(R.string.due_picker_trigger_column_hint),
                     ) { triggerColumn = it }
                 }
 
                 Spacer(Modifier.height(8.dp))
                 SelectField(
-                    "Переносить в",
-                    listOf<Pair<String?, String>>(null to "Первая колонка") + columns.map { it.id as String? to it.name },
+                    stringResource(R.string.due_picker_move_to),
+                    listOf<Pair<String?, String>>(null to stringResource(R.string.due_picker_first_column)) +
+                        columns.map { it.id as String? to it.name },
                     targetColumn,
                 ) { targetColumn = it }
 
                 Spacer(Modifier.height(10.dp))
-                ToggleRow("Создавать дубликат", createNew) { createNew = it }
-                ToggleRow("Повторять всегда", forever) { forever = it }
+                ToggleRow(stringResource(R.string.due_picker_duplicate), createNew) { createNew = it }
+                ToggleRow(stringResource(R.string.due_picker_forever), forever) { forever = it }
                 if (freq == "daily" || freq == "weekly") {
-                    ToggleRow("Пропускать выходные", skipWeekends) { skipWeekends = it }
+                    ToggleRow(stringResource(R.string.due_picker_skip_weekends), skipWeekends) { skipWeekends = it }
                 }
             }
 
@@ -400,17 +424,29 @@ fun DueDateTimePicker(
             Spacer(Modifier.height(14.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(SolidColor(c.border)))
             Spacer(Modifier.height(12.dp))
-            SelectField("Уведомления", NotifyEnabledOpts, notifyEnabledSel) {
+            SelectField(
+                stringResource(R.string.due_notify_title),
+                NotifyEnabledOpts.map { (v, res) -> v to stringResource(res) },
+                notifyEnabledSel,
+            ) {
                 notifyEnabledSel = it ?: "inherit"
                 emitNotify()
             }
             Spacer(Modifier.height(8.dp))
-            SelectField("Напоминать", NotifyLeadOpts, notifyLeadSel) {
+            SelectField(
+                stringResource(R.string.due_notify_lead),
+                NotifyLeadOpts.map { (v, res) -> v to stringResource(res) },
+                notifyLeadSel,
+            ) {
                 notifyLeadSel = it ?: "-1"
                 emitNotify()
             }
             Spacer(Modifier.height(8.dp))
-            SelectField("Повтор уведомления", NotifyRepeatOpts, notifyRepeatSel) {
+            SelectField(
+                stringResource(R.string.due_notify_repeat),
+                NotifyRepeatOpts.map { (v, res) -> v to stringResource(res) },
+                notifyRepeatSel,
+            ) {
                 notifyRepeatSel = it ?: "-1"
                 emitNotify()
             }
@@ -418,7 +454,9 @@ fun DueDateTimePicker(
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Очистить ${if (editTarget == "start") "начало" else "срок"}",
+                    stringResource(
+                        if (editTarget == "start") R.string.due_picker_clear_start else R.string.due_picker_clear_due,
+                    ),
                     color = c.text3, fontSize = 14.sp,
                     modifier = Modifier.clickableNoRipple {
                         // Clear only the actively-edited endpoint; stay open.
@@ -427,9 +465,13 @@ fun DueDateTimePicker(
                     },
                 )
                 Spacer(Modifier.weight(1f))
-                Text("Отмена", color = c.text3, fontSize = 14.sp, modifier = Modifier.clickableNoRipple { onDismiss() })
+                Text(
+                    stringResource(R.string.common_cancel),
+                    color = c.text3, fontSize = 14.sp,
+                    modifier = Modifier.clickableNoRipple { onDismiss() },
+                )
                 Spacer(Modifier.width(18.dp))
-                TButton("Готово", onClick = {
+                TButton(stringResource(R.string.common_done), onClick = {
                     val rule = buildRule()
                     onApply(
                         dueMillis()?.let { millisToUtcIso(it) },

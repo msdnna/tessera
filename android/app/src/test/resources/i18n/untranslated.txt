@@ -13,13 +13,13 @@
 #                   DocumentsScreen, MembersModal.
 # Волна 7 (готово): MilestonesScreen, BoardScreen, BoardSecondary,
 #                   BoardCustomizePanel.
+# Волна 8 (готово): DueDateTimePicker, BoardComposer.
 website/msdnna/tessera/data/realtime/DeviceNotifier.kt
 website/msdnna/tessera/reminders/ReminderNotifications.kt
 website/msdnna/tessera/reminders/ReminderReceiver.kt
 website/msdnna/tessera/ui/components/AccentGradientPreview.kt
 website/msdnna/tessera/ui/components/BoardViewSelector.kt
 website/msdnna/tessera/ui/components/Dialogs.kt
-website/msdnna/tessera/ui/components/DueDateTimePicker.kt
 website/msdnna/tessera/ui/components/IconColorPicker.kt
 website/msdnna/tessera/ui/components/MarkdownEditor.kt
 website/msdnna/tessera/ui/components/Popups.kt
@@ -30,7 +30,6 @@ website/msdnna/tessera/ui/components/TaskCard.kt
 website/msdnna/tessera/ui/components/TaskCardPreview.kt
 website/msdnna/tessera/ui/components/ThemePicker.kt
 website/msdnna/tessera/ui/components/UpdateDialog.kt
-website/msdnna/tessera/ui/screens/BoardComposer.kt
 website/msdnna/tessera/ui/screens/ConflictResolver.kt
 website/msdnna/tessera/ui/screens/GitLabJournalScreen.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt

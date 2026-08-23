@@ -2757,10 +2757,10 @@ private fun GhostBar(
  * дневных ячеек пересобирался бы на каждую рекомпозицию (и зум снова начал бы дёргаться).
  */
 @Composable
-private fun tlMonths(): List<String> = stringArrayResource(R.array.timeline_months_short).toList()
+private fun tlMonths(): List<String> = stringArrayResource(R.array.dates_months_short).toList()
 
 @Composable
-private fun tlWeekdays(): List<String> = stringArrayResource(R.array.timeline_weekdays_short).toList()
+private fun tlWeekdays(): List<String> = stringArrayResource(R.array.dates_weekdays_short).toList()
 
 // Zoom spans week-grouping (out) → hour-precision (in); `tierFor` picks the axis
 // granularity. Thresholds mirror web (dp ≈ web's logical px): below ~20 a 2-digit day
