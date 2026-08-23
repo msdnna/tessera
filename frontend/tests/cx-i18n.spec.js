@@ -42,6 +42,27 @@ describe('locale bundles', () => {
       }
     }
   })
+
+  // vue-i18n compiles a message the first time something renders it, so a
+  // message with `@` or `|` in it stays silent through build, lint and every
+  // spec that does not happen to show that exact string — and then throws
+  // `SyntaxError` mid-render in front of a user, leaving a blank hole where the
+  // element should be. That is how `you@example.com` took the email field off
+  // the login and register forms (#2799): `@` opens a linked-key reference and
+  // `|` separates plural forms, so both have to be written as `{'@'}` / `{'|'}`.
+  // Compiling every message here is the only place that check is cheap.
+  it('every message compiles', async () => {
+    for (const locale of ['ru', 'en']) {
+      await setI18nLocale(locale)
+      for (const key of leafKeys(locale === 'ru' ? ru : en)) {
+        expect(
+          () => i18n.global.t(key),
+          `${locale}:${key} does not compile — escape @ as {'@'} and | as {'|'}`,
+        ).not.toThrow()
+      }
+    }
+    await setI18nLocale('ru')
+  })
 })
 
 describe('i18n runtime', () => {

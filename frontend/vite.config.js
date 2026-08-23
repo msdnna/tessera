@@ -90,6 +90,24 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the Vue runtime, vue-i18n and their shared @vue/@intlify guts in
+        // one chunk. Left to itself, rolldown split them the moment vue-i18n
+        // reached a shared chunk (utils/errors.js pulled `@/i18n` in through the
+        // axios interceptor, #2799 wave 6) and emitted a chunk calling
+        // `init_shared_esm_bundler()` without importing it — the built app then
+        // died on the first paint with a blank page. `yarn build` stays green
+        // either way, so nothing but a real browser catches it.
+        manualChunks(id) {
+          if (/node_modules[\\/](vue|vue-i18n|@vue[\\/]|@intlify[\\/])/.test(id)) {
+            return 'vendor-vue'
+          }
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5174,

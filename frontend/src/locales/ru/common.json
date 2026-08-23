@@ -47,7 +47,7 @@
     "login": {
       "title": "Вход",
       "email": "Email",
-      "emailPlaceholder": "you@example.com",
+      "emailPlaceholder": "you{'@'}example.com",
       "password": "Пароль",
       "submit": "Войти",
       "or": "или",

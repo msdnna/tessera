@@ -71,7 +71,7 @@
     "removeConfirm": "Удалить участника из пространства?",
     "invitations": "Приглашения",
     "inviteLabel": "Пригласить по email",
-    "emailPlaceholder": "user@example.com",
+    "emailPlaceholder": "user{'@'}example.com",
     "invite": "Пригласить",
     "inviteHint": "Зарегистрированного — добавим сразу; нового — создадим приглашение по ссылке.",
     "added": "Участник добавлен",

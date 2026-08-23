@@ -47,7 +47,7 @@
     "login": {
       "title": "Sign in",
       "email": "Email",
-      "emailPlaceholder": "you@example.com",
+      "emailPlaceholder": "you{'@'}example.com",
       "password": "Password",
       "submit": "Sign in",
       "or": "or",

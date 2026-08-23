@@ -71,7 +71,7 @@
     "removeConfirm": "Remove this member from the workspace?",
     "invitations": "Invitations",
     "inviteLabel": "Invite by email",
-    "emailPlaceholder": "user@example.com",
+    "emailPlaceholder": "user{'@'}example.com",
     "invite": "Invite",
     "inviteHint": "A registered user is added right away; a new one gets an invitation link.",
     "added": "Member added",
