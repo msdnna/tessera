@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.Calendar
 import java.util.TimeZone
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.Workspace
@@ -98,8 +101,8 @@ fun MilestonesScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SegToggle(
-                left = "Активные",
-                right = "Все",
+                left = stringResource(R.string.milestones_filter_active),
+                right = stringResource(R.string.milestones_filter_all),
                 rightSelected = state.showClosed,
                 onToggle = { vm.toggleShowClosed() },
             )
@@ -108,11 +111,16 @@ fun MilestonesScreen(
         when {
             state.loading -> LoadingState()
 
-            state.error != null -> ErrorState(message = state.error ?: "Ошибка", onRetry = { vm.load(workspaceId) })
+            state.error != null -> ErrorState(
+                message = state.error ?: stringResource(R.string.common_error),
+                onRetry = { vm.load(workspaceId) },
+            )
 
             state.visible.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    if (state.showClosed) "Этапов пока нет" else "Активных этапов нет",
+                    stringResource(
+                        if (state.showClosed) R.string.milestones_empty_all else R.string.milestones_empty_active,
+                    ),
                     color = c.text3,
                     fontSize = 14.sp,
                 )
@@ -202,7 +210,7 @@ private fun MilestoneRow(m: WorkspaceMilestone, estimateText: String, onClick: (
             }
             Spacer(Modifier.weight(1f))
             if (m.isClosed) {
-                Text("закрыт", color = c.text3, fontSize = 11.sp)
+                Text(stringResource(R.string.milestones_closed), color = c.text3, fontSize = 11.sp)
             }
         }
         if (range.isNotEmpty()) {
@@ -224,7 +232,11 @@ private fun MilestoneRow(m: WorkspaceMilestone, estimateText: String, onClick: (
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (m.taskCount > 0) "✓ ${m.doneCount}/${m.taskCount}" else "нет задач",
+                if (m.taskCount > 0) {
+                    "✓ ${m.doneCount}/${m.taskCount}"
+                } else {
+                    stringResource(R.string.milestones_no_tasks)
+                },
                 color = c.text3,
                 fontSize = 12.sp,
             )
@@ -299,7 +311,12 @@ private fun MilestoneManagerModal(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Этапы", color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.nav_milestones),
+                        color = c.text1,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     if (mgr.projectName.isNotBlank()) {
                         Text(mgr.projectName, color = c.text3, fontSize = 12.sp)
                     }
@@ -319,7 +336,12 @@ private fun MilestoneManagerModal(
                     Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { LoadingState() }
                 } else {
                     if (mgr.milestones.isEmpty()) {
-                        Text("Пока нет этапов", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp))
+                        Text(
+                            stringResource(R.string.milestones_manager_empty),
+                            color = c.text3,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(vertical = 10.dp),
+                        )
                     }
                     mgr.milestones.forEach { m ->
                         ManagerRow(vm = vm, m = m, glCapable = mgr.glCapable)
@@ -394,7 +416,7 @@ private fun ManagerRow(vm: MilestoneViewModel, m: Milestone, glCapable: Boolean)
                         IonIconButton(Ion.TRASH, onClick = { confirmDelete = true }, boxSize = 30.dp, iconSize = 15.dp, tint = c.text3)
                         TConfirmPopover(
                             expanded = confirmDelete,
-                            message = "Удалить этап?",
+                            message = stringResource(R.string.milestones_delete_confirm),
                             onConfirm = {
                                 confirmDelete = false
                                 vm.deleteMilestone(m.id)
@@ -417,17 +439,27 @@ private fun CreateMilestoneRow(onCreate: (title: String, start: String?, due: St
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusMd)).background(c.surfaceAlt).padding(12.dp),
     ) {
-        Text("Новый этап", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(
+            stringResource(R.string.milestones_new),
+            color = c.text2,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
         Spacer(Modifier.height(8.dp))
-        TTextField(value = title, onValueChange = { title = it }, placeholder = "Название", modifier = Modifier.fillMaxWidth())
+        TTextField(
+            value = title,
+            onValueChange = { title = it },
+            placeholder = stringResource(R.string.milestones_title_hint),
+            modifier = Modifier.fillMaxWidth(),
+        )
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DateChip("Начало", start, onPick = { start = it }, modifier = Modifier.weight(1f))
-            DateChip("Срок", due, onPick = { due = it }, modifier = Modifier.weight(1f))
+            DateChip(stringResource(R.string.milestones_date_start), start, onPick = { start = it }, modifier = Modifier.weight(1f))
+            DateChip(stringResource(R.string.milestones_date_due), due, onPick = { due = it }, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(10.dp))
         TButton(
-            "Создать",
+            stringResource(R.string.common_create),
             onClick = {
                 if (title.isNotBlank()) {
                     onCreate(title.trim(), start, due)
@@ -453,21 +485,31 @@ private fun MilestoneEditor(
     var start by remember { mutableStateOf(initialStart) }
     var due by remember { mutableStateOf(initialDue) }
     Column(Modifier.fillMaxWidth()) {
-        TTextField(value = title, onValueChange = { title = it }, placeholder = "Название", modifier = Modifier.fillMaxWidth())
+        TTextField(
+            value = title,
+            onValueChange = { title = it },
+            placeholder = stringResource(R.string.milestones_title_hint),
+            modifier = Modifier.fillMaxWidth(),
+        )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DateChip("Начало", start, onPick = { start = it }, modifier = Modifier.weight(1f))
-            DateChip("Срок", due, onPick = { due = it }, modifier = Modifier.weight(1f))
+            DateChip(stringResource(R.string.milestones_date_start), start, onPick = { start = it }, modifier = Modifier.weight(1f))
+            DateChip(stringResource(R.string.milestones_date_due), due, onPick = { due = it }, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TButton(
-                "Сохранить",
+                stringResource(R.string.common_save),
                 onClick = { if (title.isNotBlank()) onSave(title.trim(), start, due) },
                 modifier = Modifier.height(38.dp),
                 enabled = title.isNotBlank(),
             )
-            TButton("Отмена", kind = TButtonKind.Secondary, onClick = onCancel, modifier = Modifier.height(38.dp))
+            TButton(
+                stringResource(R.string.common_cancel),
+                kind = TButtonKind.Secondary,
+                onClick = onCancel,
+                modifier = Modifier.height(38.dp),
+            )
         }
     }
 }
@@ -521,6 +563,10 @@ private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
     var year by remember { mutableStateOf(initialCal.get(Calendar.YEAR)) }
     var month by remember { mutableStateOf(initialCal.get(Calendar.MONTH)) } // 0-based
     val selectedKey = if (initialIso != null && initialIso.length >= 10) initialIso.substring(0, 10) else null
+    // Те же массивы, что у календарного вида доски: подписи читаются на рекомпозицию,
+    // поэтому смена языка перерисовывает попап, а не оставляет его на прежнем.
+    val monthNames = stringArrayResource(R.array.calendar_months)
+    val weekdayHeaders = stringArrayResource(R.array.calendar_weekdays_short)
 
     Column(Modifier.width(260.dp).padding(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -532,7 +578,7 @@ private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
                 }
             }, boxSize = 28.dp, iconSize = 14.dp, tint = c.text3, modifier = Modifier.graphicsLayer { rotationZ = 180f })
             Text(
-                "${MonthNames[month]} $year",
+                "${monthNames[month]} $year",
                 color = c.text1,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
@@ -549,7 +595,7 @@ private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
         }
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth()) {
-            WeekdayHeaders.forEach { wd ->
+            weekdayHeaders.forEach { wd ->
                 Text(wd, color = c.text3, fontSize = 10.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
@@ -594,19 +640,13 @@ private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "Очистить",
+            stringResource(R.string.milestones_date_clear),
             color = c.text3,
             fontSize = 13.sp,
             modifier = Modifier.clickableNoRipple { onPick(null) }.padding(vertical = 4.dp),
         )
     }
 }
-
-private val MonthNames = listOf(
-    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
-)
-private val WeekdayHeaders = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 
 private fun daysInMonthUtc(year: Int, month: Int): Int =
     Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {

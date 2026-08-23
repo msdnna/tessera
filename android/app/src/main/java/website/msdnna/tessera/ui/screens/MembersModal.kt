@@ -176,7 +176,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TButton(stringResource(R.string.members_done), onClick = onDismiss)
+                TButton(stringResource(R.string.common_done), onClick = onDismiss)
             }
         }
     }

@@ -118,6 +118,7 @@
     <string name="common_error">Ошибка</string>
     <string name="common_nothing_found">Ничего не найдено</string>
     <string name="common_edit">Изменить</string>
+    <string name="common_done">Готово</string>
 
     <!-- Навигация в боковой панели -->
     <string name="nav_home">Моя работа</string>
@@ -635,7 +636,6 @@
     <string name="members_invite_action">Пригласить</string>
     <string name="members_invite_hint">Зарегистрированного добавим сразу; нового — приглашение по ссылке.</string>
     <string name="members_copy_link">Копировать</string>
-    <string name="members_done">Готово</string>
     <string name="members_remove_confirm">Убрать участника?</string>
     <string name="members_remove">Убрать</string>
     <string name="members_role_owner">Владелец</string>
@@ -674,4 +674,71 @@
     <string name="admin_oauth_enabled">Включён</string>
     <string name="admin_oauth_org_map">org_map (JSON: путь-группы → {workspace_id, admins, users})</string>
     <string name="admin_oauth_callback_hint">Callback URL (укажите в OAuth-приложении GitLab):</string>
+
+    <!-- Доска: пустое состояние и панель вида -->
+    <string name="board_no_columns">На этой доске пока нет колонок</string>
+    <string name="board_customize_title">Вид доски</string>
+    <string name="board_customize_appearance">Иконка и цвет доски</string>
+    <string name="board_customize_card_size">Размер карточки</string>
+    <string name="board_card_size_compact">Компактно</string>
+    <string name="board_card_size_medium">Средне</string>
+    <string name="board_card_size_large">Расширенно</string>
+    <string name="board_customize_fields">Поля</string>
+    <string name="board_customize_stack">Стек (в столбик)</string>
+    <string name="board_customize_show_empty">Показывать пустые поля</string>
+    <string name="board_field_assignee">Исполнитель</string>
+    <string name="board_field_number">Номер (#)</string>
+    <string name="board_field_gitlab">GitLab</string>
+    <string name="board_customize_columns">Колонки и подзадачи</string>
+    <string name="board_customize_auto_collapse">Сворачивать пустые колонки</string>
+    <string name="board_customize_subtasks">Раскрыть подзадачи</string>
+
+    <!-- Доска: всплывающие уведомления об активности -->
+    <string name="board_activity_created">создал(а) задачу</string>
+    <string name="board_activity_completed">завершил(а) задачу</string>
+    <string name="board_activity_reopened">вернул(а) в работу</string>
+    <string name="board_activity_moved">переместил(а) задачу</string>
+    <string name="board_activity_you">Вы</string>
+    <string name="board_activity_open">Открыть</string>
+    <string name="board_activity_copied">Скопировано</string>
+    <string name="board_activity_link">Ссылка</string>
+
+    <!-- Управление тегами -->
+    <string name="tags_title">Управление тегами</string>
+    <string name="tags_empty">Тегов пока нет</string>
+    <string name="tags_new">Новый тег</string>
+    <string name="tags_name_hint">Название тега</string>
+    <string name="tags_rename_hint">Имя тега</string>
+    <string name="tags_delete_confirm">Удалить тег? Он снимется со всех задач.</string>
+    <string name="tags_prefix_mode">Короткие префиксы</string>
+    <string name="tags_prefix_mode_hint">Сырой префикс («T») вместо понятного имени</string>
+
+    <!-- Команды редактора -->
+    <string name="commands_title">Команды редактора</string>
+    <string name="commands_hint">Свои команды только подсказываются в редакторе и остаются в тексте комментария — выполняет их адресат, а не Tessera. Встроенные выполняет сервер и вырезает из текста.</string>
+    <string name="commands_description_hint">Одобрить план</string>
+    <string name="commands_empty">Своих команд пока нет</string>
+    <string name="commands_add">Добавить</string>
+    <string name="commands_readonly">Редактировать словарь может владелец или админ</string>
+    <string name="commands_builtin">Встроенные</string>
+    <string name="commands_err_empty_key">пустой ключ</string>
+    <string name="commands_err_bad_key">латиница, цифры, _ и -</string>
+    <string name="commands_err_builtin">встроенная команда</string>
+    <string name="commands_err_duplicate">дубль</string>
+    <string name="commands_err_too_long">описание длиннее 200 символов</string>
+
+    <!-- Этапы: список и менеджер -->
+    <string name="milestones_filter_active">Активные</string>
+    <string name="milestones_filter_all">Все</string>
+    <string name="milestones_empty_all">Этапов пока нет</string>
+    <string name="milestones_empty_active">Активных этапов нет</string>
+    <string name="milestones_closed">закрыт</string>
+    <string name="milestones_no_tasks">нет задач</string>
+    <string name="milestones_manager_empty">Пока нет этапов</string>
+    <string name="milestones_delete_confirm">Удалить этап?</string>
+    <string name="milestones_new">Новый этап</string>
+    <string name="milestones_title_hint">Название</string>
+    <string name="milestones_date_start">Начало</string>
+    <string name="milestones_date_due">Срок</string>
+    <string name="milestones_date_clear">Очистить</string>
 </resources>

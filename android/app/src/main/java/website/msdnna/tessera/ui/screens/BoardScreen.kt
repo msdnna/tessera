@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.ui.components.ErrorState
@@ -184,11 +186,11 @@ fun BoardScreen(
                     state.loading -> LoadingState()
 
                     state.error != null -> ErrorState(
-                        message = state.error ?: "Ошибка",
+                        message = state.error ?: stringResource(R.string.common_error),
                         onRetry = { vm.load(board.id, workspaceId) },
                     )
 
-                    state.columns.isEmpty() -> BoardEmpty("На этой доске пока нет колонок")
+                    state.columns.isEmpty() -> BoardEmpty(stringResource(R.string.board_no_columns))
 
                     else -> Crossfade(targetState = state.viewMode, animationSpec = tween(200), label = "viewMode") { mode ->
                         when (mode) {
@@ -306,12 +308,16 @@ private fun BoardActivityOverlay(
     }
 }
 
-/** Verb → (label, icon, accent colour) for an activity toast. */
-private fun activityVerbMeta(verb: String): Triple<String, String, Color> = when (verb) {
-    "created" -> Triple("создал(а) задачу", Ion.ADD, Color(0xFF7C5CFF))
-    "completed" -> Triple("завершил(а) задачу", Ion.CHECK_CIRCLE, Color(0xFF18A058))
-    "reopened" -> Triple("вернул(а) в работу", Ion.ELLIPSE, Color(0xFFE0922F))
-    else -> Triple("переместил(а) задачу", Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
+/**
+ * Verb → (label, icon, accent colour) for an activity toast. Возвращается id
+ * ресурса, а не готовая строка: функция обычная, не композабл, и с текстом внутри
+ * подпись тоста осталась бы на языке, на котором пришло событие.
+ */
+private fun activityVerbMeta(verb: String): Triple<Int, String, Color> = when (verb) {
+    "created" -> Triple(R.string.board_activity_created, Ion.ADD, Color(0xFF7C5CFF))
+    "completed" -> Triple(R.string.board_activity_completed, Ion.CHECK_CIRCLE, Color(0xFF18A058))
+    "reopened" -> Triple(R.string.board_activity_reopened, Ion.ELLIPSE, Color(0xFFE0922F))
+    else -> Triple(R.string.board_activity_moved, Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
 }
 
 @Composable
@@ -322,7 +328,8 @@ private fun ActivityToast(
     onClose: () -> Unit,
 ) {
     val c = Tessera.colors
-    val (verbText, icon, color) = activityVerbMeta(activity.verb)
+    val (verbRes, icon, color) = activityVerbMeta(activity.verb)
+    val verbText = stringResource(verbRes)
     var copied by remember(activity.key) { mutableStateOf(false) }
     val shape = RoundedCornerShape(RadiusLg)
     Row(
@@ -340,7 +347,11 @@ private fun ActivityToast(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (activity.self) "Вы" else activity.actorName.ifBlank { "Кто-то" },
+                    if (activity.self) {
+                        stringResource(R.string.board_activity_you)
+                    } else {
+                        activity.actorName.ifBlank { stringResource(R.string.task_someone) }
+                    },
                     color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.width(4.dp))
@@ -357,7 +368,7 @@ private fun ActivityToast(
                     Modifier.clip(RoundedCornerShape(RadiusSm)).background(accentGradient(c.primary))
                         .clickableNoRipple(onClick = onOpen).padding(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    Text("Открыть", color = c.onPrimary, fontSize = 12.sp)
+                    Text(stringResource(R.string.board_activity_open), color = c.onPrimary, fontSize = 12.sp)
                 }
                 Box(
                     Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
@@ -367,7 +378,13 @@ private fun ActivityToast(
                         }
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    Text(if (copied) "Скопировано" else "Ссылка", color = c.text2, fontSize = 12.sp)
+                    Text(
+                        stringResource(
+                            if (copied) R.string.board_activity_copied else R.string.board_activity_link,
+                        ),
+                        color = c.text2,
+                        fontSize = 12.sp,
+                    )
                 }
             }
         }

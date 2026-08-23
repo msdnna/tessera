@@ -114,6 +114,7 @@
     <string name="common_error">Error</string>
     <string name="common_nothing_found">Nothing found</string>
     <string name="common_edit">Edit</string>
+    <string name="common_done">Done</string>
 
     <!-- Sidebar navigation -->
     <string name="nav_home">My work</string>
@@ -625,7 +626,6 @@
     <string name="members_invite_action">Invite</string>
     <string name="members_invite_hint">An existing account is added right away; a new one gets an invite link.</string>
     <string name="members_copy_link">Copy</string>
-    <string name="members_done">Done</string>
     <string name="members_remove_confirm">Remove member?</string>
     <string name="members_remove">Remove</string>
     <string name="members_role_owner">Owner</string>
@@ -664,4 +664,71 @@
     <string name="admin_oauth_enabled">Enabled</string>
     <string name="admin_oauth_org_map">org_map (JSON: group path → {workspace_id, admins, users})</string>
     <string name="admin_oauth_callback_hint">Callback URL (set it in the GitLab OAuth app):</string>
+
+    <!-- Board: empty state and the customize panel -->
+    <string name="board_no_columns">This board has no columns yet</string>
+    <string name="board_customize_title">Board look</string>
+    <string name="board_customize_appearance">Board icon and colour</string>
+    <string name="board_customize_card_size">Card size</string>
+    <string name="board_card_size_compact">Compact</string>
+    <string name="board_card_size_medium">Medium</string>
+    <string name="board_card_size_large">Large</string>
+    <string name="board_customize_fields">Fields</string>
+    <string name="board_customize_stack">Stacked (one per line)</string>
+    <string name="board_customize_show_empty">Show empty fields</string>
+    <string name="board_field_assignee">Assignee</string>
+    <string name="board_field_number">Number (#)</string>
+    <string name="board_field_gitlab">GitLab</string>
+    <string name="board_customize_columns">Columns and subtasks</string>
+    <string name="board_customize_auto_collapse">Collapse empty columns</string>
+    <string name="board_customize_subtasks">Expand subtasks</string>
+
+    <!-- Board: activity toasts -->
+    <string name="board_activity_created">created a task</string>
+    <string name="board_activity_completed">completed a task</string>
+    <string name="board_activity_reopened">reopened a task</string>
+    <string name="board_activity_moved">moved a task</string>
+    <string name="board_activity_you">You</string>
+    <string name="board_activity_open">Open</string>
+    <string name="board_activity_copied">Copied</string>
+    <string name="board_activity_link">Link</string>
+
+    <!-- Tag manager -->
+    <string name="tags_title">Manage tags</string>
+    <string name="tags_empty">No tags yet</string>
+    <string name="tags_new">New tag</string>
+    <string name="tags_name_hint">Tag name</string>
+    <string name="tags_rename_hint">Tag name</string>
+    <string name="tags_delete_confirm">Delete the tag? It will be removed from every task.</string>
+    <string name="tags_prefix_mode">Short prefixes</string>
+    <string name="tags_prefix_mode_hint">Raw prefix (“T”) instead of the friendly name</string>
+
+    <!-- Editor commands -->
+    <string name="commands_title">Editor commands</string>
+    <string name="commands_hint">Your own commands are only suggested in the editor and stay in the comment text — the reader runs them, not Tessera. Built-in ones are run by the server and stripped from the text.</string>
+    <string name="commands_description_hint">Approve the plan</string>
+    <string name="commands_empty">No custom commands yet</string>
+    <string name="commands_add">Add</string>
+    <string name="commands_readonly">Only the owner or an admin can edit the dictionary</string>
+    <string name="commands_builtin">Built-in</string>
+    <string name="commands_err_empty_key">empty key</string>
+    <string name="commands_err_bad_key">latin letters, digits, _ and -</string>
+    <string name="commands_err_builtin">built-in command</string>
+    <string name="commands_err_duplicate">duplicate</string>
+    <string name="commands_err_too_long">description longer than 200 characters</string>
+
+    <!-- Milestones: list and manager -->
+    <string name="milestones_filter_active">Active</string>
+    <string name="milestones_filter_all">All</string>
+    <string name="milestones_empty_all">No milestones yet</string>
+    <string name="milestones_empty_active">No active milestones</string>
+    <string name="milestones_closed">closed</string>
+    <string name="milestones_no_tasks">no tasks</string>
+    <string name="milestones_manager_empty">No milestones yet</string>
+    <string name="milestones_delete_confirm">Delete the milestone?</string>
+    <string name="milestones_new">New milestone</string>
+    <string name="milestones_title_hint">Title</string>
+    <string name="milestones_date_start">Start</string>
+    <string name="milestones_date_due">Due</string>
+    <string name="milestones_date_clear">Clear</string>
 </resources>
