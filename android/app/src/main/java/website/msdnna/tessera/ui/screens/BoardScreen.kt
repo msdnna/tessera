@@ -359,7 +359,7 @@ private fun ActivityToast(
                 Text(verbText, color = c.text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(
-                activity.title,
+                activity.title.ifBlank { stringResource(R.string.board_activity_untitled) },
                 color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),

@@ -134,6 +134,7 @@
     <string name="sidebar_ws_name_hint">Name</string>
     <string name="sidebar_ws_delete">Delete workspace</string>
     <string name="sidebar_ws_delete_message">Workspace “%1$s” and all of its projects, boards and tasks will be deleted permanently. Type the name to confirm.</string>
+    <string name="sidebar_ws_delete_last">You cannot delete your only workspace</string>
 
     <!-- Sidebar: project tree -->
     <string name="sidebar_projects_header">PROJECTS</string>
@@ -412,6 +413,18 @@
     <string name="gitlab_sum_state_any">close/reopen the issue</string>
     <string name="gitlab_sum_comment">comment</string>
     <string name="gitlab_sum_comment_marker">comment (+marker)</string>
+
+    <!-- GitLab settings: screen messages (success toasts and sync totals) -->
+    <string name="gitlab_msg_connected">Connected as @%1$s</string>
+    <string name="gitlab_msg_disconnected">GitLab disconnected</string>
+    <string name="gitlab_msg_saved">Settings saved</string>
+    <string name="gitlab_msg_binding_deleted">Binding removed</string>
+    <string name="gitlab_msg_synced">Synced: %1$d (+%2$d, ~%3$d)</string>
+    <string name="gitlab_msg_sync_background">Sync is running in the background — see the journal</string>
+    <string name="gitlab_err_sync_failed">Sync failed: %1$s</string>
+    <!-- Its own key rather than an "error" substitution: the reason comes from the
+         server verbatim, and a UiText cannot be nested inside a UiText.Res argument -->
+    <string name="gitlab_err_sync_failed_unknown">Sync failed</string>
 
     <!-- GitLab settings: label rules -->
     <string name="gitlab_section_rules">Label rules</string>
@@ -725,6 +738,8 @@
     <string name="board_activity_open">Open</string>
     <string name="board_activity_copied">Copied</string>
     <string name="board_activity_link">Link</string>
+    <!-- The task title comes from the server; this shows only when it is empty -->
+    <string name="board_activity_untitled">Task</string>
 
     <!-- Tag manager -->
     <string name="tags_title">Manage tags</string>
@@ -862,6 +877,12 @@
     <string name="due_filter_week">Next 7 days</string>
     <string name="due_filter_has">With a due date</string>
     <string name="due_filter_none">No due date</string>
+
+    <!-- Board composer: sort fields. Priority/Due/Status reuse the shared task_prop_*
+         keys — same words in both locales. Title and Number get their own keys: in
+         Russian the task modal spells the same field differently -->
+    <string name="composer_sort_title">Title</string>
+    <string name="composer_sort_number">Number</string>
 
     <!-- Board composer: saved views -->
     <string name="views_title">Views</string>

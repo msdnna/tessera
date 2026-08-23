@@ -58,6 +58,7 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.dashedBorder
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -241,7 +242,7 @@ fun GitLabSettingsScreen(
         }
         state.message?.let {
             Spacer(Modifier.height(10.dp))
-            Text(it, color = c.primary, fontSize = 13.sp)
+            Text(it.resolve(), color = c.primary, fontSize = 13.sp)
         }
         Spacer(Modifier.height(14.dp))
 

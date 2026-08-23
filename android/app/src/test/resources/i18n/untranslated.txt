@@ -35,7 +35,4 @@ website/msdnna/tessera/ui/screens/ConflictResolver.kt
 website/msdnna/tessera/ui/screens/MainScreen.kt
 website/msdnna/tessera/ui/screens/SearchOverlay.kt
 website/msdnna/tessera/ui/theme/Tokens.kt
-website/msdnna/tessera/ui/viewmodels/BoardViewModel.kt
-website/msdnna/tessera/ui/viewmodels/GitlabViewModel.kt
-website/msdnna/tessera/ui/viewmodels/WorkspaceViewModel.kt
 website/msdnna/tessera/update/WhatsNewEntries.kt

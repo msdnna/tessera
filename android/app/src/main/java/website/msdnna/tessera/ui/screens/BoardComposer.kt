@@ -464,7 +464,7 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                 "sort" -> {
                     BackRow { category = null }
                     sortFields.forEach { sf ->
-                        TMenuItem(sf.label, onClick = {
+                        TMenuItem(stringResource(sf.labelRes), onClick = {
                             vm.addSortLevel(sf)
                             close()
                         })
@@ -761,7 +761,9 @@ private fun FlowRowScope.SortChips(
     LaunchedEffect(levels.size) { drag.bounds.keys.retainAll { it < levels.size } }
     val target = if (drag.active) drag.target else -1
     levels.forEachIndexed { i, level ->
-        val label = SortField.fromKey(level.field)?.label ?: level.field
+        // Ключ неизвестного поля показываем как есть: он пришёл из сохранённого
+        // представления, переводить в ресурсах нечего. i18n-data
+        val label = SortField.fromKey(level.field)?.let { stringResource(it.labelRes) } ?: level.field
         val arrow = if (level.dir == "desc") "↓" else "↑"
         val lifted = drag.from == i
         FacetChip(

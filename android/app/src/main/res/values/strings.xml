@@ -138,6 +138,7 @@
     <string name="sidebar_ws_name_hint">Название</string>
     <string name="sidebar_ws_delete">Удалить пространство</string>
     <string name="sidebar_ws_delete_message">Пространство «%1$s» и все его проекты, доски и задачи будут удалены безвозвратно. Введите название для подтверждения.</string>
+    <string name="sidebar_ws_delete_last">Нельзя удалить единственное пространство</string>
 
     <!-- Боковая панель: дерево проектов -->
     <string name="sidebar_projects_header">ПРОЕКТЫ</string>
@@ -420,6 +421,19 @@
     <string name="gitlab_sum_state_any">закрыть/открыть issue</string>
     <string name="gitlab_sum_comment">комментарий</string>
     <string name="gitlab_sum_comment_marker">комментарий (+маркер)</string>
+
+    <!-- Настройки GitLab: сообщения экрана (тосты успеха и итоги синхронизации) -->
+    <string name="gitlab_msg_connected">Подключено как @%1$s</string>
+    <string name="gitlab_msg_disconnected">GitLab отключён</string>
+    <string name="gitlab_msg_saved">Настройки сохранены</string>
+    <string name="gitlab_msg_binding_deleted">Привязка удалена</string>
+    <string name="gitlab_msg_synced">Синхронизировано: %1$d (+%2$d, ~%3$d)</string>
+    <string name="gitlab_msg_sync_background">Синхронизация выполняется в фоне — см. журнал</string>
+    <string name="gitlab_err_sync_failed">Синхронизация не удалась: %1$s</string>
+    <!-- Отдельный ключ, а не подстановка «ошибка»: причина приходит с сервера
+         как есть, локализовать её нечем, а вложить UiText в аргумент UiText.Res
+         нельзя — getString подставляет только готовые значения -->
+    <string name="gitlab_err_sync_failed_unknown">Синхронизация не удалась</string>
 
     <!-- Настройки GitLab: правила меток -->
     <string name="gitlab_section_rules">Правила меток</string>
@@ -735,6 +749,8 @@
     <string name="board_activity_open">Открыть</string>
     <string name="board_activity_copied">Скопировано</string>
     <string name="board_activity_link">Ссылка</string>
+    <!-- Заголовок задачи приходит с сервера; подпись нужна, только если он пуст -->
+    <string name="board_activity_untitled">Задача</string>
 
     <!-- Управление тегами -->
     <string name="tags_title">Управление тегами</string>
@@ -881,6 +897,12 @@
     <string name="due_filter_week">Ближайшая неделя</string>
     <string name="due_filter_has">Со сроком</string>
     <string name="due_filter_none">Без срока</string>
+
+    <!-- Композер доски: поля сортировки. «Приоритет», «Срок» и «Статус» берут общие
+         task_prop_* — там ровно те же слова в обеих локалях. «Название» и «Номер»
+         со своими ключами: в модалке задачи то же поле подписано «Заголовок» -->
+    <string name="composer_sort_title">Название</string>
+    <string name="composer_sort_number">Номер</string>
 
     <!-- Композер доски: сохранённые представления -->
     <string name="views_title">Представления</string>
