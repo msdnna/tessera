@@ -135,6 +135,23 @@ export const useHelpStore = defineStore('help', () => {
     return load(slug, page)
   }
 
+  // The help centre is a modal over whatever the reader is doing (#2792), not a
+  // page: opening it must not take anyone off their board. Shown first, loaded
+  // after — the article is a lazy chunk, and on a cold cache waiting for it
+  // would look like the menu item did nothing.
+  const centerShown = ref(false)
+
+  function openCenter(slug) {
+    centerShown.value = true
+    // No slug means «open the help centre», not «open the first article»: a
+    // reader coming back mid-manual keeps their place.
+    return open(slug || current.value || defaultSlug.value)
+  }
+
+  function closeCenter() {
+    centerShown.value = false
+  }
+
   const drawerMeta = computed(() => ARTICLES.find((a) => a.slug === drawerSlug.value) || null)
 
   // Contextual help: show the panel first, then load. The article is a lazy
@@ -165,6 +182,9 @@ export const useHelpStore = defineStore('help', () => {
     bySlug,
     find,
     open,
+    centerShown,
+    openCenter,
+    closeCenter,
     drawerShown,
     drawerSlug,
     drawerBody,

@@ -17,6 +17,7 @@ import WhatsNewModal from './WhatsNewModal.vue'
 import SidebarSpotlight from './SidebarSpotlight.vue'
 import TourOverlay from './TourOverlay.vue'
 import HelpDrawer from './help/HelpDrawer.vue'
+import HelpCenterModal from './help/HelpCenterModal.vue'
 import VersionBadge from './VersionBadge.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
@@ -286,6 +287,11 @@ watch(
     <!-- Contextual help (#2794): one drawer for the whole app, opened by the «?»
          hints and by the «Справка» results in global search. -->
     <HelpDrawer />
+
+    <!-- The help centre itself (#2792): a modal over the current screen, opened
+         from the sidebar's «Помощь» menu. Not a route — reading the manual must
+         not cost the reader the board they had open. -->
+    <HelpCenterModal />
   </div>
 </template>
 

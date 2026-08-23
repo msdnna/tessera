@@ -1,6 +1,5 @@
 <script setup>
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
 import { NDrawer, NDrawerContent, NButton, NIcon, NSpin } from 'naive-ui'
 import { OpenOutline } from '@vicons/ionicons5'
 import { useHelpStore } from '@/stores/help'
@@ -11,17 +10,18 @@ import HelpArticle from './HelpArticle.vue'
 // screen the reader is already on — no navigation, nothing lost. Mounted once in
 // AppLayout; every HelpHint drives it through the help store.
 const help = useHelpStore()
-const router = useRouter()
 const { isMobile } = useResponsive()
 
 // Full width on a phone — 460px of drawer over a 390px viewport is just a
 // crooked page.
 const width = computed(() => (isMobile.value ? '100%' : 460))
 
+// «Открыть в справке» hands the same article to the full help centre — which is
+// itself a modal (#2792), so this still keeps the reader on their screen.
 function openFull() {
   const slug = help.drawerSlug
   help.closeDrawer()
-  router.push(`/help/${slug}`)
+  help.openCenter(slug)
 }
 </script>
 

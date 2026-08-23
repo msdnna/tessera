@@ -1,18 +1,16 @@
 <script setup>
 import { NInput, NIcon } from 'naive-ui'
 import { SearchOutline } from '@vicons/ionicons5'
-import { useRouter } from 'vue-router'
 import { useHelpStore } from '@/stores/help'
 
 // Search box over the help index (#2792). Matching runs in the store against
 // the in-bundle index — there is no request to debounce, so results update on
 // every keystroke.
 const help = useHelpStore()
-const router = useRouter()
 
 function pick(slug) {
   help.query = ''
-  router.push(`/help/${slug}`)
+  help.open(slug)
 }
 </script>
 

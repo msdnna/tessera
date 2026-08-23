@@ -20,7 +20,6 @@ import {
   DocumentsOutline,
   AlarmOutline,
   RibbonOutline,
-  HelpCircleOutline,
   AddOutline,
   FolderOutline,
   EllipsisHorizontalOutline,
@@ -284,15 +283,9 @@ async function deleteWorkspace() {
         </template>
         Этапы
       </n-tooltip>
-      <n-tooltip :disabled="!collapsed" placement="right">
-        <template #trigger>
-          <router-link to="/help" class="nav-link" data-nav="help">
-            <n-icon :component="HelpCircleOutline" :size="18" />
-            <span v-if="!collapsed">Помощь</span>
-          </router-link>
-        </template>
-        Помощь
-      </n-tooltip>
+      <!-- No «Помощь» item here (#2792): the help centre is a modal opened from
+           the «Помощь» menu at the bottom of the sidebar, not a destination that
+           replaces the board the reader is working on. -->
     </nav>
 
     <div v-if="collapsed" class="rail-sep" />
