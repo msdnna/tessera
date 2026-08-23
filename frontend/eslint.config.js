@@ -2,6 +2,13 @@ import js from '@eslint/js'
 import pluginVue from 'eslint-plugin-vue'
 import configPrettier from 'eslint-config-prettier'
 import globals from 'globals'
+import { readFileSync } from 'node:fs'
+
+// Files still holding hardcoded Russian, maintained by the ratchet in
+// tests/ut-no-ru-literals.spec.js (#2799). Read here — rather than duplicated —
+// so ticking a file off the baseline is what switches the bare-string rule on
+// for it: one list, one edit per file, no way for the two to drift.
+const i18nTodo = JSON.parse(readFileSync(new URL('./tests/i18n-baseline.json', import.meta.url)))
 
 export default [
   // Generated output only. playwright-report/ and test-results/ are .gitignored
@@ -35,6 +42,49 @@ export default [
     },
   },
   {
+    // Bare interface text in templates, for the parts of src/ the extraction
+    // waves have already been through. `error`, not `warn`: the point is that a
+    // finished screen cannot quietly regain a literal, and warnings scroll past.
+    // The rule reads templates only — `<script>` text is covered by the ratchet
+    // test, which is also where this ignore list comes from.
+    files: ['src/**/*.vue'],
+    ignores: i18nTodo.filter((f) => f.endsWith('.vue')),
+    rules: {
+      'vue/no-bare-strings-in-template': [
+        'error',
+        {
+          // The rule's default allowlist (punctuation and dashes) plus the
+          // product name, which is a brand and stays as it is in every locale.
+          allowlist: [
+            ...'(),.&+-=*/#%!?:[]{}<>|',
+            '·',
+            '•',
+            '‐',
+            '–',
+            '—',
+            '−',
+            'Tessera',
+            'tessera',
+          ],
+          // Defaults, plus `placeholder` on any element: the UI is built on
+          // Naive UI, so nearly every placeholder sits on `<n-input>` rather
+          // than a bare `<input>` and the default rule would walk past it.
+          attributes: {
+            '/.+/': [
+              'title',
+              'placeholder',
+              'aria-label',
+              'aria-placeholder',
+              'aria-roledescription',
+              'aria-valuetext',
+            ],
+            img: ['alt'],
+          },
+        },
+      ],
+    },
+  },
+  {
     // Build/config files run under Node, not the browser.
     files: ['*.config.js', 'vite.config.js'],
     languageOptions: { globals: { ...globals.node } },
@@ -53,10 +103,13 @@ export default [
     },
   },
   {
-    // Vitest test files.
+    // Vitest test files. Node globals are in scope alongside the browser ones
+    // from the base config: specs run in jsdom, but helpers reach for `fs` and
+    // `process.cwd()` to walk the source tree (tests/helpers/ruLiterals.js).
     files: ['tests/**/*.js'],
     languageOptions: {
       globals: {
+        ...globals.node,
         describe: 'readonly',
         it: 'readonly',
         expect: 'readonly',

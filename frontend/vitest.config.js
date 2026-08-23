@@ -11,6 +11,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['tests/**/*.spec.js'],
+    // Installs vue-i18n into every mount (#2799). Without it, the first
+    // component that renders `$t` takes down every spec that mounts it.
+    setupFiles: ['./tests/setup.js'],
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'html', 'lcov'],

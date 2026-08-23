@@ -96,6 +96,16 @@ describe('i18n runtime', () => {
     expect(render('en')).toContain('No Data')
   })
 
+  // The global setup file (tests/setup.js) installs i18n into every mount, so
+  // from wave 1 of #2799 on, a component may call $t without its spec knowing
+  // anything about localisation. If that registration ever falls out of the
+  // vitest config, this is the test that says so — instead of ~40 spec files
+  // failing at once with "$t is not a function".
+  it('is installed into every mount by the global test setup', () => {
+    const w = mount({ template: `<i>{{ $t('common.action.save') }}</i>` })
+    expect(w.text()).toBe('Сохранить')
+  })
+
   it('loadLocaleMessages is idempotent', async () => {
     await loadLocaleMessages('en')
     const before = i18n.global.getLocaleMessage('en')
