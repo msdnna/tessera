@@ -1,0 +1,110 @@
+{
+  "nav": {
+    "home": "Home",
+    "notes": "Notes",
+    "documents": "Documents",
+    "reminders": "Reminders",
+    "milestones": "Milestones"
+  },
+  "workspace": {
+    "create": "New workspace",
+    "settings": "Workspace settings",
+    "namePlaceholder": "Name",
+    "delete": "Delete workspace",
+    "deleteMessage": "The workspace will be deleted with all its projects, boards and tasks. This cannot be undone.",
+    "deleteLast": "The only workspace cannot be deleted",
+    "deleted": "Workspace deleted"
+  },
+  "tree": {
+    "projects": "Projects",
+    "add": "Add",
+    "addProject": "Project",
+    "addGroup": "Group",
+    "empty": "No projects yet",
+    "noBoards": "no boards",
+    "emptyGroup": "empty"
+  },
+  "group": {
+    "defaultName": "Group",
+    "newProject": "New project",
+    "newGroup": "New group",
+    "rename": "Rename",
+    "delete": "Delete group",
+    "deleteConfirm": "Subgroups will be deleted, projects will lose their group. Delete?",
+    "deleteTitle": "Delete the group “{name}”?",
+    "deleteWarning": "Subgroups will be deleted, projects will lose their group. This cannot be undone."
+  },
+  "user": {
+    "profile": "Profile",
+    "settings": "Settings",
+    "tour": "Get started",
+    "admin": "Administration",
+    "logout": "Log out"
+  },
+  "tools": {
+    "members": "Members",
+    "integrations": "Integrations",
+    "integrationsConflicts": "Integrations · conflicts: {count}",
+    "estimation": "Task estimation",
+    "commands": "Editor commands",
+    "jobs": "Background jobs",
+    "notifications": "Notifications",
+    "markAllRead": "Mark all read",
+    "feedEmpty": "All quiet",
+    "appearance": "Appearance",
+    "darkTheme": "Dark theme"
+  },
+  "search": {
+    "placeholder": "Search tasks, notes and documents…",
+    "tasks": "Tasks",
+    "notes": "Notes",
+    "documents": "Documents",
+    "untitled": "Untitled",
+    "nothing": "Nothing found",
+    "hint": "Searches task titles and descriptions, note titles and text, document titles"
+  },
+  "members": {
+    "title": "Workspace members",
+    "owner": "Owner",
+    "admin": "Admin",
+    "member": "Member",
+    "removeConfirm": "Remove this member from the workspace?",
+    "invitations": "Invitations",
+    "inviteLabel": "Invite by email",
+    "emailPlaceholder": "user@example.com",
+    "invite": "Invite",
+    "inviteHint": "A registered user is added right away; a new one gets an invitation link.",
+    "added": "Member added",
+    "inviteCreated": "Invitation created — copy the link",
+    "roleUpdated": "Role updated",
+    "linkCopied": "Link copied"
+  },
+  "commands": {
+    "title": "Editor commands",
+    "hint": "Your own commands are only suggested in the editor and stay in the comment text — the recipient carries them out, not Tessera. The built-in commands below are executed by the server and cut out of the text.",
+    "descPlaceholder": "Approve the plan",
+    "empty": "No commands of your own yet — the popup will show only the built-in ones.",
+    "add": "Add command",
+    "builtin": "Built-in commands ({count})",
+    "error": {
+      "empty": "empty key",
+      "charset": "latin letters, digits, _ and -",
+      "builtin": "built-in command",
+      "duplicate": "duplicate",
+      "tooLong": "description longer than 200 characters"
+    }
+  },
+  "layout": {
+    "resize": "Drag to resize (double-click to collapse)",
+    "projectGone": "The project was deleted or moved to another workspace — opened “Home”"
+  },
+  "spotlight": {
+    "aria": "Hint",
+    "dismiss": "Got it"
+  },
+  "auth": {
+    "server": "Server address",
+    "themeLight": "Light theme",
+    "themeDark": "Dark theme"
+  }
+}

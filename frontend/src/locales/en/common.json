@@ -30,6 +30,11 @@
     "empty": "Empty",
     "saved": "Saved"
   },
+  "confirm": {
+    "deleteTitle": "Confirm deletion",
+    "ask": "Type {name} to confirm:",
+    "namePlaceholder": "Name"
+  },
   "answer": {
     "yes": "Yes",
     "no": "No"

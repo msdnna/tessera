@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { SparklesOutline } from '@vicons/ionicons5'
 import { useWhatsNewStore } from '@/stores/whatsNew'
@@ -13,6 +14,7 @@ import { layoutArrow, ARROW_HEAD } from '@/utils/tourArrow'
 // The overlay is fixed to the viewport and teleported to <body>. It anchors to
 // the nav item carrying data-nav="<navKey>" (see Sidebar.vue). Skipped on mobile,
 // where the sidebar lives in a closed drawer.
+const { t } = useI18n()
 const store = useWhatsNewStore()
 const { isMobile } = useResponsive()
 
@@ -131,13 +133,19 @@ onBeforeUnmount(() => {
         />
         <polygon ref="arrowHead" class="sl-head" />
       </svg>
-      <div ref="pop" class="sl-pop" :style="popStyle" role="dialog" aria-label="Подсказка">
+      <div
+        ref="pop"
+        class="sl-pop"
+        :style="popStyle"
+        role="dialog"
+        :aria-label="t('shell.spotlight.aria')"
+      >
         <div class="sl-title">
           <n-icon :component="SparklesOutline" :size="15" class="sl-spark" />
           {{ spot?.title }}
         </div>
         <div class="sl-body">{{ spot?.body }}</div>
-        <button class="sl-btn" @click="dismiss">Понятно</button>
+        <button class="sl-btn" @click="dismiss">{{ t('shell.spotlight.dismiss') }}</button>
       </div>
     </div>
   </teleport>

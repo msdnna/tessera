@@ -80,7 +80,7 @@ const glLabel = () =>
 const integrationOptions = computed(() => [
   { label: glLabel, key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
   {
-    label: 'Оценка задач',
+    label: i18n.t('shell.tools.estimation'),
     key: 'estimation',
     icon: () => h(NIcon, null, { default: () => h(TimerOutline) }),
   },
@@ -89,7 +89,7 @@ const integrationOptions = computed(() => [
   ...(ws.commandsCanManage
     ? [
         {
-          label: 'Команды редактора',
+          label: i18n.t('shell.tools.commands'),
           key: 'commands',
           icon: () => h(NIcon, null, { default: () => h(TerminalOutline) }),
         },
@@ -128,11 +128,17 @@ function noteText(n) {
     <!-- Members -->
     <n-tooltip :disabled="isMobile">
       <template #trigger>
-        <n-button quaternary circle size="small" aria-label="Участники" @click="showMembers = true">
+        <n-button
+          quaternary
+          circle
+          size="small"
+          :aria-label="i18n.t('shell.tools.members')"
+          @click="showMembers = true"
+        >
           <n-icon :component="PeopleOutline" />
         </n-button>
       </template>
-      Участники
+      {{ i18n.t('shell.tools.members') }}
     </n-tooltip>
 
     <!-- Integrations -->
@@ -144,7 +150,7 @@ function noteText(n) {
     >
       <n-tooltip :disabled="isMobile">
         <template #trigger>
-          <n-button quaternary circle size="small" aria-label="Интеграции">
+          <n-button quaternary circle size="small" :aria-label="i18n.t('shell.tools.integrations')">
             <n-badge
               :value="conflicts.count"
               :max="9"
@@ -156,7 +162,11 @@ function noteText(n) {
             </n-badge>
           </n-button>
         </template>
-        {{ conflicts.count ? `Интеграции · конфликтов: ${conflicts.count}` : 'Интеграции' }}
+        {{
+          conflicts.count
+            ? i18n.t('shell.tools.integrationsConflicts', { count: conflicts.count })
+            : i18n.t('shell.tools.integrations')
+        }}
       </n-tooltip>
     </n-dropdown>
 
@@ -167,13 +177,13 @@ function noteText(n) {
           quaternary
           circle
           size="small"
-          aria-label="Фоновые задания"
+          :aria-label="i18n.t('shell.tools.jobs')"
           @click="showJobs = true"
         >
           <n-icon :component="ServerOutline" />
         </n-button>
       </template>
-      Фоновые задания
+      {{ i18n.t('shell.tools.jobs') }}
     </n-tooltip>
 
     <!-- Notifications -->
@@ -183,7 +193,7 @@ function noteText(n) {
           quaternary
           circle
           size="small"
-          aria-label="Уведомления"
+          :aria-label="i18n.t('shell.tools.notifications')"
           class="bell-btn"
           data-tour="footer-notifications"
         >
@@ -194,7 +204,7 @@ function noteText(n) {
       </template>
       <div class="feed">
         <div class="feed-head">
-          <span>Уведомления</span>
+          <span>{{ i18n.t('shell.tools.notifications') }}</span>
           <n-button
             v-if="notes.unread"
             text
@@ -203,7 +213,7 @@ function noteText(n) {
             class="ngrad"
             @click="notes.markAllRead()"
           >
-            Прочитать все
+            {{ i18n.t('shell.tools.markAllRead') }}
           </n-button>
         </div>
         <button
@@ -219,7 +229,7 @@ function noteText(n) {
         <empty-state
           v-if="!notes.items.length"
           :icon="NotificationsOutline"
-          text="Пока тихо"
+          :text="i18n.t('shell.tools.feedEmpty')"
           size="small"
         />
       </div>
@@ -230,16 +240,16 @@ function noteText(n) {
       <template #trigger>
         <n-tooltip :disabled="isMobile">
           <template #trigger>
-            <n-button quaternary circle size="small" aria-label="Оформление">
+            <n-button quaternary circle size="small" :aria-label="i18n.t('shell.tools.appearance')">
               <n-icon :component="ColorPaletteOutline" />
             </n-button>
           </template>
-          Оформление
+          {{ i18n.t('shell.tools.appearance') }}
         </n-tooltip>
       </template>
       <div class="appearance">
         <div class="row">
-          <n-text depth="2">Тёмная тема</n-text>
+          <n-text depth="2">{{ i18n.t('shell.tools.darkTheme') }}</n-text>
           <n-switch :value="theme.isDark" @update:value="theme.toggle()">
             <template #checked-icon><n-icon :component="MoonOutline" /></template>
             <template #unchecked-icon><n-icon :component="SunnyOutline" /></template>

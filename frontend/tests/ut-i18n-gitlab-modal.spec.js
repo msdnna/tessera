@@ -94,9 +94,7 @@ describe('messages with vue-i18n syntax characters', () => {
 
   // `@` opens a linked message (@:key / @{expr}); the bundles escape it as {'@'}.
   it('renders the login prefix as a literal @', () => {
-    expect(t('gitlab.modal.connectedAs', { name: 'octocat' })).toBe(
-      'GitLab подключён как @octocat',
-    )
+    expect(t('gitlab.modal.connectedAs', { name: 'octocat' })).toBe('GitLab подключён как @octocat')
     i18n.global.locale.value = 'en'
     expect(t('gitlab.modal.connectedAs', { name: 'octocat' })).toBe('GitLab connected as @octocat')
     i18n.global.locale.value = 'ru'

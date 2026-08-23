@@ -2,6 +2,7 @@
 // that is what keeps it (and every future locale) out of the main chunk
 // instead of growing the initial bundle per language (#2797).
 import common from './common.json'
+import shell from './shell.json'
 import board from './board.json'
 import task from './task.json'
 import project from './project.json'
@@ -14,6 +15,7 @@ import errors from './errors.json'
 
 export default {
   common,
+  shell,
   board,
   task,
   project,

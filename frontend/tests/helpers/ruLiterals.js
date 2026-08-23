@@ -29,6 +29,10 @@ export const ALLOWLIST = [
   // in either language — an English interface still has Russian-speaking hands
   // typing at it.
   'src/utils/docSlash.js',
+  // Board-column status heuristic. Column names are user data seeded by the
+  // server in Russian ("К работе", "На рассмотрении"), so this table matches
+  // what the rows are actually called — translating it would stop it matching.
+  'src/utils/columnStatus.js',
 ]
 
 // Strips comments before looking for Cyrillic, so a Russian word inside an

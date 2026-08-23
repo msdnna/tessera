@@ -3,6 +3,7 @@
 // Namespaces mirror the feature they belong to — keep this list in sync with
 // en/index.js, tests/cx-i18n.spec.js fails on any divergence.
 import common from './common.json'
+import shell from './shell.json'
 import board from './board.json'
 import task from './task.json'
 import project from './project.json'
@@ -15,6 +16,7 @@ import errors from './errors.json'
 
 export default {
   common,
+  shell,
   board,
   task,
   project,

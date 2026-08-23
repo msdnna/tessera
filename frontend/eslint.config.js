@@ -102,6 +102,13 @@ export default [
             'glpat-…',
             'https://gitlab.example.com',
             '.gitlab/issue_templates/*.md',
+            // The same kind of verbatim identifier elsewhere in the shell: the
+            // example server address on the sign-in screen, the key of a
+            // built-in editor command (what the user types after the slash),
+            // and the release-stage marker on the Documents nav item.
+            'https://tessera.msdnna.website',
+            'approve',
+            'alpha',
           ],
           // Defaults, plus `placeholder` on any element: the UI is built on
           // Naive UI, so nearly every placeholder sits on `<n-input>` rather

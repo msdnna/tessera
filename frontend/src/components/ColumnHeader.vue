@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, nextTick, h } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, NInput, NPopover, NPopconfirm, NDropdown, useMessage } from 'naive-ui'
 import {
   EllipsisHorizontalOutline,
@@ -13,6 +14,9 @@ import TesseraIcon from './TesseraIcon.vue'
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
 import { columns as columnsApi } from '@/api'
+import { columnStatusName } from '@/utils/columnStatus'
+
+const { t } = useI18n()
 
 const props = defineProps({
   dcol: { type: Object, required: true },
@@ -28,14 +32,12 @@ const emit = defineEmits(['changed', 'set-done', 'toggle-collapse'])
 // Status glyph from the Tessera icon pack: done = check circle,
 // first = empty circle, review = ⅔-pie, other middle = in-progress (half). Filled
 // for done so it stands out; the glyph is tinted flat with the column colour (matches
-// the pack preview). Review columns are detected by name (no explicit column type).
-const REVIEW_RE = /рассмотр|ревью|review|проверк/i
-const statusName = computed(() => {
-  if (props.isDone) return 'status-done'
-  if (props.first) return 'status-todo'
-  if (REVIEW_RE.test(props.dcol.name || '')) return 'status-review'
-  return 'status-progress'
-})
+// the pack preview). Review columns are detected by name (no explicit column type) —
+// that name-matching lives in utils/columnStatus.js, where the Russian words are
+// data (what the seeded rows are called), not interface text.
+const statusName = computed(() =>
+  columnStatusName({ isDone: props.isDone, first: props.first, name: props.dcol.name }),
+)
 const statusVariant = computed(() => (props.isDone ? 'filled' : 'outline'))
 // Tint the glyph with the column colour; fall back to the accent (same as the
 // column's top bar) rather than a dull grey so the icon always reads as coloured.
@@ -51,15 +53,15 @@ const ctxShow = ref(false)
 const ctxX = ref(0)
 const ctxY = ref(0)
 const ctxOptions = computed(() => [
-  { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+  { label: t('board.column.rename'), key: 'rename', icon: menuIcon(CreateOutline) },
   {
-    label: props.isDone ? 'Снять завершение' : 'Сделать завершающей',
+    label: props.isDone ? t('board.column.unsetDone') : t('board.column.setDone'),
     key: 'done',
     icon: menuIcon(CheckmarkDoneOutline),
   },
   { type: 'divider', key: 'd1' },
   {
-    label: 'Удалить колонку',
+    label: t('board.column.delete'),
     key: 'delete',
     icon: dangerIcon(TrashOutline),
     props: { style: 'color:#e0533d' },
@@ -145,7 +147,7 @@ async function removeCol() {
       :variant="statusVariant"
       class="col-stat col-drag"
       :style="{ color: statusColor }"
-      :title="isDone ? 'Завершающая колонка' : 'Перетащите за заголовок'"
+      :title="isDone ? t('board.column.doneTitle') : t('board.column.dragTitle')"
     />
     <n-input
       v-if="renaming"
@@ -157,14 +159,14 @@ async function removeCol() {
     />
     <span v-else class="col-title col-drag" @dblclick="startRename">{{ dcol.name }}</span>
     <span class="count">{{ count }}</span>
-    <span v-if="estimate" class="col-est" title="Суммарная оценка задач этапа"
+    <span v-if="estimate" class="col-est" :title="t('board.column.estimateTitle')"
       >Σ {{ estimate }}</span
     >
     <n-button
       text
       size="tiny"
       class="col-collapse"
-      title="Свернуть колонку"
+      :title="t('board.column.collapse')"
       @click.stop="emit('toggle-collapse')"
     >
       <n-icon :component="ChevronBackOutline" />
@@ -183,7 +185,7 @@ async function removeCol() {
             class="sw"
             :class="{ active: s === (dcol.color || '') }"
             :style="{ backgroundImage: swatchBg(s) }"
-            :title="s || 'По умолчанию'"
+            :title="s || t('board.column.colorDefault')"
             @click="setColor(s)"
           />
         </div>
@@ -195,20 +197,20 @@ async function removeCol() {
           @click="toggleDone"
         >
           <template #icon><n-icon :component="CheckmarkDoneOutline" /></template>
-          {{ isDone ? 'Снять завершение' : 'Сделать завершающей' }}
+          {{ isDone ? t('board.column.unsetDone') : t('board.column.setDone') }}
         </n-button>
         <n-popconfirm
           :positive-button-props="{ type: 'error', 'data-testid': 'column-delete-confirm' }"
-          positive-text="Удалить"
+          :positive-text="t('common.action.delete')"
           @positive-click="removeCol"
         >
           <template #trigger>
             <n-button type="error" ghost size="small" block data-testid="column-delete">
               <template #icon><n-icon :component="TrashOutline" /></template>
-              Удалить колонку
+              {{ t('board.column.delete') }}
             </n-button>
           </template>
-          Удалить колонку со всеми задачами?
+          {{ t('board.column.deleteConfirm') }}
         </n-popconfirm>
       </div>
     </n-popover>

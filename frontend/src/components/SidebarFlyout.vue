@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon, NText } from 'naive-ui'
 import { FolderOutline } from '@vicons/ionicons5'
@@ -15,6 +16,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['navigate'])
 
+const { t } = useI18n()
 const store = useWorkspacesStore()
 const router = useRouter()
 const route = useRoute()
@@ -112,7 +114,9 @@ const boardBox = (b) =>
         <TesseraIcon v-else name="layout-kanban" :size="14" />
         <span class="fly-board-name">{{ b.name }}</span>
       </button>
-      <n-text v-if="!boards.length" depth="3" class="fly-empty">нет досок</n-text>
+      <n-text v-if="!boards.length" depth="3" class="fly-empty">
+        {{ t('shell.tree.noBoards') }}
+      </n-text>
     </template>
 
     <!-- Group: folder header + recursive children -->
@@ -142,7 +146,7 @@ const boardBox = (b) =>
           @navigate="emit('navigate')"
         />
         <n-text v-if="!subgroups.length && !childProjects.length" depth="3" class="fly-empty">
-          пусто
+          {{ t('shell.tree.emptyGroup') }}
         </n-text>
       </div>
     </template>

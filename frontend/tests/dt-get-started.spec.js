@@ -216,7 +216,9 @@ describe('Get Started scenario', () => {
     // from the option key, so the literal check above would miss a rename on
     // either side.
     expect(markup).toContain("'data-tour': `menu-${o.key}`")
-    expect(markup).toMatch(/label: 'Проект', key: 'project'/)
+    // The label moved into the catalogue (#2799); the anchor rides on the key,
+    // which is what has to stay put — a renamed key silently unhooks the step.
+    expect(markup).toMatch(/label: t\('shell\.tree\.addProject'\), key: 'project'/)
   })
 
   it('survives naive-ui attribute fallthrough', async () => {

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick, h } from 'vue'
+import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import {
   NIcon,
@@ -47,6 +48,7 @@ const props = defineProps({
   depth: { type: Number, default: 0 },
 })
 
+const { t } = useI18n()
 const store = useWorkspacesStore()
 const message = useMessage()
 const tree = useTreeExpand()
@@ -66,18 +68,20 @@ const settingsShow = ref(false)
 const ctxShow = ref(false)
 const ctxX = ref(0)
 const ctxY = ref(0)
-const ctxOptions = [
-  { label: 'Новый проект', key: 'add-project', icon: menuIcon(DocumentTextOutline) },
-  { label: 'Новая группа', key: 'add-group', icon: menuIcon(FolderOutline) },
+// Computed, not a module constant: a frozen table keeps the language of the
+// first render and never follows a switch.
+const ctxOptions = computed(() => [
+  { label: t('shell.group.newProject'), key: 'add-project', icon: menuIcon(DocumentTextOutline) },
+  { label: t('shell.group.newGroup'), key: 'add-group', icon: menuIcon(FolderOutline) },
   { type: 'divider', key: 'd1' },
-  { label: 'Переименовать', key: 'rename', icon: menuIcon(CreateOutline) },
+  { label: t('shell.group.rename'), key: 'rename', icon: menuIcon(CreateOutline) },
   {
-    label: 'Удалить группу',
+    label: t('shell.group.delete'),
     key: 'delete',
     icon: dangerIcon(TrashOutline),
     props: { style: 'color:#e0533d' },
   },
-]
+])
 function onCtx(e) {
   if (pressMoved()) return
   ctxShow.value = false
@@ -141,10 +145,10 @@ const onGrpChange = (evt) => moveSidebarGroup(evt, grpModel.value, props.group.i
 const onProjChange = (evt) =>
   moveSidebarProject(evt, projModel.value, props.group.id, store, message)
 
-const addOptions = [
-  { label: 'Проект', key: 'project', icon: menuIcon(DocumentTextOutline) },
-  { label: 'Группа', key: 'group', icon: menuIcon(FolderOutline) },
-]
+const addOptions = computed(() => [
+  { label: t('shell.tree.addProject'), key: 'project', icon: menuIcon(DocumentTextOutline) },
+  { label: t('shell.tree.addGroup'), key: 'group', icon: menuIcon(FolderOutline) },
+])
 
 // Projects are named in a modal (see ProjectCreateModal); groups keep the
 // create-then-rename flow.
@@ -160,7 +164,7 @@ async function onAdd(key) {
     // project) so the steps that follow point at *this* group and not at the
     // first one in the tree (#2778 rework).
     const res = await wsApi.createGroup(store.currentId, {
-      name: 'Группа',
+      name: t('shell.group.defaultName'),
       parent_id: props.group.id,
     })
     tour.noteCreated({ groupId: res.data?.id })
@@ -250,7 +254,7 @@ async function commitRename() {
         {{ group.name }}
       </span>
       <n-dropdown trigger="click" :options="addOptions" @select="onAdd">
-        <n-button class="hover-btn" text size="tiny" title="Добавить" @click.stop>
+        <n-button class="hover-btn" text size="tiny" :title="t('shell.tree.add')" @click.stop>
           <n-icon :component="AddOutline" />
         </n-button>
       </n-dropdown>
@@ -274,20 +278,20 @@ async function commitRename() {
           />
           <n-button type="primary" ghost size="small" block @click="startRename">
             <template #icon><n-icon :component="CreateOutline" /></template>
-            Переименовать
+            {{ t('shell.group.rename') }}
           </n-button>
           <n-popconfirm
             :positive-button-props="{ type: 'error' }"
-            positive-text="Удалить"
+            :positive-text="t('common.action.delete')"
             @positive-click="remove"
           >
             <template #trigger>
               <n-button type="error" ghost size="small" block>
                 <template #icon><n-icon :component="TrashOutline" /></template>
-                Удалить группу
+                {{ t('shell.group.delete') }}
               </n-button>
             </template>
-            Подгруппы удалятся, проекты станут без группы. Удалить?
+            {{ t('shell.group.deleteConfirm') }}
           </n-popconfirm>
         </div>
       </n-popover>
@@ -351,20 +355,20 @@ async function commitRename() {
 
     <n-modal v-model:show="confirmDelete">
       <n-card
-        :title="`Удалить группу «${group.name}»?`"
+        :title="t('shell.group.deleteTitle', { name: group.name })"
         style="max-width: 400px"
         role="dialog"
         :bordered="false"
       >
-        <p class="confirm-msg">
-          Подгруппы удалятся, проекты станут без группы. Действие необратимо.
-        </p>
+        <p class="confirm-msg">{{ t('shell.group.deleteWarning') }}</p>
         <template #footer>
           <div class="confirm-actions">
-            <n-button size="small" @click="confirmDelete = false">Отмена</n-button>
+            <n-button size="small" @click="confirmDelete = false">
+              {{ t('common.action.cancel') }}
+            </n-button>
             <n-button type="error" size="small" @click="remove()">
               <template #icon><n-icon :component="TrashOutline" /></template>
-              Удалить
+              {{ t('common.action.delete') }}
             </n-button>
           </div>
         </template>

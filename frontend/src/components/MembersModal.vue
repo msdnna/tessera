@@ -1,5 +1,6 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NModal,
   NCard,
@@ -23,16 +24,19 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:show'])
 
+const { t } = useI18n()
 const message = useMessage()
 const members = ref([])
 const invitations = ref([])
 const email = ref('')
 const role = ref('member')
 const lastLink = ref('') // link from the most recent invitation, for copying
-const roleOptions = [
-  { label: 'Участник', value: 'member' },
-  { label: 'Админ', value: 'admin' },
-]
+// Computed: the role labels sit inside a select, and a frozen table would keep
+// showing the language of the first render — including inside the open dropdown.
+const roleOptions = computed(() => [
+  { label: t('shell.members.member'), value: 'member' },
+  { label: t('shell.members.admin'), value: 'admin' },
+])
 
 async function load() {
   if (!props.wsId) return
@@ -55,7 +59,7 @@ async function invite() {
     email.value = ''
     lastLink.value = ''
     await load()
-    message.success('Участник добавлен')
+    message.success(t('shell.members.added'))
   } catch (err) {
     if (err.message === 'no user with that email') {
       try {
@@ -63,7 +67,7 @@ async function invite() {
         lastLink.value = res.data.link || ''
         email.value = ''
         await load()
-        message.success('Приглашение создано — скопируйте ссылку')
+        message.success(t('shell.members.inviteCreated'))
       } catch (err2) {
         message.error(err2.message)
       }
@@ -86,7 +90,7 @@ async function changeRole(userId, newRole) {
   try {
     await wsApi.updateMemberRole(props.wsId, userId, newRole)
     await load()
-    message.success('Роль обновлена')
+    message.success(t('shell.members.roleUpdated'))
   } catch (e) {
     message.error(e.message)
     await load() // revert the select to the server's state
@@ -103,7 +107,7 @@ async function revokeInvite(invId) {
 }
 
 async function copyLink() {
-  if (await copyText(lastLink.value)) message.success('Ссылка скопирована')
+  if (await copyText(lastLink.value)) message.success(t('shell.members.linkCopied'))
   else message.info(lastLink.value)
 }
 
@@ -115,14 +119,16 @@ watch(
 
 <template>
   <n-modal :show="show" @update:show="emit('update:show', $event)">
-    <n-card title="Участники пространства" style="width: 460px; max-width: 92vw" role="dialog">
+    <n-card :title="t('shell.members.title')" style="width: 460px; max-width: 92vw" role="dialog">
       <div class="members">
         <div v-for="m in members" :key="m.user_id" class="member">
           <div class="info">
             <span class="name">{{ m.name }}</span>
             <span class="mail">{{ m.email }}</span>
           </div>
-          <n-tag v-if="m.role === 'owner'" size="small" :bordered="false">Владелец</n-tag>
+          <n-tag v-if="m.role === 'owner'" size="small" :bordered="false">
+            {{ t('shell.members.owner') }}
+          </n-tag>
           <n-select
             v-else
             :value="m.role"
@@ -134,7 +140,7 @@ watch(
           <n-popconfirm
             v-if="m.role !== 'owner'"
             :positive-button-props="{ type: 'error' }"
-            positive-text="Удалить"
+            :positive-text="t('common.action.delete')"
             @positive-click="remove(m.user_id)"
           >
             <template #trigger>
@@ -142,19 +148,19 @@ watch(
                 ><n-icon :component="TrashOutline"
               /></n-button>
             </template>
-            Удалить участника из пространства?
+            {{ t('shell.members.removeConfirm') }}
           </n-popconfirm>
         </div>
       </div>
 
       <!-- Pending invitations -->
       <div v-if="invitations.length" class="invites">
-        <n-text depth="3" class="lbl">Приглашения</n-text>
+        <n-text depth="3" class="lbl">{{ t('shell.members.invitations') }}</n-text>
         <div v-for="inv in invitations" :key="inv.id" class="invite-row">
           <n-icon :component="MailOutline" class="inv-icon" />
           <span class="inv-mail">{{ inv.email }}</span>
           <n-tag size="small" :bordered="false">{{
-            inv.role === 'admin' ? 'Админ' : 'Участник'
+            inv.role === 'admin' ? t('shell.members.admin') : t('shell.members.member')
           }}</n-tag>
           <n-button text size="tiny" type="error" @click="revokeInvite(inv.id)">
             <n-icon :component="TrashOutline" />
@@ -163,20 +169,20 @@ watch(
       </div>
 
       <div class="invite">
-        <n-text depth="3" class="lbl">Пригласить по email</n-text>
+        <n-text depth="3" class="lbl">{{ t('shell.members.inviteLabel') }}</n-text>
         <n-space>
           <n-input
             v-model:value="email"
             size="small"
-            placeholder="user@example.com"
+            :placeholder="t('shell.members.emailPlaceholder')"
             @keyup.enter="invite"
           />
           <n-select v-model:value="role" :options="roleOptions" size="small" style="width: 130px" />
-          <n-button type="primary" size="small" @click="invite">Пригласить</n-button>
+          <n-button type="primary" size="small" @click="invite">
+            {{ t('shell.members.invite') }}
+          </n-button>
         </n-space>
-        <n-text depth="3" class="hint">
-          Зарегистрированного — добавим сразу; нового — создадим приглашение по ссылке.
-        </n-text>
+        <n-text depth="3" class="hint">{{ t('shell.members.inviteHint') }}</n-text>
         <div v-if="lastLink" class="link-box">
           <n-input :value="lastLink" size="small" readonly />
           <n-button size="small" @click="copyLink">

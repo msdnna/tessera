@@ -8,6 +8,7 @@
 // Input / button / link styling for the slotted form lives in main.css under
 // `.auth` (scoped styles can't reach slotted nodes).
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover, NInput, NButton } from 'naive-ui'
 import { SunnyOutline, MoonOutline, ServerOutline } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
@@ -19,6 +20,7 @@ defineProps({
   title: { type: String, default: '' },
 })
 
+const { t } = useI18n()
 const theme = useThemeStore()
 
 // Desktop only: let the user point the app at a self-hosted server before
@@ -96,29 +98,31 @@ onBeforeUnmount(() => {
           <button
             class="auth-tool-btn"
             type="button"
-            title="Адрес сервера"
-            aria-label="Адрес сервера"
+            :title="t('shell.auth.server')"
+            :aria-label="t('shell.auth.server')"
           >
             <n-icon :component="ServerOutline" :size="20" />
           </button>
         </template>
         <div class="auth-server-pop">
-          <div class="auth-server-label">Адрес сервера</div>
+          <div class="auth-server-label">{{ t('shell.auth.server') }}</div>
           <n-input
             v-model:value="serverInput"
             placeholder="https://tessera.msdnna.website"
             size="small"
             @keyup.enter="saveServer"
           />
-          <n-button size="small" type="primary" block @click="saveServer">Сохранить</n-button>
+          <n-button size="small" type="primary" block @click="saveServer">
+            {{ t('common.action.save') }}
+          </n-button>
         </div>
       </n-popover>
 
       <button
         class="auth-tool-btn"
         type="button"
-        :title="theme.isDark ? 'Светлая тема' : 'Тёмная тема'"
-        :aria-label="theme.isDark ? 'Светлая тема' : 'Тёмная тема'"
+        :title="theme.isDark ? t('shell.auth.themeLight') : t('shell.auth.themeDark')"
+        :aria-label="theme.isDark ? t('shell.auth.themeLight') : t('shell.auth.themeDark')"
         @click="theme.toggle()"
       >
         <n-icon :component="theme.isDark ? SunnyOutline : MoonOutline" :size="20" />

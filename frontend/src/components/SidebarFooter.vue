@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton, NIcon, NPopover, NTooltip, NAvatar } from 'naive-ui'
 import {
   LogOutOutline,
@@ -17,6 +18,7 @@ const props = defineProps({
   collapsed: { type: Boolean, default: false },
 })
 
+const { t } = useI18n()
 const authStore = useAuthStore()
 const router = useRouter()
 const tour = useTourStore()
@@ -66,45 +68,47 @@ function logout() {
         <n-avatar v-else round :size="32" class="ava">{{ initials }}</n-avatar>
       </template>
       <div class="user-pop">
-        <div class="up-name">{{ authStore.user?.name || 'Профиль' }}</div>
+        <div class="up-name">{{ authStore.user?.name || t('shell.user.profile') }}</div>
         <div class="up-mail">{{ authStore.user?.email }}</div>
         <!-- Same anchor on both shapes of the footer (compact popover / full
              row): only one of them is ever in the DOM. -->
         <n-button size="small" block data-tour="footer-settings" @click="openSettings">
           <template #icon><n-icon :component="SettingsOutline" /></template>
-          Настройки
+          {{ t('shell.user.settings') }}
         </n-button>
         <n-button size="small" block data-tour="footer-tour" @click="startTour">
           <template #icon><n-icon :component="SchoolOutline" /></template>
-          Обучение
+          {{ t('shell.user.tour') }}
         </n-button>
         <n-button v-if="isAdmin" size="small" block @click="openAdmin">
           <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>
-          Администрирование
+          {{ t('shell.user.admin') }}
         </n-button>
         <n-button size="small" block data-testid="logout" @click="logout">
           <template #icon><n-icon :component="LogOutOutline" /></template>
-          Выйти
+          {{ t('shell.user.logout') }}
         </n-button>
       </div>
     </n-popover>
     <div v-else class="user">
       <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" @click="openSettings" />
       <n-avatar v-else round :size="30" class="ava" @click="openSettings">{{ initials }}</n-avatar>
-      <span class="uname" @click="openSettings">{{ authStore.user?.name || 'Профиль' }}</span>
+      <span class="uname" @click="openSettings">
+        {{ authStore.user?.name || t('shell.user.profile') }}
+      </span>
       <n-tooltip v-if="isAdmin">
         <template #trigger>
           <n-button
             quaternary
             circle
             size="small"
-            aria-label="Администрирование"
+            :aria-label="t('shell.user.admin')"
             @click="openAdmin"
           >
             <n-icon :component="ShieldCheckmarkOutline" />
           </n-button>
         </template>
-        Администрирование
+        {{ t('shell.user.admin') }}
       </n-tooltip>
       <n-tooltip>
         <template #trigger>
@@ -112,14 +116,14 @@ function logout() {
             quaternary
             circle
             size="small"
-            aria-label="Обучение"
+            :aria-label="t('shell.user.tour')"
             data-tour="footer-tour"
             @click="startTour"
           >
             <n-icon :component="SchoolOutline" />
           </n-button>
         </template>
-        Обучение
+        {{ t('shell.user.tour') }}
       </n-tooltip>
       <n-tooltip>
         <template #trigger>
@@ -127,14 +131,14 @@ function logout() {
             quaternary
             circle
             size="small"
-            aria-label="Настройки"
+            :aria-label="t('shell.user.settings')"
             data-tour="footer-settings"
             @click="openSettings"
           >
             <n-icon :component="SettingsOutline" />
           </n-button>
         </template>
-        Настройки
+        {{ t('shell.user.settings') }}
       </n-tooltip>
       <n-tooltip>
         <template #trigger>
@@ -142,14 +146,14 @@ function logout() {
             quaternary
             circle
             size="small"
-            aria-label="Выйти"
+            :aria-label="t('shell.user.logout')"
             data-testid="logout"
             @click="logout"
           >
             <n-icon :component="LogOutOutline" />
           </n-button>
         </template>
-        Выйти
+        {{ t('shell.user.logout') }}
       </n-tooltip>
     </div>
   </div>

@@ -543,9 +543,7 @@ function bindingTriggerText(b) {
     case 'column':
       return t('gitlab.modal.summary.columnMove', {
         name:
-          columnNameById.value[tr.column_id] ||
-          tr.column_name ||
-          t('gitlab.modal.summary.unknown'),
+          columnNameById.value[tr.column_id] || tr.column_name || t('gitlab.modal.summary.unknown'),
       })
     case 'priority':
       return tr.priority == null
@@ -1086,7 +1084,9 @@ watch(
                     />
                   </div>
 
-                  <n-text depth="3" class="lbl">{{ $t('gitlab.modal.writeback.autoGroup') }}</n-text>
+                  <n-text depth="3" class="lbl">{{
+                    $t('gitlab.modal.writeback.autoGroup')
+                  }}</n-text>
                   <div><n-switch v-model:value="wbAutoGroup" size="small" /></div>
                 </template>
 
@@ -1270,7 +1270,9 @@ watch(
                     />
                   </template>
                   <template v-else-if="b.trigger.type === 'completion'">
-                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.condition') }}</n-text>
+                    <n-text depth="3" class="lbl">{{
+                      $t('gitlab.modal.actions.condition')
+                    }}</n-text>
                     <n-select
                       v-model:value="b.trigger.completed"
                       :options="completionOptions"
@@ -1335,7 +1337,9 @@ watch(
                     />
                   </template>
                   <template v-else-if="b.action.type === 'post_comment'">
-                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.addMarker') }}</n-text>
+                    <n-text depth="3" class="lbl">{{
+                      $t('gitlab.modal.actions.addMarker')
+                    }}</n-text>
                     <div>
                       <n-switch
                         v-model:value="b.action.add_marker"

@@ -42,7 +42,17 @@
     "namePlaceholder": "Column name",
     "needStatus": "Create at least one status column first",
     "emptyStatus": "No columns — create the first one with “＋ Column”.",
-    "emptyTag": "No tags — add them under “Tags”."
+    "emptyTag": "No tags — add them under “Tags”.",
+    "collapse": "Collapse the column",
+    "doneTitle": "Completing column",
+    "dragTitle": "Drag by the header",
+    "estimateTitle": "Total estimate of the milestone tasks",
+    "colorDefault": "Default",
+    "rename": "Rename",
+    "setDone": "Make it completing",
+    "unsetDone": "Stop completing",
+    "delete": "Delete the column",
+    "deleteConfirm": "Delete the column with all its tasks?"
   },
   "group": {
     "noMilestone": "No milestone",
