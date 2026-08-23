@@ -6,6 +6,7 @@ import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import UserAvatar from './UserAvatar.vue'
 import TagPill from './TagPill.vue'
+import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -17,6 +18,8 @@ const props = defineProps({
   column: { type: Object, default: null },
 })
 
+const { formatDate } = useFormat()
+
 const tags = computed(() =>
   (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
 )
@@ -25,10 +28,7 @@ const assignees = computed(() =>
 )
 const due = computed(() => {
   if (!props.task.due_date) return null
-  return new Date(props.task.due_date).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-  })
+  return formatDate(props.task.due_date, { day: '2-digit', month: 'short' })
 })
 </script>
 

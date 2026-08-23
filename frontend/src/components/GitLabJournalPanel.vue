@@ -3,8 +3,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { NIcon, NButton, useMessage } from 'naive-ui'
 import { OpenOutline, RefreshOutline } from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
-import { useThemeStore } from '@/stores/theme'
-import { useDateLocale } from '@/composables/useDateLocale'
+import { useFormat } from '@/composables/useFormat'
 import { useRealtime } from '@/composables/useRealtime'
 import { runDuration, elapsedSince } from '@/utils/duration'
 import { PRIORITY_LABELS } from '@/styles/tokens'
@@ -18,8 +17,7 @@ const props = defineProps({
 })
 
 const message = useMessage()
-const theme = useThemeStore()
-const { formatDue } = useDateLocale()
+const { formatDue, formatDateTime } = useFormat()
 
 const runs = ref([])
 const loading = ref(false)
@@ -162,14 +160,7 @@ function fmtVal(key, v) {
 
 function fmtTime(s) {
   if (!s) return ''
-  const locale = theme.language === 'en' ? 'en-GB' : 'ru-RU'
-  return new Date(s).toLocaleString(locale, {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: theme.timeFormat === '12h',
-  })
+  return formatDateTime(s, { day: '2-digit', month: 'short' })
 }
 
 function runCounts(run) {

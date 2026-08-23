@@ -7,6 +7,7 @@ import NotificationSettings from '@/components/NotificationSettings.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
+import { useFormat } from '@/composables/useFormat'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 import { useApiImage } from '@/composables/useApiImage'
 import { useDesktopUpdate } from '@/composables/useDesktopUpdate'
@@ -173,12 +174,10 @@ const timeFmtOptions = [
   { label: '24-часовой', value: '24h' },
   { label: '12-часовой (AM/PM)', value: '12h' },
 ]
-const dateFmtOptions = [
-  { label: '31.12.2026', value: 'dd.MM.yyyy' },
-  { label: '2026-12-31', value: 'yyyy-MM-dd' },
-  { label: '12/31/2026', value: 'MM/dd/yyyy' },
-  { label: '31/12/2026', value: 'dd/MM/yyyy' },
-]
+// Date format is a named preset since #2798, so the options are samples rendered
+// by Intl in the current language — picking "medium" shows «31 дек. 2026 г.» on
+// ru and "31 Dec 2026" on en, instead of a fixed pattern that fights the locale.
+const { datePresetOptions } = useFormat()
 const weekStartOptions = [
   { label: 'Понедельник', value: 1 },
   { label: 'Воскресенье', value: 0 },
@@ -412,7 +411,7 @@ async function resendVerify() {
           <span>Формат даты</span>
           <n-select
             :value="theme.dateFormat"
-            :options="dateFmtOptions"
+            :options="datePresetOptions"
             @update:value="(v) => theme.setLocale({ date_format: v })"
           />
         </label>

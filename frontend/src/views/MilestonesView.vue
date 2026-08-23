@@ -12,6 +12,7 @@ import {
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { milestoneKey, milestoneRange } from '@/utils/milestones'
+import { useFormat } from '@/composables/useFormat'
 import { formatEstimate } from '@/utils/estimation'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
@@ -19,6 +20,7 @@ import MilestoneManager from '@/components/MilestoneManager.vue'
 
 const router = useRouter()
 const store = useWorkspacesStore()
+const { formatters } = useFormat()
 const message = useMessage()
 
 const list = ref([])
@@ -177,7 +179,9 @@ onMounted(load)
                 </template>
                 Синхронизируется с GitLab
               </n-tooltip>
-              <span v-if="milestoneRange(m)" class="ms-range">{{ milestoneRange(m) }}</span>
+              <span v-if="milestoneRange(m, formatters)" class="ms-range">{{
+                milestoneRange(m, formatters)
+              }}</span>
             </div>
             <div class="ms-line2">
               <template v-if="m.task_count">

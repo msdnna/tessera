@@ -59,6 +59,7 @@ import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
+import { useFormat } from '@/composables/useFormat'
 import {
   sortedColumns,
   columnById,
@@ -87,7 +88,6 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { useThemeStore } from '@/stores/theme'
-import { useDateLocale } from '@/composables/useDateLocale'
 import { useTagFit } from '@/composables/useTagFit'
 import DueEditor from './DueEditor.vue'
 import TagPill from './TagPill.vue'
@@ -151,7 +151,7 @@ const projectId = computed(() => bv.projectId)
 
 const store = useWorkspacesStore()
 const theme = useThemeStore()
-const { formatDue } = useDateLocale()
+const { formatDue, formatters } = useFormat()
 // Tag colour clamped for legible text on the active theme.
 const tagText = (c) => readableHue(c, theme.isDark)
 const router = useRouter()
@@ -383,7 +383,7 @@ const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
 const estFull = computed(() => formatEstimateFull(estimate.value, estCfg.value))
 // Projected window from start_date, free-form ("18 мая → 13 июл."), shown inline.
 const estRange = computed(() =>
-  estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value),
+  estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value, formatters.value),
 )
 const estOptions = computed(() => scaleOptions(estCfg.value)) // non-empty only for points
 const estPlaceholder = computed(() => estimatePlaceholder(estCfg.value))
@@ -1285,8 +1285,11 @@ async function onSubtaskChanged() {
                       <span :class="{ muted: !taskMilestone }">
                         {{ taskMilestone ? taskMilestone.title : 'Не задан' }}
                       </span>
-                      <span v-if="taskMilestone && milestoneRange(taskMilestone)" class="est-range">
-                        · {{ milestoneRange(taskMilestone) }}
+                      <span
+                        v-if="taskMilestone && milestoneRange(taskMilestone, formatters)"
+                        class="est-range"
+                      >
+                        · {{ milestoneRange(taskMilestone, formatters) }}
                       </span>
                       <span v-if="taskMilestone?.state === 'closed'" class="est-range"
                         >· закрыт</span
@@ -1311,8 +1314,8 @@ async function onSubtaskChanged() {
                       >
                         <span class="grow ms-opt" :class="{ 'ms-closed': m.state === 'closed' }">
                           <span class="ms-opt-title">{{ m.title }}</span>
-                          <span v-if="milestoneRange(m)" class="ms-opt-range">{{
-                            milestoneRange(m)
+                          <span v-if="milestoneRange(m, formatters)" class="ms-opt-range">{{
+                            milestoneRange(m, formatters)
                           }}</span>
                         </span>
                         <n-icon

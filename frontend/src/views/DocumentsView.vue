@@ -57,6 +57,7 @@ import { useDocComments } from '@/composables/useDocComments'
 import { useDocLinks } from '@/composables/useDocLinks'
 import { useDocPresence } from '@/composables/useDocPresence'
 import { useDocVersions } from '@/composables/useDocVersions'
+import { useFormat } from '@/composables/useFormat'
 import { toDocJSON } from '@/utils/docSchema'
 import { blockNodeById, quoteFromBlock } from '@/utils/docComments'
 import { docOutline, headingForBlock } from '@/utils/docToc'
@@ -64,6 +65,7 @@ import { docOutline, headingForBlock } from '@/utils/docToc'
 const message = useMessage()
 const wsStore = useWorkspacesStore()
 const theme = useThemeStore()
+const { formatDate } = useFormat()
 const route = useRoute()
 const router = useRouter()
 
@@ -346,7 +348,7 @@ function applyPreview(id, data) {
 }
 
 function fmtDate(v) {
-  return v ? new Date(v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''
+  return v ? formatDate(v, { day: 'numeric', month: 'short' }) : ''
 }
 
 async function loadList() {

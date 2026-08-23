@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { NTooltip } from 'naive-ui'
 import { useVersionInfo } from '@/composables/useVersionInfo'
+import { useFormat } from '@/composables/useFormat'
 
 // The running Web/API versions, shown low-contrast in the sidebar footer.
 // A neutral element by the design language — flat, no accent gradient.
@@ -16,18 +17,13 @@ defineProps({
 })
 
 const { web, api } = useVersionInfo()
+const { formatDateTime } = useFormat()
 
 function fmtDate(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString('ru-RU', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return formatDateTime(d, { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
 // One service's detail lines for the tooltip / block.

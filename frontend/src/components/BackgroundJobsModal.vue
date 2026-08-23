@@ -5,10 +5,12 @@ import { PlayOutline, StopOutline, ServerOutline, SyncOutline } from '@vicons/io
 import EmptyState from '@/components/EmptyState.vue'
 import { admin as adminApi } from '@/api'
 import { runDuration, elapsedSince } from '@/utils/duration'
+import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({ show: { type: Boolean, default: false } })
 const emit = defineEmits(['update:show'])
 const message = useMessage()
+const { formatTime } = useFormat()
 
 const jobs = ref([])
 const selectedKey = ref(null)
@@ -116,13 +118,7 @@ function nextRunText(j) {
   return delta >= 60 ? `через ${Math.floor(delta / 60)} мин ${delta % 60} с` : `через ${delta} с`
 }
 function fmtTime(iso) {
-  return iso
-    ? new Date(iso).toLocaleTimeString('ru-RU', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-    : '—'
+  return iso ? formatTime(iso, { second: '2-digit' }) : '—'
 }
 const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
 </script>

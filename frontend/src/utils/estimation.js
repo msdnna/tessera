@@ -7,6 +7,7 @@
 //   • points → the point number on a scale (Fibonacci / T-shirt / linear);
 //   • custom → a count of a named unit.
 // Mirrors the backend canonicalisation in handlers/estimation.go.
+import { defaultFormatters } from '@/utils/format'
 
 export const DEFAULT_ESTIMATION = { unit: 'time', hours_per_day: 8, days_per_week: 5 }
 
@@ -185,28 +186,29 @@ export function formatEstimateFull(value, cfg) {
 // Free-form projected window for tooltips/hints: "18 мая → 13 июл." — day +
 // short month, the year appended only when it isn't the current one (mirrors the
 // due-date style). Returns '' without a start date or a time estimate.
-export function estimateRangeShort(startISO, value, cfg, locale = 'ru-RU') {
+export function estimateRangeShort(startISO, value, cfg, fmt = defaultFormatters()) {
   const days = estimateToDays(value, cfg)
   if (days == null || !startISO) return ''
   const start = new Date(startISO)
   if (Number.isNaN(start.getTime())) return ''
   const end = new Date(start.getTime() + Math.round(days) * 86400000)
-  const nowY = new Date().getFullYear()
-  const fmt = (dt) => {
+  // "This year" is the user's year, in their timezone — not the browser's.
+  const nowY = fmt.today().year
+  const label = (dt) => {
     const o = { day: '2-digit', month: 'short' }
-    if (dt.getFullYear() !== nowY) o.year = 'numeric'
-    return dt.toLocaleDateString(locale, o)
+    if (fmt.parts(dt).year !== nowY) o.year = 'numeric'
+    return fmt.formatDate(dt, o)
   }
-  return `${fmt(start)} → ${fmt(end)}`
+  return `${label(start)} → ${label(end)}`
 }
 
 // One-line tooltip body: spelled-out estimate + free-form projected window in
 // parens, e.g. "8 недель (18 мая → 13 июл.)". Without a start date (no window to
 // project) it degrades to just the estimate. Returns '' for an empty estimate.
-export function estimateTooltip(startISO, value, cfg, locale = 'ru-RU') {
+export function estimateTooltip(startISO, value, cfg, fmt = defaultFormatters()) {
   const full = formatEstimateFull(value, cfg)
   if (!full) return ''
-  const range = estimateRangeShort(startISO, value, cfg, locale)
+  const range = estimateRangeShort(startISO, value, cfg, fmt)
   return range ? `${full} (${range})` : full
 }
 

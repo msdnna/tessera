@@ -9,6 +9,7 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 import { authorLabel } from '@/utils/docComments'
+import { useFormat } from '@/composables/useFormat'
 
 // The annotation panel: threads anchored to blocks, plus the ones about the
 // document as a whole and the ones whose block has been deleted since.
@@ -27,6 +28,7 @@ const props = defineProps({
   pendingBlock: { type: Boolean, default: false },
 })
 const emit = defineEmits(['add', 'reply', 'edit', 'resolve', 'remove', 'select', 'clear-anchor'])
+const { formatDateTime } = useFormat()
 
 // One draft per thread, keyed by root id; '' is the document-level box.
 const drafts = ref({})
@@ -74,12 +76,7 @@ function mine(comment) {
 
 function fmtTime(v) {
   if (!v) return ''
-  return new Date(v).toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return formatDateTime(v, { day: 'numeric', month: 'short' })
 }
 
 /* ---- anchors for the annotation links (#2730) ---------------------------- */

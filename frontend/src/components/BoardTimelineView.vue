@@ -3,12 +3,12 @@ import { ref, computed, toRef, onBeforeUnmount } from 'vue'
 import { NIcon } from 'naive-ui'
 import { TimerOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
-import { useDateLocale } from '@/composables/useDateLocale'
 import { useThemeStore } from '@/stores/theme'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, readableHue } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { formatEstimateFull, estimateRangeShort } from '@/utils/estimation'
+import { useFormat } from '@/composables/useFormat'
 import { startOfDay, parseDate as parse } from '@/utils/timeAxis'
 import { useChartTimeline } from '@/composables/useChartTimeline'
 import { useChartLanes } from '@/composables/useChartLanes'
@@ -187,7 +187,7 @@ onBeforeUnmount(() => {
 })
 
 // ── hover preview card ──
-const { formatDue } = useDateLocale()
+const { formatDue, formatters } = useFormat()
 const hover = ref(null) // { task, x, y, above }
 let hoverTimer = null
 function onBarEnter(e, t) {
@@ -227,7 +227,12 @@ const hoverEstimate = computed(() =>
 )
 const hoverEstimateRange = computed(() =>
   hover.value
-    ? estimateRangeShort(hover.value.task.start_date, hover.value.task.estimate, estCfg.value)
+    ? estimateRangeShort(
+        hover.value.task.start_date,
+        hover.value.task.estimate,
+        estCfg.value,
+        formatters.value,
+      )
     : '',
 )
 </script>

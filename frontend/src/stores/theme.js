@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { darkTheme } from 'naive-ui'
 import { DARK, LIGHT } from '@/styles/tokens'
 import { users, getAccessToken } from '@/api'
+import { normalizeDatePreset, DEFAULT_PREFS } from '@/utils/format'
 
 // Multi-color accent schemes. Default = purple.
 export const COLOR_THEMES = [
@@ -107,7 +108,11 @@ export const useThemeStore = defineStore('theme', () => {
   const timezone = ref(cached.timezone || '')
   const country = ref(cached.country || '')
   const timeFormat = ref(cached.time_format || '24h')
-  const dateFormat = ref(cached.date_format || 'dd.MM.yyyy')
+  // Named preset ('short' | 'medium' | 'long' | 'iso'), not a date-fns pattern:
+  // a stored pattern hard-codes a field order that contradicts the chosen
+  // language (#2798). Values written by older clients — and by Android, which
+  // still offers the pattern list — are mapped onto the nearest preset on read.
+  const dateFormat = ref(normalizeDatePreset(cached.date_format))
   const weekStart = ref(typeof cached.week_start === 'number' ? cached.week_start : 1)
   const boardBackground = ref(cached.board_background || '')
 
@@ -261,7 +266,7 @@ export const useThemeStore = defineStore('theme', () => {
     timezone.value = prefs.timezone ?? timezone.value
     country.value = prefs.country ?? country.value
     if (prefs.time_format) timeFormat.value = prefs.time_format
-    if (prefs.date_format) dateFormat.value = prefs.date_format
+    if (prefs.date_format) dateFormat.value = normalizeDatePreset(prefs.date_format)
     if (typeof prefs.week_start === 'number') weekStart.value = prefs.week_start
     boardBackground.value = prefs.board_background ?? boardBackground.value
     localStorage.setItem('tessera_prefs', JSON.stringify(snapshot()))
@@ -290,7 +295,8 @@ export const useThemeStore = defineStore('theme', () => {
     if (partial.timezone !== undefined) timezone.value = partial.timezone
     if (partial.country !== undefined) country.value = partial.country
     if (partial.time_format !== undefined) timeFormat.value = partial.time_format
-    if (partial.date_format !== undefined) dateFormat.value = partial.date_format
+    if (partial.date_format !== undefined)
+      dateFormat.value = normalizeDatePreset(partial.date_format)
     if (partial.week_start !== undefined) weekStart.value = partial.week_start
     persist()
   }
@@ -328,7 +334,7 @@ export const useThemeStore = defineStore('theme', () => {
     timezone.value = ''
     country.value = ''
     timeFormat.value = '24h'
-    dateFormat.value = 'dd.MM.yyyy'
+    dateFormat.value = DEFAULT_PREFS.dateFormat
     weekStart.value = 1
     boardBackground.value = ''
     localStorage.setItem('tessera_prefs', JSON.stringify(snapshot()))

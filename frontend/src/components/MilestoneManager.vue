@@ -21,6 +21,7 @@ import {
 } from '@vicons/ionicons5'
 import { projects as projApi, milestones as msApi, gitlab as glApi } from '@/api'
 import { milestoneRange } from '@/utils/milestones'
+import { useFormat } from '@/composables/useFormat'
 import EmptyState from '@/components/EmptyState.vue'
 
 const props = defineProps({
@@ -170,7 +171,8 @@ async function remove(m) {
   }
 }
 
-const fmtRange = milestoneRange
+const { formatters } = useFormat()
+const fmtRange = (m) => milestoneRange(m, formatters.value)
 
 watch(
   () => props.show,

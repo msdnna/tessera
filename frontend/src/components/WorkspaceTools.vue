@@ -22,6 +22,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useAuthStore } from '@/stores/auth'
 import { useResponsive } from '@/composables/useResponsive'
+import { useFormat } from '@/composables/useFormat'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
@@ -41,6 +42,7 @@ const router = useRouter()
 // On touch (mobile) tooltips fire on tap and overlap the dropdown/popover they
 // label — suppress them there.
 const { isMobile } = useResponsive()
+const { formatTime } = useFormat()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
@@ -107,7 +109,7 @@ function openNotification(n) {
   }
 }
 function fmtTime(d) {
-  return new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  return formatTime(d)
 }
 </script>
 

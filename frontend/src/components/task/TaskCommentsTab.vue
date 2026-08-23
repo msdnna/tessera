@@ -19,6 +19,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { fmtWhen, groupThreads } from '@/utils/taskFeed'
+import { useFormat } from '@/composables/useFormat'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
 import { buildMentionItems } from '@/utils/mentions'
@@ -38,6 +39,7 @@ const props = defineProps({
 const emit = defineEmits(['update:comments', 'changed', 'reload-detail'])
 
 const message = useMessage()
+const { formatters } = useFormat()
 const auth = useAuthStore()
 const bv = useBoardViewStore()
 const store = useWorkspacesStore()
@@ -438,7 +440,7 @@ async function onCommentCheck(c, i) {
                 <span v-if="!t.root.author_name && t.root.gl_author_name" class="c-gl">
                   · GitLab
                 </span>
-                <span class="c-when">{{ fmtWhen(t.root.created_at) }}</span>
+                <span class="c-when">{{ fmtWhen(t.root.created_at, formatters) }}</span>
                 <span v-if="t.root.author_id === meId" class="c-acts">
                   <button class="c-act" title="Изменить" @click="startEditComment(t.root)">
                     ✎
@@ -517,7 +519,7 @@ async function onCommentCheck(c, i) {
                         r.author_name || r.gl_author_name || 'Кто-то'
                       }}</span>
                       <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
-                      <span class="c-when">{{ fmtWhen(r.created_at) }}</span>
+                      <span class="c-when">{{ fmtWhen(r.created_at, formatters) }}</span>
                       <span v-if="r.author_id === meId" class="c-acts">
                         <button class="c-act" title="Изменить" @click="startEditComment(r)">
                           ✎

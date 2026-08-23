@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { NButton, NIcon, NInput, NPopconfirm, NPopover, NSelect, NText } from 'naive-ui'
 import { CheckmarkCircleOutline, CloseOutline, LinkOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
+import { useFormat } from '@/composables/useFormat'
 import {
   APPROVAL_STATUS_LABEL,
   STEP_STATUS_LABEL,
@@ -31,6 +32,7 @@ const props = defineProps({
   anchorQuote: { type: String, default: '' },
 })
 const emit = defineEmits(['link', 'unlink', 'raise', 'decide', 'cancel', 'close', 'open-task'])
+const { formatDate } = useFormat()
 
 // ── linking a task ──
 const picking = ref(false)
@@ -140,7 +142,7 @@ function progressLabel(approval) {
 
 function fmtDate(v) {
   if (!v) return ''
-  return new Date(v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  return formatDate(v, { day: 'numeric', month: 'short' })
 }
 </script>
 

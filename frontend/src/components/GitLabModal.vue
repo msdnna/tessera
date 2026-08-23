@@ -34,6 +34,7 @@ import ConflictResolverPanel from '@/components/ConflictResolverPanel.vue'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { PRIORITY_LABELS } from '@/styles/tokens'
+import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -45,6 +46,7 @@ const emit = defineEmits(['update:show'])
 
 const message = useMessage()
 const gl = useGitlabStore()
+const { formatDateTime } = useFormat()
 const ws = useWorkspacesStore()
 
 // ── connection (per-user) ──
@@ -278,12 +280,7 @@ const priorityQualOptions = [{ label: 'Любой приоритет', value: nu
 
 const lastSyncedText = computed(() =>
   lastSynced.value
-    ? new Date(lastSynced.value).toLocaleString('ru-RU', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+    ? formatDateTime(lastSynced.value, { day: '2-digit', month: '2-digit' })
     : 'ещё не синхронизировано',
 )
 

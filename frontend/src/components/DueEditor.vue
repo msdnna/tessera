@@ -9,6 +9,7 @@ import {
   RepeatOutline,
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
+import { useFormat } from '@/composables/useFormat'
 import { FREQ_OPTIONS, TRIGGER_OPTIONS, unitLabel, occurrenceKeys } from '@/utils/recurrence'
 
 const props = defineProps({
@@ -32,6 +33,7 @@ function commit() {
 }
 
 const theme = useThemeStore()
+const { formatDate, formatDateTime } = useFormat()
 const weekStart = computed(() => (theme.weekStart === 0 ? 0 : 1)) // 0=Sun, 1=Mon
 
 // A pure UTC-midnight due is a date-only value (GitLab/legacy) — present it as
@@ -102,17 +104,29 @@ function stepMonth(delta) {
   viewY.value += Math.floor(m / 12)
   viewM.value = ((m % 12) + 12) % 12
 }
+// The picker builds instants from LOCAL calendar fields (`new Date(y, m, d)`), so
+// its own labels are rendered in the browser timezone — `timeZone: null` — rather
+// than in the user's. Anything else would let the grid and the day it writes
+// disagree by a day (#2798).
 const monthLabel = computed(() =>
-  new Date(viewY.value, viewM.value, 1).toLocaleDateString(
-    theme.language === 'en' ? 'en-GB' : 'ru-RU',
-    { month: 'long', year: 'numeric' },
+  formatDate(new Date(viewY.value, viewM.value, 1), {
+    month: 'long',
+    year: 'numeric',
+    timeZone: null,
+  }),
+)
+// Short weekday names come from the locale instead of a ru-only table, so the
+// calendar follows the language setting. 2026-03-01 is a Sunday, so index 0 of
+// this table lines up with Date#getDay().
+const weekdayNames = computed(() =>
+  [0, 1, 2, 3, 4, 5, 6].map((d) =>
+    formatDate(new Date(Date.UTC(2026, 2, 1 + d)), { weekday: 'short', timeZone: 'UTC' }),
   ),
 )
-const WD_RU = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
-const weekdayHeaders = computed(() => {
-  const order = weekStart.value === 0 ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0]
-  return order.map((d) => WD_RU[d])
-})
+const weekdayOrder = computed(() =>
+  weekStart.value === 0 ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0],
+)
+const weekdayHeaders = computed(() => weekdayOrder.value.map((d) => weekdayNames.value[d]))
 const dayKey = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const todayKey = dayKey(today)
@@ -140,15 +154,9 @@ function inRange(d) {
 function fmtTab(ms) {
   if (ms == null) return ''
   const d = new Date(ms)
-  const loc = theme.language === 'en' ? 'en-GB' : 'ru-RU'
-  const o = { day: '2-digit', month: 'short' }
-  if (d.getHours() !== 0 || d.getMinutes() !== 0) {
-    o.hour = '2-digit'
-    o.minute = '2-digit'
-    o.hour12 = theme.timeFormat === '12h'
-    return d.toLocaleString(loc, o)
-  }
-  return d.toLocaleDateString(loc, o)
+  const o = { day: '2-digit', month: 'short', timeZone: null }
+  if (d.getHours() !== 0 || d.getMinutes() !== 0) return formatDateTime(d, o)
+  return formatDate(d, o)
 }
 const startTabLabel = computed(() => fmtTab(localStart.value))
 const dueTabLabel = computed(() => fmtTab(localDue.value))
@@ -273,10 +281,9 @@ const targetOptions = computed(() => [
 ])
 
 // weekday chips, ordered by week-start; 0=Sun..6=Sat
-const weekdayChips = computed(() => {
-  const order = weekStart.value === 0 ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0]
-  return order.map((d) => ({ d, label: WD_RU[d] }))
-})
+const weekdayChips = computed(() =>
+  weekdayOrder.value.map((d) => ({ d, label: weekdayNames.value[d] })),
+)
 
 // ── notify ──
 const DUE_ENABLED_OPTS = [

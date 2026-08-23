@@ -13,6 +13,7 @@ import {
   hourStepFor,
 } from '@/utils/timeAxis'
 import { estimateToDays } from '@/utils/estimation'
+import { useFormat } from '@/composables/useFormat'
 
 // The horizontal time axis shared by the Timeline and Gantt board views: zoom,
 // axis range, header bands, the today line, milestone markers, and everything
@@ -48,6 +49,7 @@ export function useChartTimeline({
   // the two don't fight over the same pointermove.
   cursorBlocked = () => false,
 } = {}) {
+  const { formatDate, formatTime } = useFormat()
   const scrollEl = ref(null)
   const bodyEl = ref(null)
 
@@ -299,11 +301,12 @@ export function useChartTimeline({
   const cursorLabel = computed(() => {
     if (!cursor.value) return ''
     const dt = new Date(cursor.value.ms)
-    const o = { day: '2-digit', month: 'short' }
+    // The timeline is laid out on local calendar days, so its cursor label reads
+    // in the browser timezone (timeZone: null) — see DueEditor for the same rule.
+    const o = { day: '2-digit', month: 'short', timeZone: null }
     if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric'
-    let s = dt.toLocaleDateString('ru-RU', o)
-    if (tier.value === 'hours')
-      s += ` ${dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+    let s = formatDate(dt, o)
+    if (tier.value === 'hours') s += ` ${formatTime(dt, { timeZone: null })}`
     return s
   })
 

@@ -26,6 +26,7 @@ import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups, tagParts } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
+import { useFormat } from '@/composables/useFormat'
 import {
   formatEstimate,
   formatEstimateFull,
@@ -42,7 +43,6 @@ import { useThemeStore } from '@/stores/theme'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
-import { useDateLocale } from '@/composables/useDateLocale'
 import { useTagFit } from '@/composables/useTagFit'
 
 const props = defineProps({
@@ -59,7 +59,7 @@ const theme = useThemeStore()
 const wsStore = useWorkspacesStore()
 const conflictsStore = useConflictsStore()
 const hasConflict = computed(() => conflictsStore.has(props.task.id))
-const { formatDue } = useDateLocale()
+const { formatDue, formatters } = useFormat()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
 
@@ -240,7 +240,7 @@ const estTooltip = computed(() => {
   const prefix = estIsRollup.value ? 'Сумма оценок подзадач: ' : 'Оценка: '
   const body = estIsRollup.value
     ? formatEstimateFull(v, estCfg.value)
-    : estimateTooltip(props.task?.start_date, v, estCfg.value)
+    : estimateTooltip(props.task?.start_date, v, estCfg.value, formatters.value)
   return `${prefix}${body}`
 })
 const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
@@ -511,8 +511,8 @@ async function toggleGlAssignee(m) {
       </template>
       <template v-if="taskMilestone">
         Этап: {{ taskMilestone.title }}{{ taskMilestone.state === 'closed' ? ' (закрыт)' : '' }}
-        <template v-if="milestoneRange(taskMilestone)">
-          · {{ milestoneRange(taskMilestone) }}</template
+        <template v-if="milestoneRange(taskMilestone, formatters)">
+          · {{ milestoneRange(taskMilestone, formatters) }}</template
         >
       </template>
       <template v-else>Этап</template>

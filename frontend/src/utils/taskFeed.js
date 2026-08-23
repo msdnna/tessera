@@ -2,15 +2,13 @@
 // Extracted from TaskModal so the comments and history tabs share one implementation
 // (and so the journal wording is unit-testable without mounting the modal).
 import { PRIORITY_LABELS } from '@/styles/tokens'
+import { defaultFormatters } from '@/utils/format'
 
-// Short "12 янв, 14:03" stamp used on comment and journal rows.
-export function fmtWhen(d) {
-  return new Date(d).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+// Short "12 янв., 14:03" stamp used on comment and journal rows. `fmt` is a
+// formatter set from useFormat() — it carries the language, the timezone and the
+// 12/24h preference; without one the defaults apply (tests).
+export function fmtWhen(d, fmt = defaultFormatters()) {
+  return fmt.formatDateTime(d, { day: '2-digit', month: 'short' })
 }
 
 // Group the flat comment list the API returns into threads: a root plus the

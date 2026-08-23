@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { NButton, NIcon, NInput, NPopconfirm, NText } from 'naive-ui'
 import { BookmarkOutline, TimeOutline } from '@vicons/ionicons5'
 import { DIFF_ADDED, DIFF_CHANGED, DIFF_MOVED, DIFF_REMOVED } from '@/utils/docDiff'
+import { useFormat } from '@/composables/useFormat'
 
 // The version journal (#2731): entries on the left of the reading area, and the
 // block-level comparison of the selected entry against the newest one below.
@@ -20,6 +21,7 @@ defineProps({
   error: { type: String, default: '' },
 })
 const emit = defineEmits(['select', 'snapshot', 'restore', 'close'])
+const { formatDate, formatTime } = useFormat()
 
 const label = ref('')
 const naming = ref(false)
@@ -35,8 +37,8 @@ function submitSnapshot() {
 function span(v) {
   const from = new Date(v.created_at)
   const to = new Date(v.updated_at)
-  const t = (d) => d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  const day = from.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  const t = (d) => formatTime(d)
+  const day = formatDate(from, { day: 'numeric', month: 'short' })
   if (t(from) === t(to)) return `${day}, ${t(from)}`
   return `${day}, ${t(from)}–${t(to)}`
 }

@@ -13,9 +13,9 @@ import {
 import { TrashOutline, AlarmOutline } from '@vicons/ionicons5'
 import { reminders as remApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
-import { useDateLocale } from '@/composables/useDateLocale'
+import { useFormat } from '@/composables/useFormat'
 
-const { firstDayOfWeek, dateTimeFormat } = useDateLocale()
+const { firstDayOfWeek, dateTimePattern: dateTimeFormat, formatDateTime } = useFormat()
 const message = useMessage()
 const list = ref([])
 const newMessage = ref('')
@@ -67,12 +67,7 @@ async function remove(r) {
 }
 
 function fmt(ts) {
-  return new Date(ts).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return formatDateTime(ts, { day: '2-digit', month: 'short' })
 }
 function overdue(r) {
   return !r.done && Date.parse(r.remind_at) < Date.now()

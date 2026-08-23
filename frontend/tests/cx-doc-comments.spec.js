@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
@@ -33,6 +34,10 @@ function thread(id, over = {}) {
 function groups(over = {}) {
   return { anchored: [], document: [], detached: [], ...over }
 }
+
+// These panels render dates through useFormat(), which reads the theme store —
+// so a Pinia instance has to be active before they mount (#2798).
+beforeEach(() => setActivePinia(createPinia()))
 
 describe('DocComments panel', () => {
   let wrapper

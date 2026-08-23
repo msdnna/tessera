@@ -3,12 +3,15 @@
 // backend ordered them. Pure presentation — the modal owns loading.
 import { TimeOutline } from '@vicons/ionicons5'
 import { fmtWhen, eventText } from '@/utils/taskFeed'
+import { useFormat } from '@/composables/useFormat'
 import UserAvatar from '../UserAvatar.vue'
 import EmptyState from '../EmptyState.vue'
 
 defineProps({
   events: { type: Array, default: () => [] },
 })
+
+const { formatters } = useFormat()
 </script>
 
 <template>
@@ -18,7 +21,7 @@ defineProps({
       <span class="h-text">
         <b>{{ e.actor_name || 'Кто-то' }}</b> {{ eventText(e) }}
       </span>
-      <span class="h-when">{{ fmtWhen(e.created_at) }}</span>
+      <span class="h-when">{{ fmtWhen(e.created_at, formatters) }}</span>
     </div>
     <EmptyState v-if="!events.length" size="small" :icon="TimeOutline" text="История пуста" />
   </div>
