@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -437,40 +438,42 @@ private fun CardMenu(
     Box {
         IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 24.dp, iconSize = 16.dp, tint = c.text3)
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            TMenuItem("Открыть", icon = Ion.DOCUMENT_TEXT, onClick = {
+            TMenuItem(stringResource(R.string.common_open), icon = Ion.DOCUMENT_TEXT, onClick = {
                 menu = false
                 onOpen(task)
             })
             TMenuItem(
-                if (task.isCompleted) "Вернуть в работу" else "Выполнено",
+                stringResource(
+                    if (task.isCompleted) R.string.task_card_menu_reopen else R.string.task_card_menu_complete,
+                ),
                 icon = if (task.isCompleted) Ion.ELLIPSE else Ion.CHECK_CIRCLE,
                 onClick = {
                     menu = false
                     vm.toggleDone(task)
                 },
             )
-            TMenuItem("Переименовать", icon = Ion.PENCIL, onClick = {
+            TMenuItem(stringResource(R.string.common_rename), icon = Ion.PENCIL, onClick = {
                 menu = false
                 onEditTitle()
             })
-            TMenuItem("Создать подзадачу", icon = Ion.GIT_BRANCH, onClick = {
+            TMenuItem(stringResource(R.string.task_card_menu_add_subtask), icon = Ion.GIT_BRANCH, onClick = {
                 menu = false
                 onAddSubtask()
             })
             TMenuDivider()
-            TMenuItem("В архив", icon = Ion.ARCHIVE, onClick = {
+            TMenuItem(stringResource(R.string.task_archive_action), icon = Ion.ARCHIVE, onClick = {
                 menu = false
                 confirmArchive = true
             })
-            TMenuItem("Удалить", icon = Ion.TRASH, danger = true, onClick = {
+            TMenuItem(stringResource(R.string.common_delete), icon = Ion.TRASH, danger = true, onClick = {
                 menu = false
                 confirmDelete = true
             })
         }
         TConfirmPopover(
             expanded = confirmArchive,
-            message = "Архивировать задачу «${task.title}»?",
-            confirmText = "В архив",
+            message = stringResource(R.string.task_card_archive_confirm, task.title),
+            confirmText = stringResource(R.string.task_archive_action),
             danger = false,
             onConfirm = {
                 confirmArchive = false
@@ -480,8 +483,8 @@ private fun CardMenu(
         )
         TConfirmPopover(
             expanded = confirmDelete,
-            message = "Удалить задачу «${task.title}»? Это действие необратимо.",
-            confirmText = "Удалить",
+            message = stringResource(R.string.task_card_delete_confirm, task.title),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 confirmDelete = false
                 vm.delete(task.id)
@@ -500,24 +503,29 @@ private fun ArchiveCardMenu(task: Task, vm: BoardViewModel, onOpen: (Task) -> Un
     Box {
         IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 24.dp, iconSize = 16.dp, tint = c.text3)
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            TMenuItem("Открыть", icon = Ion.DOCUMENT_TEXT, onClick = {
+            TMenuItem(stringResource(R.string.common_open), icon = Ion.DOCUMENT_TEXT, onClick = {
                 menu = false
                 onOpen(task)
             })
-            TMenuItem("Вернуть из архива", icon = Ion.ELLIPSE, onClick = {
+            TMenuItem(stringResource(R.string.task_card_menu_restore), icon = Ion.ELLIPSE, onClick = {
                 menu = false
                 vm.restoreFromArchive(task.id)
             })
             TMenuDivider()
-            TMenuItem("Удалить навсегда", icon = Ion.TRASH, danger = true, onClick = {
-                menu = false
-                confirmDelete = true
-            })
+            TMenuItem(
+                stringResource(R.string.task_card_menu_delete_forever),
+                icon = Ion.TRASH,
+                danger = true,
+                onClick = {
+                    menu = false
+                    confirmDelete = true
+                },
+            )
         }
         TConfirmPopover(
             expanded = confirmDelete,
-            message = "Удалить задачу «${task.title}» навсегда? Это действие необратимо.",
-            confirmText = "Удалить",
+            message = stringResource(R.string.task_card_delete_forever_confirm, task.title),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 confirmDelete = false
                 vm.deleteFromArchive(task.id)
@@ -677,7 +685,12 @@ private fun ConflictPill(onClick: () -> Unit) {
     ) {
         IonIcon(Ion.GIT_NETWORK, size = 13.dp, tint = ConflictAmber)
         Spacer(Modifier.width(5.dp))
-        Text("Конфликт", color = ConflictAmber, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(
+            stringResource(R.string.task_card_conflict),
+            color = ConflictAmber,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
@@ -925,7 +938,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
                 // autoFocus=false so opening the tag picker doesn't pop the keyboard;
                 // the user taps the field when they actually want to add a tag.
                 InlineCreateField(
-                    placeholder = "Новый тег, Enter",
+                    placeholder = stringResource(R.string.task_tag_new_hint),
                     autoFocus = false,
                     onCommit = {
                         vm.createTagAndAdd(task, it)
@@ -1063,7 +1076,7 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel, s
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             TTextField(
-                query, { query = it }, placeholder = "Поиск…",
+                query, { query = it }, placeholder = stringResource(R.string.task_assignee_search_hint),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
             )
             pickerMembers.forEach { m ->
@@ -1187,7 +1200,7 @@ private fun SubtaskRow(
 private fun SubtaskCreateField(task: Task, vm: BoardViewModel, onDone: () -> Unit) {
     Box(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         InlineCreateField(
-            placeholder = "Название подзадачи, Enter",
+            placeholder = stringResource(R.string.task_card_subtask_hint),
             onCommit = {
                 vm.createTask(task.columnId, it, parentId = task.id)
                 onDone()

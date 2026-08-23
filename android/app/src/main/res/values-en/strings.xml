@@ -109,6 +109,7 @@
     <string name="common_cancel">Cancel</string>
     <string name="common_delete">Delete</string>
     <string name="common_rename">Rename</string>
+    <string name="common_open">Open</string>
     <string name="common_save">Save</string>
     <string name="common_loading">Loading…</string>
     <string name="common_error">Error</string>
@@ -177,6 +178,19 @@
         <item quantity="one">%1$d of %2$d subtask — the rest are hidden by the filter</item>
         <item quantity="other">%1$d of %2$d subtasks — the rest are hidden by the filter</item>
     </plurals>
+    <!-- The card's "⋯" menu. "Mark done" here is an action, not a status: the
+         status label lives in task_status_completed and reads "Completed". -->
+    <string name="task_card_menu_complete">Mark done</string>
+    <string name="task_card_menu_reopen">Reopen</string>
+    <string name="task_card_menu_add_subtask">Add subtask</string>
+    <string name="task_card_menu_restore">Restore from archive</string>
+    <string name="task_card_menu_delete_forever">Delete forever</string>
+    <string name="task_card_archive_confirm">Archive the task “%1$s”?</string>
+    <string name="task_card_delete_confirm">Delete the task “%1$s”? This cannot be undone.</string>
+    <string name="task_card_delete_forever_confirm">Delete the task “%1$s” forever? This cannot be undone.</string>
+    <string name="task_card_conflict">Conflict</string>
+    <string name="task_card_subtask_hint">Subtask title, Enter</string>
+    <string name="task_assignee_search_hint">Search…</string>
 
     <!-- Task modal: header, footer, properties -->
     <string name="task_title_placeholder">Task title</string>
@@ -1001,4 +1015,11 @@
     <string name="md_link_placeholder">text</string>
     <string name="md_mermaid_start">Start</string>
     <string name="md_mermaid_done">Done</string>
+
+    <!-- Captions under the loader (shown only when a load drags on) and the
+         screen-level error state. -->
+    <string name="loading_caption_connecting">Trying to reach the server…</string>
+    <string name="loading_caption_slow">This is taking a bit longer than expected…</string>
+    <string name="loading_caption_still_trying">Still trying to reach the server…</string>
+    <string name="error_retry_action">Try again</string>
 </resources>

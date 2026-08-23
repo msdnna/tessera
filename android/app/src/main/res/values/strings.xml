@@ -113,6 +113,7 @@
     <string name="common_cancel">Отмена</string>
     <string name="common_delete">Удалить</string>
     <string name="common_rename">Переименовать</string>
+    <string name="common_open">Открыть</string>
     <string name="common_save">Сохранить</string>
     <string name="common_loading">Загрузка…</string>
     <string name="common_error">Ошибка</string>
@@ -183,6 +184,19 @@
         <item quantity="many">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
         <item quantity="other">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
     </plurals>
+    <!-- Меню «⋯» карточки. «Выполнено» здесь — действие («отметить выполненной»),
+         а не статус: у task_status_completed своя английская форма. -->
+    <string name="task_card_menu_complete">Выполнено</string>
+    <string name="task_card_menu_reopen">Вернуть в работу</string>
+    <string name="task_card_menu_add_subtask">Создать подзадачу</string>
+    <string name="task_card_menu_restore">Вернуть из архива</string>
+    <string name="task_card_menu_delete_forever">Удалить навсегда</string>
+    <string name="task_card_archive_confirm">Архивировать задачу «%1$s»?</string>
+    <string name="task_card_delete_confirm">Удалить задачу «%1$s»? Это действие необратимо.</string>
+    <string name="task_card_delete_forever_confirm">Удалить задачу «%1$s» навсегда? Это действие необратимо.</string>
+    <string name="task_card_conflict">Конфликт</string>
+    <string name="task_card_subtask_hint">Название подзадачи, Enter</string>
+    <string name="task_assignee_search_hint">Поиск…</string>
 
     <!-- Модалка задачи: шапка, футер, свойства -->
     <string name="task_title_placeholder">Название задачи</string>
@@ -1027,4 +1041,11 @@
     <string name="md_link_placeholder">текст</string>
     <string name="md_mermaid_start">Старт</string>
     <string name="md_mermaid_done">Готово</string>
+
+    <!-- Подписи под лоадером (появляются, только если загрузка затянулась) и
+         состояние ошибки экрана. -->
+    <string name="loading_caption_connecting">Пытаемся подключиться к серверу…</string>
+    <string name="loading_caption_slow">Это занимает чуть больше времени, чем ожидалось…</string>
+    <string name="loading_caption_still_trying">Всё ещё пробуем достучаться до сервера…</string>
+    <string name="error_retry_action">Попробовать ещё раз</string>
 </resources>

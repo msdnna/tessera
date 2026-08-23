@@ -12,12 +12,16 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.LatestRelease
+import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.AppLocale
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.screens.WhatsNewSheet
 import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.theme.accentByKey
+import website.msdnna.tessera.ui.viewmodels.BoardUiState
+import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.UpdateState
 import website.msdnna.tessera.util.WhatsNewEntry
 import website.msdnna.tessera.util.withLanguage
@@ -124,6 +128,59 @@ class ComponentLocaleTest {
     private fun release() = LatestRelease(version = "1.2.3", versionCode = 123)
 
     private fun available() = UpdateState.Available(release())
+
+    /** Волна 16: состояние ошибки экрана — единственное действие «Попробовать ещё
+     *  раз»; сам текст ошибки приходит с сервера и не переводится. */
+    @Test
+    fun `error state renders its retry action in english`() {
+        render("en") { ErrorState(message = "500: context deadline exceeded", onRetry = {}) }
+        compose.onNodeWithText("Try again").assertIsDisplayed()
+        compose.onNodeWithText("500: context deadline exceeded").assertIsDisplayed()
+    }
+
+    @Test
+    fun `error state stays russian by default`() {
+        render("ru") { ErrorState(message = "500", onRetry = {}) }
+        compose.onNodeWithText("Попробовать ещё раз").assertIsDisplayed()
+    }
+
+    /** Подписи под лоадером раньше лежали в `val`-списке — тот застыл бы на языке
+     *  первой загрузки класса. Проверка идёт через саму функцию по умолчанию:
+     *  рендерить `LoadingCaptions` бессмысленно, она молчит первые 5 секунд. */
+    @Test
+    fun `loading captions read the profile language, not the class load language`() {
+        val captions = mutableListOf<String>()
+        render("en") { captions += defaultLoadingMessages() }
+        compose.waitForIdle()
+        assertThat(captions).containsExactly(
+            "Trying to reach the server…",
+            "This is taking a bit longer than expected…",
+            "Still trying to reach the server…",
+        ).inOrder()
+    }
+
+    /** Волна 16: карточка задачи. Пилюля конфликта — единственная её подпись,
+     *  которую видно без открытия меню «⋯». */
+    @Test
+    fun `task card conflict pill renders in english`() {
+        val task = Task(id = "t", columnId = "c", title = "Ansible rollout", number = 7)
+        val state = BoardUiState(
+            loading = false,
+            columns = listOf(BoardColumn(id = "c", name = "In progress")),
+            tasks = listOf(task),
+        )
+        render("en") {
+            TaskCard(
+                task = task,
+                state = state,
+                vm = BoardViewModel(),
+                onOpen = {},
+                conflictTaskIds = setOf("t"),
+                onOpenConflict = {},
+            )
+        }
+        compose.onNodeWithText("Conflict").assertIsDisplayed()
+    }
 
     @Test
     fun `theme picker renders in english`() {
