@@ -1,0 +1,61 @@
+# Файлы, где русские литералы ещё допустимы — очередь на извлечение строк
+# (#2803, этап 7 задачи #2796). Список сокращается волна за волной; строка
+# удаляется, как только файл переведён на stringResource. Формат: путь
+# относительно app/src/main/java, по одному на строку.
+#
+# Волна 0 (готово): AppRoot, AuthScreen, ProfileScreen.
+website/msdnna/tessera/data/realtime/DeviceNotifier.kt
+website/msdnna/tessera/reminders/ReminderNotifications.kt
+website/msdnna/tessera/reminders/ReminderReceiver.kt
+website/msdnna/tessera/ui/components/AccentGradientPreview.kt
+website/msdnna/tessera/ui/components/BoardViewSelector.kt
+website/msdnna/tessera/ui/components/Dialogs.kt
+website/msdnna/tessera/ui/components/DueDateTimePicker.kt
+website/msdnna/tessera/ui/components/IconColorPicker.kt
+website/msdnna/tessera/ui/components/MarkdownEditor.kt
+website/msdnna/tessera/ui/components/Popups.kt
+website/msdnna/tessera/ui/components/ReminderDateTimePicker.kt
+website/msdnna/tessera/ui/components/Sidebar.kt
+website/msdnna/tessera/ui/components/Spotlight.kt
+website/msdnna/tessera/ui/components/StatusViews.kt
+website/msdnna/tessera/ui/components/TaskCard.kt
+website/msdnna/tessera/ui/components/TaskCardPreview.kt
+website/msdnna/tessera/ui/components/ThemePicker.kt
+website/msdnna/tessera/ui/components/UpdateDialog.kt
+website/msdnna/tessera/ui/screens/AdminScreen.kt
+website/msdnna/tessera/ui/screens/BoardComposer.kt
+website/msdnna/tessera/ui/screens/BoardCustomizePanel.kt
+website/msdnna/tessera/ui/screens/BoardScreen.kt
+website/msdnna/tessera/ui/screens/BoardSecondary.kt
+website/msdnna/tessera/ui/screens/BoardViews.kt
+website/msdnna/tessera/ui/screens/ConflictResolver.kt
+website/msdnna/tessera/ui/screens/DocumentsScreen.kt
+website/msdnna/tessera/ui/screens/GitLabJournalScreen.kt
+website/msdnna/tessera/ui/screens/GitLabSettingsScreen.kt
+website/msdnna/tessera/ui/screens/HomeScreen.kt
+website/msdnna/tessera/ui/screens/MainScreen.kt
+website/msdnna/tessera/ui/screens/MembersModal.kt
+website/msdnna/tessera/ui/screens/MilestonesScreen.kt
+website/msdnna/tessera/ui/screens/NotesScreen.kt
+website/msdnna/tessera/ui/screens/NotificationSettingsScreen.kt
+website/msdnna/tessera/ui/screens/NotificationsPanel.kt
+website/msdnna/tessera/ui/screens/RemindersScreen.kt
+website/msdnna/tessera/ui/screens/SearchOverlay.kt
+website/msdnna/tessera/ui/screens/TaskModal.kt
+website/msdnna/tessera/ui/screens/WhatsNewSheet.kt
+website/msdnna/tessera/ui/theme/Tokens.kt
+website/msdnna/tessera/ui/viewmodels/BoardViewModel.kt
+website/msdnna/tessera/ui/viewmodels/GitlabJournalViewModel.kt
+website/msdnna/tessera/ui/viewmodels/GitlabViewModel.kt
+website/msdnna/tessera/ui/viewmodels/NotificationSettingsViewModel.kt
+website/msdnna/tessera/ui/viewmodels/NotificationViewModel.kt
+website/msdnna/tessera/ui/viewmodels/UpdateViewModel.kt
+website/msdnna/tessera/ui/viewmodels/WorkspaceViewModel.kt
+website/msdnna/tessera/update/WhatsNewEntries.kt
+website/msdnna/tessera/util/CommentThreads.kt
+website/msdnna/tessera/util/Dates.kt
+website/msdnna/tessera/util/Errors.kt
+website/msdnna/tessera/util/Estimation.kt
+website/msdnna/tessera/util/Mentions.kt
+website/msdnna/tessera/util/Milestones.kt
+website/msdnna/tessera/util/TagGroups.kt

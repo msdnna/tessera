@@ -1,4 +1,118 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Базовая (русская) локаль. Английский — values-en/strings.xml, ключи должны
+    совпадать один-в-один: за этим следит StringParityTest.
+
+    Ключи именуются по фиче (auth_/gate_/settings_/task_), как неймспейсы
+    во frontend/src/locales — при переносе строки с веба ищется соответствие.
+-->
 <resources>
     <string name="app_name">Tessera</string>
+
+    <!-- Экран входа/регистрации -->
+    <string name="auth_headline_login">Войдите в аккаунт</string>
+    <string name="auth_headline_register">Создайте аккаунт</string>
+    <string name="auth_email_label">Email</string>
+    <string name="auth_email_placeholder">you@example.com</string>
+    <string name="auth_name_label">Имя</string>
+    <string name="auth_name_placeholder">Как вас зовут</string>
+    <string name="auth_password_label">Пароль</string>
+    <string name="auth_password_placeholder">••••••••</string>
+    <string name="auth_submit_login">Войти</string>
+    <string name="auth_submit_register">Зарегистрироваться</string>
+    <string name="auth_gitlab">Войти через GitLab</string>
+    <string name="auth_divider_or">или</string>
+    <string name="auth_forgot">Забыли пароль?</string>
+    <string name="auth_forgot_sent">Если аккаунт существует, письмо отправлено</string>
+    <string name="auth_switch_to_login">Уже есть аккаунт? Войти</string>
+    <string name="auth_switch_to_register">Нет аккаунта? Зарегистрироваться</string>
+    <string name="auth_reset_title">Восстановление пароля</string>
+    <string name="auth_reset_confirm">Отправить</string>
+    <string name="auth_server_title">Сервер</string>
+    <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
+    <string name="auth_server_hint">Применяется сразу. Пусто — сервер по умолчанию.</string>
+    <string name="auth_browser_failed">Не удалось открыть браузер для входа</string>
+
+    <!-- Ошибки OAuth-редиректа (коды приходят от бэкенда) -->
+    <string name="auth_oauth_not_configured">Вход через GitLab не настроен на сервере</string>
+    <string name="auth_oauth_state_mismatch">Сессия входа устарела — попробуйте ещё раз</string>
+    <string name="auth_oauth_exchange_failed">Не удалось получить данные от GitLab</string>
+    <string name="auth_oauth_account_disabled">Аккаунт отключён</string>
+    <string name="auth_oauth_incomplete">Вход не был завершён</string>
+    <string name="auth_oauth_failed">Не удалось войти через GitLab</string>
+
+    <!-- Стартовый гейт сессии -->
+    <string name="gate_offline_title">Нет связи с сервером</string>
+    <string name="gate_offline_message">Не удалось подключиться к серверу API. Проверьте, что сервер доступен, и попробуйте снова.</string>
+    <string name="gate_offline_retry">Попробовать ещё раз</string>
+    <string name="gate_session_title">Сессия завершена</string>
+    <string name="gate_session_message">Похоже, сессия истекла или доступ к аккаунту закрыт. Войдите снова, чтобы продолжить.</string>
+    <string name="gate_session_relogin">Выполнить повторный вход</string>
+    <string name="gate_exit">Выход</string>
+
+    <!-- Настройки: профиль -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_profile_title">Профиль</string>
+    <string name="settings_avatar_upload">Загрузить</string>
+    <string name="settings_avatar_remove">Убрать</string>
+    <string name="settings_avatar_hint">PNG/JPEG/GIF/WebP, до 2 МБ</string>
+    <string name="settings_email_label">Email (логин)</string>
+    <string name="settings_email_verified">Почта подтверждена</string>
+    <string name="settings_email_unverified">Почта не подтверждена</string>
+    <string name="settings_email_sent">письмо отправлено</string>
+    <string name="settings_email_send">Отправить</string>
+    <string name="settings_display_name">Отображаемое имя</string>
+    <string name="settings_display_name_placeholder">Как вас показывать</string>
+    <string name="settings_last_name">Фамилия</string>
+    <string name="settings_first_name">Имя</string>
+    <string name="settings_middle_name">Отчество</string>
+    <string name="settings_company">Место работы</string>
+    <string name="settings_job_title">Должность</string>
+    <string name="settings_bio">О себе</string>
+    <string name="settings_save_profile">Сохранить профиль</string>
+
+    <!-- Настройки: безопасность -->
+    <string name="settings_security_title">Безопасность</string>
+    <string name="settings_password_current">Текущий пароль</string>
+    <string name="settings_password_new">Новый пароль (≥ 8)</string>
+    <string name="settings_password_repeat">Повторите новый</string>
+    <string name="settings_password_changed">Пароль изменён</string>
+    <string name="settings_password_submit">Сменить пароль</string>
+
+    <!-- Настройки: оформление -->
+    <string name="settings_appearance_title">Оформление</string>
+    <string name="settings_theme">Тема</string>
+    <string name="settings_accent">Акцент</string>
+    <string name="settings_board_background">Фон досок (CSS-цвет или URL)</string>
+    <string name="settings_board_background_placeholder">#0e0e12 или https://…/bg.jpg</string>
+    <string name="theme_system">Системная</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Тёмная</string>
+
+    <!-- Настройки: локализация и форматы -->
+    <string name="settings_locale_title">Локализация и форматы</string>
+    <string name="settings_language">Язык</string>
+    <string name="settings_week_start">Начало недели</string>
+    <string name="settings_time_format">Формат времени</string>
+    <string name="settings_date_format">Формат даты</string>
+    <string name="settings_timezone">Часовой пояс</string>
+    <string name="settings_timezone_placeholder">Europe/Moscow</string>
+    <string name="settings_country">Страна</string>
+    <string name="settings_country_placeholder">Выберите страну</string>
+    <string name="settings_locale_hint">Форматы применяются к календарям и датам. Интерфейс переводится волнами — часть экранов пока только на русском.</string>
+    <string name="settings_search_placeholder">Поиск…</string>
+    <string name="language_ru">Русский</string>
+    <string name="language_en">English (частично)</string>
+    <string name="time_format_24h">24-часовой</string>
+    <string name="time_format_12h">12-часовой (AM/PM)</string>
+    <string name="week_start_monday">Понедельник</string>
+    <string name="week_start_sunday">Воскресенье</string>
+
+    <!-- Карточка задачи -->
+    <plurals name="task_subtasks_filtered">
+        <item quantity="one">%1$d из %2$d подзадачи — остальные скрыты фильтром</item>
+        <item quantity="few">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
+        <item quantity="many">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
+        <item quantity="other">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
+    </plurals>
 </resources>

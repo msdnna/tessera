@@ -1,6 +1,7 @@
 package website.msdnna.tessera.ui
 
 import android.app.Activity
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -38,6 +40,7 @@ import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Preferences
@@ -67,14 +70,17 @@ sealed interface OAuthResult {
     data class Error(val message: String) : OAuthResult
 }
 
-/** Maps a backend OAuth error code to a Russian message (mirrors web LoginView). */
-private fun oauthErrorMessage(code: String): String = when (code) {
-    "not_configured" -> "Вход через GitLab не настроен на сервере"
-    "state_mismatch" -> "Сессия входа устарела — попробуйте ещё раз"
-    "exchange_failed", "userinfo_failed" -> "Не удалось получить данные от GitLab"
-    "account_disabled" -> "Аккаунт отключён"
-    "no_tokens", "no_data" -> "Вход не был завершён"
-    else -> "Не удалось войти через GitLab"
+/** Maps a backend OAuth error code to a message resource (mirrors web LoginView).
+ *  The code travels instead of the text, so the string is resolved inside the
+ *  localized tree — see [AppLocale]. */
+@StringRes
+fun oauthErrorRes(code: String): Int = when (code) {
+    "not_configured" -> R.string.auth_oauth_not_configured
+    "state_mismatch" -> R.string.auth_oauth_state_mismatch
+    "exchange_failed", "userinfo_failed" -> R.string.auth_oauth_exchange_failed
+    "account_disabled" -> R.string.auth_oauth_account_disabled
+    "no_tokens", "no_data" -> R.string.auth_oauth_incomplete
+    else -> R.string.auth_oauth_failed
 }
 
 /** Outcome of the startup session check, driving the gate below. */
@@ -100,6 +106,8 @@ fun AppRoot(
     val scope = rememberCoroutineScope()
     val authRepo = remember { AuthRepository() }
     val profileRepo = remember { ProfileRepository() }
+    // The backend's OAuth error *code*, not its text — resolved on the auth
+    // screen, already inside the localized tree.
     var oauthError by remember { mutableStateOf<String?>(null) }
 
     val accentKey by prefs.accentKey.collectAsStateWithLifecycle(initialValue = "purple")
@@ -164,7 +172,7 @@ fun AppRoot(
             }
 
             is OAuthResult.Error -> {
-                oauthError = oauthErrorMessage(r.message)
+                oauthError = r.message
                 onOAuthHandled()
             }
         }
@@ -196,51 +204,59 @@ fun AppRoot(
         (view.context as? Activity)?.finish()
     }
 
-    TesseraTheme(accent = accentByKey(accentKey), isDark = isDark, tagPrefixMode = tagPrefixMode) {
-        Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
-            when {
-                boot is Boot.Loading -> BootLoading()
+    // Language comes from the profile, not the device — the whole tree below
+    // resolves its strings in it (#2803).
+    AppLocale(language = preferences.language) {
+        TesseraTheme(accent = accentByKey(accentKey), isDark = isDark, tagPrefixMode = tagPrefixMode) {
+            Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
+                when {
+                    boot is Boot.Loading -> BootLoading()
 
-                boot is Boot.ConnectError -> BootError(
-                    title = "Нет связи с сервером",
-                    message = "Не удалось подключиться к серверу API. Проверьте, что сервер доступен, и попробуйте снова.",
-                    primaryLabel = "Попробовать ещё раз",
-                    onPrimary = { bootNonce++ },
-                    onExit = ::exitApp,
-                )
+                    boot is Boot.ConnectError -> BootError(
+                        title = stringResource(R.string.gate_offline_title),
+                        message = stringResource(R.string.gate_offline_message),
+                        primaryLabel = stringResource(R.string.gate_offline_retry),
+                        onPrimary = { bootNonce++ },
+                        onExit = ::exitApp,
+                    )
 
-                boot is Boot.AuthError -> BootError(
-                    title = "Сессия завершена",
-                    message = "Похоже, сессия истекла или доступ к аккаунту закрыт. Войдите снова, чтобы продолжить.",
-                    primaryLabel = "Выполнить повторный вход",
-                    onPrimary = {
-                        scope.launch { authRepo.logout() }
-                        boot = Boot.Done
-                    },
-                    onExit = ::exitApp,
-                )
+                    boot is Boot.AuthError -> BootError(
+                        title = stringResource(R.string.gate_session_title),
+                        message = stringResource(R.string.gate_session_message),
+                        primaryLabel = stringResource(R.string.gate_session_relogin),
+                        onPrimary = {
+                            scope.launch { authRepo.logout() }
+                            boot = Boot.Done
+                        },
+                        onExit = ::exitApp,
+                    )
 
-                token.isBlank() -> AuthScreen(
-                    serverUrl = serverUrl,
-                    onServerUrlChange = { scope.launch { prefs.setServerUrl(it) } },
-                    isDark = isDark,
-                    // Pre-login the theme lives only in local prefs (no user yet);
-                    // it's reconciled with the server pref after sign-in.
-                    onToggleTheme = { scope.launch { prefs.setDarkMode(!isDark) } },
-                    oauthError = oauthError,
-                    onOAuthErrorShown = { oauthError = null },
-                )
+                    token.isBlank() -> AuthScreen(
+                        serverUrl = serverUrl,
+                        onServerUrlChange = { scope.launch { prefs.setServerUrl(it) } },
+                        isDark = isDark,
+                        // Pre-login the theme lives only in local prefs (no user yet);
+                        // it's reconciled with the server pref after sign-in.
+                        onToggleTheme = { scope.launch { prefs.setDarkMode(!isDark) } },
+                        oauthErrorCode = oauthError,
+                        onOAuthErrorShown = { oauthError = null },
+                    )
 
-                else -> MainScreen(
-                    user = user,
-                    isDark = isDark,
-                    accentKey = accentKey,
-                    openTaskId = openTaskId,
-                    onOpenTaskHandled = onOpenTaskHandled,
-                    onAccentChange = { scope.launch { profileRepo.savePreferences(preferences.copy(accent = it)) } },
-                    onToggleDark = { scope.launch { profileRepo.savePreferences(preferences.copy(theme = if (isDark) "light" else "dark")) } },
-                    onLogout = { scope.launch { authRepo.logout() } },
-                )
+                    else -> MainScreen(
+                        user = user,
+                        isDark = isDark,
+                        accentKey = accentKey,
+                        openTaskId = openTaskId,
+                        onOpenTaskHandled = onOpenTaskHandled,
+                        onAccentChange = { scope.launch { profileRepo.savePreferences(preferences.copy(accent = it)) } },
+                        onToggleDark = {
+                            scope.launch {
+                                profileRepo.savePreferences(preferences.copy(theme = if (isDark) "light" else "dark"))
+                            }
+                        },
+                        onLogout = { scope.launch { authRepo.logout() } },
+                    )
+                }
             }
         }
     }
@@ -273,7 +289,7 @@ private fun BootLoading() {
 }
 
 /** A startup error on the purple backdrop: brand mark, a message, a white CTA,
- *  and a ghost «Выход». Text/buttons are light to read on purple (login style). */
+ *  and a ghost exit link. Text/buttons are light to read on purple (login style). */
 @Composable
 private fun BootError(
     title: String,
@@ -305,7 +321,12 @@ private fun BootError(
                     .clickableNoRipple(onClick = onExit)
                     .padding(horizontal = 18.dp, vertical = 10.dp),
             ) {
-                Text("Выход", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    stringResource(R.string.gate_exit),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
             }
         }
     }

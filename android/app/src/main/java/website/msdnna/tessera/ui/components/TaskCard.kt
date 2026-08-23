@@ -44,6 +44,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -55,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.BoardColumn
@@ -679,12 +681,15 @@ private fun ConflictPill(onClick: () -> Unit) {
 }
 
 /** «N из M подзадач» — footnote under a filter-narrowed child list, telling you the card
- *  is only here because a child matched and the rest are hidden (web parity). */
+ *  is only here because a child matched and the rest are hidden (web parity).
+ *
+ *  The noun agrees with [total] (the count after «из»), so that — not [shown] —
+ *  is the plural quantity: «1 из 21 подзадачи», but «1 из 3 подзадач». */
 @Composable
 private fun SubtasksNarrowedHint(shown: Int, total: Int) {
     val c = Tessera.colors
     Text(
-        "$shown из $total подзадач — остальные скрыты фильтром",
+        pluralStringResource(R.plurals.task_subtasks_filtered, total, shown, total),
         color = c.text3,
         fontSize = 10.sp,
         modifier = Modifier.padding(start = 12.dp, top = 4.dp, end = 8.dp),

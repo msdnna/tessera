@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    English locale. Key set must mirror values/strings.xml exactly — StringParityTest
+    fails the build on a missing or extra key (a silent gap would show Russian text
+    to an English user, which is exactly the failure mode nobody notices).
+-->
+<resources>
+    <!-- Auth screen -->
+    <string name="auth_headline_login">Sign in to your account</string>
+    <string name="auth_headline_register">Create an account</string>
+    <string name="auth_email_label">Email</string>
+    <string name="auth_email_placeholder">you@example.com</string>
+    <string name="auth_name_label">Name</string>
+    <string name="auth_name_placeholder">What should we call you</string>
+    <string name="auth_password_label">Password</string>
+    <string name="auth_password_placeholder">••••••••</string>
+    <string name="auth_submit_login">Sign in</string>
+    <string name="auth_submit_register">Sign up</string>
+    <string name="auth_gitlab">Sign in with GitLab</string>
+    <string name="auth_divider_or">or</string>
+    <string name="auth_forgot">Forgot your password?</string>
+    <string name="auth_forgot_sent">If that account exists, the email is on its way</string>
+    <string name="auth_switch_to_login">Already have an account? Sign in</string>
+    <string name="auth_switch_to_register">No account yet? Sign up</string>
+    <string name="auth_reset_title">Password recovery</string>
+    <string name="auth_reset_confirm">Send</string>
+    <string name="auth_server_title">Server</string>
+    <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
+    <string name="auth_server_hint">Applied immediately. Empty means the default server.</string>
+    <string name="auth_browser_failed">Couldn\'t open a browser to sign in</string>
+
+    <!-- OAuth redirect errors (codes come from the backend) -->
+    <string name="auth_oauth_not_configured">GitLab sign-in is not configured on the server</string>
+    <string name="auth_oauth_state_mismatch">The sign-in session expired — please try again</string>
+    <string name="auth_oauth_exchange_failed">Couldn\'t fetch your details from GitLab</string>
+    <string name="auth_oauth_account_disabled">Account disabled</string>
+    <string name="auth_oauth_incomplete">Sign-in was not completed</string>
+    <string name="auth_oauth_failed">Couldn\'t sign in with GitLab</string>
+
+    <!-- Startup session gate -->
+    <string name="gate_offline_title">No connection to the server</string>
+    <string name="gate_offline_message">Couldn\'t reach the API server. Check that it is available and try again.</string>
+    <string name="gate_offline_retry">Try again</string>
+    <string name="gate_session_title">Session ended</string>
+    <string name="gate_session_message">Looks like the session expired or account access was revoked. Sign in again to continue.</string>
+    <string name="gate_session_relogin">Sign in again</string>
+    <string name="gate_exit">Exit</string>
+
+    <!-- Settings: profile -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_profile_title">Profile</string>
+    <string name="settings_avatar_upload">Upload</string>
+    <string name="settings_avatar_remove">Remove</string>
+    <string name="settings_avatar_hint">PNG/JPEG/GIF/WebP, up to 2 MB</string>
+    <string name="settings_email_label">Email (login)</string>
+    <string name="settings_email_verified">Email verified</string>
+    <string name="settings_email_unverified">Email not verified</string>
+    <string name="settings_email_sent">email sent</string>
+    <string name="settings_email_send">Send</string>
+    <string name="settings_display_name">Display name</string>
+    <string name="settings_display_name_placeholder">How to show you</string>
+    <string name="settings_last_name">Last name</string>
+    <string name="settings_first_name">First name</string>
+    <string name="settings_middle_name">Middle name</string>
+    <string name="settings_company">Company</string>
+    <string name="settings_job_title">Job title</string>
+    <string name="settings_bio">About</string>
+    <string name="settings_save_profile">Save profile</string>
+
+    <!-- Settings: security -->
+    <string name="settings_security_title">Security</string>
+    <string name="settings_password_current">Current password</string>
+    <string name="settings_password_new">New password (≥ 8)</string>
+    <string name="settings_password_repeat">Repeat the new one</string>
+    <string name="settings_password_changed">Password changed</string>
+    <string name="settings_password_submit">Change password</string>
+
+    <!-- Settings: appearance -->
+    <string name="settings_appearance_title">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_accent">Accent</string>
+    <string name="settings_board_background">Board background (CSS colour or URL)</string>
+    <string name="settings_board_background_placeholder">#0e0e12 or https://…/bg.jpg</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+
+    <!-- Settings: localization and formats -->
+    <string name="settings_locale_title">Localization and formats</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_week_start">Week starts on</string>
+    <string name="settings_time_format">Time format</string>
+    <string name="settings_date_format">Date format</string>
+    <string name="settings_timezone">Time zone</string>
+    <string name="settings_timezone_placeholder">Europe/Moscow</string>
+    <string name="settings_country">Country</string>
+    <string name="settings_country_placeholder">Pick a country</string>
+    <string name="settings_locale_hint">Formats apply to calendars and dates. The interface is being translated in waves — some screens are still Russian-only.</string>
+    <string name="settings_search_placeholder">Search…</string>
+    <string name="language_ru">Русский</string>
+    <string name="language_en">English (partial)</string>
+    <string name="time_format_24h">24-hour</string>
+    <string name="time_format_12h">12-hour (AM/PM)</string>
+    <string name="week_start_monday">Monday</string>
+    <string name="week_start_sunday">Sunday</string>
+
+    <!-- Task card -->
+    <plurals name="task_subtasks_filtered">
+        <item quantity="one">%1$d of %2$d subtask — the rest are hidden by the filter</item>
+        <item quantity="other">%1$d of %2$d subtasks — the rest are hidden by the filter</item>
+    </plurals>
+</resources>
