@@ -57,7 +57,6 @@
   "localization": {
     "title": "Локализация и форматы",
     "language": "Язык",
-    "langSoon": "{name} (скоро)",
     "weekStartLabel": "Начало недели",
     "timeFormat": "Формат времени",
     "dateFormat": "Формат даты",

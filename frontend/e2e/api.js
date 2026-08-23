@@ -27,6 +27,7 @@ async function call(method, path, { token, body } = {}) {
 export const api = {
   get: (p, token) => call('GET', p, { token }),
   post: (p, body, token) => call('POST', p, { token, body }),
+  put: (p, body, token) => call('PUT', p, { token, body }),
   patch: (p, body, token) => call('PATCH', p, { token, body }),
   del: (p, token) => call('DELETE', p, { token }),
 }
@@ -102,6 +103,18 @@ export async function seedBoard(token, label) {
 // register() — see the note there.
 export async function skipTour(token) {
   return api.post('/users/me/acknowledgements', { key: 'getstarted:skipped' }, token)
+}
+
+// The interface language of a run (#2800). The server preference is the source
+// of truth — the theme store overwrites its localStorage cache from /users/me
+// during bootstrap, so seeding only the browser side would flip the UI back to
+// Russian a moment after the first paint.
+export async function setLanguage(token, language) {
+  // The endpoint is a full upsert, not a patch: read the current bundle off
+  // /auth/me and send it back with one field changed, or the run would also
+  // reset theme, week start and the date preset to whatever a bare body implies.
+  const me = await api.get('/auth/me', token)
+  return api.put('/users/me/preferences', { ...me.preferences, language }, token)
 }
 
 export async function createTask(token, boardId, columnId, title, extra = {}) {

@@ -8,6 +8,7 @@
 // every other locale is fetched by dynamic import() on demand.
 import { createI18n } from 'vue-i18n'
 import ru from '@/locales/ru'
+import { collator } from '@/utils/format'
 
 export const FALLBACK_LOCALE = 'ru'
 export const SUPPORTED_LOCALES = ['ru', 'en']
@@ -69,6 +70,15 @@ export async function setI18nLocale(locale) {
   i18n.global.locale.value = active
   document.documentElement.setAttribute('lang', active)
   return active
+}
+
+// Collator bound to the active interface language (#2800). Modules that sort
+// user data — tags, assignee names, task titles — reach for this instead of
+// `localeCompare(x, 'ru')`: the sort order is part of the interface, so it has
+// to follow the language the interface is in. Cached per locale in
+// utils/format.js, so calling it inside a comparator is cheap.
+export function uiCollator() {
+  return collator(i18n.global.locale.value)
 }
 
 export default i18n

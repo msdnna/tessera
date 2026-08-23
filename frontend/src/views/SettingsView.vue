@@ -177,7 +177,7 @@ const themeModeOptions = computed(() => [
 // Language names stay endonyms — «Русский» reads the same on an English UI.
 const langOptions = computed(() => [
   { label: t('common.language.ru'), value: 'ru' },
-  { label: t('settings.localization.langSoon', { name: t('common.language.en') }), value: 'en' },
+  { label: t('common.language.en'), value: 'en' },
 ])
 const timeFmtOptions = computed(() => [
   { label: t('settings.localization.time.h24'), value: '24h' },

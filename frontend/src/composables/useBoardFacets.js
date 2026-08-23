@@ -10,7 +10,7 @@ import {
   RibbonOutline,
   CreateOutline,
 } from '@vicons/ionicons5'
-import { i18n } from '@/i18n'
+import { i18n, uiCollator } from '@/i18n'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
 import { tagNamespace, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
 import { boardGitlabAuthors } from '@/utils/boardFilters'
@@ -137,7 +137,7 @@ export function useBoardFacets({
       { label: t('board.facet.allTags'), value: '' },
       ...[...set]
         .map((p) => ({ label: prefixLabel(p, tagPrefixNames), value: p }))
-        .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
+        .sort((a, b) => uiCollator().compare(a.label, b.label)),
     ]
   })
   // Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
@@ -194,10 +194,10 @@ export function useBoardFacets({
       const ka = milestoneSortKey(a)
       const kb = milestoneSortKey(b)
       if (ka.d !== kb.d) return d * (ka.d - kb.d)
-      return d * ka.s.localeCompare(kb.s, 'ru')
+      return d * uiCollator().compare(ka.s, kb.s)
     }
     if (field === 'title')
-      return d * String(a.title || '').localeCompare(String(b.title || ''), 'ru')
+      return d * uiCollator().compare(String(a.title || ''), String(b.title || ''))
     if (field === 'number') return d * ((a.number || 0) - (b.number || 0))
     return 0
   }

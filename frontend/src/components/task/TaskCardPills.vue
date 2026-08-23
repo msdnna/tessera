@@ -36,6 +36,7 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { cardFieldVisible } from '@/utils/cardFields'
+import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
 import UserAvatar from '../UserAvatar.vue'
 import DueEditor from '../DueEditor.vue'
@@ -209,8 +210,9 @@ const pickerMembers = computed(() => {
   const assigned = props.task.assignee_ids || []
   assigned.forEach(add)
   recentAssignees.value.forEach(add)
+  const cmp = uiCollator()
   ;[...members.value]
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .sort((a, b) => cmp.compare(a.name || '', b.name || ''))
     .forEach((m) => add(m.user_id))
   return out.slice(0, Math.max(10, assigned.length))
 })

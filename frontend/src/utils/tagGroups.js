@@ -1,7 +1,7 @@
 // Tag-prefix grouping helpers. Tags follow a "<prefix>: value" / "<prefix>::value"
 // naming convention; this module derives the prefix namespace, canonicalises it
 // to a key, and groups a tag list under friendly display names.
-import { i18n } from '@/i18n'
+import { i18n, uiCollator } from '@/i18n'
 
 // Resolved per call: the module is imported outside a setup context, so a label
 // taken at import time would freeze on the first render's language (#2799).
@@ -94,11 +94,12 @@ export function buildTagGroups(tags, prefixNames = {}, hidePrefixes = null) {
     groups.get(key).tags.push(t)
   }
   const arr = [...groups.values()]
-  for (const g of arr) g.tags.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'))
+  const cmp = uiCollator()
+  for (const g of arr) g.tags.sort((a, b) => cmp.compare(a.name || '', b.name || ''))
   arr.sort((a, b) => {
     if (a.key === '') return 1
     if (b.key === '') return -1
-    return a.label.localeCompare(b.label, 'ru')
+    return cmp.compare(a.label, b.label)
   })
   return arr
 }

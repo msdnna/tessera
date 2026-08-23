@@ -3,6 +3,8 @@
 // is either a Tessera user uuid or a GitLab login prefixed `gl:` — the same encoding
 // the filter menu emits for both facets.
 
+import { uiCollator } from '@/i18n'
+
 const GL_PREFIX = 'gl:'
 
 // True for a `gl:<username>` filter value (as opposed to a Tessera user uuid).
@@ -56,5 +58,6 @@ export function boardGitlabAuthors(tasks) {
       gl_avatar_url: t.gitlab_author_avatar_url || '',
     })
   }
-  return [...byLogin.values()].sort((a, b) => a.gl_name.localeCompare(b.gl_name, 'ru'))
+  const cmp = uiCollator()
+  return [...byLogin.values()].sort((a, b) => cmp.compare(a.gl_name, b.gl_name))
 }

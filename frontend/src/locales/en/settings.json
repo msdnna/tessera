@@ -57,7 +57,6 @@
   "localization": {
     "title": "Localization and formats",
     "language": "Language",
-    "langSoon": "{name} (soon)",
     "weekStartLabel": "Week starts on",
     "timeFormat": "Time format",
     "dateFormat": "Date format",

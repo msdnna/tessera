@@ -56,6 +56,17 @@ export function localeTag(language) {
   return language === 'en' ? 'en-GB' : 'ru-RU'
 }
 
+// Collator for sorting user data (tags, names, task titles) by the interface
+// language (#2800). Two things this fixes at once: sites that hard-coded 'ru'
+// kept Cyrillic-first order on an English UI, and sites that passed no locale at
+// all sorted by the *environment* language — which differs between a browser and
+// CI, so the same list could come out in two orders. `numeric` makes "Sprint 2"
+// precede "Sprint 10"; `sensitivity: base` keeps case and accents from splitting
+// otherwise equal names.
+export function collator(language) {
+  return cached('collator', localeTag(language), { numeric: true, sensitivity: 'base' })
+}
+
 export function normalizePrefs(prefs = {}) {
   return {
     language: prefs.language || DEFAULT_PREFS.language,
@@ -81,7 +92,9 @@ function cached(kind, locale, options) {
           ? new Intl.NumberFormat(locale, options)
           : kind === 'list'
             ? new Intl.ListFormat(locale, options)
-            : new Intl.RelativeTimeFormat(locale, options)
+            : kind === 'collator'
+              ? new Intl.Collator(locale, options)
+              : new Intl.RelativeTimeFormat(locale, options)
     formatters.set(key, f)
   }
   return f
