@@ -414,4 +414,95 @@
     <string name="gitlab_rule_action_tag">Tag</string>
     <string name="gitlab_rule_action_group">Grouping</string>
     <string name="gitlab_rule_action_ignore">Ignore</string>
+
+    <!-- Board: columns and quick create -->
+    <string name="board_new_task_hint">Task title, Enter</string>
+    <string name="board_add_task">+ ADD TASK</string>
+    <string name="board_new_column_hint">Column name, Enter</string>
+    <string name="board_add_column">+ ADD COLUMN</string>
+    <string name="board_column_color">Column colour</string>
+    <string name="board_column_done">Done column</string>
+    <string name="board_column_delete">Delete column</string>
+    <string name="board_column_delete_confirm">Delete “%1$s” and the tasks in it?</string>
+
+    <!-- Board: lane labels in grouping modes -->
+    <string name="board_lane_no_tag">No tag</string>
+    <string name="board_lane_unassigned">Unassigned</string>
+    <string name="board_lane_all_tasks">All tasks</string>
+
+    <!-- Board: calendar -->
+    <string name="board_today">Today</string>
+    <string name="board_calendar_undated">No due date</string>
+    <string-array name="calendar_months">
+        <item>January</item>
+        <item>February</item>
+        <item>March</item>
+        <item>April</item>
+        <item>May</item>
+        <item>June</item>
+        <item>July</item>
+        <item>August</item>
+        <item>September</item>
+        <item>October</item>
+        <item>November</item>
+        <item>December</item>
+    </string-array>
+    <string-array name="calendar_weekdays_short">
+        <item>Mon</item>
+        <item>Tue</item>
+        <item>Wed</item>
+        <item>Thu</item>
+        <item>Fri</item>
+        <item>Sat</item>
+        <item>Sun</item>
+    </string-array>
+
+    <!-- Board: Eisenhower matrix -->
+    <string name="board_matrix_urgent">Urgent</string>
+    <string name="board_matrix_not_urgent">Not urgent</string>
+    <string name="board_matrix_important">Important</string>
+    <string name="board_matrix_not_important">Not important</string>
+    <string name="board_matrix_q0_title">Urgent and important</string>
+    <string name="board_matrix_q0_hint">Do it now</string>
+    <string name="board_matrix_q1_title">Important, not urgent</string>
+    <string name="board_matrix_q1_hint">Schedule it</string>
+    <string name="board_matrix_q2_title">Urgent, not important</string>
+    <string name="board_matrix_q2_hint">Delegate it</string>
+    <string name="board_matrix_q3_title">Neither urgent nor important</string>
+    <string name="board_matrix_q3_hint">It can wait</string>
+    <string name="board_matrix_reset_auto">Back to auto</string>
+
+    <!-- Board: timeline and Gantt -->
+    <string name="board_timeline_task_column">Task</string>
+    <string name="board_timeline_empty">No tasks with dates.\nSet a start or due date on a card.</string>
+    <string name="board_timeline_overdue">%1$d overdue</string>
+    <string name="board_timeline_undated">%1$d undated</string>
+    <string name="board_timeline_undated_header">Undated</string>
+    <plurals name="board_timeline_links">
+        <item quantity="one">%1$d link</item>
+        <item quantity="other">%1$d links</item>
+    </plurals>
+    <string-array name="timeline_months_short">
+        <item>Jan</item>
+        <item>Feb</item>
+        <item>Mar</item>
+        <item>Apr</item>
+        <item>May</item>
+        <item>Jun</item>
+        <item>Jul</item>
+        <item>Aug</item>
+        <item>Sep</item>
+        <item>Oct</item>
+        <item>Nov</item>
+        <item>Dec</item>
+    </string-array>
+    <string-array name="timeline_weekdays_short">
+        <item>Mon</item>
+        <item>Tue</item>
+        <item>Wed</item>
+        <item>Thu</item>
+        <item>Fri</item>
+        <item>Sat</item>
+        <item>Sun</item>
+    </string-array>
 </resources>

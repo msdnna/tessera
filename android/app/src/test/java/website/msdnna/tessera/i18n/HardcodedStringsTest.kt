@@ -38,6 +38,29 @@ class HardcodedStringsTest {
         ).that(cleaned).isEmpty()
     }
 
+    /** Метка точечная: она снимает охрану со своей строки и только с неё. */
+    @Test
+    fun `the data marker excuses its own line only`() {
+        val source = """
+            val re = Regex("рассмотр") // i18n-data
+            val label = "Переименовать"
+        """.trimIndent()
+        assertWithMessage("метка сняла охрану с соседней строки")
+            .that(cyrillicLiterals(source)).containsExactly("Переименовать")
+    }
+
+    /** Комментарии кириллицей — норма, сканер их не считает. */
+    @Test
+    fun `comments are not literals`() {
+        val source = """
+            // Переименовать колонку
+            /* Удалить */
+            val a = 1
+        """.trimIndent()
+        assertWithMessage("кириллица в комментарии посчиталась литералом")
+            .that(cyrillicLiterals(source)).isEmpty()
+    }
+
     private fun expectedList(): Set<String> {
         val stream = javaClass.classLoader?.getResourceAsStream(LIST)
             ?: error("не найден список $LIST в тестовых ресурсах")
@@ -68,56 +91,98 @@ internal fun sourceRoot(): File {
  *
  * Мини-сканер, а не регулярка: комментарии (в них кириллицы полно и это нормально),
  * символьные литералы и escape-последовательности иначе дают ложные срабатывания.
+ *
+ * Строка на помеченной `i18n-data` строке файла пропускается: не весь русский текст в
+ * коде — интерфейс. Имена колонок приходят с сервера и не локализуются (подводный
+ * камень 3 плана #2796), значит и шаблон, который по ним ищет, обязан остаться русским.
+ * Метка ставится точечно, на ту же строку, — в отличие от списка файлов она не
+ * выключает охрану всего экрана.
  */
-internal fun cyrillicLiterals(source: String): List<String> {
-    val out = mutableListOf<String>()
-    var i = 0
-    while (i < source.length) {
+internal fun cyrillicLiterals(source: String): List<String> = LiteralScanner(source).scan()
+
+/** Разбор посимвольно: комментарии, символьные литералы и `"""` требуют своих правил. */
+private class LiteralScanner(private val source: String) {
+    private val out = mutableListOf<String>()
+    private val lines = source.lines()
+    private val dataLines = lines.withIndex().filter { DATA_MARKER in it.value }.map { it.index + 1 }.toSet()
+
+    /** Смещение начала каждой строки: по нему литерал сопоставляется со своей строкой
+     *  файла — курсор разбора прыгает через комментарии, считать `\n` по пути нельзя. */
+    private val lineStarts = ArrayList<Int>(lines.size).apply {
+        var at = 0
+        for (l in lines) {
+            add(at)
+            at += l.length + 1
+        }
+    }
+    private var i = 0
+
+    fun scan(): List<String> {
+        while (i < source.length) step()
+        return out
+    }
+
+    private fun step() {
         when {
-            source.startsWith("//", i) -> {
-                while (i < source.length && source[i] != '\n') i++
-            }
-
-            source.startsWith("/*", i) -> {
-                i += 2
-                while (i + 1 < source.length && !(source[i] == '*' && source[i + 1] == '/')) i++
-                i = minOf(i + 2, source.length)
-            }
-
-            // Символьный литерал: '"' и '\\' иначе сбивают разбор строк.
-            source[i] == '\'' -> {
-                i++
-                while (i < source.length && source[i] != '\'') i += if (source[i] == '\\') 2 else 1
-                i++
-            }
-
-            source.startsWith("\"\"\"", i) -> {
-                val end = source.indexOf("\"\"\"", i + 3)
-                val stop = if (end < 0) source.length else end
-                source.substring(i + 3, stop).takeIf(::hasCyrillic)?.let { out += it }
-                i = if (end < 0) source.length else end + 3
-            }
-
-            source[i] == '"' -> {
-                i++
-                val sb = StringBuilder()
-                while (i < source.length && source[i] != '"') {
-                    if (source[i] == '\\' && i + 1 < source.length) {
-                        sb.append(source[i + 1])
-                        i += 2
-                    } else {
-                        sb.append(source[i])
-                        i++
-                    }
-                }
-                i++
-                sb.toString().takeIf(::hasCyrillic)?.let { out += it }
-            }
-
+            source.startsWith("//", i) -> skipLineComment()
+            source.startsWith("/*", i) -> skipBlockComment()
+            source[i] == '\'' -> skipCharLiteral()
+            source.startsWith("\"\"\"", i) -> readRawString()
+            source[i] == '"' -> readString()
             else -> i++
         }
     }
-    return out
+
+    private fun skipLineComment() {
+        while (i < source.length && source[i] != '\n') i++
+    }
+
+    private fun skipBlockComment() {
+        i += 2
+        while (i + 1 < source.length && !(source[i] == '*' && source[i + 1] == '/')) i++
+        i = minOf(i + 2, source.length)
+    }
+
+    /** Символьный литерал: `'"'` и `'\\'` иначе сбивают разбор строк. */
+    private fun skipCharLiteral() {
+        i++
+        while (i < source.length && source[i] != '\'') i += if (source[i] == '\\') 2 else 1
+        i++
+    }
+
+    private fun readRawString() {
+        val end = source.indexOf("\"\"\"", i + 3)
+        val stop = if (end < 0) source.length else end
+        keep(i, source.substring(i + 3, stop))
+        i = if (end < 0) source.length else end + 3
+    }
+
+    private fun readString() {
+        val start = i
+        i++
+        val sb = StringBuilder()
+        while (i < source.length && source[i] != '"') {
+            if (source[i] == '\\' && i + 1 < source.length) {
+                sb.append(source[i + 1])
+                i += 2
+            } else {
+                sb.append(source[i])
+                i++
+            }
+        }
+        i++
+        keep(start, sb.toString())
+    }
+
+    private fun keep(offset: Int, text: String) {
+        if (hasCyrillic(text) && lineAt(offset) !in dataLines) out += text
+    }
+
+    private fun lineAt(offset: Int): Int =
+        lineStarts.binarySearch(offset).let { if (it >= 0) it + 1 else -it - 1 }
 }
 
 private fun hasCyrillic(text: String) = text.any { it in 'А'..'я' || it == 'ё' || it == 'Ё' }
+
+/** Метка «эта кириллица — данные, а не интерфейс» (ставится в комментарии той же строки). */
+private const val DATA_MARKER = "i18n-data"

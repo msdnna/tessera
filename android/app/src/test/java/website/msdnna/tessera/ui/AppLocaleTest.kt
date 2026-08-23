@@ -3,6 +3,7 @@ package website.msdnna.tessera.ui
 import android.content.Context
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -67,6 +68,16 @@ class AppLocaleTest {
         assertThat(appContext.withLanguage("en").getString(R.string.auth_submit_login)).isEqualTo("Sign in")
         assertThat(appContext.withLanguage("ru").getString(R.string.auth_submit_login)).isEqualTo("Войти")
         assertThat(appContext.withLanguage("fr").getString(R.string.auth_submit_login)).isEqualTo("Войти")
+    }
+
+    /** Массивы читают тот же [LocalResources], что и `stringResource`, — проверено, а не
+     *  предположено: календарь и ось таймлайна берут названия месяцев именно так. */
+    @Test
+    fun `string arrays follow the profile language`() {
+        compose.setContent {
+            AppLocale(language = "en") { Text(stringArrayResource(R.array.calendar_months)[0]) }
+        }
+        compose.onNodeWithText("January").assertIsDisplayed()
     }
 
     /** Русская форма склоняется по количеству *после «из»* — иначе «1 из 3 подзадачи». */

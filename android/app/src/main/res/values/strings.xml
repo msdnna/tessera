@@ -422,4 +422,97 @@
     <string name="gitlab_rule_action_tag">Тег</string>
     <string name="gitlab_rule_action_group">Группировка</string>
     <string name="gitlab_rule_action_ignore">Игнорировать</string>
+
+    <!-- Доска: колонки и быстрое создание -->
+    <string name="board_new_task_hint">Название задачи, Enter</string>
+    <string name="board_add_task">+ СОЗДАТЬ ЗАДАЧУ</string>
+    <string name="board_new_column_hint">Название колонки, Enter</string>
+    <string name="board_add_column">+ СОЗДАТЬ КОЛОНКУ</string>
+    <string name="board_column_color">Цвет колонки</string>
+    <string name="board_column_done">Завершающая</string>
+    <string name="board_column_delete">Удалить колонку</string>
+    <string name="board_column_delete_confirm">Удалить «%1$s» и задачи в ней?</string>
+
+    <!-- Доска: подписи дорожек в режимах группировки -->
+    <string name="board_lane_no_tag">Без тега</string>
+    <string name="board_lane_unassigned">Не назначено</string>
+    <string name="board_lane_all_tasks">Все задачи</string>
+
+    <!-- Доска: календарь -->
+    <string name="board_today">Сегодня</string>
+    <string name="board_calendar_undated">Без срока</string>
+    <string-array name="calendar_months">
+        <item>Январь</item>
+        <item>Февраль</item>
+        <item>Март</item>
+        <item>Апрель</item>
+        <item>Май</item>
+        <item>Июнь</item>
+        <item>Июль</item>
+        <item>Август</item>
+        <item>Сентябрь</item>
+        <item>Октябрь</item>
+        <item>Ноябрь</item>
+        <item>Декабрь</item>
+    </string-array>
+    <string-array name="calendar_weekdays_short">
+        <item>Пн</item>
+        <item>Вт</item>
+        <item>Ср</item>
+        <item>Чт</item>
+        <item>Пт</item>
+        <item>Сб</item>
+        <item>Вс</item>
+    </string-array>
+
+    <!-- Доска: матрица Эйзенхауэра -->
+    <string name="board_matrix_urgent">Срочно</string>
+    <string name="board_matrix_not_urgent">Несрочно</string>
+    <string name="board_matrix_important">Важно</string>
+    <string name="board_matrix_not_important">Неважно</string>
+    <string name="board_matrix_q0_title">Срочно и важно</string>
+    <string name="board_matrix_q0_hint">Сделать сейчас</string>
+    <string name="board_matrix_q1_title">Важно, не срочно</string>
+    <string name="board_matrix_q1_hint">Запланировать</string>
+    <string name="board_matrix_q2_title">Срочно, не важно</string>
+    <string name="board_matrix_q2_hint">Делегировать</string>
+    <string name="board_matrix_q3_title">Не срочно, не важно</string>
+    <string name="board_matrix_q3_hint">Может подождать</string>
+    <string name="board_matrix_reset_auto">Вернуть на авто</string>
+
+    <!-- Доска: таймлайн и диаграмма Ганта -->
+    <string name="board_timeline_task_column">Задача</string>
+    <string name="board_timeline_empty">Нет задач со сроками.\nЗадайте начало или срок в карточке.</string>
+    <string name="board_timeline_overdue">%1$d просрочено</string>
+    <string name="board_timeline_undated">%1$d без дат</string>
+    <string name="board_timeline_undated_header">Без дат</string>
+    <plurals name="board_timeline_links">
+        <item quantity="one">%1$d связь</item>
+        <item quantity="few">%1$d связи</item>
+        <item quantity="many">%1$d связей</item>
+        <item quantity="other">%1$d связи</item>
+    </plurals>
+    <string-array name="timeline_months_short">
+        <item>янв</item>
+        <item>фев</item>
+        <item>мар</item>
+        <item>апр</item>
+        <item>май</item>
+        <item>июн</item>
+        <item>июл</item>
+        <item>авг</item>
+        <item>сен</item>
+        <item>окт</item>
+        <item>ноя</item>
+        <item>дек</item>
+    </string-array>
+    <string-array name="timeline_weekdays_short">
+        <item>пн</item>
+        <item>вт</item>
+        <item>ср</item>
+        <item>чт</item>
+        <item>пт</item>
+        <item>сб</item>
+        <item>вс</item>
+    </string-array>
 </resources>

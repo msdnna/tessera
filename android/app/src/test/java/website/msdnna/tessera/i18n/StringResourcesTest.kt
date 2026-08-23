@@ -51,6 +51,26 @@ class StringResourcesTest {
         }
     }
 
+    /** Массивы (названия месяцев, дни недели) паритетом ключей не покрыты: недостающий
+     *  `string-array` в `values-en` так же молча отдаёт русский, а разъехавшаяся длина
+     *  роняет обращение по индексу уже в рантайме. */
+    @Test
+    fun `ru and en declare the same string arrays`() {
+        val ru = stringArrays("values")
+        val en = stringArrays("values-en")
+        assertWithMessage("массивы, которых нет в базовой локали").that(en.keys - ru.keys).isEmpty()
+        assertWithMessage("массивы без английского перевода").that(ru.keys - en.keys).isEmpty()
+        ru.forEach { (name, size) ->
+            assertWithMessage("длина массива $name").that(en[name]).isEqualTo(size)
+        }
+    }
+
+    /** Имя массива → число элементов. */
+    private fun stringArrays(dir: String): Map<String, Int> =
+        elements(dir, "string-array").associate {
+            it.getAttribute("name") to it.getElementsByTagName("item").length
+        }
+
     private fun stringKeys(dir: String): Set<String> =
         elements(dir, "string").map { it.getAttribute("name") }.toSet()
 
