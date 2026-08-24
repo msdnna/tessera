@@ -1,21 +1,27 @@
 package website.msdnna.tessera.shots
 
+import android.content.res.Resources
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.junit.Rule
@@ -60,6 +66,9 @@ class HelpShotsTest {
     val rules: RuleChain = RuleChain.outerRule(e2e).around(compose)
 
     private val dark = mutableStateOf(false)
+
+    /** System bar heights of the current mount — the strips [crop] cuts away. */
+    private var chrome: Insets = Insets.NONE
 
     @Test
     fun board() {
@@ -203,21 +212,60 @@ class HelpShotsTest {
     /**
      * Mounts [content] under the theme whose light/dark flag [shoot] flips.
      *
-     * `systemBarsPadding` is what `MainScreen` does for real: the test host is a
-     * bare activity drawing edge to edge, so without it the clock and the battery
-     * icon sit on top of the app's own toolbar — visible in the screenshot, and
-     * only in the screenshot.
+     * `MainScreen` uses `systemBarsPadding`, but in this host it measures zero:
+     * the bare test activity draws edge to edge and never gets the insets
+     * dispatched, so the padding collapses and the clock and the battery icon
+     * land on top of the app's own toolbar. The bars are therefore measured off
+     * the window ([measureSystemBars]) and applied as a plain padding — the same
+     * gap `MainScreen` would leave on a phone. [crop] then cuts those two strips
+     * back off, so the shot is the app alone, the way the web ones are.
+     *
+     * Hiding the bars instead does not work here: the emulator answers an
+     * immersive request with its own «Viewing full screen» card, which lands in
+     * the middle of the shot and dims everything under it.
      */
     private fun mount(content: @Composable () -> Unit) {
+        val bars = measureSystemBars()
+        chrome = bars
         val theme: MutableState<Boolean> = dark
         compose.setContent {
             val isDark by theme
+            val density = LocalDensity.current
             TesseraTheme(isDark = isDark) {
                 Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
-                    Box(Modifier.fillMaxSize().systemBarsPadding()) { content() }
+                    Box(
+                        Modifier.fillMaxSize().padding(
+                            top = with(density) { bars.top.toDp() },
+                            bottom = with(density) { bars.bottom.toDp() },
+                        ),
+                    ) { content() }
                 }
             }
         }
+    }
+
+    /**
+     * Height of the status bar and of the navigation bar, in pixels.
+     *
+     * Read off the window first; the platform dimens are the fallback for the
+     * case the window has not been laid out yet, when the root insets come back
+     * empty and a zero padding would put the clock back over the toolbar.
+     */
+    private fun measureSystemBars(): Insets {
+        var bars = Insets.NONE
+        compose.activityRule.scenario.onActivity { activity ->
+            bars = ViewCompat.getRootWindowInsets(activity.window.decorView)
+                ?.getInsets(WindowInsetsCompat.Type.systemBars())
+                ?: Insets.NONE
+        }
+        if (bars.top > 0 || bars.bottom > 0) return bars
+        val resources = InstrumentationRegistry.getInstrumentation().targetContext.resources
+        return Insets.of(0, resources.barHeight("status_bar_height"), 0, resources.barHeight("navigation_bar_height"))
+    }
+
+    private fun Resources.barHeight(name: String): Int {
+        val id = getIdentifier(name, "dimen", "android")
+        return if (id > 0) getDimensionPixelSize(id) else 0
     }
 
     private fun ComposeContentTestRule.awaitText(text: String) {
@@ -250,11 +298,41 @@ class HelpShotsTest {
      *
      * `waitForIdleSync` after Compose's own idle wait: composition being settled
      * says nothing about the frame having reached the surface UiAutomation reads.
+     *
+     * And it is not enough on its own. An idle message loop still leaves list
+     * items mid-entrance and the surface mid-repaint, and the screenshot then
+     * comes out torn — two states of the same list superimposed, glyphs clipped.
+     * So the shot is taken repeatedly until two consecutive ones are identical:
+     * a frame that no longer changes is a frame that has finished animating.
      */
     private fun screen(): Bitmap {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync()
-        return instrumentation.uiAutomation.takeScreenshot()
+        var last = instrumentation.uiAutomation.takeScreenshot()
+        repeat(STABLE_TRIES) {
+            SystemClock.sleep(STABLE_PAUSE_MS)
+            instrumentation.waitForIdleSync()
+            val next = instrumentation.uiAutomation.takeScreenshot()
+            if (next.sameAs(last)) return crop(next)
+            last.recycle()
+            last = next
+        }
+        return crop(last)
+    }
+
+    /**
+     * Cuts the status and navigation bars off the device screenshot.
+     *
+     * The scene under them is empty by construction — [mount] pads the content
+     * away from both — so this removes the emulator's clock and gesture bar and
+     * nothing of Tessera. What is left is a phone-shaped shot of the app, next
+     * to the web's browser-shaped ones.
+     */
+    private fun crop(full: Bitmap): Bitmap {
+        val top = chrome.top.coerceIn(0, full.height)
+        val height = (full.height - top - chrome.bottom).coerceIn(1, full.height - top)
+        if (top == 0 && height == full.height) return full
+        return Bitmap.createBitmap(full, 0, top, full.width, height)
     }
 
     private fun write(fileName: String, bitmap: Bitmap) {
@@ -262,7 +340,7 @@ class HelpShotsTest {
         // (`/sdcard/Android/data/…`) but since Android 11 the shell user cannot
         // read another app's directory there — the run would go green and `adb
         // pull` would then find nothing. `make android-shots` fetches these
-        // through `run-as`, which the debug build allows.
+        // through `adb root`, which the AVD's userdebug image allows.
         val dir = File(
             InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
             "help-shots",
@@ -273,5 +351,11 @@ class HelpShotsTest {
 
     private companion object {
         const val AWAIT_MS = 20_000L
+
+        /** How many times [screen] re-shoots while the frame keeps changing. */
+        const val STABLE_TRIES = 12
+
+        /** Long enough for a Compose enter animation to move visibly between shots. */
+        const val STABLE_PAUSE_MS = 250L
     }
 }
