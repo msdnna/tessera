@@ -15,7 +15,12 @@ import { buildHelpSearch } from '@/utils/helpSearch'
 const RAW = import.meta.glob('../../../docs/help/**/*.md', { query: '?raw', import: 'default' })
 const RAW_PREFIX = '../../../docs/help/'
 
-const ARTICLES = helpIndex.articles
+// Platform scoping (#2795): the index carries the manual for both clients, and
+// an article can be written for one of them only. The web shows the desktop
+// text — including for a reader on a phone browser, because the split is
+// «desktop site vs. app», not screen width: an Android screenshot on a page the
+// reader is looking at in a browser would simply be a lie.
+const ARTICLES = helpIndex.articles.filter((a) => (a.platforms || ['web']).includes('web'))
 
 // Frontmatter is metadata for the index, not content — strip it before render.
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/
