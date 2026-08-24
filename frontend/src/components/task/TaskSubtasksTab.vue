@@ -11,6 +11,7 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { sortedColumns, columnById, siblingNeighbors } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
 import TaskMiniCard from '../TaskMiniCard.vue'
 import EmptyState from '../EmptyState.vue'
 
@@ -178,7 +179,7 @@ async function moveSubtask(sub, columnId) {
             <template #trigger>
               <span class="col-chip mini" @click.stop>
                 <span class="col-dot" :style="{ background: columnOf(sub)?.color }" />
-                <span>{{ columnOf(sub)?.name || '—' }}</span>
+                <span>{{ columnName(columnOf(sub)) || '—' }}</span>
               </span>
             </template>
             <div class="menu pmenu" @click.stop>
@@ -190,7 +191,7 @@ async function moveSubtask(sub, columnId) {
                 @click="moveSubtask(sub, c.id)"
               >
                 <span class="col-dot" :style="{ background: c.color }" />
-                <span>{{ c.name }}</span>
+                <span>{{ columnName(c) }}</span>
               </div>
             </div>
           </n-popover>

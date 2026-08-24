@@ -13,6 +13,7 @@ import { i18n } from '@/i18n'
 import { priorityOptions } from '@/utils/priority'
 import { pressMoved } from '@/utils/dnd'
 import { taskBasePatch } from '@/utils/taskPatch'
+import { columnName } from '@/utils/defaultNames'
 
 // naive's dropdown `icon` option field wants a render fn — exported so callers
 // can build their `extra` items with the same look.
@@ -69,7 +70,7 @@ export function useTaskMenu({ onOpen, onChanged, onSelect, columns, extra, dange
               label: tr('task.menu.move'),
               key: 'move',
               icon: menuIcon(ArrowForwardOutline),
-              children: cols.map((c) => ({ label: c.name, key: 'col:' + c.id })),
+              children: cols.map((c) => ({ label: columnName(c), key: 'col:' + c.id })),
             },
           ]
         : []),

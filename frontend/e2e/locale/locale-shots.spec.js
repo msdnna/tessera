@@ -119,6 +119,23 @@ test('панель фоновых задач: имена воркеров и т�
   report.push({ screen: 'jobs', clipped: await clipped(page, '.bj-modal') })
 })
 
+// Доработка 2 of #2800: the workspace every account is seeded with was called
+// «Личное пространство» in every language, because the name arrived from the
+// server already written. The switcher is where both kinds live side by side —
+// the seeded one and the workspace this run created for itself, which is named by
+// its creator and therefore stays as typed.
+test('переключатель пространств: дефолтное и своё имя рядом', async ({ page }) => {
+  await page.goto('/')
+  const sw = page.locator('.ws-switch')
+  await expect(sw).toBeVisible()
+  await sw.locator('.n-base-selection').click()
+  // The dropdown mounts on body, outside the sidebar.
+  const menu = page.locator('.n-base-select-menu')
+  await expect(menu.locator('.n-base-select-option').first()).toBeVisible()
+  await shot(page.locator('.app-shell, body').first(), 'ws-switch')
+  report.push({ screen: 'ws-switch', clipped: await clipped(page, '.n-base-select-menu') })
+})
+
 test('настройки: гриды профиля, оформления и локализации', async ({ page }) => {
   await page.goto('/settings')
   await expect(page.locator('.settings h1')).toBeVisible()

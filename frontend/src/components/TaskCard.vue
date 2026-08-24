@@ -20,6 +20,7 @@ import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGradVert } from '@/utils/gradient'
 import { divergedColumn } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
 import { cardFieldVisible } from '@/utils/cardFields'
 import { taskBasePatch } from '@/utils/taskPatch'
 import TaskCardPills from './task/TaskCardPills.vue'
@@ -276,10 +277,10 @@ async function submitAddSub() {
         <span
           v-if="ownColumnChip"
           class="col-chip"
-          :title="t('task.card.columnIs', { name: ownColumnChip.name })"
+          :title="t('task.card.columnIs', { name: columnName(ownColumnChip) })"
         >
           <span class="col-dot" :style="{ background: ownColumnChip.color }" />
-          <span class="col-name">{{ ownColumnChip.name }}</span>
+          <span class="col-name">{{ columnName(ownColumnChip) }}</span>
         </span>
         <a
           v-if="show('gitlab') && task.gitlab_iid"

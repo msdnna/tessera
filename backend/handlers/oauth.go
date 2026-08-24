@@ -260,7 +260,7 @@ func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glU
 		return db.User{}, errors.New("create_failed")
 	}
 	if ws, werr := h.q.CreateWorkspace(c, db.CreateWorkspaceParams{
-		Name: "Личное пространство", OwnerID: user.ID,
+		Name: personalWorkspaceName, NameKey: ptr(personalWorkspaceKey), OwnerID: user.ID,
 	}); werr == nil {
 		_, _ = h.q.CreateMembership(c, db.CreateMembershipParams{
 			WorkspaceID: ws.ID, UserID: user.ID, Role: "owner",

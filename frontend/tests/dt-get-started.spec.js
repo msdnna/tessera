@@ -274,7 +274,11 @@ describe('Get Started scenario', () => {
   it('keeps its raw kanban selectors in sync with KanbanBoard', () => {
     // These two ride on attributes the board already had; a rename there would
     // silently strand the last step of the guide.
-    expect(kanban).toContain(':data-column-name="dcol.name"')
+    //
+    // The guide addresses columns by their seeded Russian names, so the attribute
+    // has to carry the column's server-side name and not its caption — those parted
+    // ways when seeded columns started being translated (#2800).
+    expect(kanban).toContain(':data-column-name="dcol.rawName"')
     expect(kanban).toContain('data-testid="add-task-button"')
     expect(readFileSync(resolve(root, 'src/components/TaskCard.vue'), 'utf8')).toContain(
       'data-testid="task-card"',

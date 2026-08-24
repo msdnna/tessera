@@ -70,6 +70,7 @@ import {
   siblingNeighbors,
   columnTail,
 } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
 import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
 import { copyText } from '@/utils/clipboard'
@@ -520,6 +521,9 @@ async function loadDetail() {
       columns.value = (boardColumns.value || []).map((c) => ({
         id: c.id,
         name: c.name,
+        // name_key rides along or the status chip and the move menu would caption
+        // seeded columns by their stored Russian name (#2800).
+        name_key: c.name_key,
         color: c.color,
         position: c.position,
       }))
@@ -537,6 +541,7 @@ async function loadDetail() {
         columns.value = (cols.data || []).map((c) => ({
           id: c.id,
           name: c.name,
+          name_key: c.name_key,
           color: c.color,
           position: c.position,
         }))
@@ -1570,7 +1575,7 @@ async function onSubtaskChanged() {
                     <template #trigger>
                       <button class="val col-chip" :disabled="moving">
                         <span class="col-dot" :style="{ background: currentColumn?.color }" />
-                        <span>{{ currentColumn?.name || t('task.value.columnNone') }}</span>
+                        <span>{{ columnName(currentColumn) || t('task.value.columnNone') }}</span>
                       </button>
                     </template>
                     <div class="menu pmenu">
@@ -1582,13 +1587,13 @@ async function onSubtaskChanged() {
                         @click="moveToColumn(c.id)"
                       >
                         <span class="col-dot" :style="{ background: c.color }" />
-                        <span>{{ c.name }}</span>
+                        <span>{{ columnName(c) }}</span>
                       </div>
                     </div>
                   </n-popover>
                   <span v-else class="val col-chip static">
                     <span class="col-dot" :style="{ background: currentColumn?.color }" />
-                    <span>{{ currentColumn?.name || '—' }}</span>
+                    <span>{{ columnName(currentColumn) || '—' }}</span>
                   </span>
                   <template v-if="!readonly">
                     <button
@@ -1596,7 +1601,7 @@ async function onSubtaskChanged() {
                       :disabled="!nextCol || moving"
                       :title="
                         nextCol
-                          ? t('task.status.next', { name: nextCol.name })
+                          ? t('task.status.next', { name: columnName(nextCol) })
                           : t('task.status.last')
                       "
                       @click="moveToColumn(nextCol?.id)"

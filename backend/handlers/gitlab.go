@@ -699,11 +699,15 @@ func syncOpLabel(mode string) string {
 	return "инкрементальная синхронизация"
 }
 
-// syncBoard caches a board's columns + done column during a sync run.
+// syncBoard caches a board's columns + done column during a sync run. Columns are
+// indexed twice: by display name (what the rules' ValueMap spells out) and by
+// name_key, so a seeded column still resolves when its name no longer matches the
+// rules verbatim — see resolveBoardCol.
 type syncBoard struct {
 	id     uuid.UUID
 	cols   []db.BoardColumn
 	byName map[string]db.BoardColumn
+	byKey  map[string]db.BoardColumn
 	doneID *uuid.UUID
 }
 
@@ -959,10 +963,14 @@ func (r *syncRun) loadBoard(ctx context.Context, bid uuid.UUID) (*syncBoard, err
 		return nil, fmt.Errorf("board has no columns")
 	}
 	byName := make(map[string]db.BoardColumn, len(cols))
+	byKey := make(map[string]db.BoardColumn, len(cols))
 	for _, c := range cols {
 		byName[c.Name] = c
+		if c.NameKey != nil {
+			byKey[*c.NameKey] = c
+		}
 	}
-	bc := &syncBoard{id: bid, cols: cols, byName: byName, doneID: doneColumnID(b)}
+	bc := &syncBoard{id: bid, cols: cols, byName: byName, byKey: byKey, doneID: doneColumnID(b)}
 	r.boards[bid] = bc
 	return bc, nil
 }
@@ -984,6 +992,20 @@ func (r *syncRun) resolveBoardCol(ctx context.Context, issue gitlab.Issue, res g
 		bc = r.boards[r.integ.BoardID] // fall back to the default board
 	}
 	col, found := bc.byName[res.ColumnName]
+	if !found {
+		// Display-name matching stays primary: a seeded column keeps its Russian
+		// `name` in the DB whatever language it is captioned in for the reader, so
+		// the built-in rules keep resolving. But a rule may also target a column by
+		// its language-neutral key ("todo") — the only spelling available to
+		// someone writing rules against a board they see in English, and one that
+		// survives a caption change. The Russian default name maps to the same key,
+		// so both spellings land on the same column.
+		key := res.ColumnName
+		if k := defaultColumnKey(res.ColumnName); k != "" {
+			key = k
+		}
+		col, found = bc.byKey[key]
+	}
 	if !found {
 		col = bc.cols[0]
 	}

@@ -13,9 +13,15 @@ export function isReviewColumn(name) {
 }
 
 // done → check circle · first → empty circle · review → ⅔-pie · other → half.
-export function columnStatusName({ isDone, first, name }) {
+//
+// A seeded column also carries a name_key (#2800), which says which of the four
+// defaults it is without going through the name at all — so it decides first, and
+// the name-matching above stays for every column that has no key: the ones a user
+// added or renamed.
+export function columnStatusName({ isDone, first, name, nameKey }) {
   if (isDone) return 'status-done'
   if (first) return 'status-todo'
+  if (nameKey) return nameKey === 'review' ? 'status-review' : 'status-progress'
   if (isReviewColumn(name)) return 'status-review'
   return 'status-progress'
 }

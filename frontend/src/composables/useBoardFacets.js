@@ -14,6 +14,7 @@ import { i18n, uiCollator } from '@/i18n'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
 import { tagNamespace, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
 import { boardGitlabAuthors } from '@/utils/boardFilters'
+import { columnName } from '@/utils/defaultNames'
 import {
   emptyFilters,
   countActiveFilters,
@@ -281,7 +282,7 @@ export function useBoardFacets({
   })
   // Status filter = which board columns to show (timeline-only facet).
   const statusFilterOptions = computed(() =>
-    columns.value.map((c) => ({ label: c.name, value: c.id })),
+    columns.value.map((c) => ({ label: columnName(c), value: c.id })),
   )
   // Milestone filter menu (+ an explicit "no milestone" bucket).
   const milestoneFilterMenu = computed(() => [
@@ -338,7 +339,9 @@ export function useBoardFacets({
     )
     filters.statuses.forEach((s) =>
       out.push(
-        chip('status', columns.value.find((c) => c.id === s)?.name || unknown, { value: s }),
+        chip('status', columnName(columns.value.find((c) => c.id === s)) || unknown, {
+          value: s,
+        }),
       ),
     )
     filters.milestones.forEach((m) => {

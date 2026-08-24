@@ -10,6 +10,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
+import { taskColumnName } from '@/utils/defaultNames'
 import { useDateLocale } from '@/composables/useDateLocale'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -170,7 +171,7 @@ watch(() => wsStore.currentId, load)
           />
           <span class="t-loc">{{ task.project_name }} / {{ task.board_name }}</span>
           <span class="t-col" :style="{ '--c': task.column_color || 'var(--t-text3)' }">
-            {{ task.column_name }}
+            {{ taskColumnName(task) }}
           </span>
           <span v-if="task.due_date" class="t-due" :class="{ overdue: isOverdue(task) }">
             {{ dueLabel(task.due_date) }}

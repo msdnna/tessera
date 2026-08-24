@@ -33,6 +33,7 @@ type BoardColumn struct {
 	Position  float64   `json:"position"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	NameKey   *string   `json:"name_key"`
 }
 
 type BoardView struct {
@@ -660,6 +661,7 @@ type Workspace struct {
 	UpdatedAt   time.Time        `json:"updated_at"`
 	TaskCounter int64            `json:"task_counter"`
 	Estimation  *json.RawMessage `json:"estimation"`
+	NameKey     *string          `json:"name_key"`
 }
 
 type WorkspaceCommand struct {

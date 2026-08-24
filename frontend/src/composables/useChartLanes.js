@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 import { i18n } from '@/i18n'
 import { formatEstimate, formatEstimateFull, sumEstimates } from '@/utils/estimation'
+import { columnName } from '@/utils/defaultNames'
 
 // Swimlane grouping for the Timeline and Gantt board views, driven by the shared
 // composer-bar's groupMode ('status' | 'tag' (+ prefix) | 'assignee' | 'none') —
@@ -33,7 +34,7 @@ export function useChartLanes({
     // For 'status' grouping, seed lanes in column order so empty columns still show
     // and the lane order matches the board.
     if (mode === 'status') {
-      for (const col of statusColumns.value) ensure(col.id, col.name, col.color)
+      for (const col of statusColumns.value) ensure(col.id, columnName(col), col.color)
     }
     for (const task of source.value) {
       if (mode === 'assignee') {

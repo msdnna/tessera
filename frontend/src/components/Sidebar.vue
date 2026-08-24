@@ -34,6 +34,7 @@ import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useTourStore } from '@/stores/tour'
+import { workspaceName } from '@/utils/defaultNames'
 import ConfirmByName from './ConfirmByName.vue'
 import ProjectCreateModal from './ProjectCreateModal.vue'
 import {
@@ -66,7 +67,7 @@ const message = useMessage()
 const route = useRoute()
 const router = useRouter()
 
-const wsOptions = computed(() => store.list.map((w) => ({ label: w.name, value: w.id })))
+const wsOptions = computed(() => store.list.map((w) => ({ label: workspaceName(w), value: w.id })))
 const rootGroups = computed(() => store.childGroups(null))
 const ungrouped = computed(() => store.projectsInGroup(null))
 
@@ -395,7 +396,7 @@ async function deleteWorkspace() {
 
     <ConfirmByName
       v-model:show="wsDeleteShow"
-      :name="store.current?.name || ''"
+      :name="workspaceName(store.current)"
       :title="t('shell.workspace.delete')"
       :message="t('shell.workspace.deleteMessage')"
       @confirm="deleteWorkspace"

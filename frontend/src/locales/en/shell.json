@@ -13,7 +13,10 @@
     "delete": "Delete workspace",
     "deleteMessage": "The workspace will be deleted with all its projects, boards and tasks. This cannot be undone.",
     "deleteLast": "The only workspace cannot be deleted",
-    "deleted": "Workspace deleted"
+    "deleted": "Workspace deleted",
+    "defaultName": {
+      "personal": "Personal space"
+    }
   },
   "tree": {
     "projects": "Projects",

@@ -35,8 +35,17 @@ const emit = defineEmits(['changed', 'set-done', 'toggle-collapse'])
 // the pack preview). Review columns are detected by name (no explicit column type) —
 // that name-matching lives in utils/columnStatus.js, where the Russian words are
 // data (what the seeded rows are called), not interface text.
+// The glyph is picked from the column's own name (and its name_key when it has
+// one), not from the caption: the table in columnStatus.js matches the words the
+// row actually contains.
+const rawName = computed(() => props.dcol.rawName ?? props.dcol.name)
 const statusName = computed(() =>
-  columnStatusName({ isDone: props.isDone, first: props.first, name: props.dcol.name }),
+  columnStatusName({
+    isDone: props.isDone,
+    first: props.first,
+    name: rawName.value,
+    nameKey: props.dcol.status?.name_key,
+  }),
 )
 const statusVariant = computed(() => (props.isDone ? 'filled' : 'outline'))
 // Tint the glyph with the column colour; fall back to the accent (same as the
@@ -122,7 +131,10 @@ async function commitRename() {
 }
 async function setColor(c) {
   try {
-    await columnsApi.update(props.dcol.key, { name: props.dcol.name, color: c })
+    // dcol.name is the caption the reader sees; the column's own name is what the
+    // server stores. Sending the caption back would rename the column into the UI
+    // language and drop its name_key (see UpdateColumn).
+    await columnsApi.update(props.dcol.key, { name: rawName.value, color: c })
     emit('changed')
   } catch (e) {
     message.error(e.message)

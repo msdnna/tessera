@@ -190,6 +190,10 @@ func (h *API) broadcastEvent(workspaceID uuid.UUID, eventType, actor string, pay
 	})
 }
 
+// ptr returns a pointer to v — for the nullable sqlc params, where a literal
+// constant cannot be addressed inline.
+func ptr[T any](v T) *T { return &v }
+
 // parseID reads a uuid path param, writing 400 on failure.
 func parseID(c *gin.Context, name string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param(name))

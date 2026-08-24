@@ -43,6 +43,7 @@ const primIcon = (icon) => () => h(NIcon, { color: 'var(--t-primary)' }, { defau
 import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { makeSlug } from '@/utils/slug'
+import { workspaceName } from '@/utils/defaultNames'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
 import ProjectIcon from './ProjectIcon.vue'
@@ -389,7 +390,9 @@ const transferBusy = ref(false)
 // Other workspaces the user belongs to — the current one is excluded (nothing to
 // move to). `store.list` holds every workspace the user can access.
 const transferOptions = computed(() =>
-  store.list.filter((w) => w.id !== store.currentId).map((w) => ({ label: w.name, value: w.id })),
+  store.list
+    .filter((w) => w.id !== store.currentId)
+    .map((w) => ({ label: workspaceName(w), value: w.id })),
 )
 function openTransfer() {
   transferTarget.value = null

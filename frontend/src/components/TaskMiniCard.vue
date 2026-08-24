@@ -6,6 +6,7 @@ import { CalendarClearOutline } from '@vicons/ionicons5'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel } from '@/utils/priority'
 import { hueGrad } from '@/utils/gradient'
+import { columnName } from '@/utils/defaultNames'
 import UserAvatar from './UserAvatar.vue'
 import TagPill from './TagPill.vue'
 import { useFormat } from '@/composables/useFormat'
@@ -61,7 +62,7 @@ const due = computed(() => {
 
     <div v-if="column" class="mini-col">
       <span class="mini-dot" :style="{ background: column.color }" />
-      {{ t('task.card.columnIs', { name: column.name }) }}
+      {{ t('task.card.columnIs', { name: columnName(column) }) }}
     </div>
 
     <div class="mini-foot">

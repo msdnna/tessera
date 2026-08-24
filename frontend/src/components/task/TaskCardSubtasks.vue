@@ -17,6 +17,7 @@ import { tasks as tasksApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGradVert } from '@/utils/gradient'
 import { divergedColumn } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
 import { taskBasePatch } from '@/utils/taskPatch'
 import TaskMiniCard from '../TaskMiniCard.vue'
 import { useBoardViewStore } from '@/stores/boardView'
@@ -158,7 +159,7 @@ async function toggleSubDone(s) {
                   v-if="subColumn(s)"
                   class="col-mark"
                   :style="{ background: subColumn(s).color }"
-                  :title="t('task.card.columnIs', { name: subColumn(s).name })"
+                  :title="t('task.card.columnIs', { name: columnName(subColumn(s)) })"
                 />
               </div>
             </template>

@@ -65,6 +65,7 @@ import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardE
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
+import { columnName } from '@/utils/defaultNames'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -1003,22 +1004,47 @@ async function onSetDone(columnId) {
 
 const displayColumns = computed(() => {
   if (groupMode.value === 'status') {
-    return columns.value.map((c) => ({ key: c.id, name: c.name, color: c.color, status: c }))
+    return columns.value.map((c) => ({
+      key: c.id,
+      name: columnName(c),
+      rawName: c.name,
+      color: c.color,
+      status: c,
+    }))
   }
   if (groupMode.value === 'milestone') {
     return [
-      ...milestonesList.value.map((m) => ({ key: m.id, name: m.title, color: '', milestone: m })),
-      { key: '__none__', name: t('board.group.noMilestone'), color: '', milestone: null },
+      ...milestonesList.value.map((m) => ({
+        key: m.id,
+        name: m.title,
+        rawName: m.title,
+        color: '',
+        milestone: m,
+      })),
+      {
+        key: '__none__',
+        name: t('board.group.noMilestone'),
+        rawName: t('board.group.noMilestone'),
+        color: '',
+        milestone: null,
+      },
     ]
   }
   return [
     ...groupTags.value.map((tag) => ({
       key: tag.id,
       name: tagColumnName(tag),
+      rawName: tagColumnName(tag),
       color: tag.color,
       tag,
     })),
-    { key: '__none__', name: t('board.group.noTags'), color: '', tag: null },
+    {
+      key: '__none__',
+      name: t('board.group.noTags'),
+      rawName: t('board.group.noTags'),
+      color: '',
+      tag: null,
+    },
   ]
 })
 
@@ -1756,7 +1782,7 @@ async function restoreFromArchive(taskId) {
               class="col"
               data-testid="column"
               :data-column-key="dcol.key"
-              :data-column-name="dcol.name"
+              :data-column-name="dcol.rawName"
               :class="{ collapsed: colCollapsedNow(dcol) }"
               :style="{
                 '--col-accent': dcol.color || 'var(--t-primary)',

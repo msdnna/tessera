@@ -32,6 +32,7 @@ import EstimationModal from './EstimationModal.vue'
 import WorkspaceCommandsModal from './WorkspaceCommandsModal.vue'
 import BackgroundJobsModal from './BackgroundJobsModal.vue'
 import { DEFAULT_ESTIMATION } from '@/utils/estimation'
+import { workspaceName } from '@/utils/defaultNames'
 
 defineProps({ placement: { type: String, default: 'bottom-end' } })
 
@@ -275,7 +276,7 @@ function noteText(n) {
       v-model:show="showEstimation"
       scope="workspace"
       :target-id="ws.currentId"
-      :name="ws.current?.name || ''"
+      :name="workspaceName(ws.current)"
       :value="ws.current?.estimation || null"
       :inherited="DEFAULT_ESTIMATION"
     />

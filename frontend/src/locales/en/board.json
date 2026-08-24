@@ -52,7 +52,13 @@
     "setDone": "Make it completing",
     "unsetDone": "Stop completing",
     "delete": "Delete the column",
-    "deleteConfirm": "Delete the column with all its tasks?"
+    "deleteConfirm": "Delete the column with all its tasks?",
+    "defaultName": {
+      "todo": "To do",
+      "in_progress": "In progress",
+      "review": "In review",
+      "done": "Done"
+    }
   },
   "group": {
     "noMilestone": "No milestone",

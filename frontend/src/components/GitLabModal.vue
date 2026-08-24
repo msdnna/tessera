@@ -35,6 +35,7 @@ import ConflictResolverPanel from '@/components/ConflictResolverPanel.vue'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
+import { columnName } from '@/utils/defaultNames'
 import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
@@ -230,9 +231,14 @@ const boardProject = ref({}) // board id → project id, for prefix-name targeti
 // prefixes that have no rule here.
 const loadedPrefixNames = ref({})
 const targetProjectId = computed(() => boardProject.value[boardId.value] || null)
-const columnOptions = ref([]) // {label:name, value:name} — for label-rules value maps
-const columnIdOptions = ref([]) // {label:name, value:id} — for column-move bindings
-const columnNameById = ref({}) // id → name, to stamp column_name on save
+// Captions follow the reader's language; the values stored in a rule do not. A
+// rule records the column's server-side name (that is what the sync matches on,
+// see internal/gitlab/writeback.go), so `value` and columnNameById stay on the
+// raw name while only the labels are translated (#2800).
+const columnOptions = ref([]) // {label:caption, value:name} — for label-rules value maps
+const columnIdOptions = ref([]) // {label:caption, value:id} — for column-move bindings
+const columnNameById = ref({}) // id → raw name, to stamp column_name on save
+const columnLabelById = ref({}) // id → caption, for the row summaries
 const saving = ref(false)
 // Only covers the POST that kicks the sync off — the sync itself runs detached on
 // the server, so nothing here blocks on it.
@@ -349,19 +355,26 @@ async function loadColumns(id) {
     columnOptions.value = []
     columnIdOptions.value = []
     columnNameById.value = {}
+    columnLabelById.value = {}
     return
   }
   try {
     const cols = (await boardsApi.columns(id)).data || []
-    columnOptions.value = cols.map((c) => ({ label: c.name, value: c.name }))
-    columnIdOptions.value = cols.map((c) => ({ label: c.name, value: c.id }))
+    columnOptions.value = cols.map((c) => ({ label: columnName(c), value: c.name }))
+    columnIdOptions.value = cols.map((c) => ({ label: columnName(c), value: c.id }))
     const m = {}
-    for (const c of cols) m[c.id] = c.name
+    const labels = {}
+    for (const c of cols) {
+      m[c.id] = c.name
+      labels[c.id] = columnName(c)
+    }
     columnNameById.value = m
+    columnLabelById.value = labels
   } catch {
     columnOptions.value = []
     columnIdOptions.value = []
     columnNameById.value = {}
+    columnLabelById.value = {}
   }
 }
 
@@ -543,7 +556,9 @@ function bindingTriggerText(b) {
     case 'column':
       return t('gitlab.modal.summary.columnMove', {
         name:
-          columnNameById.value[tr.column_id] || tr.column_name || t('gitlab.modal.summary.unknown'),
+          columnLabelById.value[tr.column_id] ||
+          tr.column_name ||
+          t('gitlab.modal.summary.unknown'),
       })
     case 'priority':
       return tr.priority == null

@@ -31,6 +31,7 @@ import {
   notificationPrefs as prefsApi,
 } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
+import { workspaceName } from '@/utils/defaultNames'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import SecretInput from '@/components/SecretInput.vue'
@@ -117,7 +118,9 @@ const DIGEST_OPTIONS = computed(() =>
 )
 const kindOptions = computed(() => EVENT_KINDS.map((value) => ({ value, label: kindLabel(value) })))
 
-const wsOptions = computed(() => (wsStore.list || []).map((w) => ({ value: w.id, label: w.name })))
+const wsOptions = computed(() =>
+  (wsStore.list || []).map((w) => ({ value: w.id, label: workspaceName(w) })),
+)
 const channelOptions = computed(() =>
   channels.value.map((c) => ({ value: c.id, label: channelTitle(c) })),
 )
