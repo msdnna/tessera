@@ -1,5 +1,6 @@
 import { test, expect, signIn } from '../fixtures.js'
 import { newCredentials, register } from '../api.js'
+import { t, tRe } from '../i18n.js'
 
 // Сквозная приёмка раздела «Документы» (#2718): один документ проходит путь,
 // которым его ведёт человек — импорт (D8) → связь с задачей и протокол
@@ -124,17 +125,21 @@ test('документы: импорт → согласование → отка
     await panel.getByTestId('doc-approval-submit').click()
 
     const protocol = panel.getByTestId('doc-approval')
-    await expect(protocol).toContainText('На согласовании')
+    await expect(protocol).toContainText(t('documents.approval.status.pending'))
     // Маршрут пришпилен к ревизии, которую создал импорт: согласуется именно
     // импортированный текст, а не «документ вообще».
-    await expect(protocol).toContainText(/Версия \d+/)
+    await expect(protocol).toContainText(
+      tRe('documents.links.meta', { revision: '\\d+', author: '.+', date: '.+' }),
+    )
 
     await matePage.goto(docURL)
     await matePage.getByTestId('doc-links-toggle').click()
     const matePanel = matePage.getByTestId('doc-links')
     await matePanel.getByTestId('doc-approval-sign').click()
     await matePage.getByTestId('doc-approval-approve').click()
-    await expect(protocol).toContainText('Согласовано', { timeout: 10000 })
+    await expect(protocol).toContainText(t('documents.approval.status.approved'), {
+      timeout: 10000,
+    })
 
     // ── D6: журнал, правка поверх согласованного и откат ──
     const journal = page.waitForResponse(
@@ -179,7 +184,7 @@ test('документы: импорт → согласование → отка
     await page.getByTestId('doc-links-toggle').click()
     await expect(panel).toBeVisible()
     await expect(panel.getByTestId('doc-link')).toHaveCount(1)
-    await expect(protocol).toContainText('Согласовано')
+    await expect(protocol).toContainText(t('documents.approval.status.approved'))
 
     // Сосед видит откат без перезагрузки — по кадру из сокета документа (D4).
     await expect(matePage.locator('.ProseMirror')).toContainText('Регламент совещаний')

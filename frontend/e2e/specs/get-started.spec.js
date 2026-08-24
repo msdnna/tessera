@@ -1,5 +1,6 @@
 import { test, expect, signIn, openBoard, column, cardsIn, dragCard, dragRow } from '../fixtures.js'
 import { api, newCredentials, register, seedBoard, createTask } from '../api.js'
+import { t } from '../i18n.js'
 
 // The Get Started guide (#2753) as a first-time user actually meets it: nobody
 // opens it, it opens itself on the first load of a freshly registered account.
@@ -31,12 +32,12 @@ test('guide autostarts for a new account and advances on «Понятно»', as
 
   const pop = page.getByTestId('tour-pop')
   await expect(pop).toBeVisible({ timeout: 15000 })
-  await expect(pop).toContainText('Пространства')
+  await expect(pop).toContainText(t('tour.steps.workspaces.title'))
 
   // The first step is informational: both buttons, and «Понятно» moves on.
   await expect(page.getByTestId('tour-next')).toBeVisible()
   await page.getByTestId('tour-next').click()
-  await expect(pop).toContainText('Дерево проектов')
+  await expect(pop).toContainText(t('tour.steps.tree-add.title'))
 
   // Step 2 asks the user to act, so «Понятно» is gone and only «Пропустить» is
   // left — the author's call: no way to skip past an action step.
@@ -71,7 +72,7 @@ test('«Обучение» in the sidebar footer restarts the guide', async ({ p
 
   await page.locator('[data-tour="footer-tour"]').click()
   await expect(pop).toBeVisible()
-  await expect(pop).toContainText('Пространства')
+  await expect(pop).toContainText(t('tour.steps.workspaces.title'))
 })
 
 // ── DnD-шаги (#2778) ───────────────────────────────────────────────────────
@@ -98,15 +99,18 @@ test('шаг «Перетащите карточку» закрывается н
 
   const pop = page.getByTestId('tour-pop')
   await expect(pop).toBeVisible({ timeout: 15000 })
-  await expect(pop).toContainText('Перетащите карточку')
+  await expect(pop).toContainText(t('tour.steps.dnd-card.title'))
 
+  // Имена колонок остаются русскими в любой локали: их сеет бэкенд
+  // (`handlers/boards.go defaultColumns`), это данные доски, а не строки
+  // интерфейса. Отсюда литералы здесь и ключи каталога выше.
   const card = cardsIn(page, 'К работе').first()
   await expect(card).toBeVisible()
   await dragCard(page, card, column(page, 'В процессе'))
 
   // Карточка переехала — и вместе с ней уехал шаг.
   await expect(cardsIn(page, 'В процессе')).toHaveCount(1)
-  await expect(pop).toContainText('Проекты тоже группируются')
+  await expect(pop).toContainText(t('tour.steps.group-add.title'))
 })
 
 test('шаг «Группа создана» подсвечивает созданную группу, а не первую в дереве', async ({
@@ -124,17 +128,19 @@ test('шаг «Группа создана» подсвечивает созда
 
   const pop = page.getByTestId('tour-pop')
   await expect(pop).toBeVisible({ timeout: 15000 })
-  await expect(pop).toContainText('Проекты тоже группируются')
+  await expect(pop).toContainText(t('tour.steps.group-add.title'))
 
   await page.locator('[data-tour="proj-add"]').click()
   await page.locator('[data-tour="menu-group"]').click()
-  await expect(pop).toContainText('Группа создана')
+  await expect(pop).toContainText(t('tour.steps.group-created.title'))
 
   // Подсвечена (data-tour-active вешает оверлей на свои якоря) ровно одна строка
-  // группы — и это не засеянная, а только что созданная, с именем «Группа».
+  // группы — и это не засеянная, а только что созданная. Имя ей даёт клиент
+  // (`shell.group.defaultName` в Sidebar.vue), поэтому и здесь оно из каталога:
+  // на английском прогоне группа называется «Group».
   const lit = page.locator('[data-tour="group-row"][data-tour-active]')
   await expect(lit).toHaveCount(1)
-  await expect(lit).toContainText('Группа')
+  await expect(lit).toContainText(t('shell.group.defaultName'))
   expect(
     await lit.evaluate((el) => el.closest('[data-tour-group]').getAttribute('data-tour-group')),
   ).not.toBe(group.id)

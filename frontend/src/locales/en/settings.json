@@ -64,7 +64,7 @@
     "timezonePlaceholder": "Europe/Moscow",
     "country": "Country",
     "countryPlaceholder": "Pick a country",
-    "hint": "Formats apply to calendars and dates. Switching the interface language is coming later.",
+    "hint": "Formats apply to calendars, dates and numbers. The interface language switches right here — the setting follows the account onto every device.",
     "time": {
       "h24": "24-hour",
       "h12": "12-hour (AM/PM)"

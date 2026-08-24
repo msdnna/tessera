@@ -72,6 +72,13 @@ export function newCredentials(runId, suffix = '') {
 export async function register(creds, { guide = false } = {}) {
   const res = await api.post('/auth/register', creds)
   if (!guide) await skipTour(res.access_token)
+  // The run's language belongs here for the same reason the tour opt-out does:
+  // registration is the single point users are made. A freshly registered account
+  // gets the server default (`ru`), so on `E2E_LANG=en` the "mate" a spec invites
+  // used to read its panel in Russian while the author read the same panel in
+  // English — a locale split inside one assertion, and nothing to do with the
+  // screen under test.
+  if (RUN_LANGUAGE !== 'ru') await setLanguage(res.access_token, RUN_LANGUAGE)
   return { token: res.access_token, user: res.user }
 }
 
@@ -105,10 +112,18 @@ export async function skipTour(token) {
   return api.post('/users/me/acknowledgements', { key: 'getstarted:skipped' }, token)
 }
 
-// The interface language of a run (#2800). The server preference is the source
-// of truth — the theme store overwrites its localStorage cache from /users/me
-// during bootstrap, so seeding only the browser side would flip the UI back to
-// Russian a moment after the first paint.
+// The interface language of a run (#2800). `E2E_LANG=en` runs the whole suite
+// against the English UI: every locator is a data-testid since wave 0 of #2799,
+// so a spec that fails only on `en` is pointing at a Russian string still baked
+// into the markup — that is the check, not a nuisance.
+//
+// It lives here rather than in global-setup.js because register() needs it, and
+// global-setup already imports this module.
+export const RUN_LANGUAGE = process.env.E2E_LANG === 'en' ? 'en' : 'ru'
+
+// The server preference is the source of truth — the theme store overwrites its
+// localStorage cache from /users/me during bootstrap, so seeding only the browser
+// side would flip the UI back to Russian a moment after the first paint.
 export async function setLanguage(token, language) {
   // The endpoint is a full upsert, not a patch: read the current bundle off
   // /auth/me and send it back with one field changed, or the run would also

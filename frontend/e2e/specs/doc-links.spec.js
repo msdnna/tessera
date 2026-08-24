@@ -1,5 +1,6 @@
 import { test, expect, signIn } from '../fixtures.js'
 import { newCredentials, register } from '../api.js'
+import { t, tRe } from '../i18n.js'
 
 // D7 (#2732). The Go tests drive the route rules (whose turn it is, what closes a
 // route, who may cancel) and the unit tests drive the client's mirror of them.
@@ -49,7 +50,7 @@ test('документ: связь с задачей и протокол сог�
     await page.getByTestId('doc-links-toggle').click()
     const panel = page.getByTestId('doc-links')
     await expect(panel).toBeVisible()
-    await expect(panel).toContainText('Связанных задач нет')
+    await expect(panel).toContainText(t('documents.links.empty'))
 
     await panel.getByTestId('doc-link-add').click()
     await page.getByTestId('doc-link-query').locator('input').fill(taskTitle)
@@ -84,11 +85,13 @@ test('документ: связь с задачей и протокол сог�
 
     const protocol = panel.getByTestId('doc-approval')
     await expect(protocol).toHaveCount(1)
-    await expect(protocol).toContainText('На согласовании')
-    await expect(protocol).toContainText('0 из 1')
+    await expect(protocol).toContainText(t('documents.approval.status.pending'))
+    await expect(protocol).toContainText(t('documents.links.progress', { signed: 0, total: 1 }))
     // Raising a route pins the text being agreed; a protocol that cannot name
     // its revision is a signature on a moving target.
-    await expect(protocol).toContainText(/Версия \d+/)
+    await expect(protocol).toContainText(
+      tRe('documents.links.meta', { revision: '\\d+', author: '.+', date: '.+' }),
+    )
 
     // The author is not on the route, so no signature is offered to them.
     await expect(panel.getByTestId('doc-approval-sign')).toHaveCount(0)
@@ -100,13 +103,17 @@ test('документ: связь с задачей и протокол сог�
     await matePanel.getByTestId('doc-approval-sign').click()
     await matePage.getByTestId('doc-approval-comment').locator('textarea').fill('Замечаний нет')
     await matePage.getByTestId('doc-approval-approve').click()
-    await expect(matePanel.getByTestId('doc-approval')).toContainText('Согласовано')
+    await expect(matePanel.getByTestId('doc-approval')).toContainText(
+      t('documents.approval.status.approved'),
+    )
 
     // No reload here — this is the whole point of the spec. The author's panel
     // has to move because the socket nudged it, not because the page was
     // fetched again.
-    await expect(protocol).toContainText('Согласовано', { timeout: 10000 })
-    await expect(protocol).toContainText('1 из 1')
+    await expect(protocol).toContainText(t('documents.approval.status.approved'), {
+      timeout: 10000,
+    })
+    await expect(protocol).toContainText(t('documents.links.progress', { signed: 1, total: 1 }))
     await expect(protocol).toContainText('Замечаний нет')
   } finally {
     await context.close()

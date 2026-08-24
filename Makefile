@@ -132,6 +132,12 @@ e2e-backend-down: ## Stop the throwaway e2e backend
 test-e2e-frontend: ## Run the Playwright web e2e suite (needs `make e2e-backend-up`)
 	cd frontend && corepack yarn build && corepack yarn e2e
 
+.PHONY: locale-shots
+locale-shots: ## Visual pass over both locales into frontend/e2e/.auth/locale-shots (needs `make e2e-backend-up`)
+	cd frontend && corepack yarn build
+	cd frontend && E2E_LANG=ru corepack yarn e2e:locale
+	cd frontend && E2E_LANG=en corepack yarn e2e:locale
+
 .PHONY: build-mcp
 build-mcp: ## Build the Tessera MCP server binary (mcp/tessera-mcp)
 	cd mcp && $(GO) build -ldflags "-X main.version=$$(cat VERSION)" -o tessera-mcp .

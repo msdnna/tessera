@@ -1,13 +1,11 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import { waitForBackend, newCredentials, register, seedBoard, setLanguage } from './api.js'
+import { waitForBackend, newCredentials, register, seedBoard, RUN_LANGUAGE } from './api.js'
 
-// Interface language of the run. `E2E_LANG=en` runs the whole suite against the
-// English UI (#2800): every locator is a data-testid since wave 0 of #2799, so a
-// spec that fails only on `en` is pointing at a Russian string still baked into
-// the markup — that is the check, not a nuisance.
-export const RUN_LANGUAGE = process.env.E2E_LANG === 'en' ? 'en' : 'ru'
+// Re-exported for the specs and the config: the language of the run is decided
+// in api.js, where register() applies it to every account the suite makes.
+export { RUN_LANGUAGE }
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const SEED_FILE = resolve(here, '.auth/seed.json')
@@ -27,10 +25,9 @@ export default async function globalSetup() {
   // even when two land in the same millisecond.
   const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
   const creds = newCredentials(runId)
-  // register() also opts the user out of the Get Started guide, which would
-  // otherwise autostart over every spec — see the note there.
+  // register() also opts the user out of the Get Started guide and puts the
+  // account on the run's language — see the notes there.
   const { token, user } = await register(creds)
-  if (RUN_LANGUAGE !== 'ru') await setLanguage(token, RUN_LANGUAGE)
   const seed = await seedBoard(token, runId)
 
   mkdirSync(dirname(SEED_FILE), { recursive: true })

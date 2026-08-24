@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures.js'
+import { t } from '../i18n.js'
 
 // D3 (#2728). The unit tests drive the slash plugin and the move command
 // directly; what they cannot show is that either is reachable in a real
@@ -195,10 +196,10 @@ test('документ: меню вставки сгруппировано и н
   const menu = page.locator('.slash-menu')
   await expect(menu).toBeVisible()
   await expect(menu.locator('.slash-group-title')).toHaveText([
-    'Текст',
-    'Списки',
-    'Вставка',
-    'Загрузка',
+    t('documents.slash.group.text'),
+    t('documents.slash.group.lists'),
+    t('documents.slash.group.insert'),
+    t('documents.slash.group.upload'),
   ])
 
   const label = menu.locator('[data-slash="bulletList"] .slash-label')
@@ -206,7 +207,10 @@ test('документ: меню вставки сгруппировано и н
   const clipped = await label.evaluate((el) => el.scrollWidth > el.clientWidth + 1)
   expect(clipped).toBe(false)
 
-  // Filtering leaves only the groups that still have entries in them.
-  await editor.pressSequentially('спис')
-  await expect(menu.locator('.slash-group-title')).toHaveText(['Списки'])
+  // Filtering leaves only the groups that still have entries in them. The query
+  // is a keyword rather than a piece of the label: keywords are deliberately not
+  // translated (docSlash.js) — they are the typing aliases, so "list" narrows the
+  // menu in either language and the spec does not need a per-locale query.
+  await editor.pressSequentially('list')
+  await expect(menu.locator('.slash-group-title')).toHaveText([t('documents.slash.group.lists')])
 })

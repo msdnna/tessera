@@ -1,5 +1,6 @@
 import { test, expect, signIn } from '../fixtures.js'
 import { newCredentials, register } from '../api.js'
+import { t } from '../i18n.js'
 
 // D6 (#2731). The unit tests drive the diff and the panel in isolation, and the
 // Go tests drive coalescing, retention and the restore endpoint; none of them can
@@ -86,7 +87,9 @@ test('документ: журнал версий, сравнение и отк�
 
     // 4. Comparison is block-level and says what changed, not "файл отличается".
     await history.locator('.entry.milestone').click()
-    await expect(history.locator('.diff .counts')).toContainText('изменено: 1')
+    await expect(history.locator('.diff .counts')).toContainText(
+      t('documents.history.changed', { count: 1 }),
+    )
     await expect(history.locator('.diff .block.changed .was')).toContainText('Первая редакция')
 
     // 5. The mate opens the document and sees the current text, not the version

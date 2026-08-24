@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures.js'
+import { t } from '../i18n.js'
 
 // D9 (#2734). The unit tests cover the importer and the gallery in isolation,
 // and the Go tests cover the endpoints; what only exists end to end is the loop
@@ -75,6 +76,12 @@ test('документ: встроенный шаблон создаёт док�
   const builtin = page.locator('[data-tpl="builtin:meeting"]').first()
   await builtin.getByTestId('tpl-use').click()
 
-  await expect(page.locator('.ProseMirror')).toContainText('Повестка')
-  await expect(page.locator('.ProseMirror h1')).toContainText('Протокол совещания')
+  // The body of a built-in lives in the locale catalog, so the assertion reads
+  // its heading from there: on `E2E_LANG=en` the same template arrives as
+  // "Meeting notes / Agenda".
+  const agenda = t('documents.templates.meeting.body').match(/^## (.+)$/m)[1]
+  await expect(page.locator('.ProseMirror')).toContainText(agenda)
+  await expect(page.locator('.ProseMirror h1')).toContainText(
+    t('documents.templates.meeting.title'),
+  )
 })
