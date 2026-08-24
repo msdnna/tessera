@@ -64,6 +64,11 @@ func TestBundlesCarryTheSameKeys(t *testing.T) {
 				t.Errorf("%s: missing kind %q", lang, k)
 			}
 		}
+		for k := range base.defaultNames {
+			if _, ok := b.defaultNames[k]; !ok {
+				t.Errorf("%s: missing default name %q", lang, k)
+			}
+		}
 	}
 }
 
@@ -194,6 +199,24 @@ func TestTitleAndDigest(t *testing.T) {
 	}
 	if got, want := DigestHeader(3, "ru"), "Сводка — 3 уведомлений:"; got != want {
 		t.Errorf("DigestHeader(3, ru) = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultNameFollowsTheReader(t *testing.T) {
+	const stored = "Личное пространство"
+	if got, want := DefaultName("personal", stored, "en"), "Personal space"; got != want {
+		t.Errorf("DefaultName(personal, en) = %q, want %q", got, want)
+	}
+	if got := DefaultName("personal", stored, "ru"); got != stored {
+		t.Errorf("DefaultName(personal, ru) = %q, want %q", got, stored)
+	}
+	// A name the user chose has no key and must survive every language.
+	if got, want := DefaultName("", "Мой хлам", "en"), "Мой хлам"; got != want {
+		t.Errorf("chosen name must be verbatim, got %q", got)
+	}
+	// Newer server, older catalog: a phrase beats a raw key.
+	if got, want := DefaultName("shared_someday", stored, "en"), stored; got != want {
+		t.Errorf("unknown key must fall back to the stored name, got %q", got)
 	}
 }
 

@@ -302,7 +302,15 @@ func (h *API) templateData(ctx context.Context, n db.Notification, lang string) 
 		}
 	}
 	if w, err := h.q.GetWorkspace(ctx, n.WorkspaceID); err == nil {
-		d.Workspace = w.Name
+		// The personal workspace is stored under its Russian seed name (#2800) and
+		// captioned from name_key by whoever displays it. This delivery leaves the
+		// app, so the caption is picked here, in the recipient's language; a name
+		// the user chose has no key and is carried as typed.
+		key := ""
+		if w.NameKey != nil {
+			key = *w.NameKey
+		}
+		d.Workspace = notify.DefaultName(key, w.Name, lang)
 	}
 	return d
 }

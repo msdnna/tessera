@@ -29,6 +29,7 @@ type bundle struct {
 	events       map[string]string
 	fields       map[string]string
 	kinds        map[string]string
+	defaultNames map[string]string // captions for server-seeded names, by name_key (#2800)
 	fallbackKind string // subject for a kind this bundle doesn't know
 	listSep      string // how a list of changed fields is joined
 	digestTitle  string
@@ -65,6 +66,9 @@ var bundles = map[string]bundle{
 			"estimate":    "оценка",
 			"completed":   "выполнена",
 			"reopened":    "возвращена в работу",
+		},
+		defaultNames: map[string]string{
+			"personal": "Личное пространство",
 		},
 		kinds: map[string]string{
 			"assigned":         "Назначена задача",
@@ -112,6 +116,9 @@ var bundles = map[string]bundle{
 			"completed":   "completed",
 			"reopened":    "reopened",
 		},
+		defaultNames: map[string]string{
+			"personal": "Personal space",
+		},
 		kinds: map[string]string{
 			"assigned":         "Task assigned",
 			"comment":          "New comment",
@@ -148,6 +155,24 @@ func Title(kind, lang string) string {
 		return s
 	}
 	return b.fallbackKind
+}
+
+// DefaultName captions a name the server seeded and stored in Russian — today
+// the personal workspace (#2800). In a client the caption is drawn from name_key
+// by the client itself; a delivery that leaves the app has no client, so it is
+// drawn here, in the recipient's language.
+//
+// key is the row's name_key: empty for a name the user chose, and that name is
+// carried verbatim in every language. A key this build doesn't know falls back to
+// the stored string for the same reason Sentence does — a phrase beats a raw key.
+func DefaultName(key, stored, lang string) string {
+	if key == "" {
+		return stored
+	}
+	if s, ok := bundleFor(lang).defaultNames[key]; ok {
+		return s
+	}
+	return stored
 }
 
 // DigestTitle is the subject of a combined digest delivery.
