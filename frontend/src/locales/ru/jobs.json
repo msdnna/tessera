@@ -9,6 +9,25 @@
   "run": "Запустить сейчас",
   "cancel": "Остановить",
   "nextRunPrefix": "· след. запуск {when}",
+  "name": {
+    "gitlab_sync": "Синхронизация GitLab · {arg}"
+  },
+  "worker": {
+    "gitlab_sync_cron": "Автосинхронизация GitLab",
+    "gitlab_writeback": "Выгрузка изменений в GitLab",
+    "notify_delivery": "Доставка уведомлений",
+    "notify_scanner": "Сканирование сроков и напоминаний",
+    "recurrence": "Повторяющиеся задачи"
+  },
+  "op": {
+    "sync_scan": "проверка интеграций к синхронизации",
+    "writeback": "выгрузка изменений в GitLab",
+    "delivery": "рассылка уведомлений",
+    "due_scan": "проверка сроков и напоминаний",
+    "recurrence": "продвижение повторяющихся задач",
+    "sync_full": "полная синхронизация",
+    "sync_incremental": "инкрементальная синхронизация"
+  },
   "status": {
     "running": "выполняется",
     "pending": "в очереди",

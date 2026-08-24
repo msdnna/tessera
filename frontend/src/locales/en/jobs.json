@@ -9,6 +9,25 @@
   "run": "Run now",
   "cancel": "Stop",
   "nextRunPrefix": "· next run {when}",
+  "name": {
+    "gitlab_sync": "GitLab sync · {arg}"
+  },
+  "worker": {
+    "gitlab_sync_cron": "GitLab auto-sync",
+    "gitlab_writeback": "GitLab write-back",
+    "notify_delivery": "Notification delivery",
+    "notify_scanner": "Due dates and reminders scan",
+    "recurrence": "Recurring tasks"
+  },
+  "op": {
+    "sync_scan": "checking integrations due for a sync",
+    "writeback": "pushing changes to GitLab",
+    "delivery": "delivering notifications",
+    "due_scan": "checking due dates and reminders",
+    "recurrence": "advancing recurring tasks",
+    "sync_full": "full sync",
+    "sync_incremental": "incremental sync"
+  },
   "status": {
     "running": "running",
     "pending": "queued",

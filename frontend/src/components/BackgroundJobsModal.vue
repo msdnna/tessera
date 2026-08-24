@@ -6,12 +6,13 @@ import { PlayOutline, StopOutline, ServerOutline, SyncOutline } from '@vicons/io
 import EmptyState from '@/components/EmptyState.vue'
 import { admin as adminApi } from '@/api'
 import { runDuration, elapsedSince } from '@/utils/duration'
+import { jobName as jobLabel, jobOpText } from '@/utils/jobLabels'
 import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({ show: { type: Boolean, default: false } })
 const emit = defineEmits(['update:show'])
 const message = useMessage()
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { formatTime } = useFormat()
 
 const jobs = ref([])
@@ -98,6 +99,11 @@ const statusMeta = (s) => ({
   color: STATUS_COLOR[s] || 'var(--t-text3)',
 })
 const isWorker = (j) => j.kind === 'worker'
+// Names and current operations arrive as catalog keys with the server's Russian
+// wording as fallback — rendered in utils/jobLabels, which is where the fallback
+// rules are pinned by tests.
+const jobName = (j) => jobLabel(j, { t, te })
+const opText = (j) => jobOpText(j, { t, te })
 // "worker" is a term of art and stays as it is in every locale; a discrete run
 // is a sync.
 const kindLabel = (j) => t(isWorker(j) ? 'jobs.kind.worker' : 'jobs.kind.sync')
@@ -179,14 +185,14 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
         >
           <n-icon :component="kindIcon(j)" class="bj-row-icon" />
           <div class="bj-row-main">
-            <div class="bj-row-name">{{ j.name }}</div>
+            <div class="bj-row-name">{{ jobName(j) }}</div>
             <div class="bj-row-sub">
               <span class="bj-dot" :style="{ background: statusMeta(j.status).color }" />
               {{ statusMeta(j.status).label }}
               <span v-if="isWorker(j) && nextRunText(j)" class="bj-op">{{
                 $t('jobs.nextRunPrefix', { when: nextRunText(j) })
               }}</span>
-              <span v-else-if="j.current_op" class="bj-op">· {{ j.current_op }}</span>
+              <span v-else-if="opText(j)" class="bj-op">· {{ opText(j) }}</span>
             </div>
           </div>
           <span v-if="j.status === 'running'" class="bj-elapsed">{{ processingText(j) }}</span>
@@ -200,7 +206,7 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
         <template v-else>
           <div class="bj-detail-head">
             <span class="bj-dot" :style="{ background: statusMeta(selected.status).color }" />
-            <span class="bj-detail-name">{{ selected.name }}</span>
+            <span class="bj-detail-name">{{ jobName(selected) }}</span>
             <span class="bj-kind">{{ kindLabel(selected) }}</span>
             <span v-if="selected.persisted" class="bj-kind bj-journal">{{
               $t('jobs.journal')
@@ -211,9 +217,9 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
             <dt>{{ $t('jobs.fact.status') }}</dt>
             <dd>{{ statusMeta(selected.status).label }}</dd>
             <template v-if="isWorker(selected)">
-              <template v-if="selected.current_op">
+              <template v-if="opText(selected)">
                 <dt>{{ $t('jobs.fact.purpose') }}</dt>
-                <dd>{{ selected.current_op }}</dd>
+                <dd>{{ opText(selected) }}</dd>
               </template>
               <dt>{{ $t('jobs.fact.lastActivity') }}</dt>
               <dd>{{ fmtTime(selected.last_tick_at) }}</dd>

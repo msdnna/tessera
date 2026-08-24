@@ -177,6 +177,7 @@ function noteText(n) {
           circle
           size="small"
           :aria-label="t('shell.tools.jobs')"
+          data-testid="jobs-button"
           @click="showJobs = true"
         >
           <n-icon :component="ServerOutline" />

@@ -19,13 +19,20 @@ import (
 
 // jobDTO is the unified panel row: either a live registry entry (worker or running
 // job) or a finished sync run pulled from the journal.
+// Name/CurrentOp are the pre-rendered Russian fallback; the *_key fields carry the
+// same thing as catalog keys so the client can render the panel in its own language
+// (a name key comes with name_arg for the part that isn't translatable — a project
+// label). An unknown key simply falls back to the rendered text.
 type jobDTO struct {
-	Key         string     `json:"key"`
-	Name        string     `json:"name"`
-	Kind        string     `json:"kind"`
-	Status      string     `json:"status"`
-	CurrentOp   string     `json:"current_op,omitempty"`
-	Mode        string     `json:"mode,omitempty"`
+	Key          string     `json:"key"`
+	Name         string     `json:"name"`
+	NameKey      string     `json:"name_key,omitempty"`
+	NameArg      string     `json:"name_arg,omitempty"`
+	Kind         string     `json:"kind"`
+	Status       string     `json:"status"`
+	CurrentOp    string     `json:"current_op,omitempty"`
+	CurrentOpKey string     `json:"current_op_key,omitempty"`
+	Mode         string     `json:"mode,omitempty"`
 	Trigger     string     `json:"trigger,omitempty"`
 	IntervalSec int        `json:"interval_sec,omitempty"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
@@ -51,7 +58,8 @@ func jobsJournalWindow() time.Duration {
 
 func entryToDTO(e jobs.Entry) jobDTO {
 	return jobDTO{
-		Key: e.Key, Name: e.Name, Kind: e.Kind, Status: string(e.Status), CurrentOp: e.CurrentOp,
+		Key: e.Key, Name: e.Name, NameKey: e.NameKey, NameArg: e.NameArg, Kind: e.Kind,
+		Status: string(e.Status), CurrentOp: e.CurrentOp, CurrentOpKey: e.CurrentOpKey,
 		IntervalSec: e.IntervalSec, StartedAt: e.StartedAt, FinishedAt: e.FinishedAt,
 		LastTickAt: e.LastTickAt, Created: int(e.Created), Updated: int(e.Updated),
 		Error: e.Error, Cancelable: e.Cancelable,
@@ -70,10 +78,14 @@ func runStatus(s string) string {
 	}
 }
 
+// A journal row keeps its Russian name as written; the key + label travel beside it
+// so a finished run reads in the client's language too, and history stays as it was
+// recorded.
 func syncRunToDTO(r db.ListRecentGitlabSyncRunsRow) jobDTO {
 	name := gitlabSyncJournalPrefix + r.IntegrationLabel
 	return jobDTO{
-		Key: "syncrun:" + r.ID.String(), Name: name, Kind: jobs.KindSync, Status: runStatus(r.Status),
+		Key: "syncrun:" + r.ID.String(), Name: name, NameKey: gitlabSyncNameKey, NameArg: r.IntegrationLabel,
+		Kind: jobs.KindSync, Status: runStatus(r.Status),
 		Mode: r.Mode, Trigger: r.Trigger, StartedAt: &r.StartedAt, FinishedAt: r.FinishedAt,
 		Created: int(r.CreatedCount), Updated: int(r.UpdatedCount), Error: r.Error, Persisted: true,
 	}

@@ -22,7 +22,7 @@ const notifyScanTick = 60 * time.Second
 func (h *API) RunNotificationScanner(ctx context.Context) {
 	ticker := time.NewTicker(notifyScanTick)
 	defer ticker.Stop()
-	h.tick(jobNotifyScanner, "проверка сроков и напоминаний")
+	h.tick(jobNotifyScanner, opDueScan)
 	h.scanDueTasks(ctx)
 	h.scanReminders(ctx)
 	for {
@@ -30,7 +30,7 @@ func (h *API) RunNotificationScanner(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			h.tick(jobNotifyScanner, "проверка сроков и напоминаний")
+			h.tick(jobNotifyScanner, opDueScan)
 			h.scanDueTasks(ctx)
 			h.scanReminders(ctx)
 		}

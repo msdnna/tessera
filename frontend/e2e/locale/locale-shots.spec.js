@@ -98,6 +98,27 @@ test('модалка задачи: поля и подписи', async ({ page, b
   report.push({ screen: 'task-modal', clipped: await clipped(page, '[data-testid="task-modal"]') })
 })
 
+// Доработка 3 of #2800: worker names and their current operation used to arrive
+// from the server already written in Russian. The panel is admin-only, so on a
+// database whose first account belongs to someone else this simply has nothing to
+// look at and says so instead of failing.
+test('панель фоновых задач: имена воркеров и текущая операция', async ({ page, backend }) => {
+  // /auth/me answers { user, preferences } — the flag is one level down.
+  const me = await backend.get('/auth/me')
+  test.skip(!me.user?.is_admin, 'фоновые задачи видны только глобальному админу')
+
+  await page.goto('/')
+  // The button carries a localised aria-label, hence the testid: reading it by
+  // label would be the very kind of русский selector this pass hunts for.
+  await page.getByTestId('jobs-button').click()
+  const modal = page.locator('.bj-modal')
+  await expect(modal).toBeVisible()
+  // Rows arrive with the first poll; the roster is fixed (5 tick-loop workers).
+  await expect(modal.locator('.bj-row-name').first()).not.toBeEmpty()
+  await shot(modal, 'jobs')
+  report.push({ screen: 'jobs', clipped: await clipped(page, '.bj-modal') })
+})
+
 test('настройки: гриды профиля, оформления и локализации', async ({ page }) => {
   await page.goto('/settings')
   await expect(page.locator('.settings h1')).toBeVisible()
