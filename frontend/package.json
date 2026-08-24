@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test",
+    "docs:shots": "playwright test -c playwright.docs.config.js",
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report"
   },

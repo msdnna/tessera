@@ -19,6 +19,31 @@ def appVersionName = rootProject.file("VERSION").text.trim()
 def (vmaj, vmin, vpatch) = appVersionName.tokenize('.').collect { it.toInteger() }
 def appVersionCode = vmaj * 10000 + vmin * 100 + vpatch
 
+// ── Help centre content (#2795) ──────────────────────────────────────────────
+// The manual has one source — `docs/help` — and the web bundles it from there.
+// The APK gets the same files copied in at build time instead of a second copy
+// in git: two copies drift, and the drift is invisible (the app would keep
+// showing last month's text with nothing red anywhere). The index (navigation,
+// per-article TOC, search corpus) is the JSON the web build already commits.
+//
+// Wired through the variant API rather than `sourceSets.assets.srcDir(task)`:
+// AGP 9 rejects a Provider there outright, and a bare path would be merged
+// before the copy had run.
+def helpDocsDir = rootProject.file("../docs/help")
+def helpIndexJson = rootProject.file("../frontend/src/data/helpIndex.json")
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def bundle = tasks.register("bundle${variant.name.capitalize()}HelpContent", HelpAssetsTask) {
+            group = "build"
+            description = "Copy docs/help + helpIndex.json into the ${variant.name} assets"
+            docsDir.set(helpDocsDir)
+            indexFile.set(helpIndexJson)
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(bundle) { it.outputDir }
+    }
+}
+
 android {
     namespace 'website.msdnna.tessera'
     compileSdk 37
@@ -301,6 +326,54 @@ detekt {
     autoCorrect = false
     parallel = true
     source.setFrom(files("src/main/java", "src/test/java", "src/androidTest/java", "src/e2eShared/java"))
+}
+
+/**
+ * Copies the help centre's Markdown, screenshots and index into `<assets>/help`
+ * (#2795). Declared as a typed task, not an ad-hoc Copy, because the variant API
+ * hands it its own output directory — that is what carries the task dependency
+ * into the asset merge.
+ */
+abstract class HelpAssetsTask extends DefaultTask {
+    @InputDirectory
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract DirectoryProperty getDocsDir()
+
+    /** The index the web build commits — one builder, one corpus, both clients. */
+    @InputFile
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract RegularFileProperty getIndexFile()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDir()
+
+    @javax.inject.Inject
+    abstract FileSystemOperations getFs()
+
+    @TaskAction
+    void bundleHelp() {
+        def docs = docsDir.get().asFile
+        def index = indexFile.get().asFile
+        // Under `help/`, so an article reaches its screenshots at the fixed
+        // `file:///android_asset/help/assets/…` the renderer rewrites them to.
+        def out = new File(outputDir.get().asFile, "help")
+        fs.sync { spec ->
+            spec.from(docs) { docSpec ->
+                docSpec.include("**/*.md")
+                docSpec.include("assets/**")
+            }
+            spec.from(index)
+            spec.into(out)
+        }
+        // An index entry with no file behind it is a navigation row that opens a
+        // blank page. The web suite checks this against docs/help; on this side
+        // the copy is the only place that sees both lists at once.
+        def parsed = new groovy.json.JsonSlurper().parse(new File(out, index.name))
+        def missing = parsed.articles.findAll { a -> !new File(out, a.path as String).isFile() }*.path
+        if (missing) {
+            throw new GradleException("help: index lists articles with no file: ${missing}")
+        }
+    }
 }
 
 tasks.withType(io.gitlab.arturbosch.detekt.Detekt).configureEach {

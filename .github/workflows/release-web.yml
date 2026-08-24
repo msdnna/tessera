@@ -79,7 +79,8 @@ jobs:
       - name: Build & push frontend image
         uses: docker/build-push-action@v6
         with:
-          context: frontend
+          # Repo root so the build reaches docs/help (help-centre articles, #2786).
+          context: .
           file: frontend/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64

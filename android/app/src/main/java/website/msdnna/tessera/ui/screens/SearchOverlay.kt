@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.data.model.SearchNote
 import website.msdnna.tessera.data.model.SearchTask
+import website.msdnna.tessera.data.repository.HelpRepository
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TTextField
@@ -40,11 +42,17 @@ import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.SearchViewModel
+import website.msdnna.tessera.util.HelpHit
+import website.msdnna.tessera.util.HelpSearcher
 import website.msdnna.tessera.util.Ion
+
+/** How many help articles the global search offers before the server's own
+ *  results — enough to answer «как …», not enough to bury the tasks. */
+private const val HELP_HITS_LIMIT = 4
 
 /**
  * Full-screen search (web `SearchBar`, mobile-native): an autofocused field
- * over grouped task + note results. Picking a result navigates and closes.
+ * over grouped help + task + note results. Picking a result navigates and closes.
  */
 @Composable
 fun SearchOverlay(
@@ -52,11 +60,18 @@ fun SearchOverlay(
     onClose: () -> Unit,
     onOpenTask: (boardId: String, taskId: String) -> Unit,
     onOpenNote: (noteId: String) -> Unit,
+    onOpenHelp: (slug: String) -> Unit = {},
 ) {
     val c = Tessera.colors
     val vm: SearchViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
     val focus = remember { FocusRequester() }
+
+    // The manual is bundled, so its hits are ready on the keystroke — they show
+    // while the server is still answering rather than after it (#2795).
+    val assets = LocalContext.current.assets
+    val searcher = remember(assets) { HelpSearcher(HelpRepository(assets).articles()) }
+    val helpHits = remember(state.query, searcher) { searcher.search(state.query, HELP_HITS_LIMIT) }
 
     LaunchedEffect(workspaceId) { vm.bind(workspaceId) }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -77,35 +92,50 @@ fun SearchOverlay(
             TTextField(
                 value = state.query,
                 onValueChange = vm::onQueryChange,
-                placeholder = "Поиск задач и заметок",
+                placeholder = "Поиск задач, заметок и справки",
                 modifier = Modifier.weight(1f).focusRequester(focus),
             )
         }
 
+        val results = state.results
+        val serverEmpty = results?.isEmpty != false
         when {
-            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                TesseraLoader()
-            }
+            state.query.isBlank() -> Hint(
+                "Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок, статьям справки",
+            )
 
-            state.query.isBlank() -> Hint("Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок")
+            helpHits.isEmpty() && serverEmpty && state.loading ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
 
-            state.results?.isEmpty == true -> Hint("Ничего не найдено")
+            helpHits.isEmpty() && results?.isEmpty == true -> Hint("Ничего не найдено")
 
-            else -> {
-                val results = state.results
+            else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                if (helpHits.isNotEmpty()) {
+                    item { SectionHeader("СПРАВКА") }
+                    items(helpHits, key = { "h-${it.slug}" }) { hit ->
+                        HelpResult(hit, onClick = { onOpenHelp(hit.slug) })
+                    }
+                }
                 if (results != null) {
-                    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
-                        if (results.tasks.isNotEmpty()) {
-                            item { SectionHeader("ЗАДАЧИ") }
-                            items(results.tasks, key = { "t-${it.id}" }) { task ->
-                                TaskResult(task, onClick = { onOpenTask(task.boardId, task.id) })
-                            }
+                    if (results.tasks.isNotEmpty()) {
+                        item { SectionHeader("ЗАДАЧИ") }
+                        items(results.tasks, key = { "t-${it.id}" }) { task ->
+                            TaskResult(task, onClick = { onOpenTask(task.boardId, task.id) })
                         }
-                        if (results.notes.isNotEmpty()) {
-                            item { SectionHeader("ЗАМЕТКИ") }
-                            items(results.notes, key = { "n-${it.id}" }) { note ->
-                                NoteResult(note, onClick = { onOpenNote(note.id) })
-                            }
+                    }
+                    if (results.notes.isNotEmpty()) {
+                        item { SectionHeader("ЗАМЕТКИ") }
+                        items(results.notes, key = { "n-${it.id}" }) { note ->
+                            NoteResult(note, onClick = { onOpenNote(note.id) })
+                        }
+                    }
+                }
+                // The help hits are already on screen while the server answers —
+                // say that the rest is still coming instead of looking finished.
+                if (state.loading) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) {
+                            TesseraLoader()
                         }
                     }
                 }
@@ -151,6 +181,19 @@ private fun TaskResult(task: SearchTask, onClick: () -> Unit) {
             Spacer(Modifier.width(6.dp))
         }
         Text(task.title, color = c.text1, fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun HelpResult(hit: HelpHit, onClick: () -> Unit) {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth().clickableNoRipple(onClick = onClick).padding(horizontal = 8.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IonIcon(Ion.HELP_CIRCLE, size = 18.dp, tint = c.text3)
+        Spacer(Modifier.width(10.dp))
+        Text(hit.title, color = c.text1, fontSize = 14.sp, maxLines = 1)
     }
 }
 

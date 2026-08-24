@@ -142,6 +142,7 @@ fun Sidebar(
     onOpenNotes: () -> Unit,
     onOpenDocuments: () -> Unit,
     onOpenMilestones: () -> Unit,
+    onOpenHelp: () -> Unit,
     onOpenMembers: () -> Unit,
     onOpenGitlab: () -> Unit,
     conflictCount: Int = 0,
@@ -288,6 +289,7 @@ fun Sidebar(
             NavRow(Ion.ALARM, "Напоминания", activeNav == "reminders", onOpenReminders, spotSink("reminders"))
             NavRow(Ion.DOCUMENT_TEXT, "Заметки", activeNav == "notes", onOpenNotes, spotSink("notes"))
             NavRow(Ion.BOOK, "Документы", activeNav == "documents", onOpenDocuments, spotSink("documents"))
+            NavRow(Ion.HELP_CIRCLE, "Помощь", activeNav == "help", onOpenHelp, spotSink("help"))
             if (user?.isAdmin == true) {
                 NavRow(
                     Ion.SHIELD_CHECKMARK,

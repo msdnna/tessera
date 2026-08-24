@@ -8,6 +8,10 @@ export default defineConfig({
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },
+  // Same reason as in vite.config.js: help-centre modules glob ../docs/help,
+  // which sits outside the workspace root vite infers from yarn.lock, and
+  // vitest serves test modules through the same fs guard.
+  server: { fs: { allow: [resolve(__dirname, '..')] } },
   test: {
     environment: 'jsdom',
     include: ['tests/**/*.spec.js'],

@@ -57,6 +57,10 @@ const routes = [
       // switched the record and the «Документы» item went dark (#2727).
       { path: 'documents/:slug?', component: () => import('@/views/DocumentsView.vue') },
       { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
+      // No help route (#2792): the help centre is a modal mounted in AppLayout,
+      // opened from the sidebar's «Помощь» menu. Cross-links between articles are
+      // written as /help/<slug> and intercepted by HelpArticle, so they swap the
+      // open article instead of navigating anywhere.
       { path: 'milestones', component: () => import('@/views/MilestonesView.vue') },
       { path: 'settings', component: () => import('@/views/SettingsView.vue') },
       {

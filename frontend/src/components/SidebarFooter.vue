@@ -1,7 +1,9 @@
 <script setup>
-import { computed } from 'vue'
-import { NButton, NIcon, NPopover, NTooltip, NAvatar } from 'naive-ui'
+import { computed, h } from 'vue'
+import { NButton, NIcon, NPopover, NTooltip, NAvatar, NDropdown } from 'naive-ui'
 import {
+  HelpCircleOutline,
+  LibraryOutline,
   LogOutOutline,
   SchoolOutline,
   SettingsOutline,
@@ -10,6 +12,7 @@ import {
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTourStore } from '@/stores/tour'
+import { useHelpStore } from '@/stores/help'
 import { useApiImage } from '@/composables/useApiImage'
 
 const props = defineProps({
@@ -20,6 +23,7 @@ const props = defineProps({
 const authStore = useAuthStore()
 const router = useRouter()
 const tour = useTourStore()
+const help = useHelpStore()
 
 // useApiImage: direct URL on web; an axios-fetched blob: URL on desktop (the
 // webview can't load the remote '/api/…/avatar' <img> directly).
@@ -31,6 +35,9 @@ function openSettings() {
 function openAdmin() {
   router.push('/admin')
 }
+function openHelp() {
+  help.openCenter()
+}
 
 // The Get Started guide's permanent entry point (#2753): the autostart only ever
 // fires once per account, so this is how anyone re-runs it. The first step points
@@ -39,6 +46,30 @@ function openAdmin() {
 function startTour() {
   router.push('/')
   tour.startGuide()
+}
+
+// One «Помощь» button in the footer covering both ways of answering "how does
+// this work?" — the guide walks the UI, the help centre is read. They used to be
+// two separate controls in two different places (a footer icon and a sidebar
+// item); a single question-mark menu is where a reader looks for either.
+const helpOptions = [
+  {
+    key: 'tour',
+    label: 'Обучение',
+    icon: () => h(NIcon, { component: SchoolOutline }),
+    props: { 'data-help-menu': 'tour' },
+  },
+  {
+    key: 'center',
+    label: 'Справочный центр',
+    icon: () => h(NIcon, { component: LibraryOutline }),
+    props: { 'data-help-menu': 'center' },
+  },
+]
+
+function onHelpSelect(key) {
+  if (key === 'tour') startTour()
+  else openHelp()
 }
 
 const initials = computed(() => {
@@ -74,9 +105,16 @@ function logout() {
           <template #icon><n-icon :component="SettingsOutline" /></template>
           Настройки
         </n-button>
+        <!-- The collapsed rail spells the two help entries out as rows instead of
+             nesting a dropdown inside this popover: same two destinations as the
+             expanded footer's «Помощь» menu, one click closer. -->
         <n-button size="small" block data-tour="footer-tour" @click="startTour">
           <template #icon><n-icon :component="SchoolOutline" /></template>
           Обучение
+        </n-button>
+        <n-button size="small" block data-help-center-open @click="openHelp">
+          <template #icon><n-icon :component="LibraryOutline" /></template>
+          Справочный центр
         </n-button>
         <n-button v-if="isAdmin" size="small" block @click="openAdmin">
           <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>
@@ -106,21 +144,19 @@ function logout() {
         </template>
         Администрирование
       </n-tooltip>
-      <n-tooltip>
-        <template #trigger>
-          <n-button
-            quaternary
-            circle
-            size="small"
-            aria-label="Обучение"
-            data-tour="footer-tour"
-            @click="startTour"
-          >
-            <n-icon :component="SchoolOutline" />
-          </n-button>
-        </template>
-        Обучение
-      </n-tooltip>
+      <!-- «Помощь» (#2792): one question-mark button opening the guide or the
+           help centre. The centre is a modal, so picking it keeps the board
+           behind it — that is why it is here and no longer a sidebar item. -->
+      <n-dropdown
+        trigger="click"
+        placement="top-start"
+        :options="helpOptions"
+        @select="onHelpSelect"
+      >
+        <n-button quaternary circle size="small" aria-label="Помощь" data-tour="footer-help">
+          <n-icon :component="HelpCircleOutline" />
+        </n-button>
+      </n-dropdown>
       <n-tooltip>
         <template #trigger>
           <n-button
