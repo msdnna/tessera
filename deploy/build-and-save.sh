@@ -34,9 +34,11 @@ docker build -f backend/Dockerfile.prod \
   -t "${BACKEND_IMAGE}" backend
 
 echo "==> Building ${FRONTEND_IMAGE}"
+# Context is the repo root (not ./frontend): the help centre globs docs/help at
+# build time (#2786). The root .dockerignore keeps the context to frontend/+docs/.
 docker build -f frontend/Dockerfile \
   --build-arg "GIT_COMMIT=${GIT_COMMIT}" --build-arg "BUILD_DATE=${BUILD_DATE}" \
-  -t "${FRONTEND_IMAGE}" frontend
+  -t "${FRONTEND_IMAGE}" .
 
 echo "==> Saving images to ${OUT}"
 mkdir -p deploy/dist

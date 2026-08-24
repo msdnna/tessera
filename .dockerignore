@@ -1,0 +1,16 @@
+# The frontend image (frontend/Dockerfile) builds from the REPO ROOT so it can
+# reach repo-root docs/help (help-centre articles + screenshots, #2786). Without
+# a whitelist that would stream the whole monorepo — desktop/ (11G), deploy/dist
+# (441M), android/, node_modules — to the daemon. So: ignore everything, then
+# re-include only what that build needs. Keep top-level negations only (BuildKit
+# won't re-include a path whose parent dir is still excluded).
+*
+
+!frontend
+!docs
+
+# frontend/ carries build junk we never want in the context.
+frontend/node_modules
+frontend/dist
+frontend/.yarn
+**/*.log

@@ -97,8 +97,9 @@ export default defineConfig({
     // The help centre (#2792/#2793) globs its articles and screenshots out of
     // ../docs/help. Vite's workspace root is this directory (yarn.lock lives
     // here, not at the repo root), so without this every one of those files is
-    // a "Denied ID" in dev — the bundled build is unaffected, which is why the
-    // dev server is the only place it shows up.
+    // a "Denied ID" in dev. `vite build` reads them straight off disk, so the
+    // bundle just needs docs/help present next to frontend/ — which is why the
+    // Docker build context is the repo root, not ./frontend (#2786).
     fs: { allow: [resolve(__dirname, '..')] },
   },
   preview: {
