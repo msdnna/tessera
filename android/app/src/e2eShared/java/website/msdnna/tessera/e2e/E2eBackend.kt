@@ -19,10 +19,13 @@ import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.Document
+import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.NameRequest
+import website.msdnna.tessera.data.model.Note
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.RegisterRequest
+import website.msdnna.tessera.data.model.Reminder
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
@@ -303,6 +306,54 @@ object E2eBackend {
             }
         }
     }
+
+    /** Creates a workspace note. */
+    fun createNote(fixture: Fixture, title: String, body: String = ""): Note =
+        post(
+            "workspaces/${fixture.workspace.id}/notes",
+            mapOf("title" to title, "body" to body),
+            fixture.account.accessToken,
+        )
+
+    /**
+     * Creates a project milestone. Dates are passed as ISO-8601 instants
+     * (`2026-09-01T00:00:00Z`) — the backend binds them into `*time.Time`, and a
+     * bare `2026-09-01` fails the bind rather than defaulting.
+     */
+    fun createMilestone(
+        fixture: Fixture,
+        title: String,
+        startDate: String? = null,
+        dueDate: String? = null,
+    ): Milestone {
+        val body = mutableMapOf<String, Any>("title" to title)
+        startDate?.let { body["start_date"] = it }
+        dueDate?.let { body["due_date"] = it }
+        return post("projects/${fixture.project.id}/milestones", body, fixture.account.accessToken)
+    }
+
+    /**
+     * Puts a task into a milestone — what turns the milestone's progress bar
+     * from «нет задач» into a real ratio. Answers 204, so this goes through
+     * [raw] rather than the deserialising [post].
+     */
+    fun setTaskMilestone(fixture: Fixture, taskId: String, milestoneId: String) {
+        val path = "tasks/$taskId/milestone"
+        val req = Request.Builder()
+            .url(apiUrl + path)
+            .post(gson.toJson(mapOf("milestone_id" to milestoneId)).toRequestBody(json))
+            .header("Authorization", "Bearer ${fixture.account.accessToken}")
+            .build()
+        raw(req, path)
+    }
+
+    /** Creates a personal reminder at [remindAt] (ISO-8601 instant). */
+    fun createReminder(fixture: Fixture, message: String, remindAt: String): Reminder =
+        post(
+            "reminders",
+            mapOf("message" to message, "remind_at" to remindAt),
+            fixture.account.accessToken,
+        )
 
     // ── plumbing ───────────────────────────────────────────────────────────
 

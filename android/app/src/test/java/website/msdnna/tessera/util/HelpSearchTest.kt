@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import website.msdnna.tessera.data.model.HelpArticle
 import website.msdnna.tessera.data.model.HelpHeading
+import website.msdnna.tessera.data.model.HelpVariant
 
 /**
  * The Android half of the help search (#2795), asserted against the same cases
@@ -123,5 +124,58 @@ class HelpSearchTest {
     @Test
     fun `empty text excerpts to an empty string`() {
         assertThat(helpExcerpt("", listOf("что-то"))).isEmpty()
+    }
+}
+
+/**
+ * Search over an article that has a mobile rewrite (#2795). The corpus has to
+ * follow the body this client renders: indexing the desktop text would make the
+ * app find articles by words about a mouse and a sidebar — and miss the words
+ * the reader can actually see on the screen in front of them.
+ */
+class HelpSearchVariantTest {
+    private val boards = HelpArticle(
+        slug = "boards",
+        title = "Доски и задачи",
+        category = "Работа",
+        keywords = listOf("канбан", "мышь"),
+        headings = listOf(HelpHeading("перенос", "Перенос мышью", 2)),
+        text = "карточка переносится между колонками перетаскиванием мышью",
+        android = HelpVariant(
+            path = "boards/boards.android.md",
+            keywords = listOf("канбан", "палец"),
+            headings = listOf(HelpHeading("perenos", "Как перенести задачу", 2)),
+            text = "карточка переносится долгим тапом или сменой колонки в экране задачи",
+        ),
+    )
+
+    private val search = HelpSearcher(listOf(boards))
+
+    @Test
+    fun `a word only the mobile text uses is findable`() {
+        assertThat(search.search("тапом").map { it.slug }).containsExactly("boards")
+    }
+
+    @Test
+    fun `a word only the desktop text uses is not`() {
+        assertThat(search.search("перетаскиванием")).isEmpty()
+    }
+
+    @Test
+    fun `keywords and headings come from the variant too`() {
+        assertThat(search.search("палец").map { it.slug }).containsExactly("boards")
+        assertThat(search.search("перенести").map { it.slug }).containsExactly("boards")
+        assertThat(search.search("мышь")).isEmpty()
+    }
+
+    @Test
+    fun `the excerpt quotes the text the reader will see`() {
+        assertThat(search.search("тапом").first().excerpt).contains("тапом")
+    }
+
+    @Test
+    fun `an article without a variant keeps its own text`() {
+        val plain = HelpArticle(slug = "faq", title = "Частые вопросы", text = "версия видна в настройках")
+        assertThat(HelpSearcher(listOf(plain)).search("версия").map { it.slug }).containsExactly("faq")
     }
 }

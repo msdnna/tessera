@@ -368,8 +368,15 @@ abstract class HelpAssetsTask extends DefaultTask {
         // An index entry with no file behind it is a navigation row that opens a
         // blank page. The web suite checks this against docs/help; on this side
         // the copy is the only place that sees both lists at once.
+        // Both paths per article: the desktop body and, where it exists, the
+        // mobile rewrite the app actually renders. Checking only the base path
+        // would let a missing `*.android.md` through — and that is precisely the
+        // file this client reads.
         def parsed = new groovy.json.JsonSlurper().parse(new File(out, index.name))
-        def missing = parsed.articles.findAll { a -> !new File(out, a.path as String).isFile() }*.path
+        def wanted = parsed.articles.collectMany { a ->
+            a.android ? [a.path as String, a.android.path as String] : [a.path as String]
+        }
+        def missing = wanted.findAll { path -> !new File(out, path).isFile() }
         if (missing) {
             throw new GradleException("help: index lists articles with no file: ${missing}")
         }
