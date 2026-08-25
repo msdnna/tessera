@@ -21,6 +21,7 @@ import { hueGradVert } from '@/utils/gradient'
 import { divergedColumn } from '@/utils/status'
 import { cardFieldVisible } from '@/utils/cardFields'
 import { taskBasePatch } from '@/utils/taskPatch'
+import { normalizeTitle } from '@/utils/title'
 import TaskCardPills from './task/TaskCardPills.vue'
 import TaskCardSubtasks from './task/TaskCardSubtasks.vue'
 import { useBoardViewStore } from '@/stores/boardView'
@@ -122,7 +123,7 @@ function startTitleEdit() {
 }
 async function commitTitle() {
   editingTitle.value = false
-  const n = titleEdit.value.trim()
+  const n = normalizeTitle(titleEdit.value)
   if (!n || n === props.task.title) return
   await apply({ title: n })
 }

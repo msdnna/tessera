@@ -70,6 +70,7 @@ import {
 import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
 import { copyText } from '@/utils/clipboard'
+import { normalizeTitle } from '@/utils/title'
 import {
   dismissesSidebar,
   effectiveTaskLayout,
@@ -629,7 +630,7 @@ function close() {
 }
 function buildPayload() {
   return {
-    title: title.value,
+    title: normalizeTitle(title.value),
     description: description.value,
     priority: priority.value,
     due_date: dueTs.value ? new Date(dueTs.value).toISOString() : null,

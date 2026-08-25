@@ -64,6 +64,7 @@ import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardE
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
+import { normalizeTitle } from '@/utils/title'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -1127,7 +1128,9 @@ function cancelAddTask() {
   newTaskTitle.value = ''
 }
 async function submitAddTask(dcol) {
-  const title = newTaskTitle.value.trim()
+  // Enter is caught on keydown so the textarea never gets to insert its newline;
+  // normalizeTitle is the backstop for pasted multi-line text.
+  const title = normalizeTitle(newTaskTitle.value)
   if (!title) {
     cancelAddTask()
     return
@@ -1814,7 +1817,7 @@ async function restoreFromArchive(taskId) {
                     size="small"
                     :autosize="{ minRows: 1, maxRows: 4 }"
                     placeholder="Название задачи, Enter — создать"
-                    @keyup.enter.prevent="submitAddTask(dcol)"
+                    @keydown.enter.exact.prevent="submitAddTask(dcol)"
                     @keyup.esc="cancelAddTask"
                     @blur="submitAddTask(dcol)"
                   />
