@@ -152,6 +152,66 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'admin-users')
     })
 
+    test('вход через GitLab (OAuth)', async ({ page }) => {
+      test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
+      // The card is half again as tall as the standard viewport, and an element
+      // screenshot that has to scroll to stitch comes back half-painted (the app
+      // footer lands in the middle of it). Growing the window instead keeps the
+      // whole card on one rendered page; the shot is cropped to the card anyway,
+      // so the wider window changes nothing else in the picture.
+      await page.setViewportSize({ width: 1440, height: 1600 })
+      await page.goto('/admin')
+      const card = page.locator('.oauth-card')
+      await expect(card).toBeVisible()
+      // The values come from the seed (demo.js), so the form is documented
+      // filled in, not as a column of empty boxes.
+      await expect(card.locator('.oauth-mono textarea')).toHaveValue(/demo-group/)
+      await shoot(page, scheme, 'admin-oauth', card)
+    })
+
+    // The GitLab modal is two shots of one screen: the account block on top and
+    // the binding fields below it, which do not fit the card together (the pane
+    // scrolls at 76vh). The article shows each next to the text that explains it.
+    async function openGitlab(page) {
+      await openBoard(page)
+      await page.getByRole('button', { name: 'Интеграции' }).click()
+      // Naive UI's dropdown options are plain divs, not menu items with a role,
+      // and the GitLab one renders its label through a render function (it can
+      // carry a conflict badge) — so it is matched by text, not by role.
+      await page.locator('.n-dropdown-option', { hasText: 'GitLab' }).click()
+      const card = page.locator('.gl-card')
+      await expect(card).toBeVisible()
+      // The bindings arrive in their own request and the first one is selected
+      // on load; waiting for its project path keeps the shutter off a blank form.
+      await expect(card.getByPlaceholder('group/project')).toHaveValue('demo-group/demo-project')
+      return card
+    }
+
+    test('GitLab: аккаунт', async ({ page }) => {
+      test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
+      const card = await openGitlab(page)
+      await shoot(page, scheme, 'gitlab-account', card)
+    })
+
+    test('GitLab: привязка проекта к доске', async ({ page }) => {
+      test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
+      const card = await openGitlab(page)
+      // Scroll the left pane, not the page: the card itself stays put, only its
+      // content moves. Playwright's own scrollIntoViewIfNeeded is no good here —
+      // it walks up to the nearest scrollable ancestor and finds the *page*,
+      // which does not scroll behind a modal, so the pane never moved and this
+      // shot came back a byte-for-byte twin of the account one. Scrolling the
+      // pane by hand, anchored on the bindings heading, puts the whole set of
+      // fields in frame instead.
+      await card.locator('.gl-left').evaluate((pane) => {
+        const head = [...pane.querySelectorAll('.gl-h')].find((h) =>
+          h.textContent.includes('Привязки'),
+        )
+        pane.scrollTop += head.getBoundingClientRect().top - pane.getBoundingClientRect().top
+      })
+      await shoot(page, scheme, 'gitlab-bindings', card)
+    })
+
     test('фоновые задания', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
       await openBoard(page)

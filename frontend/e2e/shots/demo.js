@@ -159,12 +159,30 @@ async function registerPresentable(runId, name, email, suffix = '') {
   }
 }
 
+// A binding to a GitLab project that does not exist either: the modal shows the
+// selected binding's fields, and an unsaved blank form would document the screen
+// as a column of placeholders. `enabled` is on because that is the state the
+// article describes — the sync it schedules simply never reaches
+// gitlab.example.com, which changes nothing in the picture.
+const DEMO_BINDING = {
+  name: 'Мобильное приложение → demo-project',
+  project_path: 'demo-group/demo-project',
+  enabled: true,
+  sync_interval_sec: 900,
+  full_sync_interval_sec: 86400,
+  due_source: 'issue_milestone',
+  start_source: 'created',
+  scope: 'all',
+  closed_policy: 'archive_closed_sprints',
+  relations_sync: 'pull',
+}
+
 // seedInstance fills the instance-wide state the admin articles document: a few
-// accounts in different states and a GitLab OAuth application. Only possible for
-// a global admin — and the backend grants that to the *first* account of an
-// instance, so it happens on a clean database and is skipped on a shared one
-// (the admin shots skip with it; see help-shots.spec.js).
-async function seedInstance(runId, token, workspaceId) {
+// accounts in different states, a GitLab OAuth application and a project binding.
+// Only possible for a global admin — and the backend grants that to the *first*
+// account of an instance, so it happens on a clean database and is skipped on a
+// shared one (the admin shots skip with it; see help-shots.spec.js).
+async function seedInstance(runId, token, workspaceId, boardId) {
   for (const [i, u] of INSTANCE_USERS.entries()) {
     let created
     try {
@@ -184,6 +202,11 @@ async function seedInstance(runId, token, workspaceId) {
         'demo-group': { workspace_id: workspaceId, admins: ['p.dorohov'], users: true },
       },
     },
+    token,
+  )
+  await api.post(
+    `/workspaces/${workspaceId}/gitlab/integrations`,
+    { ...DEMO_BINDING, board_id: boardId },
     token,
   )
 }
@@ -312,7 +335,7 @@ export async function seedDemo(runId, base) {
 
   // Instance-wide state for the admin articles (#2810). Gated on the flag the
   // backend itself set at registration, not on a guess about the database.
-  if (user.is_admin) await seedInstance(runId, t, ws.id)
+  if (user.is_admin) await seedInstance(runId, t, ws.id, board.id)
 
   return {
     runId,
