@@ -177,12 +177,55 @@ const DEMO_BINDING = {
   relations_sync: 'pull',
 }
 
+// Write-back actions for the demo binding (#2810). The pane documents a table of
+// trigger→action rows, and an integration that never had one authored opens it
+// synthesized from the legacy flags — a list without a column move, which is the
+// row the article talks about first. Spelling the set out here keeps the picture
+// stable and shows the qualifiers (a specific column, a marker on a comment).
+// The labels are the project's own S:/P: taxonomy, the one the default parsing
+// rules in the neighbouring shot read back.
+function demoWriteback(columns) {
+  const col = (name) => columns.find((c) => c.name === name)
+  return {
+    enabled: true,
+    push_create: true,
+    fetch_templates: true,
+    bindings: [
+      {
+        enabled: true,
+        trigger: { type: 'column', column_id: col('В процессе')?.id, column_name: 'В процессе' },
+        action: { type: 'set_label', label: 'S: In progress', clear_prefix: true },
+      },
+      {
+        enabled: true,
+        trigger: { type: 'completion', completed: true },
+        action: { type: 'set_state', state: '' },
+      },
+      {
+        enabled: true,
+        trigger: { type: 'due' },
+        action: { type: 'set_due', date_kind: 'due' },
+      },
+      {
+        enabled: true,
+        trigger: { type: 'labels' },
+        action: { type: 'reconcile_labels' },
+      },
+      {
+        enabled: false,
+        trigger: { type: 'comment' },
+        action: { type: 'post_comment', add_marker: true },
+      },
+    ],
+  }
+}
+
 // seedInstance fills the instance-wide state the admin articles document: a few
 // accounts in different states, a GitLab OAuth application and a project binding.
 // Only possible for a global admin — and the backend grants that to the *first*
 // account of an instance, so it happens on a clean database and is skipped on a
 // shared one (the admin shots skip with it; see help-shots.spec.js).
-async function seedInstance(runId, token, workspaceId, boardId) {
+async function seedInstance(runId, token, workspaceId, boardId, columns) {
   for (const [i, u] of INSTANCE_USERS.entries()) {
     let created
     try {
@@ -206,7 +249,7 @@ async function seedInstance(runId, token, workspaceId, boardId) {
   )
   await api.post(
     `/workspaces/${workspaceId}/gitlab/integrations`,
-    { ...DEMO_BINDING, board_id: boardId },
+    { ...DEMO_BINDING, board_id: boardId, writeback: demoWriteback(columns) },
     token,
   )
 }
@@ -335,7 +378,7 @@ export async function seedDemo(runId, base) {
 
   // Instance-wide state for the admin articles (#2810). Gated on the flag the
   // backend itself set at registration, not on a guess about the database.
-  if (user.is_admin) await seedInstance(runId, t, ws.id, board.id)
+  if (user.is_admin) await seedInstance(runId, t, ws.id, board.id, columns)
 
   return {
     runId,

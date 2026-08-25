@@ -212,6 +212,38 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'gitlab-bindings', card)
     })
 
+    // The two right-pane editors (#2810, wave 3). Both live below the fold of the
+    // left pane, so the pane is scrolled to the button row before clicking; the
+    // shot is of the whole card, because the point of these pictures is that the
+    // modal *expands* into a second pane next to the settings it belongs to.
+    async function openRightPane(page, buttonName) {
+      const card = await openGitlab(page)
+      await card.locator('.gl-left').evaluate((pane) => {
+        pane.scrollTop = pane.scrollHeight
+      })
+      await card.getByRole('button', { name: buttonName }).click()
+      await expect(card.locator('.gl-right')).toBeVisible()
+      return card
+    }
+
+    test('GitLab: действия обратной записи', async ({ page }) => {
+      test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
+      const card = await openRightPane(page, /Настроить действия/)
+      // The bindings come from the seed; waiting for the first row's summary keeps
+      // the shutter off the pane's own loading frame.
+      await expect(card.locator('.gl-rcard').first()).toBeVisible()
+      await shoot(page, scheme, 'gitlab-writeback', card)
+    })
+
+    test('GitLab: правила разбора меток', async ({ page }) => {
+      test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
+      const card = await openRightPane(page, 'Настроить правила')
+      // The rules are the backend's defaults (S:/P:/M:), so the value maps are
+      // filled — waiting for the first one avoids shooting three empty cards.
+      await expect(card.locator('.gl-rmap .gl-rule').first()).toBeVisible()
+      await shoot(page, scheme, 'gitlab-tags', card)
+    })
+
     test('фоновые задания', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
       await openBoard(page)
