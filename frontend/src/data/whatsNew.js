@@ -26,6 +26,16 @@
 //              elements.
 export const WHATS_NEW = [
   {
+    version: '0.175.0',
+    date: '2026-08-24',
+    titleKey: 'whatsNew.helpCenter.title',
+    itemKeys: [
+      'whatsNew.helpCenter.item1',
+      'whatsNew.helpCenter.item2',
+      'whatsNew.helpCenter.item3',
+    ],
+  },
+  {
     version: '0.173.0',
     date: '2026-08-20',
     titleKey: 'whatsNew.tourDnd.title',

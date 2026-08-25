@@ -6,6 +6,7 @@ import WorkspaceTools from './WorkspaceTools.vue'
 import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
 import BoardActions from './BoardActions.vue'
 import BoardMobileMenu from './BoardMobileMenu.vue'
+import HelpHint from './help/HelpHint.vue'
 import { useBoardViewStore } from '@/stores/boardView'
 
 const props = defineProps({
@@ -46,6 +47,9 @@ const onBoard = () => board.active && !props.mobile
       <BoardActions v-if="onBoard()" />
       <!-- Mobile board controls: layout + tags + archive in one menu. -->
       <BoardMobileMenu v-if="mobile && board.active" />
+      <!-- Contextual help for whatever screen is open; hides itself on /help
+           and picks its article from the route (#2794). -->
+      <HelpHint :size="18" />
       <!-- When the sidebar is collapsed/narrow, its tools slide over here. -->
       <WorkspaceTools v-if="showTools" placement="bottom-end" />
     </div>

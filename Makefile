@@ -83,9 +83,21 @@ test-e2e-backend: ## Black-box e2e: real binaries as subprocesses on a throwaway
 test-e2e-backend-docker: ## E2e including the image tier (docker build + run; several minutes)
 	cd backend && E2E_GO=$(GO) E2E_DOCKER=1 $(GO) test -tags=e2e -count=1 -timeout 30m -v ./e2e/...
 
+.PHONY: help-index
+help-index: ## Rebuild the help-centre index from docs/help
+	cd frontend && node scripts/build-help-index.mjs
+
+.PHONY: help-shots
+help-shots: ## Re-take the help-centre screenshots into docs/help/assets (needs `make e2e-backend-up`)
+	cd frontend && corepack yarn build && corepack yarn docs:shots
+
 .PHONY: lint-frontend
 lint-frontend: ## Lint + format-check frontend
 	cd frontend && corepack yarn lint && corepack yarn format:check
+	@# The help index is generated but committed (it ships in the bundle), so a
+	@# stale one would silently serve yesterday's nav and search. Checked here
+	@# rather than built on demand: lint must not rewrite tracked files.
+	cd frontend && node scripts/build-help-index.mjs --check
 
 .PHONY: test-frontend
 test-frontend: ## Run frontend tests

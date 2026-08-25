@@ -129,8 +129,10 @@ export default [
     },
   },
   {
-    // Build/config files run under Node, not the browser.
-    files: ['*.config.js', 'vite.config.js'],
+    // Build/config files run under Node, not the browser. scripts/ holds build
+    // tooling (help-index generator) that reads the filesystem and sets an exit
+    // code, so it needs the Node globals too.
+    files: ['*.config.js', 'vite.config.js', 'scripts/**/*.{js,mjs}'],
     languageOptions: { globals: { ...globals.node } },
   },
   {

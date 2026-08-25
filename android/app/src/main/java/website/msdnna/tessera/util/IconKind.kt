@@ -117,6 +117,7 @@ object Ion {
     const val WALLET = "wallet"
     const val SETTINGS = "settings"
     const val SHIELD_CHECKMARK = "shield_checkmark"
+    const val HELP_CIRCLE = "help_circle"
 }
 
 fun classifyIcon(icon: String?): IconKind {

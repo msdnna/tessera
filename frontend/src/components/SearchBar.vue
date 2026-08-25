@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NInput, NIcon, NSpin, NText } from 'naive-ui'
 import {
@@ -8,15 +8,18 @@ import {
   EllipseOutline,
   DocumentTextOutline,
   DocumentsOutline,
+  HelpCircleOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useHelpStore } from '@/stores/help'
 
 const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspacesStore()
+const help = useHelpStore()
 
 const q = ref('')
 const open = ref(false)
@@ -59,6 +62,10 @@ async function runSearch(term) {
   }
 }
 
+// Help articles are searched client-side off the bundled index (#2794), so they
+// answer instantly and without the server round-trip the other groups wait for.
+const helpHits = computed(() => help.find(q.value, 3))
+
 const hasResults = () =>
   results.value.tasks.length || results.value.notes.length || results.value.documents.length
 
@@ -89,6 +96,14 @@ function gotoDocument(d) {
   q.value = ''
   router.push(`/documents/${d.slug || d.id}`)
 }
+
+// A help hit opens the drawer, not the help page: the reader asked a question
+// from wherever they were, and the answer should not cost them that screen.
+function gotoHelp(h) {
+  open.value = false
+  q.value = ''
+  help.openDrawer(h.slug)
+}
 </script>
 
 <template>
@@ -108,6 +123,23 @@ function gotoDocument(d) {
     </n-input>
 
     <div v-if="open && q.trim()" class="panel">
+      <!-- Help sits above the server-backed groups and outside the loading
+           branch: it is resolved from the bundled index, so it is already there
+           while the request is still in flight (#2794). -->
+      <div v-if="helpHits.length" class="grp">
+        <div class="grp-h">{{ t('shell.search.help') }}</div>
+        <button
+          v-for="h in helpHits"
+          :key="h.slug"
+          class="row"
+          :data-help="h.slug"
+          @mousedown.prevent="gotoHelp(h)"
+        >
+          <n-icon class="ico" :component="HelpCircleOutline" />
+          <span class="ttl">{{ h.title }}</span>
+          <span class="cat">{{ h.category }}</span>
+        </button>
+      </div>
       <div v-if="loading" class="loading">
         <n-spin size="small" />
       </div>
@@ -157,7 +189,7 @@ function gotoDocument(d) {
             </button>
           </div>
         </template>
-        <div v-else class="empty">
+        <div v-else-if="!helpHits.length" class="empty">
           <empty-state :icon="SearchOutline" :text="t('shell.search.nothing')" size="small" />
         </div>
       </template>
@@ -239,6 +271,14 @@ function gotoDocument(d) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Category of a help article, pushed to the right edge of the row. */
+.cat {
+  flex: none;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--t-text3);
+  font-size: 11px;
 }
 .empty {
   padding: 12px;

@@ -41,6 +41,8 @@
     "profile": "Profile",
     "settings": "Settings",
     "tour": "Get started",
+    "help": "Help",
+    "helpCenter": "Help centre",
     "admin": "Administration",
     "logout": "Log out"
   },
@@ -63,8 +65,9 @@
     "notes": "Notes",
     "documents": "Documents",
     "untitled": "Untitled",
+    "help": "Help",
     "nothing": "Nothing found",
-    "hint": "Searches task titles and descriptions, note titles and text, document titles"
+    "hint": "Searches task titles and descriptions, note titles and text, document titles and help articles"
   },
   "members": {
     "title": "Workspace members",

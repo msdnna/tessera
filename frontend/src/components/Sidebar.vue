@@ -291,6 +291,9 @@ async function deleteWorkspace() {
         </template>
         {{ t('shell.nav.milestones') }}
       </n-tooltip>
+      <!-- No «Помощь» item here (#2792): the help centre is a modal opened from
+           the «Помощь» menu at the bottom of the sidebar, not a destination that
+           replaces the board the reader is working on. -->
     </nav>
 
     <div v-if="collapsed" class="rail-sep" />

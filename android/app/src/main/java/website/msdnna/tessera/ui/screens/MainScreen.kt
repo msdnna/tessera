@@ -84,6 +84,9 @@ sealed interface MainDest {
     data object Notifications : MainDest
     data object Settings : MainDest
     data object Admin : MainDest
+
+    /** The help centre; [slug] opens straight into an article (#2795). */
+    data class Help(val slug: String? = null) : MainDest
     data class BoardView(val board: Board) : MainDest
 }
 
@@ -261,6 +264,8 @@ fun MainScreen(
 
                 saved == "milestones" -> dest = MainDest.Milestones
 
+                saved == "help" -> dest = MainDest.Help()
+
                 saved.startsWith("board:") -> {
                     val id = saved.removePrefix("board:")
                     runCatching { boardRepo.board(id) }.getOrNull()?.let { dest = MainDest.BoardView(it) }
@@ -285,6 +290,7 @@ fun MainScreen(
                 is MainDest.Notifications -> "notifications"
                 is MainDest.Settings -> "settings"
                 is MainDest.Admin -> "admin"
+                is MainDest.Help -> "help"
                 is MainDest.BoardView -> "board:${d.board.id}"
             },
         )
@@ -326,6 +332,7 @@ fun MainScreen(
                     onOpenNotes = { go(MainDest.Notes) },
                     onOpenDocuments = { go(MainDest.Documents) },
                     onOpenMilestones = { go(MainDest.Milestones) },
+                    onOpenHelp = { go(MainDest.Help()) },
                     onOpenMembers = {
                         membersOpen = true
                         scope.launch { drawerState.close() }
@@ -439,6 +446,8 @@ fun MainScreen(
 
                             is MainDest.Admin -> AdminScreen()
 
+                            is MainDest.Help -> HelpScreen(initialSlug = d.slug)
+
                             is MainDest.BoardView -> BoardScreen(
                                 board = d.board,
                                 workspaceId = state.currentId,
@@ -476,6 +485,10 @@ fun MainScreen(
                     onOpenNote = { noteId ->
                         notesPreselectId = noteId
                         navTo(MainDest.Notes)
+                        searchOpen = false
+                    },
+                    onOpenHelp = { slug ->
+                        navTo(MainDest.Help(slug))
                         searchOpen = false
                     },
                 )
@@ -678,6 +691,7 @@ internal fun titleFor(dest: MainDest): UiText = when (dest) {
     is MainDest.Notifications -> UiText.Res(R.string.notif_title)
     is MainDest.Settings -> UiText.Res(R.string.settings_title)
     is MainDest.Admin -> UiText.Res(R.string.nav_admin)
+    is MainDest.Help -> UiText.Res(R.string.nav_help)
     is MainDest.BoardView -> UiText.Raw(dest.board.name)
 }
 
@@ -693,6 +707,7 @@ private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Notifications -> "notifications"
     is MainDest.Settings -> "settings"
     is MainDest.Admin -> "admin"
+    is MainDest.Help -> "help"
     is MainDest.BoardView -> "board"
 }
 

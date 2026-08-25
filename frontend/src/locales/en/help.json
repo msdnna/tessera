@@ -1,0 +1,19 @@
+{
+  "title": "Help",
+  "center": "Help centre",
+  "close": "Close",
+  "closeHint": "Close (Esc)",
+  "openInCenter": "Open in the help centre",
+  "onThisPage": "On this page",
+  "updated": "Updated {date}",
+  "hintTip": "Help: {title}",
+  "search": {
+    "placeholder": "Search the help",
+    "empty": "Nothing found"
+  },
+  "error": {
+    "notFound": "Article not found",
+    "notInBundle": "Article missing from the build",
+    "loadFailed": "Could not load the article"
+  }
+}

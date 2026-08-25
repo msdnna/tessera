@@ -130,6 +130,7 @@
     <string name="nav_reminders">Напоминания</string>
     <string name="nav_notes">Заметки</string>
     <string name="nav_documents">Документы</string>
+    <string name="nav_help">Помощь</string>
     <string name="nav_admin">Администрирование</string>
 
     <!-- Боковая панель: пространства -->
@@ -1100,9 +1101,16 @@
     <string name="accent_pink">Розовый</string>
 
     <!-- Полноэкранный поиск -->
-    <string name="search_placeholder">Поиск задач и заметок</string>
-    <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок</string>
+    <!-- Справочный центр -->
+    <string name="help_search_placeholder">Поиск по справке</string>
+    <string name="help_not_built">Справка не собрана в этой сборке</string>
+    <string name="help_article_missing">Статья не найдена в сборке</string>
+    <string name="help_updated">Обновлено: %1$s</string>
+
+    <string name="search_placeholder">Поиск задач, заметок и справки</string>
+    <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок, статьям справки</string>
     <string name="search_empty">Ничего не найдено</string>
+    <string name="search_section_help">СПРАВКА</string>
     <string name="search_section_tasks">ЗАДАЧИ</string>
     <string name="search_section_notes">ЗАМЕТКИ</string>
 

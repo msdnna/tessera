@@ -126,6 +126,7 @@
     <string name="nav_reminders">Reminders</string>
     <string name="nav_notes">Notes</string>
     <string name="nav_documents">Documents</string>
+    <string name="nav_help">Help</string>
     <string name="nav_admin">Administration</string>
 
     <!-- Sidebar: workspaces -->
@@ -1073,9 +1074,16 @@
     <string name="accent_pink">Pink</string>
 
     <!-- Full-screen search -->
-    <string name="search_placeholder">Search tasks and notes</string>
-    <string name="search_hint">Type a query — searches task titles and descriptions, note titles and text</string>
+    <!-- Help centre -->
+    <string name="help_search_placeholder">Search the help</string>
+    <string name="help_not_built">The manual is not bundled in this build</string>
+    <string name="help_article_missing">Article missing from the build</string>
+    <string name="help_updated">Updated: %1$s</string>
+
+    <string name="search_placeholder">Search tasks, notes and help</string>
+    <string name="search_hint">Type a query — searches task titles and descriptions, note titles and text, help articles</string>
     <string name="search_empty">Nothing found</string>
+    <string name="search_section_help">HELP</string>
     <string name="search_section_tasks">TASKS</string>
     <string name="search_section_notes">NOTES</string>
 

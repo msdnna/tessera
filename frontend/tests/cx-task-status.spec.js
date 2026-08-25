@@ -61,7 +61,12 @@ vi.mock('naive-ui', async (importOriginal) => {
   }
 })
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+// useRoute as well as useRouter: the modal header carries a HelpHint (#2794),
+// which picks its article from the current path when no slug is given.
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRoute: () => ({ path: '/', params: {}, query: {} }),
+}))
 
 // Naive stubs. TaskModal is <script setup>, so its `<n-popover>` resolves straight
 // to the imported binding — there is no local registration for VTU to match, and it

@@ -99,6 +99,7 @@ import TesseraSpinner from './TesseraSpinner.vue'
 import TaskCommentsTab from './task/TaskCommentsTab.vue'
 import TaskDescriptionTab from './task/TaskDescriptionTab.vue'
 import TaskLayoutSwitch from './TaskLayoutSwitch.vue'
+import HelpHint from './help/HelpHint.vue'
 import TaskSubtasksTab from './task/TaskSubtasksTab.vue'
 import TaskRelationsTab from './task/TaskRelationsTab.vue'
 import TaskFilesTab from './task/TaskFilesTab.vue'
@@ -1163,6 +1164,9 @@ async function onSubtaskChanged() {
               >
                 (<n-icon :component="LogoGitlab" :size="12" /> !{{ task.gitlab.iid }})
               </a>
+              <!-- Contextual help for the task card itself (#2794): the modal
+                   covers the topbar's «?», so it carries its own. -->
+              <HelpHint slug="boards-and-tasks" :size="15" />
             </span>
           </div>
           <n-input
