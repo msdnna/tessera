@@ -259,7 +259,72 @@ test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e
 # (so `make e2e-backend-up` still runs on the host, exactly as for the JVM tier).
 .PHONY: test-android-instrumented
 test-android-instrumented: ## Android smoke tier on a device/emulator (needs `make e2e-backend-up`)
-	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest
+	@# The shots package is excluded: it seeds demo-shaped content and writes PNGs,
+	@# which is `make android-shots`' job. A smoke tier that depended on it would
+	@# start failing over screenshot data.
+	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest \
+	  -Pandroid.testInstrumentationRunnerArguments.notPackage=website.msdnna.tessera.shots
+
+# The AVD the instrumented tiers run on. Headless and software-rendered: this
+# host has no display, and swiftshader is the renderer that survives it.
+ANDROID_AVD ?= tessera_e2e
+ANDROID_EMU_LOG := $(ANDROID_DIR)/app/build/emulator.log
+
+.PHONY: android-emulator-up
+android-emulator-up: ## Boot the AVD headless and wait for it (needed by android-shots)
+	@ANDROID_HOME="$${ANDROID_HOME:-$$HOME/Android/Sdk}"; \
+	 ADB="$$ANDROID_HOME/platform-tools/adb"; \
+	 if [ "$$($$ADB shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then \
+	   echo "emulator: уже поднят"; exit 0; fi; \
+	 mkdir -p $(dir $(ANDROID_EMU_LOG)); \
+	 nohup "$$ANDROID_HOME/emulator/emulator" -avd $(ANDROID_AVD) -no-window -no-audio \
+	   -no-boot-anim -no-snapshot -gpu swiftshader_indirect >$(ANDROID_EMU_LOG) 2>&1 & \
+	 echo "emulator: жду загрузку ($(ANDROID_AVD)), лог — $(ANDROID_EMU_LOG)"; \
+	 for i in $$(seq 1 120); do \
+	   [ "$$($$ADB shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && { echo "emulator: готов"; exit 0; }; \
+	   sleep 5; \
+	 done; \
+	 echo "emulator: не поднялся за 10 минут — смотри $(ANDROID_EMU_LOG)" >&2; exit 1
+
+# The mobile counterpart of `make help-shots` (#2795): the help centre's Android
+# screenshots, taken on the emulator against the same throwaway backend the e2e
+# tiers use.
+.PHONY: android-shots
+android-shots: ## Re-take the mobile help screenshots (needs `make e2e-backend-up`)
+	@$(MAKE) android-emulator-up
+	@# `leaveApksInstalledAfterRun`: by default AGP uninstalls both APKs when the
+	@# run ends, and the app's data directory — where the shots are — goes with
+	@# them. The run stays green and the fetch below finds nothing.
+	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest \
+	  -Pandroid.testInstrumentationRunnerArguments.class=website.msdnna.tessera.shots.HelpShotsTest \
+	  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+	@$(MAKE) android-shots-pull
+
+# Separate from the run above so a failed fetch can be retried without paying for
+# the two-minute instrumented run again — the shots survive on the device.
+.PHONY: android-shots-pull
+android-shots-pull: ## Fetch the screenshots the last android-shots run left on the device
+	@# The shots land in the app's private storage, which the shell user cannot
+	@# read on its own since Android 11 — neither in `/data/data/<pkg>` nor in
+	@# `/sdcard/Android/data/<pkg>`, where a pull comes back silently empty. The
+	@# AVD runs a `google_apis` (userdebug) image, so `adb root` is the way in.
+	@ANDROID_HOME="$${ANDROID_HOME:-$$HOME/Android/Sdk}"; \
+	 ADB="$$ANDROID_HOME/platform-tools/adb"; \
+	 SRC=/data/data/website.msdnna.tessera/files/help-shots; \
+	 echo "android-shots: $$($$ADB root 2>&1 | tr -d '\r')"; $$ADB wait-for-device; \
+	 FILES="$$($$ADB shell ls $$SRC 2>&1 | tr -d '\r')"; \
+	 case "$$FILES" in *"No such file"*|*"denied"*|"") \
+	   echo "android-shots: кадры не читаются ($$SRC): $$FILES" >&2; exit 1;; esac; \
+	 for f in $$FILES; do \
+	   $$ADB pull "$$SRC/$$f" docs/help/assets/$$f >/dev/null || exit 1; \
+	   [ -s docs/help/assets/$$f ] || { echo "android-shots: пустой кадр $$f" >&2; exit 1; }; \
+	 done; \
+	 echo "android-shots: $$(echo $$FILES | wc -w) кадров → docs/help/assets"
+
+.PHONY: android-emulator-down
+android-emulator-down: ## Shut the AVD down
+	@ANDROID_HOME="$${ANDROID_HOME:-$$HOME/Android/Sdk}"; \
+	 "$$ANDROID_HOME/platform-tools/adb" emu kill 2>/dev/null || true
 
 # Compiles the instrumented tier without running it — the only check available on
 # a host with no emulator, and worth having: an androidTest source set that never

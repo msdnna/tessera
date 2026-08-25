@@ -56,12 +56,16 @@ class HelpSearcher(articles: List<HelpArticle>) {
         for (a in articles) {
             bySlug[a.slug] = a
             for (t in tokenizeHelp(a.title)) add(t, a.slug, Weight.TITLE)
-            for (kw in a.keywords) for (t in tokenizeHelp(kw)) add(t, a.slug, Weight.KEYWORDS)
-            for (h in a.headings) for (t in tokenizeHelp(h.text)) add(t, a.slug, Weight.HEADING)
+            // `android*` throughout: an article with a mobile rewrite is indexed
+            // from the text this client renders (#2795). Indexing the desktop
+            // body instead would make words findable that the reader never sees
+            // on screen — and hide the ones they do.
+            for (kw in a.androidKeywords) for (t in tokenizeHelp(kw)) add(t, a.slug, Weight.KEYWORDS)
+            for (h in a.androidHeadings) for (t in tokenizeHelp(h.text)) add(t, a.slug, Weight.HEADING)
             // The body is scored once per distinct token: repeating a word ten
             // times in one article should not outrank an article that is
             // actually about it.
-            for (t in tokenizeHelp(a.text).toSet()) add(t, a.slug, Weight.TEXT)
+            for (t in tokenizeHelp(a.androidText).toSet()) add(t, a.slug, Weight.TEXT)
         }
         // Sorted once so a prefix lookup scans a contiguous range instead of
         // testing every token in the corpus on each keystroke.
@@ -120,7 +124,7 @@ class HelpSearcher(articles: List<HelpArticle>) {
         val matched = acc ?: return emptyList()
         return matched.mapNotNull { (slug, score) ->
             val a = bySlug[slug] ?: return@mapNotNull null
-            HelpHit(slug, score, a.title, a.category, helpExcerpt(a.text, terms))
+            HelpHit(slug, score, a.title, a.category, helpExcerpt(a.androidText, terms))
         }.sortedWith(
             compareByDescending<HelpHit> { it.score }.thenComparator { x, y ->
                 RU.compare(x.title, y.title)

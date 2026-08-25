@@ -2,6 +2,7 @@ package website.msdnna.tessera.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -196,6 +198,14 @@ private fun HelpArticleReader(
         // (#2781), so the scrolling belongs to the column around it.
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             Spacer(Modifier.height(12.dp))
+            // An article with no `<slug>.android.md` yet is shown as it is, with
+            // a note (#2795). Hiding it would be worse: search still finds it by
+            // title, and «found but won't open» reads as a bug where an honest
+            // label reads as a gap in the manual.
+            if (article.desktopOnlyText) {
+                HelpDesktopTextNote()
+                Spacer(Modifier.height(12.dp))
+            }
             when {
                 loading -> Text("Загрузка…", color = c.text3, fontSize = 14.sp)
 
@@ -214,12 +224,43 @@ private fun HelpArticleReader(
                     )
                 }
             }
-            if (article.updated.isNotBlank()) {
+            if (article.androidUpdated.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
-                Text("Обновлено: ${article.updated}", color = c.placeholder, fontSize = 12.sp)
+                Text("Обновлено: ${article.androidUpdated}", color = c.placeholder, fontSize = 12.sp)
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+/**
+ * Shown above an article that has no mobile rewrite: the reader is looking at
+ * the desktop manual, and the wording («слева в боковой панели», «перетащите
+ * мышью») will not match what is under their thumb.
+ *
+ * Internal rather than private so the suite can mount it: every article in
+ * `docs/help` has a mobile rewrite today, so there is no way to reach this note
+ * through the screen itself.
+ */
+@Composable
+internal fun HelpDesktopTextNote() {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth()
+            .border(1.dp, c.border, RoundedCornerShape(8.dp))
+            .background(c.surfaceAlt, RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .testTag(TestTags.HELP_DESKTOP_NOTE),
+        verticalAlignment = Alignment.Top,
+    ) {
+        IonIcon(Ion.HELP_CIRCLE, size = 16.dp, tint = c.text3)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "Статья описывает веб-версию — в приложении часть действий выглядит иначе.",
+            color = c.text3,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

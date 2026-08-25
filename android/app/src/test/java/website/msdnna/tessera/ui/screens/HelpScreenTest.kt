@@ -80,6 +80,24 @@ class HelpScreenTest {
         awaitArticle()
     }
 
+    @Test
+    fun `an article with a mobile rewrite carries no warning`() {
+        // Every article in docs/help has one right now, so this is the state the
+        // reader actually sees — the note must not turn into permanent furniture.
+        compose.setContent { TesseraTheme { HelpScreen(initialSlug = first.slug) } }
+        awaitArticle()
+        compose.onNodeWithTag(TestTags.HELP_DESKTOP_NOTE).assertDoesNotExist()
+    }
+
+    @Test
+    fun `an article without one says so`() {
+        // Mounted directly: with no desktop-only article bundled there is no way
+        // to reach the note through the screen, and shipping a broken article to
+        // docs/help just to test it would be worse than this seam.
+        compose.setContent { TesseraTheme { HelpDesktopTextNote() } }
+        compose.onNodeWithTag(TestTags.HELP_DESKTOP_NOTE).assertIsDisplayed()
+    }
+
     private fun awaitArticle() {
         compose.waitUntil {
             compose.onAllNodesWithTag(TestTags.HELP_ARTICLE).fetchSemanticsNodes().isNotEmpty()

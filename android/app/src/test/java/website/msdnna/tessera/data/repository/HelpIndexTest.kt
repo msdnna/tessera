@@ -74,6 +74,19 @@ class HelpIndexTest {
     }
 
     @Test
+    fun `the mobile rewrite is bundled, not just listed in the index`() {
+        // The copy task takes `docs/help/**`, so a variant file that never made
+        // it into the APK is the same class of failure as a missing article:
+        // nothing crashes, the reader just gets the desktop wording back.
+        val withVariant = repo.articles().filter { it.android != null }
+        assertThat(withVariant).isNotEmpty()
+        for (a in withVariant) {
+            assertThat(a.androidPath).isEqualTo(a.android!!.path)
+            assertThat(repo.body(a)).isNotNull()
+        }
+    }
+
+    @Test
     fun `cross-links between articles point at slugs that exist`() {
         val slugs = repo.articles().map { it.slug }.toSet()
         for (a in repo.articles()) {

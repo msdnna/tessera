@@ -37,7 +37,12 @@ class HelpRepository(private val assets: AssetManager) {
         return parsed
     }
 
-    fun articles(): List<HelpArticle> = index().articles
+    /**
+     * The articles this client shows. An article scoped to the web (`platforms:
+     * web`) is dropped here rather than hidden in the UI — otherwise search
+     * would keep finding it and open a topic the app does not have.
+     */
+    fun articles(): List<HelpArticle> = index().articles.filter { it.onAndroid }
 
     fun bySlug(slug: String): HelpArticle? = articles().firstOrNull { it.slug == slug }
 
@@ -51,14 +56,16 @@ class HelpRepository(private val assets: AssetManager) {
     }
 
     /**
-     * An article's Markdown, frontmatter stripped. Returns null when the index
-     * and the files disagree (the index was not rebuilt, or a file was deleted)
-     * so the screen can say so instead of rendering a blank page.
+     * An article's Markdown, frontmatter stripped — the mobile rewrite
+     * (`<slug>.android.md`) when the article has one, the desktop text
+     * otherwise. Returns null when the index and the files disagree (the index
+     * was not rebuilt, or a file was deleted) so the screen can say so instead
+     * of rendering a blank page.
      */
     fun body(article: HelpArticle): String? {
         synchronized(bodies) { bodies[article.slug] }?.let { return it }
         val raw = runCatching {
-            assets.open("$HELP_DIR/${article.path}").bufferedReader().use { it.readText() }
+            assets.open("$HELP_DIR/${article.androidPath}").bufferedReader().use { it.readText() }
         }.getOrNull() ?: return null
         val md = frontmatter.replace(raw, "")
         synchronized(bodies) { bodies[article.slug] = md }

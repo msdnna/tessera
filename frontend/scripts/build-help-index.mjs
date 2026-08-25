@@ -24,6 +24,14 @@ const OUT_FILE = join(HERE, '../src/data/helpIndex.json')
 
 const REQUIRED = ['title', 'category', 'order']
 
+// Platform scoping (#2795). An article is written for the desktop web by
+// default; `<slug>.android.md` next to it is the mobile rewrite of the same
+// article — same slug, same place in the nav, different body and screenshots.
+// `platforms:` narrows an article to one client entirely, for a topic the other
+// one does not have.
+const PLATFORMS = ['web', 'android']
+const ANDROID_SUFFIX = '.android.md'
+
 function walk(dir) {
   const out = []
   for (const name of readdirSync(dir).sort()) {
@@ -56,6 +64,16 @@ function parseFrontmatter(src, where) {
   }
   const order = Number(meta.order)
   if (!Number.isFinite(order)) throw new Error(`${where}: «order» не число — ${meta.order}`)
+  const platforms = (meta.platforms || PLATFORMS.join(','))
+    .split(',')
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean)
+  for (const p of platforms) {
+    if (!PLATFORMS.includes(p)) {
+      throw new Error(`${where}: неизвестная платформа «${p}» в «platforms» — можно ${PLATFORMS.join('/')}`)
+    }
+  }
+  if (!platforms.length) throw new Error(`${where}: «platforms» пустой — убери поле или укажи платформу`)
   return {
     title: meta.title,
     category: meta.category,
@@ -65,6 +83,8 @@ function parseFrontmatter(src, where) {
       .split(',')
       .map((k) => k.trim())
       .filter(Boolean),
+    // Sorted so the index does not churn on the order the author typed them in.
+    platforms: PLATFORMS.filter((p) => platforms.includes(p)),
     body: src.slice(m[0].length),
   }
 }
@@ -118,11 +138,70 @@ function flatten(body) {
     .toLowerCase()
 }
 
-export function buildIndex() {
+// attachVariants folds every `<slug>.android.md` into its base article as an
+// `android` section instead of listing it as an article of its own. The nav, the
+// slug and the reading order stay single — only the body, the headings and the
+// search corpus fork, which is the whole point: the app must not grow a second
+// table of contents that drifts from the site's.
+//
+// Every mismatch here fails the build. A variant whose base is gone, or one that
+// disagrees about the category, would otherwise ship as an article the reader
+// can reach on one platform and not the other — the kind of gap nobody notices
+// until a user reports a dead link.
+function attachVariants(articles, slugs, variants) {
+  const bySlug = new Map(articles.map((a) => [a.slug, a]))
+  for (const [slug, variant] of variants) {
+    const base = bySlug.get(slug)
+    if (!base) {
+      throw new Error(
+        `${variant.path}: мобильный вариант без базовой статьи — нужен ${slug}.md рядом`,
+      )
+    }
+    for (const field of ['category', 'order']) {
+      if (variant.meta[field] !== base[field]) {
+        throw new Error(
+          `${variant.path}: «${field}» расходится с ${slugs.get(slug)} — ` +
+            `${variant.meta[field]} и ${base[field]}; навигация у платформ общая`,
+        )
+      }
+    }
+    if (!variant.meta.platforms.includes('android')) {
+      throw new Error(`${variant.path}: мобильный вариант с «platforms: ${variant.meta.platforms.join(',')}»`)
+    }
+    if (!base.platforms.includes('android')) {
+      throw new Error(
+        `${variant.path}: у ${slugs.get(slug)} стоит «platforms: ${base.platforms.join(',')}» — ` +
+          `мобильный вариант некуда показывать`,
+      )
+    }
+    base.android = {
+      path: variant.path,
+      updated: variant.meta.updated,
+      keywords: variant.meta.keywords,
+      headings: collectHeadings(variant.meta.body),
+      text: flatten(variant.meta.body),
+    }
+  }
+}
+
+// `dir` is a parameter only so the suite can build a throwaway tree and assert
+// the guards below actually fire; every caller in the repo builds docs/help.
+export function buildIndex(dir = HELP_DIR) {
   const articles = []
   const slugs = new Map()
-  for (const file of walk(HELP_DIR)) {
-    const rel = relative(HELP_DIR, file).split(/[\\/]/).join('/')
+  const variants = new Map() // slug → the parsed `<slug>.android.md`
+  for (const file of walk(dir)) {
+    const rel = relative(dir, file).split(/[\\/]/).join('/')
+    const meta = parseFrontmatter(readFileSync(file, 'utf8'), rel)
+    const name = basename(file)
+    if (name.endsWith(ANDROID_SUFFIX)) {
+      const slug = name.slice(0, -ANDROID_SUFFIX.length)
+      if (variants.has(slug)) {
+        throw new Error(`два мобильных варианта одного slug «${slug}»: ${variants.get(slug).path} и ${rel}`)
+      }
+      variants.set(slug, { path: rel, meta })
+      continue
+    }
     const slug = basename(file, '.md')
     if (slugs.has(slug)) {
       // Slugs are the URL (/help/<slug>), so a duplicate would make one of the
@@ -130,7 +209,6 @@ export function buildIndex() {
       throw new Error(`дублирующийся slug «${slug}»: ${slugs.get(slug)} и ${rel}`)
     }
     slugs.set(slug, rel)
-    const meta = parseFrontmatter(readFileSync(file, 'utf8'), rel)
     articles.push({
       slug,
       path: rel,
@@ -139,10 +217,12 @@ export function buildIndex() {
       order: meta.order,
       updated: meta.updated,
       keywords: meta.keywords,
+      platforms: meta.platforms,
       headings: collectHeadings(meta.body),
       text: flatten(meta.body),
     })
   }
+  attachVariants(articles, slugs, variants)
   // Sorted here, once, so every consumer (nav, search, prev/next) sees the same
   // order without re-sorting: category by its lowest `order`, then article.
   const catOrder = new Map()

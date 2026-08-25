@@ -154,6 +154,10 @@ object TestTags {
      *  an article is open. */
     const val HELP_ARTICLE = "help-article"
 
+    /** The «this text describes the web version» note, shown exactly on the
+     *  articles that have no mobile rewrite yet (#2795). */
+    const val HELP_DESKTOP_NOTE = "help-desktop-note"
+
     // ── what's new / spotlight (#2766) ──────────────────────────────────────
 
     /** The post-update changelog card and its «Понятно». Present only while the
