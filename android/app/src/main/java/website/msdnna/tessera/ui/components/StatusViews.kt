@@ -23,18 +23,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.util.Ion
 
-/** Reassuring captions shown under a loader when a load drags on. */
-val DefaultLoadingMessages = listOf(
-    "Пытаемся подключиться к серверу…",
-    "Это занимает чуть больше времени, чем ожидалось…",
-    "Всё ещё пробуем достучаться до сервера…",
+/**
+ * Reassuring captions shown under a loader when a load drags on.
+ *
+ * A `val` list would freeze on the language of the first class load and survive a
+ * language switch in the profile — the captions read the resources of the
+ * composition that asks for them instead.
+ */
+@Composable
+fun defaultLoadingMessages(): List<String> = listOf(
+    stringResource(R.string.loading_caption_connecting),
+    stringResource(R.string.loading_caption_slow),
+    stringResource(R.string.loading_caption_still_trying),
 )
 
 /**
@@ -49,7 +58,7 @@ fun LoadingCaptions(
     modifier: Modifier = Modifier,
     startDelayMs: Long = 5_000,
     intervalMs: Long = 3_500,
-    messages: List<String> = DefaultLoadingMessages,
+    messages: List<String> = defaultLoadingMessages(),
 ) {
     var index by remember { mutableIntStateOf(-1) }
     LaunchedEffect(messages, startDelayMs, intervalMs) {
@@ -115,7 +124,7 @@ fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifi
                 textAlign = TextAlign.Center,
                 modifier = Modifier.widthIn(max = 320.dp),
             )
-            TButton("Попробовать ещё раз", onClick = onRetry, icon = Ion.REFRESH)
+            TButton(stringResource(R.string.error_retry_action), onClick = onRetry, icon = Ion.REFRESH)
         }
     }
 }

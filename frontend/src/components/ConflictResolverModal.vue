@@ -4,7 +4,7 @@ import { WarningOutline } from '@vicons/ionicons5'
 import ConflictResolverPanel from '@/components/ConflictResolverPanel.vue'
 
 // Thin modal wrapper around ConflictResolverPanel — used at the app level
-// (opened from the «Конфликт» pill on a task card via the conflicts store).
+// (opened from the conflict pill on a task card via the conflicts store).
 // The GitLab integration modal embeds ConflictResolverPanel directly in its
 // right pane instead of opening this modal.
 const props = defineProps({
@@ -21,7 +21,8 @@ const emit = defineEmits(['update:show', 'resolved'])
       <n-card class="c-card" style="width: 900px; max-width: 96vw" role="dialog">
         <template #header>
           <span class="c-title">
-            <n-icon :component="WarningOutline" class="c-warn" /> Конфликты обратной записи GitLab
+            <n-icon :component="WarningOutline" class="c-warn" />
+            {{ $t('gitlab.conflicts.title') }}
           </span>
         </template>
 

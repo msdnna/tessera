@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, h } from 'vue'
+import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import {
   NSelect,
@@ -33,6 +34,7 @@ import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useTourStore } from '@/stores/tour'
+import { workspaceName } from '@/utils/defaultNames'
 import ConfirmByName from './ConfirmByName.vue'
 import ProjectCreateModal from './ProjectCreateModal.vue'
 import {
@@ -57,6 +59,7 @@ defineProps({
   narrow: { type: Boolean, default: false },
 })
 
+const { t } = useI18n()
 const store = useWorkspacesStore()
 const auth = useAuthStore()
 const tour = useTourStore()
@@ -64,7 +67,7 @@ const message = useMessage()
 const route = useRoute()
 const router = useRouter()
 
-const wsOptions = computed(() => store.list.map((w) => ({ label: w.name, value: w.id })))
+const wsOptions = computed(() => store.list.map((w) => ({ label: workspaceName(w), value: w.id })))
 const rootGroups = computed(() => store.childGroups(null))
 const ungrouped = computed(() => store.projectsInGroup(null))
 
@@ -95,10 +98,12 @@ watch(ungrouped, (v) => (rootProjModel.value = [...v]), { immediate: true })
 const onRootGrp = (evt) => moveSidebarGroup(evt, rootGrpModel.value, null, store, message)
 const onRootProj = (evt) => moveSidebarProject(evt, rootProjModel.value, null, store, message)
 
-const addOptions = [
-  { label: 'Проект', key: 'project', icon: menuIcon(DocumentTextOutline) },
-  { label: 'Группа', key: 'group', icon: menuIcon(FolderOutline) },
-]
+// Computed, not a module constant: the labels have to follow a language switch
+// (a frozen table would keep the language of the first render).
+const addOptions = computed(() => [
+  { label: t('shell.tree.addProject'), key: 'project', icon: menuIcon(DocumentTextOutline) },
+  { label: t('shell.tree.addGroup'), key: 'group', icon: menuIcon(FolderOutline) },
+])
 
 async function onWorkspaceChange(id) {
   await store.selectWorkspace(id)
@@ -124,7 +129,10 @@ async function addAtRoot(key) {
     // Same as onProjectCreated above: the guide's «Группа создана» and «перетащите
     // проект в группу» steps have to point at the group this click just made, not
     // at whichever group happens to be first in the tree (#2778 rework).
-    const res = await wsApi.createGroup(store.currentId, { name: 'Группа' })
+    // The seed name is localised: a group is renamed right after it appears (the
+    // guide's next step is exactly that), so it reads in the language the person
+    // is working in rather than in whichever one the server was seeded with.
+    const res = await wsApi.createGroup(store.currentId, { name: t('shell.group.defaultName') })
     tour.noteCreated({ groupId: res.data?.id })
     await store.refresh()
   } catch (e) {
@@ -154,7 +162,7 @@ const wsMenuOptions = computed(() =>
   isOwner.value
     ? [
         {
-          label: 'Удалить пространство',
+          label: t('shell.workspace.delete'),
           key: 'delete',
           icon: dangerIcon(TrashOutline),
           props: { style: 'color:#e0533d' },
@@ -166,7 +174,7 @@ const wsDeleteShow = ref(false)
 function onWsMenuSelect(key) {
   if (key === 'delete') {
     if (store.list.length <= 1) {
-      message.warning('Нельзя удалить единственное пространство')
+      message.warning(t('shell.workspace.deleteLast'))
       return
     }
     wsDeleteShow.value = true
@@ -175,7 +183,7 @@ function onWsMenuSelect(key) {
 async function deleteWorkspace() {
   try {
     await store.removeWorkspace(store.currentId)
-    message.success('Пространство удалено')
+    message.success(t('shell.workspace.deleted'))
     router.push('/') // the tree fully changed — land on Home
   } catch (e) {
     message.error(e.message)
@@ -217,7 +225,7 @@ async function deleteWorkspace() {
         quaternary
         circle
         size="small"
-        title="Новое пространство"
+        :title="t('shell.workspace.create')"
         @click="wsModal.show = true"
       >
         <n-icon :component="AddOutline" />
@@ -229,7 +237,7 @@ async function deleteWorkspace() {
         :options="wsMenuOptions"
         @select="onWsMenuSelect"
       >
-        <n-button quaternary circle size="small" title="Настройки пространства">
+        <n-button quaternary circle size="small" :title="t('shell.workspace.settings')">
           <n-icon :component="EllipsisHorizontalOutline" />
         </n-button>
       </n-dropdown>
@@ -240,48 +248,48 @@ async function deleteWorkspace() {
         <template #trigger>
           <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
             <n-icon :component="HomeOutline" :size="18" />
-            <span v-if="!collapsed">Главная</span>
+            <span v-if="!collapsed">{{ t('shell.nav.home') }}</span>
           </router-link>
         </template>
-        Главная
+        {{ t('shell.nav.home') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/notes" class="nav-link" data-nav="notes">
             <n-icon :component="DocumentTextOutline" :size="18" />
-            <span v-if="!collapsed">Заметки</span>
+            <span v-if="!collapsed">{{ t('shell.nav.notes') }}</span>
           </router-link>
         </template>
-        Заметки
+        {{ t('shell.nav.notes') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/documents" class="nav-link" data-nav="documents">
             <n-icon :component="DocumentsOutline" :size="18" />
             <span v-if="!collapsed" class="nav-label">
-              Документы<sup class="nav-badge">alpha</sup>
+              {{ t('shell.nav.documents') }}<sup class="nav-badge">alpha</sup>
             </span>
           </router-link>
         </template>
-        Документы
+        {{ t('shell.nav.documents') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/reminders" class="nav-link" data-nav="reminders">
             <n-icon :component="AlarmOutline" :size="18" />
-            <span v-if="!collapsed">Напоминания</span>
+            <span v-if="!collapsed">{{ t('shell.nav.reminders') }}</span>
           </router-link>
         </template>
-        Напоминания
+        {{ t('shell.nav.reminders') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/milestones" class="nav-link" data-nav="milestones">
             <n-icon :component="RibbonOutline" :size="18" />
-            <span v-if="!collapsed">Этапы</span>
+            <span v-if="!collapsed">{{ t('shell.nav.milestones') }}</span>
           </router-link>
         </template>
-        Этапы
+        {{ t('shell.nav.milestones') }}
       </n-tooltip>
       <!-- No «Помощь» item here (#2792): the help centre is a modal opened from
            the «Помощь» menu at the bottom of the sidebar, not a destination that
@@ -291,7 +299,7 @@ async function deleteWorkspace() {
     <div v-if="collapsed" class="rail-sep" />
 
     <div v-if="!collapsed" class="proj-head">
-      <n-text depth="3" strong>Проекты</n-text>
+      <n-text depth="3" strong>{{ t('shell.tree.projects') }}</n-text>
       <!-- node-props tags each option for the Get Started guide (#2753): naive
            merges them into the option node, so the tour can anchor on a menu
            item the same way it anchors on any other element. -->
@@ -301,7 +309,7 @@ async function deleteWorkspace() {
         :node-props="(o) => ({ 'data-tour': `menu-${o.key}` })"
         @select="addAtRoot"
       >
-        <n-button text size="small" title="Добавить" data-tour="proj-add">
+        <n-button text size="small" :title="t('shell.tree.add')" data-tour="proj-add">
           <n-icon :component="AddOutline" />
         </n-button>
       </n-dropdown>
@@ -347,7 +355,7 @@ async function deleteWorkspace() {
       <EmptyState
         v-if="!rootGroups.length && !ungrouped.length"
         :icon="FolderOutline"
-        text="Проектов пока нет"
+        :text="t('shell.tree.empty')"
         size="small"
       />
     </n-scrollbar>
@@ -375,23 +383,25 @@ async function deleteWorkspace() {
     <ProjectCreateModal v-model:show="projModalShow" @created="onProjectCreated" />
 
     <n-modal v-model:show="wsModal.show">
-      <n-card title="Новое пространство" style="max-width: 360px" role="dialog">
+      <n-card :title="t('shell.workspace.create')" style="max-width: 360px" role="dialog">
         <n-input
           v-model:value="wsModal.value"
-          placeholder="Название"
+          :placeholder="t('shell.workspace.namePlaceholder')"
           @keyup.enter="createWorkspace"
         />
         <template #footer>
-          <n-button type="primary" @click="createWorkspace">Создать</n-button>
+          <n-button type="primary" @click="createWorkspace">{{
+            t('common.action.create')
+          }}</n-button>
         </template>
       </n-card>
     </n-modal>
 
     <ConfirmByName
       v-model:show="wsDeleteShow"
-      :name="store.current?.name || ''"
-      title="Удалить пространство"
-      message="Пространство будет удалено со всеми проектами, досками и задачами. Действие необратимо."
+      :name="workspaceName(store.current)"
+      :title="t('shell.workspace.delete')"
+      :message="t('shell.workspace.deleteMessage')"
       @confirm="deleteWorkspace"
     />
   </div>

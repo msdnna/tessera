@@ -18,10 +18,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -86,10 +88,13 @@ fun HSegmentedSelector(
 
 // ── Studio preview ───────────────────────────────────────────────────────────
 
-private val ViewOptionsPreview = listOf(
-    SegmentOption("Доска", Ion.GRID),
-    SegmentOption("Список", Ion.LIST),
-    SegmentOption("Календарь", Ion.CALENDAR),
+/** Built inside the preview, not at import time: the captions are resources, and a
+ *  module-level list would freeze them at the language of the first render. */
+@Composable
+private fun viewOptionsPreview() = listOf(
+    SegmentOption(stringResource(R.string.board_view_kanban), Ion.GRID),
+    SegmentOption(stringResource(R.string.board_view_list), Ion.LIST),
+    SegmentOption(stringResource(R.string.board_view_calendar), Ion.CALENDAR),
 )
 
 @Preview(showBackground = true, widthDp = 260)
@@ -98,7 +103,7 @@ private fun BoardViewSelectorPreviewLight() {
     TesseraTheme(accent = accentByKey("purple"), isDark = false) {
         var sel by remember { mutableIntStateOf(0) }
         Column(Modifier.background(Tessera.colors.surface).padding(16.dp)) {
-            HSegmentedSelector(ViewOptionsPreview, sel, onSelect = { sel = it })
+            HSegmentedSelector(viewOptionsPreview(), sel, onSelect = { sel = it })
         }
     }
 }
@@ -109,7 +114,7 @@ private fun BoardViewSelectorPreviewDark() {
     TesseraTheme(accent = accentByKey("blue"), isDark = true) {
         var sel by remember { mutableIntStateOf(1) }
         Column(Modifier.background(Tessera.colors.surface).padding(16.dp)) {
-            HSegmentedSelector(ViewOptionsPreview, sel, onSelect = { sel = it })
+            HSegmentedSelector(viewOptionsPreview(), sel, onSelect = { sel = it })
         }
     }
 }

@@ -30,14 +30,28 @@ const (
 	KindWorker = "worker" // a persistent background loop — heartbeat only, not cancelable
 )
 
+// Name is a job's display name in two forms: a stable Key (plus an optional Arg
+// spliced into the phrase) that the client translates from its own catalog, and a
+// pre-rendered Text kept as a fallback for anything that doesn't know the key.
+type Name struct {
+	Key  string // catalog key, e.g. "gitlab_sync"
+	Arg  string // argument inside the phrase, e.g. the integration label
+	Text string // pre-rendered fallback
+}
+
 // Entry is a snapshot of one tracked job, safe to serialize to JSON for the API.
+// Name/CurrentOp carry the rendered fallback; NameKey/NameArg/CurrentOpKey carry the
+// same thing as translatable keys (see Name).
 type Entry struct {
-	Key         string     `json:"key"`
-	Name        string     `json:"name"`
-	Kind        string     `json:"kind"`
-	WorkspaceID string     `json:"workspace_id,omitempty"`
-	Status      Status     `json:"status"`
-	CurrentOp   string     `json:"current_op,omitempty"`
+	Key          string     `json:"key"`
+	Name         string     `json:"name"`
+	NameKey      string     `json:"name_key,omitempty"`
+	NameArg      string     `json:"name_arg,omitempty"`
+	Kind         string     `json:"kind"`
+	WorkspaceID  string     `json:"workspace_id,omitempty"`
+	Status       Status     `json:"status"`
+	CurrentOp    string     `json:"current_op,omitempty"`
+	CurrentOpKey string     `json:"current_op_key,omitempty"`
 	IntervalSec int        `json:"interval_sec,omitempty"` // worker tick interval (for next-run estimate)
 	QueuedAt    *time.Time `json:"queued_at,omitempty"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
@@ -70,17 +84,19 @@ func New(logger *slog.Logger) *Registry {
 
 // RegisterWorker records a persistent tick-loop worker as a running heartbeat entry.
 // intervalSec is its tick period, so the UI can show when it next fires. Idempotent —
-// re-registering the same key refreshes its start time.
+// re-registering the same key refreshes its start time. A worker's own key doubles as
+// its name key: the roster is fixed, so the client translates it directly.
 func (r *Registry) RegisterWorker(key, name string, intervalSec int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := r.now()
-	r.m[key] = &slot{e: Entry{Key: key, Name: name, Kind: KindWorker, Status: StatusRunning, IntervalSec: intervalSec, StartedAt: &now, LastTickAt: &now}}
+	r.m[key] = &slot{e: Entry{Key: key, Name: name, NameKey: key, Kind: KindWorker, Status: StatusRunning, IntervalSec: intervalSec, StartedAt: &now, LastTickAt: &now}}
 }
 
-// Tick updates a worker's heartbeat (last-tick time and current operation). No-op
-// for an unknown key so a worker that predates registration can't panic.
-func (r *Registry) Tick(key, op string) {
+// Tick updates a worker's heartbeat (last-tick time and current operation, as both a
+// translatable key and rendered text). No-op for an unknown key so a worker that
+// predates registration can't panic.
+func (r *Registry) Tick(key, opKey, op string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s, ok := r.m[key]
@@ -90,6 +106,7 @@ func (r *Registry) Tick(key, op string) {
 	now := r.now()
 	s.e.LastTickAt = &now
 	s.e.CurrentOp = op
+	s.e.CurrentOpKey = opKey
 }
 
 // Handle is a live reference to one running job, used to update it while it runs.
@@ -102,7 +119,7 @@ type Handle struct {
 // pending or running it returns (nil, false) — the caller should back off (this
 // replaces the old runningSyncs busy-guard). A finished entry from a previous run
 // is overwritten. cancel may be nil (job is not cancelable).
-func (r *Registry) Begin(key, name, kind, workspaceID string, cancel context.CancelFunc) (*Handle, bool) {
+func (r *Registry) Begin(key string, name Name, kind, workspaceID string, cancel context.CancelFunc) (*Handle, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if s, ok := r.m[key]; ok && (s.e.Status == StatusPending || s.e.Status == StatusRunning) {
@@ -111,7 +128,7 @@ func (r *Registry) Begin(key, name, kind, workspaceID string, cancel context.Can
 	now := r.now()
 	r.m[key] = &slot{
 		e: Entry{
-			Key: key, Name: name, Kind: kind, WorkspaceID: workspaceID,
+			Key: key, Name: name.Text, NameKey: name.Key, NameArg: name.Arg, Kind: kind, WorkspaceID: workspaceID,
 			Status: StatusRunning, QueuedAt: &now, StartedAt: &now, Cancelable: cancel != nil,
 		},
 		cancel: cancel,
@@ -119,8 +136,9 @@ func (r *Registry) Begin(key, name, kind, workspaceID string, cancel context.Can
 	return &Handle{r: r, key: key}, true
 }
 
-// SetOp records what a running job is currently doing (shown in the API/summary).
-func (h *Handle) SetOp(op string) {
+// SetOp records what a running job is currently doing (shown in the API/summary), as
+// both a translatable key and rendered text.
+func (h *Handle) SetOp(opKey, op string) {
 	if h == nil {
 		return
 	}
@@ -128,6 +146,7 @@ func (h *Handle) SetOp(op string) {
 	defer h.r.mu.Unlock()
 	if s, ok := h.r.m[h.key]; ok {
 		s.e.CurrentOp = op
+		s.e.CurrentOpKey = opKey
 	}
 }
 
@@ -157,7 +176,7 @@ func (h *Handle) Finish(err error) {
 	}
 	now := h.r.now()
 	s.e.FinishedAt = &now
-	s.e.CurrentOp = ""
+	s.e.CurrentOp, s.e.CurrentOpKey = "", ""
 	s.cancel = nil
 	s.e.Cancelable = false
 	if err != nil {

@@ -1,6 +1,11 @@
 // Tag-prefix grouping helpers. Tags follow a "<prefix>: value" / "<prefix>::value"
 // naming convention; this module derives the prefix namespace, canonicalises it
 // to a key, and groups a tag list under friendly display names.
+import { i18n, uiCollator } from '@/i18n'
+
+// Resolved per call: the module is imported outside a setup context, so a label
+// taken at import time would freeze on the first render's language (#2799).
+const t = (key, ...rest) => i18n.global.t(key, ...rest)
 
 // Namespace of a tag name ("T: bug" → "T: ", "effort::small" → "effort::").
 // Returns '' when the tag has no prefix.
@@ -21,9 +26,9 @@ export function canonPrefix(p) {
 }
 
 // Display label for a namespace: the configured friendly name, else the trimmed
-// raw prefix (e.g. "S:"), else 'Вне группы' for prefix-less tags.
+// raw prefix (e.g. "S:"), else the "ungrouped" bucket name for prefix-less tags.
 export function prefixLabel(ns, prefixNames = {}) {
-  if (!ns) return 'Вне группы'
+  if (!ns) return t('board.tag.ungrouped')
   return prefixNames[canonPrefix(ns)] || ns.trim()
 }
 
@@ -74,7 +79,7 @@ export function metaPrefixesFromRules(rules) {
 
 // Group a tag list by prefix namespace. Returns ordered groups
 // [{ key, label, prefix, tags }] sorted alphabetically by label, with the
-// prefix-less "Вне группы" bucket always last. Tags within a group are sorted
+// prefix-less "ungrouped" bucket always last. Tags within a group are sorted
 // by name. prefixNames maps canonical prefix → friendly label. hidePrefixes (a Set of
 // canonical prefixes, e.g. from metaPrefixesFromRules) drops those tags entirely.
 export function buildTagGroups(tags, prefixNames = {}, hidePrefixes = null) {
@@ -89,11 +94,12 @@ export function buildTagGroups(tags, prefixNames = {}, hidePrefixes = null) {
     groups.get(key).tags.push(t)
   }
   const arr = [...groups.values()]
-  for (const g of arr) g.tags.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'))
+  const cmp = uiCollator()
+  for (const g of arr) g.tags.sort((a, b) => cmp.compare(a.name || '', b.name || ''))
   arr.sort((a, b) => {
     if (a.key === '') return 1
     if (b.key === '') return -1
-    return a.label.localeCompare(b.label, 'ru')
+    return cmp.compare(a.label, b.label)
   })
   return arr
 }

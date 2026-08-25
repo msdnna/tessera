@@ -24,7 +24,7 @@ async function newDocument(page, seed) {
   await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
   await page.setViewportSize(VIEWPORT)
   await page.goto('/documents')
-  await page.getByRole('button', { name: /Новый документ/ }).click()
+  await page.getByTestId('doc-new').click()
   const editor = page.locator('.ProseMirror')
   await expect(editor).toBeVisible()
   return editor
@@ -50,7 +50,7 @@ test('документ: три панели подряд не отнимают �
   await expect(page.getByTestId('doc-links')).toBeVisible()
   expect(await editorWidth(editor)).toBe(base)
 
-  await page.locator('button[title="История версий"]').click()
+  await page.getByTestId('doc-history-toggle').click()
   await expect(page.locator('.doc-history')).toBeVisible()
   expect(await editorWidth(editor)).toBe(base)
 

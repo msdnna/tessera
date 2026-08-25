@@ -1,0 +1,32 @@
+{
+  "title": "Milestones",
+  "filter": {
+    "active": "Active",
+    "all": "All"
+  },
+  "emptyActive": "No active milestones — create them in a project or switch to “All”",
+  "empty": "No milestones yet — create the first one from the project context menu",
+  "manage": "Manage the project's milestones",
+  "glSynced": "Synced with GitLab",
+  "noTasks": "no tasks",
+  "range": {
+    "until": "until {date}",
+    "from": "from {date}"
+  },
+  "manager": {
+    "title": "Milestones — {project}",
+    "empty": "No milestones yet — create the first one below",
+    "startPlaceholder": "Start",
+    "duePlaceholder": "End",
+    "titlePlaceholder": "Milestone name",
+    "glSyncedHint": "Synced with GitLab — edit it in GitLab",
+    "pushHint": "Create this milestone in GitLab",
+    "push": "To GitLab",
+    "pushed": "The milestone was created in GitLab",
+    "openInGitlab": "Open in GitLab",
+    "reopen": "Reopen",
+    "close": "Close",
+    "deleteLinked": "Delete this milestone in Tessera? It stays in GitLab (the link will be dropped).",
+    "deleteConfirm": "Delete the milestone “{title}”? Tasks stay, but lose the milestone."
+  }
+}

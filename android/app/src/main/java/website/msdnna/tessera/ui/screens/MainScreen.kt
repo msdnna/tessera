@@ -38,7 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,18 +50,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.realtime.DeviceNotifier
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.ui.TestTags
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.Sidebar
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.UpdateDialog
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.NotificationViewModel
@@ -200,6 +205,9 @@ fun MainScreen(
     }
 
     val backContext = LocalContext.current
+    // Подсказка о выходе всплывает уже вне композиции, поэтому строку берём из
+    // ресурсов, подменённых AppLocale, а не из LocalContext (он на системной локали).
+    val backRes = LocalResources.current
     var lastBackAt by remember { mutableStateOf(0L) }
     // Drawer open → Back closes it. Otherwise Back pops the nav stack, and at the
     // root it minimises the app on a confirming second press (with a hint toast),
@@ -215,7 +223,11 @@ fun MainScreen(
                 (backContext as? Activity)?.moveTaskToBack(true)
             } else {
                 lastBackAt = now
-                Toast.makeText(backContext, "Нажмите «Назад» ещё раз для выхода", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    backContext,
+                    backRes.getString(R.string.main_back_again_to_exit),
+                    Toast.LENGTH_SHORT,
+                ).show()
             }
         }
     }
@@ -362,7 +374,7 @@ fun MainScreen(
                 Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),
             ) {
                 TopBar(
-                    title = titleFor(dest),
+                    title = titleFor(dest).resolve(),
                     unread = notifState.unread,
                     bellOpen = bellOpen,
                     notifState = notifState,
@@ -510,13 +522,21 @@ private val ViewModes = listOf(
 private fun viewSeg(label: String, base: String) =
     website.msdnna.tessera.ui.components.SegmentOption(label, "layout_${base}_outline", "layout_${base}_filled")
 
-private val ViewSegments = listOf(
-    viewSeg("Доска", "kanban"),
-    viewSeg("Список", "list"),
-    viewSeg("Календарь", "calendar"),
-    viewSeg("Таймлайн", "timeline"),
-    viewSeg("Гант", "gantt"),
-    viewSeg("Матрица", "matrix"),
+/**
+ * Собирается в композиции, а не полем верхнего уровня: подписи — ресурсы, а `val`
+ * на уровне файла вычисляется один раз при загрузке класса и застыл бы на языке
+ * первого открытия доски (та же ловушка, что с `SortField` в волне 17).
+ *
+ * `internal`, а не `private`, — за подписями следит `MainScreenLocaleTest`.
+ */
+@Composable
+internal fun viewSegments() = listOf(
+    viewSeg(stringResource(R.string.board_view_kanban), "kanban"),
+    viewSeg(stringResource(R.string.board_view_list), "list"),
+    viewSeg(stringResource(R.string.board_view_calendar), "calendar"),
+    viewSeg(stringResource(R.string.board_view_timeline), "timeline"),
+    viewSeg(stringResource(R.string.board_view_gantt), "gantt"),
+    viewSeg(stringResource(R.string.board_view_matrix), "matrix"),
 )
 
 /**
@@ -557,9 +577,10 @@ private fun BoardTitleSwitcher(
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
             // Width grows with the number of view segments so labels («Календарь»,
             // «Таймлайн») don't get squeezed into letter-by-letter wraps.
-            Column(Modifier.width((ViewSegments.size * 64).dp.coerceAtLeast(240.dp))) {
+            val segments = viewSegments()
+            Column(Modifier.width((segments.size * 64).dp.coerceAtLeast(240.dp))) {
                 website.msdnna.tessera.ui.components.HSegmentedSelector(
-                    options = ViewSegments,
+                    options = segments,
                     selectedIndex = ViewModes.indexOf(st.viewMode).coerceAtLeast(0),
                     onSelect = { i ->
                         menu = false
@@ -572,7 +593,7 @@ private fun BoardTitleSwitcher(
                     HorizontalDivider(color = c.border)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Доски проекта".uppercase(),
+                        stringResource(R.string.main_boards_of_project),
                         color = c.text3,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -635,7 +656,7 @@ private fun IntegrationTitleSwitcher(title: String, modifier: Modifier = Modifie
             IntegrationProviders.forEach { (icon, name, available) ->
                 val current = name == title
                 TMenuItem(
-                    if (available) name else "$name · скоро",
+                    if (available) name else stringResource(R.string.main_provider_soon, name),
                     icon = icon,
                     onClick = { menu = false },
                     trailing = {
@@ -651,19 +672,27 @@ private fun IntegrationTitleSwitcher(title: String, modifier: Modifier = Modifie
     }
 }
 
-private fun titleFor(dest: MainDest): String = when (dest) {
-    is MainDest.Home -> "Моя работа"
-    is MainDest.Notes -> "Заметки"
-    is MainDest.Documents -> "Документы"
-    is MainDest.Reminders -> "Напоминания"
-    is MainDest.Milestones -> "Этапы"
-    is MainDest.GitLabSettings -> "GitLab"
-    is MainDest.GitLabJournal -> "Журнал синхронизации"
-    is MainDest.Notifications -> "Уведомления"
-    is MainDest.Settings -> "Настройки"
-    is MainDest.Admin -> "Администрирование"
-    is MainDest.Help -> "Помощь"
-    is MainDest.BoardView -> dest.board.name
+/**
+ * Заголовок шапки. [UiText], а не строка: имя доски приходит с сервера и
+ * локализовать его нечем, а остальные экраны подписаны нашими ресурсами —
+ * резолвятся уже в композиции, на языке профиля. «GitLab» — имя сервиса, оно
+ * одинаково в обеих локалях и ключа не требует.
+ *
+ * `internal`, а не `private`, — за заголовками следит `MainScreenLocaleTest`.
+ */
+internal fun titleFor(dest: MainDest): UiText = when (dest) {
+    is MainDest.Home -> UiText.Res(R.string.nav_home)
+    is MainDest.Notes -> UiText.Res(R.string.nav_notes)
+    is MainDest.Documents -> UiText.Res(R.string.nav_documents)
+    is MainDest.Reminders -> UiText.Res(R.string.nav_reminders)
+    is MainDest.Milestones -> UiText.Res(R.string.nav_milestones)
+    is MainDest.GitLabSettings -> UiText.Raw("GitLab")
+    is MainDest.GitLabJournal -> UiText.Res(R.string.gitlab_journal)
+    is MainDest.Notifications -> UiText.Res(R.string.notif_title)
+    is MainDest.Settings -> UiText.Res(R.string.settings_title)
+    is MainDest.Admin -> UiText.Res(R.string.nav_admin)
+    is MainDest.Help -> UiText.Res(R.string.nav_help)
+    is MainDest.BoardView -> UiText.Raw(dest.board.name)
 }
 
 /** A stable key for the sidebar's active-row highlight. */
@@ -756,15 +785,15 @@ private fun TopBar(
             Box {
                 IonIconButton(Ion.ELLIPSIS_V, onClick = { boardMenu = true }, boxSize = 40.dp)
                 TDropdown(expanded = boardMenu, onDismiss = { boardMenu = false }) {
-                    TMenuItem("Архив доски", icon = Ion.ARCHIVE, onClick = {
+                    TMenuItem(stringResource(R.string.main_board_menu_archive), icon = Ion.ARCHIVE, onClick = {
                         boardMenu = false
                         onArchive()
                     })
-                    TMenuItem("Управление тегами", icon = Ion.PRICETAGS, onClick = {
+                    TMenuItem(stringResource(R.string.tags_title), icon = Ion.PRICETAGS, onClick = {
                         boardMenu = false
                         onTags()
                     })
-                    TMenuItem("Команды редактора", icon = Ion.CODE, onClick = {
+                    TMenuItem(stringResource(R.string.commands_title), icon = Ion.CODE, onClick = {
                         boardMenu = false
                         onCommands()
                     })

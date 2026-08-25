@@ -2,6 +2,10 @@
 // Sticky chart header: the month band over a day / week band, plus hour ticks in
 // the hours tier. Every band comes precomputed from useChartTimeline, so this is
 // pure layout — shared verbatim by the Timeline and Gantt views.
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 defineProps({
   leftW: { type: Number, required: true },
   dayW: { type: Number, required: true },
@@ -17,7 +21,7 @@ defineProps({
 
 <template>
   <div class="tl-head chart-part" :class="{ collapsed }">
-    <div class="tl-corner" :style="{ width: `${leftW}px` }">Задача</div>
+    <div class="tl-corner" :style="{ width: `${leftW}px` }">{{ t('board.chart.taskColumn') }}</div>
     <div class="tl-axis">
       <div class="tl-months">
         <div

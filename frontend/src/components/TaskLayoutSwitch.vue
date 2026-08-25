@@ -1,4 +1,6 @@
 <script setup>
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton, NPopover } from 'naive-ui'
 import TesseraIcon from './TesseraIcon.vue'
 import { TASK_LAYOUTS } from '@/utils/taskLayout'
@@ -11,18 +13,21 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:value'])
 
-const opts = [
-  { value: 'modal', label: 'Модальное окно', icon: 'task-modal' },
-  { value: 'fullscreen', label: 'Полный экран', icon: 'task-fullscreen' },
-  { value: 'sidebar', label: 'Панель справа', icon: 'task-sidebar' },
+const { t } = useI18n()
+// Labels resolved per render, so the menu follows a language change.
+const LAYOUTS = [
+  { value: 'modal', icon: 'task-modal' },
+  { value: 'fullscreen', icon: 'task-fullscreen' },
+  { value: 'sidebar', icon: 'task-sidebar' },
 ]
+const opts = computed(() => LAYOUTS.map((o) => ({ ...o, label: t(`task.layout.${o.value}`) })))
 const current = () => (TASK_LAYOUTS.includes(props.value) ? props.value : 'modal')
 </script>
 
 <template>
   <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
     <template #trigger>
-      <button class="head-btn" title="Как открывать задачу" data-testid="task-layout-trigger">
+      <button class="head-btn" :title="t('task.layout.hint')" data-testid="task-layout-trigger">
         <TesseraIcon :name="`task-${current()}`" :size="15" />
       </button>
     </template>

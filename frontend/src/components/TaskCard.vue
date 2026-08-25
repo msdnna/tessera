@@ -5,6 +5,7 @@
 // `useTaskMenu` the list/calendar/timeline views already use — what's left here
 // is the card frame itself.
 import { ref, computed, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NTooltip, NInput, NDropdown, NPopconfirm } from 'naive-ui'
 import {
   CheckmarkCircle,
@@ -19,6 +20,7 @@ import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGradVert } from '@/utils/gradient'
 import { divergedColumn } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
 import { cardFieldVisible } from '@/utils/cardFields'
 import { taskBasePatch } from '@/utils/taskPatch'
 import TaskCardPills from './task/TaskCardPills.vue'
@@ -55,6 +57,7 @@ const emit = defineEmits(['open', 'changed', 'restore'])
 const bv = useBoardViewStore()
 const { columns, cardSize } = storeToRefs(bv)
 const fieldVis = bv.fieldVis
+const { t } = useI18n()
 
 // Size preset × customize toggle, shared with the pill row (utils/cardFields.js)
 // so the two can't drift apart. The card asks it only about the meta row.
@@ -143,9 +146,10 @@ const menu = useTaskMenu({
   },
   columns,
   // "Create subtask" only makes sense on the card itself, not on a child row.
-  extra: (t) =>
-    t?.id === props.task.id
-      ? [{ label: 'Создать подзадачу', key: 'subtask', icon: menuIcon(GitBranchOutline) }]
+  // Built per open, not once: the label has to follow a language change.
+  extra: (target) =>
+    target?.id === props.task.id
+      ? [{ label: t('task.menu.addSubtask'), key: 'subtask', icon: menuIcon(GitBranchOutline) }]
       : [],
   dangerDelete: true,
 })
@@ -202,7 +206,7 @@ async function submitAddSub() {
       <div v-if="readonly && !nested" class="card-actions" @click.stop>
         <button
           class="ca-btn ca-restore"
-          title="Вернуть из архива"
+          :title="t('task.action.restore')"
           @click.stop="emit('restore', task.id)"
         >
           <n-icon :component="ArrowUndoOutline" :size="15" />
@@ -214,15 +218,15 @@ async function submitAddSub() {
       <div v-if="!nested && !editingTitle && !readonly" class="card-actions" @click.stop>
         <button
           class="ca-btn ca-complete"
-          :title="done ? 'Вернуть в работу' : 'Отметить выполненной'"
+          :title="done ? t('task.menu.uncomplete') : t('task.menu.complete')"
           @click.stop="toggleDone"
         >
           <n-icon :component="done ? CheckmarkCircle : CheckmarkOutline" :size="15" />
         </button>
-        <button class="ca-btn ca-sub" title="Добавить подзадачу" @click.stop="startAddSub">
+        <button class="ca-btn ca-sub" :title="t('task.menu.addSubtask')" @click.stop="startAddSub">
           <n-icon :component="GitBranchOutline" :size="15" />
         </button>
-        <button class="ca-btn ca-more" title="Ещё" @click.stop="openCtx">
+        <button class="ca-btn ca-more" :title="t('common.action.more')" @click.stop="openCtx">
           <n-icon :component="EllipsisHorizontal" :size="16" />
         </button>
       </div>
@@ -270,9 +274,13 @@ async function submitAddSub() {
       >
         <span v-if="show('number') && task.number" class="tnum">#{{ task.number }}</span>
         <!-- expanded subtask card: its column differs from the parent's -->
-        <span v-if="ownColumnChip" class="col-chip" :title="`Колонка: ${ownColumnChip.name}`">
+        <span
+          v-if="ownColumnChip"
+          class="col-chip"
+          :title="t('task.card.columnIs', { name: columnName(ownColumnChip) })"
+        >
           <span class="col-dot" :style="{ background: ownColumnChip.color }" />
-          <span class="col-name">{{ ownColumnChip.name }}</span>
+          <span class="col-name">{{ columnName(ownColumnChip) }}</span>
         </span>
         <a
           v-if="show('gitlab') && task.gitlab_iid"
@@ -280,7 +288,7 @@ async function submitAddSub() {
           :href="task.gitlab_url"
           target="_blank"
           rel="noopener noreferrer"
-          :title="`GitLab issue !${task.gitlab_iid} — открыть`"
+          :title="t('task.card.openIssue', { iid: task.gitlab_iid })"
           @click.stop
         >
           <n-icon :component="LogoGitlab" :size="11" />!{{ task.gitlab_iid }}
@@ -332,7 +340,7 @@ async function submitAddSub() {
     <!-- The filter hid part of the children: say so, so a short list doesn't read
          as "this parent only has one subtask". -->
     <div v-if="!nested && subsNarrowed" class="subs-narrowed" @click.stop>
-      {{ subtasks.length }} из {{ subtasksTotal }} подзадач — остальные скрыты фильтром
+      {{ t('task.card.narrowed', { shown: subtasks.length, total: subtasksTotal }) }}
     </div>
 
     <!-- Adding a subtask is triggered from the hover action bar / context menu;
@@ -342,7 +350,7 @@ async function submitAddSub() {
         ref="subInput"
         v-model:value="newSubTitle"
         size="tiny"
-        placeholder="Название подзадачи, Enter"
+        :placeholder="t('task.card.subtaskPlaceholder')"
         @keyup.enter="submitAddSub"
         @keyup.esc="addingSub = false"
         @blur="submitAddSub"
@@ -364,23 +372,23 @@ async function submitAddSub() {
       :x="menu.x.value"
       :y="menu.y.value"
       :positive-button-props="{ type: 'error' }"
-      positive-text="Удалить"
+      :positive-text="t('task.confirm.deleteYes')"
       @positive-click="menu.confirmDelete()"
       @clickoutside="menu.deleteConfirmShow.value = false"
     >
       <template #trigger><span /></template>
-      Удалить безвозвратно? Это действие необратимо.
+      {{ t('task.confirm.delete') }}
     </n-popconfirm>
     <n-popconfirm
       v-model:show="menu.archiveConfirmShow.value"
       :x="menu.x.value"
       :y="menu.y.value"
-      positive-text="В архив"
+      :positive-text="t('task.confirm.archiveYes')"
       @positive-click="menu.confirmArchive()"
       @clickoutside="menu.archiveConfirmShow.value = false"
     >
       <template #trigger><span /></template>
-      Перенести задачу в архив?
+      {{ t('task.confirm.archive') }}
     </n-popconfirm>
   </div>
 </template>

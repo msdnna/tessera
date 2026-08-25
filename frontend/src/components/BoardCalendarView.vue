@@ -1,7 +1,10 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton, NButtonGroup, NDropdown, NPopconfirm } from 'naive-ui'
 import { useTaskMenu } from '@/composables/useTaskMenu'
+import { useFormat } from '@/composables/useFormat'
+import { capitalizeFirst } from '@/utils/format'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 
 const props = defineProps({
@@ -11,35 +14,35 @@ const props = defineProps({
 })
 const emit = defineEmits(['open', 'changed'])
 
+const { t } = useI18n()
+
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
   columns: () => props.statusColumns,
 })
 
-const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
-const MONTHS = [
-  'Январь',
-  'Февраль',
-  'Март',
-  'Апрель',
-  'Май',
-  'Июнь',
-  'Июль',
-  'Август',
-  'Сентябрь',
-  'Октябрь',
-  'Ноябрь',
-  'Декабрь',
-]
+// Month and weekday names are dates, not interface text: they come from Intl in
+// the user's language (#2798's formatting layer) rather than from the locale
+// files — twelve more hand-written names per language is exactly the duplication
+// that layer exists to avoid. The grid is built in the browser's timezone, so
+// every lookup passes `timeZone: null` to keep the label on the same day.
+const { formatDate } = useFormat()
+// 1 Jan 2024 was a Monday, and the grid below is Monday-first — any week would
+// do, only the weekday names are read off this one.
+const weekdays = computed(() =>
+  Array.from({ length: 7 }, (_, i) =>
+    capitalizeFirst(formatDate(new Date(2024, 0, 1 + i), { weekday: 'short', timeZone: null })),
+  ),
+)
 
 const today = new Date()
 today.setHours(0, 0, 0, 0)
 // Cursor points at the first day of the displayed month.
 const cursor = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 
-const monthLabel = computed(
-  () => `${MONTHS[cursor.value.getMonth()]} ${cursor.value.getFullYear()}`,
+const monthLabel = computed(() =>
+  capitalizeFirst(formatDate(cursor.value, { month: 'long', year: 'numeric', timeZone: null })),
 )
 
 function dayKey(d) {
@@ -49,15 +52,15 @@ function dayKey(d) {
 // Index tasks that have a due date by local day key.
 const tasksByDay = computed(() => {
   const map = {}
-  for (const t of props.tasks) {
-    if (!t.due_date) continue
-    const d = new Date(t.due_date)
-    ;(map[dayKey(d)] ||= []).push(t)
+  for (const task of props.tasks) {
+    if (!task.due_date) continue
+    const d = new Date(task.due_date)
+    ;(map[dayKey(d)] ||= []).push(task)
   }
   return map
 })
 
-const noDate = computed(() => props.tasks.filter((t) => !t.due_date))
+const noDate = computed(() => props.tasks.filter((task) => !task.due_date))
 
 // 6 weeks × 7 days, Monday-first, covering the displayed month.
 const weeks = computed(() => {
@@ -92,14 +95,14 @@ function goToday() {
     <div class="cal-bar">
       <n-button-group size="small">
         <n-button @click="shift(-1)">‹</n-button>
-        <n-button @click="goToday">Сегодня</n-button>
+        <n-button @click="goToday">{{ t('board.calendar.today') }}</n-button>
         <n-button @click="shift(1)">›</n-button>
       </n-button-group>
       <span class="cal-month">{{ monthLabel }}</span>
     </div>
 
     <div class="cal-grid">
-      <div v-for="w in WEEKDAYS" :key="w" class="cal-wd">{{ w }}</div>
+      <div v-for="w in weekdays" :key="w" class="cal-wd">{{ w }}</div>
       <template v-for="(row, ri) in weeks" :key="ri">
         <div
           v-for="cell in row"
@@ -109,36 +112,36 @@ function goToday() {
         >
           <div class="cal-daynum">{{ cell.date.getDate() }}</div>
           <button
-            v-for="t in cell.tasks"
-            :key="t.id"
+            v-for="task in cell.tasks"
+            :key="task.id"
             type="button"
             class="cal-chip"
-            :class="{ done: t.completed_at }"
-            :style="{ '--chip': PRIORITY_COLORS[t.priority || 0] }"
-            :title="t.title"
-            @click="$emit('open', t.id)"
-            @contextmenu.prevent.stop="menu.open($event, t)"
+            :class="{ done: task.completed_at }"
+            :style="{ '--chip': PRIORITY_COLORS[task.priority || 0] }"
+            :title="task.title"
+            @click="$emit('open', task.id)"
+            @contextmenu.prevent.stop="menu.open($event, task)"
           >
-            {{ t.title }}
+            {{ task.title }}
           </button>
         </div>
       </template>
     </div>
 
     <div v-if="noDate.length" class="cal-nodate">
-      <span class="nd-label">Без срока</span>
+      <span class="nd-label">{{ t('board.calendar.noDue') }}</span>
       <button
-        v-for="t in noDate"
-        :key="t.id"
+        v-for="task in noDate"
+        :key="task.id"
         type="button"
         class="cal-chip"
-        :class="{ done: t.completed_at }"
-        :style="{ '--chip': PRIORITY_COLORS[t.priority || 0] }"
-        :title="t.title"
-        @click="$emit('open', t.id)"
-        @contextmenu.prevent.stop="menu.open($event, t)"
+        :class="{ done: task.completed_at }"
+        :style="{ '--chip': PRIORITY_COLORS[task.priority || 0] }"
+        :title="task.title"
+        @click="$emit('open', task.id)"
+        @contextmenu.prevent.stop="menu.open($event, task)"
       >
-        {{ t.title }}
+        {{ task.title }}
       </button>
     </div>
 
@@ -157,23 +160,23 @@ function goToday() {
       :x="menu.x.value"
       :y="menu.y.value"
       :positive-button-props="{ type: 'error' }"
-      positive-text="Удалить"
+      :positive-text="t('task.confirm.deleteYes')"
       @positive-click="menu.confirmDelete()"
       @clickoutside="menu.deleteConfirmShow.value = false"
     >
       <template #trigger><span /></template>
-      Удалить безвозвратно? Это действие необратимо.
+      {{ t('task.confirm.delete') }}
     </n-popconfirm>
     <n-popconfirm
       v-model:show="menu.archiveConfirmShow.value"
       :x="menu.x.value"
       :y="menu.y.value"
-      positive-text="В архив"
+      :positive-text="t('task.confirm.archiveYes')"
       @positive-click="menu.confirmArchive()"
       @clickoutside="menu.archiveConfirmShow.value = false"
     >
       <template #trigger><span /></template>
-      Перенести задачу в архив?
+      {{ t('task.confirm.archive') }}
     </n-popconfirm>
   </div>
 </template>

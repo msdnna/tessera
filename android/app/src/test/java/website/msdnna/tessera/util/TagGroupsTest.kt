@@ -1,12 +1,24 @@
 package website.msdnna.tessera.util
 
+import android.content.Context
+import android.content.res.Resources
+import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import website.msdnna.tessera.data.model.GitlabRule
 import website.msdnna.tessera.data.model.Tag
 
+@RunWith(RobolectricTestRunner::class)
 class TagGroupsTest {
     private fun tag(name: String) = Tag(id = name, name = name)
+
+    /** Ресурсы на конкретном языке — подпись бакета «без префикса» переводится. */
+    private fun res(language: String): Resources =
+        ApplicationProvider.getApplicationContext<Context>().withLanguage(language).resources
+
+    private val ru: Resources get() = res("ru")
 
     // ── tagNamespace ─────────────────────────────────────────────────────────
     @Test
@@ -40,13 +52,14 @@ class TagGroupsTest {
     // ── prefixLabel ──────────────────────────────────────────────────────────
     @Test
     fun `prefixLabel empty is Vne gruppy`() {
-        assertThat(prefixLabel("")).isEqualTo("Вне группы")
+        assertThat(prefixLabel(ru, "")).isEqualTo("Вне группы")
+        assertThat(prefixLabel(res("en"), "")).isEqualTo("Ungrouped")
     }
 
     @Test
     fun `prefixLabel uses friendly name then trimmed prefix`() {
-        assertThat(prefixLabel("S: ", mapOf("s:" to "Статус"))).isEqualTo("Статус")
-        assertThat(prefixLabel("S: ")).isEqualTo("S:")
+        assertThat(prefixLabel(ru, "S: ", mapOf("s:" to "Статус"))).isEqualTo("Статус")
+        assertThat(prefixLabel(ru, "S: ")).isEqualTo("S:")
     }
 
     // ── splitTag ─────────────────────────────────────────────────────────────
@@ -121,7 +134,7 @@ class TagGroupsTest {
             tag("Статус: в работе"),
             tag("A: one"),
         )
-        val groups = buildTagGroups(tags)
+        val groups = buildTagGroups(ru, tags)
         // labels: "A:", "Статус:", then "Вне группы" last
         assertThat(groups.map { it.label }).containsExactly("A:", "Статус:", "Вне группы").inOrder()
         // last bucket is the prefix-less one
@@ -131,7 +144,7 @@ class TagGroupsTest {
     @Test
     fun `buildTagGroups sorts tags within group by name`() {
         val tags = listOf(tag("Статус: готово"), tag("Статус: в работе"), tag("Статус: архив"))
-        val group = buildTagGroups(tags).first()
+        val group = buildTagGroups(ru, tags).first()
         assertThat(group.tags.map { it.name }).containsExactly(
             "Статус: архив", "Статус: в работе", "Статус: готово",
         ).inOrder()
@@ -140,7 +153,7 @@ class TagGroupsTest {
     @Test
     fun `buildTagGroups honours friendly prefix names`() {
         val tags = listOf(tag("S: a"))
-        val groups = buildTagGroups(tags, prefixNames = mapOf("s:" to "Статус"))
+        val groups = buildTagGroups(ru, tags, prefixNames = mapOf("s:" to "Статус"))
         assertThat(groups.first().label).isEqualTo("Статус")
         assertThat(groups.first().key).isEqualTo("s:")
         assertThat(groups.first().prefix).isEqualTo("S: ")
@@ -149,13 +162,13 @@ class TagGroupsTest {
     @Test
     fun `buildTagGroups hidePrefixes drops matching tags`() {
         val tags = listOf(tag("S: a"), tag("T: b"), tag("plain"))
-        val groups = buildTagGroups(tags, hidePrefixes = setOf("s:"))
+        val groups = buildTagGroups(ru, tags, hidePrefixes = setOf("s:"))
         assertThat(groups.flatMap { it.tags }.map { it.name })
             .containsExactly("T: b", "plain")
     }
 
     @Test
     fun `buildTagGroups empty input`() {
-        assertThat(buildTagGroups(emptyList())).isEmpty()
+        assertThat(buildTagGroups(ru, emptyList())).isEmpty()
     }
 }

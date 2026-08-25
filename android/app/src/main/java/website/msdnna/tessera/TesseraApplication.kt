@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
@@ -17,7 +18,9 @@ class TesseraApplication :
     override fun onCreate() {
         super.onCreate()
         AppContainer.init(this)
-        ReminderNotifications.ensureChannel(this)
+        // Канал на языке профиля — язык читается из DataStore, поэтому не в onCreate,
+        // а в фоне: имя существующего канала система обновит следующим вызовом.
+        AppContainer.appScope.launch { ReminderNotifications.ensureChannel(this@TesseraApplication) }
     }
 
     // Coil singleton that forwards the current Bearer token so auth-protected

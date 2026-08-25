@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NSelect, NInputNumber, NCheckbox, NTimePicker, NIcon } from 'naive-ui'
 import {
   ChevronBackOutline,
@@ -9,7 +10,8 @@ import {
   RepeatOutline,
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
-import { FREQ_OPTIONS, TRIGGER_OPTIONS, unitLabel, occurrenceKeys } from '@/utils/recurrence'
+import { useFormat } from '@/composables/useFormat'
+import { freqOptions, triggerOptions, unitLabel, occurrenceKeys } from '@/utils/recurrence'
 
 const props = defineProps({
   due: { type: Number, default: null }, // ms
@@ -32,6 +34,12 @@ function commit() {
 }
 
 const theme = useThemeStore()
+const { t } = useI18n()
+const { formatDate, formatDateTime } = useFormat()
+// Both option lists are computed, not constants: a plain array would keep the
+// language of the first render (pitfall 1 of #2799).
+const freqOpts = computed(() => freqOptions())
+const triggerOpts = computed(() => triggerOptions())
 const weekStart = computed(() => (theme.weekStart === 0 ? 0 : 1)) // 0=Sun, 1=Mon
 
 // A pure UTC-midnight due is a date-only value (GitLab/legacy) — present it as
@@ -102,17 +110,29 @@ function stepMonth(delta) {
   viewY.value += Math.floor(m / 12)
   viewM.value = ((m % 12) + 12) % 12
 }
+// The picker builds instants from LOCAL calendar fields (`new Date(y, m, d)`), so
+// its own labels are rendered in the browser timezone — `timeZone: null` — rather
+// than in the user's. Anything else would let the grid and the day it writes
+// disagree by a day (#2798).
 const monthLabel = computed(() =>
-  new Date(viewY.value, viewM.value, 1).toLocaleDateString(
-    theme.language === 'en' ? 'en-GB' : 'ru-RU',
-    { month: 'long', year: 'numeric' },
+  formatDate(new Date(viewY.value, viewM.value, 1), {
+    month: 'long',
+    year: 'numeric',
+    timeZone: null,
+  }),
+)
+// Short weekday names come from the locale instead of a ru-only table, so the
+// calendar follows the language setting. 2026-03-01 is a Sunday, so index 0 of
+// this table lines up with Date#getDay().
+const weekdayNames = computed(() =>
+  [0, 1, 2, 3, 4, 5, 6].map((d) =>
+    formatDate(new Date(Date.UTC(2026, 2, 1 + d)), { weekday: 'short', timeZone: 'UTC' }),
   ),
 )
-const WD_RU = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
-const weekdayHeaders = computed(() => {
-  const order = weekStart.value === 0 ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0]
-  return order.map((d) => WD_RU[d])
-})
+const weekdayOrder = computed(() =>
+  weekStart.value === 0 ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0],
+)
+const weekdayHeaders = computed(() => weekdayOrder.value.map((d) => weekdayNames.value[d]))
 const dayKey = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const todayKey = dayKey(today)
@@ -140,15 +160,9 @@ function inRange(d) {
 function fmtTab(ms) {
   if (ms == null) return ''
   const d = new Date(ms)
-  const loc = theme.language === 'en' ? 'en-GB' : 'ru-RU'
-  const o = { day: '2-digit', month: 'short' }
-  if (d.getHours() !== 0 || d.getMinutes() !== 0) {
-    o.hour = '2-digit'
-    o.minute = '2-digit'
-    o.hour12 = theme.timeFormat === '12h'
-    return d.toLocaleString(loc, o)
-  }
-  return d.toLocaleDateString(loc, o)
+  const o = { day: '2-digit', month: 'short', timeZone: null }
+  if (d.getHours() !== 0 || d.getMinutes() !== 0) return formatDateTime(d, o)
+  return formatDate(d, o)
 }
 const startTabLabel = computed(() => fmtTab(localStart.value))
 const dueTabLabel = computed(() => fmtTab(localDue.value))
@@ -268,37 +282,38 @@ function toggleWeekday(d) {
 const columnOptions = computed(() => props.columns.map((c) => ({ label: c.name, value: c.id })))
 // '' = the board's first column (backend default); a real value routes elsewhere.
 const targetOptions = computed(() => [
-  { label: 'Первая колонка (по умолчанию)', value: '' },
+  { label: t('task.recur.targetDefault'), value: '' },
   ...columnOptions.value,
 ])
 
 // weekday chips, ordered by week-start; 0=Sun..6=Sat
-const weekdayChips = computed(() => {
-  const order = weekStart.value === 0 ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0]
-  return order.map((d) => ({ d, label: WD_RU[d] }))
-})
+const weekdayChips = computed(() =>
+  weekdayOrder.value.map((d) => ({ d, label: weekdayNames.value[d] })),
+)
 
 // ── notify ──
-const DUE_ENABLED_OPTS = [
-  { label: 'По умолчанию', value: 'inherit' },
-  { label: 'Включены', value: 'on' },
-  { label: 'Выключены', value: 'off' },
-]
-const DUE_LEAD_OPTS = [
-  { label: 'По умолчанию', value: -1 },
-  { label: 'В срок', value: 0 },
-  { label: 'За 15 мин', value: 15 },
-  { label: 'За час', value: 60 },
-  { label: 'За 3 часа', value: 180 },
-  { label: 'За день', value: 1440 },
-]
-const DUE_REPEAT_OPTS = [
-  { label: 'По умолчанию', value: -1 },
-  { label: 'Однократно', value: 0 },
-  { label: 'Каждый час', value: 60 },
-  { label: 'Каждые 3 часа', value: 180 },
-  { label: 'Каждый день', value: 1440 },
-]
+// Values are the wire format (minutes; -1 = inherit), labels come from the
+// catalogue on every render.
+const dueEnabledOpts = computed(() => [
+  { label: t('task.due.notify.default'), value: 'inherit' },
+  { label: t('task.due.notify.on'), value: 'on' },
+  { label: t('task.due.notify.off'), value: 'off' },
+])
+const dueLeadOpts = computed(() => [
+  { label: t('task.due.notify.default'), value: -1 },
+  { label: t('task.due.notify.leadAt'), value: 0 },
+  { label: t('task.due.notify.lead15'), value: 15 },
+  { label: t('task.due.notify.lead60'), value: 60 },
+  { label: t('task.due.notify.lead180'), value: 180 },
+  { label: t('task.due.notify.lead1440'), value: 1440 },
+])
+const dueRepeatOpts = computed(() => [
+  { label: t('task.due.notify.default'), value: -1 },
+  { label: t('task.due.notify.repeatOnce'), value: 0 },
+  { label: t('task.due.notify.repeat60'), value: 60 },
+  { label: t('task.due.notify.repeat180'), value: 180 },
+  { label: t('task.due.notify.repeat1440'), value: 1440 },
+])
 </script>
 
 <template>
@@ -308,13 +323,13 @@ const DUE_REPEAT_OPTS = [
       <div class="de-recur">
         <div class="de-recur-head">
           <n-icon :component="RepeatOutline" :size="15" />
-          <span>Повтор задачи</span>
+          <span>{{ t('task.recur.title') }}</span>
         </div>
-        <n-select size="small" :value="freq" :options="FREQ_OPTIONS" @update:value="setFreq" />
+        <n-select size="small" :value="freq" :options="freqOpts" @update:value="setFreq" />
 
         <template v-if="freq">
           <div v-if="freq !== 'custom'" class="de-row">
-            <span class="muted">каждые</span>
+            <span class="muted">{{ t('task.recur.every') }}</span>
             <n-input-number
               size="small"
               class="de-num"
@@ -345,15 +360,15 @@ const DUE_REPEAT_OPTS = [
           </div>
 
           <div v-if="freq === 'custom'" class="de-hint muted">
-            Отметьте даты повтора в календаре →
+            {{ t('task.recur.customHint') }}
           </div>
 
           <label class="de-field">
-            <span class="muted">Событие</span>
+            <span class="muted">{{ t('task.recur.event') }}</span>
             <n-select
               size="small"
               :value="trigger"
-              :options="TRIGGER_OPTIONS"
+              :options="triggerOpts"
               @update:value="
                 (v) => {
                   trigger = v
@@ -364,12 +379,12 @@ const DUE_REPEAT_OPTS = [
           </label>
 
           <label v-if="trigger === 'column'" class="de-field">
-            <span class="muted">Колонка-триггер</span>
+            <span class="muted">{{ t('task.recur.triggerColumn') }}</span>
             <n-select
               size="small"
               :value="triggerColumn"
               :options="columnOptions"
-              placeholder="Выберите колонку"
+              :placeholder="t('task.recur.columnPlaceholder')"
               @update:value="
                 (v) => {
                   triggerColumn = v
@@ -380,7 +395,7 @@ const DUE_REPEAT_OPTS = [
           </label>
 
           <label class="de-field">
-            <span class="muted">Переносить в</span>
+            <span class="muted">{{ t('task.recur.moveTo') }}</span>
             <n-select
               size="small"
               :value="targetColumn"
@@ -404,7 +419,7 @@ const DUE_REPEAT_OPTS = [
               }
             "
           >
-            Создавать дубликат
+            {{ t('task.recur.createDuplicate') }}
           </n-checkbox>
           <n-checkbox
             size="small"
@@ -416,7 +431,7 @@ const DUE_REPEAT_OPTS = [
               }
             "
           >
-            Повторять всегда
+            {{ t('task.recur.forever') }}
           </n-checkbox>
           <n-checkbox
             v-if="freq === 'daily' || freq === 'weekly'"
@@ -429,7 +444,7 @@ const DUE_REPEAT_OPTS = [
               }
             "
           >
-            Пропускать выходные
+            {{ t('task.recur.skipWeekends') }}
           </n-checkbox>
         </template>
       </div>
@@ -444,8 +459,8 @@ const DUE_REPEAT_OPTS = [
             :class="{ active: editTarget === 'start', set: localStart != null }"
             @click="pickTarget('start')"
           >
-            <span class="tt-label">Начало</span>
-            <span class="tt-val">{{ startTabLabel || 'не задано' }}</span>
+            <span class="tt-label">{{ t('task.due.start') }}</span>
+            <span class="tt-val">{{ startTabLabel || t('task.due.startUnset') }}</span>
           </button>
           <span class="de-arrow">→</span>
           <button
@@ -454,8 +469,8 @@ const DUE_REPEAT_OPTS = [
             :class="{ active: editTarget === 'due', set: localDue != null }"
             @click="pickTarget('due')"
           >
-            <span class="tt-label">Срок</span>
-            <span class="tt-val">{{ dueTabLabel || 'не задан' }}</span>
+            <span class="tt-label">{{ t('task.due.due') }}</span>
+            <span class="tt-val">{{ dueTabLabel || t('task.due.dueUnset') }}</span>
           </button>
         </div>
         <div class="de-cal-head">
@@ -500,11 +515,13 @@ const DUE_REPEAT_OPTS = [
             size="small"
             format="HH:mm"
             :value="activeMs"
-            placeholder="Время"
+            :placeholder="t('task.due.timePlaceholder')"
             @update:value="setTime"
           />
+          <!-- One key per endpoint, not "Очистить" + a noun: the noun declines in
+               Russian and the two halves need not be adjacent in other languages. -->
           <button class="de-link" type="button" @click="writeActive(null)">
-            Очистить {{ editTarget === 'start' ? 'начало' : 'срок' }}
+            {{ editTarget === 'start' ? t('task.due.clearStart') : t('task.due.clearDue') }}
           </button>
         </div>
       </div>
@@ -513,29 +530,29 @@ const DUE_REPEAT_OPTS = [
     <!-- notifications (shared) -->
     <div v-if="localDue != null" class="de-notify">
       <div class="dn-row">
-        <span>Уведомления</span>
+        <span>{{ t('task.due.notify.title') }}</span>
         <n-select
           size="tiny"
           :value="notify.enabled"
-          :options="DUE_ENABLED_OPTS"
+          :options="dueEnabledOpts"
           @update:value="(v) => emit('notify', { enabled: v })"
         />
       </div>
       <div class="dn-row">
-        <span>Напоминать</span>
+        <span>{{ t('task.due.notify.lead') }}</span>
         <n-select
           size="tiny"
           :value="notify.lead"
-          :options="DUE_LEAD_OPTS"
+          :options="dueLeadOpts"
           @update:value="(v) => emit('notify', { lead: v })"
         />
       </div>
       <div class="dn-row">
-        <span>Повтор уведомления</span>
+        <span>{{ t('task.due.notify.repeat') }}</span>
         <n-select
           size="tiny"
           :value="notify.repeat"
-          :options="DUE_REPEAT_OPTS"
+          :options="dueRepeatOpts"
           @update:value="(v) => emit('notify', { repeat: v })"
         />
       </div>

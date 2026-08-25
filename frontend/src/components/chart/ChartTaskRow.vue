@@ -1,7 +1,10 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { NIcon, NTooltip } from 'naive-ui'
 import { TimerOutline } from '@vicons/ionicons5'
 import { PRIORITY_COLORS } from '@/styles/tokens'
+
+const { t } = useI18n()
 import { hueGrad } from '@/utils/gradient'
 
 // One task row: the sticky title cell plus the axis track carrying the estimate
@@ -88,7 +91,7 @@ defineEmits(['open', 'bar-down', 'link-down', 'menu', 'bar-enter', 'bar-leave'])
         <span
           v-if="linkable"
           class="link-knob"
-          title="Создать зависимость"
+          :title="t('board.chart.linkCreate')"
           @pointerdown="$emit('link-down', $event, row.task)"
           @click.stop
         />
@@ -126,7 +129,7 @@ defineEmits(['open', 'bar-down', 'link-down', 'menu', 'bar-enter', 'bar-leave'])
         <span
           v-if="linkable"
           class="link-knob"
-          title="Создать зависимость"
+          :title="t('board.chart.linkCreate')"
           @pointerdown="$emit('link-down', $event, s.task)"
           @click.stop
         />

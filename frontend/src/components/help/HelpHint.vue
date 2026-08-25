@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { NIcon, NTooltip } from 'naive-ui'
 import { HelpCircleOutline } from '@vicons/ionicons5'
@@ -19,6 +20,7 @@ const props = defineProps({
   label: { type: String, default: '' },
 })
 
+const { t } = useI18n()
 const route = useRoute()
 const help = useHelpStore()
 
@@ -26,7 +28,9 @@ const slug = computed(() => props.slug || helpSlugForPath(route.path))
 // An unknown slug renders nothing rather than a button that opens «Статья не
 // найдена» — a dead ? is worse than no ?.
 const article = computed(() => (slug.value ? help.bySlug(slug.value) : null))
-const tip = computed(() => props.label || `Справка: ${article.value?.title || ''}`)
+const tip = computed(
+  () => props.label || t('help.hintTip', { title: article.value?.title || '' }),
+)
 </script>
 
 <template>

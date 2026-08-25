@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NLayout,
@@ -34,6 +35,7 @@ import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { useDesktopDeepLink } from '@/composables/useDesktopDeepLink'
 
+const { t } = useI18n()
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
@@ -117,7 +119,7 @@ function onProjectGone(ev) {
   const viewing = slug && ws.projects.find((p) => p.slug === slug)?.id === ev.data?.id
   ws.refresh() // drop it from the sidebar tree for everyone in this workspace
   if (viewing) {
-    message.info('Проект был удалён или перенесён в другое пространство — открыта «Главная»')
+    message.info(t('shell.layout.projectGone'))
     router.push('/')
   }
 }
@@ -207,7 +209,7 @@ watch(
         class="sider-resizer"
         :class="{ active: dragging }"
         :style="{ left: layoutWidth + 'px' }"
-        title="Потяните, чтобы изменить ширину (двойной клик — свернуть)"
+        :title="t('shell.layout.resize')"
         @pointerdown.prevent="startDrag"
         @dblclick="toggle"
       >

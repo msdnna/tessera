@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, shallowRef } from 'vue'
 import helpIndex from '@/data/helpIndex.json'
 import { buildHelpSearch } from '@/utils/helpSearch'
+import { i18n } from '@/i18n'
 
 // Help centre state (#2792). Everything here is client-side: the articles are
 // Markdown files from docs/help, compiled into the bundle as lazy `?raw` chunks,
@@ -98,7 +99,7 @@ export const useHelpStore = defineStore('help', () => {
     if (!article) {
       into.current.value = slug
       into.body.value = ''
-      into.error.value = 'Статья не найдена'
+      into.error.value = i18n.global.t('help.error.notFound')
       return
     }
     into.current.value = slug
@@ -112,7 +113,7 @@ export const useHelpStore = defineStore('help', () => {
     if (!loader) {
       // The index and the files went out of sync — `make help-index` was not
       // re-run, or the file was deleted. Say so instead of rendering a blank.
-      into.error.value = 'Статья не найдена в сборке'
+      into.error.value = i18n.global.t('help.error.notInBundle')
       into.body.value = ''
       return
     }
@@ -128,7 +129,7 @@ export const useHelpStore = defineStore('help', () => {
       if (into.current.value === slug) into.body.value = md
     } catch {
       if (into.current.value === slug) {
-        into.error.value = 'Не удалось загрузить статью'
+        into.error.value = i18n.global.t('help.error.loadFailed')
         into.body.value = ''
       }
     } finally {

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton, NTag, NPopconfirm, NIcon, NSpin, NInput, NSwitch, useMessage } from 'naive-ui'
 import { ShieldCheckmarkOutline, KeyOutline, SearchOutline, LogoGitlab } from '@vicons/ionicons5'
 import { admin } from '@/api'
@@ -9,6 +10,7 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import SecretInput from '@/components/SecretInput.vue'
 
+const { t } = useI18n()
 const auth = useAuthStore()
 const message = useMessage()
 
@@ -43,7 +45,9 @@ async function toggleActive(u) {
   try {
     await admin.setActive(u.id, !u.active)
     u.active = !u.active
-    message.success(u.active ? 'Аккаунт активирован' : 'Аккаунт деактивирован')
+    message.success(
+      u.active ? t('settings.admin.msg.activated') : t('settings.admin.msg.deactivated'),
+    )
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -56,7 +60,9 @@ async function toggleAdmin(u) {
   try {
     await admin.setAdmin(u.id, !u.is_admin)
     u.is_admin = !u.is_admin
-    message.success(u.is_admin ? 'Назначен администратором' : 'Права администратора сняты')
+    message.success(
+      u.is_admin ? t('settings.admin.msg.adminGranted') : t('settings.admin.msg.adminRevoked'),
+    )
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -72,7 +78,7 @@ async function copyResetLink(u) {
     // The backend returns a path-only link when PUBLIC_URL is unset — qualify it
     // against the current origin so the copied value is always clickable.
     const full = link.startsWith('http') ? link : `${window.location.origin}${link}`
-    if (await copyText(full)) message.success('Ссылка для сброса пароля скопирована')
+    if (await copyText(full)) message.success(t('settings.admin.msg.resetLinkCopied'))
     else message.info(full)
   } catch (e) {
     message.error(e.message)
@@ -82,6 +88,14 @@ async function copyResetLink(u) {
 }
 
 // ── GitLab OAuth app config ──
+// Verbatim technical tokens: GitLab scope names and a JSON sample. They read
+// the same in every language, but they still have to come through a binding —
+// as bare template text the no-bare-strings rule would (rightly) flag them.
+const SCOPE_READ_API = 'read_api'
+const SCOPE_API = 'api'
+const ORG_MAP_SAMPLE =
+  '{ "group/path": { "workspace_id": "uuid", "admins": ["login"], "users": true } }'
+
 const oauth = ref({
   gl_base_url: '',
   client_id: '',
@@ -124,7 +138,7 @@ async function saveOAuth() {
   try {
     orgMap = JSON.parse(oauth.value.org_map || '{}')
   } catch {
-    message.error('org_map: некорректный JSON')
+    message.error(t('settings.admin.msg.orgMapInvalid'))
     return
   }
   oauthSaving.value = true
@@ -147,7 +161,7 @@ async function saveOAuth() {
     oauth.value.has_secret = data.has_secret === true
     oauth.value.has_service_token = data.has_service_token === true
     oauth.value.sudo_writeback = data.sudo_writeback === true
-    message.success('Настройки GitLab OAuth сохранены')
+    message.success(t('settings.admin.msg.oauthSaved'))
   } catch (e) {
     message.error(e.response?.data?.error || e.message)
   } finally {
@@ -168,53 +182,68 @@ onMounted(() => {
       <div class="head">
         <h2 class="title">
           <n-icon :component="ShieldCheckmarkOutline" class="title-ic" />
-          Администрирование
+          {{ t('settings.admin.title') }}
         </h2>
-        <span class="sub">Пользователи экземпляра — {{ users.length }}</span>
+        <span class="sub">{{ t('settings.admin.usersCount', { n: users.length }) }}</span>
       </div>
 
       <!-- GitLab OAuth ("Войти через GitLab") -->
       <div class="oauth-card">
         <h3 class="oauth-h">
-          <n-icon :component="LogoGitlab" class="oauth-ic" /> Вход через GitLab (OAuth)
+          <n-icon :component="LogoGitlab" class="oauth-ic" /> {{ t('settings.admin.oauth.title') }}
         </h3>
         <p class="oauth-hint">
-          <b>Вход через GitLab:</b> создайте OAuth-приложение (Admin → Applications или в группе),
-          scope <code>read_api</code>, Redirect URI: <code>{{ callbackUrl }}</code
-          >. <b>«Включён вход»</b> показывает кнопку на экране входа.<br />
-          <b>Синхронизация задач:</b> задайте <b>сервисный токен</b> (PAT сервис-аккаунта, scope
-          <code>api</code>) — под ним идёт весь синк, без личных токенов пользователей. Задачи
-          мапятся на учётки по OAuth-идентичности (кто вошёл через GitLab), а не по владельцу токена
-          интеграции.
+          <b>{{ t('settings.admin.oauth.hint.loginLabel') }}</b>
+          <i18n-t keypath="settings.admin.oauth.hint.login" tag="span" scope="global">
+            <template #scope
+              ><code>{{ SCOPE_READ_API }}</code></template
+            >
+            <template #redirect
+              ><code>{{ callbackUrl }}</code></template
+            >
+            <template #toggle
+              ><b>{{ t('settings.admin.oauth.hint.toggle') }}</b></template
+            >
+          </i18n-t>
+          <br />
+          <b>{{ t('settings.admin.oauth.hint.syncLabel') }}</b>
+          <i18n-t keypath="settings.admin.oauth.hint.sync" tag="span" scope="global">
+            <template #token
+              ><b>{{ t('settings.admin.oauth.hint.serviceToken') }}</b></template
+            >
+            <template #api
+              ><code>{{ SCOPE_API }}</code></template
+            >
+          </i18n-t>
         </p>
         <div class="oauth-grid">
-          <label>URL GitLab</label>
+          <label>{{ t('settings.admin.oauth.field.baseUrl') }}</label>
           <n-input
             v-model:value="oauth.gl_base_url"
             size="small"
-            placeholder="https://gitlab.example.com"
+            :placeholder="t('settings.admin.oauth.placeholder.baseUrl')"
             :input-props="{ autocomplete: 'off', name: 'oauth-base-url' }"
           />
-          <label>Application ID</label>
+          <label>{{ t('settings.admin.oauth.field.appId') }}</label>
           <n-input
             v-model:value="oauth.client_id"
             size="small"
-            placeholder="client id"
+            :placeholder="t('settings.admin.oauth.placeholder.clientId')"
             :input-props="{ autocomplete: 'off', name: 'oauth-client-id' }"
           />
-          <label>Secret</label>
+          <label>{{ t('settings.admin.oauth.field.secret') }}</label>
           <SecretInput
             v-model:value="oauth.client_secret"
             v-model:cleared="oauth.clear_secret"
             :stored="oauth.has_secret"
             size="small"
-            placeholder="client secret"
-            stored-placeholder="•••••• (сохранён; введите, чтобы заменить)"
+            :placeholder="t('settings.admin.oauth.placeholder.clientSecret')"
+            :stored-placeholder="t('settings.admin.oauth.storedPlaceholder')"
             :input-props="{ autocomplete: 'new-password', name: 'oauth-secret' }"
           />
           <label>
-            Сервисный токен синка
-            <span class="oauth-sub">PAT сервис-аккаунта; синк без личных токенов</span>
+            {{ t('settings.admin.oauth.field.serviceToken') }}
+            <span class="oauth-sub">{{ t('settings.admin.oauth.field.serviceTokenSub') }}</span>
           </label>
           <div class="oauth-token-cell">
             <SecretInput
@@ -222,48 +251,44 @@ onMounted(() => {
               v-model:cleared="oauth.clear_service_token"
               :stored="oauth.has_service_token"
               size="small"
-              placeholder="glpat-… (scope api)"
-              stored-placeholder="•••••• (сохранён; введите, чтобы заменить)"
+              :placeholder="t('settings.admin.oauth.placeholder.serviceToken')"
+              :stored-placeholder="t('settings.admin.oauth.storedPlaceholder')"
               :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
             />
             <span v-if="oauth.clear_service_token" class="oauth-warn">
-              синхронизация GitLab остановится
+              {{ t('settings.admin.oauth.clearWarn') }}
             </span>
           </div>
           <label>
-            Запись от имени пользователя (Sudo)
-            <span class="oauth-sub">
-              issue и обратная запись — от действующего пользователя; сервисный токен должен быть
-              админским PAT (scope api + sudo). Держите ВЫКЛ, если GitLab или Tessera доступны из
-              внешней сети
-            </span>
+            {{ t('settings.admin.oauth.field.sudo') }}
+            <span class="oauth-sub">{{ t('settings.admin.oauth.field.sudoSub') }}</span>
           </label>
           <div><n-switch v-model:value="oauth.sudo_writeback" /></div>
-          <label>Включён вход</label>
+          <label>{{ t('settings.admin.oauth.field.enabled') }}</label>
           <div><n-switch v-model:value="oauth.enabled" /></div>
           <label>
-            Org map
-            <span class="oauth-sub">GL-группа → доступ к пространству</span>
+            {{ t('settings.admin.oauth.field.orgMap') }}
+            <span class="oauth-sub">{{ t('settings.admin.oauth.field.orgMapSub') }}</span>
           </label>
           <n-input
             v-model:value="oauth.org_map"
             type="textarea"
             size="small"
             :autosize="{ minRows: 4, maxRows: 14 }"
-            placeholder='{ "group/path": { "workspace_id": "uuid", "admins": ["login"], "users": true } }'
+            :placeholder="ORG_MAP_SAMPLE"
             class="oauth-mono"
           />
         </div>
         <div class="oauth-foot">
           <n-button type="primary" size="small" :loading="oauthSaving" @click="saveOAuth">
-            Сохранить
+            {{ t('common.action.save') }}
           </n-button>
         </div>
       </div>
 
       <n-input
         v-model:value="query"
-        placeholder="Поиск по имени или почте"
+        :placeholder="t('settings.admin.search')"
         clearable
         class="search"
       >
@@ -276,12 +301,18 @@ onMounted(() => {
           <div class="who">
             <div class="line1">
               <span class="uname">{{ u.name }}</span>
-              <n-tag v-if="u.is_admin" size="small" type="warning" round>admin</n-tag>
-              <n-tag v-if="u.id === meId" size="small" round>вы</n-tag>
-              <n-tag v-if="!u.active" size="small" type="error" round>деактивирован</n-tag>
-              <n-tag v-if="!u.email_verified" size="small" round :bordered="false"
-                >не подтверждён</n-tag
-              >
+              <n-tag v-if="u.is_admin" size="small" type="warning" round>{{
+                t('settings.admin.badge.admin')
+              }}</n-tag>
+              <n-tag v-if="u.id === meId" size="small" round>{{
+                t('settings.admin.badge.you')
+              }}</n-tag>
+              <n-tag v-if="!u.active" size="small" type="error" round>{{
+                t('settings.admin.badge.disabled')
+              }}</n-tag>
+              <n-tag v-if="!u.email_verified" size="small" round :bordered="false">{{
+                t('settings.admin.badge.unverified')
+              }}</n-tag>
             </div>
             <div class="umail">{{ u.email }}</div>
           </div>
@@ -291,7 +322,7 @@ onMounted(() => {
               size="small"
               quaternary
               :disabled="busy === u.id"
-              title="Скопировать ссылку для сброса пароля"
+              :title="t('settings.admin.action.resetLink')"
               @click="copyResetLink(u)"
             >
               <template #icon><n-icon :component="KeyOutline" /></template>
@@ -305,13 +336,15 @@ onMounted(() => {
                 :disabled="busy === u.id"
                 @click="toggleAdmin(u)"
               >
-                Сделать админом
+                {{ t('settings.admin.action.makeAdmin') }}
               </n-button>
               <n-popconfirm v-else @positive-click="toggleAdmin(u)">
                 <template #trigger>
-                  <n-button size="small" :disabled="busy === u.id">Снять админа</n-button>
+                  <n-button size="small" :disabled="busy === u.id">{{
+                    t('settings.admin.action.revokeAdmin')
+                  }}</n-button>
                 </template>
-                Снять права администратора у {{ u.name }}?
+                {{ t('settings.admin.confirm.revokeAdmin', { name: u.name }) }}
               </n-popconfirm>
 
               <!-- Active toggle: deactivating confirms (blocks login). -->
@@ -323,21 +356,23 @@ onMounted(() => {
                 :disabled="busy === u.id"
                 @click="toggleActive(u)"
               >
-                Активировать
+                {{ t('settings.admin.action.activate') }}
               </n-button>
               <n-popconfirm v-else @positive-click="toggleActive(u)">
                 <template #trigger>
                   <n-button size="small" type="error" ghost :disabled="busy === u.id">
-                    Деактивировать
+                    {{ t('settings.admin.action.deactivate') }}
                   </n-button>
                 </template>
-                Деактивировать {{ u.name }}? Пользователь не сможет войти.
+                {{ t('settings.admin.confirm.deactivate', { name: u.name }) }}
               </n-popconfirm>
             </template>
           </div>
         </div>
 
-        <div v-if="!filtered.length && !loading" class="empty">Никого не найдено</div>
+        <div v-if="!filtered.length && !loading" class="empty">
+          {{ t('settings.admin.empty') }}
+        </div>
       </div>
     </div>
   </n-spin>

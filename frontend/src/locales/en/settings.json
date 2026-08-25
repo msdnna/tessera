@@ -1,0 +1,301 @@
+{
+  "title": "Settings",
+  "profile": {
+    "title": "Profile",
+    "email": "Email (login)",
+    "displayName": "Display name",
+    "displayNamePlaceholder": "How to show you",
+    "lastName": "Last name",
+    "firstName": "First name",
+    "middleName": "Middle name",
+    "company": "Company",
+    "jobTitle": "Job title",
+    "bio": "About",
+    "save": "Save profile",
+    "avatar": {
+      "upload": "Upload",
+      "remove": "Remove",
+      "hint": "PNG/JPEG/GIF/WebP, up to 2 MB"
+    },
+    "verify": {
+      "done": "Email verified",
+      "pending": "Email not verified",
+      "send": "Send email",
+      "sent": "Email sent"
+    }
+  },
+  "security": {
+    "title": "Security",
+    "current": "Current password",
+    "next": "New password",
+    "confirm": "Repeat new password",
+    "change": "Change password",
+    "changed": "Password changed",
+    "invalid": "Check the fields: the new password must be at least 8 characters and match the confirmation"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "theme": "Theme",
+    "accent": "Accent",
+    "boardBackground": "Board background (CSS color or image URL)",
+    "boardBackgroundPlaceholder": "e.g. #0e0e12 or https://…/bg.jpg",
+    "mode": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "color": {
+      "purple": "Purple",
+      "blue": "Blue",
+      "teal": "Teal",
+      "green": "Green",
+      "orange": "Orange",
+      "red": "Red",
+      "pink": "Pink"
+    }
+  },
+  "localization": {
+    "title": "Localization and formats",
+    "language": "Language",
+    "weekStartLabel": "Week starts on",
+    "timeFormat": "Time format",
+    "dateFormat": "Date format",
+    "timezone": "Time zone",
+    "timezonePlaceholder": "Europe/Moscow",
+    "country": "Country",
+    "countryPlaceholder": "Pick a country",
+    "hint": "Formats apply to calendars, dates and numbers. The interface language switches right here — the setting follows the account onto every device.",
+    "time": {
+      "h24": "24-hour",
+      "h12": "12-hour (AM/PM)"
+    },
+    "weekStart": {
+      "monday": "Monday",
+      "sunday": "Sunday"
+    },
+    "countryFallback": "Russia"
+  },
+  "app": {
+    "title": "Application",
+    "serverAddr": "Server address",
+    "serverAddrPlaceholder": "https://tessera.msdnna.website",
+    "saveAndRestart": "Save and restart",
+    "autostart": "Launch at login",
+    "autostartHint": "Start Tessera when you log in (minimized to the tray)",
+    "updates": "Updates",
+    "check": "Check for updates",
+    "install": "Install {version} and restart",
+    "upToDate": "You are on the latest version.",
+    "available": "Version {version} is available.",
+    "downloading": "Downloading the update…",
+    "error": "Update failed: {error}"
+  },
+  "admin": {
+    "title": "Administration",
+    "usersCount": "Users on this instance — {n}",
+    "search": "Search by name or email",
+    "empty": "Nobody found",
+    "badge": {
+      "admin": "admin",
+      "you": "you",
+      "disabled": "deactivated",
+      "unverified": "unverified"
+    },
+    "action": {
+      "resetLink": "Copy the password reset link",
+      "makeAdmin": "Make admin",
+      "revokeAdmin": "Revoke admin",
+      "activate": "Activate",
+      "deactivate": "Deactivate"
+    },
+    "confirm": {
+      "revokeAdmin": "Revoke admin rights from {name}?",
+      "deactivate": "Deactivate {name}? They will not be able to sign in."
+    },
+    "msg": {
+      "activated": "Account activated",
+      "deactivated": "Account deactivated",
+      "adminGranted": "Granted admin rights",
+      "adminRevoked": "Admin rights revoked",
+      "resetLinkCopied": "Password reset link copied",
+      "orgMapInvalid": "org_map: invalid JSON",
+      "oauthSaved": "GitLab OAuth settings saved"
+    },
+    "oauth": {
+      "title": "Sign in with GitLab (OAuth)",
+      "hint": {
+        "loginLabel": "Sign in with GitLab:",
+        "login": "create an OAuth application (Admin → Applications, or in a group), scope {scope}, Redirect URI: {redirect}. {toggle} shows the button on the sign-in screen.",
+        "toggle": "“Sign-in enabled”",
+        "syncLabel": "Task synchronization:",
+        "sync": "set a {token} (a service account PAT, scope {api}) — the whole sync runs under it, with no personal user tokens. Issues map onto accounts by OAuth identity (whoever signed in through GitLab), not by who owns the integration token.",
+        "serviceToken": "service token"
+      },
+      "field": {
+        "baseUrl": "GitLab URL",
+        "appId": "Application ID",
+        "secret": "Secret",
+        "serviceToken": "Sync service token",
+        "serviceTokenSub": "A service account PAT; sync without personal tokens",
+        "sudo": "Write as the acting user (Sudo)",
+        "sudoSub": "issues and write-back go out as the acting user; the service token then has to be an admin PAT (scope api + sudo). Keep this OFF if GitLab or Tessera is reachable from an external network",
+        "enabled": "Sign-in enabled",
+        "orgMap": "Org map",
+        "orgMapSub": "GL group → workspace access"
+      },
+      "placeholder": {
+        "baseUrl": "https://gitlab.example.com",
+        "clientId": "client id",
+        "clientSecret": "client secret",
+        "serviceToken": "glpat-… (scope api)"
+      },
+      "storedPlaceholder": "•••••• (stored; type to replace)",
+      "clearWarn": "GitLab synchronization will stop"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "hint": "In-app notifications (the bell, the mobile app) always arrive. This is where you configure external delivery channels and the rules that route notifications into them.",
+    "testSent": "Test sent",
+    "channelType": {
+      "email": "Email",
+      "telegram": "Telegram",
+      "webhook": "Webhook",
+      "shoutrrr": "Shoutrrr (any service)",
+      "device": "System notifications"
+    },
+    "kind": {
+      "assigned": "Task assignment",
+      "comment": "Comments",
+      "mention": "Mentions",
+      "updated": "Task changes",
+      "moved": "Task moves",
+      "archived": "Archiving",
+      "due_soon": "Due soon",
+      "reminder": "Reminders (scheduled)",
+      "integration_sync": "Integration sync"
+    },
+    "lead": {
+      "0": "At the deadline",
+      "15": "15 minutes before",
+      "30": "30 minutes before",
+      "60": "An hour before",
+      "180": "3 hours before",
+      "1440": "A day before",
+      "2880": "2 days before"
+    },
+    "repeat": {
+      "0": "Once",
+      "60": "Every hour",
+      "180": "Every 3 hours",
+      "360": "Every 6 hours",
+      "1440": "Every day"
+    },
+    "digest": {
+      "0": "Off (send at once)",
+      "5": "Every 5 minutes",
+      "15": "Every 15 minutes",
+      "30": "Every 30 minutes",
+      "60": "Once an hour"
+    },
+    "channels": {
+      "title": "Channels",
+      "add": "Add channel",
+      "empty": "No channels yet",
+      "verified": "verified",
+      "thisDevice": "this device",
+      "permDenied": "Notifications are blocked in the browser — enable them in the site settings.",
+      "permNeeded": "Browser permission for notifications is required.",
+      "testing": "sending…",
+      "allow": "Allow",
+      "test": "Test"
+    },
+    "routes": {
+      "title": "Routing rules",
+      "add": "Add rule",
+      "hint": "Rules are checked top to bottom — the first match wins. The notification goes to its channels (or nowhere, if the rule mutes it).",
+      "empty": "No rules — external channels receive nothing",
+      "muted": "muted",
+      "noChannels": "— no channels selected"
+    },
+    "route": {
+      "anyEvent": "Any event",
+      "allWorkspaces": "all workspaces",
+      "someWorkspace": "the selected workspace"
+    },
+    "schedule": {
+      "title": "Deadlines and reminders",
+      "hint": "When to notify about task due dates. A single task can override this — click its date on the card. Quiet hours keep the frequency from turning into spam.",
+      "dueEnabled": "Notify me when a task deadline is approaching",
+      "lead": "Notify",
+      "repeat": "Repeat",
+      "reminderEnabled": "Deliver reminders to external channels",
+      "digest": "Group into a digest",
+      "digestHint": "Notifications inside the window are merged into one message per channel — less noise during bursts.",
+      "quiet": "Quiet hours (do not disturb)",
+      "quietFrom": "From",
+      "quietTo": "To",
+      "quietHint": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone.",
+      "quietHintTz": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone ({tz})."
+    },
+    "confirm": {
+      "deleteChannel": "Delete the channel “{name}”?",
+      "channelUsedIn": "It is used by {n} rule — it will stop delivering to this channel. | It is used by {n} rules — they will stop delivering to this channel.",
+      "deleteRoute": "Delete this routing rule?"
+    },
+    "channelForm": {
+      "newTitle": "New channel",
+      "editTitle": "Edit channel",
+      "type": "Type",
+      "label": "Name",
+      "labelPlaceholder": "e.g. “My Telegram”",
+      "address": "Address",
+      "addressPlaceholder": "you{'@'}example.com",
+      "chatId": "Chat ID",
+      "chatIdPlaceholder": "123456789 or {'@'}channel",
+      "botToken": "Bot token",
+      "botTokenPlaceholder": "123456:ABC-...",
+      "telegramHint": "Create a bot via {'@'}BotFather, send it a message and enter your chat_id.",
+      "deviceHint": "This device/browser. System notifications arrive while the app is open and a rule routes events here. You can rename it, turn it on or off and delete it.",
+      "serviceUrl": "Service URL",
+      "serviceUrlPlaceholder": "slack://… · discord://… · ntfy://…",
+      "shoutrrrHint": "Any shoutrrr service: slack, discord, ntfy, gotify, matrix, pushover, teams and more. For the URL format see the shoutrrr docs (containrrr.dev/shoutrrr/services).",
+      "url": "URL",
+      "urlPlaceholder": "https://…",
+      "method": "Method",
+      "methodPlaceholder": "POST (default)",
+      "authHeader": "Authorization header (optional)",
+      "authHeaderPlaceholder": "Bearer …",
+      "keepSecret": "leave empty to keep the stored one"
+    },
+    "template": {
+      "title": "Message template",
+      "defaultHint": "default: {token} + a link",
+      "syntax": "Go template syntax: {field}, {cond}. Empty = the default template.",
+      "editorPlaceholder": "Empty — the default template",
+      "preview": "Preview (on sample data)",
+      "fields": "Fields",
+      "reset": "Reset",
+      "apply": "Apply",
+      "field": {
+        "text": "Ready-made notification text",
+        "title": "Title for the event type",
+        "kind": "Event type (assigned/comment/…)",
+        "taskNumber": "Task number",
+        "taskTitle": "Task title",
+        "actor": "Who triggered it",
+        "workspace": "Workspace name",
+        "link": "Link to the app"
+      }
+    },
+    "routeForm": {
+      "newTitle": "New rule",
+      "editTitle": "Edit rule",
+      "kinds": "Events (empty = any)",
+      "workspace": "Workspace (empty = all)",
+      "workspacePlaceholder": "All workspaces",
+      "mute": "Mute (deliver nowhere)",
+      "channels": "Delivery channels"
+    }
+  }
+}

@@ -34,9 +34,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <auth-layout title="Вход через GitLab">
+  <auth-layout :title="$t('common.auth.oauth.title')">
     <div class="oauth-wait">
-      <loader-overlay :show="true" contained :messages="['Завершаем вход…']" />
+      <loader-overlay :show="true" contained :messages="[$t('common.auth.oauth.finishing')]" />
     </div>
   </auth-layout>
 </template>

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import website.msdnna.tessera.BuildConfig
 import website.msdnna.tessera.data.model.Preferences as UserPrefs
 import website.msdnna.tessera.data.model.User
+import website.msdnna.tessera.util.normalizeLanguage
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "tessera")
 
@@ -123,6 +124,11 @@ class AppPreferences(private val context: Context) {
     val preferences: Flow<UserPrefs> = context.dataStore.data.map { prefs ->
         prefs[Keys.PREFS_JSON]?.let { runCatching { gson.fromJson(it, UserPrefs::class.java) }.getOrNull() } ?: UserPrefs()
     }
+
+    /** Язык интерфейса из профиля, уже нормализованный. Отдельным потоком — за ним
+     *  ходят из фона (уведомления, будильники напоминаний), где нет ни композиции,
+     *  ни живой ViewModel, а нужен ровно этот одно поле. */
+    val language: Flow<String> = preferences.map { normalizeLanguage(it.language) }
 
     val accentKey: Flow<String> = context.dataStore.data.map { it[Keys.ACCENT_KEY] ?: "purple" }
     val darkMode: Flow<Boolean> = context.dataStore.data.map { it[Keys.DARK_MODE] ?: false }

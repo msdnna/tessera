@@ -31,11 +31,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.HelpArticle
 import website.msdnna.tessera.data.repository.HelpRepository
 import website.msdnna.tessera.ui.TestTags
@@ -108,7 +110,7 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
                 TTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = "Поиск по справке",
+                    placeholder = stringResource(R.string.help_search_placeholder),
                     modifier = Modifier.weight(1f),
                     fieldTag = TestTags.HELP_SEARCH,
                 )
@@ -116,9 +118,9 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
 
             val hits = remember(query, searcher) { searcher.search(query) }
             when {
-                articles.isEmpty() -> Empty("Справка не собрана в этой сборке")
+                articles.isEmpty() -> Empty(stringResource(R.string.help_not_built))
 
-                query.isNotBlank() && hits.isEmpty() -> Empty("Ничего не найдено")
+                query.isNotBlank() && hits.isEmpty() -> Empty(stringResource(R.string.common_nothing_found))
 
                 query.isNotBlank() -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                     items(hits, key = { it.slug }) { hit ->
@@ -207,10 +209,10 @@ private fun HelpArticleReader(
                 Spacer(Modifier.height(12.dp))
             }
             when {
-                loading -> Text("Загрузка…", color = c.text3, fontSize = 14.sp)
+                loading -> Text(stringResource(R.string.common_loading), color = c.text3, fontSize = 14.sp)
 
                 body == null -> Text(
-                    "Статья не найдена в сборке",
+                    stringResource(R.string.help_article_missing),
                     color = c.text3,
                     fontSize = 14.sp,
                 )
@@ -226,7 +228,11 @@ private fun HelpArticleReader(
             }
             if (article.androidUpdated.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
-                Text("Обновлено: ${article.androidUpdated}", color = c.placeholder, fontSize = 12.sp)
+                Text(
+                    stringResource(R.string.help_updated, article.androidUpdated),
+                    color = c.placeholder,
+                    fontSize = 12.sp,
+                )
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -256,7 +262,7 @@ internal fun HelpDesktopTextNote() {
         IonIcon(Ion.HELP_CIRCLE, size = 16.dp, tint = c.text3)
         Spacer(Modifier.width(8.dp))
         Text(
-            "Статья описывает веб-версию — в приложении часть действий выглядит иначе.",
+            stringResource(R.string.help_desktop_note),
             color = c.text3,
             fontSize = 12.sp,
             modifier = Modifier.weight(1f),

@@ -1,4 +1,11 @@
 // Shared milestone helpers (used by the card chip, the task picker and the manager).
+import { defaultFormatters } from '@/utils/format'
+import { i18n } from '@/i18n'
+
+// Resolved per call, never cached at module level: this module is imported
+// outside any setup context, so a table built at import time would freeze on the
+// language of the first render (#2799).
+const t = (key, ...rest) => i18n.global.t(key, ...rest)
 
 // The reserved ?milestone= value for "tasks without a milestone".
 export const BACKLOG_SCOPE = 'backlog'
@@ -19,22 +26,22 @@ export function matchesScope(m, scope) {
   return scope === m.slug || scope === m.id
 }
 
-function fmtDate(iso) {
+// Milestone dates are date-only, so formatDate reads them in UTC and they stay on
+// the same calendar day in every timezone (#2798).
+function fmtDate(iso, fmt) {
   if (!iso) return ''
-  return new Date(iso).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
+  return fmt.formatDate(iso, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 // Human-readable start–due window for a milestone (either side may be missing).
-export function milestoneRange(m) {
+// `fmt` is a formatter set from useFormat(); without one the default preferences
+// are used, which is what non-component callers (tests) get.
+export function milestoneRange(m, fmt = defaultFormatters()) {
   if (!m) return ''
-  const s = fmtDate(m.start_date)
-  const d = fmtDate(m.due_date)
+  const s = fmtDate(m.start_date, fmt)
+  const d = fmtDate(m.due_date, fmt)
   if (s && d) return `${s} – ${d}`
-  if (d) return `до ${d}`
-  if (s) return `с ${s}`
+  if (d) return t('milestones.range.until', { date: d })
+  if (s) return t('milestones.range.from', { date: s })
   return ''
 }

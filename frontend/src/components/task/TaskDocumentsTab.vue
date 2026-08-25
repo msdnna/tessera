@@ -3,6 +3,7 @@
 // documents panel creates. Read-mostly by design — a link is made where the
 // context is, next to the clause it is about, and this side is where you find
 // out which documents mention this task and open them.
+import { useI18n } from 'vue-i18n'
 import { NIcon, NPopconfirm } from 'naive-ui'
 import { CloseOutline, DocumentTextOutline } from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
@@ -12,6 +13,7 @@ const props = defineProps({
   links: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:links', 'open-document'])
+const { t } = useI18n()
 
 // Unlinking goes through the link row's own endpoint — one row, one id,
 // whichever end you are looking at it from.
@@ -27,34 +29,39 @@ async function unlink(id) {
 <template>
   <div class="docs">
     <div v-for="l in links" :key="l.id" class="docrow">
-      <button type="button" class="doc-link" @click="emit('open-document', l)">
+      <button
+        type="button"
+        class="doc-link"
+        data-testid="task-doc-link"
+        @click="emit('open-document', l)"
+      >
         <span v-if="l.document_icon" class="doc-emoji">{{ l.document_icon }}</span>
         <n-icon v-else :component="DocumentTextOutline" :size="14" />
-        <span class="doc-title">{{ l.document_title || 'Без названия' }}</span>
+        <span class="doc-title">{{ l.document_title || t('task.docs.untitled') }}</span>
         <!-- An anchored link says which clause it is about; the quote is what
              still answers that once the clause has been rewritten. -->
         <span v-if="l.block_id" class="doc-anchor" :title="l.quote">
-          {{ l.quote || 'фрагмент' }}
+          {{ l.quote || t('task.docs.fragment') }}
         </span>
       </button>
       <n-popconfirm
         :positive-button-props="{ type: 'error' }"
-        positive-text="Убрать"
+        :positive-text="t('task.docs.unlinkYes')"
         @positive-click="unlink(l.id)"
       >
         <template #trigger>
-          <button class="c-act" title="Убрать связь">
+          <button class="c-act" :title="t('task.docs.unlink')">
             <n-icon :component="CloseOutline" />
           </button>
         </template>
-        Убрать связь с документом?
+        {{ t('task.docs.unlinkConfirm') }}
       </n-popconfirm>
     </div>
     <EmptyState
       v-if="!links.length"
       size="small"
       :icon="DocumentTextOutline"
-      text="Связанных документов нет"
+      :text="t('task.docs.empty')"
     />
   </div>
 </template>

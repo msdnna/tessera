@@ -1,6 +1,10 @@
+-- CreateWorkspace takes both the display name and an optional name_key: the
+-- personal workspace seeded at registration passes 'personal' so clients can
+-- render the caption in the reader's language, while a workspace the user names
+-- himself passes NULL and is shown verbatim.
 -- name: CreateWorkspace :one
-INSERT INTO workspaces (name, owner_id)
-VALUES ($1, $2)
+INSERT INTO workspaces (name, name_key, owner_id)
+VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: GetWorkspace :one
@@ -16,9 +20,16 @@ JOIN memberships m ON m.workspace_id = w.id
 WHERE m.user_id = $1
 ORDER BY w.created_at;
 
+-- UpdateWorkspace renames a workspace and drops its name_key: a chosen name must
+-- survive a language switch, so the default-caption key stops applying the moment
+-- the user picks a name of their own.
 -- name: UpdateWorkspace :one
 UPDATE workspaces
-SET name = $2, updated_at = now()
+-- Re-saving the same name is not a rename (the settings form submits every
+-- field), so the key survives it; only actually changing the text drops it.
+SET name = $2,
+    name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END,
+    updated_at = now()
 WHERE id = $1
 RETURNING *;
 

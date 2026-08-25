@@ -56,12 +56,12 @@ function surface(cls = 'n-modal', box = { left: 400, top: 200, width: 400, heigh
   return el
 }
 
-const INFO = { id: 'workspaces', anchor: 'ws-switch', title: 'Пространства', body: 'Тут они' }
+// Steps carry no wording since #2799 — the popover looks its text up in the
+// catalogue by step id, so `workspaces` is what makes «Пространства» appear.
+const INFO = { id: 'workspaces', anchor: 'ws-switch' }
 const ACTION = {
   id: 'open-menu',
   anchor: 'proj-add',
-  title: 'Создать проект',
-  body: 'Нажмите +',
   mode: 'action',
   advanceOn: { click: 'proj-add' },
 }
@@ -160,7 +160,7 @@ describe('TourOverlay', () => {
     anchor('card-priority', { left: 10, top: 10, width: 30, height: 20 })
     anchor('card-due', { left: 60, top: 10, width: 30, height: 20 })
     const tour = useTourStore()
-    tour.start([{ id: 'card', anchor: 'card-priority', extra: ['card-due'], title: 'Поля' }])
+    tour.start([{ id: 'card', anchor: 'card-priority', extra: ['card-due'] }])
     await render()
 
     // A <mask> with one black hole-rect per anchor (overlap-safe, unlike an
@@ -198,7 +198,6 @@ describe('TourOverlay', () => {
         id: 'dnd-project',
         anchor: 'project-row',
         cut: ['[data-tour-group="{group}"] [data-tour="group-row"]'],
-        title: 'Перетащите проект',
         mode: 'action',
       },
     ])
@@ -242,7 +241,7 @@ describe('TourOverlay', () => {
     surface('n-modal', { left: 40, top: 40, width: 500, height: 400 }) // wraps the field
     const tour = useTourStore()
     tour.start([
-      { id: 'project-create', anchor: 'project-name', title: 'Назовите', mode: 'action' },
+      { id: 'project-create', anchor: 'project-name', mode: 'action' },
     ])
     await render()
     expect(document.querySelector('.tr-mask')).not.toBe(null)
@@ -254,7 +253,7 @@ describe('TourOverlay', () => {
     anchor('card-priority', { left: 10, top: 10, width: 30, height: 20 })
     anchor('card-due', { left: 60, top: 10, width: 30, height: 20 })
     const tour = useTourStore()
-    tour.start([{ id: 'card', anchor: 'card-priority', extra: ['card-due'], title: 'Поля' }])
+    tour.start([{ id: 'card', anchor: 'card-priority', extra: ['card-due'] }])
     await render()
     expect(document.querySelectorAll('.tr-arrows .tr-path')).toHaveLength(2)
   })
@@ -265,7 +264,7 @@ describe('TourOverlay', () => {
       anchor('proj-add')
       const tour = useTourStore()
       // First step points at something that is not on this screen at all.
-      tour.start([{ id: 'ghost', anchor: 'nowhere', title: 'Нет якоря' }, ACTION])
+      tour.start([{ id: 'ghost', anchor: 'nowhere' }, ACTION])
       await render()
       expect(pop()).toBe(null)
 
@@ -359,7 +358,7 @@ describe('TourOverlay', () => {
     anchor('tm-due')
     panel()
     const tour = useTourStore()
-    tour.start([{ id: 'tm-due', anchor: 'tm-due', title: 'Срок', mode: 'action' }])
+    tour.start([{ id: 'tm-due', anchor: 'tm-due', mode: 'action' }])
     await render()
     // One hole for the field anchor, one for the open panel.
     expect(document.querySelectorAll('#tr-hole rect[fill="black"]')).toHaveLength(2)
@@ -479,7 +478,7 @@ describe('TourOverlay', () => {
   it('flags the elements it points at, so hover-only buttons stay visible', async () => {
     const el = anchor('board-add')
     const tour = useTourStore()
-    tour.start([{ id: 'add-board', anchor: 'board-add', title: 'Доска', mode: 'action' }])
+    tour.start([{ id: 'add-board', anchor: 'board-add', mode: 'action' }])
     await render()
     expect(el.hasAttribute('data-tour-active')).toBe(true)
 
@@ -490,7 +489,7 @@ describe('TourOverlay', () => {
 
   it('picks up an anchor that appears later (dropdown, modal)', async () => {
     const tour = useTourStore()
-    tour.start([{ id: 'late', anchor: 'menu-project', title: 'Проект' }])
+    tour.start([{ id: 'late', anchor: 'menu-project' }])
     await render()
     expect(pop()).toBe(null)
 

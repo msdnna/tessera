@@ -10,7 +10,7 @@ test('создание колонки и задачи, переименован�
   const before = await page.getByTestId('column').count()
 
   // create a column
-  await page.getByRole('button', { name: /Создать колонку/ }).click()
+  await page.getByTestId('add-column').click()
   await page.locator('.add-col input').fill('E2E колонка')
   await page.locator('.add-col input').press('Enter')
   await expect(column(page, 'E2E колонка')).toBeVisible()
@@ -37,8 +37,8 @@ test('создание колонки и задачи, переименован�
 
   // delete it (menu → «Удалить колонку» → confirm)
   await column(page, 'E2E переименована').locator('.col-menu').click()
-  await page.getByRole('button', { name: /Удалить колонку/ }).click()
-  await page.getByRole('button', { name: 'Удалить', exact: true }).click()
+  await page.getByTestId('column-delete').click()
+  await page.getByTestId('column-delete-confirm').click()
   await expect(column(page, 'E2E переименована')).toHaveCount(0)
   await expect(page.getByTestId('column')).toHaveCount(before)
 })

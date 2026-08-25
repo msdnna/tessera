@@ -10,6 +10,7 @@ import {
   AddOutline,
 } from '@vicons/ionicons5'
 import { NodeViewWrapper } from '@tiptap/vue-3'
+import { useI18n } from 'vue-i18n'
 import { clampPage, fitScale, formatFileSize, pagesAround } from '@/utils/docPdf'
 
 // The node view for a `pdfEmbed` block (#2733). pdf.js and its worker are
@@ -24,8 +25,10 @@ const props = defineProps({
   selected: { type: Boolean, default: false },
 })
 
+const { t } = useI18n()
+
 const src = computed(() => props.node?.attrs?.src || '')
-const fileName = computed(() => props.node?.attrs?.name || 'документ.pdf')
+const fileName = computed(() => props.node?.attrs?.name || t('documents.doc.pdfFallbackName'))
 const fileSize = computed(() => formatFileSize(props.node?.attrs?.size))
 
 const scroller = ref(null)
@@ -73,7 +76,9 @@ function setError(e) {
   // A failed fetch of a signed asset is by far the likeliest cause (an expired
   // link, or a document opened from a stale tab), and "не удалось открыть файл"
   // with no download button is a dead end — the link stays available below.
-  error.value = e?.message ? `Не удалось открыть PDF: ${e.message}` : 'Не удалось открыть PDF'
+  error.value = e?.message
+    ? t('documents.pdf.openFailedReason', { reason: e.message })
+    : t('documents.pdf.openFailed')
   loading.value = false
 }
 
@@ -189,7 +194,7 @@ function measure() {
 
 onMounted(async () => {
   if (!src.value) {
-    setError(new Error('в блоке нет ссылки на файл'))
+    setError(new Error(t('documents.pdf.noSrc')))
     return
   }
   measure()
@@ -255,7 +260,7 @@ watch(zoom, () => renderWindow())
           quaternary
           size="tiny"
           :disabled="page <= 1"
-          aria-label="Предыдущая страница"
+          :aria-label="$t('documents.pdf.prevPage')"
           @click="goTo(page - 1)"
         >
           <NIcon :component="ChevronBackOutline" />
@@ -265,7 +270,7 @@ watch(zoom, () => renderWindow())
           quaternary
           size="tiny"
           :disabled="page >= total"
-          aria-label="Следующая страница"
+          :aria-label="$t('documents.pdf.nextPage')"
           @click="goTo(page + 1)"
         >
           <NIcon :component="ChevronForwardOutline" />
@@ -274,7 +279,7 @@ watch(zoom, () => renderWindow())
           quaternary
           size="tiny"
           :disabled="zoom <= 0.5"
-          aria-label="Уменьшить"
+          :aria-label="$t('documents.pdf.zoomOut')"
           @click="zoom = Math.max(0.5, zoom - 0.25)"
         >
           <NIcon :component="RemoveOutline" />
@@ -283,13 +288,20 @@ watch(zoom, () => renderWindow())
           quaternary
           size="tiny"
           :disabled="zoom >= 3"
-          aria-label="Увеличить"
+          :aria-label="$t('documents.pdf.zoomIn')"
           @click="zoom = Math.min(3, zoom + 0.25)"
         >
           <NIcon :component="AddOutline" />
         </NButton>
       </template>
-      <NButton quaternary size="tiny" tag="a" :href="src" :download="fileName" aria-label="Скачать">
+      <NButton
+        quaternary
+        size="tiny"
+        tag="a"
+        :href="src"
+        :download="fileName"
+        :aria-label="$t('documents.pdf.download')"
+      >
         <NIcon :component="DownloadOutline" />
       </NButton>
     </header>
@@ -307,7 +319,7 @@ watch(zoom, () => renderWindow())
       >
         <canvas v-show="rendered.has(box.number)" />
         <span v-if="!rendered.has(box.number)" class="doc-pdf__placeholder">
-          Стр. {{ box.number }}
+          {{ $t('documents.pdf.page', { n: box.number }) }}
         </span>
       </div>
     </div>

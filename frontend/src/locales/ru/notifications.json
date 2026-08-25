@@ -1,0 +1,44 @@
+{
+  "ctx": " «{text}»",
+  "event": {
+    "task_assigned": "{actor} назначил вам задачу #{ref}{ctx}",
+    "task_updated": "{actor} изменил(а) задачу #{ref}: {fields}",
+    "task_moved": "{actor} переместил(а) задачу #{ref} → «{column}»",
+    "task_archived": "{actor} архивировал(а) задачу #{ref}{ctx}",
+    "task_comment": "{actor} прокомментировал #{ref}{ctx}",
+    "task_thread_reply": "{actor} ответил(а) в обсуждении #{ref}{ctx}",
+    "task_mention": "{actor} упомянул(а) вас в #{ref}{ctx}",
+    "task_due_soon": "Приближается срок задачи #{ref} «{title}»",
+    "reminder": "Напоминание",
+    "integration_sync_ok": "{label}: +{created} новых, ~{updated} обновлено, за {took}",
+    "integration_sync_partial": "{label}: +{created} новых, ~{updated} обновлено, за {took} (часть действий с ошибками)",
+    "integration_sync_failed": "{label}: синхронизация не удалась — {reason} (за {took})"
+  },
+  "field": {
+    "title": "название",
+    "description": "описание",
+    "priority": "приоритет",
+    "due": "срок",
+    "start": "начало",
+    "estimate": "оценка",
+    "completed": "выполнена",
+    "reopened": "возвращена в работу"
+  },
+  "kind": {
+    "assigned": "Назначена задача",
+    "comment": "Новый комментарий",
+    "mention": "Вас упомянули",
+    "updated": "Задача изменена",
+    "moved": "Задача перемещена",
+    "archived": "Задача архивирована",
+    "due_soon": "Скоро дедлайн",
+    "reminder": "Напоминание",
+    "integration_sync": "Синхронизация завершена"
+  },
+  "duration": {
+    "instant": "меньше секунды",
+    "hm": "{h} ч {m} м",
+    "ms": "{m} м {s} с",
+    "s": "{s} с"
+  }
+}

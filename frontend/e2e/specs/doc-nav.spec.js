@@ -22,7 +22,7 @@ import { test, expect } from '../fixtures.js'
 async function openSavedDocument(page, seed) {
   await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
   await page.goto('/documents')
-  await page.getByRole('button', { name: /Новый документ/ }).click()
+  await page.getByTestId('doc-new').click()
 
   const editor = page.locator('.ProseMirror')
   await expect(editor).toBeVisible()
@@ -50,7 +50,7 @@ test('документ: раздел в сайдбаре остаётся акт
   await sidebarDocuments(page).click()
   await expect(page).toHaveURL(/\/documents$/)
   // The list, not the document: the URL changing on its own was the bug.
-  await expect(page.getByRole('button', { name: /Новый документ/ })).toBeVisible()
+  await expect(page.getByTestId('doc-new')).toBeVisible()
   await expect(page.locator('.ProseMirror')).toHaveCount(0)
 })
 
@@ -61,7 +61,7 @@ test('документ: браузерное «назад» тоже возвр�
   // the view now has to answer a route change instead of being replaced by one.
   await page.goBack()
   await expect(page).toHaveURL(/\/documents$/)
-  await expect(page.getByRole('button', { name: /Новый документ/ })).toBeVisible()
+  await expect(page.getByTestId('doc-new')).toBeVisible()
   await expect(page.locator('.ProseMirror')).toHaveCount(0)
 })
 
@@ -75,14 +75,15 @@ test('документ: управление живёт в шапке прило
   // (they teleport there on a wide screen). Asserting the ancestor rather than
   // mere visibility: rendered twice, or left behind in the page, both read as
   // "visible" while being exactly what the move was meant to end.
-  const back = page.getByRole('button', { name: /К списку/ })
+  const back = page.getByTestId('doc-back')
   await expect(back).toHaveCount(1)
-  await expect(page.locator('.topbar').getByRole('button', { name: /К списку/ })).toBeVisible()
+  await expect(page.locator('.topbar').getByTestId('doc-back')).toBeVisible()
   await expect(page.locator('.topbar').getByTestId('doc-export')).toBeVisible()
 
-  // Delete and «Вложенный документ» left the bottom of the page for this menu.
-  await expect(page.getByRole('button', { name: /^Удалить$/ })).toHaveCount(0)
+  // Delete and «Вложенный документ» left the bottom of the page for this menu:
+  // they exist only as entries of it, never as buttons in the working area.
+  await expect(page.getByTestId('doc-action-remove')).toHaveCount(0)
   await page.locator('.topbar').getByTestId('doc-actions').click()
-  await expect(page.getByText('Вложенный документ')).toBeVisible()
-  await expect(page.getByText('Удалить документ')).toBeVisible()
+  await expect(page.getByTestId('doc-action-nested')).toBeVisible()
+  await expect(page.getByTestId('doc-action-remove')).toBeVisible()
 })

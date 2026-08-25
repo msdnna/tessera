@@ -21,9 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import website.msdnna.tessera.R
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.UpdateState
@@ -74,8 +77,14 @@ fun UpdateDialog(
                         }
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text("Доступно обновление", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Версия ${release.version}", color = c.text3, fontSize = 13.sp)
+                            Text(
+                                stringResource(R.string.update_available),
+                                color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                stringResource(R.string.update_version, release.version),
+                                color = c.text3, fontSize = 13.sp,
+                            )
                         }
                     }
 
@@ -92,7 +101,7 @@ fun UpdateDialog(
                                 trackColor = c.surfaceAlt,
                             )
                             Text(
-                                "Загрузка… ${(state.progress * 100).toInt()}%",
+                                stringResource(R.string.update_downloading, (state.progress * 100).toInt()),
                                 color = c.text3,
                                 fontSize = 12.sp,
                             )
@@ -100,24 +109,42 @@ fun UpdateDialog(
 
                         is UpdateState.Ready -> {
                             TButton(
-                                text = "Установить",
+                                text = stringResource(R.string.update_install),
                                 onClick = onInstall,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
 
                         is UpdateState.Failed -> {
-                            Text(state.message, color = DangerRed, fontSize = 13.sp)
+                            Text(state.message.resolve(), color = DangerRed, fontSize = 13.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                TButton("Позже", onClick = onDismiss, kind = TButtonKind.Secondary, modifier = Modifier.weight(1f))
-                                TButton("Повторить", onClick = onUpdate, modifier = Modifier.weight(1f))
+                                TButton(
+                                    stringResource(R.string.update_later),
+                                    onClick = onDismiss,
+                                    kind = TButtonKind.Secondary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TButton(
+                                    stringResource(R.string.common_retry),
+                                    onClick = onUpdate,
+                                    modifier = Modifier.weight(1f),
+                                )
                             }
                         }
 
                         else -> {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                TButton("Позже", onClick = onDismiss, kind = TButtonKind.Secondary, modifier = Modifier.weight(1f))
-                                TButton("Обновить", onClick = onUpdate, modifier = Modifier.weight(1f))
+                                TButton(
+                                    stringResource(R.string.update_later),
+                                    onClick = onDismiss,
+                                    kind = TButtonKind.Secondary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TButton(
+                                    stringResource(R.string.update_action),
+                                    onClick = onUpdate,
+                                    modifier = Modifier.weight(1f),
+                                )
                             }
                         }
                     }

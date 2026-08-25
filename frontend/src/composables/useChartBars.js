@@ -1,6 +1,7 @@
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { tasks as tasksApi } from '@/api'
 import { formatEstimate, estimateToDays, estimateTooltip } from '@/utils/estimation'
+import { useFormat } from '@/composables/useFormat'
 import {
   DAY_MS,
   HOUR_MS,
@@ -35,6 +36,7 @@ export function useChartBars({
   findTask,
   onChanged,
 }) {
+  const { formatters } = useFormat()
   // During a drag we hold a transient preview so only the dragged bar re-renders.
   const drag = ref(null) // { id, mode, startX, baseStart, baseDue, hasStart, hasDue }
   const preview = ref(null) // { id, start, due }
@@ -82,7 +84,7 @@ export function useChartBars({
   // Tooltip on the ghost bar: full expansion + projected window (the clock label
   // it hangs off already marks it as an estimate, so no "Оценка:" prefix).
   function ghostTitle(t) {
-    return estimateTooltip(t.start_date, t.estimate, estCfg.value)
+    return estimateTooltip(t.start_date, t.estimate, estCfg.value, formatters.value)
   }
 
   // ── drag-to-reschedule (move whole bar / resize an edge) ──

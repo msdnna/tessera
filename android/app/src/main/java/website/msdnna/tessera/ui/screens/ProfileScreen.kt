@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Preferences
@@ -66,14 +68,49 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.countryOptions
 import website.msdnna.tessera.util.timezoneOptions
 
-private val ThemeModes = listOf("system" to "Системная", "light" to "Светлая", "dark" to "Тёмная")
-private val Languages = listOf("ru" to "Русский", "en" to "English (скоро)")
-private val TimeFormats = listOf("24h" to "24-часовой", "12h" to "12-часовой (AM/PM)")
+/** Option labels are resolved in composition, so a language switch relabels the
+ *  selects without recreating the screen (the stored values never change). */
+@Composable
+private fun themeModes() = listOf(
+    "system" to stringResource(R.string.theme_system),
+    "light" to stringResource(R.string.theme_light),
+    "dark" to stringResource(R.string.theme_dark),
+)
+
+@Composable
+private fun languages() = listOf(
+    "ru" to stringResource(R.string.language_ru),
+    "en" to stringResource(R.string.language_en),
+)
+
+@Composable
+private fun timeFormats() = listOf(
+    "24h" to stringResource(R.string.time_format_24h),
+    "12h" to stringResource(R.string.time_format_12h),
+)
+
+@Composable
+private fun weekStarts() = listOf(
+    1 to stringResource(R.string.week_start_monday),
+    0 to stringResource(R.string.week_start_sunday),
+)
+
 private val DateFormats = listOf(
     "dd.MM.yyyy" to "31.12.2026", "yyyy-MM-dd" to "2026-12-31",
     "MM/dd/yyyy" to "12/31/2026", "dd/MM/yyyy" to "31/12/2026",
 )
-private val WeekStarts = listOf(1 to "Понедельник", 0 to "Воскресенье")
+
+/**
+ * Label of the option matching [value], or the first option's when nothing matches.
+ *
+ * A preference value can come from another client: since #2798 the web writes named
+ * date presets ("short", "medium", …) into `date_format`, which is not in [DateFormats].
+ * `first { }` threw NoSuchElementException on those and took the whole screen down —
+ * an unknown value must degrade to a default label, not to a crash. Android moves to
+ * the same presets in stage 7 of #2796.
+ */
+private fun <T> labelOf(options: List<Pair<T, String>>, value: T): String =
+    options.firstOrNull { it.first == value }?.second ?: options.first().second
 
 /**
  * Account settings (U1c): profile + avatar + password, plus appearance and
@@ -95,7 +132,7 @@ fun ProfileScreen() {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Настройки", color = c.text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings_title), color = c.text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 
         ProfileCard(user, repo, scope, ctx)
         PasswordCard(repo, scope)
@@ -139,30 +176,40 @@ private fun ProfileCard(
 
     TCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Профиль", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.settings_profile_title),
+                color = c.text1,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 AvatarPreview(user, avatarBust)
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TButton("Загрузить", onClick = { picker.launch("image/*") }, kind = TButtonKind.Secondary, icon = Ion.IMAGE)
+                    TButton(
+                        stringResource(R.string.settings_avatar_upload),
+                        onClick = { picker.launch("image/*") },
+                        kind = TButtonKind.Secondary,
+                        icon = Ion.IMAGE,
+                    )
                     if (!user?.avatarUrl.isNullOrBlank()) {
-                        TButton("Убрать", onClick = {
+                        TButton(stringResource(R.string.settings_avatar_remove), onClick = {
                             scope.launch { runCatching { repo.deleteAvatar() }.onFailure { error = it.message } }
                         }, kind = TButtonKind.Ghost)
                     }
-                    Text("PNG/JPEG/GIF/WebP, до 2 МБ", color = c.text3, fontSize = 11.sp)
+                    Text(stringResource(R.string.settings_avatar_hint), color = c.text3, fontSize = 11.sp)
                 }
             }
-            ReadonlyField("Email (логин)", user?.email ?: "")
+            ReadonlyField(stringResource(R.string.settings_email_label), user?.email ?: "")
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (user?.emailVerified == true) {
                     IonIcon(Ion.CHECK_CIRCLE, size = 15.dp, tint = c.primary, gradient = true)
-                    Text("Почта подтверждена", color = c.text3, fontSize = 12.sp)
+                    Text(stringResource(R.string.settings_email_verified), color = c.text3, fontSize = 12.sp)
                 } else {
-                    Text("Почта не подтверждена", color = c.text3, fontSize = 12.sp)
+                    Text(stringResource(R.string.settings_email_unverified), color = c.text3, fontSize = 12.sp)
                     if (verifySent) {
-                        Text("письмо отправлено", color = c.text3, fontSize = 12.sp)
+                        Text(stringResource(R.string.settings_email_sent), color = c.text3, fontSize = 12.sp)
                     } else {
-                        TButton("Отправить", kind = TButtonKind.Secondary, onClick = {
+                        TButton(stringResource(R.string.settings_email_send), kind = TButtonKind.Secondary, onClick = {
                             scope.launch {
                                 runCatching { repo.resendVerification() }
                                 verifySent = true
@@ -171,16 +218,21 @@ private fun ProfileCard(
                     }
                 }
             }
-            TTextField(name, { name = it }, label = "Отображаемое имя", placeholder = "Как вас показывать")
-            TTextField(last, { last = it }, label = "Фамилия")
-            TTextField(first, { first = it }, label = "Имя")
-            TTextField(middle, { middle = it }, label = "Отчество")
-            TTextField(company, { company = it }, label = "Место работы")
-            TTextField(jobTitle, { jobTitle = it }, label = "Должность")
-            TTextField(bio, { bio = it }, label = "О себе", singleLine = false)
+            TTextField(
+                name,
+                { name = it },
+                label = stringResource(R.string.settings_display_name),
+                placeholder = stringResource(R.string.settings_display_name_placeholder),
+            )
+            TTextField(last, { last = it }, label = stringResource(R.string.settings_last_name))
+            TTextField(first, { first = it }, label = stringResource(R.string.settings_first_name))
+            TTextField(middle, { middle = it }, label = stringResource(R.string.settings_middle_name))
+            TTextField(company, { company = it }, label = stringResource(R.string.settings_company))
+            TTextField(jobTitle, { jobTitle = it }, label = stringResource(R.string.settings_job_title))
+            TTextField(bio, { bio = it }, label = stringResource(R.string.settings_bio), singleLine = false)
             TFormError(error)
             TButton(
-                "Сохранить профиль",
+                stringResource(R.string.settings_save_profile),
                 loading = saving,
                 onClick = {
                     scope.launch {
@@ -230,14 +282,19 @@ private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.Coro
 
     TCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Безопасность", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            TTextField(current, { current = it }, label = "Текущий пароль", isPassword = true)
-            TTextField(next, { next = it }, label = "Новый пароль (≥ 8)", isPassword = true)
-            TTextField(confirm, { confirm = it }, label = "Повторите новый", isPassword = true)
+            Text(
+                stringResource(R.string.settings_security_title),
+                color = c.text1,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            TTextField(current, { current = it }, label = stringResource(R.string.settings_password_current), isPassword = true)
+            TTextField(next, { next = it }, label = stringResource(R.string.settings_password_new), isPassword = true)
+            TTextField(confirm, { confirm = it }, label = stringResource(R.string.settings_password_repeat), isPassword = true)
             TFormError(error)
-            if (done) Text("Пароль изменён", color = c.primary, fontSize = 13.sp)
+            if (done) Text(stringResource(R.string.settings_password_changed), color = c.primary, fontSize = 13.sp)
             TButton(
-                "Сменить пароль",
+                stringResource(R.string.settings_password_submit),
                 enabled = valid,
                 loading = saving,
                 onClick = {
@@ -268,10 +325,16 @@ private fun AppearanceCard(p: Preferences, repo: ProfileRepository, scope: kotli
 
     TCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Оформление", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            SelectRow("Тема", ThemeModes.first { it.first == p.theme }.second, ThemeModes) { save(p.copy(theme = it)) }
+            Text(
+                stringResource(R.string.settings_appearance_title),
+                color = c.text1,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            val themes = themeModes()
+            SelectRow(stringResource(R.string.settings_theme), labelOf(themes, p.theme), themes) { save(p.copy(theme = it)) }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Акцент", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.settings_accent), color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AccentThemes.forEach { t ->
                         Box(
@@ -291,8 +354,8 @@ private fun AppearanceCard(p: Preferences, repo: ProfileRepository, scope: kotli
             TTextField(
                 p.boardBackground,
                 { save(p.copy(boardBackground = it)) },
-                label = "Фон досок (CSS-цвет или URL)",
-                placeholder = "#0e0e12 или https://…/bg.jpg",
+                label = stringResource(R.string.settings_board_background),
+                placeholder = stringResource(R.string.settings_board_background_placeholder),
             )
         }
     }
@@ -305,16 +368,42 @@ private fun LocalizationCard(p: Preferences, repo: ProfileRepository, scope: kot
 
     TCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Локализация и форматы", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            SelectRow("Язык", Languages.first { it.first == p.language }.second, Languages) { save(p.copy(language = it)) }
-            SelectRow("Начало недели", WeekStarts.first { it.first == p.weekStart }.second, WeekStarts) { save(p.copy(weekStart = it)) }
-            SelectRow("Формат времени", TimeFormats.first { it.first == p.timeFormat }.second, TimeFormats) { save(p.copy(timeFormat = it)) }
-            SelectRow("Формат даты", DateFormats.first { it.first == p.dateFormat }.second, DateFormats) { save(p.copy(dateFormat = it)) }
+            Text(
+                stringResource(R.string.settings_locale_title),
+                color = c.text1,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            val langs = languages()
+            val weeks = weekStarts()
+            val times = timeFormats()
+            SelectRow(stringResource(R.string.settings_language), labelOf(langs, p.language), langs) {
+                save(p.copy(language = it))
+            }
+            SelectRow(stringResource(R.string.settings_week_start), labelOf(weeks, p.weekStart), weeks) {
+                save(p.copy(weekStart = it))
+            }
+            SelectRow(stringResource(R.string.settings_time_format), labelOf(times, p.timeFormat), times) {
+                save(p.copy(timeFormat = it))
+            }
+            SelectRow(stringResource(R.string.settings_date_format), labelOf(DateFormats, p.dateFormat), DateFormats) {
+                save(p.copy(dateFormat = it))
+            }
             val tzOptions = remember { timezoneOptions() }
             val countryOpts = remember(p.language) { countryOptions(p.language) }
-            SearchableSelectRow("Часовой пояс", p.timezone, tzOptions, "Europe/Moscow") { save(p.copy(timezone = it)) }
-            SearchableSelectRow("Страна", p.country, countryOpts, "Выберите страну") { save(p.copy(country = it)) }
-            Text("Форматы применяются к календарям и датам. Язык интерфейса — позже.", color = c.text3, fontSize = 12.sp)
+            SearchableSelectRow(
+                stringResource(R.string.settings_timezone),
+                p.timezone,
+                tzOptions,
+                stringResource(R.string.settings_timezone_placeholder),
+            ) { save(p.copy(timezone = it)) }
+            SearchableSelectRow(
+                stringResource(R.string.settings_country),
+                p.country,
+                countryOpts,
+                stringResource(R.string.settings_country_placeholder),
+            ) { save(p.copy(country = it)) }
+            Text(stringResource(R.string.settings_locale_hint), color = c.text3, fontSize = 12.sp)
         }
     }
 }
@@ -369,7 +458,7 @@ private fun SearchableSelectRow(
             ) {
                 Text(label, color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(10.dp))
-                TTextField(query, { query = it }, placeholder = "Поиск…")
+                TTextField(query, { query = it }, placeholder = stringResource(R.string.settings_search_placeholder))
                 Spacer(Modifier.height(8.dp))
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                     items(filtered, key = { it.first }) { (value, lbl) ->

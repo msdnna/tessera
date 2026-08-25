@@ -22,12 +22,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Notification
 import website.msdnna.tessera.ui.components.BelowAnchorPositionProvider
 import website.msdnna.tessera.ui.components.clickableNoRipple
@@ -73,10 +76,16 @@ fun NotificationsPanel(
                 Modifier.fillMaxWidth().padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Уведомления", color = c.text1, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.notif_title),
+                    color = c.text1,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
                 if (state.unread > 0) {
                     Text(
-                        "Прочитать все",
+                        stringResource(R.string.notif_panel_mark_all),
                         color = c.primary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
@@ -88,7 +97,7 @@ fun NotificationsPanel(
 
             if (state.items.isEmpty()) {
                 Text(
-                    "Пока тихо",
+                    stringResource(R.string.notif_panel_empty),
                     color = c.text3,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
@@ -129,7 +138,7 @@ private fun NotificationItem(item: Notification, onClick: () -> Unit) {
                 fontSize = 13.sp,
                 fontWeight = if (item.isUnread) FontWeight.SemiBold else FontWeight.Normal,
             )
-            val time = whenLabel(item.createdAt)
+            val time = whenLabel(LocalResources.current, item.createdAt)
             if (time.isNotEmpty()) {
                 Spacer(Modifier.padding(top = 2.dp))
                 Text(time, color = c.text3, fontSize = 11.sp)

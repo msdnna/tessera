@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NDrawer, NDrawerContent, NButton, NIcon, NSpin } from 'naive-ui'
 import { OpenOutline } from '@vicons/ionicons5'
 import { useHelpStore } from '@/stores/help'
@@ -9,6 +10,7 @@ import HelpArticle from './HelpArticle.vue'
 // Contextual help (#2794): the article a «?» asked for, in a panel over the
 // screen the reader is already on — no navigation, nothing lost. Mounted once in
 // AppLayout; every HelpHint drives it through the help store.
+const { t } = useI18n()
 const help = useHelpStore()
 const { isMobile } = useResponsive()
 
@@ -28,7 +30,7 @@ function openFull() {
 <template>
   <n-drawer v-model:show="help.drawerShown" :width="width" placement="right">
     <n-drawer-content
-      :title="help.drawerMeta?.title || 'Справка'"
+      :title="help.drawerMeta?.title || t('help.title')"
       closable
       :native-scrollbar="false"
     >
@@ -47,7 +49,7 @@ function openFull() {
           <template #icon>
             <n-icon :component="OpenOutline" />
           </template>
-          Открыть в справке
+          {{ t('help.openInCenter') }}
         </n-button>
       </template>
     </n-drawer-content>

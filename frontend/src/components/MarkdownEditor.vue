@@ -8,6 +8,7 @@ import {
   onBeforeUnmount,
   defineAsyncComponent,
 } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, useMessage } from 'naive-ui'
 import {
   LinkOutline,
@@ -45,7 +46,9 @@ import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
-  placeholder: { type: String, default: 'Напишите что-нибудь…' },
+  // null, not a translated literal: a prop default is evaluated once per
+  // instance and would freeze the hint in the language of the first render.
+  placeholder: { type: String, default: null },
   // Members for @-mentions: [{ id, label, display?, avatarUserId?, avatarSrc?, gitlab? }].
   // `label` is the inserted text (Tessera name or GitLab @username), `display` the row
   // label (falls back to label). Empty → mentions off.
@@ -95,6 +98,8 @@ const emit = defineEmits([
 ])
 
 const message = useMessage()
+const { t } = useI18n()
+const fieldPlaceholder = computed(() => props.placeholder ?? t('documents.editor.placeholder'))
 const boxed = computed(() => props.variant === 'boxed')
 const mode = ref(props.initialMode) // 'write' | 'preview'
 // Split shows both panes at once, so the textarea is always on screen and the
@@ -272,7 +277,7 @@ function insertLink() {
   const el = ta.value
   if (!el) return
   const { selectionStart: s, selectionEnd: e } = el
-  const text = el.value.slice(s, e) || 'текст'
+  const text = el.value.slice(s, e) || t('documents.editor.snippet.linkText')
   const href = 'https://'
   const caret = s + 1 + text.length + 2 + href.length // after "https://"
   replaceRange(s, e, `[${text}](${href})`, caret, caret)
@@ -283,9 +288,9 @@ function insertLink() {
 function insertSpoiler() {
   const el = ta.value
   const sel = el ? el.value.slice(el.selectionStart, el.selectionEnd) : ''
-  insertAtCaret(
-    `\n<details><summary>Подробнее</summary>\n\n${sel || 'Скрытый текст'}\n\n</details>\n`,
-  )
+  const summary = t('documents.editor.snippet.spoilerSummary')
+  const body = sel || t('documents.editor.snippet.spoilerBody')
+  insertAtCaret(`\n<details><summary>${summary}</summary>\n\n${body}\n\n</details>\n`)
 }
 
 // ── insert at caret (images, snippets) ──
@@ -312,7 +317,7 @@ async function uploadImage(file) {
     const res = await uploadsApi.upload(fd)
     if (res.data?.url) insertAtCaret(`\n![${file.name || 'image'}](${res.data.url})\n`)
   } catch (err) {
-    message.error(err.message || 'Не удалось загрузить изображение')
+    message.error(err.message || t('documents.editor.error.image'))
   } finally {
     uploading.value = false
   }
@@ -385,7 +390,7 @@ async function uploadAttachment(file) {
     attachList.value = []
     emit('attachments-changed')
   } catch (err) {
-    message.error(err.message || 'Не удалось загрузить файл')
+    message.error(err.message || t('documents.editor.error.file'))
   } finally {
     attaching.value = false
   }
@@ -398,7 +403,7 @@ async function openAttachPicker() {
     const res = await tasksApi.attachments(props.attachTaskId)
     attachList.value = res.data || []
   } catch (err) {
-    message.error(err.message || 'Не удалось загрузить список файлов')
+    message.error(err.message || t('documents.editor.error.attachments'))
     attachOpen.value = false
   }
 }
@@ -430,47 +435,110 @@ function onDrop(e) {
   }
 }
 function insertMermaid() {
-  insertAtCaret('\n```mermaid\nflowchart TD\n  A[Старт] --> B[Готово]\n```\n')
+  const from = t('documents.editor.snippet.mermaidFrom')
+  const to = t('documents.editor.snippet.mermaidTo')
+  insertAtCaret(`\n\`\`\`mermaid\nflowchart TD\n  A[${from}] --> B[${to}]\n\`\`\`\n`)
 }
 
+// Every button table below is a computed, not a plain array: as constants their
+// titles would be resolved once during setup and stay in the language of the
+// first render (pitfall 1 of #2799). `key` is the stable identity for v-for —
+// the title used to serve as the key and now changes with the language.
+//
 // Inline marks only — these are what the selection bubble offers. The bubble
 // floats over the text the user is reading, so it has to stay short.
-const inlineTools = [
-  { t: 'B', cls: 'b', title: 'Жирный', fn: () => applyAround('**') },
-  { t: 'I', cls: 'i', title: 'Курсив', fn: () => applyAround('*') },
-  { t: 'S', cls: 's', title: 'Зачёркнутый', fn: () => applyAround('~~') },
-  { t: '</>', title: 'Код', fn: () => applyAround('`') },
-  { icon: LinkOutline, title: 'Ссылка', fn: insertLink },
-]
+const inlineTools = computed(() => [
+  {
+    key: 'bold',
+    t: 'B',
+    cls: 'b',
+    title: t('documents.editor.tool.bold'),
+    fn: () => applyAround('**'),
+  },
+  {
+    key: 'italic',
+    t: 'I',
+    cls: 'i',
+    title: t('documents.editor.tool.italic'),
+    fn: () => applyAround('*'),
+  },
+  {
+    key: 'strike',
+    t: 'S',
+    cls: 's',
+    title: t('documents.editor.tool.strike'),
+    fn: () => applyAround('~~'),
+  },
+  { key: 'code', t: '</>', title: t('documents.editor.tool.code'), fn: () => applyAround('`') },
+  { key: 'link', icon: LinkOutline, title: t('documents.editor.tool.link'), fn: insertLink },
+])
 // Block-level actions rewrite whole lines; they live in the persistent toolbar.
-const blockTools = [
-  { t: 'H', title: 'Заголовок', fn: () => applyLinePrefix('## ') },
-  { t: '•', title: 'Маркированный список', fn: () => applyLinePrefix('- ') },
-  { icon: ListOutline, title: 'Нумерованный список', fn: () => applyLinePrefix(orderedListPrefix) },
-  { icon: CheckboxOutline, title: 'Чекбокс', fn: () => applyLinePrefix('- [ ] ') },
-  { t: '❝', title: 'Цитата', fn: () => applyLinePrefix('> ') },
-  { icon: ChevronDownOutline, title: 'Спойлер', fn: insertSpoiler },
-]
-const tools = [...inlineTools, ...blockTools]
+const blockTools = computed(() => [
+  {
+    key: 'heading',
+    t: 'H',
+    title: t('documents.editor.tool.heading'),
+    fn: () => applyLinePrefix('## '),
+  },
+  {
+    key: 'bulletList',
+    t: '•',
+    title: t('documents.editor.tool.bulletList'),
+    fn: () => applyLinePrefix('- '),
+  },
+  {
+    key: 'orderedList',
+    icon: ListOutline,
+    title: t('documents.editor.tool.orderedList'),
+    fn: () => applyLinePrefix(orderedListPrefix),
+  },
+  {
+    key: 'checkbox',
+    icon: CheckboxOutline,
+    title: t('documents.editor.tool.checkbox'),
+    fn: () => applyLinePrefix('- [ ] '),
+  },
+  {
+    key: 'quote',
+    t: '❝',
+    title: t('documents.editor.tool.quote'),
+    fn: () => applyLinePrefix('> '),
+  },
+  {
+    key: 'spoiler',
+    icon: ChevronDownOutline,
+    title: t('documents.editor.tool.spoiler'),
+    fn: insertSpoiler,
+  },
+])
+const tools = computed(() => [...inlineTools.value, ...blockTools.value])
 // The boxed composer's full button set (formatting + insert), rendered inline when
 // there's room and inside the compact popover when there isn't. Computed so the
 // upload/attach busy flags and the attach availability stay reactive.
 const barTools = computed(() => [
-  ...tools,
+  ...tools.value,
   {
+    key: 'image',
     icon: ImageOutline,
     size: 16,
-    title: 'Вставить изображение',
+    title: t('documents.editor.tool.image'),
     fn: pickImage,
     busy: uploading.value,
   },
-  { icon: GitNetworkOutline, size: 16, title: 'Вставить Mermaid-диаграмму', fn: insertMermaid },
+  {
+    key: 'mermaid',
+    icon: GitNetworkOutline,
+    size: 16,
+    title: t('documents.editor.tool.mermaid'),
+    fn: insertMermaid,
+  },
   ...(canAttach.value
     ? [
         {
+          key: 'attach',
           icon: AttachOutline,
           size: 16,
-          title: 'Приложить файл к задаче и вставить ссылку',
+          title: t('documents.editor.tool.attach'),
           fn: openAttachPicker,
           busy: attaching.value,
         },
@@ -825,7 +893,7 @@ defineExpose({
           type="button"
           class="md2-act"
           :class="{ busy: uploading }"
-          title="Вставить изображение"
+          :title="$t('documents.editor.tool.image')"
           @click="pickImage"
         >
           <n-icon :component="ImageOutline" :size="16" />
@@ -833,7 +901,7 @@ defineExpose({
         <button
           type="button"
           class="md2-act"
-          title="Вставить Mermaid-диаграмму"
+          :title="$t('documents.editor.tool.mermaid')"
           @click="insertMermaid"
         >
           <n-icon :component="GitNetworkOutline" :size="16" />
@@ -843,7 +911,9 @@ defineExpose({
         v-if="!split"
         type="button"
         class="md2-act"
-        :title="mode === 'write' ? 'Предпросмотр' : 'Редактировать'"
+        :title="
+          mode === 'write' ? $t('documents.editor.tool.preview') : $t('documents.editor.tool.edit')
+        "
         @click="toggleMode"
       >
         <n-icon :component="mode === 'write' ? EyeOutline : CreateOutline" :size="16" />
@@ -873,7 +943,7 @@ defineExpose({
           <textarea
             ref="ta"
             :value="modelValue"
-            :placeholder="placeholder"
+            :placeholder="fieldPlaceholder"
             :rows="minRows"
             spellcheck="false"
             @input="onInput"
@@ -892,7 +962,7 @@ defineExpose({
             <div v-if="bubble" class="md2-bubble" :style="bubble">
               <button
                 v-for="b in inlineTools"
-                :key="b.title"
+                :key="b.key"
                 type="button"
                 :class="b.cls"
                 :title="b.title"
@@ -957,7 +1027,9 @@ defineExpose({
               >
                 <code class="md2-cmd-key">/{{ cmd.key }}</code>
                 <span class="md2-cmd-desc">{{ cmd.description }}</span>
-                <span v-if="!cmd.builtin" class="md2-cmd-tag">свои</span>
+                <span v-if="!cmd.builtin" class="md2-cmd-tag">{{
+                  $t('documents.editor.customCommand')
+                }}</span>
               </li>
             </ul>
           </Transition>
@@ -971,7 +1043,7 @@ defineExpose({
           :members="mentionItems"
           interactive
           task-refs
-          empty="Нечего показать"
+          :empty="$t('documents.editor.previewEmpty')"
           @toggle="onToggleCheck"
         />
       </Transition>
@@ -988,7 +1060,7 @@ defineExpose({
           :members="mentionItems"
           interactive
           task-refs
-          empty="Нечего показать"
+          :empty="$t('documents.editor.previewEmpty')"
           @toggle="onToggleCheck"
         />
       </div>
@@ -1000,7 +1072,7 @@ defineExpose({
       <div v-if="!boxed && writing" class="md2-toolbar md2-format">
         <button
           v-for="b in tools"
-          :key="b.title"
+          :key="b.key"
           type="button"
           class="md2-tbtn"
           :class="b.cls"
@@ -1016,7 +1088,7 @@ defineExpose({
           type="button"
           class="md2-tbtn"
           :class="{ busy: attaching }"
-          title="Приложить файл к задаче и вставить ссылку"
+          :title="$t('documents.editor.tool.attach')"
           @mousedown.prevent="openAttachPicker"
         >
           <n-icon :component="AttachOutline" :size="16" />
@@ -1025,7 +1097,7 @@ defineExpose({
           v-if="expandable"
           type="button"
           class="md2-tbtn"
-          title="Открыть на весь экран"
+          :title="$t('documents.editor.tool.expand')"
           @mousedown.prevent="openFullscreen"
         >
           <n-icon :component="ExpandOutline" :size="15" />
@@ -1035,7 +1107,9 @@ defineExpose({
       <!-- Files already on the task: picking one links it into the text. Rendered
            in flow (not a floating popup) so it can't be clipped by the modal. -->
       <ul v-if="attachOpen" class="md2-attach">
-        <li v-if="!attachList.length" class="md2-attach-empty">В задаче ещё нет файлов</li>
+        <li v-if="!attachList.length" class="md2-attach-empty">
+          {{ $t('documents.editor.attachEmpty') }}
+        </li>
         <li
           v-for="a in attachList"
           :key="a.id"
@@ -1053,7 +1127,7 @@ defineExpose({
       <div v-if="boxed && compact && fmtOpen && mode === 'write'" class="md2-fmtbar">
         <button
           v-for="b in barTools"
-          :key="b.title"
+          :key="b.key"
           type="button"
           class="md2-tbtn"
           :class="[b.cls, { busy: b.busy }]"
@@ -1077,7 +1151,7 @@ defineExpose({
             type="button"
             class="md2-tbtn"
             :class="{ active: fmtOpen }"
-            title="Форматирование и вставка"
+            :title="$t('documents.editor.tool.format')"
             @mousedown.prevent="fmtOpen = !fmtOpen"
           >
             <n-icon :component="EllipsisHorizontalOutline" :size="18" />
@@ -1085,7 +1159,7 @@ defineExpose({
           <template v-else>
             <button
               v-for="b in barTools"
-              :key="b.title"
+              :key="b.key"
               type="button"
               class="md2-tbtn"
               :class="[b.cls, { busy: b.busy }]"
@@ -1102,7 +1176,7 @@ defineExpose({
           v-if="expandable"
           type="button"
           class="md2-tbtn"
-          title="Открыть на весь экран"
+          :title="$t('documents.editor.tool.expand')"
           @mousedown.prevent="openFullscreen"
         >
           <n-icon :component="ExpandOutline" :size="15" />
@@ -1110,7 +1184,11 @@ defineExpose({
         <button
           type="button"
           class="md2-tbtn"
-          :title="mode === 'write' ? 'Предпросмотр' : 'Редактировать'"
+          :title="
+            mode === 'write'
+              ? $t('documents.editor.tool.preview')
+              : $t('documents.editor.tool.edit')
+          "
           @mousedown.prevent="toggleMode"
         >
           <n-icon :component="mode === 'write' ? EyeOutline : CreateOutline" :size="16" />
@@ -1121,7 +1199,7 @@ defineExpose({
           class="md2-send"
           :class="{ busy: sending }"
           :disabled="sending"
-          :title="sending ? 'Отправка…' : 'Отправить (Ctrl+Enter)'"
+          :title="sending ? $t('documents.editor.tool.sending') : $t('documents.editor.tool.send')"
           @mousedown.prevent="onSend"
         >
           <TesseraSpinner v-if="sending" :size="16" variant="white" />

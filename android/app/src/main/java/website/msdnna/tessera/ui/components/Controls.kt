@@ -49,6 +49,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.AccentGradientStrengthSubtle
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
@@ -193,6 +195,11 @@ fun TFormError(message: String?, modifier: Modifier = Modifier) {
         Text(message, color = Color(0xFFE0533D), fontSize = 13.sp)
     }
 }
+
+/** То же для ошибки из ViewModel: резолв здесь, в композиции с языком профиля. */
+@Composable
+fun TFormError(message: UiText?, modifier: Modifier = Modifier) =
+    TFormError(message?.resolve(), modifier)
 
 /** Pill toggle matching the web's Naive `n-switch` (no Material thumb/ripple). */
 @Composable

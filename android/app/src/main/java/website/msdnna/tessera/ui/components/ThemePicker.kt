@@ -23,10 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.theme.AccentThemes
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.Tessera
@@ -47,9 +49,9 @@ fun ThemePicker(
         Column(
             Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(20.dp),
         ) {
-            Text("Оформление", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.theme_picker_title), color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(16.dp))
-            Text("Акцент", color = c.text3, fontSize = 12.sp)
+            Text(stringResource(R.string.theme_picker_accent), color = c.text3, fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -72,7 +74,7 @@ fun ThemePicker(
             }
             Spacer(Modifier.height(20.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Тёмная тема", color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.theme_picker_dark), color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
                 Switch(
                     checked = isDark,
                     onCheckedChange = { onToggleDark() },

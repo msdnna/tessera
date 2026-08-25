@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { documents as docsApi } from '@/api'
 import { canRaiseApproval, documentApprovalState } from '@/utils/docApprovals'
+import { i18n } from '@/i18n'
 
 /**
  * Task links and approval protocols of one open document (#2732).
@@ -69,7 +70,7 @@ export function useDocLinks() {
       approvals.value = a.data || []
       error.value = ''
     } catch (e) {
-      error.value = e.message || 'Не удалось загрузить связи'
+      error.value = e.message || i18n.global.t('documents.links.error.load')
     } finally {
       loading.value = false
     }

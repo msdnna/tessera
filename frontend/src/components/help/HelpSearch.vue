@@ -1,7 +1,10 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { NInput, NIcon } from 'naive-ui'
 import { SearchOutline } from '@vicons/ionicons5'
 import { useHelpStore } from '@/stores/help'
+
+const { t } = useI18n()
 
 // Search box over the help index (#2792). Matching runs in the store against
 // the in-bundle index — there is no request to debounce, so results update on
@@ -18,7 +21,7 @@ function pick(slug) {
   <div class="h-search">
     <n-input
       v-model:value="help.query"
-      placeholder="Поиск по справке"
+      :placeholder="t('help.search.placeholder')"
       clearable
       size="small"
       data-help-search
@@ -29,7 +32,7 @@ function pick(slug) {
     </n-input>
 
     <div v-if="help.query.trim()" class="h-results">
-      <div v-if="!help.results.length" class="h-empty">Ничего не нашлось</div>
+      <div v-if="!help.results.length" class="h-empty">{{ t('help.search.empty') }}</div>
       <button
         v-for="r in help.results"
         :key="r.slug"

@@ -32,15 +32,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <auth-layout title="Приглашение">
-    <p class="note">
-      <template v-if="state === 'pending'">Принимаем приглашение…</template>
-      <template v-else-if="state === 'ok'">Готово! Вы присоединились к пространству.</template>
-      <template v-else
-        >Приглашение недействительно, истекло или предназначено другому адресу.</template
-      >
-    </p>
-    <div class="auth-foot"><router-link to="/">На главную</router-link></div>
+  <auth-layout :title="$t('common.auth.invite.title')">
+    <p class="note">{{ $t(`common.auth.invite.${state}`) }}</p>
+    <div class="auth-foot">
+      <router-link to="/">{{ $t('common.auth.toHome') }}</router-link>
+    </div>
   </auth-layout>
 </template>
 

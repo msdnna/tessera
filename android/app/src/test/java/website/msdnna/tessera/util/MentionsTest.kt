@@ -1,15 +1,24 @@
 package website.msdnna.tessera.util
 
+import android.content.Context
+import android.content.res.Resources
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import website.msdnna.tessera.data.model.GitlabMember
 import website.msdnna.tessera.data.model.Member
 
 /** The roster behind @-mentions: what the picker inserts, and who a tapped chip
  *  resolves to (port of the web `utils/mentions.js`). */
+@RunWith(RobolectricTestRunner::class)
 class MentionsTest {
+    private fun res(language: String): Resources =
+        ApplicationProvider.getApplicationContext<Context>().withLanguage(language).resources
+
     private val member = Member(userId = "u1", role = "admin", email = "e@p.dev", name = "Евгений Полянский")
     private val linked = member.copy(glUsername = "e.polyansky")
 
@@ -84,10 +93,12 @@ class MentionsTest {
 
     @Test
     fun `roles are spelled out, unknown ones kept verbatim`() {
-        assertEquals("Владелец", roleLabel("owner"))
-        assertEquals("Админ", roleLabel("admin"))
-        assertEquals("Участник", roleLabel("member"))
-        assertEquals("guest", roleLabel("guest"))
-        assertEquals("", roleLabel(null))
+        val ru = res("ru")
+        assertEquals("Владелец", roleLabel(ru, "owner"))
+        assertEquals("Админ", roleLabel(ru, "admin"))
+        assertEquals("Участник", roleLabel(ru, "member"))
+        assertEquals("guest", roleLabel(ru, "guest"))
+        assertEquals("", roleLabel(ru, null))
+        assertEquals("Owner", roleLabel(res("en"), "owner"))
     }
 }

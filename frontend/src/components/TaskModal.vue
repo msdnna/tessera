@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import {
   NModal,
@@ -55,10 +56,12 @@ import { tasks as tasksApi, boards as boardsApi, projects as projApi, gitlab as 
 import { storeToRefs } from 'pinia'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useBoardViewStore } from '@/stores/boardView'
-import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/styles/tokens'
+import { PRIORITY_COLORS } from '@/styles/tokens'
+import { priorityLabel, priorityOptions as priorityOptionList } from '@/utils/priority'
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
+import { useFormat } from '@/composables/useFormat'
 import {
   sortedColumns,
   columnById,
@@ -67,6 +70,7 @@ import {
   siblingNeighbors,
   columnTail,
 } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
 import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
 import { copyText } from '@/utils/clipboard'
@@ -87,7 +91,6 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { useThemeStore } from '@/stores/theme'
-import { useDateLocale } from '@/composables/useDateLocale'
 import { useTagFit } from '@/composables/useTagFit'
 import DueEditor from './DueEditor.vue'
 import TagPill from './TagPill.vue'
@@ -152,7 +155,8 @@ const projectId = computed(() => bv.projectId)
 
 const store = useWorkspacesStore()
 const theme = useThemeStore()
-const { formatDue } = useDateLocale()
+const { t } = useI18n()
+const { formatDue, formatters } = useFormat()
 // Tag colour clamped for legible text on the active theme.
 const tagText = (c) => readableHue(c, theme.isDark)
 const router = useRouter()
@@ -308,7 +312,7 @@ async function shareTask() {
   const url = shareUrl.value
   if (!url) return
   if (!(await copyText(url))) {
-    message.error('Не удалось скопировать ссылку')
+    message.error(t('task.head.shareFailed'))
     return
   }
   shared.value = true
@@ -371,7 +375,8 @@ const selectedTags = ref([])
 const selectedAssignees = ref([])
 const newTagName = ref('')
 
-const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+// Computed: the ladder is rebuilt per render so a language switch reaches it.
+const priorityOptions = computed(() => priorityOptionList())
 
 // ── estimation ──────────────────────────────────────────────
 // Effective unit config for this task's project (project override → workspace
@@ -384,7 +389,7 @@ const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
 const estFull = computed(() => formatEstimateFull(estimate.value, estCfg.value))
 // Projected window from start_date, free-form ("18 мая → 13 июл."), shown inline.
 const estRange = computed(() =>
-  estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value),
+  estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value, formatters.value),
 )
 const estOptions = computed(() => scaleOptions(estCfg.value)) // non-empty only for points
 const estPlaceholder = computed(() => estimatePlaceholder(estCfg.value))
@@ -517,6 +522,9 @@ async function loadDetail() {
       columns.value = (boardColumns.value || []).map((c) => ({
         id: c.id,
         name: c.name,
+        // name_key rides along or the status chip and the move menu would caption
+        // seeded columns by their stored Russian name (#2800).
+        name_key: c.name_key,
         color: c.color,
         position: c.position,
       }))
@@ -534,6 +542,7 @@ async function loadDetail() {
         columns.value = (cols.data || []).map((c) => ({
           id: c.id,
           name: c.name,
+          name_key: c.name_key,
           color: c.color,
           position: c.position,
         }))
@@ -811,8 +820,8 @@ function applyGlTemplate(name) {
 function glAssetSuffix(stats) {
   if (!stats) return ''
   const parts = []
-  if (stats.uploaded) parts.push(`загружено вложений: ${stats.uploaded}`)
-  if (stats.skipped) parts.push(`не удалось: ${stats.skipped}`)
+  if (stats.uploaded) parts.push(t('task.gitlab.assetsUploaded', { n: stats.uploaded }))
+  if (stats.skipped) parts.push(t('task.gitlab.assetsSkipped', { n: stats.skipped }))
   return parts.length ? ` (${parts.join(', ')})` : ''
 }
 async function createGlIssue() {
@@ -826,7 +835,10 @@ async function createGlIssue() {
     const res = await tasksApi.get(props.taskId)
     task.value = res.data
     message.success(
-      `Создан issue !${res.data.gitlab?.iid} в GitLab${glAssetSuffix(created.data?.attachments)}`,
+      t('task.gitlab.created', {
+        iid: res.data.gitlab?.iid,
+        suffix: glAssetSuffix(created.data?.attachments),
+      }),
     )
     emit('changed')
   } catch (e) {
@@ -841,8 +853,8 @@ async function createGlIssue() {
 // still hang off this issue — that message is what the user sees.
 const glGrouping = ref(false)
 const glGroupAction = computed(() => {
-  if (glGrouping.value) return 'Сохранение…'
-  return task.value?.gitlab?.is_group ? 'Снять группировку' : 'Сделать сгруппированной'
+  if (glGrouping.value) return t('task.gitlab.saving')
+  return task.value?.gitlab?.is_group ? t('task.gitlab.ungroup') : t('task.gitlab.group')
 })
 async function toggleGlGroup() {
   const link = task.value?.gitlab
@@ -854,7 +866,7 @@ async function toggleGlGroup() {
     // The endpoint answers with the refreshed link view, so no re-fetch is needed for
     // the button itself; `changed` still fires because the board card shows the badge.
     task.value = { ...task.value, gitlab: res.data }
-    message.success(grouped ? 'Группировка снята' : 'Задача помечена сгруппированной')
+    message.success(grouped ? t('task.gitlab.groupCleared') : t('task.gitlab.groupSet'))
     emit('changed')
   } catch (e) {
     message.error(e?.response?.data?.error || e.message)
@@ -1073,7 +1085,7 @@ async function onSubtaskChanged() {
                  slot empty and threw during render, white-screening the modal. -->
             <n-popover v-if="breadcrumb.length" trigger="click" placement="bottom-start">
               <template #trigger>
-                <div class="crumbs" title="Перенести в другую доску">
+                <div class="crumbs" :title="t('task.head.moveTitle')">
                   <template v-for="(c, i) in breadcrumb" :key="i">
                     <span class="crumb">{{ c }}</span>
                     <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
@@ -1081,7 +1093,7 @@ async function onSubtaskChanged() {
                 </div>
               </template>
               <div class="menu move-menu">
-                <div class="move-hint">Перенести в доску:</div>
+                <div class="move-hint">{{ t('task.head.moveHint') }}</div>
                 <div v-for="p in store.projects" :key="p.id" class="move-proj">
                   <div class="menu-item" @click="toggleProj(p.id)">
                     <span class="grow">{{ p.name }}</span>
@@ -1096,7 +1108,9 @@ async function onSubtaskChanged() {
                     >
                       {{ bd.name }}
                     </div>
-                    <span v-if="!(moveBoards[p.id] || []).length" class="move-hint">нет досок</span>
+                    <span v-if="!(moveBoards[p.id] || []).length" class="move-hint">{{
+                      t('task.head.noBoards')
+                    }}</span>
                   </div>
                 </div>
               </div>
@@ -1108,7 +1122,7 @@ async function onSubtaskChanged() {
                 v-if="shareUrl"
                 class="head-btn"
                 :class="{ done: shared }"
-                :title="shared ? 'Ссылка скопирована' : 'Скопировать ссылку на задачу'"
+                :title="shared ? t('task.head.shareDone') : t('task.head.shareCopy')"
                 @click="shareTask"
               >
                 <Transition name="tm-share" mode="out-in">
@@ -1130,7 +1144,7 @@ async function onSubtaskChanged() {
               <button
                 v-if="wide"
                 class="head-btn"
-                :title="rightHidden ? 'Показать панель' : 'Скрыть панель'"
+                :title="rightHidden ? t('task.head.showPane') : t('task.head.hidePane')"
                 @click="toggleRightPane"
               >
                 <n-icon
@@ -1146,7 +1160,7 @@ async function onSubtaskChanged() {
                 :href="task.gitlab.web_url"
                 target="_blank"
                 rel="noopener noreferrer"
-                :title="`Открыть issue !${task.gitlab.iid} в GitLab`"
+                :title="t('task.head.openInGitlab', { iid: task.gitlab.iid })"
               >
                 (<n-icon :component="LogoGitlab" :size="12" /> !{{ task.gitlab.iid }})
               </a>
@@ -1157,7 +1171,7 @@ async function onSubtaskChanged() {
           </div>
           <n-input
             v-model:value="title"
-            placeholder="Название задачи"
+            :placeholder="t('task.head.titlePlaceholder')"
             class="title-input plain"
             :readonly="readonly"
           />
@@ -1170,7 +1184,10 @@ async function onSubtaskChanged() {
                    not when the picker was opened. Absent (not empty) when unset,
                    so [data-tour-set] alone selects the filled ones. -->
               <div class="prow" data-tour="tm-priority" :data-tour-set="priority ? '' : null">
-                <span class="plabel"><n-icon :component="FlagOutline" :size="15" /> Приоритет</span>
+                <span class="plabel"
+                  ><n-icon :component="FlagOutline" :size="15" />
+                  {{ t('task.field.priority') }}</span
+                >
                 <n-popover trigger="click" placement="bottom-start">
                   <template #trigger>
                     <button class="val">
@@ -1178,7 +1195,7 @@ async function onSubtaskChanged() {
                         class="dot"
                         :style="{ background: hueGrad(PRIORITY_COLORS[priority]) }"
                       />
-                      {{ PRIORITY_LABELS[priority] }}
+                      {{ priorityLabel(priority) }}
                     </button>
                   </template>
                   <div class="menu">
@@ -1201,18 +1218,19 @@ async function onSubtaskChanged() {
               <!-- due -->
               <div class="prow" data-tour="tm-due" :data-tour-set="dueTs ? '' : null">
                 <span class="plabel"
-                  ><n-icon :component="CalendarClearOutline" :size="15" /> Срок</span
+                  ><n-icon :component="CalendarClearOutline" :size="15" />
+                  {{ t('task.field.due') }}</span
                 >
                 <n-popover trigger="click" placement="bottom-start">
                   <template #trigger>
                     <button class="val">
-                      <span>{{ dueLabel || 'Не задан' }}</span>
+                      <span>{{ dueLabel || t('task.value.dueUnset') }}</span>
                       <n-icon
                         v-if="recurrence"
                         :component="RepeatOutline"
                         :size="14"
                         class="recur-mark"
-                        title="Повторяемая задача"
+                        :title="t('task.field.recurring')"
                       />
                     </button>
                   </template>
@@ -1230,16 +1248,21 @@ async function onSubtaskChanged() {
 
               <!-- estimate -->
               <div class="prow">
-                <span class="plabel"><n-icon :component="TimerOutline" :size="15" /> Оценка</span>
+                <span class="plabel"
+                  ><n-icon :component="TimerOutline" :size="15" />
+                  {{ t('task.field.estimate') }}</span
+                >
                 <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
                   <template #trigger>
                     <button class="val">
-                      <span :class="{ muted: !estFull }">{{ estFull || 'Не задана' }}</span>
+                      <span :class="{ muted: !estFull }">{{
+                        estFull || t('task.value.estimateUnset')
+                      }}</span>
                       <span v-if="estRange" class="est-range">· {{ estRange }}</span>
                       <span
                         v-if="subtaskEstimateLabel"
                         class="est-rollup"
-                        title="Сумма оценок подзадач"
+                        :title="t('task.estimate.rollupHint')"
                         >Σ {{ subtaskEstimateLabel }}</span
                       >
                     </button>
@@ -1247,7 +1270,7 @@ async function onSubtaskChanged() {
                   <div class="est-pop">
                     <div v-if="estOptions.length" class="menu est-menu">
                       <div class="menu-item" @click="clearEstimate">
-                        <span class="grow muted">Не задана</span>
+                        <span class="grow muted">{{ t('task.value.estimateUnset') }}</span>
                         <n-icon v-if="estimate == null" :component="CheckmarkOutline" class="chk" />
                       </div>
                       <div
@@ -1272,8 +1295,12 @@ async function onSubtaskChanged() {
                         @keydown.enter.prevent="applyEstInput"
                       />
                       <div class="est-actions">
-                        <n-button size="tiny" tertiary @click="clearEstimate">Очистить</n-button>
-                        <n-button size="tiny" type="primary" @click="applyEstInput">ОК</n-button>
+                        <n-button size="tiny" tertiary @click="clearEstimate">{{
+                          t('task.estimate.clear')
+                        }}</n-button>
+                        <n-button size="tiny" type="primary" @click="applyEstInput">{{
+                          t('task.estimate.apply')
+                        }}</n-button>
                       </div>
                     </div>
                   </div>
@@ -1282,25 +1309,31 @@ async function onSubtaskChanged() {
 
               <!-- milestone («Этап») -->
               <div class="prow">
-                <span class="plabel"><n-icon :component="RibbonOutline" :size="15" /> Этап</span>
+                <span class="plabel"
+                  ><n-icon :component="RibbonOutline" :size="15" />
+                  {{ t('task.field.milestone') }}</span
+                >
                 <n-popover trigger="click" placement="bottom-start">
                   <template #trigger>
                     <button class="val">
                       <span :class="{ muted: !taskMilestone }">
-                        {{ taskMilestone ? taskMilestone.title : 'Не задан' }}
+                        {{ taskMilestone ? taskMilestone.title : t('task.value.milestoneUnset') }}
                       </span>
-                      <span v-if="taskMilestone && milestoneRange(taskMilestone)" class="est-range">
-                        · {{ milestoneRange(taskMilestone) }}
+                      <span
+                        v-if="taskMilestone && milestoneRange(taskMilestone, formatters)"
+                        class="est-range"
+                      >
+                        · {{ milestoneRange(taskMilestone, formatters) }}
                       </span>
                       <span v-if="taskMilestone?.state === 'closed'" class="est-range"
-                        >· закрыт</span
+                        >· {{ t('task.value.milestoneClosed') }}</span
                       >
                     </button>
                   </template>
                   <div class="ms-pop">
                     <div class="menu ms-menu">
                       <div class="menu-item" @click="setMilestone(null)">
-                        <span class="grow muted">Не задан</span>
+                        <span class="grow muted">{{ t('task.value.milestoneUnset') }}</span>
                         <n-icon
                           v-if="!task?.milestone_id"
                           :component="CheckmarkOutline"
@@ -1315,8 +1348,8 @@ async function onSubtaskChanged() {
                       >
                         <span class="grow ms-opt" :class="{ 'ms-closed': m.state === 'closed' }">
                           <span class="ms-opt-title">{{ m.title }}</span>
-                          <span v-if="milestoneRange(m)" class="ms-opt-range">{{
-                            milestoneRange(m)
+                          <span v-if="milestoneRange(m, formatters)" class="ms-opt-range">{{
+                            milestoneRange(m, formatters)
                           }}</span>
                         </span>
                         <n-icon
@@ -1330,7 +1363,7 @@ async function onSubtaskChanged() {
                       <n-input
                         v-model:value="newMilestoneTitle"
                         size="small"
-                        placeholder="Новый этап…"
+                        :placeholder="t('task.milestone.newPlaceholder')"
                         @keydown.enter.prevent="createMilestone"
                       />
                       <n-button
@@ -1339,7 +1372,7 @@ async function onSubtaskChanged() {
                         :disabled="!newMilestoneTitle.trim()"
                         @click="createMilestone"
                       >
-                        Создать
+                        {{ t('common.action.create') }}
                       </n-button>
                     </div>
                   </div>
@@ -1348,7 +1381,10 @@ async function onSubtaskChanged() {
 
               <!-- author (read-only) -->
               <div v-if="author" class="prow">
-                <span class="plabel"><n-icon :component="PersonOutline" :size="15" /> Автор</span>
+                <span class="plabel"
+                  ><n-icon :component="PersonOutline" :size="15" />
+                  {{ t('task.field.author') }}</span
+                >
                 <div
                   class="val static"
                   :title="author.gl ? `@${author.login} · GitLab` : author.name"
@@ -1371,7 +1407,8 @@ async function onSubtaskChanged() {
                 :data-tour-set="assigneeObjs.length || glAssignees.length ? '' : null"
               >
                 <span class="plabel"
-                  ><n-icon :component="PeopleOutline" :size="15" /> Исполнители</span
+                  ><n-icon :component="PeopleOutline" :size="15" />
+                  {{ t('task.field.assignees') }}</span
                 >
                 <n-popover trigger="click" placement="bottom-start">
                   <template #trigger>
@@ -1392,9 +1429,9 @@ async function onSubtaskChanged() {
                         :name="g.gl_name || g.gl_username"
                         :title="`${g.gl_name || g.gl_username} (GitLab)`"
                       />
-                      <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted"
-                        >Никто</span
-                      >
+                      <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted">{{
+                        t('task.value.assigneesNone')
+                      }}</span>
                     </button>
                   </template>
                   <div class="menu">
@@ -1439,16 +1476,19 @@ async function onSubtaskChanged() {
 
               <!-- tags -->
               <div class="prow" data-tour="tm-tags" :data-tour-set="tagObjs.length ? '' : null">
-                <span class="plabel"><n-icon :component="PricetagOutline" :size="15" /> Теги</span>
+                <span class="plabel"
+                  ><n-icon :component="PricetagOutline" :size="15" />
+                  {{ t('task.field.tags') }}</span
+                >
                 <n-popover trigger="click" placement="bottom-start">
                   <template #trigger>
                     <button ref="tagsValEl" class="val tags-val">
                       <template v-if="tagObjs.length">
                         <TagPill
-                          v-for="t in tagObjs.slice(0, visibleTagCount)"
-                          :key="t.id"
+                          v-for="tg in tagObjs.slice(0, visibleTagCount)"
+                          :key="tg.id"
                           class="chip"
-                          :tag="t"
+                          :tag="tg"
                           :prefix-names="tagPrefixNames"
                           variant="outline"
                         />
@@ -1466,16 +1506,16 @@ async function onSubtaskChanged() {
                              wouldn't be measured and the fit calculation would lie. -->
                         <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
                           <TagPill
-                            v-for="t in tagObjs"
-                            :key="`m${t.id}`"
+                            v-for="tg in tagObjs"
+                            :key="`m${tg.id}`"
                             class="chip"
-                            :tag="t"
+                            :tag="tg"
                             :prefix-names="tagPrefixNames"
                             variant="outline"
                           />
                         </span>
                       </template>
-                      <span v-else class="muted">Нет</span>
+                      <span v-else class="muted">{{ t('task.value.tagsNone') }}</span>
                     </button>
                   </template>
                   <div class="menu">
@@ -1484,27 +1524,27 @@ async function onSubtaskChanged() {
                         <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
                         <div class="chip-grid">
                           <button
-                            v-for="t in g.tags"
-                            :key="t.id"
+                            v-for="tg in g.tags"
+                            :key="tg.id"
                             class="tagchip"
-                            :class="{ on: selectedTags.includes(t.id) }"
+                            :class="{ on: selectedTags.includes(tg.id) }"
                             :style="
-                              selectedTags.includes(t.id)
+                              selectedTags.includes(tg.id)
                                 ? {
-                                    background: hueGrad(t.color),
-                                    color: onColor(t.color),
+                                    background: hueGrad(tg.color),
+                                    color: onColor(tg.color),
                                     borderColor: 'transparent',
                                   }
                                 : {
-                                    background: softFill(t.color),
-                                    color: tagText(t.color),
-                                    borderColor: (t.color || '#888') + '66',
+                                    background: softFill(tg.color),
+                                    color: tagText(tg.color),
+                                    borderColor: (tg.color || '#888') + '66',
                                   }
                             "
-                            @click="toggleTag(t.id)"
+                            @click="toggleTag(tg.id)"
                           >
                             <TagPill
-                              :tag="t"
+                              :tag="tg"
                               :prefix-names="tagPrefixNames"
                               variant="inherit"
                               :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
@@ -1516,7 +1556,7 @@ async function onSubtaskChanged() {
                     <n-input
                       v-model:value="newTagName"
                       size="tiny"
-                      placeholder="Новый тег, Enter"
+                      :placeholder="t('task.tags.newPlaceholder')"
                       @keyup.enter="createTag"
                     />
                   </div>
@@ -1527,7 +1567,8 @@ async function onSubtaskChanged() {
                    Works the same for a task and for a subtask — one modal. -->
               <div class="prow">
                 <span class="plabel"
-                  ><n-icon :component="CheckmarkDoneOutline" :size="15" /> Статус</span
+                  ><n-icon :component="CheckmarkDoneOutline" :size="15" />
+                  {{ t('task.field.status') }}</span
                 >
                 <div class="status-row">
                   <n-popover
@@ -1538,7 +1579,7 @@ async function onSubtaskChanged() {
                     <template #trigger>
                       <button class="val col-chip" :disabled="moving">
                         <span class="col-dot" :style="{ background: currentColumn?.color }" />
-                        <span>{{ currentColumn?.name || 'Без колонки' }}</span>
+                        <span>{{ columnName(currentColumn) || t('task.value.columnNone') }}</span>
                       </button>
                     </template>
                     <div class="menu pmenu">
@@ -1550,19 +1591,23 @@ async function onSubtaskChanged() {
                         @click="moveToColumn(c.id)"
                       >
                         <span class="col-dot" :style="{ background: c.color }" />
-                        <span>{{ c.name }}</span>
+                        <span>{{ columnName(c) }}</span>
                       </div>
                     </div>
                   </n-popover>
                   <span v-else class="val col-chip static">
                     <span class="col-dot" :style="{ background: currentColumn?.color }" />
-                    <span>{{ currentColumn?.name || '—' }}</span>
+                    <span>{{ columnName(currentColumn) || '—' }}</span>
                   </span>
                   <template v-if="!readonly">
                     <button
                       class="st-btn"
                       :disabled="!nextCol || moving"
-                      :title="nextCol ? `Сдвинуть → «${nextCol.name}»` : 'Это последняя колонка'"
+                      :title="
+                        nextCol
+                          ? t('task.status.next', { name: columnName(nextCol) })
+                          : t('task.status.last')
+                      "
                       @click="moveToColumn(nextCol?.id)"
                     >
                       <n-icon :component="PlayForwardOutline" :size="15" />
@@ -1571,7 +1616,7 @@ async function onSubtaskChanged() {
                       class="st-btn"
                       :class="{ on: completed }"
                       :disabled="moving"
-                      :title="completed ? 'Вернуть в работу' : 'Выполнено'"
+                      :title="completed ? t('task.status.reopen') : t('task.status.complete')"
                       @click="closeTask"
                     >
                       <n-icon
@@ -1586,14 +1631,17 @@ async function onSubtaskChanged() {
               <!-- parent -->
               <div class="prow">
                 <span class="plabel"
-                  ><n-icon :component="GitMergeOutline" :size="15" /> Родитель</span
+                  ><n-icon :component="GitMergeOutline" :size="15" />
+                  {{ t('task.field.parent') }}</span
                 >
                 <button v-if="task?.parent_id" class="val" @click="detachFromParent">
-                  Открепить
+                  {{ t('task.parent.detach') }}
                 </button>
                 <n-popover v-else trigger="click" placement="bottom-start">
                   <template #trigger>
-                    <button class="val"><span class="muted">Сделать подзадачей…</span></button>
+                    <button class="val">
+                      <span class="muted">{{ t('task.parent.makeSubtask') }}</span>
+                    </button>
                   </template>
                   <div class="menu pmenu">
                     <div
@@ -1604,9 +1652,9 @@ async function onSubtaskChanged() {
                     >
                       {{ cand.title }}
                     </div>
-                    <span v-if="!parentCandidates.length" class="muted small"
-                      >Нет других задач</span
-                    >
+                    <span v-if="!parentCandidates.length" class="muted small">{{
+                      t('task.parent.noCandidates')
+                    }}</span>
                   </div>
                 </n-popover>
               </div>
@@ -1615,7 +1663,9 @@ async function onSubtaskChanged() {
               <div v-if="task && !task.gitlab && gitlabCanCreate" class="prow">
                 <span class="plabel"><n-icon :component="LogoGitlab" :size="15" /> GitLab</span>
                 <button class="val" :disabled="glCreating" @click="createGlIssue">
-                  <span class="muted">{{ glCreating ? 'Создание…' : 'Создать issue' }}</span>
+                  <span class="muted">{{
+                    glCreating ? t('task.gitlab.creating') : t('task.gitlab.create')
+                  }}</span>
                 </button>
               </div>
 
@@ -1624,10 +1674,13 @@ async function onSubtaskChanged() {
                    rules own, so it is hidden from the tag pickers on purpose. -->
               <div v-if="task?.gitlab && gitlabCanGroup" class="prow">
                 <span class="plabel"
-                  ><n-icon :component="LayersOutline" :size="15" /> Группировка</span
+                  ><n-icon :component="LayersOutline" :size="15" />
+                  {{ t('task.field.grouping') }}</span
                 >
                 <div class="group-cell">
-                  <span v-if="task.gitlab.is_group" class="group-chip">Сгруппированная</span>
+                  <span v-if="task.gitlab.is_group" class="group-chip">{{
+                    t('task.gitlab.grouped')
+                  }}</span>
                   <button class="val" :disabled="glGrouping" @click="toggleGlGroup">
                     <span class="muted">{{ glGroupAction }}</span>
                   </button>
@@ -1663,7 +1716,7 @@ async function onSubtaskChanged() {
                a double-click hides/shows the right column. -->
           <div
             class="tm-divider"
-            :title="rightHidden ? 'Двойной клик — показать панель' : 'Потяните / двойной клик'"
+            :title="rightHidden ? t('task.head.dividerHidden') : t('task.head.dividerDrag')"
             @pointerdown="startSplitDrag"
             @dblclick="toggleRightPane"
           >
@@ -1688,7 +1741,7 @@ async function onSubtaskChanged() {
                       class="tab-ico tab-ico--out"
                     />
                     <n-icon :component="DocumentText" :size="15" class="tab-ico tab-ico--fill" />
-                    Описание
+                    {{ t('task.tab.description') }}
                   </span>
                 </template>
                 <TaskDescriptionTab
@@ -1713,7 +1766,7 @@ async function onSubtaskChanged() {
 
               <n-tab-pane name="comments">
                 <template #tab>
-                  <span class="tab-lbl">
+                  <span class="tab-lbl" data-testid="tab-comments">
                     <n-icon
                       :component="ChatbubbleEllipsesOutline"
                       :size="15"
@@ -1724,7 +1777,7 @@ async function onSubtaskChanged() {
                       :size="15"
                       class="tab-ico tab-ico--fill"
                     />
-                    Комментарии
+                    {{ t('task.tab.comments') }}
                     <n-badge
                       v-if="comments.length"
                       :value="comments.length"
@@ -1749,7 +1802,7 @@ async function onSubtaskChanged() {
                   <span class="tab-lbl">
                     <n-icon :component="GitBranchOutline" :size="15" class="tab-ico tab-ico--out" />
                     <n-icon :component="GitBranch" :size="15" class="tab-ico tab-ico--fill" />
-                    Подзадачи
+                    {{ t('task.tab.subtasks') }}
                     <n-badge
                       v-if="task?.subtasks?.length"
                       :value="task.subtasks.length"
@@ -1774,7 +1827,7 @@ async function onSubtaskChanged() {
                   <span class="tab-lbl">
                     <n-icon :component="GitMergeOutline" :size="15" class="tab-ico tab-ico--out" />
                     <n-icon :component="GitMerge" :size="15" class="tab-ico tab-ico--fill" />
-                    Связи
+                    {{ t('task.tab.relations') }}
                     <n-badge
                       v-if="relations.length"
                       :value="relations.length"
@@ -1797,7 +1850,7 @@ async function onSubtaskChanged() {
                   <span class="tab-lbl">
                     <n-icon :component="AttachOutline" :size="15" class="tab-ico tab-ico--out" />
                     <n-icon :component="Attach" :size="15" class="tab-ico tab-ico--fill" />
-                    Файлы
+                    {{ t('task.tab.files') }}
                     <n-badge
                       v-if="attachments.length"
                       :value="attachments.length"
@@ -1815,14 +1868,14 @@ async function onSubtaskChanged() {
 
               <n-tab-pane name="documents">
                 <template #tab>
-                  <span class="tab-lbl">
+                  <span class="tab-lbl" data-testid="tab-documents">
                     <n-icon
                       :component="DocumentTextOutline"
                       :size="15"
                       class="tab-ico tab-ico--out"
                     />
                     <n-icon :component="DocumentText" :size="15" class="tab-ico tab-ico--fill" />
-                    Документы
+                    {{ t('task.tab.documents') }}
                     <n-badge
                       v-if="docLinks.length"
                       :value="docLinks.length"
@@ -1839,7 +1892,7 @@ async function onSubtaskChanged() {
                   <span class="tab-lbl">
                     <n-icon :component="TimeOutline" :size="15" class="tab-ico tab-ico--out" />
                     <n-icon :component="Time" :size="15" class="tab-ico tab-ico--fill" />
-                    История
+                    {{ t('task.tab.history') }}
                   </span>
                 </template>
                 <TaskHistoryTab :events="events" />
@@ -1851,52 +1904,54 @@ async function onSubtaskChanged() {
 
       <template #footer>
         <div v-if="readonly" class="footer">
-          <span class="ro-note">Архивная задача — только просмотр</span>
+          <span class="ro-note">{{ t('task.footer.readonly') }}</span>
           <n-space :wrap="false" :size="8">
-            <n-button @click="close">Закрыть</n-button>
+            <n-button @click="close">{{ t('common.action.close') }}</n-button>
             <n-button type="primary" @click="emit('restore', taskId)">
               <template #icon><n-icon :component="ArrowUndoOutline" /></template>
-              Вернуть из архива
+              {{ t('task.action.restore') }}
             </n-button>
           </n-space>
         </div>
         <div v-else class="footer">
           <n-space :wrap="false" :size="8">
             <n-popconfirm
-              :positive-text="archiveHasSubs ? 'В архив вместе' : 'В архив'"
-              :negative-text="archiveHasSubs ? 'Открепить подзадачи' : 'Отмена'"
+              :positive-text="
+                archiveHasSubs ? t('task.footer.archiveBoth') : t('task.confirm.archiveYes')
+              "
+              :negative-text="
+                archiveHasSubs ? t('task.footer.detachSubtasks') : t('common.action.cancel')
+              "
               @positive-click="() => archiveTask(false)"
               @negative-click="handleArchiveNegative"
             >
               <template #trigger>
                 <n-button type="primary" ghost>
                   <template #icon><n-icon :component="ArchiveOutline" /></template>
-                  <span class="fbtn-label">В архив</span>
+                  <span class="fbtn-label">{{ t('task.confirm.archiveYes') }}</span>
                 </n-button>
               </template>
-              {{
-                archiveHasSubs
-                  ? 'У задачи есть подзадачи — что с ними сделать?'
-                  : 'Перенести задачу в архив?'
-              }}
+              {{ archiveHasSubs ? t('task.footer.archiveWithSubs') : t('task.confirm.archive') }}
             </n-popconfirm>
             <n-popconfirm
               :positive-button-props="{ type: 'error' }"
-              positive-text="Удалить"
+              :positive-text="t('task.confirm.deleteYes')"
               @positive-click="doDelete"
             >
               <template #trigger>
                 <n-button type="error" ghost>
                   <template #icon><n-icon :component="TrashOutline" /></template>
-                  <span class="fbtn-label">Удалить</span>
+                  <span class="fbtn-label">{{ t('common.action.delete') }}</span>
                 </n-button>
               </template>
-              Удалить безвозвратно? Это действие необратимо.
+              {{ t('task.confirm.delete') }}
             </n-popconfirm>
           </n-space>
           <n-space :wrap="false" :size="8">
-            <n-button @click="close">Отмена</n-button>
-            <n-button type="primary" data-tour="tm-save" @click="save">Сохранить</n-button>
+            <n-button @click="close">{{ t('common.action.cancel') }}</n-button>
+            <n-button type="primary" data-tour="tm-save" @click="save">{{
+              t('common.action.save')
+            }}</n-button>
           </n-space>
         </div>
       </template>

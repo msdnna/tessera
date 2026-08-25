@@ -6,19 +6,27 @@
 // rather than keeping a copy. A copy would have to be merged back on close, and
 // the description saves on blur/persist, so any divergence would read as lost
 // text. Loaded lazily by MarkdownEditor (they reference each other).
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NModal, NIcon } from 'naive-ui'
 import { CloseOutline } from '@vicons/ionicons5'
 import MarkdownEditor from './MarkdownEditor.vue'
 
-defineProps({
+// `null` rather than a translated default: a prop default is evaluated once per
+// instance, so a literal built from t() would keep the language the modal was
+// opened in. The computed below reads the catalogue on every render instead.
+const props = defineProps({
   show: { type: Boolean, default: false },
   modelValue: { type: String, default: '' },
-  title: { type: String, default: 'Описание' },
-  placeholder: { type: String, default: 'Напишите что-нибудь…' },
+  title: { type: String, default: null },
+  placeholder: { type: String, default: null },
   mentionItems: { type: Array, default: () => [] },
   commandItems: { type: Array, default: () => [] },
   attachTaskId: { type: String, default: null },
 })
+const { t } = useI18n()
+const headTitle = computed(() => props.title ?? t('documents.editor.fullscreen.title'))
+const fieldPlaceholder = computed(() => props.placeholder ?? t('documents.editor.placeholder'))
 const emit = defineEmits([
   'update:show',
   'update:modelValue',
@@ -44,15 +52,20 @@ function close() {
   >
     <div class="mdfs">
       <div class="mdfs-head">
-        <span class="mdfs-title">{{ title }}</span>
-        <button type="button" class="mdfs-close" title="Закрыть (Esc)" @click="close">
+        <span class="mdfs-title">{{ headTitle }}</span>
+        <button
+          type="button"
+          class="mdfs-close"
+          :title="$t('documents.editor.fullscreen.close')"
+          @click="close"
+        >
           <n-icon :component="CloseOutline" :size="18" />
         </button>
       </div>
       <div class="mdfs-body">
         <MarkdownEditor
           :model-value="modelValue"
-          :placeholder="placeholder"
+          :placeholder="fieldPlaceholder"
           :mention-items="mentionItems"
           :command-items="commandItems"
           :attach-task-id="attachTaskId"

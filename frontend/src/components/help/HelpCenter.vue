@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NSpin } from 'naive-ui'
 import { ArrowBackOutline, ArrowForwardOutline } from '@vicons/ionicons5'
 import { useHelpStore } from '@/stores/help'
@@ -11,6 +12,7 @@ import HelpArticle from './HelpArticle.vue'
 // contents. Lives inside the modal (HelpCenterModal) rather than on a route —
 // the reader asks a question without leaving the board they are working on.
 // Content is docs-as-code, compiled into the bundle, so this makes no requests.
+const { t } = useI18n()
 const help = useHelpStore()
 
 const root = ref(null) // the scrolling column, also the observer's root
@@ -82,7 +84,9 @@ function goToHeading(id) {
         <header v-if="help.meta" class="hc-head">
           <div class="hc-crumb">{{ help.meta.category }}</div>
           <h1 class="hc-h1">{{ help.meta.title }}</h1>
-          <div v-if="help.meta.updated" class="hc-updated">Обновлено {{ help.meta.updated }}</div>
+          <div v-if="help.meta.updated" class="hc-updated">
+            {{ t('help.updated', { date: help.meta.updated }) }}
+          </div>
         </header>
 
         <n-spin v-if="help.loading && !help.body" size="small" />
@@ -121,7 +125,7 @@ function goToHeading(id) {
       </div>
 
       <aside v-if="help.headings.length" class="hc-toc">
-        <div class="hc-toc-head">На этой странице</div>
+        <div class="hc-toc-head">{{ t('help.onThisPage') }}</div>
         <button
           v-for="h in help.headings"
           :key="h.id"

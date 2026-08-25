@@ -1,7 +1,9 @@
 package website.msdnna.tessera.util
 
+import android.content.res.Resources
 import java.text.Collator
 import java.util.Locale
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.GitlabRule
 import website.msdnna.tessera.data.model.Tag
 
@@ -16,7 +18,10 @@ import website.msdnna.tessera.data.model.Tag
  *  and the member [tags] (sorted by name). */
 data class TagGroup(val key: String, val label: String, val prefix: String, val tags: List<Tag>)
 
-/** Russian-locale, case-insensitive collator so Cyrillic labels sort naturally. */
+/** Russian-locale, case-insensitive collator so Cyrillic labels sort naturally.
+ *  Локаль сортировки намеренно не следует за языком интерфейса: имена тегов — это
+ *  пользовательские данные, они остаются русскими и на английском UI, а порядок
+ *  групп не должен переставляться от переключения языка. */
 private val ruCollator: Collator =
     Collator.getInstance(Locale.forLanguageTag("ru")).apply { strength = Collator.SECONDARY }
 
@@ -37,8 +42,8 @@ fun canonPrefix(p: String): String = p.trim().lowercase()
 
 /** Display label for a namespace: the configured friendly name, else the trimmed
  *  raw prefix (e.g. "S:"), else "Вне группы" for prefix-less tags. */
-fun prefixLabel(ns: String, prefixNames: Map<String, String> = emptyMap()): String {
-    if (ns.isEmpty()) return "Вне группы"
+fun prefixLabel(res: Resources, ns: String, prefixNames: Map<String, String> = emptyMap()): String {
+    if (ns.isEmpty()) return res.getString(R.string.tag_group_none)
     return prefixNames[canonPrefix(ns)] ?: ns.trim()
 }
 
@@ -96,6 +101,7 @@ fun metaPrefixesFromRules(rules: List<GitlabRule>): Set<String> =
  *  [hidePrefixes] (canonical prefixes, e.g. from [metaPrefixesFromRules]) drops those
  *  tags entirely — used to keep GitLab meta-labels out of the ADD picker. */
 fun buildTagGroups(
+    res: Resources,
     tags: List<Tag>,
     prefixNames: Map<String, String> = emptyMap(),
     hidePrefixes: Set<String> = emptySet(),
@@ -111,7 +117,7 @@ fun buildTagGroups(
             val ns = tagNamespace(list.first().name)
             TagGroup(
                 key = key,
-                label = prefixLabel(ns, prefixNames),
+                label = prefixLabel(res, ns, prefixNames),
                 prefix = ns,
                 tags = list.sortedWith(compareBy(ruCollator) { it.name }),
             )

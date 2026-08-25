@@ -1,18 +1,23 @@
 <script setup>
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton } from 'naive-ui'
 import { useBoardViewStore } from '@/stores/boardView'
 import TesseraIcon from './TesseraIcon.vue'
 
 const store = useBoardViewStore()
+const { t } = useI18n()
 // Tessera icon-pack names per visualization (filled when active for emphasis).
-const opts = [
-  { value: 'board', label: 'Доска', icon: 'layout-kanban' },
-  { value: 'list', label: 'Список', icon: 'layout-list' },
-  { value: 'calendar', label: 'Календарь', icon: 'layout-calendar' },
-  { value: 'timeline', label: 'Таймлайн', icon: 'layout-timeline' },
-  { value: 'gantt', label: 'Гант', icon: 'layout-gantt' },
-  { value: 'matrix', label: 'Матрица', icon: 'layout-matrix' },
+// Labels are resolved per render so the switcher follows a language change.
+const LAYOUTS = [
+  { value: 'board', icon: 'layout-kanban' },
+  { value: 'list', icon: 'layout-list' },
+  { value: 'calendar', icon: 'layout-calendar' },
+  { value: 'timeline', icon: 'layout-timeline' },
+  { value: 'gantt', icon: 'layout-gantt' },
+  { value: 'matrix', icon: 'layout-matrix' },
 ]
+const opts = computed(() => LAYOUTS.map((o) => ({ ...o, label: t(`board.layout.${o.value}`) })))
 </script>
 
 <template>

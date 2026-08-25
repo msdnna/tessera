@@ -1,14 +1,15 @@
 <script setup>
 import { ref, computed, toRef, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { TimerOutline } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
-import { useDateLocale } from '@/composables/useDateLocale'
 import { useThemeStore } from '@/stores/theme'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, readableHue } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { formatEstimateFull, estimateRangeShort } from '@/utils/estimation'
+import { useFormat } from '@/composables/useFormat'
 import { startOfDay, parseDate as parse } from '@/utils/timeAxis'
 import { useChartTimeline } from '@/composables/useChartTimeline'
 import { useChartLanes } from '@/composables/useChartLanes'
@@ -23,6 +24,8 @@ import ChartUnscheduled from './chart/ChartUnscheduled.vue'
 import ChartTaskMenu from './chart/ChartTaskMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
 import UserAvatar from './UserAvatar.vue'
+
+const { t } = useI18n()
 
 const wsStore = useWorkspacesStore()
 
@@ -149,9 +152,16 @@ const overdueCount = computed(
 const counters = computed(() => {
   const out = []
   if (overdueCount.value)
-    out.push({ key: 'overdue', text: `${overdueCount.value} просрочено`, overdue: true })
+    out.push({
+      key: 'overdue',
+      text: t('board.chart.counter.overdue', { n: overdueCount.value }),
+      overdue: true,
+    })
   if (unscheduled.value.length)
-    out.push({ key: 'unsched', text: `${unscheduled.value.length} без дат` })
+    out.push({
+      key: 'unsched',
+      text: t('board.chart.counter.unscheduled', { n: unscheduled.value.length }),
+    })
   return out
 })
 
@@ -187,7 +197,7 @@ onBeforeUnmount(() => {
 })
 
 // ── hover preview card ──
-const { formatDue } = useDateLocale()
+const { formatDue, formatters } = useFormat()
 const hover = ref(null) // { task, x, y, above }
 let hoverTimer = null
 function onBarEnter(e, t) {
@@ -227,7 +237,12 @@ const hoverEstimate = computed(() =>
 )
 const hoverEstimateRange = computed(() =>
   hover.value
-    ? estimateRangeShort(hover.value.task.start_date, hover.value.task.estimate, estCfg.value)
+    ? estimateRangeShort(
+        hover.value.task.start_date,
+        hover.value.task.estimate,
+        estCfg.value,
+        formatters.value,
+      )
     : '',
 )
 </script>
@@ -312,9 +327,7 @@ const hoverEstimateRange = computed(() =>
           <div class="tl-vspacer" :style="{ height: `${vwindow.bottom}px` }" />
         </div>
 
-        <div v-if="!lanes.length" class="tl-empty">
-          Нет задач со сроками. Задайте срок или начало в карточке.
-        </div>
+        <div v-if="!lanes.length" class="tl-empty">{{ t('board.chart.empty') }}</div>
       </div>
     </div>
 

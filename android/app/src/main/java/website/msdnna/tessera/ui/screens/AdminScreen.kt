@@ -33,6 +33,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,6 +44,7 @@ import coil.compose.AsyncImage
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.AdminUser
@@ -74,6 +77,9 @@ fun AdminScreen() {
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val ctx = LocalContext.current
+    // Тост показывается вне композиции, поэтому строку берём из ресурсов, которые
+    // подменил AppLocale, — LocalContext остаётся на системной локали.
+    val res = LocalResources.current
     val api = AppContainer.api()
     val me by AppContainer.prefs.user.collectAsStateWithLifecycle(initialValue = null)
 
@@ -94,7 +100,7 @@ fun AdminScreen() {
                 users.clear()
                 users.addAll(it)
             }
-            .onFailure { error = it.message ?: "Не удалось загрузить пользователей" }
+            .onFailure { error = it.message ?: res.getString(R.string.admin_load_failed) }
         loading = false
     }
 
@@ -135,7 +141,7 @@ fun AdminScreen() {
                     val full = if (link.startsWith("http")) link else RetrofitClient.serverRoot + link
                     clipboard.setText(AnnotatedString(full))
                     android.widget.Toast
-                        .makeText(ctx, "Ссылка для сброса пароля скопирована", android.widget.Toast.LENGTH_SHORT)
+                        .makeText(ctx, res.getString(R.string.admin_reset_link_copied), android.widget.Toast.LENGTH_SHORT)
                         .show()
                 }
                 .onFailure { error = it.message }
@@ -152,21 +158,21 @@ fun AdminScreen() {
         Row(Modifier.padding(top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IonIcon(Ion.SHIELD_CHECKMARK, size = 22.dp, tint = c.primary)
             Spacer(Modifier.width(8.dp))
-            Text("Администрирование", color = c.text1, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.nav_admin), color = c.text1, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(12.dp))
         OAuthConfigCard()
         Spacer(Modifier.height(14.dp))
-        Text("Пользователи экземпляра — ${users.size}", color = c.text3, fontSize = 13.sp)
+        Text(stringResource(R.string.admin_users_count, users.size), color = c.text3, fontSize = 13.sp)
         Spacer(Modifier.height(12.dp))
-        TTextField(value = query, onValueChange = { query = it }, placeholder = "Поиск по имени или почте")
+        TTextField(value = query, onValueChange = { query = it }, placeholder = stringResource(R.string.admin_search_placeholder))
         TFormError(error, modifier = Modifier.padding(top = 6.dp))
         Spacer(Modifier.height(10.dp))
 
         when {
-            loading -> Text("Загрузка…", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(top = 20.dp))
+            loading -> Text(stringResource(R.string.common_loading), color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(top = 20.dp))
 
-            filtered.isEmpty() -> Text("Никого не найдено", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(top = 20.dp))
+            filtered.isEmpty() -> Text(stringResource(R.string.admin_nobody_found), color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(top = 20.dp))
 
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(filtered, key = { it.id }) { u ->
@@ -185,9 +191,9 @@ fun AdminScreen() {
 
     confirmAdmin?.let { u ->
         TConfirmDialog(
-            title = "Снять администратора",
-            message = "Снять права администратора у ${u.name}?",
-            confirmText = "Снять",
+            title = stringResource(R.string.admin_demote_title),
+            message = stringResource(R.string.admin_demote_message, u.name),
+            confirmText = stringResource(R.string.admin_demote_confirm),
             onConfirm = {
                 setAdmin(u, false)
                 confirmAdmin = null
@@ -197,9 +203,9 @@ fun AdminScreen() {
     }
     confirmActive?.let { u ->
         TConfirmDialog(
-            title = "Деактивировать аккаунт",
-            message = "Деактивировать ${u.name}? Пользователь не сможет войти.",
-            confirmText = "Деактивировать",
+            title = stringResource(R.string.admin_deactivate_title),
+            message = stringResource(R.string.admin_deactivate_message, u.name),
+            confirmText = stringResource(R.string.admin_deactivate),
             onConfirm = {
                 setActive(u, false)
                 confirmActive = null
@@ -221,6 +227,9 @@ private fun OAuthConfigCard() {
     val c = Tessera.colors
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
+    // Как и в списке аккаунтов: тост уходит наружу из композиции, строки — из
+    // подменённых AppLocale ресурсов, а не из системного LocalContext.
+    val res = LocalResources.current
     val api = AppContainer.api()
     val pretty = remember { GsonBuilder().setPrettyPrinting().create() }
 
@@ -254,7 +263,7 @@ private fun OAuthConfigCard() {
                 serviceToken = ""
                 loaded = true
             }
-            .onFailure { error = it.message ?: "Не удалось загрузить настройки OAuth" }
+            .onFailure { error = it.message ?: res.getString(R.string.admin_oauth_load_failed) }
         loading = false
     }
 
@@ -263,7 +272,7 @@ private fun OAuthConfigCard() {
     fun save() {
         val orgMapEl = runCatching { JsonParser.parseString(orgMapText.ifBlank { "{}" }) }.getOrNull()
         if (orgMapEl == null || !orgMapEl.isJsonObject) {
-            error = "org_map: ожидается JSON-объект"
+            error = res.getString(R.string.admin_oauth_orgmap_invalid)
             return
         }
         saving = true
@@ -288,10 +297,10 @@ private fun OAuthConfigCard() {
                     serviceToken = ""
                     orgMapText = pretty.toJson(cfg.orgMap ?: JsonParser.parseString("{}"))
                     android.widget.Toast
-                        .makeText(ctx, "Настройки OAuth сохранены", android.widget.Toast.LENGTH_SHORT)
+                        .makeText(ctx, res.getString(R.string.admin_oauth_saved), android.widget.Toast.LENGTH_SHORT)
                         .show()
                 }
-                .onFailure { error = it.message ?: "Не удалось сохранить настройки" }
+                .onFailure { error = it.message ?: res.getString(R.string.admin_oauth_save_failed) }
             saving = false
         }
     }
@@ -306,8 +315,14 @@ private fun OAuthConfigCard() {
             ) {
                 IonIcon(Ion.GITLAB, size = 18.dp, tint = c.primary)
                 Spacer(Modifier.width(8.dp))
-                Text("Вход через GitLab (OAuth)", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                if (enabled) Badge("включён", c.primary)
+                Text(
+                    stringResource(R.string.admin_oauth_title),
+                    color = c.text1,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                if (enabled) Badge(stringResource(R.string.admin_oauth_badge_on), c.primary)
                 Spacer(Modifier.width(6.dp))
                 IonIcon(if (expanded) Ion.CHEVRON_DOWN else Ion.CHEVRON_FORWARD, size = 18.dp, tint = c.text3)
             }
@@ -315,8 +330,9 @@ private fun OAuthConfigCard() {
             if (expanded) {
                 Spacer(Modifier.height(12.dp))
                 if (loading) {
-                    Text("Загрузка…", color = c.text3, fontSize = 13.sp)
+                    Text(stringResource(R.string.common_loading), color = c.text3, fontSize = 13.sp)
                 } else {
+                    val stored = stringResource(R.string.admin_oauth_secret_stored)
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         TTextField(glBaseUrl, { glBaseUrl = it }, label = "GitLab URL", placeholder = "https://gitlab.example.com")
                         TTextField(clientId, { clientId = it }, label = "Client ID")
@@ -324,31 +340,31 @@ private fun OAuthConfigCard() {
                             clientSecret,
                             { clientSecret = it },
                             label = "Client Secret",
-                            placeholder = if (hasSecret) "(сохранён — введите, чтобы заменить)" else "",
+                            placeholder = if (hasSecret) stored else "",
                             isPassword = true,
                         )
                         TTextField(
                             serviceToken,
                             { serviceToken = it },
-                            label = "Сервис-токен (PAT, инстанс-широкий)",
-                            placeholder = if (hasServiceToken) "(сохранён — введите, чтобы заменить)" else "glpat-…",
+                            label = stringResource(R.string.admin_oauth_service_token),
+                            placeholder = if (hasServiceToken) stored else "glpat-…",
                             isPassword = true,
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Включён", color = c.text2, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.admin_oauth_enabled), color = c.text2, fontSize = 14.sp, modifier = Modifier.weight(1f))
                             TSwitch(checked = enabled, onCheckedChange = { enabled = it })
                         }
                         TTextField(
                             orgMapText,
                             { orgMapText = it },
-                            label = "org_map (JSON: путь-группы → {workspace_id, admins, users})",
+                            label = stringResource(R.string.admin_oauth_org_map),
                             singleLine = false,
                         )
-                        Text("Callback URL (укажите в OAuth-приложении GitLab):", color = c.text3, fontSize = 12.sp)
+                        Text(stringResource(R.string.admin_oauth_callback_hint), color = c.text3, fontSize = 12.sp)
                         Text(callbackUrl, color = c.text2, fontSize = 12.sp)
                         TFormError(error)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TButton("Сохранить", enabled = !saving, loading = saving, onClick = ::save)
+                            TButton(stringResource(R.string.common_save), enabled = !saving, loading = saving, onClick = ::save)
                         }
                     }
                 }
@@ -381,25 +397,25 @@ private fun UserRow(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(u.name, color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     if (u.isAdmin) Badge("admin", c.primary)
-                    if (isMe) Badge("вы", c.text3)
-                    if (!u.active) Badge("деактивирован", TesseraDanger)
-                    if (!u.emailVerified) Badge("не подтверждён", c.text3)
+                    if (isMe) Badge(stringResource(R.string.admin_badge_you), c.text3)
+                    if (!u.active) Badge(stringResource(R.string.admin_badge_inactive), TesseraDanger)
+                    if (!u.emailVerified) Badge(stringResource(R.string.admin_badge_unverified), c.text3)
                 }
                 Text(u.email, color = c.text3, fontSize = 12.sp, maxLines = 1)
             }
         }
         Spacer(Modifier.height(10.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            TButton("Сброс пароля", kind = TButtonKind.Secondary, enabled = !busy, icon = Ion.LINK, onClick = onCopyReset)
+            TButton(stringResource(R.string.admin_reset_password), kind = TButtonKind.Secondary, enabled = !busy, icon = Ion.LINK, onClick = onCopyReset)
             if (!isMe) {
                 TButton(
-                    if (u.isAdmin) "Снять админа" else "Сделать админом",
+                    stringResource(if (u.isAdmin) R.string.admin_demote else R.string.admin_promote),
                     kind = TButtonKind.Secondary,
                     enabled = !busy,
                     onClick = onToggleAdmin,
                 )
                 TButton(
-                    if (u.active) "Деактивировать" else "Активировать",
+                    stringResource(if (u.active) R.string.admin_deactivate else R.string.admin_activate),
                     kind = if (u.active) TButtonKind.Ghost else TButtonKind.Primary,
                     enabled = !busy,
                     onClick = onToggleActive,

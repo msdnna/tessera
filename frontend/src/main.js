@@ -4,10 +4,14 @@ import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
 import { initSentry } from './utils/sentry'
+import { i18n } from './i18n'
 import './styles/main.css'
 
 const app = createApp(App)
 app.use(createPinia())
+// Starts on `ru`; App.vue watches the persisted language preference and
+// switches (loading the locale chunk) from there — see #2797.
+app.use(i18n)
 
 // #2787: browser telemetry. Started here, but deliberately NOT awaited before
 // mount — it fetches its config from the backend, and gating the first paint on

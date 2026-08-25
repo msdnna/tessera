@@ -153,7 +153,9 @@ api.interceptors.response.use(
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }
     if (refreshOffline) setOffline(true)
-    const raw = err.response?.data?.error || err.message || 'Ошибка запроса'
+    // No message at all → humanizeError answers with its own generic line from
+    // the catalogue; a literal here would be one more untranslated string.
+    const raw = err.response?.data?.error || err.message || ''
     const wrapped = new Error(humanizeError(raw))
     // Keep the HTTP status reachable: most callers just show `e.message`, but a
     // few need to tell one failure from another (e.g. 409 "address taken" is

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
 import { LogoGitlab } from '@vicons/ionicons5'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
@@ -13,6 +14,8 @@ import {
   OAUTH_WAIT_MS,
 } from '@/composables/useDesktopOAuth'
 
+const { t, te } = useI18n()
+
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
@@ -24,19 +27,18 @@ const route = useRoute()
 
 const gitlabEnabled = ref(false)
 
-const OAUTH_ERRORS = {
-  state_mismatch: 'Сессия входа устарела. Попробуйте ещё раз.',
-  not_configured: 'Вход через GitLab не настроен.',
-  account_disabled: 'Учётная запись деактивирована.',
-  exchange_failed: 'Не удалось авторизоваться в GitLab.',
-  userinfo_failed: 'Не удалось получить профиль GitLab.',
+// Resolved per call, not as a module-level table: a table built at import time
+// would freeze on the language of the first render (#2799).
+function oauthError(reason) {
+  const key = `common.auth.oauthError.${reason}`
+  return reason && te(key) ? t(key) : t('common.auth.oauthError.generic')
 }
 
 onMounted(async () => {
   // Show a banner if the OAuth callback bounced back with an error.
   const oe = route.query.oauth_error
   if (typeof oe === 'string' && oe) {
-    formError.value = OAUTH_ERRORS[oe] || 'Не удалось войти через GitLab.'
+    formError.value = oauthError(oe)
   }
   try {
     const { data } = await auth.providers()
@@ -61,7 +63,7 @@ function stopWaiting() {
 function onOAuthDone(e) {
   stopWaiting()
   const reason = e.detail?.error
-  if (reason) formError.value = OAUTH_ERRORS[reason] || 'Не удалось войти через GitLab.'
+  if (reason) formError.value = oauthError(reason)
 }
 onMounted(() => window.addEventListener(OAUTH_DONE_EVENT, onOAuthDone))
 onUnmounted(() => {
@@ -81,13 +83,12 @@ async function loginWithGitlab() {
   glWaiting.value = true
   if (!(await startDesktopGitlabLogin(auth.gitlabAuthorizeUrl('desktop')))) {
     stopWaiting()
-    formError.value = 'Не удалось открыть браузер для входа через GitLab.'
+    formError.value = t('common.auth.oauthError.browserOpen')
     return
   }
   glTimer = setTimeout(() => {
     stopWaiting()
-    formError.value =
-      'Не удалось вернуться в приложение. Проверьте, что ссылки tessera:// открываются в Tessera.'
+    formError.value = t('common.auth.oauthError.noReturn')
   }, OAUTH_WAIT_MS)
 }
 
@@ -95,9 +96,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function validate() {
   const e = {}
-  if (!email.value.trim()) e.email = 'Укажите email'
-  else if (!EMAIL_RE.test(email.value.trim())) e.email = 'Введите корректный email'
-  if (!password.value) e.password = 'Укажите пароль'
+  if (!email.value.trim()) e.email = t('common.auth.validation.emailRequired')
+  else if (!EMAIL_RE.test(email.value.trim())) e.email = t('common.auth.validation.emailInvalid')
+  if (!password.value) e.password = t('common.auth.validation.passwordRequired')
   errors.value = e
   return Object.keys(e).length === 0
 }
@@ -118,24 +119,24 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout title="Вход">
+  <auth-layout :title="t('common.auth.login.title')">
     <div v-if="formError" class="auth-error">{{ formError }}</div>
     <n-form @submit.prevent="submit">
       <n-form-item
-        label="Email"
+        :label="t('common.auth.login.email')"
         :validation-status="errors.email ? 'error' : undefined"
         :feedback="errors.email"
       >
         <n-input
           v-model:value="email"
-          placeholder="you@example.com"
+          :placeholder="t('common.auth.login.emailPlaceholder')"
           data-testid="login-email"
           @input="errors.email = ''"
           @keyup.enter="submit"
         />
       </n-form-item>
       <n-form-item
-        label="Пароль"
+        :label="t('common.auth.login.password')"
         :validation-status="errors.password ? 'error' : undefined"
         :feedback="errors.password"
       >
@@ -149,23 +150,28 @@ async function submit() {
         />
       </n-form-item>
       <n-button type="primary" block data-testid="login-submit" :loading="loading" @click="submit">
-        Войти
+        {{ t('common.auth.login.submit') }}
       </n-button>
     </n-form>
     <template v-if="gitlabEnabled">
-      <div class="auth-or"><span>или</span></div>
+      <div class="auth-or">
+        <span>{{ t('common.auth.login.or') }}</span>
+      </div>
       <n-button block class="gl-oauth-btn" :loading="glWaiting" @click="loginWithGitlab">
         <template #icon><n-icon :component="LogoGitlab" /></template>
-        {{ glWaiting ? 'Ожидаем подтверждения в браузере…' : 'Войти через GitLab' }}
+        {{ glWaiting ? t('common.auth.login.gitlabWaiting') : t('common.auth.login.gitlab') }}
       </n-button>
       <div v-if="glWaiting" class="auth-foot">
-        <a href="#" @click.prevent="stopWaiting">Отмена</a>
+        <a href="#" @click.prevent="stopWaiting">{{ t('common.action.cancel') }}</a>
       </div>
     </template>
     <div class="auth-foot">
-      <router-link to="/forgot-password">Забыли пароль?</router-link>
+      <router-link to="/forgot-password">{{ t('common.auth.login.forgot') }}</router-link>
     </div>
-    <div class="auth-foot">Нет аккаунта? <router-link to="/register">Регистрация</router-link></div>
+    <div class="auth-foot">
+      {{ t('common.auth.login.noAccount') }}
+      <router-link to="/register">{{ t('common.auth.login.register') }}</router-link>
+    </div>
   </auth-layout>
 </template>
 

@@ -125,7 +125,10 @@ func (h *API) CreateUserResetLink(c *gin.Context) {
 	}
 	link := fmt.Sprintf("%s/recover?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
 	// Best-effort email too, so the user gets it directly when SMTP is configured.
-	mail.SendAsync(h.mailer, user.Email, "Восстановление доступа — Tessera",
-		fmt.Sprintf("Администратор создал ссылку для восстановления доступа. Перейдите по ссылке (действует час): %s", link))
+	// The admin acts, the user reads: the letter is in the user's language.
+	subject, body := mail.Compose(mail.KindAdminReset, h.userLang(c, user.ID), mail.Vars{
+		Link: link, TTLHours: int(resetTokenTTL / time.Hour),
+	})
+	mail.SendAsync(h.mailer, user.Email, subject, body)
 	c.JSON(http.StatusOK, gin.H{"link": link})
 }

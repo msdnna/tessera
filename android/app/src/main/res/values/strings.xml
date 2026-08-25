@@ -1,4 +1,1175 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Базовая (русская) локаль. Английский — values-en/strings.xml, ключи должны
+    совпадать один-в-один: за этим следит StringParityTest.
+
+    Ключи именуются по фиче (auth_/gate_/settings_/task_), как неймспейсы
+    во frontend/src/locales — при переносе строки с веба ищется соответствие.
+-->
 <resources>
     <string name="app_name">Tessera</string>
+
+    <!-- Экран входа/регистрации -->
+    <string name="auth_headline_login">Войдите в аккаунт</string>
+    <string name="auth_headline_register">Создайте аккаунт</string>
+    <string name="auth_email_label">Email</string>
+    <string name="auth_email_placeholder">you@example.com</string>
+    <string name="auth_name_label">Имя</string>
+    <string name="auth_name_placeholder">Как вас зовут</string>
+    <string name="auth_password_label">Пароль</string>
+    <string name="auth_password_placeholder">••••••••</string>
+    <string name="auth_submit_login">Войти</string>
+    <string name="auth_submit_register">Зарегистрироваться</string>
+    <string name="auth_gitlab">Войти через GitLab</string>
+    <string name="auth_divider_or">или</string>
+    <string name="auth_forgot">Забыли пароль?</string>
+    <string name="auth_forgot_sent">Если аккаунт существует, письмо отправлено</string>
+    <string name="auth_switch_to_login">Уже есть аккаунт? Войти</string>
+    <string name="auth_switch_to_register">Нет аккаунта? Зарегистрироваться</string>
+    <string name="auth_reset_title">Восстановление пароля</string>
+    <string name="auth_reset_confirm">Отправить</string>
+    <string name="auth_server_title">Сервер</string>
+    <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
+    <string name="auth_server_hint">Применяется сразу. Пусто — сервер по умолчанию.</string>
+    <string name="auth_browser_failed">Не удалось открыть браузер для входа</string>
+
+    <!-- Ошибки OAuth-редиректа (коды приходят от бэкенда) -->
+    <string name="auth_oauth_not_configured">Вход через GitLab не настроен на сервере</string>
+    <string name="auth_oauth_state_mismatch">Сессия входа устарела — попробуйте ещё раз</string>
+    <string name="auth_oauth_exchange_failed">Не удалось получить данные от GitLab</string>
+    <string name="auth_oauth_account_disabled">Аккаунт отключён</string>
+    <string name="auth_oauth_incomplete">Вход не был завершён</string>
+    <string name="auth_oauth_failed">Не удалось войти через GitLab</string>
+
+    <!-- Стартовый гейт сессии -->
+    <string name="gate_offline_title">Нет связи с сервером</string>
+    <string name="gate_offline_message">Не удалось подключиться к серверу API. Проверьте, что сервер доступен, и попробуйте снова.</string>
+    <string name="gate_offline_retry">Попробовать ещё раз</string>
+    <string name="gate_session_title">Сессия завершена</string>
+    <string name="gate_session_message">Похоже, сессия истекла или доступ к аккаунту закрыт. Войдите снова, чтобы продолжить.</string>
+    <string name="gate_session_relogin">Выполнить повторный вход</string>
+    <string name="gate_exit">Выход</string>
+
+    <!-- Настройки: профиль -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_profile_title">Профиль</string>
+    <string name="settings_avatar_upload">Загрузить</string>
+    <string name="settings_avatar_remove">Убрать</string>
+    <string name="settings_avatar_hint">PNG/JPEG/GIF/WebP, до 2 МБ</string>
+    <string name="settings_email_label">Email (логин)</string>
+    <string name="settings_email_verified">Почта подтверждена</string>
+    <string name="settings_email_unverified">Почта не подтверждена</string>
+    <string name="settings_email_sent">письмо отправлено</string>
+    <string name="settings_email_send">Отправить</string>
+    <string name="settings_display_name">Отображаемое имя</string>
+    <string name="settings_display_name_placeholder">Как вас показывать</string>
+    <string name="settings_last_name">Фамилия</string>
+    <string name="settings_first_name">Имя</string>
+    <string name="settings_middle_name">Отчество</string>
+    <string name="settings_company">Место работы</string>
+    <string name="settings_job_title">Должность</string>
+    <string name="settings_bio">О себе</string>
+    <string name="settings_save_profile">Сохранить профиль</string>
+
+    <!-- Настройки: безопасность -->
+    <string name="settings_security_title">Безопасность</string>
+    <string name="settings_password_current">Текущий пароль</string>
+    <string name="settings_password_new">Новый пароль (≥ 8)</string>
+    <string name="settings_password_repeat">Повторите новый</string>
+    <string name="settings_password_changed">Пароль изменён</string>
+    <string name="settings_password_submit">Сменить пароль</string>
+
+    <!-- Настройки: оформление -->
+    <string name="settings_appearance_title">Оформление</string>
+    <string name="settings_theme">Тема</string>
+    <string name="settings_accent">Акцент</string>
+    <string name="settings_board_background">Фон досок (CSS-цвет или URL)</string>
+    <string name="settings_board_background_placeholder">#0e0e12 или https://…/bg.jpg</string>
+    <string name="theme_system">Системная</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Тёмная</string>
+
+    <!-- Настройки: локализация и форматы -->
+    <string name="settings_locale_title">Локализация и форматы</string>
+    <string name="settings_language">Язык</string>
+    <string name="settings_week_start">Начало недели</string>
+    <string name="settings_time_format">Формат времени</string>
+    <string name="settings_date_format">Формат даты</string>
+    <string name="settings_timezone">Часовой пояс</string>
+    <string name="settings_timezone_placeholder">Europe/Moscow</string>
+    <string name="settings_country">Страна</string>
+    <string name="settings_country_placeholder">Выберите страну</string>
+    <string name="settings_locale_hint">Форматы применяются к календарям и датам. Интерфейс переводится волнами — часть экранов пока только на русском.</string>
+    <string name="settings_search_placeholder">Поиск…</string>
+    <string name="language_ru">Русский</string>
+    <string name="language_en">English (частично)</string>
+    <string name="time_format_24h">24-часовой</string>
+    <string name="time_format_12h">12-часовой (AM/PM)</string>
+    <string name="week_start_monday">Понедельник</string>
+    <string name="week_start_sunday">Воскресенье</string>
+
+    <!-- Общие подписи действий (переиспользуются экранами) -->
+    <string name="common_create">Создать</string>
+    <string name="common_cancel">Отмена</string>
+    <string name="common_delete">Удалить</string>
+    <string name="common_rename">Переименовать</string>
+    <string name="common_open">Открыть</string>
+    <string name="common_save">Сохранить</string>
+    <string name="common_loading">Загрузка…</string>
+    <string name="common_error">Ошибка</string>
+    <string name="common_nothing_found">Ничего не найдено</string>
+    <string name="common_edit">Изменить</string>
+    <string name="common_done">Готово</string>
+    <string name="common_close">Закрыть</string>
+    <string name="common_retry">Повторить</string>
+    <string name="common_got_it">Понятно</string>
+
+    <!-- Навигация в боковой панели -->
+    <string name="nav_home">Моя работа</string>
+    <string name="nav_milestones">Этапы</string>
+    <string name="nav_reminders">Напоминания</string>
+    <string name="nav_notes">Заметки</string>
+    <string name="nav_documents">Документы</string>
+    <string name="nav_help">Помощь</string>
+    <string name="nav_admin">Администрирование</string>
+
+    <!-- Боковая панель: пространства -->
+    <string name="sidebar_estimation">Оценка задач…</string>
+    <string name="sidebar_ws_new_title">Новое пространство</string>
+    <string name="sidebar_ws_name_hint">Название</string>
+    <string name="sidebar_ws_delete">Удалить пространство</string>
+    <string name="sidebar_ws_delete_message">Пространство «%1$s» и все его проекты, доски и задачи будут удалены безвозвратно. Введите название для подтверждения.</string>
+    <string name="sidebar_ws_delete_last">Нельзя удалить единственное пространство</string>
+
+    <!-- Боковая панель: дерево проектов -->
+    <string name="sidebar_projects_header">ПРОЕКТЫ</string>
+    <string name="sidebar_add_project">Проект</string>
+    <string name="sidebar_add_group">Группа</string>
+    <string name="sidebar_group_name_hint">Название группы</string>
+    <string name="sidebar_project_name_hint">Название проекта</string>
+    <string name="sidebar_board_name_hint">Название доски</string>
+    <string name="sidebar_empty_tree">Нет проектов. Нажмите +, чтобы создать.</string>
+    <string name="sidebar_no_boards">Нет досок</string>
+    <string name="sidebar_backlog">Бэклог</string>
+
+    <!-- Боковая панель: меню группы -->
+    <string name="sidebar_group_add_project">Добавить проект</string>
+    <string name="sidebar_group_add_subgroup">Добавить подгруппу</string>
+    <string name="sidebar_group_delete_message">Удалить «%1$s»? Подгруппы вложатся выше, проекты станут без группы.</string>
+
+    <!-- Боковая панель: меню проекта и доски -->
+    <string name="sidebar_project_add_board">Добавить доску</string>
+    <string name="sidebar_project_tree_mode">Показывать в дереве</string>
+    <string name="sidebar_tree_mode_boards">Доски</string>
+    <string name="sidebar_tree_mode_milestones">Этапы</string>
+    <string name="sidebar_tree_mode_both">Доски и этапы</string>
+    <string name="sidebar_show_closed_milestones">Показывать закрытые этапы</string>
+    <string name="sidebar_project_delete_title">Удалить проект</string>
+    <string name="sidebar_project_delete_message">Проект «%1$s» будет удалён со всеми досками и задачами. Действие необратимо.</string>
+    <string name="sidebar_board_delete_message">Удалить доску «%1$s»?</string>
+
+    <!-- Боковая панель: перенос проекта между пространствами -->
+    <string name="sidebar_project_transfer">Перенести в другое пространство</string>
+    <string name="sidebar_transfer_title">Перенести проект</string>
+    <string name="sidebar_transfer_message">Проект «%1$s» переедет в выбранное пространство со всеми досками, задачами, тегами и заметками. В новом пространстве он окажется без группы. Исполнители, не состоящие в целевом пространстве, будут сняты с задач.</string>
+    <string name="sidebar_transfer_confirm">Перенести</string>
+    <string name="sidebar_project_transferred">Проект перенесён</string>
+    <string name="sidebar_project_transferred_stripped">Проект перенесён · снято исполнителей: %1$d</string>
+
+    <!-- Боковая панель: подвал -->
+    <string name="sidebar_user_fallback">Пользователь</string>
+
+    <!-- Карточка задачи -->
+    <plurals name="task_subtasks_filtered">
+        <item quantity="one">%1$d из %2$d подзадачи — остальные скрыты фильтром</item>
+        <item quantity="few">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
+        <item quantity="many">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
+        <item quantity="other">%1$d из %2$d подзадач — остальные скрыты фильтром</item>
+    </plurals>
+    <!-- Меню «⋯» карточки. «Выполнено» здесь — действие («отметить выполненной»),
+         а не статус: у task_status_completed своя английская форма. -->
+    <string name="task_card_menu_complete">Выполнено</string>
+    <string name="task_card_menu_reopen">Вернуть в работу</string>
+    <string name="task_card_menu_add_subtask">Создать подзадачу</string>
+    <string name="task_card_menu_restore">Вернуть из архива</string>
+    <string name="task_card_menu_delete_forever">Удалить навсегда</string>
+    <string name="task_card_archive_confirm">Архивировать задачу «%1$s»?</string>
+    <string name="task_card_delete_confirm">Удалить задачу «%1$s»? Это действие необратимо.</string>
+    <string name="task_card_delete_forever_confirm">Удалить задачу «%1$s» навсегда? Это действие необратимо.</string>
+    <string name="task_card_conflict">Конфликт</string>
+    <string name="task_card_subtask_hint">Название подзадачи, Enter</string>
+    <string name="task_assignee_search_hint">Поиск…</string>
+
+    <!-- Модалка задачи: шапка, футер, свойства -->
+    <string name="task_title_placeholder">Название задачи</string>
+    <string name="task_ref_not_found">Задача #%1$d не найдена</string>
+    <string name="task_commands_applied">Применено: %1$s</string>
+    <!-- Строка «Создать issue» в свойствах задачи и её пикер шаблонов (#2595) -->
+    <string name="task_gitlab_create">Создать issue</string>
+    <string name="task_gitlab_creating">Создание…</string>
+    <string name="task_gitlab_template">Шаблон</string>
+    <string name="task_gitlab_templates_empty">Шаблонов нет</string>
+    <string name="task_archive_confirm">Архивировать задачу?</string>
+    <string name="task_archive_action">В архив</string>
+    <string name="task_delete_confirm">Удалить задачу? Это действие необратимо.</string>
+    <string name="task_prop_priority">Приоритет</string>
+    <string name="task_prop_due">Срок</string>
+    <string name="task_prop_estimate">Оценка</string>
+    <string name="task_prop_author">Автор</string>
+    <string name="task_prop_assignees">Исполнители</string>
+    <string name="task_prop_tags">Теги</string>
+    <string name="task_prop_milestone">Этап</string>
+    <string name="task_prop_status">Статус</string>
+    <string name="task_prop_parent">Родитель</string>
+    <string name="task_prop_title">Заголовок</string>
+    <string name="task_prop_column">Колонка</string>
+    <string name="task_prop_start">Начало</string>
+    <string name="task_status_completed">Выполнено</string>
+    <string name="task_status_active">Не выполнено</string>
+    <string name="task_due_unset">Не задан</string>
+    <string name="task_estimate_unset">Не задана</string>
+    <string name="task_assignees_none">Никто</string>
+    <string name="task_tags_none">Нет</string>
+    <string name="task_tag_new_hint">Новый тег, Enter</string>
+    <string name="task_parent_detach">Открепить</string>
+    <string name="task_parent_attach">Сделать подзадачей…</string>
+    <string name="task_parent_empty">Нет других задач</string>
+    <string name="task_milestone_none">Без этапа</string>
+    <string name="task_milestone_new_hint">Новый этап, Enter</string>
+
+    <!-- Модалка задачи: вкладки -->
+    <string name="task_tab_description">Описание</string>
+    <string name="task_tab_comments">Комментарии</string>
+    <string name="task_tab_subtasks">Подзадачи</string>
+    <string name="task_tab_relations">Связи</string>
+    <string name="task_tab_files">Файлы</string>
+    <string name="task_tab_history">История</string>
+
+    <!-- Модалка задачи: описание и комментарии -->
+    <string name="task_description_placeholder">Добавьте описание…</string>
+    <string name="task_someone">Кто-то</string>
+    <string name="task_comments_empty">Комментариев пока нет</string>
+    <string name="task_comment_edit_placeholder">Комментарий…</string>
+    <string name="task_comment_reply">Ответить</string>
+    <string name="task_comment_collapse">Свернуть ответы</string>
+    <string name="task_reply_placeholder">Ответить… (@ — упоминание)</string>
+    <string name="task_comment_placeholder">Написать комментарий… (@ — упоминание)</string>
+    <string name="task_comment_placeholder_commands">Написать комментарий… (@ — упоминание, / — команда)</string>
+    <string name="task_comment_send">Отправить</string>
+    <string name="task_commands_custom">%1$s — останется текстом</string>
+    <plurals name="task_comment_replies">
+        <item quantity="one">%1$d ответ</item>
+        <item quantity="few">%1$d ответа</item>
+        <item quantity="many">%1$d ответов</item>
+        <item quantity="other">%1$d ответа</item>
+    </plurals>
+
+    <!-- Модалка задачи: подзадачи и связи -->
+    <string name="task_subtasks_empty">Подзадач пока нет</string>
+    <string name="task_subtask_new_hint">+ подзадача (Enter)</string>
+    <string name="task_relations_empty">Связей пока нет</string>
+    <string name="task_relation_relates">связана с</string>
+    <string name="task_relation_blocks">блокирует</string>
+    <string name="task_relation_blocked_by">заблокирована</string>
+    <string name="task_relation_duplicates">дублирует</string>
+    <string name="task_relation_remove_external">Эта связь вернётся при следующем синке %1$s. Удалить?</string>
+    <string name="task_relation_remove_confirm">Убрать связь?</string>
+    <string name="task_relation_search_hint">Найти задачу: #№ или название</string>
+
+    <!-- Модалка задачи: файлы -->
+    <string name="task_files_empty">Файлов пока нет</string>
+    <string name="task_file_attach">Прикрепить файл</string>
+    <string name="task_file_open_chooser">Открыть «%1$s»</string>
+    <string name="task_attachment_delete_confirm">Удалить вложение?</string>
+    <string name="task_file_size_mb">%1$s МБ</string>
+    <string name="task_file_size_kb">%1$s КБ</string>
+    <string name="task_file_size_b">%1$d Б</string>
+
+    <!-- Модалка задачи: история -->
+    <string name="task_history_empty">История пуста</string>
+    <string name="task_event_created">создал(а) задачу</string>
+    <string name="task_event_renamed">переименовал(а) задачу</string>
+    <string name="task_event_description">изменил(а) описание</string>
+    <string name="task_event_priority">сменил(а) приоритет</string>
+    <string name="task_event_due">изменил(а) срок</string>
+    <string name="task_event_completed">завершил(а) задачу</string>
+    <string name="task_event_reopened">вернул(а) в работу</string>
+    <string name="task_event_recurred">перенёс(ла) повтор задачи</string>
+    <string name="task_event_moved">переместил(а) задачу</string>
+    <string name="task_event_assigned">назначил(а) исполнителя</string>
+    <string name="task_event_unassigned">снял(а) исполнителя</string>
+    <string name="task_event_comment">оставил(а) комментарий</string>
+    <string name="task_event_relation">добавил(а) связь</string>
+    <string name="task_event_attachment">прикрепил(а) файл</string>
+    <string name="task_event_archived">архивировал(а) задачу</string>
+    <string name="task_event_restored">восстановил(а) задачу</string>
+
+    <!-- Модалка задачи: перенос в другую доску -->
+    <string name="task_transfer_title">Перенести в доску</string>
+    <string name="task_transfer_no_projects">Нет проектов</string>
+
+    <!-- Настройки GitLab: аккаунт и список привязок -->
+    <string name="gitlab_section_account">Аккаунт</string>
+    <string name="gitlab_disconnect">Отключить</string>
+    <string name="gitlab_url_label">URL GitLab</string>
+    <string name="gitlab_token_label">Токен (PAT, scope read_api)</string>
+    <string name="gitlab_connect">Подключить</string>
+    <string name="gitlab_section_bindings">Привязки GitLab</string>
+    <string name="gitlab_bindings_empty">Привязок пока нет.</string>
+    <string name="gitlab_add_binding">Привязка</string>
+    <string name="gitlab_connect_hint">Подключите аккаунт GitLab, чтобы синхронизировать.</string>
+    <string name="gitlab_journal">Журнал синхронизации</string>
+    <string name="gitlab_conflicts">Конфликты обратной записи: %1$d</string>
+
+    <!-- Настройки GitLab: карточка привязки -->
+    <string name="gitlab_binding_off">выкл.</string>
+    <string name="gitlab_last_sync">Синхронизация: %1$s</string>
+    <string name="gitlab_tile_sync">Синхр.</string>
+    <string name="gitlab_tile_full">Полная</string>
+    <string name="gitlab_binding_delete_title">Удалить привязку</string>
+    <string name="gitlab_binding_delete_message">Удалить привязку «%1$s»? Связи задач с GitLab будут разорваны.</string>
+
+    <!-- Настройки GitLab: редактор привязки -->
+    <string name="gitlab_field_name">Название</string>
+    <string name="gitlab_name_placeholder">напр. Основной</string>
+    <string name="gitlab_field_project">Проект GitLab</string>
+    <string name="gitlab_field_board">Доска назначения</string>
+    <string name="gitlab_board_placeholder">Выберите доску</string>
+    <string name="gitlab_field_scope">Область импорта</string>
+    <string name="gitlab_field_closed">Закрытые задачи</string>
+    <string name="gitlab_field_interval">Автосинхронизация</string>
+    <string name="gitlab_field_full_interval">Полная синхронизация</string>
+    <string name="gitlab_field_due_source">Источник срока</string>
+    <string name="gitlab_field_start_source">Источник начала</string>
+    <string name="gitlab_field_relations">Синхронизировать связи</string>
+    <string name="gitlab_relations_hint">Импорт связанных задач из GitLab во вкладку «Связи».</string>
+    <string name="gitlab_field_enabled">Включена</string>
+
+    <!-- Настройки GitLab: варианты интервалов и источников -->
+    <string name="gitlab_interval_off">Вручную (выкл.)</string>
+    <string name="gitlab_interval_5m">Каждые 5 минут</string>
+    <string name="gitlab_interval_15m">Каждые 15 минут</string>
+    <string name="gitlab_interval_1h">Каждый час</string>
+    <string name="gitlab_full_off">Не форсировать (только вручную)</string>
+    <string name="gitlab_full_6h">Раз в 6 часов</string>
+    <string name="gitlab_full_12h">Раз в 12 часов</string>
+    <string name="gitlab_full_1d">Раз в сутки</string>
+    <string name="gitlab_full_2d">Раз в 2 суток</string>
+    <string name="gitlab_full_1w">Раз в неделю</string>
+    <string name="gitlab_source_off">Не синхронизировать</string>
+    <string name="gitlab_due_issue_milestone">Issue, иначе Milestone</string>
+    <string name="gitlab_due_issue">Только Issue</string>
+    <string name="gitlab_due_milestone">Только Milestone</string>
+    <string name="gitlab_start_created">Дата создания</string>
+    <string name="gitlab_start_milestone">Начало Milestone</string>
+    <string name="gitlab_scope_assigned">Только назначенные мне</string>
+    <string name="gitlab_scope_all">Все задачи проекта</string>
+    <string name="gitlab_closed_all">Импортировать все</string>
+    <string name="gitlab_closed_archive">Архивировать закрытые этапы</string>
+    <string name="gitlab_closed_period">Только за период</string>
+
+    <!-- Настройки GitLab: обратная запись -->
+    <string name="gitlab_section_writeback">Обратная запись в GitLab</string>
+    <string name="gitlab_field_writeback_enabled">Включить запись</string>
+    <string name="gitlab_writeback_hint">Каждое действие связывает событие в задаче Tessera с действием на issue GitLab (под сервис-токеном инстанса или токеном владельца, scope «api»). По умолчанию набор повторяет прежнее поведение записи.</string>
+    <string name="gitlab_add_action">Действие</string>
+    <string name="gitlab_bind_trigger">Действие в Tessera</string>
+    <string name="gitlab_bind_column">Целевая колонка</string>
+    <string name="gitlab_bind_column_placeholder">Выберите колонку</string>
+    <string name="gitlab_bind_priority">Приоритет</string>
+    <string name="gitlab_bind_condition">Условие</string>
+    <string name="gitlab_bind_date_kind">Тип срока</string>
+    <string name="gitlab_bind_action">Действие в GitLab</string>
+    <string name="gitlab_bind_label">Метка</string>
+    <string name="gitlab_bind_label_placeholder">напр. S: In Progress</string>
+    <string name="gitlab_bind_clear_prefix">Снимать метки того же префикса</string>
+    <string name="gitlab_bind_state">Состояние issue</string>
+    <string name="gitlab_bind_add_marker">Добавлять маркер Tessera</string>
+
+    <!-- Настройки GitLab: варианты триггеров и действий обратной записи -->
+    <string name="gitlab_trigger_column">Перемещение в колонку</string>
+    <string name="gitlab_trigger_completion">Флаг «Выполнено»</string>
+    <string name="gitlab_trigger_priority">Изменение приоритета</string>
+    <string name="gitlab_trigger_due">Изменение срока</string>
+    <string name="gitlab_trigger_assignees">Изменение исполнителей</string>
+    <string name="gitlab_trigger_estimate">Изменение оценки</string>
+    <string name="gitlab_trigger_milestone">Изменение этапа</string>
+    <string name="gitlab_trigger_title_desc">Заголовок / описание</string>
+    <string name="gitlab_trigger_labels">Изменение тегов</string>
+    <string name="gitlab_trigger_comment">Новый комментарий</string>
+    <string name="gitlab_action_set_label">Установить метку</string>
+    <string name="gitlab_action_set_state">Закрыть / открыть issue</string>
+    <string name="gitlab_action_set_due">Установить срок</string>
+    <string name="gitlab_action_set_assignees">Установить исполнителей</string>
+    <string name="gitlab_action_set_estimate">Установить оценку</string>
+    <string name="gitlab_action_set_milestone">Установить этап</string>
+    <string name="gitlab_action_set_title_desc">Обновить заголовок/описание</string>
+    <string name="gitlab_action_reconcile_labels">Синхронизировать теги</string>
+    <string name="gitlab_action_post_comment">Написать комментарий</string>
+    <string name="gitlab_state_from_flag">Из флага «Выполнено»</string>
+    <string name="gitlab_state_closed">Закрыть issue</string>
+    <string name="gitlab_state_opened">Открыть issue</string>
+    <string name="gitlab_date_due">Срок (due)</string>
+    <string name="gitlab_date_start">Начало (start) — для issue игнорируется</string>
+    <string name="gitlab_completion_any">Любое изменение</string>
+    <string name="gitlab_completion_true">Стало «Выполнено»</string>
+    <string name="gitlab_completion_false">Снято «Выполнено»</string>
+    <string name="gitlab_priority_any">Любой приоритет</string>
+
+    <!-- Настройки GitLab: сводка привязки в шапке карточки -->
+    <string name="gitlab_sum_column">Перенос → «%1$s»</string>
+    <string name="gitlab_sum_priority">Приоритет: %1$s</string>
+    <string name="gitlab_sum_priority_any">Приоритет (любой)</string>
+    <string name="gitlab_sum_start_change">Изменение начала</string>
+    <string name="gitlab_sum_label">метка «%1$s»</string>
+    <string name="gitlab_sum_state_closed">закрыть issue</string>
+    <string name="gitlab_sum_state_opened">открыть issue</string>
+    <string name="gitlab_sum_state_any">закрыть/открыть issue</string>
+    <string name="gitlab_sum_comment">комментарий</string>
+    <string name="gitlab_sum_comment_marker">комментарий (+маркер)</string>
+
+    <!-- Настройки GitLab: сообщения экрана (тосты успеха и итоги синхронизации) -->
+    <string name="gitlab_msg_connected">Подключено как @%1$s</string>
+    <string name="gitlab_msg_disconnected">GitLab отключён</string>
+    <string name="gitlab_msg_saved">Настройки сохранены</string>
+    <string name="gitlab_msg_binding_deleted">Привязка удалена</string>
+    <string name="gitlab_msg_synced">Синхронизировано: %1$d (+%2$d, ~%3$d)</string>
+    <string name="gitlab_msg_sync_background">Синхронизация выполняется в фоне — см. журнал</string>
+    <!-- Итог создания issue из задачи (#2595). Четыре ключа, а не строка со
+         склеенным суффиксом: вложить UiText в аргумент UiText.Res нельзя, а
+         сборка «(a, b)» из кусков в коде разошлась бы по языкам пунктуацией -->
+    <string name="gitlab_issue_created">Создан issue !%1$d</string>
+    <string name="gitlab_issue_created_uploaded">Создан issue !%1$d (загружено вложений: %2$d)</string>
+    <string name="gitlab_issue_created_skipped">Создан issue !%1$d (не удалось: %2$d)</string>
+    <string name="gitlab_issue_created_both">Создан issue !%1$d (загружено вложений: %2$d, не удалось: %3$d)</string>
+    <string name="gitlab_err_sync_failed">Синхронизация не удалась: %1$s</string>
+    <!-- Отдельный ключ, а не подстановка «ошибка»: причина приходит с сервера
+         как есть, локализовать её нечем, а вложить UiText в аргумент UiText.Res
+         нельзя — getString подставляет только готовые значения -->
+    <string name="gitlab_err_sync_failed_unknown">Синхронизация не удалась</string>
+
+    <!-- Настройки GitLab: правила меток -->
+    <string name="gitlab_section_rules">Правила меток</string>
+    <string name="gitlab_field_default_column">Колонка по умолчанию</string>
+    <string name="gitlab_field_default_action">Прочие метки</string>
+    <string name="gitlab_field_tag_keep_prefix">Сохранять префикс тега</string>
+    <string name="gitlab_add_rule">Правило</string>
+    <!-- Кавычки не декоративные: без них Android срезал бы хвостовой пробел плейсхолдера -->
+    <string name="gitlab_rule_match_placeholder">"S: либо ^(T|C): "</string>
+    <string name="gitlab_rule_label">Понятное имя</string>
+    <string name="gitlab_rule_label_placeholder">напр. Статус</string>
+    <string name="gitlab_rule_keep_prefix">Сохранять префикс</string>
+    <string name="gitlab_rule_map_value">значение GitLab</string>
+    <string name="gitlab_rule_add_value">значение</string>
+    <string name="gitlab_match_prefix">Префикс</string>
+    <string name="gitlab_match_regex">Regex</string>
+    <string name="gitlab_default_action_tag">Создавать тег</string>
+    <string name="gitlab_rule_action_status">Статус → колонка</string>
+    <string name="gitlab_rule_action_priority">Приоритет</string>
+    <string name="gitlab_rule_action_board">Доска</string>
+    <string name="gitlab_rule_action_tag">Тег</string>
+    <string name="gitlab_rule_action_group">Группировка</string>
+    <string name="gitlab_rule_action_ignore">Игнорировать</string>
+
+    <!-- Доска: колонки и быстрое создание -->
+    <string name="board_new_task_hint">Название задачи, Enter</string>
+    <string name="board_add_task">+ СОЗДАТЬ ЗАДАЧУ</string>
+    <string name="board_new_column_hint">Название колонки, Enter</string>
+    <string name="board_add_column">+ СОЗДАТЬ КОЛОНКУ</string>
+    <string name="board_column_color">Цвет колонки</string>
+    <string name="board_column_done">Завершающая</string>
+    <string name="board_column_delete">Удалить колонку</string>
+    <string name="board_column_delete_confirm">Удалить «%1$s» и задачи в ней?</string>
+
+    <!-- Доска: подписи дорожек в режимах группировки -->
+    <string name="board_lane_no_tag">Без тега</string>
+    <string name="board_lane_unassigned">Не назначено</string>
+    <string name="board_lane_all_tasks">Все задачи</string>
+
+    <!-- Доска: календарь -->
+    <string name="board_today">Сегодня</string>
+    <string name="board_calendar_undated">Без срока</string>
+    <string-array name="calendar_months">
+        <item>Январь</item>
+        <item>Февраль</item>
+        <item>Март</item>
+        <item>Апрель</item>
+        <item>Май</item>
+        <item>Июнь</item>
+        <item>Июль</item>
+        <item>Август</item>
+        <item>Сентябрь</item>
+        <item>Октябрь</item>
+        <item>Ноябрь</item>
+        <item>Декабрь</item>
+    </string-array>
+    <string-array name="calendar_weekdays_short">
+        <item>Пн</item>
+        <item>Вт</item>
+        <item>Ср</item>
+        <item>Чт</item>
+        <item>Пт</item>
+        <item>Сб</item>
+        <item>Вс</item>
+    </string-array>
+
+    <!-- Доска: матрица Эйзенхауэра -->
+    <string name="board_matrix_urgent">Срочно</string>
+    <string name="board_matrix_not_urgent">Несрочно</string>
+    <string name="board_matrix_important">Важно</string>
+    <string name="board_matrix_not_important">Неважно</string>
+    <string name="board_matrix_q0_title">Срочно и важно</string>
+    <string name="board_matrix_q0_hint">Сделать сейчас</string>
+    <string name="board_matrix_q1_title">Важно, не срочно</string>
+    <string name="board_matrix_q1_hint">Запланировать</string>
+    <string name="board_matrix_q2_title">Срочно, не важно</string>
+    <string name="board_matrix_q2_hint">Делегировать</string>
+    <string name="board_matrix_q3_title">Не срочно, не важно</string>
+    <string name="board_matrix_q3_hint">Может подождать</string>
+    <string name="board_matrix_reset_auto">Вернуть на авто</string>
+
+    <!-- Доска: таймлайн и диаграмма Ганта -->
+    <string name="board_timeline_task_column">Задача</string>
+    <string name="board_timeline_empty">Нет задач со сроками.\nЗадайте начало или срок в карточке.</string>
+    <string name="board_timeline_overdue">%1$d просрочено</string>
+    <string name="board_timeline_undated">%1$d без дат</string>
+    <string name="board_timeline_undated_header">Без дат</string>
+    <plurals name="board_timeline_links">
+        <item quantity="one">%1$d связь</item>
+        <item quantity="few">%1$d связи</item>
+        <item quantity="many">%1$d связей</item>
+        <item quantity="other">%1$d связи</item>
+    </plurals>
+    <string-array name="dates_months_short">
+        <item>янв</item>
+        <item>фев</item>
+        <item>мар</item>
+        <item>апр</item>
+        <item>май</item>
+        <item>июн</item>
+        <item>июл</item>
+        <item>авг</item>
+        <item>сен</item>
+        <item>окт</item>
+        <item>ноя</item>
+        <item>дек</item>
+    </string-array>
+    <string-array name="dates_weekdays_short">
+        <item>пн</item>
+        <item>вт</item>
+        <item>ср</item>
+        <item>чт</item>
+        <item>пт</item>
+        <item>сб</item>
+        <item>вс</item>
+    </string-array>
+
+    <!-- Даты: относительные подписи и сборка. Порядок «день месяц год» задан
+         самой строкой — в английской локали он переставлен на «месяц день, год». -->
+    <string name="dates_today">сегодня</string>
+    <string name="dates_tomorrow">завтра</string>
+    <string name="dates_yesterday">вчера</string>
+    <string name="dates_short">%1$d %2$s</string>
+    <string name="dates_short_year">%1$d %2$s %3$d</string>
+    <string name="dates_long">%1$d %2$s. %3$d г.</string>
+    <string name="dates_full">%1$d %2$s %3$d</string>
+    <string name="dates_at_time">%1$s, %2$s</string>
+    <string name="dates_with_time">%1$s %2$s</string>
+    <string name="dates_clock">%1$02d:%2$02d</string>
+
+    <!-- Уведомления: шапка и разделы -->
+    <string name="notif_title">Уведомления</string>
+    <string name="notif_subtitle">Внутренние уведомления приходят всегда. Здесь — внешние каналы и правила доставки.</string>
+    <string name="notif_section_channels">Каналы</string>
+    <string name="notif_section_routes">Правила маршрутизации</string>
+    <string name="notif_routes_hint">Сверху вниз — срабатывает первое подходящее.</string>
+    <string name="notif_section_schedule">Дедлайны и напоминания</string>
+    <string name="notif_add_action">Добавить %1$s</string>
+    <string name="notif_add_channel">Канал</string>
+    <string name="notif_add_rule">Правило</string>
+
+    <!-- Уведомления: карточка канала -->
+    <string name="notif_type_device">Системные уведомления</string>
+    <string name="notif_type_shoutrrr_any">Shoutrrr (любой сервис)</string>
+    <string name="notif_channel_verified">проверен</string>
+    <string name="notif_channel_this_device">это устройство</string>
+
+    <!-- Уведомления: редактор канала -->
+    <string name="notif_field_type">Тип</string>
+    <string name="notif_field_label">Название</string>
+    <string name="notif_label_placeholder">Напр. «Мой телеграм»</string>
+    <string name="notif_field_address">Адрес</string>
+    <string name="notif_field_method">Метод</string>
+    <string name="notif_field_auth_optional">Authorization (необязательно)</string>
+    <string name="notif_secret_unchanged">пусто — не менять</string>
+    <string name="notif_device_hint">Это устройство/браузер. Системные уведомления приходят, когда приложение открыто.</string>
+    <string name="notif_channel_enabled">Включён</string>
+    <string name="notif_template_title">Шаблон сообщения (пусто = по умолчанию)</string>
+    <string name="notif_template_preview">Предпросмотр</string>
+
+    <!-- Уведомления: правило маршрутизации -->
+    <string name="notif_route_any_kinds">Любые события</string>
+    <string name="notif_route_muted">заглушено</string>
+    <string name="notif_route_no_channels">— каналы не выбраны</string>
+    <string name="notif_route_kinds">События (пусто = любые)</string>
+    <string name="notif_route_workspace">Пространство</string>
+    <string name="notif_route_all_workspaces">Все пространства</string>
+    <string name="notif_route_mute">Заглушить (не отправлять)</string>
+    <string name="notif_route_channels">Каналы доставки</string>
+
+    <!-- Уведомления: виды событий -->
+    <string name="notif_kind_assigned">Назначения</string>
+    <string name="notif_kind_comment">Комментарии</string>
+    <string name="notif_kind_mention">Упоминания</string>
+    <string name="notif_kind_updated">Изменения</string>
+    <string name="notif_kind_moved">Перемещения</string>
+    <string name="notif_kind_archived">Архивирование</string>
+    <string name="notif_kind_due_soon">Дедлайны</string>
+    <string name="notif_kind_reminder">Напоминания</string>
+
+    <!-- Уведомления: расписание дедлайнов и тихих часов -->
+    <string name="notif_due_enabled">Уведомлять о дедлайнах</string>
+    <string name="notif_field_lead">Напоминать</string>
+    <string name="notif_field_repeat">Повтор</string>
+    <string name="notif_reminder_external">Напоминания во внешние каналы</string>
+    <string name="notif_field_digest">Дайджест</string>
+    <string name="notif_quiet_hours">Тихие часы</string>
+    <string name="notif_quiet_from">С</string>
+    <string name="notif_quiet_to">До</string>
+    <string name="notif_lead_on_time">В срок</string>
+    <string name="notif_lead_15m">За 15 мин</string>
+    <string name="notif_lead_30m">За 30 мин</string>
+    <string name="notif_lead_1h">За час</string>
+    <string name="notif_lead_3h">За 3 часа</string>
+    <string name="notif_lead_1d">За день</string>
+    <string name="notif_repeat_once">Однократно</string>
+    <string name="notif_repeat_1h">Каждый час</string>
+    <string name="notif_repeat_3h">Каждые 3 часа</string>
+    <string name="notif_repeat_6h">Каждые 6 часов</string>
+    <string name="notif_repeat_1d">Каждый день</string>
+    <string name="notif_digest_off">Выключено</string>
+    <string name="notif_digest_5m">5 минут</string>
+    <string name="notif_digest_15m">15 минут</string>
+    <string name="notif_digest_30m">30 минут</string>
+    <string name="notif_digest_1h">Раз в час</string>
+
+    <!-- Моя работа (домашний экран) -->
+    <string name="home_greeting">Привет, %1$s 👋</string>
+    <string name="home_greeting_fallback">коллега</string>
+    <string name="home_stat_me">Мои задачи</string>
+    <string name="home_stat_all">Все активные</string>
+    <string name="home_stat_overdue">Просрочено</string>
+    <string name="home_stat_today">Сегодня</string>
+    <string name="home_stat_week">На неделе</string>
+    <string name="home_stat_completed">Выполнено</string>
+    <string name="home_empty">Задач нет</string>
+
+    <!-- Заметки -->
+    <string name="notes_new">Новая заметка</string>
+    <string name="notes_empty">Заметок пока нет</string>
+    <string name="notes_untitled">Без названия</string>
+    <string name="notes_editor_title">Заметка</string>
+    <string name="notes_delete_confirm">Удалить заметку?</string>
+    <string name="notes_title_placeholder">Заголовок</string>
+    <string name="notes_body_placeholder">Текст заметки…</string>
+
+    <!-- Напоминания -->
+    <string name="reminders_message_placeholder">О чём напомнить?</string>
+    <string name="reminders_pick_time">Выбрать время</string>
+    <string name="reminders_add">Добавить</string>
+    <string name="reminders_empty">Напоминаний пока нет</string>
+    <string name="reminders_untitled">Напоминание</string>
+    <string name="reminders_delete_confirm">Удалить напоминание?</string>
+
+    <!-- Документы -->
+    <string name="docs_empty">Документов пока нет</string>
+    <string name="docs_empty_hint">Создать документ можно в веб-версии</string>
+    <string name="docs_untitled">Без названия</string>
+    <string name="docs_reader_untitled">Документ</string>
+    <string name="docs_reader_empty">Документ пуст</string>
+    <string name="docs_image_alt">Изображение документа</string>
+
+    <!-- Участники пространства -->
+    <string name="members_title">Участники</string>
+    <string name="members_invitations">Приглашения</string>
+    <string name="members_invite_title">Пригласить по email</string>
+    <string name="members_invite_action">Пригласить</string>
+    <string name="members_invite_hint">Зарегистрированного добавим сразу; нового — приглашение по ссылке.</string>
+    <string name="members_copy_link">Копировать</string>
+    <string name="members_remove_confirm">Убрать участника?</string>
+    <string name="members_remove">Убрать</string>
+    <string name="members_role_owner">Владелец</string>
+    <string name="members_role_admin">Админ</string>
+    <string name="members_role_member">Участник</string>
+
+    <!-- Администрирование: список аккаунтов -->
+    <string name="admin_users_count">Пользователи экземпляра — %1$d</string>
+    <string name="admin_search_placeholder">Поиск по имени или почте</string>
+    <string name="admin_load_failed">Не удалось загрузить пользователей</string>
+    <string name="admin_nobody_found">Никого не найдено</string>
+    <string name="admin_reset_link_copied">Ссылка для сброса пароля скопирована</string>
+    <string name="admin_badge_you">вы</string>
+    <string name="admin_badge_inactive">деактивирован</string>
+    <string name="admin_badge_unverified">не подтверждён</string>
+    <string name="admin_reset_password">Сброс пароля</string>
+    <string name="admin_demote">Снять админа</string>
+    <string name="admin_promote">Сделать админом</string>
+    <string name="admin_deactivate">Деактивировать</string>
+    <string name="admin_activate">Активировать</string>
+    <string name="admin_demote_title">Снять администратора</string>
+    <string name="admin_demote_message">Снять права администратора у %1$s?</string>
+    <string name="admin_demote_confirm">Снять</string>
+    <string name="admin_deactivate_title">Деактивировать аккаунт</string>
+    <string name="admin_deactivate_message">Деактивировать %1$s? Пользователь не сможет войти.</string>
+
+    <!-- Администрирование: карточка OAuth -->
+    <string name="admin_oauth_title">Вход через GitLab (OAuth)</string>
+    <string name="admin_oauth_badge_on">включён</string>
+    <string name="admin_oauth_load_failed">Не удалось загрузить настройки OAuth</string>
+    <string name="admin_oauth_save_failed">Не удалось сохранить настройки</string>
+    <string name="admin_oauth_orgmap_invalid">org_map: ожидается JSON-объект</string>
+    <string name="admin_oauth_saved">Настройки OAuth сохранены</string>
+    <string name="admin_oauth_secret_stored">(сохранён — введите, чтобы заменить)</string>
+    <string name="admin_oauth_service_token">Сервис-токен (PAT, инстанс-широкий)</string>
+    <string name="admin_oauth_enabled">Включён</string>
+    <string name="admin_oauth_org_map">org_map (JSON: путь-группы → {workspace_id, admins, users})</string>
+    <string name="admin_oauth_callback_hint">Callback URL (укажите в OAuth-приложении GitLab):</string>
+
+    <!-- Доска: пустое состояние и панель вида -->
+    <string name="board_no_columns">На этой доске пока нет колонок</string>
+    <string name="board_customize_title">Вид доски</string>
+    <string name="board_customize_appearance">Иконка и цвет доски</string>
+    <string name="board_customize_card_size">Размер карточки</string>
+    <string name="board_card_size_compact">Компактно</string>
+    <string name="board_card_size_medium">Средне</string>
+    <string name="board_card_size_large">Расширенно</string>
+    <string name="board_customize_fields">Поля</string>
+    <string name="board_customize_stack">Стек (в столбик)</string>
+    <string name="board_customize_show_empty">Показывать пустые поля</string>
+    <string name="board_field_assignee">Исполнитель</string>
+    <string name="board_field_number">Номер (#)</string>
+    <string name="board_field_gitlab">GitLab</string>
+    <string name="board_customize_columns">Колонки и подзадачи</string>
+    <string name="board_customize_auto_collapse">Сворачивать пустые колонки</string>
+    <string name="board_customize_subtasks">Раскрыть подзадачи</string>
+
+    <!-- Доска: всплывающие уведомления об активности -->
+    <string name="board_activity_created">создал(а) задачу</string>
+    <string name="board_activity_completed">завершил(а) задачу</string>
+    <string name="board_activity_reopened">вернул(а) в работу</string>
+    <string name="board_activity_moved">переместил(а) задачу</string>
+    <string name="board_activity_you">Вы</string>
+    <string name="board_activity_open">Открыть</string>
+    <string name="board_activity_copied">Скопировано</string>
+    <string name="board_activity_link">Ссылка</string>
+    <!-- Заголовок задачи приходит с сервера; подпись нужна, только если он пуст -->
+    <string name="board_activity_untitled">Задача</string>
+
+    <!-- Управление тегами -->
+    <string name="tags_title">Управление тегами</string>
+    <string name="tags_empty">Тегов пока нет</string>
+    <string name="tags_new">Новый тег</string>
+    <string name="tags_name_hint">Название тега</string>
+    <string name="tags_rename_hint">Имя тега</string>
+    <string name="tags_delete_confirm">Удалить тег? Он снимется со всех задач.</string>
+    <string name="tags_prefix_mode">Короткие префиксы</string>
+    <string name="tags_prefix_mode_hint">Сырой префикс («T») вместо понятного имени</string>
+
+    <!-- Команды редактора -->
+    <string name="commands_title">Команды редактора</string>
+    <string name="commands_hint">Свои команды только подсказываются в редакторе и остаются в тексте комментария — выполняет их адресат, а не Tessera. Встроенные выполняет сервер и вырезает из текста.</string>
+    <string name="commands_description_hint">Одобрить план</string>
+    <string name="commands_empty">Своих команд пока нет</string>
+    <string name="commands_add">Добавить</string>
+    <string name="commands_readonly">Редактировать словарь может владелец или админ</string>
+    <string name="commands_builtin">Встроенные</string>
+    <string name="commands_err_empty_key">пустой ключ</string>
+    <string name="commands_err_bad_key">латиница, цифры, _ и -</string>
+    <string name="commands_err_builtin">встроенная команда</string>
+    <string name="commands_err_duplicate">дубль</string>
+    <string name="commands_err_too_long">описание длиннее 200 символов</string>
+
+    <!-- Этапы: список и менеджер -->
+    <string name="milestones_filter_active">Активные</string>
+    <string name="milestones_filter_all">Все</string>
+    <string name="milestones_empty_all">Этапов пока нет</string>
+    <string name="milestones_empty_active">Активных этапов нет</string>
+    <string name="milestones_closed">закрыт</string>
+    <string name="milestones_no_tasks">нет задач</string>
+    <string name="milestones_manager_empty">Пока нет этапов</string>
+    <string name="milestones_delete_confirm">Удалить этап?</string>
+    <string name="milestones_new">Новый этап</string>
+    <string name="milestones_title_hint">Название</string>
+    <string name="milestones_date_start">Начало</string>
+    <string name="milestones_date_due">Срок</string>
+    <string name="milestones_date_clear">Очистить</string>
+    <string name="milestones_range">%1$s – %2$s</string>
+    <string name="milestones_range_until">до %1$s</string>
+    <string name="milestones_range_from">с %1$s</string>
+
+    <!-- Выбор срока: вкладки начала/срока -->
+    <string name="due_picker_tab_start">Начало</string>
+    <string name="due_picker_tab_due">Срок</string>
+    <string name="due_picker_start_unset">не задано</string>
+    <string name="due_picker_due_unset">не задан</string>
+    <string name="due_picker_clear_start">Очистить начало</string>
+    <string name="due_picker_clear_due">Очистить срок</string>
+
+    <!-- Выбор срока: повтор задачи -->
+    <string name="due_picker_repeat">Повтор задачи</string>
+    <string name="due_picker_every">каждые</string>
+    <string name="due_picker_custom_hint">Отметьте даты повтора в календаре выше.</string>
+    <string name="due_picker_trigger">Событие</string>
+    <string name="due_picker_trigger_column">Колонка-триггер</string>
+    <string name="due_picker_trigger_column_hint">Выберите колонку</string>
+    <string name="due_picker_move_to">Переносить в</string>
+    <string name="due_picker_first_column">Первая колонка</string>
+    <string name="due_picker_duplicate">Создавать дубликат</string>
+    <string name="due_picker_forever">Повторять всегда</string>
+    <string name="due_picker_skip_weekends">Пропускать выходные</string>
+    <string name="recur_freq_none">Нет</string>
+    <string name="recur_freq_daily">День</string>
+    <string name="recur_freq_weekly">Неделя</string>
+    <string name="recur_freq_monthly">Месяц</string>
+    <string name="recur_freq_yearly">Год</string>
+    <string name="recur_freq_custom">Выборочно</string>
+    <string name="recur_trigger_complete">При завершении</string>
+    <string name="recur_trigger_column">При переходе в колонку</string>
+    <string name="recur_trigger_schedule">По расписанию</string>
+    <!-- Единица интервала стоит после числа («каждые 2 недели») — винительный падеж -->
+    <plurals name="recur_unit_daily">
+        <item quantity="one">день</item>
+        <item quantity="few">дня</item>
+        <item quantity="many">дней</item>
+        <item quantity="other">дня</item>
+    </plurals>
+    <plurals name="recur_unit_weekly">
+        <item quantity="one">неделю</item>
+        <item quantity="few">недели</item>
+        <item quantity="many">недель</item>
+        <item quantity="other">недели</item>
+    </plurals>
+    <plurals name="recur_unit_monthly">
+        <item quantity="one">месяц</item>
+        <item quantity="few">месяца</item>
+        <item quantity="many">месяцев</item>
+        <item quantity="other">месяца</item>
+    </plurals>
+    <plurals name="recur_unit_yearly">
+        <item quantity="one">год</item>
+        <item quantity="few">года</item>
+        <item quantity="many">лет</item>
+        <item quantity="other">года</item>
+    </plurals>
+
+    <!-- Выбор срока: уведомления по задаче -->
+    <string name="due_notify_title">Уведомления</string>
+    <string name="due_notify_lead">Напоминать</string>
+    <string name="due_notify_repeat">Повтор уведомления</string>
+    <string name="due_notify_inherit">По умолчанию</string>
+    <string name="due_notify_on">Включены</string>
+    <string name="due_notify_off">Выключены</string>
+    <string name="due_notify_lead_0">В срок</string>
+    <string name="due_notify_lead_15">За 15 мин</string>
+    <string name="due_notify_lead_60">За час</string>
+    <string name="due_notify_lead_180">За 3 часа</string>
+    <string name="due_notify_lead_1440">За день</string>
+    <string name="due_notify_repeat_0">Однократно</string>
+    <string name="due_notify_repeat_60">Каждый час</string>
+    <string name="due_notify_repeat_180">Каждые 3 часа</string>
+    <string name="due_notify_repeat_1440">Каждый день</string>
+
+    <!-- Композер доски: чип группировки -->
+    <string name="composer_scope_archive">Архив (только чтение)</string>
+    <string name="composer_scope_milestone">Этап</string>
+    <string name="composer_group_status">статусы</string>
+    <string name="composer_group_tag">теги</string>
+    <string name="composer_group_milestone">этапы</string>
+    <string name="composer_group_assignee">исполнитель</string>
+    <string name="composer_group_none">без</string>
+    <string name="composer_group_by_status">По статусам</string>
+    <string name="composer_group_by_tags_all">По тегам (все)</string>
+    <string name="composer_group_by_tags_prefix">По тегам · %1$s</string>
+    <string name="composer_group_by_milestone">По этапам</string>
+    <string name="composer_group_by_assignee">По исполнителю</string>
+    <string name="composer_group_by_none">Без группировки</string>
+
+    <!-- Композер доски: меню «+», фильтры и поиск -->
+    <string name="composer_add_sort">Сортировка</string>
+    <string name="composer_add_filter_status">Фильтр: статус</string>
+    <string name="composer_add_filter_priority">Фильтр: приоритет</string>
+    <string name="composer_add_filter_assignee">Фильтр: исполнитель</string>
+    <string name="composer_add_filter_author">Фильтр: автор</string>
+    <string name="composer_add_filter_tag">Фильтр: тег</string>
+    <string name="composer_add_filter_milestone">Фильтр: этап</string>
+    <string name="composer_add_filter_due">Фильтр: срок</string>
+    <string name="composer_back">‹ Назад</string>
+    <string name="composer_search_hint">Поиск…</string>
+    <string name="due_filter_overdue">Просроченные</string>
+    <string name="due_filter_today">Сегодня</string>
+    <string name="due_filter_week">Ближайшая неделя</string>
+    <string name="due_filter_has">Со сроком</string>
+    <string name="due_filter_none">Без срока</string>
+
+    <!-- Композер доски: поля сортировки. «Приоритет», «Срок» и «Статус» берут общие
+         task_prop_* — там ровно те же слова в обеих локалях. «Название» и «Номер»
+         со своими ключами: в модалке задачи то же поле подписано «Заголовок» -->
+    <string name="composer_sort_title">Название</string>
+    <string name="composer_sort_number">Номер</string>
+
+    <!-- Композер доски: сохранённые представления -->
+    <string name="views_title">Представления</string>
+    <string name="views_empty">Нет сохранённых представлений</string>
+    <string name="views_save_current">Сохранить текущий вид</string>
+    <string name="views_name_hint">Название</string>
+    <string name="views_delete_confirm">Удалить представление «%1$s»?</string>
+
+    <!-- Системные уведомления: каналы, напоминания и заголовки пушей.
+         Резолвятся вне Compose — контекстом на языке профиля (Context.withLanguage). -->
+    <string name="notif_channel_device_name">Уведомления</string>
+    <string name="notif_channel_device_desc">Уведомления о задачах</string>
+    <string name="notif_channel_reminders_name">Напоминания</string>
+    <string name="notif_channel_reminders_desc">Срабатывания напоминаний по задачам</string>
+    <string name="reminder_push_title">Напоминание</string>
+    <string name="reminder_push_default_body">Пора заняться задачей</string>
+    <string name="push_title_assigned">Назначена задача</string>
+    <string name="push_title_comment">Новый комментарий</string>
+    <string name="push_title_mention">Вас упомянули</string>
+    <string name="push_title_updated">Задача изменена</string>
+    <string name="push_title_moved">Задача перемещена</string>
+    <string name="push_title_archived">Задача архивирована</string>
+    <string name="push_title_due_soon">Скоро дедлайн</string>
+    <string name="push_title_reminder">Напоминание</string>
+
+    <!-- Панель уведомлений (колокольчик) и ответы настроек -->
+    <string name="notif_panel_mark_all">Прочитать все</string>
+    <string name="notif_panel_empty">Пока тихо</string>
+    <string name="notif_test_sent">Тест отправлен</string>
+    <string name="notif_saved">Сохранено</string>
+
+    <!-- Оценка задач: компактные суффиксы («3д 6ч»), названия единиц и подсказки
+         ввода. Собираются в util/Estimation вне Compose — тот берёт Resources явно.
+         Разбор ввода понимает и русские, и английские буквы, поэтому подсказка на
+         английском остаётся рабочей и после переключения языка. -->
+    <string name="est_unit_week">%1$dн</string>
+    <string name="est_unit_day">%1$dд</string>
+    <string name="est_unit_hour">%1$dч</string>
+    <string name="est_unit_minute">%1$dм</string>
+    <string name="est_points_value">%1$s SP</string>
+    <string name="est_custom_value">%1$s %2$s</string>
+    <string name="est_unit_time">Время</string>
+    <string name="est_unit_points">Стори-поинты</string>
+    <string name="est_unit_custom">Единицы</string>
+    <string name="est_hint_points">напр. 5</string>
+    <string name="est_hint_custom">напр. 8</string>
+    <string name="est_hint_time">напр. 3д 4ч, 90м, 1н</string>
+
+    <!-- Группировка тегов по префиксу: бакет для тегов без префикса -->
+    <string name="tag_group_none">Вне группы</string>
+
+    <!-- Ошибки вызовов API. Собираются в util/Errors вне композиции, поэтому едут
+         до экрана как UiText и резолвятся уже там. Зеркалят карту веб-клиента
+         (frontend/src/utils/errors.js) — держать в синхроне. -->
+    <string name="err_http_code">Ошибка %1$d</string>
+    <string name="err_no_connection">Нет соединения с сервером</string>
+    <string name="err_unknown">Неизвестная ошибка</string>
+    <string name="err_invalid_credentials">Неверный email или пароль</string>
+    <string name="err_email_registered">Этот email уже зарегистрирован</string>
+    <string name="err_email_in_use">Этот email уже используется</string>
+    <string name="err_user_exists">Пользователь с таким email уже существует</string>
+    <string name="err_user_not_found">Пользователь не найден</string>
+    <string name="err_link_invalid">Ссылка недействительна или устарела</string>
+    <string name="err_link_expired">Срок действия ссылки истёк</string>
+    <string name="err_account_deactivated">Аккаунт деактивирован</string>
+    <string name="err_forbidden">Недостаточно прав</string>
+    <string name="err_unauthorized">Нужно войти заново</string>
+    <string name="err_not_found">Не найдено</string>
+    <string name="err_invalid_email">Введите корректный email</string>
+    <string name="err_required_fields">Заполните все обязательные поля</string>
+    <string name="err_value_too_short">Значение слишком короткое</string>
+    <string name="err_value_too_long">Значение слишком длинное</string>
+    <string name="err_check_fields">Проверьте правильность заполнения полей</string>
+    <string name="err_offline">Нет связи с сервером. Проверьте подключение.</string>
+
+    <!-- Журнал синхронизации GitLab: список прогонов и диалог diff'а действия.
+         Подписи полей берутся из task_prop_* — журнал диффает те же свойства
+         задачи, что показывает модалка. -->
+    <string name="gljournal_empty">Журнал пуст — синхронизация ещё не запускалась</string>
+    <string name="gljournal_no_actions">Нет записанных действий</string>
+    <string name="gljournal_trigger_manual">вручную</string>
+    <string name="gljournal_trigger_auto">авто</string>
+    <string name="gljournal_run_meta">%1$s · %2$s</string>
+    <string name="gljournal_push_count">%1$d дост.</string>
+    <string name="gljournal_no_changes">без изменений</string>
+    <string name="gljournal_comments_new">Новые комментарии (%1$d)</string>
+    <plurals name="gljournal_relations_added">
+        <item quantity="one">+%1$d связь</item>
+        <item quantity="few">+%1$d связи</item>
+        <item quantity="many">+%1$d связей</item>
+        <item quantity="other">+%1$d связи</item>
+    </plurals>
+    <string name="gljournal_relations_removed">−%1$d удалено</string>
+    <string name="gljournal_relations_deferred">%1$d отложено</string>
+    <string name="gljournal_delivery_failed">Ошибка доставки</string>
+    <string name="gljournal_push_issue_close">закрыть issue</string>
+    <string name="gljournal_push_issue_open">открыть issue</string>
+    <string name="gljournal_push_priority">приоритет → %1$s</string>
+    <string name="gljournal_retry_queued">Поставлено в очередь на повтор</string>
+
+    <!-- Общие диалоги (ввод, подтверждение, подтверждение вводом имени) -->
+    <string name="dialog_confirm_by_name_hint">Введите «%1$s» для подтверждения:</string>
+
+    <!-- Диалог оценки задач: заголовок зависит от области (пространство или проект),
+         подпись «Наследовать» собирается из единицы наследуемой настройки. -->
+    <string name="est_dialog_title_workspace">Оценка задач — по умолчанию</string>
+    <string name="est_dialog_title_project">Оценка задач — %1$s</string>
+    <string name="est_dialog_inherit">Наследовать (%1$s)</string>
+    <string name="est_dialog_inherit_time">%1$s · %2$dч/день · %3$dдн/неделя</string>
+    <string name="est_dialog_seg_time">Время</string>
+    <string name="est_dialog_seg_points">Поинты</string>
+    <string name="est_dialog_seg_custom">Свои</string>
+    <string name="est_dialog_hours_label">Часов в рабочем дне</string>
+    <string name="est_dialog_days_label">Дней в рабочей неделе</string>
+    <string name="est_dialog_scale_fibonacci">Фибоначчи</string>
+    <string name="est_dialog_scale_tshirt">Футболки</string>
+    <string name="est_dialog_scale_linear">Линейная</string>
+    <string name="est_dialog_custom_label">Название единицы</string>
+    <string name="est_dialog_custom_hint">напр. у.е.</string>
+
+    <!-- Выбор цвета и иконки проекта/группы -->
+    <string name="picker_color">Цвет</string>
+    <string name="picker_icon">Иконка</string>
+    <string name="picker_icon_mode">Что красить</string>
+    <string name="picker_icon_mode_badge">Бейдж</string>
+    <string name="picker_icon_mode_icon">Иконка</string>
+
+    <!-- Выбор оформления: акцент и тёмная тема -->
+    <string name="theme_picker_title">Оформление</string>
+    <string name="theme_picker_accent">Акцент</string>
+    <string name="theme_picker_dark">Тёмная тема</string>
+
+    <!-- Переключатель режима доски (сегментный селектор) -->
+    <string name="board_view_kanban">Доска</string>
+    <string name="board_view_list">Список</string>
+    <string name="board_view_calendar">Календарь</string>
+    <string name="board_view_timeline">Таймлайн</string>
+    <string name="board_view_gantt">Гант</string>
+    <string name="board_view_matrix">Матрица</string>
+
+    <!-- Оболочка приложения: шапка, меню доски, выход по «Назад» -->
+    <string name="main_boards_of_project">ДОСКИ ПРОЕКТА</string>
+    <string name="main_board_menu_archive">Архив доски</string>
+    <string name="main_provider_soon">%1$s · скоро</string>
+    <string name="main_back_again_to_exit">Нажмите «Назад» ещё раз для выхода</string>
+
+    <!-- Обновление приложения и «Что нового». Подпись «Доступно обновление» и
+         действие «Обновить» общие у диалога и подвала боковой панели. -->
+    <string name="update_available">Доступно обновление</string>
+    <string name="update_action">Обновить</string>
+    <string name="update_version">Версия %1$s</string>
+    <string name="update_downloading">Загрузка… %1$d%%</string>
+    <string name="update_install">Установить</string>
+    <string name="update_later">Позже</string>
+    <string name="update_download_failed">Не удалось загрузить</string>
+    <string name="whats_new_title">Что нового</string>
+    <string name="whats_new_subtitle">Обновление применено — вот что изменилось</string>
+
+    <!-- Редактор Markdown. Подписи-заглушки («текст», «Скрытый текст») попадают
+         в сам документ: это заготовка от интерфейса, поэтому язык берётся тот же,
+         что у интерфейса в момент вставки. -->
+    <string name="md_fullscreen_title">Редактор</string>
+    <string name="md_preview_empty">Предпросмотр</string>
+    <string name="md_custom_badge">свои</string>
+    <string name="md_spoiler_summary">Подробнее</string>
+    <string name="md_spoiler_placeholder">Скрытый текст</string>
+    <string name="md_link_placeholder">текст</string>
+    <string name="md_mermaid_start">Старт</string>
+    <string name="md_mermaid_done">Готово</string>
+
+    <!-- Подписи под лоадером (появляются, только если загрузка затянулась) и
+         состояние ошибки экрана. -->
+    <string name="loading_caption_connecting">Пытаемся подключиться к серверу…</string>
+    <string name="loading_caption_slow">Это занимает чуть больше времени, чем ожидалось…</string>
+    <string name="loading_caption_still_trying">Всё ещё пробуем достучаться до сервера…</string>
+    <string name="error_retry_action">Попробовать ещё раз</string>
+
+    <!-- Подписи приоритета (индекс = priority 0..4). Массив, а не пять ключей:
+         обращение идёт по индексу, и длину массива сторожит тест паритета локалей. -->
+    <string-array name="task_priority_labels">
+        <item>Без приоритета</item>
+        <item>Низкий</item>
+        <item>Обычный</item>
+        <item>Высокий</item>
+        <item>Срочный</item>
+    </string-array>
+
+    <!-- Подписи имён, которые рождаются на сервере: личное пространство при регистрации
+         и четыре засеваемых колонки доски. Сервер шлёт рядом с именем ключ (name_key),
+         подпись собирается по нему в util/DefaultNames — имя, которое завёл пользователь,
+         ключа не имеет и показывается как есть на любом языке (#2800). -->
+    <string name="default_workspace_personal">Личное пространство</string>
+    <string name="default_column_todo">К работе</string>
+    <string name="default_column_in_progress">В процессе</string>
+    <string name="default_column_review">На рассмотрении</string>
+    <string name="default_column_done">Готово</string>
+
+    <!-- Названия семи акцентных схем дизайн-языка (ключ схемы — в accent, не здесь) -->
+    <string name="accent_purple">Фиолетовый</string>
+    <string name="accent_blue">Синий</string>
+    <string name="accent_teal">Бирюзовый</string>
+    <string name="accent_green">Зелёный</string>
+    <string name="accent_orange">Оранжевый</string>
+    <string name="accent_red">Красный</string>
+    <string name="accent_pink">Розовый</string>
+
+    <!-- Полноэкранный поиск -->
+    <!-- Справочный центр -->
+    <string name="help_search_placeholder">Поиск по справке</string>
+    <string name="help_not_built">Справка не собрана в этой сборке</string>
+    <string name="help_article_missing">Статья не найдена в сборке</string>
+    <string name="help_updated">Обновлено: %1$s</string>
+    <string name="help_desktop_note">Статья описывает веб-версию — в приложении часть действий выглядит иначе.</string>
+
+    <string name="search_placeholder">Поиск задач, заметок и справки</string>
+    <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок, статьям справки</string>
+    <string name="search_empty">Ничего не найдено</string>
+    <string name="search_section_help">СПРАВКА</string>
+    <string name="search_section_tasks">ЗАДАЧИ</string>
+    <string name="search_section_notes">ЗАМЕТКИ</string>
+
+    <!-- Разрешение конфликтов обратной записи GitLab. Подписи полей берутся из
+         task_prop_*, а сторона «GitLab» остаётся именем сервиса и ключа не имеет. -->
+    <string name="conflict_title">Конфликт GitLab</string>
+    <string name="conflict_more">Ещё конфликтов: %1$d</string>
+    <string name="conflict_save_merge">Сохранить объединение</string>
+    <string name="conflict_take_ours">Принять моё</string>
+    <string name="conflict_take_theirs">Принять GitLab</string>
+    <string name="conflict_merge_manually">Объединить вручную…</string>
+    <string name="conflict_side_base">Было</string>
+    <string name="conflict_side_ours">Моё</string>
+    <string name="conflict_state_closed">Закрыта</string>
+    <string name="conflict_state_open">Открыта</string>
+
+    <!-- Тексты карточки «Что нового»: по ключу на релиз из update/WhatsNewEntries.
+         Ключ содержит версию (whatsnew_v0_70_0_*) — так запись релиза и её текст
+         видно рядом, а выбывший из списка релиз видно, какие ключи забирает с
+         собой. Пункты едут string-array: их число своё у каждого релиза. -->
+    <string name="whatsnew_v0_70_0_title">Задачи — как в вебе</string>
+    <string-array name="whatsnew_v0_70_0_items">
+        <item>Описание задачи вынесено первой вкладкой — до комментариев и подзадач теперь один тап.</item>
+        <item>Ответы в комментариях собираются веткой: отступ, сворачивание, «Ответить» подставляет автора.</item>
+        <item>Тап по @упоминанию открывает карточку человека, а по «#123» — саму задачу.</item>
+        <item>Редактор описаний с панелью форматирования, продолжением списков и полноэкранным режимом.</item>
+    </string-array>
+    <string name="whatsnew_v0_69_0_title">Документы рабочего пространства</string>
+    <string-array name="whatsnew_v0_69_0_items">
+        <item>Новый раздел «Документы»: дерево вики-страниц с вложенностью, таблицами, чекбоксами и картинками.</item>
+        <item>На телефоне документы пока только для чтения — редактирование остаётся в вебе.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_documents_title">Загляните в «Документы»</string>
+    <string name="whatsnew_spotlight_documents_body">Вики-страницы рабочего пространства доступны прямо с телефона.</string>
+    <string name="whatsnew_v0_68_0_title">Уведомления при закрытом приложении</string>
+    <string-array name="whatsnew_v0_68_0_items">
+        <item>Уведомления доходят, даже когда приложение закрыто, и открывают нужную задачу по тапу.</item>
+    </string-array>
 </resources>

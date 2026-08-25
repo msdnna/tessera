@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { i18n } from '@/i18n'
 
 export const imageDropKey = new PluginKey('imageDrop')
 
@@ -43,7 +44,7 @@ function placeholderPlugin() {
         if (action?.add) {
           const el = document.createElement('span')
           el.className = 'doc-upload-placeholder'
-          el.textContent = action.add.label || 'Загрузка изображения…'
+          el.textContent = action.add.label || i18n.global.t('documents.doc.uploadingImage')
           set = set.add(tr.doc, [
             Decoration.widget(action.add.pos, el, {
               id: action.add.id,

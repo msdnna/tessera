@@ -1,0 +1,44 @@
+{
+  "ctx": " “{text}”",
+  "event": {
+    "task_assigned": "{actor} assigned task #{ref} to you{ctx}",
+    "task_updated": "{actor} updated task #{ref}: {fields}",
+    "task_moved": "{actor} moved task #{ref} → “{column}”",
+    "task_archived": "{actor} archived task #{ref}{ctx}",
+    "task_comment": "{actor} commented on #{ref}{ctx}",
+    "task_thread_reply": "{actor} replied in the thread on #{ref}{ctx}",
+    "task_mention": "{actor} mentioned you in #{ref}{ctx}",
+    "task_due_soon": "Task #{ref} “{title}” is due soon",
+    "reminder": "Reminder",
+    "integration_sync_ok": "{label}: +{created} new, ~{updated} updated, in {took}",
+    "integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
+    "integration_sync_failed": "{label}: sync failed — {reason} (after {took})"
+  },
+  "field": {
+    "title": "title",
+    "description": "description",
+    "priority": "priority",
+    "due": "due date",
+    "start": "start date",
+    "estimate": "estimate",
+    "completed": "completed",
+    "reopened": "reopened"
+  },
+  "kind": {
+    "assigned": "Task assigned",
+    "comment": "New comment",
+    "mention": "You were mentioned",
+    "updated": "Task updated",
+    "moved": "Task moved",
+    "archived": "Task archived",
+    "due_soon": "Deadline approaching",
+    "reminder": "Reminder",
+    "integration_sync": "Sync finished"
+  },
+  "duration": {
+    "instant": "less than a second",
+    "hm": "{h}h {m}m",
+    "ms": "{m}m {s}s",
+    "s": "{s}s"
+  }
+}

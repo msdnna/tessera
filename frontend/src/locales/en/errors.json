@@ -1,0 +1,24 @@
+{
+  "generic": "Something went wrong",
+  "network": "No connection to the server. Check your network.",
+  "sentinel": {
+    "invalidCredentials": "Wrong email or password",
+    "emailRegistered": "This email is already registered",
+    "emailInUse": "This email is already in use",
+    "userExists": "A user with this email already exists",
+    "userNotFound": "User not found",
+    "linkInvalid": "The link is invalid or has expired",
+    "linkExpired": "The link has expired",
+    "accountDeactivated": "Account deactivated",
+    "forbidden": "Not enough permissions",
+    "unauthorized": "Please sign in again",
+    "notFound": "Not found"
+  },
+  "validation": {
+    "email": "Enter a valid email",
+    "required": "Fill in all required fields",
+    "tooShort": "The value is too short",
+    "tooLong": "The value is too long",
+    "generic": "Check the field values"
+  }
+}

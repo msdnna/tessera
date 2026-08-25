@@ -13,6 +13,7 @@ import {
   hourStepFor,
 } from '@/utils/timeAxis'
 import { estimateToDays } from '@/utils/estimation'
+import { useFormat } from '@/composables/useFormat'
 
 // The horizontal time axis shared by the Timeline and Gantt board views: zoom,
 // axis range, header bands, the today line, milestone markers, and everything
@@ -48,6 +49,7 @@ export function useChartTimeline({
   // the two don't fight over the same pointermove.
   cursorBlocked = () => false,
 } = {}) {
+  const { formatDate, formatTime, formatters } = useFormat()
   const scrollEl = ref(null)
   const bodyEl = ref(null)
 
@@ -130,8 +132,12 @@ export function useChartTimeline({
 
   // Axis header bands. Months always show; the second band is per-day (days/hours
   // tiers) or per-week (weeks tier); the hours tier adds an hour-tick row.
-  const days = computed(() => buildDays(range.value.start, range.value.days, todayMs))
-  const monthBands = computed(() => buildMonthBands(days.value))
+  // `formatters.value` is read inside the computed, so the axis header re-renders
+  // in the new language the moment the preference changes.
+  const days = computed(() =>
+    buildDays(range.value.start, range.value.days, todayMs, formatters.value),
+  )
+  const monthBands = computed(() => buildMonthBands(days.value, formatters.value))
   const weekBands = computed(() => (tier.value === 'weeks' ? buildWeekBands(days.value) : []))
   // Hour ticks only for the visible viewport slice (+ a margin) — "lazy lines" so a
   // wide board doesn't render thousands of header nodes in the hours tier.
@@ -299,11 +305,12 @@ export function useChartTimeline({
   const cursorLabel = computed(() => {
     if (!cursor.value) return ''
     const dt = new Date(cursor.value.ms)
-    const o = { day: '2-digit', month: 'short' }
+    // The timeline is laid out on local calendar days, so its cursor label reads
+    // in the browser timezone (timeZone: null) — see DueEditor for the same rule.
+    const o = { day: '2-digit', month: 'short', timeZone: null }
     if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric'
-    let s = dt.toLocaleDateString('ru-RU', o)
-    if (tier.value === 'hours')
-      s += ` ${dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+    let s = formatDate(dt, o)
+    if (tier.value === 'hours') s += ` ${formatTime(dt, { timeZone: null })}`
     return s
   })
 

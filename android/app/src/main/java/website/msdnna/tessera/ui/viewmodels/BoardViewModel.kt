@@ -1,6 +1,7 @@
 package website.msdnna.tessera.ui.viewmodels
 
 import android.os.SystemClock
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.BoardView
@@ -24,6 +26,7 @@ import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.repository.BoardRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.BoardFilter
 import website.msdnna.tessera.util.DueFilter
 import website.msdnna.tessera.util.FilterClock
@@ -34,13 +37,16 @@ import website.msdnna.tessera.util.moveItem
 
 enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline, Gantt }
 
-/** Sort fields available in the multi-level sort editor (web parity). */
-enum class SortField(val key: String, val label: String) {
-    Priority("priority", "Приоритет"),
-    Due("due", "Срок"),
-    Status("status", "Статус"),
-    Title("title", "Название"),
-    Number("number", "Номер"),
+/** Sort fields available in the multi-level sort editor (web parity).
+ *
+ *  [labelRes] и не может быть готовой строкой: `entries` вычисляются один раз при
+ *  загрузке класса, и подпись застыла бы на языке первого открытия доски. */
+enum class SortField(val key: String, @param:StringRes val labelRes: Int) {
+    Priority("priority", R.string.task_prop_priority),
+    Due("due", R.string.task_prop_due),
+    Status("status", R.string.task_prop_status),
+    Title("title", R.string.composer_sort_title),
+    Number("number", R.string.composer_sort_number),
     ;
 
     companion object {
@@ -66,7 +72,7 @@ data class BoardActivity(
 
 data class BoardUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val columns: List<BoardColumn> = emptyList(),
     val tasks: List<Task> = emptyList(),
     val subtasks: List<Task> = emptyList(),
@@ -480,7 +486,9 @@ class BoardViewModel(
             key = ++activitySeq,
             taskId = t.id,
             number = t.number,
-            title = t.title.ifBlank { "Задача" },
+            // Заголовок отдаёт сервер — не локализуем; подпись пустого разрешает
+            // тост, у которого есть Resources (board_activity_untitled). i18n-data
+            title = t.title,
             verb = verb,
             actorName = actorName,
             self = self,

@@ -1,8 +1,11 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { NModal, NIcon } from 'naive-ui'
 import { HelpCircleOutline, CloseOutline } from '@vicons/ionicons5'
 import { useHelpStore } from '@/stores/help'
 import HelpCenter from './HelpCenter.vue'
+
+const { t } = useI18n()
 
 // The help centre lives in a modal, not on a route (#2792): a question about how
 // something works is asked from the board you are working on, and answering it
@@ -18,12 +21,12 @@ const help = useHelpStore()
     <div class="hcm" data-help-center>
       <div class="hcm-head">
         <n-icon :component="HelpCircleOutline" :size="18" class="grad-icon" />
-        <span class="hcm-title">Справочный центр</span>
+        <span class="hcm-title">{{ t('help.center') }}</span>
         <button
           type="button"
           class="hcm-close"
-          title="Закрыть (Esc)"
-          aria-label="Закрыть"
+          :title="t('help.closeHint')"
+          :aria-label="t('help.close')"
           data-help-center-close
           @click="help.closeCenter()"
         >

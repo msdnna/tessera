@@ -1,7 +1,10 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { NIcon, NTooltip } from 'naive-ui'
 import { TimerOutline } from '@vicons/ionicons5'
 import { hueGrad } from '@/utils/gradient'
+
+const { t } = useI18n()
 
 // Swimlane header row: the lane's colour dot, name, task count and summed estimate
 // on the left, an empty band across the axis on the right. Identical in the
@@ -33,7 +36,7 @@ defineProps({
             ><n-icon :component="TimerOutline" :size="12" /> {{ effort }}</span
           >
         </template>
-        Суммарная оценка: {{ effortFull }}
+        {{ t('board.chart.effortTotal', { value: effortFull }) }}
       </n-tooltip>
     </div>
     <div class="tl-track laneband" :style="{ width: `${axisW}px` }" />

@@ -11,12 +11,13 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Reminder
 import website.msdnna.tessera.data.repository.ReminderRepository
 import website.msdnna.tessera.reminders.ReminderScheduler
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.parseInstantMillis
 
 data class ReminderUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val items: List<Reminder> = emptyList(),
 )
 

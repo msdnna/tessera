@@ -68,7 +68,8 @@ func (h *API) CreateBoard(c *gin.Context) {
 		for i, dc := range defaultColumns {
 			pos := float64(i+1) * positionGap
 			col, err := q.CreateColumn(c, db.CreateColumnParams{
-				BoardID: b.ID, Name: dc.name, Color: dc.color, Position: pos,
+				BoardID: b.ID, Name: dc.name, NameKey: ptr(dc.nameKey),
+				Color: dc.color, Position: pos,
 			})
 			if err != nil {
 				return err
@@ -101,12 +102,28 @@ func (h *API) CreateBoard(c *gin.Context) {
 // per-board via boards.done_column_id).
 const doneColumnName = "Готово"
 
-// defaultColumns are created for every new board.
-var defaultColumns = []struct{ name, color string }{
-	{"К работе", "#9aa0aa"},
-	{"В процессе", "#2f80ed"},
-	{"На рассмотрении", "#7c5cff"},
-	{doneColumnName, "#18a058"},
+// defaultColumns are created for every new board. Each carries a nameKey next to
+// its Russian name: the client captions seeded columns from its own catalogue, so
+// they follow the reader's language, while name stays as the stored fallback (old
+// clients, GitLab rules, DB lookups). Renaming a column clears its key — see
+// UpdateColumn.
+var defaultColumns = []struct{ name, nameKey, color string }{
+	{"К работе", "todo", "#9aa0aa"},
+	{"В процессе", "in_progress", "#2f80ed"},
+	{"На рассмотрении", "review", "#7c5cff"},
+	{doneColumnName, "done", "#18a058"},
+}
+
+// defaultColumnKey maps a seeded column's stored (Russian) name to its key, or ""
+// for a name that is not one of the four defaults. It lets code that only knows a
+// column by name — GitLab rules, for one — reach the same column by key.
+func defaultColumnKey(name string) string {
+	for _, dc := range defaultColumns {
+		if dc.name == name {
+			return dc.nameKey
+		}
+	}
+	return ""
 }
 
 // doneColumnID is the board's task-completing column, or nil when the board has

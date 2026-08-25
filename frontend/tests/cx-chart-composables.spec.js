@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import { ref, computed, defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 
@@ -46,6 +47,10 @@ function lanesFor(source, opts = {}) {
     }),
   ).api
 }
+
+// These panels render dates through useFormat(), which reads the theme store —
+// so a Pinia instance has to be active before they mount (#2798).
+beforeEach(() => setActivePinia(createPinia()))
 
 describe('useChartLanes', () => {
   it('groups by assignee and pushes the unassigned lane last', () => {

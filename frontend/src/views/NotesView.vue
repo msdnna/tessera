@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NInput, NText, NPopconfirm, NIcon, useMessage } from 'naive-ui'
 import { ArrowBackOutline, DocumentTextOutline } from '@vicons/ionicons5'
@@ -9,6 +10,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useResponsive } from '@/composables/useResponsive'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 
+const { t } = useI18n()
 const message = useMessage()
 const wsStore = useWorkspacesStore()
 const route = useRoute()
@@ -63,17 +65,18 @@ const noteOpen = computed(() => selected.value != null)
 useOverlayBack(noteOpen, () => (selected.value = null))
 
 async function save() {
-  const t = title.value.trim()
-  if (!t) return
+  // `heading`, not `t` — the short name is the translation function here.
+  const heading = title.value.trim()
+  if (!heading) return
   try {
     if (selected.value?.id) {
-      await notesApi.update(selected.value.id, { title: t, body: body.value })
+      await notesApi.update(selected.value.id, { title: heading, body: body.value })
     } else {
-      const res = await notesApi.create(wsStore.currentId, { title: t, body: body.value })
+      const res = await notesApi.create(wsStore.currentId, { title: heading, body: body.value })
       selected.value = res.data
     }
     await loadList()
-    message.success('Сохранено')
+    message.success(t('common.state.saved'))
   } catch (e) {
     message.error(e.message)
   }
@@ -107,7 +110,9 @@ watch(
 <template>
   <div class="notes" :class="{ mobile: isMobile }">
     <div v-show="!isMobile || !selected" class="list">
-      <n-button type="primary" block size="small" @click="newNote">＋ Новая заметка</n-button>
+      <n-button type="primary" block size="small" @click="newNote"
+        >＋ {{ $t('notes.new') }}</n-button
+      >
       <div
         v-for="n in list"
         :key="n.id"
@@ -121,7 +126,7 @@ watch(
       <empty-state
         v-if="!list.length"
         :icon="DocumentTextOutline"
-        text="Заметок пока нет"
+        :text="$t('notes.empty')"
         size="small"
       />
     </div>
@@ -135,33 +140,33 @@ watch(
         @click="backToList"
       >
         <template #icon><n-icon :component="ArrowBackOutline" /></template>
-        К списку
+        {{ $t('notes.back') }}
       </n-button>
       <template v-if="selected">
-        <n-input v-model:value="title" placeholder="Заголовок" class="title" />
+        <n-input v-model:value="title" :placeholder="$t('notes.titlePlaceholder')" class="title" />
         <n-input
           v-model:value="body"
           type="textarea"
-          placeholder="Текст заметки…"
+          :placeholder="$t('notes.bodyPlaceholder')"
           :autosize="{ minRows: 12 }"
         />
         <div class="actions">
           <n-popconfirm
             v-if="selected.id"
             :positive-button-props="{ type: 'error' }"
-            positive-text="Удалить"
+            :positive-text="$t('common.action.delete')"
             @positive-click="remove"
           >
             <template #trigger>
-              <n-button type="error" ghost>Удалить</n-button>
+              <n-button type="error" ghost>{{ $t('common.action.delete') }}</n-button>
             </template>
-            Удалить заметку?
+            {{ $t('notes.deleteConfirm') }}
           </n-popconfirm>
-          <n-button type="primary" @click="save">Сохранить</n-button>
+          <n-button type="primary" @click="save">{{ $t('common.action.save') }}</n-button>
         </div>
       </template>
       <div v-else class="placeholder">
-        <n-text depth="3">Выберите заметку или создайте новую</n-text>
+        <n-text depth="3">{{ $t('notes.pick') }}</n-text>
       </div>
     </div>
   </div>
@@ -230,7 +235,7 @@ watch(
   align-self: flex-start;
 }
 /* Mobile: one pane at a time — the list, or the editor (tapping a note opens it,
-   «К списку» returns). Each fills the width. */
+   the back button returns). Each fills the width. */
 @media (max-width: 768px) {
   .notes.mobile .list,
   .notes.mobile .editor {

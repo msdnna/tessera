@@ -41,7 +41,7 @@ test('документ: второй участник виден в шапке, 
   try {
     await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
     await page.goto('/documents')
-    await page.getByRole('button', { name: /Новый документ/ }).click()
+    await page.getByTestId('doc-new').click()
 
     const editor = page.locator('.ProseMirror')
     await expect(editor).toBeVisible()
@@ -59,7 +59,7 @@ test('документ: второй участник виден в шапке, 
     // The author is holding the paragraph right now (the caret is in it), so
     // release it before the mate arrives — otherwise the test would be asserting
     // on whichever claim happened to land first.
-    await page.getByRole('button', { name: /К списку/ }).click()
+    await page.getByTestId('doc-back').click()
     await page.goto(docURL)
     await expect(page.locator('.ProseMirror')).toContainText('Общий абзац')
 
@@ -82,7 +82,7 @@ test('документ: второй участник виден в шапке, 
     // reads as a broken editor.
     await page.locator('.ProseMirror p').first().click()
     await page.keyboard.type('нельзя')
-    await expect(page.getByText(/Блок редактирует/)).toBeVisible()
+    await expect(page.locator('.msg-block-locked')).toBeVisible()
     await expect(page.locator('.ProseMirror')).not.toContainText('нельзя')
 
     // 4. Leaving frees the block immediately rather than at the TTL — the whole
@@ -117,7 +117,7 @@ test('документ: правки одного участника доезж�
   try {
     await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
     await page.goto('/documents')
-    await page.getByRole('button', { name: /Новый документ/ }).click()
+    await page.getByTestId('doc-new').click()
 
     const editor = page.locator('.ProseMirror')
     await expect(editor).toBeVisible()
@@ -160,7 +160,7 @@ test('документ: правки одного участника доезж�
     await page.keyboard.press('End')
     await page.keyboard.type(' — и моя правка')
     expect((await saved).status()).toBe(200)
-    await expect(page.getByText(/Документ изменён в другом месте/)).toHaveCount(0)
+    await expect(page.getByTestId('doc-conflict')).toHaveCount(0)
 
     // Both edits survived: neither side overwrote the other's paragraph.
     await expect(matePage.locator('.ProseMirror p').nth(1)).toContainText('и моя правка', {

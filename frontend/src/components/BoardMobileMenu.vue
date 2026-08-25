@@ -7,11 +7,13 @@ import {
   ArchiveOutline,
   CheckmarkOutline,
 } from '@vicons/ionicons5'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useBoardViewStore } from '@/stores/boardView'
 import TagManager from './TagManager.vue'
 import TesseraIcon from './TesseraIcon.vue'
 
+const { t } = useI18n()
 const store = useBoardViewStore()
 const route = useRoute()
 const router = useRouter()
@@ -20,19 +22,31 @@ const tagsOpen = ref(false)
 const renderIcon = (comp) => () => h(NIcon, null, { default: () => h(comp) })
 // Tessera icon-pack glyph for the view (layout) menu entries.
 const renderVIcon = (name) => () => h(TesseraIcon, { name, size: 18 })
-const layouts = [
-  { key: 'layout:board', label: 'Доска', icon: renderVIcon('layout-kanban') },
-  { key: 'layout:list', label: 'Список', icon: renderVIcon('layout-list') },
-  { key: 'layout:calendar', label: 'Календарь', icon: renderVIcon('layout-calendar') },
-  { key: 'layout:timeline', label: 'Таймлайн', icon: renderVIcon('layout-timeline') },
-  { key: 'layout:gantt', label: 'Гант', icon: renderVIcon('layout-gantt') },
-  { key: 'layout:matrix', label: 'Матрица', icon: renderVIcon('layout-matrix') },
-]
+// Menu options are plain objects rebuilt by the computed, so their labels follow
+// a language change like any rendered text would.
+const LAYOUTS = ['board', 'list', 'calendar', 'timeline', 'gantt', 'matrix']
+const LAYOUT_ICONS = {
+  board: 'layout-kanban',
+  list: 'layout-list',
+  calendar: 'layout-calendar',
+  timeline: 'layout-timeline',
+  gantt: 'layout-gantt',
+  matrix: 'layout-matrix',
+}
 const options = computed(() => [
-  { key: 'view', type: 'group', label: 'Представление', children: layouts },
+  {
+    key: 'view',
+    type: 'group',
+    label: t('board.actions.view'),
+    children: LAYOUTS.map((v) => ({
+      key: `layout:${v}`,
+      label: t(`board.layout.${v}`),
+      icon: renderVIcon(LAYOUT_ICONS[v]),
+    })),
+  },
   { type: 'divider', key: 'd1' },
-  { key: 'tags', label: 'Теги', icon: renderIcon(PricetagsOutline) },
-  { key: 'archive', label: 'Архив', icon: renderIcon(ArchiveOutline) },
+  { key: 'tags', label: t('board.actions.tags'), icon: renderIcon(PricetagsOutline) },
+  { key: 'archive', label: t('board.actions.archive'), icon: renderIcon(ArchiveOutline) },
 ])
 // Tick the active layout (right-aligned check).
 function renderLabel(option) {
@@ -79,7 +93,7 @@ function onChanged() {
   </n-dropdown>
 
   <n-modal v-model:show="tagsOpen">
-    <n-card title="Теги" style="max-width: 360px" role="dialog">
+    <n-card :title="t('board.actions.tags')" style="max-width: 360px" role="dialog">
       <TagManager :project-id="store.projectId" :tags="store.tagsList" @changed="onChanged" />
     </n-card>
   </n-modal>

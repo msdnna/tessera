@@ -51,6 +51,24 @@ ViewModels never touch Retrofit directly.
 - Overridable at runtime (login screen → "Настройки сервера") so the same APK
   can point at a dev/test backend (`http://10.0.2.2:8090` from the emulator).
 
+## Localization (#2803)
+- The UI language comes from `user_preferences.language`, **not** the system
+  locale — otherwise an English phone and a Russian web session drift apart.
+- `res/values` is Russian (the base locale), `res/values-en` is English;
+  `util/Languages.kt` normalizes whatever the server sends (`en-US`, unknown,
+  blank → `ru`) and `Context.withLanguage()` builds a localized context for code
+  outside Compose (notifications, toasts).
+- `ui/AppLocale.kt` wraps the tree in `AppRoot` and swaps `LocalResources` +
+  `LocalConfiguration`. `LocalContext` is deliberately left alone: it must stay
+  the Activity for `LocalContext.current as? Activity` call sites. Switching the
+  language is a recomposition, not an Activity recreation.
+- Strings are being extracted in waves. `HardcodedStringsTest` holds the list of
+  files that may still carry Russian literals
+  (`app/src/test/resources/i18n/untranslated.txt`) and compares it exactly — a
+  translated file must leave the list, a new literal must not appear in one that
+  already did. `StringResourcesTest` guards ru/en key parity, plural forms
+  (ru needs one/few/many/other) and format arguments.
+
 ## Layout
 Mirrors the web's **mobile** layout: a hamburger opens the sidebar in a 280dp
 drawer; topbar on top; board content below. (A bottom-nav variant may replace

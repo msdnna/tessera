@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { NSpin } from 'naive-ui'
 import { CheckmarkDoneOutline } from '@vicons/ionicons5'
@@ -9,11 +10,13 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
+import { taskColumnName } from '@/utils/defaultNames'
 import { useDateLocale } from '@/composables/useDateLocale'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import TagPill from '@/components/TagPill.vue'
 
+const { t } = useI18n()
 const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
@@ -30,27 +33,36 @@ const filter = ref('me') // me | all | overdue | today | week | completed
 
 const meId = computed(() => auth.user?.id)
 
+// Counts and colours are the fixed part; the label is resolved inside the
+// computed so it follows a language switch (#2799).
+const CARDS = [
+  { key: 'me', field: 'assigned', accent: 'var(--t-primary)' },
+  { key: 'all', field: 'active', accent: 'var(--t-text2)' },
+  { key: 'overdue', field: 'overdue', accent: '#e0533d' },
+  { key: 'today', field: 'due_today', accent: '#e0a418' },
+  { key: 'week', field: 'due_week', accent: '#2f80ed' },
+  { key: 'completed', field: 'completed', accent: '#18a058' },
+]
+
 const cards = computed(() => {
   const s = summary.value || {}
-  return [
-    { key: 'me', label: 'Мои задачи', value: s.assigned ?? 0, accent: 'var(--t-primary)' },
-    { key: 'all', label: 'Все активные', value: s.active ?? 0, accent: 'var(--t-text2)' },
-    { key: 'overdue', label: 'Просрочено', value: s.overdue ?? 0, accent: '#e0533d' },
-    { key: 'today', label: 'Сегодня', value: s.due_today ?? 0, accent: '#e0a418' },
-    { key: 'week', label: 'На неделе', value: s.due_week ?? 0, accent: '#2f80ed' },
-    { key: 'completed', label: 'Выполнено', value: s.completed ?? 0, accent: '#18a058' },
-  ]
+  return CARDS.map((c) => ({
+    key: c.key,
+    label: t(`shell.home.card.${c.key}`),
+    value: s[c.field] ?? 0,
+    accent: c.accent,
+  }))
 })
 
-function matchesDue(t, mode) {
-  if (!t.due_date) return false
+function matchesDue(task, mode) {
+  if (!task.due_date) return false
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const due = new Date(t.due_date)
+  const due = new Date(task.due_date)
   const day = new Date(due.getFullYear(), due.getMonth(), due.getDate())
-  if (mode === 'overdue') return day < today && !t.completed_at
-  if (mode === 'today') return day.getTime() === today.getTime() && !t.completed_at
-  if (mode === 'week') return day >= today && day - today <= 7 * 86400000 && !t.completed_at
+  if (mode === 'overdue') return day < today && !task.completed_at
+  if (mode === 'today') return day.getTime() === today.getTime() && !task.completed_at
+  if (mode === 'week') return day >= today && day - today <= 7 * 86400000 && !task.completed_at
   return true
 }
 
@@ -58,13 +70,15 @@ const visibleTasks = computed(() => {
   const arr = allTasks.value
   switch (filter.value) {
     case 'me':
-      return arr.filter((t) => (t.assignee_ids || []).includes(meId.value) && !t.completed_at)
+      return arr.filter(
+        (task) => (task.assignee_ids || []).includes(meId.value) && !task.completed_at,
+      )
     case 'all':
-      return arr.filter((t) => !t.completed_at)
+      return arr.filter((task) => !task.completed_at)
     case 'completed':
-      return arr.filter((t) => t.completed_at)
+      return arr.filter((task) => task.completed_at)
     default:
-      return arr.filter((t) => matchesDue(t, filter.value))
+      return arr.filter((task) => matchesDue(task, filter.value))
   }
 })
 
@@ -73,7 +87,9 @@ async function load() {
   if (!wsId) return
   loading.value = true
   try {
-    const [s, t, tg, pfx, mem] = await Promise.all([
+    // Destructured as `tasks`, not `t` — the short name is the translation
+    // function in this file now.
+    const [s, tasks, tg, pfx, mem] = await Promise.all([
       wsApi.summary(wsId),
       wsApi.tasks(wsId),
       wsApi.tags(wsId),
@@ -81,7 +97,7 @@ async function load() {
       wsApi.members(wsId),
     ])
     summary.value = s.data
-    allTasks.value = t.data || []
+    allTasks.value = tasks.data || []
     for (const k of Object.keys(tagsMap)) delete tagsMap[k]
     for (const x of tg.data || []) tagsMap[x.id] = x
     for (const k of Object.keys(prefixNames)) delete prefixNames[k]
@@ -93,12 +109,12 @@ async function load() {
   }
 }
 
-function openTask(t) {
-  router.push(`/board/${t.board_id}?task=${t.id}`)
+function openTask(task) {
+  router.push(`/board/${task.board_id}?task=${task.id}`)
 }
 const { formatDue: dueLabel } = useDateLocale()
-function isOverdue(t) {
-  return t.due_date && !t.completed_at && new Date(t.due_date) < new Date()
+function isOverdue(task) {
+  return task.due_date && !task.completed_at && new Date(task.due_date) < new Date()
 }
 
 onMounted(load)
@@ -109,7 +125,9 @@ watch(() => wsStore.currentId, load)
   <n-spin :show="loading" :rotate="false">
     <template #icon><TesseraSpinner /></template>
     <div class="home">
-      <h2 class="greeting">Привет, {{ auth.user?.name || 'друг' }} 👋</h2>
+      <h2 class="greeting">
+        {{ $t('shell.home.greeting', { name: auth.user?.name || $t('shell.home.friend') }) }}
+      </h2>
 
       <div class="cards">
         <button
@@ -127,40 +145,40 @@ watch(() => wsStore.currentId, load)
 
       <div class="list">
         <div
-          v-for="t in visibleTasks"
-          :key="t.id"
+          v-for="task in visibleTasks"
+          :key="task.id"
           class="trow"
-          :class="{ done: t.completed_at }"
-          @click="openTask(t)"
+          :class="{ done: task.completed_at }"
+          @click="openTask(task)"
         >
           <span
             class="pr-dot"
             :style="{
-              background: PRIORITY_COLORS[t.priority]
-                ? hueGrad(PRIORITY_COLORS[t.priority])
+              background: PRIORITY_COLORS[task.priority]
+                ? hueGrad(PRIORITY_COLORS[task.priority])
                 : 'transparent',
             }"
           />
-          <span class="t-num">#{{ t.number }}</span>
-          <span class="t-title">{{ t.title }}</span>
+          <span class="t-num">#{{ task.number }}</span>
+          <span class="t-title">{{ task.title }}</span>
           <TagPill
-            v-for="tid in (t.tag_ids || []).filter((id) => tagsMap[id]).slice(0, 3)"
+            v-for="tid in (task.tag_ids || []).filter((id) => tagsMap[id]).slice(0, 3)"
             :key="tid"
             class="t-tag"
             :tag="tagsMap[tid]"
             :prefix-names="prefixNames"
             variant="ghost"
           />
-          <span class="t-loc">{{ t.project_name }} / {{ t.board_name }}</span>
-          <span class="t-col" :style="{ '--c': t.column_color || 'var(--t-text3)' }">
-            {{ t.column_name }}
+          <span class="t-loc">{{ task.project_name }} / {{ task.board_name }}</span>
+          <span class="t-col" :style="{ '--c': task.column_color || 'var(--t-text3)' }">
+            {{ taskColumnName(task) }}
           </span>
-          <span v-if="t.due_date" class="t-due" :class="{ overdue: isOverdue(t) }">
-            {{ dueLabel(t.due_date) }}
+          <span v-if="task.due_date" class="t-due" :class="{ overdue: isOverdue(task) }">
+            {{ dueLabel(task.due_date) }}
           </span>
           <span class="t-avas">
             <UserAvatar
-              v-for="uid in (t.assignee_ids || []).slice(0, 3)"
+              v-for="uid in (task.assignee_ids || []).slice(0, 3)"
               :key="uid"
               class="t-ava"
               :user-id="uid"
@@ -173,7 +191,7 @@ watch(() => wsStore.currentId, load)
         <empty-state
           v-if="!visibleTasks.length && !loading"
           :icon="CheckmarkDoneOutline"
-          text="Здесь пока пусто"
+          :text="$t('shell.home.empty')"
           style="margin-top: 40px"
         />
       </div>

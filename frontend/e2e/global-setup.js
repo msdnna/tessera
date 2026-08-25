@@ -1,7 +1,11 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import { waitForBackend, newCredentials, register, seedBoard } from './api.js'
+import { waitForBackend, newCredentials, register, seedBoard, RUN_LANGUAGE } from './api.js'
+
+// Re-exported for the specs and the config: the language of the run is decided
+// in api.js, where register() applies it to every account the suite makes.
+export { RUN_LANGUAGE }
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const SEED_FILE = resolve(here, '.auth/seed.json')
@@ -21,8 +25,8 @@ export default async function globalSetup() {
   // even when two land in the same millisecond.
   const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
   const creds = newCredentials(runId)
-  // register() also opts the user out of the Get Started guide, which would
-  // otherwise autostart over every spec — see the note there.
+  // register() also opts the user out of the Get Started guide and puts the
+  // account on the run's language — see the notes there.
   const { token, user } = await register(creds)
   const seed = await seedBoard(token, runId)
 
@@ -32,6 +36,7 @@ export default async function globalSetup() {
     JSON.stringify(
       {
         runId,
+        language: RUN_LANGUAGE,
         creds,
         token,
         userId: user.id,

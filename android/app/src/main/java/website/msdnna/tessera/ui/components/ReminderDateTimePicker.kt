@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Calendar
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.ui.theme.RadiusLg
@@ -43,14 +46,13 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.millisToUtcIso
 import website.msdnna.tessera.util.parseInstantMillis
 
-private val MonthsFull = listOf(
-    "январь", "февраль", "март", "апрель", "май", "июнь",
-    "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
-)
-private val Weekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "вс")
-
-private fun weekdayLabels(weekStart: Int): List<String> =
-    if (weekStart == 0) listOf(Weekdays.last()) + Weekdays.dropLast(1) else Weekdays
+/** Weekday captions in the grid's own order: `weekStart == 0` puts Sunday first.
+ *  Same arrays as [DueDateTimePicker] — one calendar table, not two that drift. */
+@Composable
+private fun weekdayLabels(weekStart: Int): List<String> {
+    val days = stringArrayResource(R.array.calendar_weekdays_short).toList()
+    return if (weekStart == 0) listOf(days.last()) + days.dropLast(1) else days
+}
 
 /**
  * Date + time picker for reminders. Like [DueDateTimePicker], a reminder is a
@@ -85,7 +87,7 @@ fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDism
                 NavBtn(double = true, forward = false) { year-- }
                 NavBtn(double = false, forward = false) { stepMonth(-1) }
                 Text(
-                    "${MonthsFull[month]} $year",
+                    "${stringArrayResource(R.array.calendar_months)[month]} $year",
                     color = c.text1,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -143,9 +145,14 @@ fun ReminderDateTimePicker(initialIso: String?, onPick: (String) -> Unit, onDism
 
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                Text("Отмена", color = c.text3, fontSize = 14.sp, modifier = Modifier.clickableNoRipple { onDismiss() })
+                Text(
+                    stringResource(R.string.common_cancel),
+                    color = c.text3,
+                    fontSize = 14.sp,
+                    modifier = Modifier.clickableNoRipple { onDismiss() },
+                )
                 Spacer(Modifier.width(18.dp))
-                TButton("Готово", onClick = {
+                TButton(stringResource(R.string.common_done), onClick = {
                     val millis = localCalOf(year, month, day, hour, minute).timeInMillis
                     onPick(millisToUtcIso(millis))
                     onDismiss()

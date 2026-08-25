@@ -16,11 +16,14 @@
 // href) are worth testing without an editor or a mounted component.
 
 import { quoteFromBlock } from './docComments'
+import { i18n } from '@/i18n'
 
 // Shown for a heading that exists but has no text yet — a heading is created
 // empty and then typed into, and dropping it from the outline until the first
 // character would make the list jump under the cursor.
-export const UNTITLED_HEADING = 'Без заголовка'
+export function untitledHeading() {
+  return i18n.global.t('documents.toc.untitled')
+}
 
 /**
  * Collects the document's headings in reading order.
@@ -178,7 +181,7 @@ export function headingForBlock(json, blockId) {
  * @param {object} row an outline row
  */
 export function headingLabel(row) {
-  return (row?.text || '').trim() || UNTITLED_HEADING
+  return (row?.text || '').trim() || untitledHeading()
 }
 
 function clampLevel(level) {

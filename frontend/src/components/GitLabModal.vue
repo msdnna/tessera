@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, computed, h } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NModal,
   NCard,
@@ -33,7 +34,9 @@ import GitLabJournalPanel from '@/components/GitLabJournalPanel.vue'
 import ConflictResolverPanel from '@/components/ConflictResolverPanel.vue'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { PRIORITY_LABELS } from '@/styles/tokens'
+import { priorityLabel, priorityOptions } from '@/utils/priority'
+import { columnName } from '@/utils/defaultNames'
+import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -43,8 +46,10 @@ const props = defineProps({
 // socket (`integration.sync`), which every client picks up, not just the starter.
 const emit = defineEmits(['update:show'])
 
+const { t } = useI18n()
 const message = useMessage()
 const gl = useGitlabStore()
+const { formatDateTime } = useFormat()
 const ws = useWorkspacesStore()
 
 // ── connection (per-user) ──
@@ -60,7 +65,7 @@ async function connect() {
   try {
     await gl.connect(b, t)
     tokenInput.value = ''
-    message.success(`GitLab подключён как @${gl.username}`)
+    message.success(t('gitlab.modal.connectedAs', { name: gl.username }))
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -70,7 +75,7 @@ async function connect() {
 async function disconnect() {
   try {
     await gl.disconnect()
-    message.success('GitLab отключён')
+    message.success(t('gitlab.modal.disconnected'))
   } catch (e) {
     message.error(e.message)
   }
@@ -91,15 +96,18 @@ const name = ref('')
 const scope = ref('all') // 'all' | 'assigned'
 const closedPolicy = ref('archive_closed_sprints') // 'all' | 'archive_closed_sprints' | 'period'
 const closedAfter = ref(null) // epoch ms for 'period'
-const scopeOptions = [
-  { label: 'Все задачи проекта', value: 'all' },
-  { label: 'Только назначенные на меня', value: 'assigned' },
-]
-const closedPolicyOptions = [
-  { label: 'Закрытые из закрытых этапов — в архив', value: 'archive_closed_sprints' },
-  { label: 'Все закрытые — на доску (в «Готово»)', value: 'all' },
-  { label: 'Только закрытые за период', value: 'period' },
-]
+// Every option table below is `computed`, never a module constant: a constant is
+// evaluated once on import and would keep the language of the first render (#2799).
+// `value` is the wire format and stays as it is.
+const scopeOptions = computed(() =>
+  ['all', 'assigned'].map((v) => ({ label: t(`gitlab.modal.option.scope.${v}`), value: v })),
+)
+const closedPolicyOptions = computed(() =>
+  ['archive_closed_sprints', 'all', 'period'].map((v) => ({
+    label: t(`gitlab.modal.option.closedPolicy.${v}`),
+    value: v,
+  })),
+)
 const projectPath = ref('')
 const boardId = ref(null)
 const enabled = ref(true)
@@ -120,7 +128,10 @@ const wbFetchTemplates = ref(false) // offer repo issue templates when creating
 // the trigger is structural and the child has no link yet.
 const wbChildren = ref(false) // push subtasks of a grouped parent as child work items
 const wbAutoGroup = ref(false) // label a linked parent as grouped on the first child
-const wbGroupLabel = ref('') // empty = the backend default ("M: Сгруппированная задача")
+// Empty falls back to the backend default (gitlab.DefaultGroupLabel), which the
+// placeholder below spells out. On its own line, not trailing: the ratchet scanner
+// keeps trailing `//` text on purpose, so a Cyrillic example there reads as UI.
+const wbGroupLabel = ref('')
 // Mirror Tessera-hosted attachments into GitLab's upload store on push (#2713).
 // Defaults to ON — an integration saved before this flag existed has no key, and
 // the backend reads that as enabled (dead links in issues are a bug, not a taste).
@@ -132,53 +143,64 @@ const bindings = ref([])
 // The modal expands into a right pane for editing either the write-back action
 // bindings or the GL→Tessera label-parsing rules. null = collapsed (single pane).
 const rightMode = ref(null) // null | 'actions' | 'rules' | 'journal' | 'conflicts'
-const RIGHT_TITLES = {
-  actions: 'Действия обратной записи',
-  rules: 'Правила разбора меток GitLab',
-  journal: 'Журнал синхронизации',
-  conflicts: 'Конфликты',
-}
+const rightTitle = computed(() =>
+  rightMode.value
+    ? t(
+        {
+          actions: 'gitlab.modal.actions.title',
+          rules: 'gitlab.modal.rules.title',
+          journal: 'gitlab.modal.sync.journal',
+          conflicts: 'gitlab.modal.sync.conflicts',
+        }[rightMode.value],
+      )
+    : '',
+)
 function openRight(mode) {
   rightMode.value = rightMode.value === mode ? null : mode
 }
 
-const triggerTypeOptions = [
-  { label: 'Перемещение в колонку', value: 'column' },
-  { label: 'Флаг «Выполнено»', value: 'completion' },
-  { label: 'Изменение приоритета', value: 'priority' },
-  { label: 'Изменение срока', value: 'due' },
-  { label: 'Изменение исполнителей', value: 'assignees' },
-  { label: 'Изменение оценки', value: 'estimate' },
-  { label: 'Изменение этапа', value: 'milestone' },
-  { label: 'Заголовок / описание', value: 'title_desc' },
-  { label: 'Изменение тегов', value: 'labels' },
-  { label: 'Новый комментарий', value: 'comment' },
+const TRIGGER_TYPES = [
+  'column',
+  'completion',
+  'priority',
+  'due',
+  'assignees',
+  'estimate',
+  'milestone',
+  'title_desc',
+  'labels',
+  'comment',
 ]
-const actionTypeOptions = [
-  { label: 'Установить метку', value: 'set_label' },
-  { label: 'Закрыть / открыть issue', value: 'set_state' },
-  { label: 'Установить срок', value: 'set_due' },
-  { label: 'Установить исполнителей', value: 'set_assignees' },
-  { label: 'Установить оценку', value: 'set_estimate' },
-  { label: 'Установить этап', value: 'set_milestone' },
-  { label: 'Обновить заголовок/описание', value: 'set_title_desc' },
-  { label: 'Синхронизировать теги', value: 'reconcile_labels' },
-  { label: 'Написать комментарий', value: 'post_comment' },
+const triggerTypeOptions = computed(() =>
+  TRIGGER_TYPES.map((v) => ({ label: t(`gitlab.modal.option.trigger.${v}`), value: v })),
+)
+const ACTION_TYPES = [
+  'set_label',
+  'set_state',
+  'set_due',
+  'set_assignees',
+  'set_estimate',
+  'set_milestone',
+  'set_title_desc',
+  'reconcile_labels',
+  'post_comment',
 ]
-const stateOptions = [
-  { label: 'Из флага «Выполнено»', value: '' },
-  { label: 'Закрыть issue', value: 'closed' },
-  { label: 'Открыть issue', value: 'opened' },
-]
-const dateKindOptions = [
-  { label: 'Срок (due)', value: 'due' },
-  { label: 'Начало (start) — для issue игнорируется', value: 'start' },
-]
-const completionOptions = [
-  { label: 'Любое изменение', value: null },
-  { label: 'Стало «Выполнено»', value: true },
-  { label: 'Снято «Выполнено»', value: false },
-]
+const actionTypeOptions = computed(() =>
+  ACTION_TYPES.map((v) => ({ label: t(`gitlab.modal.option.action.${v}`), value: v })),
+)
+const stateOptions = computed(() => [
+  { label: t('gitlab.modal.option.state.fromFlag'), value: '' },
+  { label: t('gitlab.modal.option.state.closed'), value: 'closed' },
+  { label: t('gitlab.modal.option.state.opened'), value: 'opened' },
+])
+const dateKindOptions = computed(() =>
+  ['due', 'start'].map((v) => ({ label: t(`gitlab.modal.option.dateKind.${v}`), value: v })),
+)
+const completionOptions = computed(() => [
+  { label: t('gitlab.modal.option.completion.any'), value: null },
+  { label: t('gitlab.modal.option.completion.became'), value: true },
+  { label: t('gitlab.modal.option.completion.cleared'), value: false },
+])
 // The sensible default action for a freshly-picked trigger.
 const DEFAULT_ACTION_FOR = {
   column: 'set_label',
@@ -192,8 +214,8 @@ const DEFAULT_ACTION_FOR = {
   labels: 'reconcile_labels',
   comment: 'post_comment',
 }
-const triggerLabel = (v) => triggerTypeOptions.find((o) => o.value === v)?.label || v
-const actionLabel = (v) => actionTypeOptions.find((o) => o.value === v)?.label || v
+const triggerLabel = (v) => triggerTypeOptions.value.find((o) => o.value === v)?.label || v
+const actionLabel = (v) => actionTypeOptions.value.find((o) => o.value === v)?.label || v
 // Resolved estimation unit of the integration board (from the integration GET);
 // the estimate toggle is only meaningful when it's "time".
 const estimationUnit = ref('time')
@@ -209,9 +231,14 @@ const boardProject = ref({}) // board id → project id, for prefix-name targeti
 // prefixes that have no rule here.
 const loadedPrefixNames = ref({})
 const targetProjectId = computed(() => boardProject.value[boardId.value] || null)
-const columnOptions = ref([]) // {label:name, value:name} — for label-rules value maps
-const columnIdOptions = ref([]) // {label:name, value:id} — for column-move bindings
-const columnNameById = ref({}) // id → name, to stamp column_name on save
+// Captions follow the reader's language; the values stored in a rule do not. A
+// rule records the column's server-side name (that is what the sync matches on,
+// see internal/gitlab/writeback.go), so `value` and columnNameById stay on the
+// raw name while only the labels are translated (#2800).
+const columnOptions = ref([]) // {label:caption, value:name} — for label-rules value maps
+const columnIdOptions = ref([]) // {label:caption, value:id} — for column-move bindings
+const columnNameById = ref({}) // id → raw name, to stamp column_name on save
+const columnLabelById = ref({}) // id → caption, for the row summaries
 const saving = ref(false)
 // Only covers the POST that kicks the sync off — the sync itself runs detached on
 // the server, so nothing here blocks on it.
@@ -220,71 +247,68 @@ const syncing = ref(false)
 // pane was already open (null until the pane is rendered — it loads on mount).
 const journalRef = ref(null)
 
-const intervalOptions = [
-  { label: 'Вручную (выкл.)', value: 0 },
-  { label: 'Каждые 5 минут', value: 300 },
-  { label: 'Каждые 15 минут', value: 900 },
-  { label: 'Каждый час', value: 3600 },
-]
+const intervalOptions = computed(() => [
+  { label: t('gitlab.modal.option.interval.manual'), value: 0 },
+  { label: t('gitlab.modal.option.interval.min5'), value: 300 },
+  { label: t('gitlab.modal.option.interval.min15'), value: 900 },
+  { label: t('gitlab.modal.option.interval.hour'), value: 3600 },
+])
 // Periodic FULL sweep (catches deletes/drift an incremental pull can't see). 0 = off
 // — a full sync then runs only on the very first sync or via «Полная синхронизация».
-const fullIntervalOptions = [
-  { label: 'Не форсировать (только вручную)', value: 0 },
-  { label: 'Раз в 6 часов', value: 21600 },
-  { label: 'Раз в 12 часов', value: 43200 },
-  { label: 'Раз в сутки', value: 86400 },
-  { label: 'Раз в 2 суток', value: 172800 },
-  { label: 'Раз в неделю', value: 604800 },
-]
-const actionOptions = [
-  { label: 'Статус → колонка', value: 'status' },
-  { label: 'Приоритет', value: 'priority' },
-  { label: 'Доска (роутинг)', value: 'board' },
-  { label: 'Тег', value: 'tag' },
-  { label: 'Группировка (подзадачи)', value: 'group' },
-  { label: 'Игнорировать', value: 'ignore' },
-]
-const matchTypeOptions = [
-  { label: 'Префикс', value: 'prefix' },
-  { label: 'Regex', value: 'regex' },
-]
-const defaultActionOptions = [
-  { label: 'Создавать тег', value: 'tag' },
-  { label: 'Игнорировать', value: 'ignore' },
-]
+const fullIntervalOptions = computed(() => [
+  { label: t('gitlab.modal.option.fullInterval.off'), value: 0 },
+  { label: t('gitlab.modal.option.fullInterval.h6'), value: 21600 },
+  { label: t('gitlab.modal.option.fullInterval.h12'), value: 43200 },
+  { label: t('gitlab.modal.option.fullInterval.d1'), value: 86400 },
+  { label: t('gitlab.modal.option.fullInterval.d2'), value: 172800 },
+  { label: t('gitlab.modal.option.fullInterval.w1'), value: 604800 },
+])
+const actionOptions = computed(() =>
+  ['status', 'priority', 'board', 'tag', 'group', 'ignore'].map((v) => ({
+    label: t(`gitlab.modal.option.ruleAction.${v}`),
+    value: v,
+  })),
+)
+const matchTypeOptions = computed(() =>
+  ['prefix', 'regex'].map((v) => ({ label: t(`gitlab.modal.option.matchType.${v}`), value: v })),
+)
+const defaultActionOptions = computed(() =>
+  ['tag', 'ignore'].map((v) => ({ label: t(`gitlab.modal.option.defaultAction.${v}`), value: v })),
+)
 // Target options for a rule's value-map, by action.
 function mapTargetOptions(action) {
   if (action === 'status') return columnOptions.value
-  if (action === 'priority') return priorityLevelOptions
+  if (action === 'priority') return priorityLevelOptions.value
   if (action === 'board') return boardOptions.value
   return []
 }
 const mapActions = ['status', 'priority', 'board']
-const dueSourceOptions = [
-  { label: 'Issue, иначе срок Milestone', value: 'issue_milestone' },
-  { label: 'Только из Issue', value: 'issue' },
-  { label: 'Только из Milestone', value: 'milestone' },
-  { label: 'Не синхронизировать', value: 'off' },
-]
-const startSourceOptions = [
-  { label: 'Дата создания задачи', value: 'created' },
-  { label: 'Начало Milestone', value: 'milestone' },
-  { label: 'Не синхронизировать', value: 'off' },
-]
-const priorityLevelOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+const dueSourceOptions = computed(() =>
+  ['issue_milestone', 'issue', 'milestone', 'off'].map((v) => ({
+    label: t(`gitlab.modal.option.dueSource.${v}`),
+    value: v,
+  })),
+)
+const startSourceOptions = computed(() =>
+  ['created', 'milestone', 'off'].map((v) => ({
+    label: t(`gitlab.modal.option.startSource.${v}`),
+    value: v,
+  })),
+)
+// Computed, not a module constant: the level names come from the catalog, so a
+// frozen array would keep the language of the first render (#2799).
+const priorityLevelOptions = computed(() => priorityOptions())
 // Priority qualifier for a binding trigger (null = any level). Declared here so it
 // follows priorityLevelOptions (avoids a temporal-dead-zone reference).
-const priorityQualOptions = [{ label: 'Любой приоритет', value: null }, ...priorityLevelOptions]
+const priorityQualOptions = computed(() => [
+  { label: t('gitlab.modal.actions.anyPriority'), value: null },
+  ...priorityLevelOptions.value,
+])
 
 const lastSyncedText = computed(() =>
   lastSynced.value
-    ? new Date(lastSynced.value).toLocaleString('ru-RU', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : 'ещё не синхронизировано',
+    ? formatDateTime(lastSynced.value, { day: '2-digit', month: '2-digit' })
+    : t('gitlab.modal.sync.never'),
 )
 
 async function loadBoards() {
@@ -331,19 +355,26 @@ async function loadColumns(id) {
     columnOptions.value = []
     columnIdOptions.value = []
     columnNameById.value = {}
+    columnLabelById.value = {}
     return
   }
   try {
     const cols = (await boardsApi.columns(id)).data || []
-    columnOptions.value = cols.map((c) => ({ label: c.name, value: c.name }))
-    columnIdOptions.value = cols.map((c) => ({ label: c.name, value: c.id }))
+    columnOptions.value = cols.map((c) => ({ label: columnName(c), value: c.name }))
+    columnIdOptions.value = cols.map((c) => ({ label: columnName(c), value: c.id }))
     const m = {}
-    for (const c of cols) m[c.id] = c.name
+    const labels = {}
+    for (const c of cols) {
+      m[c.id] = c.name
+      labels[c.id] = columnName(c)
+    }
     columnNameById.value = m
+    columnLabelById.value = labels
   } catch {
     columnOptions.value = []
     columnIdOptions.value = []
     columnNameById.value = {}
+    columnLabelById.value = {}
   }
 }
 
@@ -370,7 +401,7 @@ async function loadList() {
 // bindingLabel renders a short caption for the selector.
 function bindingLabel(b) {
   const board = boardOptions.value.find((o) => o.value === b.board_id)
-  return b.name || b.project_path || (board ? board.label : 'привязка')
+  return b.name || b.project_path || (board ? board.label : t('gitlab.modal.binding.fallbackLabel'))
 }
 const bindingOptions = computed(() =>
   integrations.value.map((b) => ({ label: bindingLabel(b), value: b.id })),
@@ -519,37 +550,51 @@ function synthesizeBindings(wb) {
 
 // bindingTriggerText / bindingActionText render the compact row summary.
 function bindingTriggerText(b) {
-  const t = b.trigger
-  switch (t.type) {
+  // `tr`, not `t`: the i18n `t` is in scope here and must not be shadowed.
+  const tr = b.trigger
+  switch (tr.type) {
     case 'column':
-      return `Перенос → «${columnNameById.value[t.column_id] || t.column_name || '?'}»`
+      return t('gitlab.modal.summary.columnMove', {
+        name:
+          columnLabelById.value[tr.column_id] ||
+          tr.column_name ||
+          t('gitlab.modal.summary.unknown'),
+      })
     case 'priority':
-      return t.priority == null ? 'Приоритет (любой)' : `Приоритет: ${PRIORITY_LABELS[t.priority]}`
+      return tr.priority == null
+        ? t('gitlab.modal.summary.priorityAny')
+        : t('gitlab.modal.summary.priority', { name: priorityLabel(tr.priority) })
     case 'completion':
-      return t.completed == null
-        ? 'Флаг «Выполнено»'
-        : t.completed
-          ? 'Стало «Выполнено»'
-          : 'Снято «Выполнено»'
+      return tr.completed == null
+        ? t('gitlab.modal.summary.completionFlag')
+        : tr.completed
+          ? t('gitlab.modal.summary.completionBecame')
+          : t('gitlab.modal.summary.completionCleared')
     case 'due':
-      return t.date_kind === 'start' ? 'Изменение начала' : 'Изменение срока'
+      return tr.date_kind === 'start'
+        ? t('gitlab.modal.summary.startChange')
+        : t('gitlab.modal.summary.dueChange')
     default:
-      return triggerLabel(t.type)
+      return triggerLabel(tr.type)
   }
 }
 function bindingActionText(b) {
   const a = b.action
   switch (a.type) {
     case 'set_label':
-      return `метка «${a.label || '?'}»`
+      return t('gitlab.modal.summary.setLabel', {
+        label: a.label || t('gitlab.modal.summary.unknown'),
+      })
     case 'set_state':
       return a.state === 'closed'
-        ? 'закрыть issue'
+        ? t('gitlab.modal.summary.closeIssue')
         : a.state === 'opened'
-          ? 'открыть issue'
-          : 'закрыть/открыть issue'
+          ? t('gitlab.modal.summary.openIssue')
+          : t('gitlab.modal.summary.toggleIssue')
     case 'post_comment':
-      return a.add_marker ? 'комментарий (+маркер)' : 'комментарий'
+      return a.add_marker
+        ? t('gitlab.modal.summary.commentMarker')
+        : t('gitlab.modal.summary.comment')
     default:
       return actionLabel(a.type).toLowerCase()
   }
@@ -622,7 +667,7 @@ function addMapRow(rule) {
 
 async function save() {
   if (!projectPath.value.trim() || !boardId.value) {
-    message.warning('Укажите путь к проекту GitLab и доску назначения')
+    message.warning(t('gitlab.modal.binding.needProjectAndBoard'))
     return
   }
   const label_rules = {
@@ -707,7 +752,7 @@ async function save() {
       )
       loadedPrefixNames.value = merged
     }
-    message.success('Настройки интеграции сохранены')
+    message.success(t('gitlab.modal.binding.saved'))
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -722,7 +767,7 @@ async function deleteBinding() {
   }
   try {
     await glApi.deleteIntegration(props.wsId, currentId.value)
-    message.success('Привязка удалена')
+    message.success(t('gitlab.modal.binding.deleted'))
     await loadList()
   } catch (e) {
     message.error(e.message)
@@ -731,7 +776,7 @@ async function deleteBinding() {
 
 async function syncNow(mode) {
   if (!currentId.value) {
-    message.warning('Сначала сохраните привязку')
+    message.warning(t('gitlab.modal.sync.saveFirst'))
     return
   }
   syncing.value = true
@@ -744,12 +789,10 @@ async function syncNow(mode) {
     // mode='full'.
     const { data } = await glApi.sync(props.wsId, currentId.value, mode)
     if (data?.already_running) {
-      message.warning('Синхронизация уже выполняется — дождитесь её завершения')
+      message.warning(t('gitlab.modal.sync.alreadyRunning'))
     } else {
       message.info(
-        mode === 'full'
-          ? 'Полная синхронизация запущена в фоне — уведомим по завершении'
-          : 'Синхронизация запущена в фоне — уведомим по завершении',
+        mode === 'full' ? t('gitlab.modal.sync.startedFull') : t('gitlab.modal.sync.started'),
       )
     }
     openRight('journal')
@@ -768,20 +811,22 @@ const conflictCount = ref(0)
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 const syncMenu = computed(() => [
   {
-    label: 'Полная синхронизация',
+    label: t('gitlab.modal.sync.full'),
     key: 'full',
     icon: menuIcon(CloudDownloadOutline),
     disabled: syncing.value,
   },
   { type: 'divider', key: 'd1' },
   {
-    label: 'Журнал синхронизации',
+    label: t('gitlab.modal.sync.journal'),
     key: 'journal',
     icon: menuIcon(TimeOutline),
     props: { class: rightMode.value === 'journal' ? 'gl-menu-active' : '' },
   },
   {
-    label: conflictCount.value ? `Конфликты (${conflictCount.value})` : 'Конфликты',
+    label: conflictCount.value
+      ? t('gitlab.modal.sync.conflictsCount', { n: conflictCount.value })
+      : t('gitlab.modal.sync.conflicts'),
     key: 'conflicts',
     icon: menuIcon(WarningOutline),
     disabled: !conflictCount.value,
@@ -836,12 +881,16 @@ watch(
           <div class="gl-left gl-scroll t-hoverscroll">
             <!-- ACCOUNT -->
             <section class="gl-sec">
-              <h4 class="gl-h">Аккаунт</h4>
+              <h4 class="gl-h">{{ $t('gitlab.modal.account.title') }}</h4>
               <p v-if="serviceConfigured" class="gl-wb-hint">
                 <n-text depth="3">
-                  Синхронизация идёт под <b>системным сервисным токеном</b> (задаётся админом в
-                  панели администрирования). Личный токен ниже подключать не обязательно — он нужен
-                  лишь как запасной вариант для операций от вашего имени.
+                  <!-- i18n-t, not a concatenation: only the token name is emphasised,
+                       and where it sits in the sentence is the translator's call. -->
+                  <i18n-t keypath="gitlab.modal.account.serviceHint" scope="global">
+                    <template #strong>
+                      <b>{{ $t('gitlab.modal.account.serviceHintStrong') }}</b>
+                    </template>
+                  </i18n-t>
                 </n-text>
               </p>
               <template v-if="gl.connected">
@@ -852,26 +901,28 @@ watch(
                   </div>
                   <n-popconfirm
                     :positive-button-props="{ type: 'error' }"
-                    positive-text="Отключить"
+                    :positive-text="$t('gitlab.modal.account.disconnect')"
                     @positive-click="disconnect"
                   >
                     <template #trigger>
-                      <n-button text size="small" type="error">Отключить</n-button>
+                      <n-button text size="small" type="error">
+                        {{ $t('gitlab.modal.account.disconnect') }}
+                      </n-button>
                     </template>
-                    Отключить аккаунт GitLab? Интеграции перестанут синхронизироваться.
+                    {{ $t('gitlab.modal.account.disconnectConfirm') }}
                   </n-popconfirm>
                 </div>
               </template>
               <template v-else>
                 <div class="gl-grid">
-                  <n-text depth="3" class="lbl">URL GitLab</n-text>
+                  <n-text depth="3" class="lbl">{{ $t('gitlab.modal.account.baseUrl') }}</n-text>
                   <n-input
                     v-model:value="baseInput"
                     size="small"
                     placeholder="https://gitlab.example.com"
                     :input-props="{ autocomplete: 'off', name: 'gl-base-url' }"
                   />
-                  <n-text depth="3" class="lbl">Токен (PAT, scope api)</n-text>
+                  <n-text depth="3" class="lbl">{{ $t('gitlab.modal.account.token') }}</n-text>
                   <n-input
                     v-model:value="tokenInput"
                     type="password"
@@ -884,13 +935,17 @@ watch(
                 </div>
                 <p class="gl-wb-hint">
                   <n-text depth="3">
-                    Для записи от вашего имени (создание issue, обратная запись) нужен scope
-                    <b>api</b>. Токена с <b>read_api</b> хватает только для чтения/синхронизации.
+                    <!-- The two scope names are GitLab's own identifiers: they stay
+                         verbatim in every locale, only their place in the sentence moves. -->
+                    <i18n-t keypath="gitlab.modal.account.scopeHint" scope="global">
+                      <template #api><b>api</b></template>
+                      <template #readApi><b>read_api</b></template>
+                    </i18n-t>
                   </n-text>
                 </p>
                 <div class="gl-actions">
                   <n-button type="primary" size="small" :loading="connecting" @click="connect">
-                    Подключить
+                    {{ $t('gitlab.modal.account.connect') }}
                   </n-button>
                 </div>
               </template>
@@ -899,20 +954,13 @@ watch(
             <!-- INTEGRATION — always shown so an admin can view/edit stored bindings even
            with no credentials configured; a banner warns that sync/write won't run. -->
             <section class="gl-sec">
-              <h4 class="gl-h">Привязки GitLab → доска</h4>
+              <h4 class="gl-h">{{ $t('gitlab.modal.binding.title') }}</h4>
               <p v-if="!gl.connected && !serviceConfigured" class="gl-warn">
                 <n-icon :component="WarningOutline" />
-                <n-text depth="3">
-                  Нет доступных учётных данных GitLab: синхронизация и обратная запись работать не
-                  будут. Подключите личный токен выше или попросите админа задать сервисный токен.
-                  Сохранённые привязки при этом не теряются.
-                </n-text>
+                <n-text depth="3">{{ $t('gitlab.modal.binding.noCredsWarning') }}</n-text>
               </p>
               <p v-if="!isAdmin" class="gl-wb-hint">
-                <n-text depth="3">
-                  Изменять привязки может только администратор. Вам доступен просмотр и запуск
-                  синхронизации.
-                </n-text>
+                <n-text depth="3">{{ $t('gitlab.modal.binding.readOnlyHint') }}</n-text>
               </p>
               <!-- Multi-binding selector: pick a binding to edit, add a new one, or
              delete the current one. -->
@@ -921,7 +969,7 @@ watch(
                   :value="currentId"
                   :options="bindingOptions"
                   size="small"
-                  placeholder="Новая привязка"
+                  :placeholder="$t('gitlab.modal.binding.new')"
                   :consistent-menu-width="false"
                   style="flex: 1 1 auto"
                   @update:value="selectBinding"
@@ -929,7 +977,7 @@ watch(
                 <n-button
                   size="small"
                   tertiary
-                  title="Новая привязка"
+                  :title="$t('gitlab.modal.binding.new')"
                   :disabled="!isAdmin"
                   @click="newBinding"
                 >
@@ -938,53 +986,62 @@ watch(
                 <n-popconfirm
                   v-if="currentId && isAdmin"
                   :positive-button-props="{ type: 'error' }"
-                  positive-text="Удалить"
+                  :positive-text="$t('gitlab.modal.actions.remove')"
                   @positive-click="deleteBinding"
                 >
                   <template #trigger>
-                    <n-button size="small" tertiary type="error" title="Удалить привязку">
+                    <n-button
+                      size="small"
+                      tertiary
+                      type="error"
+                      :title="$t('gitlab.modal.binding.delete')"
+                    >
                       <template #icon><n-icon :component="TrashOutline" /></template>
                     </n-button>
                   </template>
-                  Удалить привязку? Синхронизированные задачи останутся, связь с GitLab пропадёт.
+                  {{ $t('gitlab.modal.binding.deleteConfirm') }}
                 </n-popconfirm>
               </div>
               <div class="gl-grid">
-                <n-text depth="3" class="lbl">Название (необязательно)</n-text>
-                <n-input v-model:value="name" size="small" placeholder="напр. Скрам-борд" />
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.name') }}</n-text>
+                <n-input
+                  v-model:value="name"
+                  size="small"
+                  :placeholder="$t('gitlab.modal.binding.namePlaceholder')"
+                />
 
-                <n-text depth="3" class="lbl">Проект GitLab (полный путь)</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.projectPath') }}</n-text>
                 <n-input v-model:value="projectPath" size="small" placeholder="group/project" />
 
-                <n-text depth="3" class="lbl">Доска назначения</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.board') }}</n-text>
                 <n-select
                   :value="boardId"
                   :options="boardOptions"
                   size="small"
-                  placeholder="Выберите доску"
+                  :placeholder="$t('gitlab.modal.binding.boardPlaceholder')"
                   @update:value="onBoardChange"
                 />
 
-                <n-text depth="3" class="lbl">Автосинхронизация</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.interval') }}</n-text>
                 <n-select v-model:value="intervalSec" :options="intervalOptions" size="small" />
 
-                <n-text depth="3" class="lbl">Полная синхронизация</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.fullInterval') }}</n-text>
                 <n-select
                   v-model:value="fullIntervalSec"
                   :options="fullIntervalOptions"
                   size="small"
                 />
 
-                <n-text depth="3" class="lbl">Источник срока</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.dueSource') }}</n-text>
                 <n-select v-model:value="dueSource" :options="dueSourceOptions" size="small" />
 
-                <n-text depth="3" class="lbl">Источник начала</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.startSource') }}</n-text>
                 <n-select v-model:value="startSource" :options="startSourceOptions" size="small" />
 
-                <n-text depth="3" class="lbl">Что переносить</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.scope') }}</n-text>
                 <n-select v-model:value="scope" :options="scopeOptions" size="small" />
 
-                <n-text depth="3" class="lbl">Закрытые задачи</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.closedPolicy') }}</n-text>
                 <n-select
                   v-model:value="closedPolicy"
                   :options="closedPolicyOptions"
@@ -992,91 +1049,90 @@ watch(
                 />
 
                 <template v-if="closedPolicy === 'period'">
-                  <n-text depth="3" class="lbl">Закрытые не старше</n-text>
+                  <n-text depth="3" class="lbl">
+                    {{ $t('gitlab.modal.binding.closedAfter') }}
+                  </n-text>
                   <n-date-picker v-model:value="closedAfter" type="date" size="small" clearable />
                 </template>
 
                 <n-text depth="3" class="lbl">
-                  Синхронизировать связи
-                  <span class="lbl-hint">
-                    Импорт связанных задач из GitLab во вкладку «Связи»
-                  </span>
+                  {{ $t('gitlab.modal.binding.relations') }}
+                  <span class="lbl-hint">{{ $t('gitlab.modal.binding.relationsHint') }}</span>
                 </n-text>
                 <div><n-switch v-model:value="relationsSync" /></div>
 
-                <n-text depth="3" class="lbl">Включена</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.binding.enabled') }}</n-text>
                 <div><n-switch v-model:value="enabled" /></div>
               </div>
 
               <!-- Write-back (Tessera → GitLab), opt-in; all off by default -->
-              <h4 class="gl-h gl-h-sub">Обратная запись в GitLab</h4>
+              <h4 class="gl-h gl-h-sub">{{ $t('gitlab.modal.writeback.title') }}</h4>
               <div class="gl-grid">
-                <n-text depth="3" class="lbl">Включить запись</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.writeback.enabled') }}</n-text>
                 <div><n-switch v-model:value="wbEnabled" /></div>
 
-                <n-text depth="3" class="lbl">Создание issue из задачи</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.writeback.create') }}</n-text>
                 <div><n-switch v-model:value="wbCreate" /></div>
 
                 <template v-if="wbCreate">
-                  <n-text depth="3" class="lbl">Получение issue-templates из проекта</n-text>
+                  <n-text depth="3" class="lbl">
+                    {{ $t('gitlab.modal.writeback.fetchTemplates') }}
+                  </n-text>
                   <div><n-switch v-model:value="wbFetchTemplates" size="small" /></div>
                 </template>
 
-                <n-text depth="3" class="lbl">Выгрузка подзадач в иерархию GitLab</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.writeback.children') }}</n-text>
                 <div><n-switch v-model:value="wbChildren" /></div>
 
                 <template v-if="wbChildren">
-                  <n-text depth="3" class="lbl">Метка сгруппированной задачи</n-text>
+                  <n-text depth="3" class="lbl">
+                    {{ $t('gitlab.modal.writeback.groupLabel') }}
+                  </n-text>
                   <div>
+                    <!-- The placeholder is the backend's own default label
+                         (gitlab.DefaultGroupLabel) — a value written into GitLab, not
+                         interface text, so both locales spell it exactly the same. -->
                     <n-input
                       v-model:value="wbGroupLabel"
                       size="small"
-                      placeholder="M: Сгруппированная задача"
+                      :placeholder="$t('gitlab.modal.writeback.groupLabelPlaceholder')"
                     />
                   </div>
 
-                  <n-text depth="3" class="lbl">Помечать родителя автоматически</n-text>
+                  <n-text depth="3" class="lbl">{{
+                    $t('gitlab.modal.writeback.autoGroup')
+                  }}</n-text>
                   <div><n-switch v-model:value="wbAutoGroup" size="small" /></div>
                 </template>
 
-                <n-text depth="3" class="lbl">Загружать вложения в GitLab</n-text>
+                <n-text depth="3" class="lbl">
+                  {{ $t('gitlab.modal.writeback.attachments') }}
+                </n-text>
                 <div><n-switch v-model:value="wbAttachments" size="small" /></div>
               </div>
               <p class="gl-wb-hint">
                 <n-text depth="3">
-                  «Создание issue из задачи» добавляет в модалку задачи (под свойством «Родитель»)
-                  кнопку «Создать issue в GitLab» — issue открывается из свойств и описания задачи
-                  под токеном владельца интеграции, после чего задача становится синхронизированной.
-                  Работает независимо от обратной записи изменений ниже. «Получение issue-templates»
-                  подтягивает шаблоны
-                  <code>.gitlab/issue_templates/*.md</code> — их можно выбрать над редактором
-                  описания перед созданием. «Загружать вложения» копирует картинки из описания и
-                  комментариев, а также файлы задачи, в хранилище проекта GitLab — иначе ссылки на
-                  них в issue остаются битыми (GitLab резолвит их от своего адреса). Выключите, если
-                  не хотите дублировать бинарники в GitLab: ссылки тогда заменяются пометкой.
-                  Удаление файла в Tessera копию в GitLab не убирает — штатного API удаления
-                  загрузок нет.
+                  <!-- The template path stays in <code> and never translates, so the
+                       sentence carries it as a slot rather than inside the message. -->
+                  <i18n-t keypath="gitlab.modal.writeback.hint" scope="global">
+                    <template #templates>
+                      <code>.gitlab/issue_templates/*.md</code>
+                    </template>
+                  </i18n-t>
                 </n-text>
               </p>
               <p v-if="wbChildren" class="gl-wb-hint">
-                <n-text depth="3">
-                  «Выгрузка подзадач» добавляет в модалку задачи кнопку «Сделать сгруппированной»
-                  (ставит метку в GitLab), а подзадачи такого родителя создаются в GitLab дочерними
-                  элементами issue. Метку задаём здесь, а не тегом: её префиксом управляет правило
-                  синка, поэтому в тег-пикере он намеренно скрыт — метка должна читаться правилами
-                  этой интеграции как группирующая, иначе сервер отклонит кнопку. «Помечать родителя
-                  автоматически» выключено по умолчанию: иначе первая же подзадача молча правит
-                  метки в GitLab; вместо этого в списке подзадач показывается подсказка с кнопкой.
-                </n-text>
+                <n-text depth="3">{{ $t('gitlab.modal.writeback.childrenHint') }}</n-text>
               </p>
               <!-- Uniform "configure" buttons: each opens the right pane in its mode. The
              lists/editors themselves live in the right pane. -->
               <div class="gl-cfg-row">
                 <div class="gl-cfg-text">
-                  <n-text depth="3" class="gl-cfg-title">Действия обратной записи</n-text>
+                  <n-text depth="3" class="gl-cfg-title">
+                    {{ $t('gitlab.modal.actions.title') }}
+                  </n-text>
                   <n-text depth="3" class="gl-cfg-hint">
-                    Что делать на issue GitLab при изменениях задачи. Перенос в колонку ставит метку
-                    статуса и не закрывает issue.
+                    {{ $t('gitlab.modal.actions.cfgHint') }}
                   </n-text>
                 </div>
                 <n-button
@@ -1087,17 +1143,19 @@ watch(
                   @click="openRight('actions')"
                 >
                   <template #icon><n-icon :component="CreateOutline" /></template>
-                  Настроить действия<template v-if="wbEnabled && bindings.length">
+                  {{ $t('gitlab.modal.actions.configure')
+                  }}<template v-if="wbEnabled && bindings.length">
                     ({{ bindings.length }})</template
                   >
                 </n-button>
               </div>
               <div class="gl-cfg-row">
                 <div class="gl-cfg-text">
-                  <n-text depth="3" class="gl-cfg-title">Правила разбора меток GitLab</n-text>
+                  <n-text depth="3" class="gl-cfg-title">
+                    {{ $t('gitlab.modal.rules.title') }}
+                  </n-text>
                   <n-text depth="3" class="gl-cfg-hint">
-                    Как входящие метки GitLab превращаются в статус, приоритет и теги при
-                    синхронизации.
+                    {{ $t('gitlab.modal.rules.cfgHint') }}
                   </n-text>
                 </div>
                 <n-button
@@ -1107,24 +1165,26 @@ watch(
                   @click="openRight('rules')"
                 >
                   <template #icon><n-icon :component="CreateOutline" /></template>
-                  Настроить правила
+                  {{ $t('gitlab.modal.rules.configure') }}
                 </n-button>
               </div>
 
               <div class="gl-footer">
-                <span class="gl-synced">Последняя синхронизация: {{ lastSyncedText }}</span>
+                <span class="gl-synced">
+                  {{ $t('gitlab.modal.sync.last', { at: lastSyncedText }) }}
+                </span>
                 <div class="gl-footer-btns">
                   <n-badge
                     :value="conflictCount"
                     :max="9"
                     :show="conflictCount > 0"
                     color="#e0922f"
-                    title="Есть неразрешённые конфликты — откройте «Конфликты» в меню рядом"
+                    :title="$t('gitlab.modal.sync.conflictsBadge')"
                   >
                     <n-button-group size="medium">
                       <n-button :loading="syncing" @click="syncNow()">
                         <template #icon><n-icon :component="SyncOutline" /></template>
-                        Синхронизировать
+                        {{ $t('gitlab.modal.sync.run') }}
                       </n-button>
                       <n-dropdown trigger="click" :options="syncMenu" @select="onSyncMenu">
                         <n-button :disabled="syncing" class="gl-sync-caret">
@@ -1138,10 +1198,10 @@ watch(
                     size="medium"
                     :loading="saving"
                     :disabled="!isAdmin"
-                    :title="isAdmin ? '' : 'Изменять привязки может только администратор'"
+                    :title="isAdmin ? '' : $t('gitlab.modal.binding.adminOnly')"
                     @click="save"
                   >
-                    Сохранить
+                    {{ $t('gitlab.modal.save') }}
                   </n-button>
                 </div>
               </div>
@@ -1151,10 +1211,13 @@ watch(
                GL→Tessera label-parsing rules. -->
           <div v-if="rightMode" class="gl-right gl-scroll t-hoverscroll">
             <div class="gl-right-head">
-              <span class="gl-right-title">
-                {{ RIGHT_TITLES[rightMode] }}
-              </span>
-              <n-button text size="small" aria-label="Закрыть" @click="rightMode = null">
+              <span class="gl-right-title">{{ rightTitle }}</span>
+              <n-button
+                text
+                size="small"
+                :aria-label="$t('gitlab.modal.close')"
+                @click="rightMode = null"
+              >
                 <n-icon :component="CloseOutline" />
               </n-button>
             </div>
@@ -1162,14 +1225,10 @@ watch(
             <!-- ACTIONS: write-back binding cards -->
             <template v-if="rightMode === 'actions'">
               <p class="gl-wb-hint">
-                <n-text depth="3">
-                  Каждое действие связывает событие в задаче Tessera с действием на issue GitLab
-                  (под токеном владельца интеграции, scope «api»). По умолчанию набор повторяет
-                  прежнее поведение записи.
-                </n-text>
+                <n-text depth="3">{{ $t('gitlab.modal.actions.paneHint') }}</n-text>
               </p>
               <div v-if="!bindings.length" class="gl-binds-empty">
-                <n-text depth="3">Пока нет действий. Добавьте первое ниже.</n-text>
+                <n-text depth="3">{{ $t('gitlab.modal.actions.empty') }}</n-text>
               </div>
               <div
                 v-for="(b, bi) in bindings"
@@ -1187,7 +1246,7 @@ watch(
                     text
                     size="tiny"
                     type="error"
-                    title="Удалить"
+                    :title="$t('gitlab.modal.actions.remove')"
                     :disabled="!isAdmin"
                     @click="removeBinding(bi)"
                   >
@@ -1195,7 +1254,7 @@ watch(
                   </n-button>
                 </div>
                 <div class="gl-grid">
-                  <n-text depth="3" class="lbl">Действие в Tessera</n-text>
+                  <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.trigger') }}</n-text>
                   <n-select
                     :value="b.trigger.type"
                     :options="triggerTypeOptions"
@@ -1205,17 +1264,19 @@ watch(
                   />
 
                   <template v-if="b.trigger.type === 'column'">
-                    <n-text depth="3" class="lbl">Целевая колонка</n-text>
+                    <n-text depth="3" class="lbl">
+                      {{ $t('gitlab.modal.actions.targetColumn') }}
+                    </n-text>
                     <n-select
                       v-model:value="b.trigger.column_id"
                       :options="columnIdOptions"
                       size="small"
-                      placeholder="Выберите колонку"
+                      :placeholder="$t('gitlab.modal.actions.columnPlaceholder')"
                       :disabled="!isAdmin"
                     />
                   </template>
                   <template v-else-if="b.trigger.type === 'priority'">
-                    <n-text depth="3" class="lbl">Приоритет</n-text>
+                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.priority') }}</n-text>
                     <n-select
                       v-model:value="b.trigger.priority"
                       :options="priorityQualOptions"
@@ -1224,7 +1285,9 @@ watch(
                     />
                   </template>
                   <template v-else-if="b.trigger.type === 'completion'">
-                    <n-text depth="3" class="lbl">Условие</n-text>
+                    <n-text depth="3" class="lbl">{{
+                      $t('gitlab.modal.actions.condition')
+                    }}</n-text>
                     <n-select
                       v-model:value="b.trigger.completed"
                       :options="completionOptions"
@@ -1233,7 +1296,7 @@ watch(
                     />
                   </template>
                   <template v-else-if="b.trigger.type === 'due'">
-                    <n-text depth="3" class="lbl">Тип срока</n-text>
+                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.dateKind') }}</n-text>
                     <n-select
                       v-model:value="b.trigger.date_kind"
                       :options="dateKindOptions"
@@ -1242,7 +1305,7 @@ watch(
                     />
                   </template>
 
-                  <n-text depth="3" class="lbl">Действие в GitLab</n-text>
+                  <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.action') }}</n-text>
                   <n-select
                     :value="b.action.type"
                     :options="actionTypeOptions"
@@ -1252,14 +1315,16 @@ watch(
                   />
 
                   <template v-if="b.action.type === 'set_label'">
-                    <n-text depth="3" class="lbl">Метка</n-text>
+                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.label') }}</n-text>
                     <n-input
                       v-model:value="b.action.label"
                       size="small"
-                      placeholder="напр. S: In Progress"
+                      :placeholder="$t('gitlab.modal.actions.labelPlaceholder')"
                       :disabled="!isAdmin"
                     />
-                    <n-text depth="3" class="lbl">Снимать метки того же префикса</n-text>
+                    <n-text depth="3" class="lbl">
+                      {{ $t('gitlab.modal.actions.clearPrefix') }}
+                    </n-text>
                     <div>
                       <n-switch
                         v-model:value="b.action.clear_prefix"
@@ -1269,7 +1334,7 @@ watch(
                     </div>
                   </template>
                   <template v-else-if="b.action.type === 'set_state'">
-                    <n-text depth="3" class="lbl">Состояние issue</n-text>
+                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.state') }}</n-text>
                     <n-select
                       v-model:value="b.action.state"
                       :options="stateOptions"
@@ -1278,7 +1343,7 @@ watch(
                     />
                   </template>
                   <template v-else-if="b.action.type === 'set_due'">
-                    <n-text depth="3" class="lbl">Тип срока</n-text>
+                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.actions.dateKind') }}</n-text>
                     <n-select
                       v-model:value="b.action.date_kind"
                       :options="dateKindOptions"
@@ -1287,7 +1352,9 @@ watch(
                     />
                   </template>
                   <template v-else-if="b.action.type === 'post_comment'">
-                    <n-text depth="3" class="lbl">Добавлять маркер Tessera</n-text>
+                    <n-text depth="3" class="lbl">{{
+                      $t('gitlab.modal.actions.addMarker')
+                    }}</n-text>
                     <div>
                       <n-switch
                         v-model:value="b.action.add_marker"
@@ -1307,27 +1374,27 @@ watch(
                 @click="addBinding"
               >
                 <template #icon><n-icon :component="AddOutline" /></template>
-                Действие
+                {{ $t('gitlab.modal.actions.add') }}
               </n-button>
             </template>
 
             <!-- RULES: GL → Tessera label parsing -->
             <template v-else-if="rightMode === 'rules'">
               <div class="gl-grid gl-grid-rules">
-                <n-text depth="3" class="lbl">Колонка по умолчанию</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.rules.defaultColumn') }}</n-text>
                 <n-select
                   v-model:value="defaultColumn"
                   :options="columnOptions"
                   size="small"
-                  placeholder="напр. К работе"
+                  :placeholder="$t('gitlab.modal.rules.defaultColumnPlaceholder')"
                 />
-                <n-text depth="3" class="lbl">Прочие метки</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.rules.otherLabels') }}</n-text>
                 <n-select
                   v-model:value="defaultAction"
                   :options="defaultActionOptions"
                   size="small"
                 />
-                <n-text depth="3" class="lbl">Сохранять префикс тега</n-text>
+                <n-text depth="3" class="lbl">{{ $t('gitlab.modal.rules.tagKeepPrefix') }}</n-text>
                 <div><n-switch v-model:value="tagKeepPrefix" /></div>
               </div>
 
@@ -1336,7 +1403,7 @@ watch(
                   <n-input
                     v-model:value="rule.match"
                     size="small"
-                    placeholder="S: либо ^(T|C): "
+                    :placeholder="$t('gitlab.modal.rules.matchPlaceholder')"
                     class="gl-rmatch"
                   />
                   <n-select
@@ -1356,16 +1423,16 @@ watch(
                   </n-button>
                 </div>
                 <div v-if="rule.match_type === 'prefix'" class="gl-ropt">
-                  <n-text depth="3" class="lbl">Понятное имя</n-text>
+                  <n-text depth="3" class="lbl">{{ $t('gitlab.modal.rules.friendlyName') }}</n-text>
                   <n-input
                     v-model:value="rule.label"
                     size="small"
-                    placeholder="напр. Статус"
+                    :placeholder="$t('gitlab.modal.rules.friendlyNamePlaceholder')"
                     class="gl-rname"
                   />
                 </div>
                 <div v-if="rule.action === 'tag'" class="gl-ropt">
-                  <n-text depth="3" class="lbl">Сохранять префикс</n-text>
+                  <n-text depth="3" class="lbl">{{ $t('gitlab.modal.rules.keepPrefix') }}</n-text>
                   <n-switch v-model:value="rule.keep_prefix" size="small" />
                 </div>
                 <div v-if="mapActions.includes(rule.action)" class="gl-rmap">
@@ -1385,7 +1452,7 @@ watch(
                       v-model:value="m.v"
                       :options="mapTargetOptions(rule.action)"
                       size="small"
-                      placeholder="→ значение"
+                      :placeholder="$t('gitlab.modal.rules.valuePlaceholder')"
                     />
                     <n-button text size="tiny" type="error" @click="rule.map.splice(mi, 1)">
                       <n-icon :component="TrashOutline" />
@@ -1399,13 +1466,13 @@ watch(
                     @click="addMapRow(rule)"
                   >
                     <template #icon><n-icon :component="AddOutline" /></template>
-                    Значение
+                    {{ $t('gitlab.modal.rules.addValue') }}
                   </n-button>
                 </div>
               </div>
               <n-button dashed size="small" type="primary" class="gl-add" @click="addRule">
                 <template #icon><n-icon :component="AddOutline" /></template>
-                Правило
+                {{ $t('gitlab.modal.rules.add') }}
               </n-button>
             </template>
 

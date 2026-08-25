@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -76,6 +77,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.repository.ProfileRepository
 import website.msdnna.tessera.ui.TestTags
@@ -86,6 +88,8 @@ import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.oauthErrorRes
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
@@ -107,7 +111,7 @@ fun AuthScreen(
     onServerUrlChange: (String) -> Unit,
     isDark: Boolean = false,
     onToggleTheme: () -> Unit = {},
-    oauthError: String? = null,
+    oauthErrorCode: String? = null,
     onOAuthErrorShown: () -> Unit = {},
     vm: AuthViewModel = viewModel(),
 ) {
@@ -115,11 +119,15 @@ fun AuthScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
 
+    // The deep link hands over a code; во ViewModel уезжает id ресурса, а не готовая
+    // строка — состояние переживает смену языка, а резолв идёт при отрисовке.
+    val oauthErrorResId = oauthErrorCode?.takeIf { it.isNotBlank() }?.let { oauthErrorRes(it) }
+
     // Probe enabled OAuth providers once; surface any OAuth deep-link error.
     LaunchedEffect(Unit) { vm.loadProviders() }
-    LaunchedEffect(oauthError) {
-        if (!oauthError.isNullOrBlank()) {
-            vm.setError(oauthError)
+    LaunchedEffect(oauthErrorResId) {
+        if (oauthErrorResId != null) {
+            vm.setError(oauthErrorResId)
             onOAuthErrorShown()
         }
     }
@@ -127,7 +135,7 @@ fun AuthScreen(
     fun launchGitlabOAuth() {
         val url = RetrofitClient.apiBaseUrl(serverUrl) + "auth/gitlab/authorize?platform=android"
         runCatching { CustomTabsIntent.Builder().build().launchUrl(ctx, Uri.parse(url)) }
-            .onFailure { vm.setError("Не удалось открыть браузер для входа") }
+            .onFailure { vm.setError(R.string.auth_browser_failed) }
     }
 
     // Logo height ~28% of screen width (~1.5× smaller than before). MtLogo is the
@@ -189,20 +197,25 @@ fun AuthScreen(
                     PopoverCaret(Modifier.padding(end = 18.dp))
                     TCard(modifier = Modifier.widthIn(min = 264.dp, max = 300.dp)) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Сервер", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                stringResource(R.string.auth_server_title),
+                                color = c.text2,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                             TTextField(
                                 value = serverDraft,
                                 onValueChange = {
                                     serverDraft = it
                                     onServerUrlChange(it)
                                 },
-                                placeholder = "https://tessera.msdnna.website",
+                                placeholder = stringResource(R.string.auth_server_placeholder),
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                                 fieldTag = TestTags.AUTH_SERVER_FIELD,
                             )
                             Text(
-                                "Применяется сразу. Пусто — сервер по умолчанию.",
+                                stringResource(R.string.auth_server_hint),
                                 color = c.text3,
                                 fontSize = 11.sp,
                             )
@@ -227,7 +240,7 @@ fun AuthScreen(
             MtLogo(size = logoSize, tint = Color.White, gradient = false)
             Spacer(Modifier.height(20.dp))
             Text(
-                if (register) "Создайте аккаунт" else "Войдите в аккаунт",
+                stringResource(if (register) R.string.auth_headline_register else R.string.auth_headline_login),
                 color = Color.White.copy(alpha = 0.78f),
                 fontSize = 14.sp,
             )
@@ -236,8 +249,8 @@ fun AuthScreen(
             AuthField(
                 value = email,
                 onValueChange = { email = it },
-                label = "Email",
-                placeholder = "you@example.com",
+                label = stringResource(R.string.auth_email_label),
+                placeholder = stringResource(R.string.auth_email_placeholder),
                 tag = TestTags.AUTH_EMAIL,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             )
@@ -246,8 +259,8 @@ fun AuthScreen(
                 AuthField(
                     value = name,
                     onValueChange = { name = it },
-                    label = "Имя",
-                    placeholder = "Как вас зовут",
+                    label = stringResource(R.string.auth_name_label),
+                    placeholder = stringResource(R.string.auth_name_placeholder),
                     tag = TestTags.AUTH_NAME,
                 )
             }
@@ -255,17 +268,17 @@ fun AuthScreen(
             AuthField(
                 value = password,
                 onValueChange = { password = it },
-                label = "Пароль",
-                placeholder = "••••••••",
+                label = stringResource(R.string.auth_password_label),
+                placeholder = stringResource(R.string.auth_password_placeholder),
                 tag = TestTags.AUTH_PASSWORD,
                 isPassword = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
 
-            if (!state.error.isNullOrBlank()) {
+            state.error?.let { err ->
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    state.error!!,
+                    err.resolve(),
                     color = Color(0xFFFFD9D2),
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
@@ -275,7 +288,7 @@ fun AuthScreen(
 
             Spacer(Modifier.height(20.dp))
             AuthSubmit(
-                text = if (register) "Зарегистрироваться" else "Войти",
+                text = stringResource(if (register) R.string.auth_submit_register else R.string.auth_submit_login),
                 loading = state.loading,
                 onClick = {
                     if (register) vm.register(email, name, password) else vm.login(email, password)
@@ -286,13 +299,13 @@ fun AuthScreen(
                 Spacer(Modifier.height(14.dp))
                 AuthDivider()
                 Spacer(Modifier.height(14.dp))
-                AuthOAuthButton(text = "Войти через GitLab", onClick = ::launchGitlabOAuth)
+                AuthOAuthButton(text = stringResource(R.string.auth_gitlab), onClick = ::launchGitlabOAuth)
             }
 
             if (!register) {
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (forgotSent) "Если аккаунт существует, письмо отправлено" else "Забыли пароль?",
+                    stringResource(if (forgotSent) R.string.auth_forgot_sent else R.string.auth_forgot),
                     color = Color.White.copy(alpha = 0.85f),
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
@@ -302,7 +315,7 @@ fun AuthScreen(
 
             Spacer(Modifier.height(16.dp))
             Text(
-                if (register) "Уже есть аккаунт? Войти" else "Нет аккаунта? Зарегистрироваться",
+                stringResource(if (register) R.string.auth_switch_to_login else R.string.auth_switch_to_register),
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
@@ -320,10 +333,10 @@ fun AuthScreen(
 
     if (forgotShow) {
         TInputDialog(
-            title = "Восстановление пароля",
+            title = stringResource(R.string.auth_reset_title),
             initial = email,
-            confirmText = "Отправить",
-            placeholder = "you@example.com",
+            confirmText = stringResource(R.string.auth_reset_confirm),
+            placeholder = stringResource(R.string.auth_email_placeholder),
             onConfirm = { addr ->
                 forgotShow = false
                 forgotSent = true
@@ -449,13 +462,13 @@ private fun AuthField(
     }
 }
 
-/** «— или —» rule separating the password form from the OAuth button. */
+/** The "— or —" rule separating the password form from the OAuth button. */
 @Composable
 private fun AuthDivider() {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f).height(1.dp).background(Color.White.copy(alpha = 0.25f)))
         Text(
-            "или",
+            stringResource(R.string.auth_divider_or),
             color = Color.White.copy(alpha = 0.7f),
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 12.dp),

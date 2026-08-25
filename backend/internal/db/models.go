@@ -33,6 +33,7 @@ type BoardColumn struct {
 	Position  float64   `json:"position"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	NameKey   *string   `json:"name_key"`
 }
 
 type BoardView struct {
@@ -337,15 +338,16 @@ type Note struct {
 }
 
 type Notification struct {
-	ID          uuid.UUID  `json:"id"`
-	UserID      uuid.UUID  `json:"user_id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	TaskID      *uuid.UUID `json:"task_id"`
-	ActorID     *uuid.UUID `json:"actor_id"`
-	Kind        string     `json:"kind"`
-	Text        string     `json:"text"`
-	ReadAt      *time.Time `json:"read_at"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          uuid.UUID       `json:"id"`
+	UserID      uuid.UUID       `json:"user_id"`
+	WorkspaceID uuid.UUID       `json:"workspace_id"`
+	TaskID      *uuid.UUID      `json:"task_id"`
+	ActorID     *uuid.UUID      `json:"actor_id"`
+	Kind        string          `json:"kind"`
+	Text        string          `json:"text"`
+	ReadAt      *time.Time      `json:"read_at"`
+	CreatedAt   time.Time       `json:"created_at"`
+	Payload     json.RawMessage `json:"payload"`
 }
 
 type NotificationChannel struct {
@@ -659,6 +661,7 @@ type Workspace struct {
 	UpdatedAt   time.Time        `json:"updated_at"`
 	TaskCounter int64            `json:"task_counter"`
 	Estimation  *json.RawMessage `json:"estimation"`
+	NameKey     *string          `json:"name_key"`
 }
 
 type WorkspaceCommand struct {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import { ref, computed, defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 
@@ -64,6 +65,10 @@ function mountRow(props = {}, rowExtra = {}) {
 }
 
 // ── ChartTaskRow ──────────────────────────────────────────────────────────────
+// These panels render dates through useFormat(), which reads the theme store —
+// so a Pinia instance has to be active before they mount (#2798).
+beforeEach(() => setActivePinia(createPinia()))
+
 describe('ChartTaskRow.vue', () => {
   it('places the bar at the precomputed geometry', () => {
     const bar = mountRow().find('.bar')

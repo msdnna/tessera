@@ -1,39 +1,34 @@
 // Client-side mirror of the backend `internal/recur` advance logic, used to
 // preview a recurrence on the calendar (highlight upcoming occurrences) and to
 // label rules. The backend remains the source of truth; this only previews.
+import { i18n } from '@/i18n'
 
-export const FREQ_OPTIONS = [
-  { label: 'Без повтора', value: '' },
-  { label: 'Ежедневно', value: 'daily' },
-  { label: 'Еженедельно', value: 'weekly' },
-  { label: 'Ежемесячно', value: 'monthly' },
-  { label: 'Ежегодно', value: 'yearly' },
-  { label: 'Выборочно (по датам)', value: 'custom' },
-]
+// The option lists are functions, not arrays: a module-level array would be
+// built once at import and keep the language of the first render forever
+// (pitfall 1 of #2799). `values` stays a constant — it is the wire format.
+export const FREQ_VALUES = ['', 'daily', 'weekly', 'monthly', 'yearly', 'custom']
+export const TRIGGER_VALUES = ['complete', 'column', 'schedule']
 
-export const TRIGGER_OPTIONS = [
-  { label: 'При завершении', value: 'complete' },
-  { label: 'При переходе в колонку', value: 'column' },
-  { label: 'По расписанию', value: 'schedule' },
-]
-
-const UNIT_FORMS = {
-  daily: ['день', 'дня', 'дней'],
-  weekly: ['неделю', 'недели', 'недель'],
-  monthly: ['месяц', 'месяца', 'месяцев'],
-  yearly: ['год', 'года', 'лет'],
+export function freqOptions() {
+  return FREQ_VALUES.map((value) => ({
+    label: i18n.global.t(`task.recur.freq.${value || 'none'}`),
+    value,
+  }))
 }
 
-export function pluralRu(n, forms) {
-  const m10 = n % 10
-  const m100 = n % 100
-  if (m10 === 1 && m100 !== 11) return forms[0]
-  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return forms[1]
-  return forms[2]
+export function triggerOptions() {
+  return TRIGGER_VALUES.map((value) => ({
+    label: i18n.global.t(`task.recur.trigger.${value}`),
+    value,
+  }))
 }
 
+// "каждые 3 недели" — the unit half, declined for the count. Russian needs three
+// forms and the accusative ("каждые 2 неделИ"), which ICU pluralisation in the
+// catalogue handles; English gets its own two.
 export function unitLabel(freq, n) {
-  return UNIT_FORMS[freq] ? pluralRu(n, UNIT_FORMS[freq]) : ''
+  if (!FREQ_VALUES.includes(freq) || freq === '' || freq === 'custom') return ''
+  return i18n.global.t(`task.recur.unit.${freq}`, Math.round(Number(n) || 0))
 }
 
 const dayKey = (d) =>

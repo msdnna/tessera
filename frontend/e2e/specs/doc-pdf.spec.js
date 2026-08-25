@@ -14,7 +14,7 @@ import { minimalPdf } from '../pdfFixture.js'
 async function newDocument(page, seed) {
   await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
   await page.goto('/documents')
-  await page.getByRole('button', { name: /Новый документ/ }).click()
+  await page.getByTestId('doc-new').click()
   const editor = page.locator('.ProseMirror')
   await expect(editor).toBeVisible()
   await editor.click()

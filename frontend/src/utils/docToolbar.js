@@ -13,6 +13,7 @@ import {
   ReturnDownBackOutline,
   ReturnDownForwardOutline,
 } from '@vicons/ionicons5'
+import { i18n } from '@/i18n'
 
 // The toolbar is described as data rather than markup so that every button is
 // reachable from a test. The commit that removed TipTap from this project the
@@ -29,12 +30,20 @@ import {
 // empty history) — the guard skips those instead of treating them as dead.
 
 /** Text alignment: four exclusive values, shown as icons rather than a select. */
-export const ALIGNMENTS = [
-  { label: 'По левому краю', value: 'left', vicon: 'align-left' },
-  { label: 'По центру', value: 'center', vicon: 'align-center' },
-  { label: 'По правому краю', value: 'right', vicon: 'align-right' },
-  { label: 'По ширине', value: 'justify', vicon: 'align-justify' },
+const ALIGNMENT_DEFS = [
+  { value: 'left', vicon: 'align-left' },
+  { value: 'center', vicon: 'align-center' },
+  { value: 'right', vicon: 'align-right' },
+  { value: 'justify', vicon: 'align-justify' },
 ]
+
+/** The four alignments with their labels in the current language. */
+export function alignments() {
+  return ALIGNMENT_DEFS.map((a) => ({
+    ...a,
+    label: i18n.global.t(`documents.toolbar.align.${a.value}`),
+  }))
+}
 
 /**
  * Every toolbar command, grouped the way the single panel lays them out.
@@ -55,13 +64,17 @@ export const ALIGNMENTS = [
  */
 export function toolbarGroups(editor, handlers = {}) {
   const chain = () => editor.chain().focus()
+  // Read on every call, like the labels themselves: a caller that memoises the
+  // panel does so in a computed, and calling `t` there is what makes the panel
+  // re-render when the language changes.
+  const t = i18n.global.t
   return [
     {
       key: 'history',
       items: [
         {
           key: 'undo',
-          title: 'Отменить (Ctrl+Z)',
+          title: t('documents.toolbar.undo'),
           icon: ArrowUndoOutline,
           run: () => chain().undo().run(),
           isActive: () => false,
@@ -72,7 +85,7 @@ export function toolbarGroups(editor, handlers = {}) {
         },
         {
           key: 'redo',
-          title: 'Повторить (Ctrl+Shift+Z)',
+          title: t('documents.toolbar.redo'),
           icon: ArrowRedoOutline,
           run: () => chain().redo().run(),
           isActive: () => false,
@@ -84,7 +97,7 @@ export function toolbarGroups(editor, handlers = {}) {
       key: 'headings',
       items: [1, 2, 3].map((level) => ({
         key: `h${level}`,
-        title: `Заголовок ${level}`,
+        title: t('documents.toolbar.heading', { level }),
         text: `H${level}`,
         run: () => chain().toggleHeading({ level }).run(),
         isActive: () => editor.isActive('heading', { level }),
@@ -96,7 +109,7 @@ export function toolbarGroups(editor, handlers = {}) {
       items: [
         {
           key: 'bold',
-          title: 'Жирный (Ctrl+B)',
+          title: t('documents.toolbar.bold'),
           cls: 'b',
           text: 'B',
           run: () => chain().toggleBold().run(),
@@ -104,7 +117,7 @@ export function toolbarGroups(editor, handlers = {}) {
         },
         {
           key: 'italic',
-          title: 'Курсив (Ctrl+I)',
+          title: t('documents.toolbar.italic'),
           cls: 'i',
           text: 'I',
           run: () => chain().toggleItalic().run(),
@@ -112,7 +125,7 @@ export function toolbarGroups(editor, handlers = {}) {
         },
         {
           key: 'underline',
-          title: 'Подчёркнутый (Ctrl+U)',
+          title: t('documents.toolbar.underline'),
           cls: 'u',
           text: 'U',
           run: () => chain().toggleUnderline().run(),
@@ -120,7 +133,7 @@ export function toolbarGroups(editor, handlers = {}) {
         },
         {
           key: 'strike',
-          title: 'Зачёркнутый',
+          title: t('documents.toolbar.strike'),
           cls: 's',
           text: 'S',
           run: () => chain().toggleStrike().run(),
@@ -128,7 +141,7 @@ export function toolbarGroups(editor, handlers = {}) {
         },
         {
           key: 'code',
-          title: 'Моноширинный',
+          title: t('documents.toolbar.code'),
           icon: CodeSlashOutline,
           run: () => chain().toggleCode().run(),
           isActive: () => editor.isActive('code'),
@@ -137,7 +150,7 @@ export function toolbarGroups(editor, handlers = {}) {
     },
     {
       key: 'align',
-      items: ALIGNMENTS.map((a) => ({
+      items: alignments().map((a) => ({
         key: `align-${a.value}`,
         title: a.label,
         vicon: a.vicon,
@@ -150,14 +163,14 @@ export function toolbarGroups(editor, handlers = {}) {
       items: [
         {
           key: 'bulletList',
-          title: 'Маркированный список',
+          title: t('documents.toolbar.bulletList'),
           icon: ListOutline,
           run: () => chain().toggleBulletList().run(),
           isActive: () => editor.isActive('bulletList'),
         },
         {
           key: 'orderedList',
-          title: 'Нумерованный список',
+          title: t('documents.toolbar.orderedList'),
           icon: ReorderFourOutline,
           run: () => chain().toggleOrderedList().run(),
           isActive: () => editor.isActive('orderedList'),
@@ -166,21 +179,21 @@ export function toolbarGroups(editor, handlers = {}) {
         // splitting the three across two tabs made one choice into two screens.
         {
           key: 'taskList',
-          title: 'Список задач',
+          title: t('documents.toolbar.taskList'),
           icon: CheckboxOutline,
           run: () => chain().toggleTaskList().run(),
           isActive: () => editor.isActive('taskList'),
         },
         {
           key: 'indent',
-          title: 'Увеличить отступ',
+          title: t('documents.toolbar.indent'),
           icon: ReturnDownForwardOutline,
           run: () => chain().indent().run(),
           isActive: () => false,
         },
         {
           key: 'outdent',
-          title: 'Уменьшить отступ',
+          title: t('documents.toolbar.outdent'),
           icon: ReturnDownBackOutline,
           run: () => chain().outdent().run(),
           isActive: () => false,
@@ -192,14 +205,14 @@ export function toolbarGroups(editor, handlers = {}) {
       items: [
         {
           key: 'table',
-          title: 'Таблица 3×3',
+          title: t('documents.toolbar.table'),
           icon: GridOutline,
           run: () => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
           isActive: () => editor.isActive('table'),
         },
         {
           key: 'image',
-          title: 'Изображение',
+          title: t('documents.toolbar.image'),
           icon: ImageOutline,
           external: true,
           run: () => handlers.onPickImage?.(),
@@ -207,7 +220,7 @@ export function toolbarGroups(editor, handlers = {}) {
         },
         {
           key: 'link',
-          title: 'Ссылка',
+          title: t('documents.toolbar.link'),
           icon: LinkOutline,
           external: true,
           run: () => handlers.onSetLink?.(),
@@ -215,21 +228,21 @@ export function toolbarGroups(editor, handlers = {}) {
         },
         {
           key: 'codeBlock',
-          title: 'Блок кода',
+          title: t('documents.toolbar.codeBlock'),
           icon: CodeSlashOutline,
           run: () => chain().toggleCodeBlock().run(),
           isActive: () => editor.isActive('codeBlock'),
         },
         {
           key: 'blockquote',
-          title: 'Цитата',
+          title: t('documents.toolbar.blockquote'),
           icon: ChatboxOutline,
           run: () => chain().toggleBlockquote().run(),
           isActive: () => editor.isActive('blockquote'),
         },
         {
           key: 'horizontalRule',
-          title: 'Разделитель',
+          title: t('documents.toolbar.horizontalRule'),
           icon: RemoveOutline,
           run: () => chain().setHorizontalRule().run(),
           isActive: () => false,
@@ -245,11 +258,18 @@ export function toolbarCommands(editor, handlers = {}) {
 }
 
 /**
- * Line height for display: Russian decimals use a comma.
+ * Line height for display, in the reader's number format.
  *
- * Only the label is localised — the stored value stays '1.5', because the
- * lineHeight attribute is compared and written verbatim by blockStyle.
+ * Was a hand-rolled `.` → `,` swap, which is right for Russian and wrong for
+ * every locale that keeps the point. Intl decides instead; only the label is
+ * localised — the stored value stays '1.5', because the lineHeight attribute is
+ * compared and written verbatim by blockStyle.
+ *
+ * @param {string|number} value the stored line height
+ * @param {string} [locale] override, for tests
  */
-export function lineHeightLabel(value) {
-  return String(value ?? '').replace('.', ',')
+export function lineHeightLabel(value, locale = i18n.global.locale.value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || value === '' || value == null) return String(value ?? '')
+  return new Intl.NumberFormat(locale).format(n)
 }

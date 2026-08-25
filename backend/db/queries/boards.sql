@@ -44,9 +44,13 @@ RETURNING *;
 -- name: DeleteBoard :exec
 DELETE FROM boards WHERE id = $1;
 
+-- CreateColumn takes an optional name_key alongside the display name: the four
+-- columns seeded with a new board pass their key ('todo', 'in_progress', …) so
+-- clients can caption them in the reader's language, a column the user adds
+-- himself passes NULL and is shown verbatim.
 -- name: CreateColumn :one
-INSERT INTO board_columns (board_id, name, color, position)
-VALUES ($1, $2, $3, $4)
+INSERT INTO board_columns (board_id, name, name_key, color, position)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: ListColumns :many
@@ -58,9 +62,15 @@ SELECT * FROM board_columns WHERE id = $1;
 -- name: MaxColumnPosition :one
 SELECT coalesce(max(position), 0)::double precision FROM board_columns WHERE board_id = $1;
 
+-- UpdateColumn drops name_key when the name actually changes: a column the user
+-- renamed must keep that name in every language. Re-saving the same text (a
+-- colour edit or a reorder both go through here) is not a rename, so the key
+-- survives those.
 -- name: UpdateColumn :one
 UPDATE board_columns
-SET name = $2, color = $3, position = $4, updated_at = now()
+SET name = $2,
+    name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END,
+    color = $3, position = $4, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

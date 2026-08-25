@@ -1,5 +1,6 @@
 import { test, expect, signIn } from '../fixtures.js'
 import { newCredentials, register } from '../api.js'
+import { t, tRe } from '../i18n.js'
 
 // Сквозная приёмка раздела «Документы» (#2718): один документ проходит путь,
 // которым его ведёт человек — импорт (D8) → связь с задачей и протокол
@@ -110,42 +111,46 @@ test('документы: импорт → согласование → отка
     await expect(panel).toBeVisible()
 
     await panel.getByTestId('doc-link-add').click()
-    await page.getByPlaceholder('№ или название').fill(taskTitle)
+    await page.getByTestId('doc-link-query').locator('input').fill(taskTitle)
     await page.getByText(taskTitle, { exact: false }).last().click()
     await expect(panel.getByTestId('doc-link')).toHaveCount(1)
 
     await panel.getByTestId('doc-approval-raise').click()
-    await page.getByPlaceholder('Что согласуем').fill('Импортированная редакция')
+    await page.getByTestId('doc-approval-title').locator('input').fill('Импортированная редакция')
     await page.getByTestId('doc-approval-approvers').click()
     // Точное имя: автор документа зовётся «E2E <runId>», согласующий — «E2E
     // <runId>-acc», и подстрочный поиск выбрал бы автора.
     await page.locator('.n-base-select-option', { hasText: creds.name }).first().click()
     await page.keyboard.press('Escape')
-    await panel.getByRole('button', { name: 'Отправить', exact: true }).click()
+    await panel.getByTestId('doc-approval-submit').click()
 
     const protocol = panel.getByTestId('doc-approval')
-    await expect(protocol).toContainText('На согласовании')
+    await expect(protocol).toContainText(t('documents.approval.status.pending'))
     // Маршрут пришпилен к ревизии, которую создал импорт: согласуется именно
     // импортированный текст, а не «документ вообще».
-    await expect(protocol).toContainText(/Версия \d+/)
+    await expect(protocol).toContainText(
+      tRe('documents.links.meta', { revision: '\\d+', author: '.+', date: '.+' }),
+    )
 
     await matePage.goto(docURL)
     await matePage.getByTestId('doc-links-toggle').click()
     const matePanel = matePage.getByTestId('doc-links')
     await matePanel.getByTestId('doc-approval-sign').click()
-    await matePage.getByRole('button', { name: 'Согласовать', exact: true }).click()
-    await expect(protocol).toContainText('Согласовано', { timeout: 10000 })
+    await matePage.getByTestId('doc-approval-approve').click()
+    await expect(protocol).toContainText(t('documents.approval.status.approved'), {
+      timeout: 10000,
+    })
 
     // ── D6: журнал, правка поверх согласованного и откат ──
     const journal = page.waitForResponse(
       (r) => /\/documents\/[^/]+\/versions$/.test(r.url()) && r.request().method() === 'GET',
     )
-    await page.locator('button[title="История версий"]').click()
+    await page.getByTestId('doc-history-toggle').click()
     await journal
     const history = page.locator('.doc-history')
-    await history.getByRole('button', { name: 'Сохранить версию' }).click()
-    await history.getByPlaceholder('Например: согласованная редакция').fill('Согласованная')
-    await history.getByRole('button', { name: 'Сохранить', exact: true }).click()
+    await history.getByTestId('doc-snapshot').click()
+    await history.getByTestId('doc-snapshot-label').locator('input').fill('Согласованная')
+    await history.getByTestId('doc-snapshot-save').click()
     // Именованная веха адресуется по имени, а не «первая с классом milestone»:
     // отправка на согласование уже поставила свою веху (маршрут пришпиливает
     // ревизию), и в журнале их две — что само по себе правильно.
@@ -156,8 +161,8 @@ test('документы: импорт → согласование → отка
     await expect(editor).toContainText('Правка после согласования')
 
     await milestone.click()
-    await history.getByRole('button', { name: 'Восстановить' }).click()
-    await page.getByRole('button', { name: 'Подтвердить' }).click()
+    await history.getByTestId('doc-restore').click()
+    await page.getByTestId('doc-restore-confirm').click()
 
     // Главное утверждение приёмки: откат вернул **импортированное** тело
     // целиком — заголовок, абзац и список, — а не пустой документ и не одну
@@ -179,7 +184,7 @@ test('документы: импорт → согласование → отка
     await page.getByTestId('doc-links-toggle').click()
     await expect(panel).toBeVisible()
     await expect(panel.getByTestId('doc-link')).toHaveCount(1)
-    await expect(protocol).toContainText('Согласовано')
+    await expect(protocol).toContainText(t('documents.approval.status.approved'))
 
     // Сосед видит откат без перезагрузки — по кадру из сокета документа (D4).
     await expect(matePage.locator('.ProseMirror')).toContainText('Регламент совещаний')

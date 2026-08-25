@@ -21,10 +21,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.EstimationConfig
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -52,7 +55,7 @@ private fun DialogShell(onDismiss: () -> Unit, content: @Composable () -> Unit) 
 fun TInputDialog(
     title: String,
     initial: String = "",
-    confirmText: String = "Сохранить",
+    confirmText: String = stringResource(R.string.common_save),
     placeholder: String = "",
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -65,7 +68,7 @@ fun TInputDialog(
         TTextField(value = text, onValueChange = { text = it }, placeholder = placeholder)
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TButton("Отмена", kind = TButtonKind.Ghost, onClick = onDismiss)
+            TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onDismiss)
             Spacer(Modifier.width(8.dp))
             TButton(
                 confirmText,
@@ -86,7 +89,7 @@ fun TConfirmByNameDialog(
     title: String,
     message: String,
     name: String,
-    confirmText: String = "Удалить",
+    confirmText: String = stringResource(R.string.common_delete),
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -98,12 +101,12 @@ fun TConfirmByNameDialog(
         Spacer(Modifier.height(10.dp))
         Text(message, color = c.text2, fontSize = 14.sp)
         Spacer(Modifier.height(10.dp))
-        Text("Введите «$name» для подтверждения:", color = c.text3, fontSize = 13.sp)
+        Text(stringResource(R.string.dialog_confirm_by_name_hint, name), color = c.text3, fontSize = 13.sp)
         Spacer(Modifier.height(6.dp))
         TTextField(value = typed, onValueChange = { typed = it }, placeholder = name)
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TButton("Отмена", kind = TButtonKind.Ghost, onClick = onDismiss)
+            TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onDismiss)
             Spacer(Modifier.width(8.dp))
             TButton(confirmText, enabled = matches, onClick = { if (matches) onConfirm() })
         }
@@ -115,7 +118,7 @@ fun TConfirmByNameDialog(
 fun TConfirmDialog(
     title: String,
     message: String,
-    confirmText: String = "Удалить",
+    confirmText: String = stringResource(R.string.common_delete),
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -126,7 +129,7 @@ fun TConfirmDialog(
         Text(message, color = c.text2, fontSize = 14.sp)
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TButton("Отмена", kind = TButtonKind.Ghost, onClick = onDismiss)
+            TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onDismiss)
             Spacer(Modifier.width(8.dp))
             TButton(confirmText, onClick = onConfirm)
         }
@@ -155,11 +158,21 @@ fun EstimationDialog(
     var scale by remember { mutableStateOf(current?.pointsScale ?: "fibonacci") }
     var label by remember { mutableStateOf(current?.customLabel.orEmpty()) }
 
-    val title = if (scope == "workspace") "Оценка задач — по умолчанию" else "Оценка задач — $name"
-    val inheritLabel = if (inherited.unit == "time") {
-        "${Estimation.unitName(inherited)} · ${(inherited.hoursPerDay ?: 8.0).toInt()}ч/день · ${(inherited.daysPerWeek ?: 5.0).toInt()}дн/неделя"
+    val title = if (scope == "workspace") {
+        stringResource(R.string.est_dialog_title_workspace)
     } else {
-        Estimation.unitName(inherited)
+        stringResource(R.string.est_dialog_title_project, name)
+    }
+    val res = LocalResources.current
+    val inheritLabel = if (inherited.unit == "time") {
+        stringResource(
+            R.string.est_dialog_inherit_time,
+            Estimation.unitName(res, inherited),
+            (inherited.hoursPerDay ?: 8.0).toInt(),
+            (inherited.daysPerWeek ?: 5.0).toInt(),
+        )
+    } else {
+        Estimation.unitName(res, inherited)
     }
 
     fun build(): EstimationConfig? = if (inherit) {
@@ -182,37 +195,58 @@ fun EstimationDialog(
         Row(verticalAlignment = Alignment.CenterVertically) {
             TSwitch(checked = inherit, onCheckedChange = { inherit = it })
             Spacer(Modifier.width(10.dp))
-            Text("Наследовать ($inheritLabel)", color = c.text2, fontSize = 13.sp)
+            Text(stringResource(R.string.est_dialog_inherit, inheritLabel), color = c.text2, fontSize = 13.sp)
         }
         if (!inherit) {
             Spacer(Modifier.height(14.dp))
             SegRow(
-                options = listOf("time" to "Время", "points" to "Поинты", "custom" to "Свои"),
+                options = listOf(
+                    "time" to stringResource(R.string.est_dialog_seg_time),
+                    "points" to stringResource(R.string.est_dialog_seg_points),
+                    "custom" to stringResource(R.string.est_dialog_seg_custom),
+                ),
                 selected = unit,
                 onSelect = { unit = it },
             )
             Spacer(Modifier.height(12.dp))
             when (unit) {
                 "time" -> {
-                    TTextField(value = hours, onValueChange = { hours = it.filter(Char::isDigit) }, label = "Часов в рабочем дне")
+                    TTextField(
+                        value = hours,
+                        onValueChange = { hours = it.filter(Char::isDigit) },
+                        label = stringResource(R.string.est_dialog_hours_label),
+                    )
                     Spacer(Modifier.height(10.dp))
-                    TTextField(value = days, onValueChange = { days = it.filter(Char::isDigit) }, label = "Дней в рабочей неделе")
+                    TTextField(
+                        value = days,
+                        onValueChange = { days = it.filter(Char::isDigit) },
+                        label = stringResource(R.string.est_dialog_days_label),
+                    )
                 }
 
                 "points" -> SegRow(
-                    options = listOf("fibonacci" to "Фибоначчи", "tshirt" to "Футболки", "linear" to "Линейная"),
+                    options = listOf(
+                        "fibonacci" to stringResource(R.string.est_dialog_scale_fibonacci),
+                        "tshirt" to stringResource(R.string.est_dialog_scale_tshirt),
+                        "linear" to stringResource(R.string.est_dialog_scale_linear),
+                    ),
                     selected = scale,
                     onSelect = { scale = it },
                 )
 
-                else -> TTextField(value = label, onValueChange = { label = it }, label = "Название единицы", placeholder = "напр. у.е.")
+                else -> TTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = stringResource(R.string.est_dialog_custom_label),
+                    placeholder = stringResource(R.string.est_dialog_custom_hint),
+                )
             }
         }
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TButton("Отмена", kind = TButtonKind.Ghost, onClick = onDismiss)
+            TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onDismiss)
             Spacer(Modifier.width(8.dp))
-            TButton("Сохранить", onClick = {
+            TButton(stringResource(R.string.common_save), onClick = {
                 onSave(build())
                 onDismiss()
             })

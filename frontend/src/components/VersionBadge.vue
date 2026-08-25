@@ -1,7 +1,9 @@
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NTooltip } from 'naive-ui'
 import { useVersionInfo } from '@/composables/useVersionInfo'
+import { useFormat } from '@/composables/useFormat'
 
 // The running Web/API versions, shown low-contrast in the sidebar footer.
 // A neutral element by the design language — flat, no accent gradient.
@@ -15,33 +17,32 @@ defineProps({
   mode: { type: String, default: 'row' },
 })
 
+const { t } = useI18n()
 const { web, api } = useVersionInfo()
+const { formatDateTime } = useFormat()
 
 function fmtDate(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString('ru-RU', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return formatDateTime(d, { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
 // One service's detail lines for the tooltip / block.
 function lines(label, info) {
   if (!info || !info.version) return null
   const out = [`${label} ${info.version}`]
-  if (info.commit) out.push(`коммит ${info.commit}`)
+  if (info.commit) out.push(t('app.version.commit', { commit: info.commit }))
   const built = fmtDate(info.builtAt)
-  if (built) out.push(`сборка ${built}`)
+  if (built) out.push(t('app.version.built', { date: built }))
   return out
 }
 
-const webLines = computed(() => lines('Клиент', web))
-const apiLines = computed(() => lines('Сервер', api.value))
+// Both computed: the labels come from the catalogue, so the tooltip is
+// re-rendered in the new language after a switch instead of keeping the one it
+// was first built in.
+const webLines = computed(() => lines(t('app.version.web'), web))
+const apiLines = computed(() => lines(t('app.version.api'), api.value))
 const rowText = computed(() => {
   const parts = []
   if (web.version) parts.push(`web ${web.version}`)

@@ -1,5 +1,6 @@
 <script setup>
-import { ref, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import { NIcon, NInput, useMessage } from 'naive-ui'
 import { CloseCircleOutline } from '@vicons/ionicons5'
@@ -19,18 +20,28 @@ const props = defineProps({
 })
 const emit = defineEmits(['open', 'changed', 'create'])
 const message = useMessage()
+const { t } = useI18n()
 
 // ── quadrant model ────────────────────────────────────────────
 // Index encoding mirrors the backend (migration 0028):
 //   0 = urgent + important      2 = urgent + not-important
 //   1 = not-urgent + important   3 = not-urgent + not-important
-// Laid out as a 2×2 grid: columns = Срочно | Несрочно, rows = Важно | Неважно.
-const QUADRANTS = [
-  { i: 0, title: 'Срочно и важно', hint: 'Сделать сейчас', cls: 'q-do' },
-  { i: 1, title: 'Важно, не срочно', hint: 'Запланировать', cls: 'q-plan' },
-  { i: 2, title: 'Срочно, не важно', hint: 'Делегировать', cls: 'q-delegate' },
-  { i: 3, title: 'Не срочно, не важно', hint: 'Может подождать', cls: 'q-drop' },
+// Laid out as a 2×2 grid: columns = urgent | not urgent, rows = important | not.
+// Index and class stay constant; the title/hint are looked up per render so the
+// grid follows a language change.
+const QUADRANT_KEYS = [
+  { i: 0, key: 'do', cls: 'q-do' },
+  { i: 1, key: 'plan', cls: 'q-plan' },
+  { i: 2, key: 'delegate', cls: 'q-delegate' },
+  { i: 3, key: 'drop', cls: 'q-drop' },
 ]
+const quadrants = computed(() =>
+  QUADRANT_KEYS.map((q) => ({
+    ...q,
+    title: t(`board.matrix.quadrant.${q.key}Title`),
+    hint: t(`board.matrix.quadrant.${q.key}Hint`),
+  })),
+)
 
 // Derived quadrant when there's no manual override: importance from priority
 // (high/urgent), urgency from due-date proximity.
@@ -118,20 +129,29 @@ function submitAdd(qi) {
 <template>
   <div class="matrix">
     <div class="m-corner" />
-    <div class="m-colhead m-col-urgent">Срочно</div>
-    <div class="m-colhead">Несрочно</div>
+    <div class="m-colhead m-col-urgent">{{ t('board.matrix.urgent') }}</div>
+    <div class="m-colhead">{{ t('board.matrix.notUrgent') }}</div>
 
-    <div class="m-rowhead m-row-important"><span>Важно</span></div>
-    <div class="m-rowhead m-row-unimportant"><span>Неважно</span></div>
+    <div class="m-rowhead m-row-important">
+      <span>{{ t('board.matrix.important') }}</span>
+    </div>
+    <div class="m-rowhead m-row-unimportant">
+      <span>{{ t('board.matrix.notImportant') }}</span>
+    </div>
 
-    <div v-for="q in QUADRANTS" :key="q.i" class="m-quad" :class="[q.cls, `m-cell-${q.i}`]">
+    <div v-for="q in quadrants" :key="q.i" class="m-quad" :class="[q.cls, `m-cell-${q.i}`]">
       <div class="m-quad-head">
         <div class="m-quad-titles">
           <span class="m-quad-title">{{ q.title }}</span>
           <span class="m-quad-hint">{{ q.hint }}</span>
         </div>
         <span class="m-count">{{ buckets[q.i].length }}</span>
-        <button type="button" class="m-add" title="Добавить задачу" @click="startAdd(q.i)">
+        <button
+          type="button"
+          class="m-add"
+          :title="t('board.matrix.addTask')"
+          @click="startAdd(q.i)"
+        >
           ＋
         </button>
       </div>
@@ -156,11 +176,11 @@ function submitAdd(qi) {
               v-if="isPinned(element)"
               type="button"
               class="m-pin"
-              title="Размещено вручную — вернуть на авто"
+              :title="t('board.matrix.pinned')"
               @click.stop="resetAuto(element)"
             >
               <n-icon :component="CloseCircleOutline" />
-              <span>вручную</span>
+              <span>{{ t('board.matrix.pinnedShort') }}</span>
             </button>
             <TaskCard
               :task="element"
@@ -182,7 +202,7 @@ function submitAdd(qi) {
           type="textarea"
           size="small"
           :autosize="{ minRows: 1, maxRows: 4 }"
-          placeholder="Название задачи, Enter — создать"
+          :placeholder="t('board.column.taskPlaceholder')"
           @keyup.enter.prevent="submitAdd(q.i)"
           @keyup.esc="addingIn = -1"
           @blur="submitAdd(q.i)"

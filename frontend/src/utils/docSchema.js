@@ -16,6 +16,7 @@ import { InternalLink } from './docExtensions/internalLink'
 import { PdfEmbed } from './docExtensions/pdfEmbed'
 import { SlashMenu } from './docExtensions/slashMenu'
 import { darkSheetFill, darkSheetInk, darkSheetLine, hexColor } from './docColor'
+import { i18n } from '@/i18n'
 
 // The document is stored as the ProseMirror JSON tree the editor produces
 // (documents.content, jsonb — chosen in D1). That makes the schema itself the
@@ -96,12 +97,23 @@ export const ALLOWED_ATTRS = [
   'width',
 ]
 
-export const FONT_FAMILIES = [
-  { label: 'По умолчанию', value: '' },
-  { label: 'Системный', value: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' },
-  { label: 'С засечками', value: 'Georgia, "Times New Roman", serif' },
-  { label: 'Моноширинный', value: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
+// Values are the stored font stacks — they are CSS, not text, and never move.
+// Only the picker labels are translated, and by a function rather than a
+// constant so a language switch reaches them (pitfall 1 of #2799).
+const FONT_FAMILY_DEFS = [
+  { key: 'default', value: '' },
+  { key: 'system', value: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' },
+  { key: 'serif', value: 'Georgia, "Times New Roman", serif' },
+  { key: 'mono', value: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
 ]
+
+/** Font choices for the toolbar picker, labelled in the current language. */
+export function fontFamilies() {
+  return FONT_FAMILY_DEFS.map((f) => ({
+    value: f.value,
+    label: i18n.global.t(`documents.toolbar.font.${f.key}`),
+  }))
+}
 
 export const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
 
@@ -328,7 +340,12 @@ export function docExtensions(opts = {}) {
     InternalLink,
     ImageDrop.configure({ upload: opts.uploadImage || null, onError: opts.onUploadError || null }),
     SlashMenu.configure({ onExternal: opts.onSlashExternal || null }),
-    Placeholder.configure({ placeholder: opts.placeholder || 'Начните писать…' }),
+    // Read when the editor is built. TipTap bakes the placeholder into the
+    // extension's options, so a language switch reaches it on the next editor,
+    // not the current one — and the editor is rebuilt per opened document.
+    Placeholder.configure({
+      placeholder: opts.placeholder || i18n.global.t('documents.doc.placeholder'),
+    }),
   ]
 }
 

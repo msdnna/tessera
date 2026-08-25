@@ -9,22 +9,25 @@
  * the server, it drifts into a disabled button, never into a wrong write.
  */
 
+import { i18n } from '@/i18n'
+
 export const APPROVAL_PENDING = 'pending'
 export const APPROVAL_APPROVED = 'approved'
 export const APPROVAL_REJECTED = 'rejected'
 export const APPROVAL_CANCELLED = 'cancelled'
 
-export const APPROVAL_STATUS_LABEL = {
-  [APPROVAL_PENDING]: 'На согласовании',
-  [APPROVAL_APPROVED]: 'Согласовано',
-  [APPROVAL_REJECTED]: 'Отклонено',
-  [APPROVAL_CANCELLED]: 'Отозвано',
+// Looked up per call rather than held in a table (#2799): a module-level map of
+// labels is built once, at import, and would still be in the language of the
+// first render after the user switches. The status itself is the wire value and
+// is returned unchanged when the server sends one we do not know.
+export function approvalStatusLabel(status) {
+  const known = [APPROVAL_PENDING, APPROVAL_APPROVED, APPROVAL_REJECTED, APPROVAL_CANCELLED]
+  return known.includes(status) ? i18n.global.t(`documents.approval.status.${status}`) : status
 }
 
-export const STEP_STATUS_LABEL = {
-  [APPROVAL_PENDING]: 'ждёт',
-  [APPROVAL_APPROVED]: 'подписал',
-  [APPROVAL_REJECTED]: 'отклонил',
+export function stepStatusLabel(status) {
+  const known = [APPROVAL_PENDING, APPROVAL_APPROVED, APPROVAL_REJECTED]
+  return known.includes(status) ? i18n.global.t(`documents.approval.step.${status}`) : status
 }
 
 /** The steps of one route in the order the route is walked. */

@@ -20,6 +20,7 @@ SELECT
     p.name AS project_name,
     p.color AS project_color,
     c.name AS column_name,
+    c.name_key AS column_name_key,
     c.color AS column_color,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
@@ -32,7 +33,7 @@ LEFT JOIN task_assignees ta ON ta.task_id = t.id
 WHERE p.workspace_id = $1
     AND ($2::bool OR t.parent_id IS NULL)
     AND t.archived_at IS NULL
-GROUP BY t.id, b.name, p.name, p.color, c.name, c.color
+GROUP BY t.id, b.name, p.name, p.color, c.name, c.name_key, c.color
 ORDER BY t.due_date NULLS LAST, t.created_at DESC
 `
 
@@ -69,6 +70,7 @@ type ListWorkspaceTasksRow struct {
 	ProjectName        string           `json:"project_name"`
 	ProjectColor       string           `json:"project_color"`
 	ColumnName         string           `json:"column_name"`
+	ColumnNameKey      *string          `json:"column_name_key"`
 	ColumnColor        string           `json:"column_color"`
 	TagIds             []uuid.UUID      `json:"tag_ids"`
 	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
@@ -115,6 +117,7 @@ func (q *Queries) ListWorkspaceTasks(ctx context.Context, arg ListWorkspaceTasks
 			&i.ProjectName,
 			&i.ProjectColor,
 			&i.ColumnName,
+			&i.ColumnNameKey,
 			&i.ColumnColor,
 			&i.TagIds,
 			&i.AssigneeIds,

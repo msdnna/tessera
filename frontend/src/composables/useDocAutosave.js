@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { i18n } from '@/i18n'
 
 /**
  * Autosave for the document editor.
@@ -67,7 +68,7 @@ export function useDocAutosave(saveFn, opts = {}) {
             // Keep the newest content queued so the next flush retries it —
             // unless newer content already arrived while we were failing.
             if (pending === null) pending = content
-            error.value = e?.message || 'Не удалось сохранить'
+            error.value = e?.message || i18n.global.t('documents.view.error.save')
           }
           break
         } finally {

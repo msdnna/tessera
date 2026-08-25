@@ -1,0 +1,341 @@
+{
+  "fallbackTitle": "Task",
+  "menu": {
+    "open": "Open",
+    "complete": "Mark as done",
+    "uncomplete": "Mark as not done",
+    "priority": "Priority",
+    "move": "Move to a column",
+    "archive": "Archive",
+    "delete": "Delete",
+    "addSubtask": "Add a subtask"
+  },
+  "confirm": {
+    "delete": "Delete permanently? This cannot be undone.",
+    "deleteYes": "Delete",
+    "archive": "Move the task to the archive?",
+    "archiveYes": "Archive"
+  },
+  "action": {
+    "restore": "Restore from the archive"
+  },
+  "field": {
+    "priority": "Priority",
+    "due": "Due date",
+    "estimate": "Estimate",
+    "milestone": "Milestone",
+    "tags": "Tags",
+    "assignee": "Assignee",
+    "recurring": "Recurring task",
+    "author": "Author",
+    "assignees": "Assignees",
+    "status": "Status",
+    "parent": "Parent",
+    "grouping": "Grouping"
+  },
+  "layout": {
+    "hint": "How to open a task",
+    "modal": "Modal window",
+    "fullscreen": "Full screen",
+    "sidebar": "Side panel"
+  },
+  "card": {
+    "columnIs": "Column: {name}",
+    "openIssue": "GitLab issue !{iid} — open",
+    "narrowed": "{shown} of {total} subtasks — the rest are hidden by the filter",
+    "subtaskPlaceholder": "Subtask title, Enter"
+  },
+  "pill": {
+    "conflict": "Conflict",
+    "conflictHint": "GitLab write-back conflict — click to resolve",
+    "hasDescription": "Has a description"
+  },
+  "estimate": {
+    "tooltip": "Estimate: {value}",
+    "rollupTooltip": "Sum of subtask estimates: {value}",
+    "rollupHint": "Sum of subtask estimates",
+    "clear": "Clear",
+    "apply": "OK",
+    "short": {
+      "week": "{n}w",
+      "day": "{n}d",
+      "hour": "{n}h",
+      "minute": "{n}m",
+      "points": "{n} SP"
+    },
+    "full": {
+      "week": "{n} week | {n} weeks",
+      "day": "{n} day | {n} days",
+      "hour": "{n} hour | {n} hours",
+      "minute": "{n} minute | {n} minutes"
+    },
+    "unit": {
+      "time": "Time",
+      "points": "Story points",
+      "custom": "Units"
+    },
+    "placeholder": {
+      "time": "e.g. 3d 4h, 90m, 1w",
+      "points": "e.g. 5",
+      "custom": "e.g. 8"
+    },
+    "config": {
+      "titleWorkspace": "Task estimation — default",
+      "titleProject": "Task estimation — {name}",
+      "inherit": "Inherit ({value})",
+      "inheritTime": "{unit} · {hours}h/day · {days}d/week",
+      "unitField": "Unit",
+      "hoursPerDay": "Hours in a working day",
+      "daysPerWeek": "Days in a working week",
+      "scale": "Scale",
+      "customLabel": "Unit name",
+      "customPlaceholder": "e.g. pts",
+      "example": "Example:",
+      "unitOption": {
+        "time": "Time",
+        "points": "Story points",
+        "custom": "Custom units"
+      },
+      "scaleOption": {
+        "fibonacci": "Fibonacci (1, 2, 3, 5, 8, 13)",
+        "tshirt": "T-shirt (XS…XXL)",
+        "linear": "Linear (1…10)"
+      }
+    }
+  },
+  "milestone": {
+    "tooltip": "Milestone: {title}",
+    "tooltipClosed": "Milestone: {title} (closed)",
+    "newPlaceholder": "New milestone…"
+  },
+  "tags": {
+    "newPlaceholder": "New tag, Enter"
+  },
+  "people": {
+    "author": "Author: {name}",
+    "assignee": "Assignee: {names}",
+    "none": "No assignee",
+    "noMatches": "Nobody found"
+  },
+  "tab": {
+    "description": "Description",
+    "comments": "Comments",
+    "subtasks": "Subtasks",
+    "relations": "Relations",
+    "files": "Files",
+    "documents": "Documents",
+    "history": "History"
+  },
+  "desc": {
+    "template": "Issue template…",
+    "insertImage": "Insert an image",
+    "insertMermaid": "Insert a Mermaid diagram",
+    "fullscreen": "Open full screen",
+    "preview": "Preview",
+    "placeholder": "Add a description…",
+    "emptyMarkdown": "_No description_"
+  },
+  "comments": {
+    "someone": "Someone",
+    "placeholder": "Comment…",
+    "composerPlaceholder": "Write a comment… ({'@'} — mention, / — command, Ctrl+Enter — send)",
+    "replyPlaceholder": "Reply… (Esc — cancel, Ctrl+Enter — send)",
+    "reply": "Reply",
+    "collapse": "Collapse replies",
+    "replies": "{n} reply | {n} replies",
+    "deleteConfirm": "Delete the comment?",
+    "empty": "No comments yet",
+    "offlineComment": "Server unreachable — the comment was not sent",
+    "offlineReply": "Server unreachable — the reply was not sent",
+    "commandsApplied": "Applied: {list}",
+    "retrying": "No connection — retrying ({attempt}/{max})…",
+    "customCommands": "{list} — will stay as plain text"
+  },
+  "subtasks": {
+    "empty": "No subtasks yet",
+    "addPlaceholder": "+ subtask (Enter)",
+    "pushQueued": "The subtask has been queued for export to GitLab",
+    "glChild": "A child work item of the issue in GitLab",
+    "glDetached": "outside the hierarchy",
+    "glDetachedHint": "Issue !{iid} was created, but GitLab did not accept it into the hierarchy — retry",
+    "glAbsent": "not in GitLab",
+    "glAbsentHint": "The subtask has not been exported to GitLab yet — export it",
+    "parentNotGrouped": "The parent is not marked as a grouped task — subtasks will not reach GitLab.",
+    "markGrouped": "Mark it"
+  },
+  "relations": {
+    "empty": "No relations yet",
+    "link": "Link",
+    "unlink": "Remove the relation",
+    "searchPlaceholder": "№ or title",
+    "noMatches": "Nothing found",
+    "deleteConfirm": "Remove the relation?",
+    "deleteExternalConfirm": "This relation will come back on the next {source} sync. Delete it?",
+    "kind": {
+      "relates": "relates to",
+      "blocks": "blocks",
+      "blocked_by": "is blocked by",
+      "duplicates": "duplicates"
+    }
+  },
+  "files": {
+    "empty": "No files yet",
+    "attach": "Attach a file",
+    "download": "Download",
+    "saved": "File saved",
+    "deleteConfirm": "Delete the file “{name}”?",
+    "size": {
+      "b": "{n} B",
+      "kb": "{n} KB",
+      "mb": "{n} MB"
+    },
+    "downloadFailed": "Could not download the file"
+  },
+  "docs": {
+    "empty": "No linked documents",
+    "untitled": "Untitled",
+    "fragment": "fragment",
+    "unlink": "Remove the link",
+    "unlinkYes": "Remove",
+    "unlinkConfirm": "Remove the link to the document?"
+  },
+  "history": {
+    "empty": "No history yet",
+    "someone": "Someone"
+  },
+  "head": {
+    "titlePlaceholder": "Task title",
+    "moveTitle": "Move to another board",
+    "moveHint": "Move to board:",
+    "noBoards": "no boards",
+    "shareCopy": "Copy a link to this task",
+    "shareDone": "Link copied",
+    "shareFailed": "Could not copy the link",
+    "showPane": "Show the panel",
+    "hidePane": "Hide the panel",
+    "dividerHidden": "Double-click to show the panel",
+    "dividerDrag": "Drag / double-click",
+    "openInGitlab": "Open issue !{iid} in GitLab"
+  },
+  "value": {
+    "dueUnset": "Not set",
+    "estimateUnset": "Not set",
+    "milestoneUnset": "Not set",
+    "milestoneClosed": "closed",
+    "tagsNone": "None",
+    "assigneesNone": "Nobody",
+    "columnNone": "No column"
+  },
+  "recur": {
+    "title": "Repeat the task",
+    "every": "every",
+    "customHint": "Mark the repeat dates in the calendar →",
+    "event": "Event",
+    "triggerColumn": "Trigger column",
+    "columnPlaceholder": "Pick a column",
+    "moveTo": "Move to",
+    "targetDefault": "First column (default)",
+    "createDuplicate": "Create a duplicate",
+    "forever": "Repeat forever",
+    "skipWeekends": "Skip weekends",
+    "freq": {
+      "none": "No repeat",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "yearly": "Yearly",
+      "custom": "Selected dates"
+    },
+    "trigger": {
+      "complete": "On completion",
+      "column": "On moving to a column",
+      "schedule": "On schedule"
+    },
+    "unit": {
+      "daily": "day | days",
+      "weekly": "week | weeks",
+      "monthly": "month | months",
+      "yearly": "year | years"
+    }
+  },
+  "due": {
+    "start": "Start",
+    "due": "Due",
+    "startUnset": "not set",
+    "dueUnset": "not set",
+    "timePlaceholder": "Time",
+    "clearStart": "Clear the start",
+    "clearDue": "Clear the due date",
+    "notify": {
+      "title": "Notifications",
+      "lead": "Remind",
+      "repeat": "Notification repeat",
+      "default": "Default",
+      "on": "On",
+      "off": "Off",
+      "leadAt": "On time",
+      "lead15": "15 min before",
+      "lead60": "An hour before",
+      "lead180": "3 hours before",
+      "lead1440": "A day before",
+      "repeatOnce": "Once",
+      "repeat60": "Every hour",
+      "repeat180": "Every 3 hours",
+      "repeat1440": "Every day"
+    }
+  },
+  "parent": {
+    "detach": "Detach",
+    "makeSubtask": "Make it a subtask…",
+    "noCandidates": "No other tasks"
+  },
+  "status": {
+    "next": "Shift → “{name}”",
+    "last": "This is the last column",
+    "reopen": "Reopen",
+    "complete": "Done"
+  },
+  "gitlab": {
+    "create": "Create an issue",
+    "creating": "Creating…",
+    "created": "Created issue !{iid} in GitLab{suffix}",
+    "assetsUploaded": "attachments uploaded: {n}",
+    "assetsSkipped": "failed: {n}",
+    "saving": "Saving…",
+    "grouped": "Grouped",
+    "group": "Mark as grouped",
+    "ungroup": "Remove grouping",
+    "groupSet": "The task is marked as grouped",
+    "groupCleared": "Grouping removed"
+  },
+  "footer": {
+    "readonly": "Archived task — view only",
+    "archiveBoth": "Archive together",
+    "detachSubtasks": "Detach the subtasks",
+    "archiveWithSubs": "The task has subtasks — what should happen to them?"
+  },
+  "journal": {
+    "created": "created the task",
+    "renamed": "renamed it to “{to}”",
+    "description": "changed the description",
+    "priority": "changed the priority to {to}",
+    "dueSet": "set the due date",
+    "dueCleared": "cleared the due date",
+    "completed": "marked it done",
+    "reopened": "reopened it",
+    "recurred": "rescheduled the repeat",
+    "moved": "moved it",
+    "movedTo": "moved it to “{to}”",
+    "assigned": "assigned an owner",
+    "unassigned": "removed the owner",
+    "archived": "archived it",
+    "restored": "restored it from the archive",
+    "comment": "left a comment",
+    "relation": "linked it to #{ref}",
+    "attachment": "attached a file",
+    "attachmentNamed": "attached the file “{name}”"
+  },
+  "ref": {
+    "notFound": "Task #{number} not found"
+  }
+}

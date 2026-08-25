@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import DocToc from '@/components/documents/DocToc.vue'
-import { UNTITLED_HEADING, docOutline } from '@/utils/docToc'
+import { untitledHeading, docOutline } from '@/utils/docToc'
 
 function h(id, level, text) {
   return {
@@ -52,7 +52,7 @@ describe('DocToc panel', () => {
 
   it('keeps an untitled heading clickable', () => {
     wrapper = mount(DocToc, { props: { rows: docOutline({ type: 'doc', content: [h('a', 1)] }) } })
-    expect(wrapper.find('[data-testid="doc-toc-entry"]').text()).toBe(UNTITLED_HEADING)
+    expect(wrapper.find('[data-testid="doc-toc-entry"]').text()).toBe(untitledHeading())
   })
 
   it('explains itself when the document has no headings', () => {

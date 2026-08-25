@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NInput, NIcon, NSpin, NText } from 'naive-ui'
 import {
   SearchOutline,
@@ -15,6 +16,7 @@ import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useHelpStore } from '@/stores/help'
 
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspacesStore()
 const help = useHelpStore()
@@ -109,7 +111,7 @@ function gotoHelp(h) {
     <n-input
       ref="inputRef"
       v-model:value="q"
-      placeholder="Поиск задач, заметок и документов…"
+      :placeholder="t('shell.search.placeholder')"
       clearable
       round
       @focus="q.trim() && (open = true)"
@@ -125,7 +127,7 @@ function gotoHelp(h) {
            branch: it is resolved from the bundled index, so it is already there
            while the request is still in flight (#2794). -->
       <div v-if="helpHits.length" class="grp">
-        <div class="grp-h">Справка</div>
+        <div class="grp-h">{{ t('shell.search.help') }}</div>
         <button
           v-for="h in helpHits"
           :key="h.slug"
@@ -144,24 +146,26 @@ function gotoHelp(h) {
       <template v-else>
         <template v-if="hasResults()">
           <div v-if="results.tasks.length" class="grp">
-            <div class="grp-h">Задачи</div>
+            <div class="grp-h">{{ t('shell.search.tasks') }}</div>
+            <!-- `task`, not `t`: the loop variable would shadow the translation
+                 function for the whole template. -->
             <button
-              v-for="t in results.tasks"
-              :key="t.id"
+              v-for="task in results.tasks"
+              :key="task.id"
               class="row"
-              @mousedown.prevent="gotoTask(t)"
+              @mousedown.prevent="gotoTask(task)"
             >
               <n-icon
                 class="ico"
-                :component="t.completed_at ? CheckmarkCircle : EllipseOutline"
-                :class="{ done: t.completed_at }"
+                :component="task.completed_at ? CheckmarkCircle : EllipseOutline"
+                :class="{ done: task.completed_at }"
               />
-              <span class="num">#{{ t.number }}</span>
-              <span class="ttl">{{ t.title }}</span>
+              <span class="num">#{{ task.number }}</span>
+              <span class="ttl">{{ task.title }}</span>
             </button>
           </div>
           <div v-if="results.notes.length" class="grp">
-            <div class="grp-h">Заметки</div>
+            <div class="grp-h">{{ t('shell.search.notes') }}</div>
             <button
               v-for="n in results.notes"
               :key="n.id"
@@ -169,11 +173,11 @@ function gotoHelp(h) {
               @mousedown.prevent="gotoNote(n)"
             >
               <n-icon class="ico" :component="DocumentTextOutline" />
-              <span class="ttl">{{ n.title || 'Без названия' }}</span>
+              <span class="ttl">{{ n.title || t('shell.search.untitled') }}</span>
             </button>
           </div>
           <div v-if="results.documents.length" class="grp">
-            <div class="grp-h">Документы</div>
+            <div class="grp-h">{{ t('shell.search.documents') }}</div>
             <button
               v-for="d in results.documents"
               :key="d.id"
@@ -181,19 +185,16 @@ function gotoHelp(h) {
               @mousedown.prevent="gotoDocument(d)"
             >
               <n-icon class="ico" :component="DocumentsOutline" />
-              <span class="ttl">{{ d.title || 'Без названия' }}</span>
+              <span class="ttl">{{ d.title || t('shell.search.untitled') }}</span>
             </button>
           </div>
         </template>
         <div v-else-if="!helpHits.length" class="empty">
-          <empty-state :icon="SearchOutline" text="Ничего не найдено" size="small" />
+          <empty-state :icon="SearchOutline" :text="t('shell.search.nothing')" size="small" />
         </div>
       </template>
       <div class="hint">
-        <n-text depth="3">
-          Поиск по названию и описанию задач, заголовку и тексту заметок, заголовку документов и по
-          справке
-        </n-text>
+        <n-text depth="3">{{ t('shell.search.hint') }}</n-text>
       </div>
     </div>
   </div>

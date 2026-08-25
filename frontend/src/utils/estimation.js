@@ -7,6 +7,12 @@
 //   • points → the point number on a scale (Fibonacci / T-shirt / linear);
 //   • custom → a count of a named unit.
 // Mirrors the backend canonicalisation in handlers/estimation.go.
+import { defaultFormatters } from '@/utils/format'
+import { i18n } from '@/i18n'
+
+// Localised text is produced per call (never cached at module level), so a
+// language switch reaches every label — pitfall 1 of #2799.
+const t = (key, ...rest) => i18n.global.t(key, ...rest)
 
 export const DEFAULT_ESTIMATION = { unit: 'time', hours_per_day: 8, days_per_week: 5 }
 
@@ -101,7 +107,7 @@ export function formatEstimate(value, cfg) {
       const hit = POINTS_SCALES.tshirt.find((o) => o.value === value)
       return hit ? hit.label : trimNum(value)
     }
-    return `${trimNum(value)} SP`
+    return t('task.estimate.short.points', { n: trimNum(value) })
   }
   if (unit === 'custom') {
     const label = (cfg?.custom_label || '').trim()
@@ -119,11 +125,11 @@ export function formatEstimate(value, cfg) {
   rem -= h * 60
   const min = rem
   const parts = []
-  if (w) parts.push(`${w}н`)
-  if (d) parts.push(`${d}д`)
-  if (h) parts.push(`${h}ч`)
-  if (min) parts.push(`${min}м`)
-  return parts.join(' ') || '0м'
+  if (w) parts.push(t('task.estimate.short.week', { n: w }))
+  if (d) parts.push(t('task.estimate.short.day', { n: d }))
+  if (h) parts.push(t('task.estimate.short.hour', { n: h }))
+  if (min) parts.push(t('task.estimate.short.minute', { n: min }))
+  return parts.join(' ') || t('task.estimate.short.minute', { n: 0 })
 }
 
 // Discrete options for the modal's point picker (empty for time/custom, which
@@ -135,28 +141,23 @@ export function scaleOptions(cfg) {
   return scale.map((v) => ({ label: String(v), value: v }))
 }
 
-// Human name of the unit, for settings labels and aggregates.
+// Human name of the unit, for settings labels and aggregates. A custom unit is
+// named by the user, so it is content and stays untranslated.
 export function unitName(cfg) {
   const u = cfg?.unit || 'time'
-  if (u === 'points') return 'Стори-поинты'
-  if (u === 'custom') return (cfg?.custom_label || '').trim() || 'Единицы'
-  return 'Время'
+  if (u === 'points') return t('task.estimate.unit.points')
+  if (u === 'custom') return (cfg?.custom_label || '').trim() || t('task.estimate.unit.custom')
+  return t('task.estimate.unit.time')
 }
 
-// Input placeholder hinting the accepted syntax for the resolved unit.
+// Input placeholder hinting the accepted syntax for the resolved unit. The time
+// example is localised together with the suffixes it demonstrates — `parseEstimate`
+// accepts both alphabets, so a user may keep typing either one.
 export function estimatePlaceholder(cfg) {
   const u = cfg?.unit || 'time'
-  if (u === 'points') return 'напр. 5'
-  if (u === 'custom') return 'напр. 8'
-  return 'напр. 3д 4ч, 90м, 1н'
-}
-
-// Russian plural picker: forms = [one, few, many] (e.g. ['неделя','недели','недель']).
-function plural(n, forms) {
-  const a = Math.abs(n) % 100
-  const b = a % 10
-  const i = a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2
-  return `${n} ${forms[i]}`
+  if (u === 'points') return t('task.estimate.placeholder.points')
+  if (u === 'custom') return t('task.estimate.placeholder.custom')
+  return t('task.estimate.placeholder.time')
 }
 
 // Full spelled-out expansion of a time estimate, e.g. 30h with an 8h day →
@@ -174,39 +175,42 @@ export function formatEstimateFull(value, cfg) {
   const h = Math.floor(rem / 60)
   rem -= h * 60
   const m = rem
+  // ICU pluralisation, not hand-rolled forms: Russian needs three branches and
+  // English only two, and vue-i18n picks the right one per locale.
   const parts = []
-  if (w) parts.push(plural(w, ['неделя', 'недели', 'недель']))
-  if (d) parts.push(plural(d, ['день', 'дня', 'дней']))
-  if (h) parts.push(plural(h, ['час', 'часа', 'часов']))
-  if (m) parts.push(plural(m, ['минута', 'минуты', 'минут']))
-  return parts.join(' ') || plural(0, ['минута', 'минуты', 'минут'])
+  if (w) parts.push(t('task.estimate.full.week', w))
+  if (d) parts.push(t('task.estimate.full.day', d))
+  if (h) parts.push(t('task.estimate.full.hour', h))
+  if (m) parts.push(t('task.estimate.full.minute', m))
+  return parts.join(' ') || t('task.estimate.full.minute', 0)
 }
 
 // Free-form projected window for tooltips/hints: "18 мая → 13 июл." — day +
 // short month, the year appended only when it isn't the current one (mirrors the
 // due-date style). Returns '' without a start date or a time estimate.
-export function estimateRangeShort(startISO, value, cfg, locale = 'ru-RU') {
+export function estimateRangeShort(startISO, value, cfg, fmt = defaultFormatters()) {
   const days = estimateToDays(value, cfg)
   if (days == null || !startISO) return ''
   const start = new Date(startISO)
   if (Number.isNaN(start.getTime())) return ''
   const end = new Date(start.getTime() + Math.round(days) * 86400000)
-  const nowY = new Date().getFullYear()
-  const fmt = (dt) => {
+  // "This year" is the user's year, in their timezone — not the browser's.
+  const nowY = fmt.today().year
+  const label = (dt) => {
     const o = { day: '2-digit', month: 'short' }
-    if (dt.getFullYear() !== nowY) o.year = 'numeric'
-    return dt.toLocaleDateString(locale, o)
+    if (fmt.parts(dt).year !== nowY) o.year = 'numeric'
+    return fmt.formatDate(dt, o)
   }
-  return `${fmt(start)} → ${fmt(end)}`
+  return `${label(start)} → ${label(end)}`
 }
 
 // One-line tooltip body: spelled-out estimate + free-form projected window in
 // parens, e.g. "8 недель (18 мая → 13 июл.)". Without a start date (no window to
 // project) it degrades to just the estimate. Returns '' for an empty estimate.
-export function estimateTooltip(startISO, value, cfg, locale = 'ru-RU') {
+export function estimateTooltip(startISO, value, cfg, fmt = defaultFormatters()) {
   const full = formatEstimateFull(value, cfg)
   if (!full) return ''
-  const range = estimateRangeShort(startISO, value, cfg, locale)
+  const range = estimateRangeShort(startISO, value, cfg, fmt)
   return range ? `${full} (${range})` : full
 }
 

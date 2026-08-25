@@ -274,8 +274,7 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 	changes := h.journalUpdate(c, t, updated)
 	if len(changes) > 0 {
 		h.notifyTaskParticipants(c, updated, wsID, "updated",
-			fmt.Sprintf("%s изменил(а) задачу #%s: %s",
-				h.actorName(c), taskRef(updated.Number), strings.Join(changes, ", ")))
+			msgUpdated(h.actorName(c), updated.Number, changes))
 	}
 	// Mirror user-side changes back to a linked GitLab issue (opt-in per integration).
 	actor := middleware.CurrentUser(c)
@@ -325,8 +324,7 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 	if t.ColumnID != columnID {
 		h.logEvent(c, t.ID, "moved", map[string]any{"to": col.Name})
 		h.notifyTaskParticipants(c, updated, wsID, "moved",
-			fmt.Sprintf("%s переместил(а) задачу #%s → «%s»",
-				h.actorName(c), taskRef(updated.Number), col.Name))
+			msgMoved(h.actorName(c), updated.Number, col.Name))
 	}
 
 	// Auto-toggle completion based on the board's configured "done" column:
@@ -405,7 +403,7 @@ func (h *API) applyAssignee(c *gin.Context, t db.Task, wsID, userID uuid.UUID, a
 		}
 		h.logEvent(c, t.ID, "assigned", map[string]any{"user_id": userID})
 		h.notify(c, userID, wsID, &t.ID, "assigned",
-			fmt.Sprintf("%s назначил вам задачу #%s%s", h.actorName(c), taskRef(t.Number), shortCtx(t.Title)))
+			msgAssigned(h.actorName(c), t.Number, t.Title))
 		h.broadcast(wsID, "task.assigned", gin.H{"task_id": t.ID, "user_id": userID})
 	} else {
 		if err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: t.ID, UserID: userID}); err != nil {
@@ -570,7 +568,7 @@ func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach boo
 	}
 	h.logEvent(c, t.ID, "archived", nil)
 	h.notifyTaskParticipants(c, t, wsID, "archived",
-		fmt.Sprintf("%s архивировал(а) задачу #%s%s", h.actorName(c), taskRef(t.Number), shortCtx(t.Title)))
+		msgArchived(h.actorName(c), t.Number, t.Title))
 	h.broadcast(wsID, "task.archived", gin.H{"id": t.ID})
 	return nil
 }

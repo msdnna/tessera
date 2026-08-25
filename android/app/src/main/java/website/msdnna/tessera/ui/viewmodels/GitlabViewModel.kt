@@ -7,17 +7,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.GitlabIntegration
 import website.msdnna.tessera.data.model.GitlabIntegrationRequest
 import website.msdnna.tessera.data.model.TagPrefixEntry
 import website.msdnna.tessera.data.repository.BoardOption
 import website.msdnna.tessera.data.repository.GitlabRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class GitlabUiState(
     val loading: Boolean = true,
-    val error: String? = null,
-    val message: String? = null,
+    val error: UiText? = null,
+    val message: UiText? = null,
     // connection (personal PAT — a fallback when no instance service token)
     val connected: Boolean = false,
     val baseUrl: String = "",
@@ -29,11 +32,11 @@ data class GitlabUiState(
     val isAdmin: Boolean = false,
     // pickers
     val boards: List<BoardOption> = emptyList(),
-    // editor context: columns + prefix display names of the board being edited
-    val columns: List<String> = emptyList(),
-    // column (id, name) pairs of the edited board — for the write-back binding
-    // column trigger (matches by stable id).
-    val columnOptions: List<Pair<String, String>> = emptyList(),
+    // editor context: columns + prefix display names of the board being edited.
+    // Колонки едут целиком (а не парами id/имя): экрану нужны и стабильный id, и имя
+    // для правила, и `name_key`, чтобы подписать засеянную колонку на языке читателя
+    // (#2800) — сохраняется при этом всегда имя, а не подпись.
+    val columns: List<BoardColumn> = emptyList(),
     val prefixNames: Map<String, String> = emptyMap(),
     val saving: Boolean = false,
     // id of the binding a sync is currently running for (null = none)
@@ -91,7 +94,8 @@ class GitlabViewModel : ViewModel() {
                 _state.update {
                     it.copy(
                         connecting = false, connected = conn.connected, baseUrl = conn.baseUrl,
-                        glUsername = conn.glUsername, message = "Подключено как @${conn.glUsername}",
+                        glUsername = conn.glUsername,
+                        message = UiText.Res(R.string.gitlab_msg_connected, listOf(conn.glUsername)),
                     )
                 }
                 reloadIntegrations(workspaceId)
@@ -105,7 +109,12 @@ class GitlabViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 repo.disconnect()
-                _state.update { it.copy(connected = false, glUsername = "", message = "GitLab отключён") }
+                _state.update {
+                    it.copy(
+                        connected = false, glUsername = "",
+                        message = UiText.Res(R.string.gitlab_msg_disconnected),
+                    )
+                }
             } catch (e: Exception) {
                 _state.update { it.copy(error = errorMessage(e)) }
             }
@@ -115,7 +124,7 @@ class GitlabViewModel : ViewModel() {
     fun loadColumns(boardId: String) {
         viewModelScope.launch {
             val cols = runCatching { repo.columns(boardId) }.getOrDefault(emptyList())
-            _state.update { it.copy(columns = cols.map { c -> c.second }, columnOptions = cols) }
+            _state.update { it.copy(columns = cols) }
         }
     }
 
@@ -137,7 +146,7 @@ class GitlabViewModel : ViewModel() {
     fun prepareEditor(integ: GitlabIntegration?) {
         val boardId = integ?.boardId
         if (boardId.isNullOrBlank()) {
-            _state.update { it.copy(columns = emptyList(), columnOptions = emptyList(), prefixNames = emptyMap()) }
+            _state.update { it.copy(columns = emptyList(), prefixNames = emptyMap()) }
             return
         }
         loadColumns(boardId)
@@ -176,7 +185,7 @@ class GitlabViewModel : ViewModel() {
                     repo.updateIntegration(workspaceId, existingId, req)
                 }
                 reloadIntegrations(workspaceId)
-                _state.update { it.copy(saving = false, message = "Настройки сохранены") }
+                _state.update { it.copy(saving = false, message = UiText.Res(R.string.gitlab_msg_saved)) }
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(saving = false, error = errorMessage(e)) }
@@ -189,7 +198,7 @@ class GitlabViewModel : ViewModel() {
             try {
                 repo.deleteIntegration(workspaceId, id)
                 reloadIntegrations(workspaceId)
-                _state.update { it.copy(message = "Привязка удалена") }
+                _state.update { it.copy(message = UiText.Res(R.string.gitlab_msg_binding_deleted)) }
             } catch (e: Exception) {
                 _state.update { it.copy(error = errorMessage(e)) }
             }
@@ -221,12 +230,23 @@ class GitlabViewModel : ViewModel() {
                     if (run.status == "error") {
                         it.copy(
                             syncingId = null, syncingFull = false,
-                            error = "Синхронизация не удалась: ${run.error.ifBlank { "ошибка" }}",
+                            error = if (run.error.isBlank()) {
+                                UiText.Res(R.string.gitlab_err_sync_failed_unknown)
+                            } else {
+                                UiText.Res(R.string.gitlab_err_sync_failed, listOf(run.error))
+                            },
                         )
                     } else {
                         it.copy(
                             syncingId = null, syncingFull = false,
-                            message = "Синхронизировано: ${run.createdCount + run.updatedCount} (+${run.createdCount}, ~${run.updatedCount})",
+                            message = UiText.Res(
+                                R.string.gitlab_msg_synced,
+                                listOf(
+                                    run.createdCount + run.updatedCount,
+                                    run.createdCount,
+                                    run.updatedCount,
+                                ),
+                            ),
                         )
                     }
                 }
@@ -234,7 +254,10 @@ class GitlabViewModel : ViewModel() {
                 return@launch
             }
             _state.update {
-                it.copy(syncingId = null, syncingFull = false, message = "Синхронизация выполняется в фоне — см. журнал")
+                it.copy(
+                    syncingId = null, syncingFull = false,
+                    message = UiText.Res(R.string.gitlab_msg_sync_background),
+                )
             }
         }
     }

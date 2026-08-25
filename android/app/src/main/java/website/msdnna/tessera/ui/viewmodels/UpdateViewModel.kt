@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.LatestRelease
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.update.UpdateRepository
 
 /** Drives the in-app update *dialog*. [release] rides along so the dialog keeps
@@ -19,7 +21,10 @@ sealed interface UpdateState {
     data class Available(val release: LatestRelease) : UpdateState
     data class Downloading(val progress: Float, val release: LatestRelease) : UpdateState
     data class Ready(val file: File, val release: LatestRelease) : UpdateState
-    data class Failed(val message: String, val release: LatestRelease) : UpdateState
+
+    /** [message] едет как [UiText]: сбой рождается здесь, где `Resources` нет, а
+     *  показывается диалогом — готовая строка застыла бы на языке момента сбоя. */
+    data class Failed(val message: UiText, val release: LatestRelease) : UpdateState
 }
 
 /**
@@ -68,7 +73,8 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
             }.onSuccess {
                 _state.value = UpdateState.Ready(it, release)
             }.onFailure {
-                _state.value = UpdateState.Failed(it.message ?: "Не удалось загрузить", release)
+                val why = it.message?.let(UiText::Raw) ?: UiText.Res(R.string.update_download_failed)
+                _state.value = UpdateState.Failed(why, release)
             }
         }
     }

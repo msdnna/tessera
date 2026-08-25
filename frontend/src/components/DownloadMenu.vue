@@ -4,17 +4,28 @@
 // grouped by platform; single-variant platforms collapse to one clickable row,
 // multi-variant Linux shows a label + one row per format with the recommended
 // one (AppImage) badged. URLs come straight from the manifests (see useDownloads).
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { DownloadOutline } from '@vicons/ionicons5'
 
 defineProps({
   groups: { type: Array, required: true },
 })
+
+const { t, te } = useI18n()
+
+// Format names are resolved here rather than carried on the variant, so they
+// follow a language switch. An unknown format from a newer manifest falls back
+// to its own id instead of printing a missing key.
+function formatLabel(format) {
+  const key = `app.download.format.${format}`
+  return te(key) ? t(key) : format
+}
 </script>
 
 <template>
   <div class="dl-pop">
-    <div class="dl-title">Скачать приложение</div>
+    <div class="dl-title">{{ t('app.download.title') }}</div>
     <template v-for="g in groups" :key="g.key">
       <!-- Single build (Windows / Android): the whole platform row is the link. -->
       <a
@@ -26,14 +37,18 @@ defineProps({
       >
         <n-icon :component="g.icon" :size="18" class="dl-platform-icon" />
         <span class="dl-platform-name">{{ g.name }}</span>
-        <span v-if="g.version" class="dl-ver">v{{ g.version }}</span>
+        <span v-if="g.version" class="dl-ver">{{
+          t('app.download.versionTag', { version: g.version })
+        }}</span>
       </a>
       <!-- Multiple builds (Linux): platform label + one row per format. -->
       <div v-else class="dl-group">
         <div class="dl-platform">
           <n-icon :component="g.icon" :size="18" class="dl-platform-icon" />
           <span class="dl-platform-name">{{ g.name }}</span>
-          <span v-if="g.version" class="dl-ver">v{{ g.version }}</span>
+          <span v-if="g.version" class="dl-ver">{{
+            t('app.download.versionTag', { version: g.version })
+          }}</span>
         </div>
         <a
           v-for="v in g.variants"
@@ -44,8 +59,8 @@ defineProps({
           rel="noopener noreferrer"
         >
           <n-icon :component="DownloadOutline" :size="15" class="dl-item-icon" />
-          <span class="dl-item-label">{{ v.label }}</span>
-          <span v-if="v.recommended" class="dl-badge">рекоменд.</span>
+          <span class="dl-item-label">{{ formatLabel(v.format) }}</span>
+          <span v-if="v.recommended" class="dl-badge">{{ t('app.download.recommended') }}</span>
         </a>
       </div>
     </template>

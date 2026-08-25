@@ -7,6 +7,7 @@
 // renders. The row decides for itself whether it has anything to show: when no
 // field survives the size preset and the customize toggles it renders nothing.
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover, NTooltip, NInput } from 'naive-ui'
 import {
   FlagOutline,
@@ -22,10 +23,12 @@ import {
 } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
 import { tasks as tasksApi, projects as projectsApi } from '@/api'
-import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
+import { PRIORITY_COLORS } from '@/styles/tokens'
+import { priorityLabel, priorityOptions as buildPriorityOptions } from '@/utils/priority'
 import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups, tagParts } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
+import { useFormat } from '@/composables/useFormat'
 import {
   formatEstimate,
   formatEstimateFull,
@@ -33,6 +36,7 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { cardFieldVisible } from '@/utils/cardFields'
+import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
 import UserAvatar from '../UserAvatar.vue'
 import DueEditor from '../DueEditor.vue'
@@ -42,7 +46,6 @@ import { useThemeStore } from '@/stores/theme'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
-import { useDateLocale } from '@/composables/useDateLocale'
 import { useTagFit } from '@/composables/useTagFit'
 
 const props = defineProps({
@@ -59,7 +62,8 @@ const theme = useThemeStore()
 const wsStore = useWorkspacesStore()
 const conflictsStore = useConflictsStore()
 const hasConflict = computed(() => conflictsStore.has(props.task.id))
-const { formatDue } = useDateLocale()
+const { formatDue, formatters } = useFormat()
+const { t } = useI18n()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
 
@@ -206,8 +210,9 @@ const pickerMembers = computed(() => {
   const assigned = props.task.assignee_ids || []
   assigned.forEach(add)
   recentAssignees.value.forEach(add)
+  const cmp = uiCollator()
   ;[...members.value]
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .sort((a, b) => cmp.compare(a.name || '', b.name || ''))
     .forEach((m) => add(m.user_id))
   return out.slice(0, Math.max(10, assigned.length))
 })
@@ -237,13 +242,15 @@ const estText = computed(() => {
 const estTooltip = computed(() => {
   const v = ownEstimate.value ?? rollupEstimate.value
   if (v == null) return ''
-  const prefix = estIsRollup.value ? 'Сумма оценок подзадач: ' : 'Оценка: '
   const body = estIsRollup.value
     ? formatEstimateFull(v, estCfg.value)
-    : estimateTooltip(props.task?.start_date, v, estCfg.value)
-  return `${prefix}${body}`
+    : estimateTooltip(props.task?.start_date, v, estCfg.value, formatters.value)
+  return estIsRollup.value
+    ? t('task.estimate.rollupTooltip', { value: body })
+    : t('task.estimate.tooltip', { value: body })
 })
-const priorityOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+// Computed, not a plain array: the labels have to re-resolve on a language switch.
+const priorityOptions = computed(() => buildPriorityOptions())
 // Stacked-cards effect: offset colored shadows behind the top tag pill.
 // Each deeper layer peeks 5px further right and is a little shorter (larger
 // negative spread) so it reads as a stack behind the top pill.
@@ -255,8 +262,8 @@ const stackShadow = computed(() => {
   return taskTags.value
     .slice(1, 3)
     .map(
-      (t, i) =>
-        `${(i + 1) * 5}px 0 0 ${-(i + 1)}px color-mix(in srgb, ${t.color || '#888'} 45%, var(--t-surface))`,
+      (tag, i) =>
+        `${(i + 1) * 5}px 0 0 ${-(i + 1)}px color-mix(in srgb, ${tag.color || '#888'} 45%, var(--t-surface))`,
     )
     .join(', ')
 })
@@ -386,10 +393,10 @@ async function toggleGlAssignee(m) {
       <template #trigger>
         <button class="pill set conf-pill" @click.stop="conflictsStore.openResolver(task.id)">
           <n-icon :component="WarningOutline" :size="13" />
-          <span class="pill-text">Конфликт</span>
+          <span class="pill-text">{{ t('task.pill.conflict') }}</span>
         </button>
       </template>
-      Конфликт обратной записи GitLab — нажмите, чтобы разрешить
+      {{ t('task.pill.conflictHint') }}
     </n-tooltip>
 
     <!-- Fields render as horizontal pills, or (stack mode) as full-width
@@ -405,7 +412,7 @@ async function toggleGlAssignee(m) {
         <button
           class="pill"
           :class="{ set: task.priority }"
-          :title="stackFields ? 'Приоритет' : ''"
+          :title="stackFields ? t('task.field.priority') : ''"
           data-tour="card-priority"
           @click.stop
         >
@@ -422,7 +429,7 @@ async function toggleGlAssignee(m) {
             "
           />
           <span v-if="stackFields" class="pill-text" :class="{ 'sf-empty': !task.priority }">{{
-            task.priority ? PRIORITY_LABELS[task.priority] : '—'
+            task.priority ? priorityLabel(task.priority) : '—'
           }}</span>
         </button>
       </template>
@@ -449,7 +456,7 @@ async function toggleGlAssignee(m) {
         <button
           class="pill"
           :class="{ set: due, overdue }"
-          :title="stackFields ? 'Срок' : ''"
+          :title="stackFields ? t('task.field.due') : ''"
           data-tour="card-due"
           @click.stop
         >
@@ -461,7 +468,7 @@ async function toggleGlAssignee(m) {
             :component="RepeatOutline"
             :size="11"
             class="pill-recur"
-            title="Повторяемая задача"
+            :title="t('task.field.recurring')"
           />
         </button>
       </template>
@@ -482,14 +489,14 @@ async function toggleGlAssignee(m) {
         <div
           class="pill"
           :class="{ set: estText, 'est-pill': estText }"
-          :title="stackFields ? 'Оценка' : ''"
+          :title="stackFields ? t('task.field.estimate') : ''"
         >
           <n-icon :component="TimerOutline" :size="13" />
           <span v-if="estText" class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
           <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
         </div>
       </template>
-      {{ estText ? estTooltip : 'Оценка' }}
+      {{ estText ? estTooltip : t('task.field.estimate') }}
     </n-tooltip>
 
     <!-- milestone («Этап»): display-only chip; editing lives in the task modal -->
@@ -502,7 +509,7 @@ async function toggleGlAssignee(m) {
             'ms-pill': taskMilestone,
             closed: taskMilestone && taskMilestone.state === 'closed',
           }"
-          :title="stackFields ? 'Этап' : ''"
+          :title="stackFields ? t('task.field.milestone') : ''"
         >
           <n-icon :component="RibbonOutline" :size="13" />
           <span v-if="taskMilestone" class="pill-text">{{ taskMilestone.title }}</span>
@@ -510,12 +517,16 @@ async function toggleGlAssignee(m) {
         </div>
       </template>
       <template v-if="taskMilestone">
-        Этап: {{ taskMilestone.title }}{{ taskMilestone.state === 'closed' ? ' (закрыт)' : '' }}
-        <template v-if="milestoneRange(taskMilestone)">
-          · {{ milestoneRange(taskMilestone) }}</template
+        {{
+          taskMilestone.state === 'closed'
+            ? t('task.milestone.tooltipClosed', { title: taskMilestone.title })
+            : t('task.milestone.tooltip', { title: taskMilestone.title })
+        }}
+        <template v-if="milestoneRange(taskMilestone, formatters)">
+          · {{ milestoneRange(taskMilestone, formatters) }}</template
         >
       </template>
-      <template v-else>Этап</template>
+      <template v-else>{{ t('task.field.milestone') }}</template>
     </n-tooltip>
 
     <!-- description: shown when the task has one (and not in stack mode); the
@@ -529,12 +540,18 @@ async function toggleGlAssignee(m) {
       @update:show="(v) => v && loadDescriptionPreview()"
     >
       <template #trigger>
-        <div class="pill set desc-pill" title="Есть описание" @click.stop="emit('open', task.id)">
+        <div
+          class="pill set desc-pill"
+          :title="t('task.pill.hasDescription')"
+          @click.stop="emit('open', task.id)"
+        >
           <n-icon :component="ReorderThreeOutline" :size="14" />
         </div>
       </template>
       <div class="desc-pop">
-        <div v-if="descLoading || descText === null" class="desc-loading">Загрузка…</div>
+        <div v-if="descLoading || descText === null" class="desc-loading">
+          {{ t('common.state.loading') }}
+        </div>
         <RichContent v-else :source="descText || ''" :members="members" />
       </div>
     </n-popover>
@@ -596,7 +613,13 @@ async function toggleGlAssignee(m) {
             </button>
             <!-- stacked: leading tag icon + outlined-oval chips that fit on the
                  row, rest → +N (same behaviour as the task modal). -->
-            <button v-else class="pill" title="Теги" data-tour="card-tags" @click.stop>
+            <button
+              v-else
+              class="pill"
+              :title="t('task.field.tags')"
+              data-tour="card-tags"
+              @click.stop
+            >
               <n-icon
                 :component="PricetagOutline"
                 :size="13"
@@ -604,10 +627,10 @@ async function toggleGlAssignee(m) {
               />
               <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
                 <TagPill
-                  v-for="t in taskTags.slice(0, visibleTagCount)"
-                  :key="t.id"
+                  v-for="tag in taskTags.slice(0, visibleTagCount)"
+                  :key="tag.id"
                   class="mchip"
-                  :tag="t"
+                  :tag="tag"
                   :prefix-names="tagPrefixNames"
                   variant="outline"
                 />
@@ -624,10 +647,10 @@ async function toggleGlAssignee(m) {
                      props, or the scope segment wouldn't be measured (useTagFit). -->
                 <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
                   <TagPill
-                    v-for="t in taskTags"
-                    :key="`m${t.id}`"
+                    v-for="tag in taskTags"
+                    :key="`m${tag.id}`"
                     class="mchip"
-                    :tag="t"
+                    :tag="tag"
                     :prefix-names="tagPrefixNames"
                     variant="outline"
                   />
@@ -638,10 +661,10 @@ async function toggleGlAssignee(m) {
           </template>
           <div class="preview">
             <TagPill
-              v-for="t in taskTags"
-              :key="t.id"
+              v-for="tag in taskTags"
+              :key="tag.id"
               class="chip"
-              :tag="t"
+              :tag="tag"
               :prefix-names="tagPrefixNames"
               variant="ghost"
             />
@@ -654,27 +677,27 @@ async function toggleGlAssignee(m) {
             <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
             <div class="chip-grid">
               <button
-                v-for="t in g.tags"
-                :key="t.id"
+                v-for="tag in g.tags"
+                :key="tag.id"
                 class="tagchip"
-                :class="{ on: hasTag(t.id) }"
+                :class="{ on: hasTag(tag.id) }"
                 :style="
-                  hasTag(t.id)
+                  hasTag(tag.id)
                     ? {
-                        background: hueGrad(t.color),
-                        color: onColor(t.color),
+                        background: hueGrad(tag.color),
+                        color: onColor(tag.color),
                         borderColor: 'transparent',
                       }
                     : {
-                        background: softFill(t.color),
-                        color: tagText(t.color),
-                        borderColor: (t.color || '#888') + '66',
+                        background: softFill(tag.color),
+                        color: tagText(tag.color),
+                        borderColor: (tag.color || '#888') + '66',
                       }
                 "
-                @click="toggleTag(t.id)"
+                @click="toggleTag(tag.id)"
               >
                 <TagPill
-                  :tag="t"
+                  :tag="tag"
                   :prefix-names="tagPrefixNames"
                   variant="inherit"
                   :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
@@ -686,7 +709,7 @@ async function toggleGlAssignee(m) {
         <n-input
           v-model:value="newTagName"
           size="tiny"
-          placeholder="Новый тег, Enter"
+          :placeholder="t('task.tags.newPlaceholder')"
           @keyup.enter="createTag"
           @click.stop
         />
@@ -715,7 +738,7 @@ async function toggleGlAssignee(m) {
             <template #trigger>
               <button
                 class="pill assignee-pill"
-                :title="stackFields ? 'Исполнитель' : ''"
+                :title="stackFields ? t('task.field.assignee') : ''"
                 data-tour="card-assignees"
                 @click.stop
               >
@@ -760,10 +783,16 @@ async function toggleGlAssignee(m) {
             </template>
             <div class="people-tip">
               <div v-if="author">
-                Автор: {{ author.gl ? `@${author.login} (GitLab)` : author.name }}
+                {{
+                  t('task.people.author', {
+                    name: author.gl ? `@${author.login} (GitLab)` : author.name,
+                  })
+                }}
               </div>
-              <div v-if="assigneeNames">Исполнитель: {{ assigneeNames }}</div>
-              <div v-if="!author && !assigneeNames">Нет исполнителя</div>
+              <div v-if="assigneeNames">
+                {{ t('task.people.assignee', { names: assigneeNames }) }}
+              </div>
+              <div v-if="!author && !assigneeNames">{{ t('task.people.none') }}</div>
             </div>
           </n-tooltip>
         </template>
@@ -771,7 +800,7 @@ async function toggleGlAssignee(m) {
           <n-input
             v-model:value="assigneeQuery"
             size="tiny"
-            placeholder="Поиск"
+            :placeholder="t('common.action.search')"
             clearable
             @click.stop
           />
@@ -808,7 +837,7 @@ async function toggleGlAssignee(m) {
               </div>
             </template>
             <div v-if="!pickerMembers.length && !gitlabMembers.length" class="assignee-empty">
-              Никого не найдено
+              {{ t('task.people.noMatches') }}
             </div>
           </div>
         </div>

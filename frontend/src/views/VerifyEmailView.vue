@@ -23,13 +23,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <auth-layout title="Подтверждение">
-    <p class="note">
-      <template v-if="state === 'pending'">Подтверждаем…</template>
-      <template v-else-if="state === 'ok'">Почта подтверждена. Спасибо!</template>
-      <template v-else>Ссылка недействительна или устарела.</template>
-    </p>
-    <div class="auth-foot"><router-link to="/">На главную</router-link></div>
+  <auth-layout :title="$t('common.auth.verify.title')">
+    <p class="note">{{ $t(`common.auth.verify.${state}`) }}</p>
+    <div class="auth-foot">
+      <router-link to="/">{{ $t('common.auth.toHome') }}</router-link>
+    </div>
   </auth-layout>
 </template>
 

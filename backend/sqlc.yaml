@@ -47,3 +47,9 @@ sql:
               import: "encoding/json"
               type: "RawMessage"
               pointer: true
+          # Notification payload is raw JSON as well: the feed rows are returned
+          # to the client as-is, and []byte would arrive base64-encoded.
+          - column: "notifications.payload"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"

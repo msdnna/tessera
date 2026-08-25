@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 
 // useMessage() throws without an <n-message-provider>; keep the rest of naive-ui
@@ -54,6 +55,10 @@ const approval = (steps, over = {}) => ({
   steps,
   ...over,
 })
+
+// These panels render dates through useFormat(), which reads the theme store —
+// so a Pinia instance has to be active before they mount (#2798).
+beforeEach(() => setActivePinia(createPinia()))
 
 describe('DocLinks panel', () => {
   let wrapper
