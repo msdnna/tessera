@@ -108,6 +108,21 @@ describe('dismissesSidebar', () => {
     expect(dismissesSidebar(el.querySelector('#opt'), card)).toBe(false)
   })
 
+  // #2807: the tour used to die here. Its buttons live in a layer teleported to
+  // <body>, so a mousedown on "Понятно" closed the panel, the step's anchor went with
+  // it, the layer unmounted — and the click that advances the tour never fired, so the
+  // step never changed, in the store or in localStorage.
+  it('keeps the panel when a tour button is pressed', () => {
+    const layer = add(
+      '<div class="tr-layer"><div class="tr-pop">' +
+        '<button class="tr-btn" data-testid="tour-next">Понятно</button>' +
+        '<button class="tr-skip" data-testid="tour-skip">Пропустить</button>' +
+        '</div></div>',
+    )
+    expect(dismissesSidebar(layer.querySelector('[data-testid="tour-next"]'), card)).toBe(false)
+    expect(dismissesSidebar(layer.querySelector('[data-testid="tour-skip"]'), card)).toBe(false)
+  })
+
   it('does not throw on a target that is not an element', () => {
     expect(dismissesSidebar(null, card)).toBe(false)
     expect(dismissesSidebar(document, card)).toBe(false)

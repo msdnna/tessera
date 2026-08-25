@@ -40,6 +40,12 @@ const FLOATING_SEL = [
   '.n-message-container',
   '.n-notification-container',
   '.n-image-preview-container',
+  // Onboarding tour (#2807). Its overlay is teleported to <body> too, so a mousedown
+  // on "Понятно" read as "outside the panel": the panel closed, the step's anchor went
+  // with it, the layer unmounted, and the click that would call tour.next() never
+  // happened — the tour stayed stuck on the same step forever. Whitelisting the layer
+  // (not just .tr-pop) keeps future interactive bits of the tour working by default.
+  '.tr-layer',
 ].join(',')
 
 export function dismissesSidebar(target, cardEl) {
