@@ -134,6 +134,36 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'milestones')
     })
 
+    // Admin screens (#2810). They exist only for a global admin, and the backend
+    // hands that to the first account of an instance — so these run on a clean
+    // database and skip on a shared one instead of shooting a redirect to the
+    // board. Re-taking them therefore means a fresh E2E_DB_URL, not a re-run.
+    test('администрирование', async ({ page }) => {
+      test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
+      await page.goto('/admin')
+      await expect(page.getByText('Пользователи экземпляра')).toBeVisible()
+      // The user rows arrive in a second request; without this the shutter can
+      // catch the OAuth card above an empty list.
+      await expect(page.locator('.urow').first()).toBeVisible()
+      // The OAuth card alone is taller than the viewport, so the accounts — what
+      // this shot is of — start below the fold. Scrolled to the search field:
+      // the list keeps its own heading in frame instead of floating loose.
+      await page.locator('.admin .search').scrollIntoViewIfNeeded()
+      await shoot(page, scheme, 'admin-users')
+    })
+
+    test('фоновые задания', async ({ page }) => {
+      test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
+      await openBoard(page)
+      await page.getByRole('button', { name: 'Фоновые задания' }).click()
+      const modal = page.locator('.bj-modal')
+      await expect(modal).toBeVisible()
+      // The panel selects its first job on load; waiting for the detail pane
+      // keeps the shot from showing «Выберите задание».
+      await expect(modal.locator('.bj-detail-name')).toBeVisible()
+      await shoot(page, scheme, 'background-jobs', modal)
+    })
+
     test('справочный центр', async ({ page }) => {
       // The centre is a modal over the current screen (#2792), so the shot is
       // taken the way a reader gets there: from the board, through the footer's

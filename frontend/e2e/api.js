@@ -28,6 +28,7 @@ export const api = {
   get: (p, token) => call('GET', p, { token }),
   post: (p, body, token) => call('POST', p, { token, body }),
   patch: (p, body, token) => call('PATCH', p, { token, body }),
+  put: (p, body, token) => call('PUT', p, { token, body }),
   del: (p, token) => call('DELETE', p, { token }),
 }
 

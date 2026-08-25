@@ -119,16 +119,79 @@ async function writeDoc(token, doc, paragraphs) {
   )
 }
 
+// The admin screen (#2810) is the only shot that shows e-mail addresses, so the
+// demo accounts ask for a presentable one first and fall back to the run-id
+// address only when it is taken — that is, on a database that already holds a
+// previous run. Domains are the ones RFC 2606 reserves for documentation.
+const DEMO_EMAIL = 'a.kovaleva@example.com'
+
+// Extra accounts so the admin list is a list and not a single row. They are
+// instance accounts only — not members of the demo workspace — so they change
+// nothing in the board, document or milestone shots.
+const INSTANCE_USERS = [
+  { name: 'Павел Дорохов', email: 'p.dorohov@example.com', admin: true },
+  { name: 'Марина Кисляк', email: 'm.kislyak@example.com' },
+  { name: 'Тимур Асланов', email: 't.aslanov@example.com', active: false },
+]
+
+// A GitLab OAuth application that does not exist, spelled out in full: the card
+// on top of the admin screen is in the picture either way, and an empty one
+// would document the setup form as a set of blank boxes.
+const DEMO_OAUTH = {
+  gl_base_url: 'https://gitlab.example.com',
+  client_id: '7d1f9c2ab3e84f60a5c7d2e1b8f43a09c6d5e4b2a1f09876543210fedcba9876',
+  client_secret: 'gloas-demo-secret-not-a-real-application',
+  service_token: 'glpat-DEMOxxxxxxxxxxxxxxxx',
+  enabled: true,
+  sudo_writeback: false,
+}
+
+async function registerPresentable(runId, name, email, suffix = '') {
+  const password = newCredentials(runId, suffix).password
+  try {
+    const creds = { email, name, password }
+    return { creds, ...(await register(creds)) }
+  } catch (e) {
+    // 409 — the address is taken, i.e. this database has seen a run before.
+    if (!e.message.includes('→ 409')) throw e
+    const creds = { ...newCredentials(runId, suffix), name }
+    return { creds, ...(await register(creds)) }
+  }
+}
+
+// seedInstance fills the instance-wide state the admin articles document: a few
+// accounts in different states and a GitLab OAuth application. Only possible for
+// a global admin — and the backend grants that to the *first* account of an
+// instance, so it happens on a clean database and is skipped on a shared one
+// (the admin shots skip with it; see help-shots.spec.js).
+async function seedInstance(runId, token, workspaceId) {
+  for (const [i, u] of INSTANCE_USERS.entries()) {
+    let created
+    try {
+      created = await registerPresentable(runId, u.name, u.email, `+u${i}`)
+    } catch {
+      continue // taken by an earlier run — the list is illustrative, not exact
+    }
+    const id = created.user.id
+    if (u.admin) await api.patch(`/admin/users/${id}/admin`, { admin: true }, token)
+    if (u.active === false) await api.patch(`/admin/users/${id}/active`, { active: false }, token)
+  }
+  await api.put(
+    '/admin/oauth/gitlab',
+    {
+      ...DEMO_OAUTH,
+      org_map: {
+        'demo-group': { workspace_id: workspaceId, admins: ['p.dorohov'], users: true },
+      },
+    },
+    token,
+  )
+}
+
 // seedDemo builds the whole demo workspace and returns what the shots spec needs
 // to navigate: ids plus the credentials to sign in with.
 export async function seedDemo(runId, base) {
-  const creds = {
-    ...newCredentials(runId),
-    // The user's name is on every avatar and in the sidebar footer, so it gets a
-    // real one instead of "E2E <runid>".
-    name: 'Аня Ковалёва',
-  }
-  const { token, user } = await register(creds)
+  const { creds, token, user } = await registerPresentable(runId, 'Аня Ковалёва', DEMO_EMAIL)
   const t = token
   const post = (p, b) => api.post(p, b, t)
   const get = (p) => api.get(p, t)
@@ -247,10 +310,15 @@ export async function seedDemo(runId, base) {
     message: 'Собрать обратную связь по онбордингу',
   })
 
+  // Instance-wide state for the admin articles (#2810). Gated on the flag the
+  // backend itself set at registration, not on a guess about the database.
+  if (user.is_admin) await seedInstance(runId, t, ws.id)
+
   return {
     runId,
     creds,
     token,
+    isAdmin: user.is_admin === true,
     userId: user.id,
     workspaceId: ws.id,
     projectId: project.id,
