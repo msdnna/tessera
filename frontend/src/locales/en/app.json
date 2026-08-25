@@ -35,7 +35,10 @@
   "whatsNew": {
     "title": "What's new",
     "sub": "The update has been applied — here is what changed",
-    "gotIt": "Got it"
+    "gotIt": "Got it",
+    "historyTitle": "Changelog",
+    "historySub": "All Tessera updates",
+    "close": "Close"
   },
   "device": {
     "desktop": "Desktop app ({os})",

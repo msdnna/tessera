@@ -8,16 +8,28 @@ import { useWhatsNewStore } from '@/stores/whatsNew'
 
 // "What's New" after an update (#2749): a modal listing the curated highlights of
 // every release the user has just updated into. Self-contained — it reads the
-// store's `pending` list and clears it (marking each version seen) on dismiss.
+// store's `entries` list and clears it (marking each version seen) on dismiss.
+//
+// The same card doubles as the full changelog when opened by hand from the
+// version stamp in the footer (#2812): same layout, different wording, and
+// closing it acknowledges nothing.
 const { t } = useI18n()
 const store = useWhatsNewStore()
 
 const show = computed({
-  get: () => store.pending.length > 0,
+  get: () => store.entries.length > 0,
   set: (v) => {
-    if (!v) store.dismissModal()
+    if (!v) close()
   },
 })
+
+// Wording per mode, kept as plain expressions rather than inline ternaries in
+// the template — the two modes differ only in these three strings.
+const title = computed(() =>
+  t(store.isHistory ? 'app.whatsNew.historyTitle' : 'app.whatsNew.title'),
+)
+const sub = computed(() => t(store.isHistory ? 'app.whatsNew.historySub' : 'app.whatsNew.sub'))
+const closeLabel = computed(() => t(store.isHistory ? 'app.whatsNew.close' : 'app.whatsNew.gotIt'))
 
 function itemsHtml(itemKeys) {
   // Render the bullets as one Markdown list (sanitized by renderMarkdown). The
@@ -27,23 +39,30 @@ function itemsHtml(itemKeys) {
 }
 
 function close() {
-  store.dismissModal()
+  if (store.isHistory) store.closeHistory()
+  else store.dismissModal()
 }
 </script>
 
 <template>
   <n-modal v-model:show="show">
-    <n-card class="wn-card" :bordered="false" role="dialog" :aria-label="t('app.whatsNew.title')">
+    <n-card
+      class="wn-card"
+      data-testid="whats-new-modal"
+      :bordered="false"
+      role="dialog"
+      :aria-label="title"
+    >
       <div class="wn-head">
         <div class="wn-badge"><n-icon :component="SparklesOutline" :size="20" /></div>
         <div>
-          <div class="wn-title">{{ t('app.whatsNew.title') }}</div>
-          <div class="wn-sub">{{ t('app.whatsNew.sub') }}</div>
+          <div class="wn-title">{{ title }}</div>
+          <div class="wn-sub">{{ sub }}</div>
         </div>
       </div>
 
       <div class="wn-body">
-        <section v-for="rel in store.pending" :key="rel.version" class="wn-rel">
+        <section v-for="rel in store.entries" :key="rel.version" class="wn-rel">
           <header class="wn-rel-head">
             <span class="wn-rel-title">{{ t(rel.titleKey) }}</span>
             <span class="wn-rel-ver">{{ rel.version }}</span>
@@ -54,7 +73,7 @@ function close() {
       </div>
 
       <div class="wn-foot">
-        <n-button type="primary" @click="close">{{ t('app.whatsNew.gotIt') }}</n-button>
+        <n-button type="primary" @click="close">{{ closeLabel }}</n-button>
       </div>
     </n-card>
   </n-modal>
