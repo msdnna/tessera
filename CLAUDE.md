@@ -184,6 +184,7 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
 - **tessera-e2e** — безопасный backend e2e против `tessera_test` (гочи bash/python/порты).
 - **tessera-android-release** — сборка и публикация подписанного релиза + self-update (`latest.json`).
 - **tessera-task-workflow** — работа с задачами через MCP (`tessera-mcp`): взять в работу, уточняющие вопросы, приложить результаты/скриншоты, вернуть на проверку. Юзер назначает задачи на бота; агент возвращает автору в «На рассмотрении».
+- **tessera-sentry** — триаж/анализ ошибок и верификация фиксов через self-hosted Sentry (MCP `sentry-self-hosted`), **только если Sentry настроен и жив**; иначе — по логам. Побочные/незнакомые ошибки → заводить отдельные задачи в Tessera.
 
 ## Где что искать / как поддерживать
 
