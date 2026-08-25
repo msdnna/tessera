@@ -38,6 +38,13 @@ const test = base.extend({
         // Without this they render the empty personal workspace; the board shots
         // never noticed because a board deep link switches workspace by itself.
         localStorage.setItem('tessera_ws', c.workspaceId)
+        // Pin the device id (#2810, wave 4). Every test gets a fresh browser
+        // context, and the app registers a "device" notification channel per
+        // unseen id — so the channel list grew by one row with each shot, and
+        // the light and dark twins of the notifications picture disagreed about
+        // how many devices the account has. One fixed id = exactly one
+        // «Браузер (Chrome)» row, the same in both.
+        localStorage.setItem('tessera_device_id', 'demo-device-help-shots')
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'cookie' },
@@ -254,6 +261,75 @@ for (const scheme of ['light', 'dark']) {
       // keeps the shot from showing «Выберите задание».
       await expect(modal.locator('.bj-detail-name')).toBeVisible()
       await shoot(page, scheme, 'background-jobs', modal)
+    })
+
+    // Notification settings (#2810, wave 4). They live in a long settings page,
+    // so both shots are of the viewport scrolled to the block in question rather
+    // than of the section element — the section is taller than any sane window,
+    // and an element screenshot that has to stitch comes back half-painted.
+    async function openNotificationSettings(page) {
+      // Without the permission the device row carries a red «Уведомления
+      // запрещены в браузере» line — a picture of a headless browser's default,
+      // not of the product.
+      await page.context().grantPermissions(['notifications'])
+      // The client registers this browser as a device channel on boot, but only
+      // after the tour/what's-new chain ahead of it — later than the settings
+      // screen fetches the channel list, so the row is missing on a cold load.
+      // Waiting for that POST and then reloading makes the row deterministic:
+      // without it the light shot (the first test to run) had no device row and
+      // its dark twin, running after the channel already existed, had one.
+      const registered = page
+        .waitForResponse((r) => r.url().includes('/notification-devices'), { timeout: 15000 })
+        .catch(() => null)
+      await page.goto('/settings')
+      await registered
+      await page.reload()
+      const section = page
+        .locator('section.card')
+        .filter({ has: page.getByRole('heading', { name: 'Уведомления' }) })
+      await expect(section).toBeVisible()
+      await expect(section.getByText('это устройство')).toBeVisible()
+      // Channels arrive in their own request; the seeded one keeps the shutter
+      // off the spinner and off the «Каналов пока нет» empty state.
+      // Exact: the channel's own row, not the two rule rows that list it as a
+      // delivery target («→ Рабочая почта, Мой телеграм · …»).
+      await expect(section.getByText('Мой телеграм', { exact: true })).toBeVisible()
+      return section
+    }
+
+    // scrollIntoViewIfNeeded only scrolls until the element is *somewhere* in the
+    // viewport, which leaves the settings screen showing the tail of the security
+    // card above the block being documented. `block: 'start'` pins it to the top.
+    async function scrollToTop(locator) {
+      await locator.evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'instant' }))
+    }
+
+    test('уведомления: каналы доставки', async ({ page }) => {
+      const section = await openNotificationSettings(page)
+      await scrollToTop(section)
+      await shoot(page, scheme, 'notifications-channels')
+    })
+
+    test('уведомления: правила маршрутизации', async ({ page }) => {
+      const section = await openNotificationSettings(page)
+      // The rule editor over the rule list: the picture has to show both the
+      // order of the rules (first match wins) and what a rule is made of, so the
+      // list is scrolled up first and the form opened on top of it.
+      const block = section.locator('.block', { hasText: 'Правила маршрутизации' }).first()
+      await scrollToTop(block)
+      await section.getByRole('button', { name: 'Добавить правило' }).click()
+      const modal = page.locator('.n-card', { hasText: 'Новое правило' })
+      await expect(modal).toBeVisible()
+      // Pick the events so the form is documented in use, not empty. The label is
+      // a <span> above the select, so the click has to land on the selection box
+      // itself; the options then render in a detached dropdown layer, outside the
+      // modal — hence the page-level locator for them.
+      await modal.locator('.field', { hasText: 'События' }).locator('.n-base-selection').click()
+      await page.locator('.n-base-select-option', { hasText: 'Упоминания' }).first().click()
+      await page.keyboard.press('Escape') // close the dropdown, keep the modal
+      // The pick lands as a tag inside the select — that is what has to be in frame.
+      await expect(modal.locator('.n-tag', { hasText: 'Упоминания' })).toBeVisible()
+      await shoot(page, scheme, 'notifications-routes')
     })
 
     test('справочный центр', async ({ page }) => {

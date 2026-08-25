@@ -220,6 +220,81 @@ function demoWriteback(columns) {
   }
 }
 
+// Delivery channels and routing rules for the notifications article (#2810).
+// Nothing here can actually deliver: the addresses are documentation domains and
+// the tokens are spelled out as demo, so the outbox retries into nowhere — which
+// changes nothing in a picture of the settings screen. The browser adds its own
+// «Браузер (Chrome)» row on top of these when the shot signs in: device channels
+// register themselves per client.
+const DEMO_CHANNELS = [
+  { type: 'email', label: 'Рабочая почта', config: { address: DEMO_EMAIL } },
+  {
+    type: 'telegram',
+    label: 'Мой телеграм',
+    config: { chat_id: '123456789' },
+    secret: { bot_token: '1234567:DEMO-not-a-real-bot-token' },
+  },
+  {
+    type: 'shoutrrr',
+    label: 'Дежурный чат',
+    secret: { url: 'slack://demo/DEMO/not-a-real-token' },
+  },
+]
+
+// The rules are ordered the way the article explains them: the narrow ones
+// first, the mute last. First-match-wins, so a general "everything → mail" rule
+// on top would make the rest of the list dead weight — and a screenshot of a
+// list that cannot work is worse than no screenshot.
+const DEMO_ROUTES = [
+  { kinds: ['mention', 'assigned'], channels: ['Рабочая почта', 'Мой телеграм'] },
+  { kinds: ['comment', 'updated'], channels: ['Мой телеграм'], scoped: true },
+  { kinds: ['integration_sync'], mute: true },
+]
+
+// seedNotifications creates the demo user's channels, routing rules and schedule.
+// Per-user state (no admin needed), so unlike the instance seed it runs on every
+// database.
+async function seedNotifications(token, workspaceId) {
+  const byLabel = {}
+  for (const ch of DEMO_CHANNELS) {
+    const created = await api.post(
+      '/notification-channels',
+      { type: ch.type, label: ch.label, config: ch.config || {}, secret: ch.secret || {} },
+      token,
+    )
+    byLabel[ch.label] = created.id
+  }
+  for (const r of DEMO_ROUTES) {
+    await api.post(
+      '/notification-routes',
+      {
+        matcher: { kinds: r.kinds, ...(r.scoped ? { workspace_id: workspaceId } : {}) },
+        channel_ids: (r.channels || []).map((l) => byLabel[l]),
+        options: { mute: r.mute === true },
+        enabled: true,
+      },
+      token,
+    )
+  }
+  // Quiet hours and a digest window on, so the schedule block below the rules is
+  // a filled-in form rather than a column of defaults.
+  await api.put(
+    '/notification-prefs',
+    {
+      due_enabled: true,
+      due_lead_minutes: 60,
+      due_repeat_minutes: 0,
+      reminder_enabled: true,
+      digest_minutes: 15,
+      quiet_enabled: true,
+      quiet_start_minutes: 1320,
+      quiet_end_minutes: 480,
+      quiet_tz: 'Europe/Moscow',
+    },
+    token,
+  )
+}
+
 // seedInstance fills the instance-wide state the admin articles document: a few
 // accounts in different states, a GitLab OAuth application and a project binding.
 // Only possible for a global admin — and the backend grants that to the *first*
@@ -375,6 +450,8 @@ export async function seedDemo(runId, base) {
     remind_at: iso(base, 3),
     message: 'Собрать обратную связь по онбордингу',
   })
+
+  await seedNotifications(t, ws.id)
 
   // Instance-wide state for the admin articles (#2810). Gated on the flag the
   // backend itself set at registration, not on a guess about the database.
