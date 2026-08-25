@@ -12,6 +12,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/docroom"
+	"tessera/internal/observability"
 )
 
 const (
@@ -92,6 +93,9 @@ func (h *WSHandler) displayName(c *gin.Context, uid uuid.UUID) string {
 // participant out of the room — which is what releases its locks immediately
 // rather than at the TTL.
 func (h *WSHandler) docReadPump(conn *websocket.Conn, p *docroom.Participant, room *docroom.Room, docID uuid.UUID) {
+	// Per-connection goroutine: a panic here would crash the server, so report it
+	// and let the deferred cleanup below still run.
+	defer observability.Recover("doc-ws-read")
 	defer func() {
 		h.rooms.Leave(docID, p)
 		_ = conn.Close()
@@ -124,6 +128,7 @@ func (h *WSHandler) docReadPump(conn *websocket.Conn, p *docroom.Participant, ro
 
 // docWritePump writes room snapshots and keeps the socket alive through proxies.
 func (h *WSHandler) docWritePump(conn *websocket.Conn, p *docroom.Participant) {
+	defer observability.Recover("doc-ws-write")
 	ticker := time.NewTicker(docPingEvery)
 	defer func() {
 		ticker.Stop()

@@ -6,6 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+
+	"tessera/internal/observability"
 )
 
 // EventResync tells a client it missed at least one event (its buffer overflowed)
@@ -80,6 +82,9 @@ func (c *Client) Start() {
 }
 
 func (c *Client) readPump() {
+	// Per-connection goroutine: report a panic instead of crashing the server; the
+	// unregister/close cleanup below still runs on the way out.
+	defer observability.Recover("ws-read")
 	defer func() {
 		select {
 		case c.hub.unregister <- c:
@@ -117,6 +122,7 @@ func (c *Client) flushResync() error {
 }
 
 func (c *Client) writePump() {
+	defer observability.Recover("ws-write")
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()

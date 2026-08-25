@@ -74,6 +74,9 @@ func main() {
 	hubWG.Add(1)
 	go func() {
 		defer hubWG.Done()
+		// A panic in the fan-out loop would otherwise kill the process and take
+		// every live board with it; report it instead of crashing.
+		defer observability.Recover("realtime-hub")
 		hub.Run()
 	}()
 
@@ -95,39 +98,41 @@ func main() {
 	rh.FailStaleSyncRuns(ctx)
 
 	// Workers all block until ctx is done; the WaitGroup lets shutdown wait for
-	// them to finish the tick they're on before the pool closes under them.
+	// them to finish the tick they're on before the pool closes under them. Each is
+	// run under superviseWorker so a panic in one tick is reported to Sentry and the
+	// loop restarts instead of taking the whole process down.
 	var workers sync.WaitGroup
-	spawn := func(fn func(context.Context)) {
+	spawn := func(name string, fn func(context.Context)) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			fn(ctx)
+			superviseWorker(ctx, name, fn)
 		}()
 	}
 
 	// Record the tick-loop workers in the jobs registry (heartbeat entries) and start
 	// the supervisor that logs a periodic summary of in-flight background jobs.
 	rh.RegisterBackgroundWorkers()
-	spawn(rh.RunJobSupervisor)
+	spawn("job_supervisor", rh.RunJobSupervisor)
 
 	// Background GitLab auto-sync worker (idle until an integration sets a
 	// positive sync interval).
-	spawn(rh.RunSyncWorker)
+	spawn("gitlab_sync_cron", rh.RunSyncWorker)
 
 	// Background GitLab write-back worker — drains the outbox of task changes to
 	// push to linked issues. Idle until a user enables write-back on an integration.
-	spawn(rh.RunGitlabWriteBackWorker)
+	spawn("gitlab_writeback", rh.RunGitlabWriteBackWorker)
 
 	// Background notification delivery worker — drains the outbox of channel
 	// deliveries (email/telegram/webhook). Idle until a user configures channels.
-	spawn(rh.RunNotificationWorker)
+	spawn("notify_delivery", rh.RunNotificationWorker)
 
 	// Background scanner — emits due-date + reminder notifications on schedule.
-	spawn(rh.RunNotificationScanner)
+	spawn("notify_scanner", rh.RunNotificationScanner)
 
 	// Background worker — advances schedule-triggered recurring tasks once due.
 	// Idle until a task carries a "schedule"-trigger recurrence rule.
-	spawn(rh.RunRecurrenceWorker)
+	spawn("recurrence", rh.RunRecurrenceWorker)
 
 	// Explicit server so we can bound the header read and idle keep-alive without
 	// capping ReadTimeout/WriteTimeout — those would forcibly cut long-lived
@@ -163,6 +168,36 @@ func main() {
 	rh.CloseDocRooms()
 	drain(srv, &workers, hub, &hubWG, cfg.GracefulTimeout)
 	// pool.Close runs deferred, after everything that could still use it.
+}
+
+// superviseWorker runs a background worker under panic recovery: a panic in one
+// tick is reported to Sentry (tagged with name) and the loop is restarted after a
+// short pause instead of taking the whole process down with it — the gap gin's
+// recovery and middleware.SentryReport can't cover, since neither sees a
+// non-HTTP goroutine. Returns when ctx is cancelled; a clean return from fn on a
+// live ctx is treated as an early exit and restarted the same way.
+func superviseWorker(ctx context.Context, name string, fn func(context.Context)) {
+	for ctx.Err() == nil {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					observability.CapturePanic("worker:"+name, r)
+				}
+			}()
+			fn(ctx)
+		}()
+		// fn returned. On a cancelled ctx that was a clean shutdown; otherwise it
+		// panicked (recovered above) or exited early — pause so a tight panic loop
+		// can't spin, then restart.
+		if ctx.Err() != nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 // closer is the slice of *realtime.Hub that drain needs (kept as an interface so

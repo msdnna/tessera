@@ -20,6 +20,7 @@ import (
 	"tessera/internal/gitlab"
 	"tessera/internal/jobs"
 	"tessera/internal/netguard"
+	"tessera/internal/observability"
 	"tessera/middleware"
 )
 
@@ -581,7 +582,11 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	handle.SetOp(syncOpLabel(j.mode))
 	h.beginJournal(c, j)
 	go func() {
+		// Detached goroutine: a panic here would crash the whole server. Report it
+		// to Sentry and let the process live. cancel runs after so the run's context
+		// is always released, even on panic.
 		defer cancel()
+		defer observability.Recover("gitlab-sync")
 		ctx, tcancel := context.WithTimeout(syncCtx, 30*time.Minute)
 		defer tcancel()
 		created, updated, serr := h.runSyncJournal(ctx, integ, cred, uid, j)
@@ -589,6 +594,7 @@ func (h *API) SyncGitlab(c *gin.Context) {
 		handle.Finish(serr)
 		if serr != nil {
 			log.Printf("gitlab manual-sync ws=%s: %v", integ.WorkspaceID, serr)
+			observability.CaptureError("gitlab-sync", serr)
 		}
 		h.notifySyncFinished(ctx, integ, j, created, updated, serr)
 	}()

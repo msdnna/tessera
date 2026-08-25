@@ -5,7 +5,10 @@
 package observability
 
 import (
+	"fmt"
 	"log"
+	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -44,4 +47,66 @@ func InitSentry(dsn, environment, release string, tracesSampleRate float64) func
 
 	log.Printf("Sentry enabled (env=%s, release=%s, traces=%.2f)", environment, release, tracesSampleRate)
 	return func() { sentry.Flush(2 * time.Second) }
+}
+
+// CapturePanic reports a recovered panic to Sentry and logs it with its stack.
+// It fills the gap the HTTP middleware can't reach: a panic in a background
+// goroutine is invisible to gin's recovery and to middleware.SentryReport, and
+// left alone it takes the whole process down. component tags the event
+// ("worker:notify_delivery", "gitlab-sync", …) so background panics group per
+// origin instead of collapsing into one issue.
+//
+// Safe when Sentry is disabled (no client → the report is skipped, the slog line
+// still prints). It flushes briefly because a panic often precedes process death
+// and the event must not be lost in the async transport's buffer.
+func CapturePanic(component string, recovered any) {
+	slog.Error("recovered panic in background goroutine",
+		"component", component, "panic", fmt.Sprint(recovered), "stack", string(debug.Stack()))
+	hub := sentry.CurrentHub()
+	if hub.Client() == nil {
+		return
+	}
+	hub.WithScope(func(scope *sentry.Scope) {
+		scope.SetLevel(sentry.LevelFatal)
+		scope.SetTag("component", component)
+		scope.SetTag("origin", "background")
+		hub.Recover(recovered)
+	})
+	sentry.Flush(2 * time.Second)
+}
+
+// CaptureError reports a handled background error to Sentry, tagged with the
+// component so it groups per origin. Unlike CapturePanic it does not flush — the
+// async transport drains it — because the worker keeps running after a handled
+// error. No-op when err is nil or Sentry is disabled. Use it for a discrete
+// background job that failed terminally (a sync run, a delivery batch), not for
+// per-tick best-effort retries, which would be noise.
+func CaptureError(component string, err error) {
+	if err == nil {
+		return
+	}
+	hub := sentry.CurrentHub()
+	if hub.Client() == nil {
+		return
+	}
+	hub.WithScope(func(scope *sentry.Scope) {
+		scope.SetLevel(sentry.LevelError)
+		scope.SetTag("component", component)
+		scope.SetTag("origin", "background")
+		hub.CaptureException(err)
+	})
+}
+
+// Recover is a deferred panic guard for a fire-and-forget goroutine that has no
+// supervisor loop: defer it as the goroutine's first statement and a panic is
+// reported through CapturePanic instead of crashing the process.
+//
+//	go func() {
+//	    defer observability.Recover("gitlab-sync")
+//	    …
+//	}()
+func Recover(component string) {
+	if r := recover(); r != nil {
+		CapturePanic(component, r)
+	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/jobs"
+	"tessera/internal/observability"
 )
 
 // ── Admin: background jobs panel ───────────────────────────
@@ -132,7 +133,11 @@ func (h *API) RunJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "job is not runnable on demand"})
 		return
 	}
-	go run(context.Background())
+	go func() {
+		// Detached one-shot run: guard the process against a panic in the job.
+		defer observability.Recover("job:" + key)
+		run(context.Background())
+	}()
 	c.JSON(http.StatusAccepted, gin.H{"started": true})
 }
 
